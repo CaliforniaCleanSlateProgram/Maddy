@@ -404,3 +404,18 @@ textarea {
   color: var(--teal);
   border-left: 2px solid var(--teal);
 }
+
+/* ==========================================
+   Executive Review Interface (Mission v0.1.8)
+   ========================================== */
+.office-review-panel {
+  margin-top: 8px;
+  border: 1px solid rgba(37, 214, 210, 0.28);
+  background: rgba(8, 24, 37, 0.72);
+    border-radius: 12px;
+}
+
+.office-review-panel h3 {
+  margin-bottom: 12px;
+}
+  
