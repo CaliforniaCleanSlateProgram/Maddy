@@ -472,3 +472,32 @@ textarea {
   border-color: var(--teal);
   color: #061419;
 }
+
+.main-content,
+.workspace {
+  padding-left: 28px;
+  padding-right: 28px;
+}
+
+.office-review-status {
+  display: block;
+}
+
+.office-review-message {
+  margin: 0 0 14px;
+}
+
+.office-review-recommendation {
+  margin: 0 0 18px;
+  max-width: 520px;
+  line-height: 1.5;
+}
+
+.office-review-recommendation strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.office-review-actions {
+  justify-content: flex-start;
+}
