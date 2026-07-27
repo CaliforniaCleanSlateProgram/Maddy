@@ -101,11 +101,6 @@
               Executive Recommendation:
               <strong>Ready for Executive Approval</strong>
             </p>
-
-            <p class="office-review-recommendation">
-              Executive Recommendation:
-              <strong>Ready for Executive Approval</strong>
-            </p>
             
           </div>
 
