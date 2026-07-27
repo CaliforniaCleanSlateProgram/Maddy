@@ -46,6 +46,7 @@
                         aria-controls="cabinetMenu"
                     >
                         <span>Executive Cabinet</span>
+
                         <span
                             id="cabinetArrow"
                             class="nav-arrow"
@@ -77,8 +78,11 @@
             <div class="sidebar-footer">
                 <p>System Status</p>
 
-                <span class="status-indicator">
-                    Foundation Online
+                <span
+                    id="systemStatusIndicator"
+                    class="status-indicator"
+                >
+                    Organization Online
                 </span>
             </div>
         </aside>
@@ -101,7 +105,10 @@
 
                     <div>
                         <strong>Maddy Status</strong>
-                        <p>Foundation active</p>
+
+                        <p id="maddySystemStatus">
+                            Executive systems starting
+                        </p>
                     </div>
                 </div>
             </header>
@@ -461,8 +468,117 @@
         </main>
     </div>
 
+    <!--
+        MEOS organizational loading order:
+
+        1. Executive Offices establish the cabinet.
+        2. Mission Engine establishes organizational work.
+        3. Mission Dispatcher routes work to the offices.
+        4. Office Dashboard displays office activity.
+        5. App initializes dashboard navigation and interface behavior.
+    -->
+
     <script src="executive-offices.js"></script>
+    <script src="mission-engine.js"></script>
+    <script src="mission-dispatcher.js"></script>
     <script src="office-dashboard.js"></script>
     <script src="app.js"></script>
+
+    <script>
+        (function startMEOSOrganization() {
+            "use strict";
+
+            function updateVisibleStatus(message) {
+                const maddyStatus =
+                    document.getElementById("maddySystemStatus");
+
+                const systemStatus =
+                    document.getElementById("systemStatusIndicator");
+
+                if (maddyStatus) {
+                    maddyStatus.textContent = message;
+                }
+
+                if (systemStatus) {
+                    systemStatus.textContent = message;
+                }
+            }
+
+            function initializeOrganization() {
+                const missionEngine = window.MEOSMissionEngine;
+                const missionDispatcher = window.MEOSMissionDispatcher;
+
+                if (!missionEngine) {
+                    console.error(
+                        "MEOS startup failed: Mission Engine is unavailable."
+                    );
+
+                    updateVisibleStatus("Mission Engine unavailable");
+                    return;
+                }
+
+                if (!missionDispatcher) {
+                    console.error(
+                        "MEOS startup failed: Mission Dispatcher is unavailable."
+                    );
+
+                    updateVisibleStatus("Mission Dispatcher unavailable");
+                    return;
+                }
+
+                try {
+                    const dispatcherResult =
+                        missionDispatcher.start({
+                            scanInterval: 5000
+                        });
+
+                    const missionSummary =
+                        missionEngine.getMissionSummary();
+
+                    const dispatcherStatus =
+                        missionDispatcher.getStatus();
+
+                    updateVisibleStatus("Executive systems active");
+
+                    console.log(
+                        "%cMEOS Organization Online",
+                        "font-weight: bold; font-size: 14px;"
+                    );
+
+                    console.log(
+                        "Mission Engine:",
+                        missionSummary
+                    );
+
+                    console.log(
+                        "Mission Dispatcher:",
+                        dispatcherStatus
+                    );
+
+                    console.log(
+                        "Dispatcher startup result:",
+                        dispatcherResult
+                    );
+                } catch (error) {
+                    console.error(
+                        "MEOS organization could not start.",
+                        error
+                    );
+
+                    updateVisibleStatus("Executive systems need attention");
+                }
+            }
+
+            if (document.readyState === "loading") {
+                document.addEventListener(
+                    "DOMContentLoaded",
+                    initializeOrganization,
+                    { once: true }
+                );
+            } else {
+                initializeOrganization();
+            }
+        })();
+    </script>
 </body>
 </html>
