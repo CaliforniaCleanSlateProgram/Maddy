@@ -98,10 +98,21 @@
                 <div class="status-label">MADDY</div>
                 <div class="status-value">I'm Up.</div>
             </div>
-            <p class="office-review-recommendation">
-              Executive Recommendation:
-              <strong>Ready for Executive Approval</strong>
-            </p>
+            <div class="office-review-recommendation">
+
+    <div class="recommendation-label">
+        EXECUTIVE RECOMMENDATION
+    </div>
+
+    <div class="recommendation-value">
+    Ready for Executive Approval
+</div>
+
+<div class="recommendation-source">
+    Reviewed by Maddy
+</div>
+
+</div>
             
           </div>
 
