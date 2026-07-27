@@ -340,3 +340,57 @@ textarea {
   .ask-maddy { grid-template-columns:auto 1fr auto; }
   .ask-maddy input { grid-column:1 / -1; grid-row:2; }
 }
+/* Executive Cabinet Dropdown */
+
+.nav-group {
+  margin: 0;
+}
+
+.nav-dropdown {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  font-size: .82rem;
+  cursor: pointer;
+}
+
+.nav-dropdown:hover,
+.nav-dropdown[aria-expanded="true"] {
+  background: rgba(35,215,242,.11);
+  color: var(--cyan);
+  border-left: 2px solid var(--cyan);
+}
+
+.nav-arrow {
+  font-size: .75rem;
+  transition: transform .2s ease;
+}
+
+.nav-submenu {
+  margin-top: 4px;
+  padding-left: 12px;
+}
+
+.nav-submenu[hidden] {
+  display: none;
+}
+
+.nav-submenu a {
+  padding: 7px 11px;
+  font-size: .76rem;
+  color: var(--muted);
+}
+
+.nav-submenu a:hover,
+.nav-submenu a.active {
+  background: rgba(46,230,195,.08);
+  color: var(--teal);
+  border-left: 2px solid var(--teal);
+}
