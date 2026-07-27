@@ -89,14 +89,15 @@
           </p>
         </article>
                 <article class="office-panel office-panel-wide office-review-panel">
-          <span class="office-panel-label">
-            Executive Review
+          <span class="office-panel-label review-title">
+            EXECUTIVE REVIEW
           </span>
 
           <div class="office-review-status">
-            <p class="office-review-message">
-              <strong>Maddy:</strong> I'm Up.
-            </p>
+            <div class="maddy-status">
+                <div class="status-label">MADDY</div>
+                <div class="status-value">I'm Up.</div>
+            </div>
             <p class="office-review-recommendation">
               Executive Recommendation:
               <strong>Ready for Executive Approval</strong>
