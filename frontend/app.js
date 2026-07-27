@@ -109,19 +109,32 @@ function initializeExecutiveCabinet() {
     link.textContent = member.name;
     link.dataset.officeId = member.id;
 
-    link.addEventListener("click", () => {
-      document
-        .querySelectorAll(".sidebar nav a")
-        .forEach((item) => {
-          item.classList.remove("active");
-        });
+    link.addEventListener("click", (event) => {
+  event.preventDefault();
 
-      link.classList.add("active");
-
-      console.log(
-        `Selected executive office: ${member.name}`
-      );
+  document
+    .querySelectorAll(".sidebar nav a")
+    .forEach((item) => {
+      item.classList.remove("active");
     });
+
+  link.classList.add("active");
+
+  if (
+    window.MEOSOfficeDashboard &&
+    typeof window.MEOSOfficeDashboard.show === "function"
+  ) {
+    window.MEOSOfficeDashboard.show(member);
+  } else {
+    console.error(
+      "Executive Office Dashboard is not available."
+    );
+  }
+
+  console.log(
+    `Selected executive office: ${member.name}`
+  );
+});
 
     menu.appendChild(link);
   });
