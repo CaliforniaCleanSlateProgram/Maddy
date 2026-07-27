@@ -446,3 +446,29 @@ textarea {
   flex-wrap: wrap;
 }
   
+.office-review-actions button {
+  min-width: 150px;
+  padding: 11px 18px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.office-review-actions button:hover {
+  transform: translateY(-1px);
+}
+
+.office-review-actions button:first-child {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--text);
+}
+
+.office-review-actions button:last-child {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #061419;
+}
