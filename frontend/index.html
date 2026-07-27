@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Maddy MEOS executive dashboard structural prototype" />
+  <title>Maddy | MEOS Executive Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">M</div>
+        <div>
+          <h1>Maddy</h1>
+          <p>Executive Operations System</p>
+        </div>
+      </div>
+
+      <nav>
+        <section>
+          <h2>Executive Office</h2>
+          <a class="active" href="#">Dashboard</a>
+          <a href="#">Daily Briefing</a>
+          <a href="#">Executive Journal</a>
+          <a href="#">Calendar</a>
+          <a href="#">Tasks</a>
+          <a href="#">Approvals</a>
+          <a href="#">Alerts</a>
+        </section>
+
+        <section>
+          <h2>Executive Cabinet</h2>
+          <a href="#">Finance Office</a>
+          <a href="#">Grant Intelligence</a>
+          <a href="#">Operations Office</a>
+          <a href="#">Compliance</a>
+          <a href="#">Human Resources</a>
+          <a href="#">Communications</a>
+          <a href="#">Development</a>
+          <a href="#">Legal Awareness</a>
+        </section>
+
+        <section>
+          <h2>Knowledge</h2>
+          <a href="#">Document Center</a>
+          <a href="#">Knowledge Engine</a>
+          <a href="#">Reports</a>
+          <a href="#">Templates</a>
+        </section>
+
+        <section>
+          <h2>System</h2>
+          <a href="#">Settings</a>
+          <a href="#">Integrations</a>
+          <a href="#">Audit Logs</a>
+        </section>
+      </nav>
+
+      <div class="system-card">
+        <span class="live-dot"></span>
+        <div>
+          <strong>Systems Operational</strong>
+          <small>Structural prototype only</small>
+        </div>
+      </div>
+
+      <div class="profile-card">
+        <div class="avatar">MC</div>
+        <div>
+          <strong>Mandel Coulter</strong>
+          <small>Founder / Executive Director</small>
+        </div>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <h2>Good morning, Mandel.</h2>
+          <p>Saturday, July 26 · Santa Cruz, CA</p>
+        </div>
+        <div class="topbar-actions">
+          <button aria-label="Search">⌕</button>
+          <button aria-label="Notifications">♢</button>
+          <button>Executive Mode⌄</button>
+        </div>
+      </header>
+
+      <section class="build-progress">
+        <div class="progress-heading">
+          <div>
+            <span class="kicker">Dashboard Build Progress</span>
+            <h3>Starting Block 1</h3>
+          </div>
+          <strong id="progressPercent">10%</strong>
+        </div>
+        <div class="progress-track" aria-label="Dashboard completion" role="progressbar"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="10">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <p>Shell, layout, navigation, numbered widget positions, and visual structure are in place.</p>
+      </section>
+
+      <section class="dashboard-grid">
+        <article class="card span-2" data-block="1">
+          <span class="block-badge">Block 1</span>
+          <div class="card-title">
+            <span class="icon">◴</span>
+            <h3>Today at a Glance</h3>
+          </div>
+          <div class="glance-row">
+            <div><strong>3</strong><span>High Priorities</span></div>
+            <div><strong>1</strong><span>Decision Needed</span></div>
+            <div><strong>4</strong><span>Meetings</span></div>
+            <div><strong>$540K</strong><span>Grant Pipeline</span></div>
+          </div>
+        </article>
+
+        <article class="card" data-block="2">
+          <span class="block-badge">Block 2</span>
+          <div class="card-title">
+            <span class="icon">◎</span>
+            <h3>Mission Pulse</h3>
+          </div>
+          <div class="pulse-wrap">
+            <div class="pulse-ring">
+              <div>
+                <strong>92</strong>
+                <span>Excellent</span>
+              </div>
+            </div>
+            <div class="pulse-list">
+              <p><span class="dot strong"></span>Programs <b>Strong</b></p>
+              <p><span class="dot stable"></span>Funding <b>Stable</b></p>
+              <p><span class="dot strong"></span>Team <b>Strong</b></p>
+              <p><span class="dot attention"></span>Compliance <b>Attention</b></p>
+            </div>
+          </div>
+        </article>
+
+        <article class="card" data-block="3">
+          <span class="block-badge">Block 3</span>
+          <div class="card-title">
+            <span class="icon">✓</span>
+            <h3>Executive Priorities</h3>
+          </div>
+          <div class="priority-list">
+            <div><span class="priority-number">1</span><p><b>Review Phase I grant narrative</b><small>Due today · Grant Intelligence</small></p><span class="tag critical">Critical</span></div>
+            <div><span class="priority-number">2</span><p><b>Approve mobile unit vendor contract</b><small>Due today · Operations</small></p><span class="tag decision">Decision</span></div>
+            <div><span class="priority-number">3</span><p><b>Prepare board update materials</b><small>Due Jul 29 · Executive Office</small></p><span class="tag high">High</span></div>
+            <div><span class="priority-number">4</span><p><b>Review Q3 financial forecast</b><small>Due Jul 30 · Finance</small></p><span class="tag high">High</span></div>
+          </div>
+        </article>
+
+        <article class="card" data-block="4">
+          <span class="block-badge">Block 4</span>
+          <div class="card-title">
+            <span class="icon">✦</span>
+            <h3>Executive Briefing</h3>
+            <button class="link-button">View Full Brief →</button>
+          </div>
+          <div class="briefing-box">
+            <span>Today's Focus</span>
+            <p>Phase I grant narrative requires final review before 5:00 PM. Two supporting documents still need verification.</p>
+          </div>
+          <div class="briefing-row">
+            <div><b>Opportunity</b><p>New Coastal Conservancy funding round identified. Potential fit for Project Beachfront.</p></div>
+            <div><b>Risk</b><p>Annual charity registration deadline is in 14 days. Filing preparation has not started.</p></div>
+          </div>
+        </article>
+
+        <article class="card" data-block="5">
+          <span class="block-badge">Block 5</span>
+          <div class="card-title">
+            <span class="icon">▣</span>
+            <h3>Upcoming Schedule</h3>
+            <button class="link-button">View Calendar →</button>
+          </div>
+          <div class="schedule-list">
+            <div><time>9:00</time><p><b>Team Standup</b><small>Operations · 30 min</small></p></div>
+            <div><time>11:30</time><p><b>Grant Strategy Call</b><small>Development · 45 min</small></p></div>
+            <div><time>2:00</time><p><b>County Partnership Meeting</b><small>External · 60 min</small></p></div>
+            <div><time>4:30</time><p><b>Finance Review</b><small>Finance · 30 min</small></p></div>
+          </div>
+        </article>
+
+        <article class="card" data-block="6">
+          <span class="block-badge">Block 6</span>
+          <div class="card-title">
+            <span class="icon">♢</span>
+            <h3>Grant Intelligence</h3>
+            <button class="link-button">View All →</button>
+          </div>
+          <div class="grant-list">
+            <div><span class="match">94%<small>Match</small></span><p><b>California Coastal Conservancy</b><small>Climate Resilience Program · $250K</small></p><span class="due">Aug 15</span></div>
+            <div><span class="match">89%<small>Match</small></span><p><b>Health Resources & Services</b><small>Rural Health Outreach · $175K</small></p><span class="due">Sep 1</span></div>
+            <div><span class="match">82%<small>Match</small></span><p><b>County of Santa Cruz</b><small>Community Services Fund · $115K</small></p><span class="due">Sep 20</span></div>
+          </div>
+        </article>
+
+        <article class="card" data-block="7">
+          <span class="block-badge">Block 7</span>
+          <div class="card-title">
+            <span class="icon">△</span>
+            <h3>Risk & Alert Center</h3>
+            <button class="link-button">View All →</button>
+          </div>
+          <div class="risk-list">
+            <div class="risk critical-risk"><span>!</span><p><b>Compliance Deadline</b><small>Annual registration due in 14 days</small></p><b>Critical</b></div>
+            <div class="risk medium-risk"><span>!</span><p><b>Grant Documentation</b><small>2 documents require verification</small></p><b>Medium</b></div>
+            <div class="risk low-risk"><span>!</span><p><b>Vendor Insurance</b><small>Certificate expires Aug 30</small></p><b>Low</b></div>
+          </div>
+        </article>
+
+        <article class="card" data-block="8">
+          <span class="block-badge">Block 8</span>
+          <div class="card-title">
+            <span class="icon">▭</span>
+            <h3>Executive Journal</h3>
+            <button class="link-button">Open Journal →</button>
+          </div>
+          <textarea placeholder="Record a decision, insight, or reflection..."></textarea>
+          <div class="journal-footer">
+            <span>Last entry: Yesterday, 4:32 PM</span>
+            <span>184 entries</span>
+          </div>
+        </article>
+
+        <article class="card compact" data-block="9">
+          <span class="block-badge">Block 9</span>
+          <div class="card-title">
+            <span class="icon">☑</span>
+            <h3>Tasks Due</h3>
+          </div>
+          <div class="metric"><strong>6</strong><span>Today</span><strong class="red">2</strong><span>Overdue</span></div>
+          <button class="wide-button">View Tasks →</button>
+        </article>
+
+        <article class="card compact" data-block="10">
+          <span class="block-badge">Block 10</span>
+          <div class="card-title">
+            <span class="icon">↗</span>
+            <h3>Mission Impact</h3>
+          </div>
+          <div class="metric"><strong>1,247</strong><span>People Served</span><strong>+18%</strong><span>This Month</span></div>
+          <button class="wide-button">View Impact →</button>
+        </article>
+      </section>
+
+      <section class="ask-maddy" data-block="11">
+        <span class="block-badge">Block 11</span>
+        <div class="ask-icon">✦</div>
+        <div>
+          <strong>Ask Maddy</strong>
+          <span>Executive Intelligence</span>
+        </div>
+        <input type="text" placeholder="I'm up. How can I help you move the mission forward today?" />
+        <button aria-label="Send">↑</button>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
