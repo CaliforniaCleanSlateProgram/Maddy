@@ -88,6 +88,45 @@
             will appear here in future MEOS missions.
           </p>
         </article>
+                <article class="office-panel office-panel-wide office-review-panel">
+          <span class="office-panel-label">
+            Executive Review
+          </span>
+
+          <div class="office-review-status">
+            <p class="office-review-message">
+              <strong>Maddy:</strong> I'm Up.
+            </p>
+            <p class="office-review-recommendation">
+              Executive Recommendation:
+              <strong>Ready for Executive Approval</strong>
+            </p>
+
+            <p class="office-review-recommendation">
+              Executive Recommendation:
+              <strong>Ready for Executive Approval</strong>
+            </p>
+            
+          </div>
+
+          <div class="office-review-actions">
+            <button
+              id="requestOfficeRevisions"
+              class="request-revision-button"
+              type="button"
+            >
+              Request Revisions
+            </button>
+
+            <button
+              id="takeItButton"
+              class="take-it-button"
+              type="button"
+            >
+              TAKE IT
+            </button>
+          </div>
+        </article>
       </div>
     `;
 
