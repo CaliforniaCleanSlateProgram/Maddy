@@ -361,13 +361,14 @@
      * tolerant of future naming changes.
      */
     function getExecutiveOfficeSystem() {
-        return (
-            global.MEOSExecutiveOffices ||
-            global.ExecutiveOffices ||
-            global.MEOSOfficeStandard ||
-            null
-        );
-    }
+    return (
+        global.MEOS ||
+        global.MEOSExecutiveOffices ||
+        global.ExecutiveOffices ||
+        global.MEOSOfficeStandard ||
+        null
+    );
+}
 
     function persist() {
         const saveableState = {
