@@ -20,10 +20,10 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "0.3.0";
-  const ROOT_ID = "meosExecutiveDashboard";
+  const DASHBOARD_VERSION = "0.3.1";
+  const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
-  const STORAGE_KEY = "meos.dashboard.build.v0.3.0";
+  const STORAGE_KEY = "meos.dashboard.build.v0.3.1";
 
   const DEFAULT_BUILD_TASKS = [
     {
@@ -888,16 +888,20 @@
   }
 
   function createDashboardShell() {
-    let root = document.getElementById(ROOT_ID);
+    const existingRoute = document.getElementById(ROOT_ID);
 
-    if (root) {
-      return root;
+    if (
+      existingRoute &&
+      existingRoute.dataset.meosDashboardVersion === DASHBOARD_VERSION
+    ) {
+      return existingRoute;
     }
 
     injectStyles();
 
-    root = document.createElement("section");
+    const root = document.createElement("section");
     root.id = ROOT_ID;
+    root.dataset.meosDashboardVersion = DASHBOARD_VERSION;
 
     root.innerHTML = `
       <div class="meos-dashboard-shell">
@@ -956,13 +960,17 @@
       });
 
     const mainContent = getMainContent();
-    const existingTemporaryOffice = document.getElementById("executive-office");
 
-    if (existingTemporaryOffice) {
-      existingTemporaryOffice.hidden = true;
+    /*
+     * Replace the temporary #executive-office route in place.
+     * This preserves the existing URL hash and router connection while
+     * preventing the old temporary dashboard from remaining visible.
+     */
+    if (existingRoute && existingRoute !== root) {
+      existingRoute.replaceWith(root);
+    } else {
+      mainContent.appendChild(root);
     }
-
-    mainContent.appendChild(root);
     bindDashboardEvents();
     updateClockAndGreeting();
     renderBuildProgress();
