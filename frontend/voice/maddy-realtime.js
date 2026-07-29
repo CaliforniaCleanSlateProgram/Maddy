@@ -80,7 +80,54 @@
 
         return status();
     }
+    function handleMaddyResponse(event) {
 
+    const responseText =
+        event.detail?.text?.trim();
+
+    if (!responseText) {
+        return;
+    }
+
+    state.speaking = true;
+
+    console.log(
+        "[MEOS] Maddy Realtime received response:",
+        responseText
+    );
+
+    global.dispatchEvent(
+        new CustomEvent("meos:maddy:speak", {
+            detail: {
+                text: responseText,
+                provider: state.provider
+            }
+        })
+    );
+}
+
+function handleSpeechStarted() {
+    state.speaking = true;
+}
+
+function handleSpeechEnded() {
+    state.speaking = false;
+}
+
+global.addEventListener(
+    "meos:maddy:response",
+    handleMaddyResponse
+);
+
+global.addEventListener(
+    "meos:maddy:speech-started",
+    handleSpeechStarted
+);
+
+global.addEventListener(
+    "meos:maddy:speech-ended",
+    handleSpeechEnded
+);
     global.MaddyRealtime = Object.freeze({
 
         version: VERSION,
