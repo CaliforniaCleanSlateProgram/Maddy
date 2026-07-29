@@ -253,7 +253,39 @@
         reject(new Error(message));
       };
 
-      global.speechSynthesis.speak(utterance);
+      fetch("https://maddy-yy8o.onrender.com/tts", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    text: utterance.text
+  })
+})
+  .then((response) => {
+    if (!response.ok) {
+      throw new Error(`TTS request failed: ${response.status}`);
+    }
+
+    return response.blob();
+  })
+  .then((audioBlob) => {
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+
+    audio.addEventListener("ended", () => {
+      URL.revokeObjectURL(audioUrl);
+      resolve();
+    });
+
+    return audio.play();
+  })
+  .catch((error) => {
+    console.error("[MaddySpeech] ElevenLabs playback failed:", error);
+
+    // Fall back to Chrome voice if ElevenLabs fails.
+    global.speechSynthesis.speak(utterance);
+  });
     });
   }
 
