@@ -6,7 +6,6 @@
  *
  * Purpose:
  * Defines the canonical, provider-independent vocal and conversational
- * identity for Maddison ("Maddy") Elizabeth.
  *
  * Scope:
  * - Preserves Maddy's identity separately from any speech provider.

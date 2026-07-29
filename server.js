@@ -13,6 +13,8 @@ import { fileURLToPath } from "url";
 const VERSION = "1.0.0";
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
 
 if (!OPENAI_API_KEY) {
   console.error(
@@ -123,6 +125,86 @@ app.post("/session", async (request, response) => {
     response
       .status(500)
       .send("MEOS could not create the realtime session.");
+  }
+});
+app.post("/tts", express.json({ limit: "32kb" }), async (request, response) => {
+  const text =
+    typeof request.body?.text === "string"
+      ? request.body.text.trim()
+      : "";
+
+  if (!ELEVENLABS_API_KEY || !ELEVENLABS_VOICE_ID) {
+    response.status(500).json({
+      error: "ElevenLabs voice configuration is missing."
+    });
+    return;
+  }
+
+  if (!text) {
+    response.status(400).json({
+      error: "Speech text is required."
+    });
+    return;
+  }
+
+  if (text.length > 5000) {
+    response.status(400).json({
+      error: "Speech text is too long."
+    });
+    return;
+  }
+
+  try {
+    const elevenLabsResponse = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
+        ELEVENLABS_VOICE_ID
+      )}?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": ELEVENLABS_API_KEY,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg"
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_multilingual_v2"
+        })
+      }
+    );
+
+    if (!elevenLabsResponse.ok) {
+      const errorBody = await elevenLabsResponse.text();
+
+      console.error(
+        `[MEOS] ElevenLabs TTS error ${elevenLabsResponse.status}:`,
+        errorBody
+      );
+
+      response.status(elevenLabsResponse.status).json({
+        error: "Maddy's voice could not be generated."
+      });
+      return;
+    }
+
+    const audioBuffer = Buffer.from(
+      await elevenLabsResponse.arrayBuffer()
+    );
+
+    response
+      .status(200)
+      .type("audio/mpeg")
+      .set({
+        "Cache-Control": "no-store",
+        "Content-Length": String(audioBuffer.length)
+      })
+      .send(audioBuffer);
+  } catch (error) {
+    console.error("[MEOS] ElevenLabs TTS request failed:", error);
+
+    response.status(500).json({
+      error: "Maddy's voice service could not be reached."
+    });
   }
 });
 
