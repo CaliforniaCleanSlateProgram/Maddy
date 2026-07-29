@@ -535,7 +535,28 @@
     getStatus,
     on
   });
+  global.addEventListener(
+    "meos:maddy:speak",
+    async (event) => {
 
+        const text = event.detail?.text;
+
+        if (!text) {
+            return;
+        }
+
+        try {
+            await MaddySpeech.speak(text);
+        }
+        catch (error) {
+            console.error(
+                "[MEOS] Maddy speech failed:",
+                error
+            );
+        }
+
+    }
+);
   global.MaddySpeech = MaddySpeech;
 
   initialize();
