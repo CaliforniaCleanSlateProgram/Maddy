@@ -64,15 +64,16 @@
         ].join(" "),
         output_modalities: ["text"],
 
-audio: {
-  input: {
-    turn_detection: {
-      type: "server_vad",
-      create_response: true,
-      interrupt_response: true
-    }
-  }
-}
+        audio: {
+          input: {
+            turn_detection: {
+              type: "server_vad",
+              create_response: true,
+              interrupt_response: true
+            }
+          }
+        }
+      }
     });
 
     emit("configured", getStatus());
