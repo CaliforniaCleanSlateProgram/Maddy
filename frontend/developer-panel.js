@@ -59,21 +59,35 @@
   }
 
   async function testMicrophone() {
-    if (!global.MaddySpeech) {
-      setStatus("Maddy Speech is not available.", "error");
-      return;
+    if (!global.OpenAIRealtime) {
+        setStatus(
+            "OpenAI Realtime is not available.",
+            "error"
+        );
+        return;
     }
 
-    setStatus("Maddy is listening. Say one sentence.", "working");
+    setStatus(
+        "Connecting Maddy to OpenAI Realtime..."
+    );
 
     try {
-      const words = await global.MaddySpeech.startListening();
+        await global.OpenAIRealtime.connect();
 
-      setStatus(`Maddy heard: "${words}"`, "success");
+        setStatus(
+            "Maddy is connected to OpenAI Realtime.",
+            "success"
+        );
     } catch (error) {
-      setStatus(error.message || "The microphone test failed.", "error");
+        setStatus(
+            error.message ||
+            "Unable to connect to OpenAI Realtime.",
+            "error"
+        );
     }
-  }
+}
+
+    
 
   function showSpeechStatus() {
     if (!global.MaddySpeech) {
