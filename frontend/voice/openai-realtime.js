@@ -3,7 +3,7 @@
  * Version: 1.0.0
  *
  * Connects the MEOS dashboard to a secure backend session endpoint
- * and establishes a live WebRTC speech-to-speech conversation.
+  * and establishes a live WebRTC speech-to-text-response conversation.
  */
 
 (function initializeOpenAIRealtime(global) {
@@ -13,13 +13,14 @@
   const SESSION_ENDPOINT = "/session";
 
   const state = {
-    connected: false,
-    connecting: false,
-    peerConnection: null,
-    dataChannel: null,
-    microphoneStream: null,
-    remoteAudio: null
-  };
+  connected: false,
+  connecting: false,
+  peerConnection: null,
+  dataChannel: null,
+  microphoneStream: null,
+  remoteAudio: null,
+  responseText: ""
+};
 
   function emit(name, detail = {}) {
     global.dispatchEvent(
@@ -61,19 +62,17 @@
           "Never let playful behavior interfere with safety, judgment, consent, or professional responsibilities.",
           "Ask natural follow-up questions only when they genuinely help the conversation."
         ].join(" "),
-        audio: {
-          input: {
-            turn_detection: {
-              type: "server_vad",
-              create_response: true,
-              interrupt_response: true
-            }
-          },
-          output: {
-            voice: "marin"
-          }
-        }
-      }
+        output_modalities: ["text"],
+
+audio: {
+  input: {
+    turn_detection: {
+      type: "server_vad",
+      create_response: true,
+      interrupt_response: true
+    }
+  }
+}
     });
 
     emit("configured", getStatus());
@@ -134,9 +133,37 @@
 
           emit("event", message);
 
-          if (message.type === "error") {
-            console.error("[MEOS] Realtime error:", message);
-          }
+if (message.type === "response.created") {
+  state.responseText = "";
+}
+
+if (message.type === "response.output_text.delta") {
+  state.responseText += message.delta || "";
+}
+
+if (message.type === "response.output_text.done") {
+  const responseText =
+    (message.text || state.responseText || "").trim();
+
+  state.responseText = "";
+
+  if (responseText) {
+    console.log("[MEOS] Maddy response:", responseText);
+
+    global.dispatchEvent(
+      new CustomEvent("meos:maddy:response", {
+        detail: {
+          text: responseText,
+          source: "openai-realtime"
+        }
+      })
+    );
+  }
+}
+
+if (message.type === "error") {
+  console.error("[MEOS] Realtime error:", message);
+}
         } catch (error) {
           console.warn(
             "[MEOS] Unrecognized realtime message:",
