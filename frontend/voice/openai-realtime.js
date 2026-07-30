@@ -261,7 +261,10 @@
         audio: {
           input: {
             turn_detection: {
-              type: "server_vad",
+                type: "server_vad",
+                threshold: 0.72,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 420,
 
               /**
                * Voice Engine v2 owns response authorization.
