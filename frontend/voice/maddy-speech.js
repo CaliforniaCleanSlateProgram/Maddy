@@ -171,6 +171,7 @@
   function speak(text, options = {}) {
     return new Promise((resolve, reject) => {
       const cleanText = String(text || "").trim();
+      console.log("[MaddySpeech] speak() called:", cleanText);
 
       if (!cleanText) {
         const error = new Error("Maddy needs text before she can speak.");
@@ -252,6 +253,7 @@
 
         reject(new Error(message));
       };
+      console.log("[MaddySpeech] Calling /tts...");
 
       fetch("https://maddy-yy8o.onrender.com/tts", {
   method: "POST",
@@ -263,9 +265,11 @@
   })
 })
   .then((response) => {
+    console.log("[MaddySpeech] /tts status:", response.status);
+
     if (!response.ok) {
-      throw new Error(`TTS request failed: ${response.status}`);
-    }
+        throw new Error(`TTS request failed: ${response.status}`);
+    }  
 
     return response.blob();
   })
