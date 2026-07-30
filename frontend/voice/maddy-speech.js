@@ -1,7 +1,7 @@
 /**
  * MEOS — Maddy Speech Engine
  *
- * File Version: 2.0.0
+ * File Version: 2.0.1
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -19,9 +19,9 @@
 (function initializeMaddySpeech(global) {
   "use strict";
 
-  const VERSION = "2.0.0";
+  const VERSION = "2.0.1";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE200-MADDY-SPEECH-20260730-A";
+  const BUILD_ID = "VE201-MADDY-SPEECH-20260730-A";
   const DEFAULT_TTS_ENDPOINT = "https://maddy-yy8o.onrender.com/tts";
   const MAX_COMPLETED_RESPONSE_IDS = 250;
   const MAX_TEXT_LENGTH = 12000;
@@ -374,6 +374,7 @@
         text,
         turnId: turnId || null,
         responseId,
+        authorized: true,
         voiceEngineVersion: VOICE_ENGINE_VERSION
       }),
       signal,
