@@ -19,7 +19,7 @@ import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.0.0";
+const VERSION = "2.0.1";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -213,10 +213,16 @@ async function generateElevenLabsAudio(text) {
  */
 app.post("/session", async (request, response) => {
   const requestId = createRequestId("session");
+  /**
+   * Preserve the SDP body exactly as the browser generated it.
+   * SDP is line-oriented and may require its terminating CRLF sequence.
+   * Trimming the body can remove that terminator and cause OpenAI to
+   * reject an otherwise valid offer with "failed to unmarshal SDP: EOF".
+   */
   const sdpOffer =
-    typeof request.body === "string" ? request.body.trim() : "";
+    typeof request.body === "string" ? request.body : "";
 
-  if (!sdpOffer) {
+  if (!sdpOffer.trim()) {
     response.status(400).send("Missing WebRTC SDP offer.");
     return;
   }
