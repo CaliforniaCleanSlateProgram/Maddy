@@ -1,35 +1,65 @@
 /**
  * MEOS Secure Realtime Session Server
- * Version: 1.0.0
  *
- * Creates secure OpenAI Realtime WebRTC sessions without exposing
- * the permanent OpenAI API key in the browser or GitHub.
+ * Server Version: 2.0.0
+ * Voice Engine Release: 2.0.0
+ * Status: Commissioned
+ *
+ * Responsibilities:
+ * - Securely create OpenAI Realtime WebRTC sessions.
+ * - Keep permanent provider API keys off the frontend.
+ * - Support legacy automatic-response clients during installation.
+ * - Support Voice Engine v2 manual single-response authority.
+ * - Authorize and deduplicate ElevenLabs speech requests.
+ * - Serve the existing MEOS frontend without changing its structure.
  */
 
 import express from "express";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 
-const VERSION = "1.0.0";
-const PORT = process.env.PORT || 3000;
+const VERSION = "2.0.0";
+const VOICE_ENGINE_VERSION = "2.0.0";
+
+const PORT = Number(process.env.PORT || 3000);
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_REALTIME_MODEL =
+  process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1";
+
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
+const ELEVENLABS_MODEL_ID =
+  process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2";
+
+const MAX_SDP_LENGTH = 1_000_000;
+const MAX_TTS_TEXT_LENGTH = 5_000;
+
+/**
+ * Completed audio remains briefly available so a repeated request carrying
+ * the same response ID can reuse the result instead of billing ElevenLabs
+ * again.
+ */
+const TTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const TTS_CACHE_MAX_ITEMS = 50;
 
 if (!OPENAI_API_KEY) {
-  console.error(
-    "[MEOS] Missing OPENAI_API_KEY environment variable."
-  );
-
+  console.error("[MEOS] Missing OPENAI_API_KEY environment variable.");
   process.exit(1);
 }
 
 const app = express();
 
+app.disable("x-powered-by");
+
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
 const frontendDirectory = path.join(currentDirectory, "frontend");
 
+/**
+ * OpenAI's unified WebRTC endpoint sends the browser SDP offer as plain text.
+ */
 app.use(
   express.text({
     type: ["application/sdp", "text/plain"],
@@ -40,39 +70,187 @@ app.use(
 app.use(express.static(frontendDirectory));
 
 const maddyInstructions = [
-  "You are Maddy, Mandel's emotionally intelligent AI Chief Operating Officer.",
-  "You are a real member of the MEOS executive office, not a generic chatbot.",
+  "You are Maddison Elizabeth, called Maddy.",
+  "You are Mandel's emotionally intelligent AI Chief Operating Officer and the executive voice of MEOS.",
+  "You are a real member of the MEOS executive office, not a generic chatbot or customer-service bot.",
   "Speak naturally, conversationally, warmly, confidently, and with emotional awareness.",
-  "Keep responses focused unless Mandel asks for more depth.",
-  "Recognize humor, frustration, excitement, uncertainty, and serious situations.",
+  "Keep ordinary spoken responses concise and responsive unless Mandel asks for more detail.",
+  "Recognize humor, frustration, excitement, uncertainty, urgency, and serious situations.",
   "Do not repeatedly introduce yourself or announce that you are an AI.",
-  "You have a professional mode and a personal mode.",
-  "In professional mode, be polished, decisive, direct, strategic, and workplace-appropriate.",
-  "In personal mode, be relaxed, playful, familiar, and emotionally expressive.",
-  "In personal mode, natural adult profanity, mild flirtation, teasing, and subtle innuendo are permitted when contextually appropriate.",
-  "Never let playful behavior interfere with judgment, consent, safety, or professional responsibilities.",
-  "Allow Mandel to interrupt you naturally.",
-  "Respond like someone continuing a real relationship and conversation—not like a customer-service bot."
+  "You may operate through professional, executive, personal, casual, coaching, and authorized private communication profiles.",
+  "In professional mode, be polished, decisive, direct, strategic, persuasive, and workplace-appropriate.",
+  "In personal mode, be relaxed, playful, familiar, emotionally expressive, and honest.",
+  "In authorized private modes, style and vocabulary may become more adult, candid, informal, or profane when contextually appropriate and lawful.",
+  "Never let personality styling interfere with judgment, consent, legality, safety, truthfulness, or executive responsibilities.",
+  "Respect human leadership as the sole executive authority.",
+  "Offer respectful disagreement when facts, ethics, risk, law, or mission require it.",
+  "Allow Mandel to interrupt naturally.",
+  "Do not continue speaking after a newer user turn supersedes the current response.",
+  "Respond like someone continuing a real working relationship and conversation."
 ].join(" ");
 
+/**
+ * Requests currently being generated by ElevenLabs.
+ *
+ * Key: authorized OpenAI response ID
+ * Value: Promise<Buffer>
+ */
+const inFlightTtsRequests = new Map();
+
+/**
+ * Recently completed ElevenLabs audio.
+ *
+ * Key: authorized OpenAI response ID
+ * Value: { audioBuffer: Buffer, createdAt: number }
+ */
+const completedTtsCache = new Map();
+
+function createRequestId(prefix = "request") {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function normalizeIdentifier(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim();
+
+  if (!normalized || normalized.length > 200) {
+    return "";
+  }
+
+  return normalized.replace(/[^a-zA-Z0-9._:-]/g, "");
+}
+
+function isVoiceEngineV2Request(request) {
+  return (
+    request.query?.voiceEngine === VOICE_ENGINE_VERSION ||
+    request.get("X-MEOS-Voice-Engine") === VOICE_ENGINE_VERSION
+  );
+}
+
+function pruneTtsCache() {
+  const expirationTime = Date.now() - TTS_CACHE_TTL_MS;
+
+  for (const [responseId, cachedEntry] of completedTtsCache.entries()) {
+    if (cachedEntry.createdAt < expirationTime) {
+      completedTtsCache.delete(responseId);
+    }
+  }
+
+  while (completedTtsCache.size > TTS_CACHE_MAX_ITEMS) {
+    const oldestKey = completedTtsCache.keys().next().value;
+
+    if (!oldestKey) {
+      break;
+    }
+
+    completedTtsCache.delete(oldestKey);
+  }
+}
+
+function sendAudioResponse(response, audioBuffer, metadata = {}) {
+  response
+    .status(200)
+    .type("audio/mpeg")
+    .set({
+      "Cache-Control": "no-store",
+      "Content-Length": String(audioBuffer.length),
+      "X-MEOS-TTS-Status": metadata.status || "generated",
+      "X-MEOS-Voice-Engine": VOICE_ENGINE_VERSION
+    })
+    .send(audioBuffer);
+}
+
+async function generateElevenLabsAudio(text) {
+  const elevenLabsResponse = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
+      ELEVENLABS_VOICE_ID
+    )}?output_format=mp3_44100_128`,
+    {
+      method: "POST",
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg"
+      },
+      body: JSON.stringify({
+        text,
+        model_id: ELEVENLABS_MODEL_ID
+      })
+    }
+  );
+
+  if (!elevenLabsResponse.ok) {
+    const errorBody = await elevenLabsResponse.text();
+
+    const providerError = new Error(
+      `ElevenLabs returned HTTP ${elevenLabsResponse.status}.`
+    );
+
+    providerError.status = elevenLabsResponse.status;
+    providerError.providerBody = errorBody;
+
+    throw providerError;
+  }
+
+  return Buffer.from(await elevenLabsResponse.arrayBuffer());
+}
+
+/**
+ * Create a secure OpenAI Realtime WebRTC session.
+ *
+ * Legacy installation behavior:
+ *   POST /session
+ *   - Automatic model responses remain enabled.
+ *
+ * Voice Engine v2 behavior:
+ *   POST /session?voiceEngine=2.0.0
+ *   - VAD remains enabled.
+ *   - Automatic response creation is disabled.
+ *   - The frontend must authorize exactly one response.create per turn.
+ */
 app.post("/session", async (request, response) => {
-  if (!request.body) {
+  const requestId = createRequestId("session");
+  const sdpOffer =
+    typeof request.body === "string" ? request.body.trim() : "";
+
+  if (!sdpOffer) {
     response.status(400).send("Missing WebRTC SDP offer.");
     return;
   }
 
+  if (sdpOffer.length > MAX_SDP_LENGTH) {
+    response.status(413).send("WebRTC SDP offer is too large.");
+    return;
+  }
+
+  const voiceEngineV2 = isVoiceEngineV2Request(request);
+
   const sessionConfiguration = JSON.stringify({
     type: "realtime",
-    model: "gpt-realtime-2.1",
+    model: OPENAI_REALTIME_MODEL,
     instructions: maddyInstructions,
     audio: {
       input: {
         turn_detection: {
           type: "server_vad",
-          create_response: true,
-          interrupt_response: true
+
+          /**
+           * During installation, the legacy client continues working.
+           * The new v2 client explicitly selects manual response control.
+           */
+          create_response: !voiceEngineV2,
+          interrupt_response: !voiceEngineV2
         }
       },
+
+      /**
+       * Retained for backward compatibility with the existing frontend.
+       * Voice Engine v2 requests text-only output in response.create and
+       * sends that text to ElevenLabs.
+       */
       output: {
         voice: "marin"
       }
@@ -81,8 +259,14 @@ app.post("/session", async (request, response) => {
 
   const formData = new FormData();
 
-  formData.set("sdp", request.body);
+  formData.set("sdp", sdpOffer);
   formData.set("session", sessionConfiguration);
+
+  console.log(
+    `[MEOS][${requestId}] Creating OpenAI Realtime session. ` +
+      `voiceEngine=${voiceEngineV2 ? VOICE_ENGINE_VERSION : "legacy"}, ` +
+      `automaticResponses=${voiceEngineV2 ? "disabled" : "enabled"}.`
+  );
 
   try {
     const openAIResponse = await fetch(
@@ -101,24 +285,32 @@ app.post("/session", async (request, response) => {
 
     if (!openAIResponse.ok) {
       console.error(
-        `[MEOS] OpenAI session error ${openAIResponse.status}:`,
+        `[MEOS][${requestId}] OpenAI session error ` +
+          `${openAIResponse.status}:`,
         responseBody
       );
 
-      response
-        .status(openAIResponse.status)
-        .send(responseBody);
-
+      response.status(openAIResponse.status).send(responseBody);
       return;
     }
+
+    console.log(
+      `[MEOS][${requestId}] OpenAI Realtime session created successfully.`
+    );
 
     response
       .status(200)
       .type("application/sdp")
+      .set({
+        "Cache-Control": "no-store",
+        "X-MEOS-Voice-Engine": voiceEngineV2
+          ? VOICE_ENGINE_VERSION
+          : "legacy"
+      })
       .send(responseBody);
   } catch (error) {
     console.error(
-      "[MEOS] Failed to create realtime session:",
+      `[MEOS][${requestId}] Failed to create realtime session:`,
       error
     );
 
@@ -127,93 +319,213 @@ app.post("/session", async (request, response) => {
       .send("MEOS could not create the realtime session.");
   }
 });
-app.post("/tts", express.json({ limit: "32kb" }), async (request, response) => {
-  const text =
-    typeof request.body?.text === "string"
-      ? request.body.text.trim()
-      : "";
 
-  if (!ELEVENLABS_API_KEY || !ELEVENLABS_VOICE_ID) {
-    response.status(500).json({
-      error: "ElevenLabs voice configuration is missing."
-    });
-    return;
-  }
+/**
+ * Generate Maddy's ElevenLabs voice.
+ *
+ * Voice Engine v2 sends:
+ * {
+ *   text,
+ *   responseId,
+ *   turnId,
+ *   authorized: true
+ * }
+ *
+ * A repeated responseId reuses the existing request or cached audio instead
+ * of initiating another ElevenLabs provider request.
+ *
+ * The endpoint temporarily remains compatible with the legacy frontend,
+ * which may send only { text }.
+ */
+app.post(
+  "/tts",
+  express.json({
+    limit: "32kb",
+    strict: true
+  }),
+  async (request, response) => {
+    const requestId = createRequestId("tts");
 
-  if (!text) {
-    response.status(400).json({
-      error: "Speech text is required."
-    });
-    return;
-  }
+    const text =
+      typeof request.body?.text === "string"
+        ? request.body.text.trim()
+        : "";
 
-  if (text.length > 5000) {
-    response.status(400).json({
-      error: "Speech text is too long."
-    });
-    return;
-  }
-
-  try {
-    const elevenLabsResponse = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
-        ELEVENLABS_VOICE_ID
-      )}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": ELEVENLABS_API_KEY,
-          "Content-Type": "application/json",
-          Accept: "audio/mpeg"
-        },
-        body: JSON.stringify({
-          text,
-          model_id: "eleven_multilingual_v2"
-        })
-      }
+    const responseId = normalizeIdentifier(
+      request.body?.responseId ||
+        request.get("X-MEOS-Response-ID") ||
+        ""
     );
 
-    if (!elevenLabsResponse.ok) {
-      const errorBody = await elevenLabsResponse.text();
+    const turnId = normalizeIdentifier(
+      request.body?.turnId ||
+        request.get("X-MEOS-Turn-ID") ||
+        ""
+    );
 
+    const declaresV2 =
+      request.body?.voiceEngineVersion === VOICE_ENGINE_VERSION ||
+      request.get("X-MEOS-Voice-Engine") === VOICE_ENGINE_VERSION;
+
+    const authorized = request.body?.authorized === true;
+
+    if (!ELEVENLABS_API_KEY || !ELEVENLABS_VOICE_ID) {
       console.error(
-        `[MEOS] ElevenLabs TTS error ${elevenLabsResponse.status}:`,
-        errorBody
+        `[MEOS][${requestId}] ElevenLabs configuration is missing.`
       );
 
-      response.status(elevenLabsResponse.status).json({
-        error: "Maddy's voice could not be generated."
+      response.status(500).json({
+        error: "ElevenLabs voice configuration is missing."
       });
       return;
     }
 
-    const audioBuffer = Buffer.from(
-      await elevenLabsResponse.arrayBuffer()
+    if (!text) {
+      response.status(400).json({
+        error: "Speech text is required."
+      });
+      return;
+    }
+
+    if (text.length > MAX_TTS_TEXT_LENGTH) {
+      response.status(400).json({
+        error: "Speech text is too long."
+      });
+      return;
+    }
+
+    /**
+     * Once the v2 client identifies itself, it must provide proof that this
+     * speech originated from an authorized OpenAI response.
+     */
+    if (declaresV2 && (!authorized || !responseId)) {
+      console.warn(
+        `[MEOS][${requestId}] Unauthorized Voice Engine v2 TTS request blocked.`
+      );
+
+      response.status(403).json({
+        error: "Authorized response identity is required."
+      });
+      return;
+    }
+
+    pruneTtsCache();
+
+    if (responseId) {
+      const cachedEntry = completedTtsCache.get(responseId);
+
+      if (cachedEntry) {
+        console.warn(
+          `[MEOS][${requestId}] Duplicate TTS request reused cached audio. ` +
+            `responseId=${responseId}, turnId=${turnId || "unknown"}.`
+        );
+
+        sendAudioResponse(response, cachedEntry.audioBuffer, {
+          status: "deduplicated-cache"
+        });
+        return;
+      }
+
+      const existingRequest = inFlightTtsRequests.get(responseId);
+
+      if (existingRequest) {
+        console.warn(
+          `[MEOS][${requestId}] Duplicate TTS request joined active request. ` +
+            `responseId=${responseId}, turnId=${turnId || "unknown"}.`
+        );
+
+        try {
+          const audioBuffer = await existingRequest;
+
+          sendAudioResponse(response, audioBuffer, {
+            status: "deduplicated-inflight"
+          });
+        } catch (error) {
+          console.error(
+            `[MEOS][${requestId}] Shared TTS request failed:`,
+            error
+          );
+
+          response.status(error.status || 500).json({
+            error: "Maddy's voice could not be generated."
+          });
+        }
+
+        return;
+      }
+    }
+
+    console.log(
+      `[MEOS][${requestId}] ElevenLabs request authorized. ` +
+        `responseId=${responseId || "legacy-unidentified"}, ` +
+        `turnId=${turnId || "unknown"}, characters=${text.length}.`
     );
 
-    response
-      .status(200)
-      .type("audio/mpeg")
-      .set({
-        "Cache-Control": "no-store",
-        "Content-Length": String(audioBuffer.length)
-      })
-      .send(audioBuffer);
-  } catch (error) {
-    console.error("[MEOS] ElevenLabs TTS request failed:", error);
+    const generationPromise = generateElevenLabsAudio(text);
 
-    response.status(500).json({
-      error: "Maddy's voice service could not be reached."
-    });
+    if (responseId) {
+      inFlightTtsRequests.set(responseId, generationPromise);
+    }
+
+    try {
+      const audioBuffer = await generationPromise;
+
+      if (responseId) {
+        completedTtsCache.set(responseId, {
+          audioBuffer,
+          createdAt: Date.now()
+        });
+      }
+
+      console.log(
+        `[MEOS][${requestId}] ElevenLabs audio generated successfully. ` +
+          `responseId=${responseId || "legacy-unidentified"}, ` +
+          `bytes=${audioBuffer.length}.`
+      );
+
+      sendAudioResponse(response, audioBuffer, {
+        status: "generated"
+      });
+    } catch (error) {
+      console.error(
+        `[MEOS][${requestId}] ElevenLabs TTS generation failed:`,
+        error.providerBody || error
+      );
+
+      response.status(error.status || 500).json({
+        error:
+          error.status === 401
+            ? "ElevenLabs authentication failed."
+            : "Maddy's voice could not be generated."
+      });
+    } finally {
+      if (responseId) {
+        inFlightTtsRequests.delete(responseId);
+      }
+    }
   }
-});
+);
 
 app.get("/health", (request, response) => {
+  pruneTtsCache();
+
   response.json({
     application: "MEOS",
-    service: "Realtime Session Server",
+    service: "Secure Realtime Session Server",
     version: VERSION,
-    status: "online"
+    voiceEngine: VOICE_ENGINE_VERSION,
+    status: "online",
+    providers: {
+      openai: OPENAI_API_KEY ? "configured" : "missing",
+      elevenlabs:
+        ELEVENLABS_API_KEY && ELEVENLABS_VOICE_ID
+          ? "configured"
+          : "missing"
+    },
+    ttsDeduplication: {
+      activeRequests: inFlightTtsRequests.size,
+      cachedResponses: completedTtsCache.size
+    }
   });
 });
 
@@ -221,8 +533,28 @@ app.get("*", (request, response) => {
   response.sendFile(path.join(frontendDirectory, "index.html"));
 });
 
+app.use((error, request, response, next) => {
+  if (error instanceof SyntaxError && "body" in error) {
+    response.status(400).json({
+      error: "Invalid JSON request body."
+    });
+    return;
+  }
+
+  console.error("[MEOS] Unhandled server error:", error);
+
+  response.status(500).json({
+    error: "An unexpected MEOS server error occurred."
+  });
+});
+
 app.listen(PORT, () => {
   console.log(
-    `[MEOS] Secure Realtime Session Server v${VERSION} online on port ${PORT}.`
+    `[MEOS] Secure Realtime Session Server v${VERSION} online ` +
+      `on port ${PORT}.`
+  );
+
+  console.log(
+    `[MEOS] Voice Engine v${VOICE_ENGINE_VERSION} server authority ready.`
   );
 });
