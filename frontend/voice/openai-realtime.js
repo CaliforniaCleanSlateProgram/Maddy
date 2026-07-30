@@ -99,7 +99,7 @@
       state.remoteAudio = remoteAudio;
 
       peerConnection.ontrack = (event) => {
-        remoteAudio.srcObject = event.streams[0];
+        event.track.enabled = false;
       };
 
       const microphoneStream =
