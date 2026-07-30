@@ -132,7 +132,7 @@
       dataChannel.addEventListener("message", (event) => {
         try {
           const message = JSON.parse(event.data);
-
+          console.log("Realtime Event:", message.type, message);
           emit("event", message);
 
 if (message.type === "response.created") {
