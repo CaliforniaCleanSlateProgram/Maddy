@@ -93,6 +93,7 @@
 
       const remoteAudio = document.createElement("audio");
       remoteAudio.autoplay = true;
+      remoteAudio.muted = true;
       remoteAudio.setAttribute("aria-hidden", "true");
       document.body.appendChild(remoteAudio);
       state.remoteAudio = remoteAudio;
