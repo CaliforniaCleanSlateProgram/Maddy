@@ -485,11 +485,23 @@ ${profile.startupCommission}
 
     global.CCSPOrganizationalProfile = publicAPI;
 
-    global.MEOS = global.MEOS || {};
-    global.MEOS.profiles = global.MEOS.profiles || {};
+/*
+ * The main MEOS object may be frozen by the core architecture.
+ * Do not modify it when it is non-extensible.
+ */
+if (
+    global.MEOS &&
+    global.MEOS.profiles &&
+    Object.isExtensible(global.MEOS.profiles)
+) {
     global.MEOS.profiles.ccsp = publicAPI;
-
+} else {
     console.info(
-        `[MEOS] CCSP Organizational Profile v${PROFILE_VERSION} commissioned.`
+        "[MEOS] CCSP profile registered through window.CCSPOrganizationalProfile."
     );
+}
+
+console.info(
+    `[MEOS] CCSP Organizational Profile v${PROFILE_VERSION} commissioned.`
+);
 })(window);
