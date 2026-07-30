@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Modular Executive Dashboard Shell
  *
- * Version: 0.3.0
+ * Version: 0.4.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,10 +20,10 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "0.3.1";
+  const DASHBOARD_VERSION = "0.4.0";
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
-  const STORAGE_KEY = "meos.dashboard.build.v0.3.1";
+  const STORAGE_KEY = "meos.dashboard.build.v0.4.0";
 
   const DEFAULT_BUILD_TASKS = [
     {
@@ -48,13 +48,13 @@
     },
     {
       id: "maddy-command-bar",
-      title: "Integrate Maddy into the dashboard command bar",
-      status: "active"
+      title: "Move Maddy into the permanent Executive Office navigation control",
+      status: "complete"
     },
     {
       id: "cost-awareness",
       title: "Connect Maddy's live cost and token status",
-      status: "pending"
+      status: "active"
     },
     {
       id: "live-office-data",
@@ -107,7 +107,11 @@
     buildTasks: loadBuildTasks(),
     layout: DEFAULT_LAYOUT.map((item) => ({ ...item })),
     costMode: "free",
-    paidSessionActive: false
+    paidSessionActive: false,
+    communicationMode: "professional",
+    conversationStatus: "disconnected",
+    tokenActivity: "idle",
+    muted: false
   };
 
   function loadBuildTasks() {
@@ -497,6 +501,234 @@
         box-shadow: 0 0 10px currentColor;
       }
 
+
+      /* Permanent Maddy Executive Office control — bottom of left navigation */
+      .meos-executive-office-control {
+        margin-top: auto;
+        padding: 14px 12px 12px;
+        border-top: 1px solid rgba(137, 164, 208, 0.18);
+        background: linear-gradient(180deg, rgba(9, 18, 31, 0.18), rgba(7, 14, 25, 0.78));
+      }
+
+      .meos-executive-office-control,
+      .meos-executive-office-control * {
+        box-sizing: border-box;
+      }
+
+      .meos-office-presence {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+      }
+
+      .meos-maddy-orb {
+        --meos-mode-color: #79a7ff;
+        position: relative;
+        width: 76px;
+        height: 76px;
+        border: 0;
+        border-radius: 50%;
+        padding: 0;
+        cursor: pointer;
+        color: var(--meos-text);
+        background:
+          radial-gradient(circle at 40% 30%, #f4f6fa 0 7%, #b8c0cc 18%, #69727f 44%, #252b34 70%, #11151b 100%);
+        box-shadow:
+          inset 0 0 0 2px rgba(255,255,255,0.44),
+          inset 0 0 16px rgba(255,255,255,0.18),
+          0 8px 22px rgba(0,0,0,0.36);
+      }
+
+      .meos-maddy-orb::before {
+        content: "";
+        position: absolute;
+        inset: 7px;
+        border-radius: inherit;
+        border: 3px solid var(--meos-mode-color);
+        box-shadow:
+          0 0 13px color-mix(in srgb, var(--meos-mode-color) 78%, transparent),
+          inset 0 0 10px color-mix(in srgb, var(--meos-mode-color) 34%, transparent);
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+      }
+
+      .meos-maddy-orb::after {
+        content: "";
+        position: absolute;
+        inset: 1px;
+        border-radius: inherit;
+        border: 3px solid transparent;
+        border-top-color: var(--meos-mode-color);
+        border-right-color: color-mix(in srgb, var(--meos-mode-color) 38%, transparent);
+        opacity: 0;
+      }
+
+      .meos-maddy-orb[data-token-activity="active"]::after,
+      .meos-maddy-orb[data-token-activity="waiting"]::after {
+        opacity: 1;
+        animation: meos-token-orbit 1.05s linear infinite;
+      }
+
+      .meos-maddy-orb[data-token-activity="waiting"]::after {
+        animation-duration: 1.7s;
+      }
+
+      .meos-maddy-orb[data-mode="professional"] {
+        --meos-mode-color: #5aa8ff;
+      }
+
+      .meos-maddy-orb[data-mode="personal"] {
+        --meos-mode-color: #f1b84b;
+      }
+
+      .meos-maddy-orb[data-mode="gangsta"] {
+        --meos-mode-color: #d66cff;
+      }
+
+      .meos-maddy-orb-letter {
+        position: relative;
+        z-index: 1;
+        font-family: Georgia, serif;
+        font-size: 1.65rem;
+        font-weight: 700;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.62);
+      }
+
+      @keyframes meos-token-orbit {
+        to { transform: rotate(360deg); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .meos-maddy-orb::after {
+          animation: none !important;
+        }
+      }
+
+      .meos-office-identity {
+        text-align: center;
+      }
+
+      .meos-office-identity strong {
+        display: block;
+        letter-spacing: 0.06em;
+        font-size: 0.78rem;
+      }
+
+      .meos-office-identity span {
+        color: var(--meos-muted);
+        font-size: 0.68rem;
+      }
+
+      .meos-office-status-grid {
+        width: 100%;
+        display: grid;
+        gap: 7px;
+        margin-top: 4px;
+      }
+
+      .meos-office-status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.69rem;
+      }
+
+      .meos-office-status-row span:first-child {
+        color: var(--meos-muted);
+      }
+
+      .meos-status-value {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-weight: 700;
+        text-align: right;
+      }
+
+      .meos-status-dot {
+        width: 7px;
+        height: 7px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 8px currentColor;
+      }
+
+      .meos-status-active {
+        color: var(--meos-green);
+      }
+
+      .meos-status-idle {
+        color: var(--meos-muted);
+      }
+
+      .meos-status-token-active {
+        color: var(--meos-red);
+      }
+
+      .meos-status-token-waiting {
+        color: var(--meos-yellow);
+      }
+
+      .meos-mode-label {
+        width: 100%;
+        margin-top: 3px;
+        color: var(--meos-muted);
+        font-size: 0.67rem;
+      }
+
+      .meos-mode-select {
+        width: 100%;
+        border: 1px solid rgba(126, 154, 201, 0.28);
+        border-radius: 8px;
+        background: rgba(17, 31, 51, 0.94);
+        color: var(--meos-text);
+        padding: 8px 9px;
+        font: inherit;
+        font-size: 0.72rem;
+      }
+
+      .meos-office-voice-actions {
+        width: 100%;
+        display: grid;
+        gap: 7px;
+        margin-top: 2px;
+      }
+
+      .meos-voice-primary,
+      .meos-voice-secondary {
+        width: 100%;
+        border-radius: 8px;
+        padding: 8px 9px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.71rem;
+      }
+
+      .meos-voice-primary {
+        border: 1px solid rgba(90, 168, 255, 0.48);
+        background: rgba(42, 93, 151, 0.28);
+        color: #dcecff;
+      }
+
+      .meos-voice-primary[data-connected="true"] {
+        border-color: rgba(255, 100, 120, 0.45);
+        background: rgba(151, 42, 61, 0.24);
+        color: #ffdce2;
+      }
+
+      .meos-voice-secondary-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+      }
+
+      .meos-voice-secondary {
+        border: 1px solid rgba(125, 151, 199, 0.18);
+        background: rgba(28, 42, 65, 0.88);
+        color: var(--meos-text);
+      }
+
       .meos-office-detail {
         margin-top: 16px;
         border: 1px solid var(--meos-border-bright);
@@ -699,6 +931,303 @@
       document.body
     );
   }
+
+  function getNavigationArea() {
+    const selectors = [
+      "[data-meos-navigation]",
+      ".sidebar",
+      ".side-nav",
+      ".navigation",
+      ".nav-sidebar",
+      "aside nav",
+      "aside"
+    ];
+
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+
+      if (element && !element.closest(`#${ROOT_ID}`)) {
+        return element;
+      }
+    }
+
+    return null;
+  }
+
+  function createExecutiveOfficeControl() {
+    const existing = document.getElementById("meosExecutiveOfficeControl");
+
+    if (existing) {
+      return existing;
+    }
+
+    const navigation = getNavigationArea();
+
+    if (!navigation) {
+      console.warn(
+        "MEOS could not find the left navigation area. Add data-meos-navigation to the navigation container."
+      );
+      return null;
+    }
+
+    const control = document.createElement("section");
+    control.id = "meosExecutiveOfficeControl";
+    control.className = "meos-executive-office-control";
+    control.setAttribute("aria-label", "Maddy Executive Office");
+
+    control.innerHTML = `
+      <div class="meos-office-presence">
+        <button
+          id="meosMaddyOrb"
+          class="meos-maddy-orb"
+          type="button"
+          data-mode="professional"
+          data-token-activity="idle"
+          aria-label="Talk to Maddy"
+          title="Talk to Maddy"
+        >
+          <span class="meos-maddy-orb-letter" aria-hidden="true">M</span>
+        </button>
+
+        <div class="meos-office-identity">
+          <strong>MADDY</strong>
+          <span>Executive Office</span>
+        </div>
+
+        <div class="meos-office-status-grid" aria-live="polite">
+          <div class="meos-office-status-row">
+            <span>Office</span>
+            <span class="meos-status-value meos-status-active">
+              <span class="meos-status-dot"></span>
+              ACTIVE
+            </span>
+          </div>
+
+          <div class="meos-office-status-row">
+            <span>Conversation</span>
+            <span id="meosConversationStatus" class="meos-status-value meos-status-idle">
+              DISCONNECTED
+            </span>
+          </div>
+
+          <div class="meos-office-status-row">
+            <span>Token Use</span>
+            <span id="meosTokenStatus" class="meos-status-value meos-status-idle">
+              <span class="meos-status-dot"></span>
+              IDLE
+            </span>
+          </div>
+        </div>
+
+        <label class="meos-mode-label" for="meosCommunicationMode">Communication Mode</label>
+        <select id="meosCommunicationMode" class="meos-mode-select">
+          <option value="professional">Professional</option>
+          <option value="personal">Personal</option>
+          <option value="gangsta">Gangsta — Founder</option>
+        </select>
+
+        <div class="meos-office-voice-actions">
+          <button id="meosVoiceConnectionButton" class="meos-voice-primary" type="button" data-connected="false">
+            Talk to Maddy
+          </button>
+          <div class="meos-voice-secondary-row">
+            <button id="meosVoiceMuteButton" class="meos-voice-secondary" type="button" disabled>
+              Mute
+            </button>
+            <button id="meosVoiceResetButton" class="meos-voice-secondary" type="button">
+              Reset Voice
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    /*
+     * Make the navigation a vertical flex container so this control remains
+     * pinned at its far bottom. Existing navigation items stay above it.
+     */
+    const computed = window.getComputedStyle(navigation);
+
+    if (computed.display !== "flex") {
+      navigation.style.display = "flex";
+    }
+
+    navigation.style.flexDirection = "column";
+    navigation.appendChild(control);
+    bindExecutiveOfficeControlEvents();
+    renderExecutiveOfficeControl();
+
+    return control;
+  }
+
+  function bindExecutiveOfficeControlEvents() {
+    document.getElementById("meosMaddyOrb")?.addEventListener("click", toggleVoiceConnection);
+    document.getElementById("meosVoiceConnectionButton")?.addEventListener("click", toggleVoiceConnection);
+
+    document.getElementById("meosCommunicationMode")?.addEventListener("change", (event) => {
+      setCommunicationMode(event.target.value);
+    });
+
+    document.getElementById("meosVoiceMuteButton")?.addEventListener("click", () => {
+      state.muted = !state.muted;
+      renderExecutiveOfficeControl();
+
+      dispatchMEOS("meos:maddy-voice-mute-changed", {
+        muted: state.muted
+      });
+    });
+
+    document.getElementById("meosVoiceResetButton")?.addEventListener("click", () => {
+      dispatchMEOS("meos:maddy-voice-reset-requested", {
+        communicationMode: state.communicationMode
+      });
+    });
+  }
+
+  function toggleVoiceConnection() {
+    const connected = state.conversationStatus !== "disconnected";
+
+    if (connected) {
+      dispatchMEOS("meos:maddy-voice-disconnect-requested", {
+        reason: "user",
+        communicationMode: state.communicationMode
+      });
+      return;
+    }
+
+    dispatchMEOS("meos:maddy-voice-requested", {
+      intentional: true,
+      costMode: state.costMode,
+      communicationMode: state.communicationMode
+    });
+  }
+
+  function setCommunicationMode(mode) {
+    const allowedModes = ["professional", "personal", "gangsta"];
+
+    if (!allowedModes.includes(mode)) {
+      throw new Error(`Unsupported Maddy communication mode: ${mode}`);
+    }
+
+    state.communicationMode = mode;
+    renderExecutiveOfficeControl();
+
+    dispatchMEOS("meos:maddy-mode-changed", {
+      mode
+    });
+  }
+
+  function setConversationStatus(status) {
+    const allowedStatuses = [
+      "disconnected",
+      "connecting",
+      "connected",
+      "listening",
+      "speaking",
+      "error"
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      throw new Error(`Unsupported Maddy conversation status: ${status}`);
+    }
+
+    state.conversationStatus = status;
+
+    if (status === "disconnected" || status === "error") {
+      state.muted = false;
+    }
+
+    renderExecutiveOfficeControl();
+  }
+
+  function setTokenActivity(activity) {
+    const allowedActivities = ["idle", "waiting", "active"];
+
+    if (!allowedActivities.includes(activity)) {
+      throw new Error(`Unsupported Maddy token activity: ${activity}`);
+    }
+
+    state.tokenActivity = activity;
+    renderExecutiveOfficeControl();
+
+    dispatchMEOS("meos:token-activity-changed", {
+      activity,
+      usingTokens: activity !== "idle"
+    });
+  }
+
+  function renderExecutiveOfficeControl() {
+    const orb = document.getElementById("meosMaddyOrb");
+    const modeSelect = document.getElementById("meosCommunicationMode");
+    const conversationStatus = document.getElementById("meosConversationStatus");
+    const tokenStatus = document.getElementById("meosTokenStatus");
+    const connectionButton = document.getElementById("meosVoiceConnectionButton");
+    const muteButton = document.getElementById("meosVoiceMuteButton");
+
+    if (!orb) {
+      return;
+    }
+
+    const connected = state.conversationStatus !== "disconnected";
+    const conversationLabels = {
+      disconnected: "DISCONNECTED",
+      connecting: "CONNECTING",
+      connected: "CONNECTED",
+      listening: "LISTENING",
+      speaking: "SPEAKING",
+      error: "ERROR"
+    };
+    const tokenLabels = {
+      idle: "IDLE",
+      waiting: "WAITING",
+      active: "TOKENS ACTIVE"
+    };
+
+    orb.dataset.mode = state.communicationMode;
+    orb.dataset.tokenActivity = state.tokenActivity;
+
+    if (modeSelect) {
+      modeSelect.value = state.communicationMode;
+    }
+
+    if (conversationStatus) {
+      conversationStatus.textContent = conversationLabels[state.conversationStatus];
+      conversationStatus.className =
+        `meos-status-value ${state.conversationStatus === "error" ? "meos-status-token-active" : "meos-status-idle"}`;
+    }
+
+    if (tokenStatus) {
+      tokenStatus.innerHTML = `<span class="meos-status-dot"></span>${tokenLabels[state.tokenActivity]}`;
+      tokenStatus.className =
+        `meos-status-value ${
+          state.tokenActivity === "active"
+            ? "meos-status-token-active"
+            : state.tokenActivity === "waiting"
+              ? "meos-status-token-waiting"
+              : "meos-status-idle"
+        }`;
+    }
+
+    if (connectionButton) {
+      connectionButton.dataset.connected = String(connected);
+      connectionButton.textContent = connected ? "End Conversation" : "Talk to Maddy";
+    }
+
+    if (muteButton) {
+      muteButton.disabled = !connected;
+      muteButton.textContent = state.muted ? "Unmute" : "Mute";
+    }
+
+    orb.setAttribute(
+      "aria-label",
+      connected ? "End conversation with Maddy" : "Talk to Maddy"
+    );
+    orb.title =
+      state.tokenActivity === "idle"
+        ? `${state.communicationMode} mode — no tokens in use`
+        : `${state.communicationMode} mode — ${tokenLabels[state.tokenActivity].toLowerCase()}`;
+  }
+
 
   function calculateBuildProgress() {
     const total = state.buildTasks.length;
@@ -915,35 +1444,6 @@
 
         <section id="meosWidgetGrid" class="meos-widget-grid" aria-label="MEOS Executive Dashboard"></section>
 
-        <section class="meos-maddy-bar" aria-label="Maddy Executive Command Bar">
-          <div class="meos-maddy-avatar" aria-hidden="true">M</div>
-
-          <div class="meos-maddy-command">
-            <strong>
-              I’m Up.
-              <span id="meosCostStatus" class="meos-cost-status">
-                <span class="meos-cost-dot"></span>
-                FREE MODE
-              </span>
-            </strong>
-            <span class="meos-muted">How can I help you move the mission forward today?</span>
-            <div class="meos-maddy-input-row">
-              <input id="meosMaddyInput" class="meos-maddy-input" type="text" placeholder="Ask Maddy anything..." autocomplete="off">
-              <button id="meosMaddySend" class="meos-action-button" type="button" aria-label="Send message to Maddy">➤</button>
-              <button id="meosMaddyVoice" class="meos-action-button" type="button" aria-label="Start intentional Maddy voice session">◉</button>
-            </div>
-          </div>
-
-          <div class="meos-maddy-actions">
-            <button class="meos-action-button" type="button" data-meos-action="board-packet">Create Board Packet</button>
-            <button class="meos-action-button" type="button" data-meos-action="find-grants">Find Grant Opportunities</button>
-            <button class="meos-action-button" type="button" data-meos-action="report">Generate Report</button>
-            <button class="meos-action-button" type="button" data-meos-action="meeting">Schedule Meeting</button>
-            <button class="meos-action-button" type="button" data-meos-action="email">Draft Email</button>
-            <button class="meos-action-button" type="button" data-meos-action="tools">More Tools</button>
-          </div>
-        </section>
-
         <section id="officeDashboard" class="meos-office-detail" hidden></section>
       </div>
     `;
@@ -972,6 +1472,7 @@
       mainContent.appendChild(root);
     }
     bindDashboardEvents();
+    createExecutiveOfficeControl();
     updateClockAndGreeting();
     renderBuildProgress();
     createOfficeDashboard();
@@ -1112,13 +1613,6 @@
       }
     });
 
-    document.getElementById("meosMaddyVoice")?.addEventListener("click", () => {
-      dispatchMEOS("meos:maddy-voice-requested", {
-        intentional: true,
-        costMode: state.costMode
-      });
-    });
-
     document.querySelectorAll("[data-meos-action]").forEach((button) => {
       button.addEventListener("click", () => {
         dispatchMEOS("meos:quick-action", {
@@ -1233,6 +1727,12 @@
 
     state.costMode = mode;
     state.paidSessionActive = Boolean(options.active);
+
+    if (mode === "voice" || state.paidSessionActive) {
+      setTokenActivity(options.waiting ? "waiting" : "active");
+    } else {
+      setTokenActivity("idle");
+    }
 
     const labelMap = {
       free: "FREE MODE",
@@ -1530,6 +2030,18 @@
       getState: () => ({
         mode: state.costMode,
         paidSessionActive: state.paidSessionActive
+      })
+    }),
+    executiveOffice: Object.freeze({
+      setConversationStatus,
+      setTokenActivity,
+      setCommunicationMode,
+      getState: () => ({
+        officeStatus: "active",
+        conversationStatus: state.conversationStatus,
+        tokenActivity: state.tokenActivity,
+        communicationMode: state.communicationMode,
+        muted: state.muted
       })
     })
   });
