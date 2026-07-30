@@ -73,7 +73,9 @@ app.post("/session", async (request, response) => {
           interrupt_response: true
         }
       },
-      output_modalities: ["text"]
+      output: {
+        voice: "marin"
+      }
     }
   });
 
