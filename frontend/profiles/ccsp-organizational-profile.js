@@ -484,6 +484,7 @@ ${profile.startupCommission}
     });
 
     global.CCSPOrganizationalProfile = publicAPI;
+    global.OrganizationalProfile = publicAPI.profile;
 
 /*
  * The main MEOS object may be frozen by the core architecture.
