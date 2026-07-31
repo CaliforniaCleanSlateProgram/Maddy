@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Modular Executive Dashboard Shell
  *
- * Version: 0.4.0
+ * Version: 0.4.1
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "0.4.0";
+  const DASHBOARD_VERSION = "0.4.1";
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
   const STORAGE_KEY = "meos.dashboard.build.v0.4.0";
@@ -524,42 +524,75 @@
       .meos-maddy-orb {
         --meos-mode-color: #79a7ff;
         position: relative;
-        width: 76px;
-        height: 76px;
+        width: 168px;
+        height: 168px;
         border: 0;
         border-radius: 50%;
         padding: 0;
+        margin: 10px 0 6px;
         cursor: pointer;
         color: var(--meos-text);
         background:
-          radial-gradient(circle at 40% 30%, #f4f6fa 0 7%, #b8c0cc 18%, #69727f 44%, #252b34 70%, #11151b 100%);
+          radial-gradient(
+            circle at 40% 30%,
+            #ffffff 0 5%,
+            #cbd2dc 18%,
+            #6d7785 44%,
+            #252b34 72%,
+            #0c1016 100%
+          );
         box-shadow:
-          inset 0 0 0 2px rgba(255,255,255,0.44),
-          inset 0 0 16px rgba(255,255,255,0.18),
-          0 8px 22px rgba(0,0,0,0.36);
+          inset 0 0 0 3px rgba(255, 255, 255, 0.5),
+          inset 0 0 28px rgba(255, 255, 255, 0.22),
+          0 0 0 2px rgba(121, 167, 255, 0.25),
+          0 0 32px color-mix(in srgb, var(--meos-mode-color) 55%, transparent),
+          0 16px 34px rgba(0, 0, 0, 0.48);
+        transition:
+          transform 180ms ease,
+          box-shadow 180ms ease;
+      }
+
+      .meos-maddy-orb:hover {
+        transform: translateY(-3px) scale(1.025);
+        box-shadow:
+          inset 0 0 0 3px rgba(255, 255, 255, 0.58),
+          inset 0 0 30px rgba(255, 255, 255, 0.26),
+          0 0 0 3px rgba(121, 167, 255, 0.3),
+          0 0 48px color-mix(in srgb, var(--meos-mode-color) 72%, transparent),
+          0 20px 40px rgba(0, 0, 0, 0.55);
+      }
+
+      .meos-maddy-orb:active {
+        transform: scale(0.985);
       }
 
       .meos-maddy-orb::before {
         content: "";
         position: absolute;
-        inset: 7px;
+        inset: 9px;
+        z-index: 2;
         border-radius: inherit;
-        border: 3px solid var(--meos-mode-color);
+        border: 4px solid var(--meos-mode-color);
+        pointer-events: none;
         box-shadow:
-          0 0 13px color-mix(in srgb, var(--meos-mode-color) 78%, transparent),
-          inset 0 0 10px color-mix(in srgb, var(--meos-mode-color) 34%, transparent);
-        transition: border-color 180ms ease, box-shadow 180ms ease;
+          0 0 18px color-mix(in srgb, var(--meos-mode-color) 85%, transparent),
+          inset 0 0 16px color-mix(in srgb, var(--meos-mode-color) 38%, transparent);
+        transition:
+          border-color 180ms ease,
+          box-shadow 180ms ease;
       }
 
       .meos-maddy-orb::after {
         content: "";
         position: absolute;
-        inset: 1px;
+        inset: 2px;
+        z-index: 3;
         border-radius: inherit;
-        border: 3px solid transparent;
+        border: 4px solid transparent;
         border-top-color: var(--meos-mode-color);
         border-right-color: color-mix(in srgb, var(--meos-mode-color) 38%, transparent);
         opacity: 0;
+        pointer-events: none;
       }
 
       .meos-maddy-orb[data-token-activity="active"]::after,
@@ -585,30 +618,31 @@
       }
 
       .meos-maddy-orb-insignia {
-  position: absolute;
-  inset: 8px;
-  z-index: 1;
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
-  border-radius: 50%;
-  object-fit: cover;
-  object-position: center;
-  pointer-events: none;
-  filter:
-    contrast(1.05)
-    brightness(1.02)
-    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
-}
+        position: absolute;
+        inset: 13px;
+        z-index: 1;
+        width: calc(100% - 26px);
+        height: calc(100% - 26px);
+        border-radius: 50%;
+        object-fit: cover;
+        object-position: center;
+        pointer-events: none;
+        filter:
+          contrast(1.08)
+          brightness(1.04)
+          saturate(0.92)
+          drop-shadow(0 4px 8px rgba(0, 0, 0, 0.58));
+      }
 
 .meos-maddy-orb-fallback {
-  position: relative;
-  z-index: 1;
-  display: none;
-  font-family: Georgia, serif;
-  font-size: 1.65rem;
-  font-weight: 700;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.62);
-}
+        position: relative;
+        z-index: 1;
+        display: none;
+        font-family: Georgia, serif;
+        font-size: 3rem;
+        font-weight: 700;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.68);
+      }
 
       @keyframes meos-token-orbit {
         to { transform: rotate(360deg); }
@@ -626,13 +660,14 @@
 
       .meos-office-identity strong {
         display: block;
-        letter-spacing: 0.06em;
-        font-size: 0.78rem;
+        letter-spacing: 0.09em;
+        font-size: 1.05rem;
+        text-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
       }
 
       .meos-office-identity span {
         color: var(--meos-muted);
-        font-size: 0.68rem;
+        font-size: 0.78rem;
       }
 
       .meos-office-status-grid {
