@@ -1051,7 +1051,7 @@
         >
           <img
               class="meos-maddy-orb-insignia"
-              src="images/maddy-executive-insignia.png"
+              src="maddy-executive-insignia.png"
               alt=""
               aria-hidden="true"
               onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
