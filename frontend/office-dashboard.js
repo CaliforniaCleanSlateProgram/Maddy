@@ -584,14 +584,31 @@
         --meos-mode-color: #d66cff;
       }
 
-      .meos-maddy-orb-letter {
-        position: relative;
-        z-index: 1;
-        font-family: Georgia, serif;
-        font-size: 1.65rem;
-        font-weight: 700;
-        text-shadow: 0 1px 3px rgba(0,0,0,0.62);
-      }
+      .meos-maddy-orb-insignia {
+  position: absolute;
+  inset: 8px;
+  z-index: 1;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  filter:
+    contrast(1.05)
+    brightness(1.02)
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
+}
+
+.meos-maddy-orb-fallback {
+  position: relative;
+  z-index: 1;
+  display: none;
+  font-family: Georgia, serif;
+  font-size: 1.65rem;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.62);
+}
 
       @keyframes meos-token-orbit {
         to { transform: rotate(360deg); }
@@ -688,6 +705,52 @@
         font-size: 0.72rem;
       }
 
+      .meos-executive-hub-command {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.meos-executive-hub-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.meos-executive-hub-input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid rgba(126, 154, 201, 0.28);
+  border-radius: 8px;
+  background: rgba(17, 31, 51, 0.94);
+  color: var(--meos-text);
+  padding: 8px 9px;
+  font: inherit;
+  font-size: 0.7rem;
+  outline: none;
+}
+
+.meos-executive-hub-input:focus {
+  border-color: var(--meos-mode-color, #5aa8ff);
+  box-shadow: 0 0 0 2px rgba(90, 168, 255, 0.12);
+}
+
+.meos-executive-hub-send {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(90, 168, 255, 0.48);
+  border-radius: 8px;
+  background: rgba(42, 93, 151, 0.28);
+  color: #dcecff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.meos-open-hub-button {
+  margin-top: 1px;
+}
       .meos-office-voice-actions {
         width: 100%;
         display: grid;
@@ -986,7 +1049,14 @@
           aria-label="Talk to Maddy"
           title="Talk to Maddy"
         >
-          <span class="meos-maddy-orb-letter" aria-hidden="true">M</span>
+          <img
+              class="meos-maddy-orb-insignia"
+              src="images/maddy-executive-insignia.png"
+              alt=""
+              aria-hidden="true"
+              onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+          />
+        <span class="meos-maddy-orb-fallback" aria-hidden="true">M</span>
         </button>
 
         <div class="meos-office-identity">
@@ -1026,19 +1096,69 @@
           <option value="gangsta">Gangsta — Founder</option>
         </select>
 
-        <div class="meos-office-voice-actions">
-          <button id="meosVoiceConnectionButton" class="meos-voice-primary" type="button" data-connected="false">
-            Talk to Maddy
-          </button>
-          <div class="meos-voice-secondary-row">
-            <button id="meosVoiceMuteButton" class="meos-voice-secondary" type="button" disabled>
-              Mute
-            </button>
-            <button id="meosVoiceResetButton" class="meos-voice-secondary" type="button">
-              Reset Voice
-            </button>
-          </div>
-        </div>
+        <div class="meos-executive-hub-command">
+  <label class="meos-mode-label" for="meosExecutiveHubInput">
+    Executive Command
+  </label>
+
+  <div class="meos-executive-hub-input-row">
+    <input
+      id="meosExecutiveHubInput"
+      class="meos-executive-hub-input"
+      type="text"
+      placeholder="Ask Maddy or assign a mission..."
+      autocomplete="off"
+    />
+
+    <button
+      id="meosExecutiveHubSend"
+      class="meos-executive-hub-send"
+      type="button"
+      aria-label="Send command to Maddy"
+      title="Send command"
+    >
+      ↑
+    </button>
+  </div>
+</div>
+
+<div class="meos-office-voice-actions">
+  <button
+    id="meosVoiceConnectionButton"
+    class="meos-voice-primary"
+    type="button"
+    data-connected="false"
+  >
+    Talk to Maddy
+  </button>
+
+  <div class="meos-voice-secondary-row">
+    <button
+      id="meosVoiceMuteButton"
+      class="meos-voice-secondary"
+      type="button"
+      disabled
+    >
+      Mute
+    </button>
+
+    <button
+      id="meosVoiceResetButton"
+      class="meos-voice-secondary"
+      type="button"
+    >
+      Reset Voice
+    </button>
+  </div>
+
+  <button
+    id="meosOpenExecutiveHub"
+    class="meos-voice-secondary meos-open-hub-button"
+    type="button"
+  >
+    Open Executive Hub
+  </button>
+</div>
       </div>
     `;
 
@@ -1082,6 +1202,50 @@
         communicationMode: state.communicationMode
       });
     });
+    const submitExecutiveHubCommand = () => {
+  const input = document.getElementById("meosExecutiveHubInput");
+  const message = input?.value.trim();
+
+  if (!message) {
+    input?.focus();
+    return;
+  }
+
+  dispatchMEOS("meos:maddy-request", {
+    message,
+    source: "executive-hub",
+    costMode: state.costMode,
+    communicationMode: state.communicationMode
+  });
+
+  input.value = "";
+};
+
+document
+  .getElementById("meosExecutiveHubSend")
+  ?.addEventListener("click", submitExecutiveHubCommand);
+
+document
+  .getElementById("meosExecutiveHubInput")
+  ?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitExecutiveHubCommand();
+    }
+  });
+
+document
+  .getElementById("meosOpenExecutiveHub")
+  ?.addEventListener("click", () => {
+    document.getElementById(ROOT_ID)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+
+    dispatchMEOS("meos:executive-hub-opened", {
+      communicationMode: state.communicationMode
+    });
+  });
   }
 
   function toggleVoiceConnection() {
