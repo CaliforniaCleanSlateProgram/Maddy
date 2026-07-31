@@ -164,6 +164,8 @@ function sendAudioResponse(response, audioBuffer, metadata = {}) {
 }
 
 async function generateElevenLabsAudio(text) {
+  const totalStartedAt = Date.now();
+
   const elevenLabsResponse = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
       ELEVENLABS_VOICE_ID
@@ -182,6 +184,15 @@ async function generateElevenLabsAudio(text) {
     }
   );
 
+  const headersReceivedAt = Date.now();
+
+  console.log(
+    `[MEOS TTS] ElevenLabs headers received. ` +
+      `status=${elevenLabsResponse.status}, ` +
+      `timeToHeadersMs=${headersReceivedAt - totalStartedAt}, ` +
+      `characters=${text.length}.`
+  );
+
   if (!elevenLabsResponse.ok) {
     const errorBody = await elevenLabsResponse.text();
 
@@ -195,7 +206,20 @@ async function generateElevenLabsAudio(text) {
     throw providerError;
   }
 
-  return Buffer.from(await elevenLabsResponse.arrayBuffer());
+  const audioBuffer = Buffer.from(
+    await elevenLabsResponse.arrayBuffer()
+  );
+
+  const completedAt = Date.now();
+
+  console.log(
+    `[MEOS TTS] ElevenLabs audio downloaded. ` +
+      `downloadMs=${completedAt - headersReceivedAt}, ` +
+      `totalMs=${completedAt - totalStartedAt}, ` +
+      `bytes=${audioBuffer.length}.`
+  );
+
+  return audioBuffer;
 }
 
 /**
