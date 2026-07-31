@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Modular Executive Dashboard Shell
  *
- * Version: 0.4.1
+ * Version: 0.4.2
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "0.4.1";
+  const DASHBOARD_VERSION = "0.4.2";
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
   const STORAGE_KEY = "meos.dashboard.build.v0.4.0";
@@ -1283,22 +1283,138 @@ document
   });
   }
 
-  function toggleVoiceConnection() {
-    const connected = state.conversationStatus !== "disconnected";
+  function findLegacyVoicePanel() {
+    const headings = Array.from(document.querySelectorAll("h1, h2, h3, h4, strong, div, span"))
+      .filter((element) => element.textContent?.trim() === "MEOS Voice Engine");
 
-    if (connected) {
-      dispatchMEOS("meos:maddy-voice-disconnect-requested", {
-        reason: "user",
-        communicationMode: state.communicationMode
-      });
+    for (const heading of headings) {
+      let candidate = heading;
+
+      for (let depth = 0; depth < 8 && candidate; depth += 1) {
+        const buttons = Array.from(candidate.querySelectorAll?.("button") || []);
+        const labels = buttons.map((button) => button.textContent?.trim());
+
+        if (labels.includes("Start Maddy") && labels.includes("Stop Maddy")) {
+          return candidate;
+        }
+
+        candidate = candidate.parentElement;
+      }
+    }
+
+    return null;
+  }
+
+  function findLegacyVoiceButton(label) {
+    const panel = findLegacyVoicePanel();
+
+    if (!panel) {
+      return null;
+    }
+
+    return Array.from(panel.querySelectorAll("button"))
+      .find((button) => button.textContent?.trim() === label) || null;
+  }
+
+  function hideLegacyVoicePanel() {
+    const panel = findLegacyVoicePanel();
+
+    if (!panel) {
+      return false;
+    }
+
+    panel.setAttribute("aria-hidden", "true");
+    panel.dataset.meosRetiredDeveloperPanel = "true";
+    panel.style.setProperty("display", "none", "important");
+    return true;
+  }
+
+  function installLegacyVoicePanelRetirement() {
+    if (hideLegacyVoicePanel()) {
       return;
     }
+
+    const observer = new MutationObserver(() => {
+      if (hideLegacyVoicePanel()) {
+        observer.disconnect();
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+
+    window.setTimeout(() => observer.disconnect(), 15000);
+  }
+
+  function clickLegacyVoiceControl(label) {
+    const button = findLegacyVoiceButton(label);
+
+    if (!button) {
+      return false;
+    }
+
+    button.click();
+    hideLegacyVoicePanel();
+    return true;
+  }
+
+  function startMaddyVoice() {
+    setConversationStatus("connecting");
+    setTokenActivity("waiting");
+
+    const started = clickLegacyVoiceControl("Start Maddy");
 
     dispatchMEOS("meos:maddy-voice-requested", {
       intentional: true,
       costMode: state.costMode,
-      communicationMode: state.communicationMode
+      communicationMode: state.communicationMode,
+      source: "executive-hub",
+      legacyBridgeStarted: started
     });
+
+    if (!started) {
+      console.error(
+        "MEOS could not find the existing Start Maddy control. " +
+        "The Voice Engine developer panel may not be loaded."
+      );
+      setConversationStatus("error");
+      setTokenActivity("idle");
+      return;
+    }
+
+    window.setTimeout(() => {
+      if (state.conversationStatus === "connecting") {
+        setConversationStatus("connected");
+        setTokenActivity("idle");
+      }
+    }, 800);
+  }
+
+  function stopMaddyVoice() {
+    const stopped = clickLegacyVoiceControl("Stop Maddy");
+
+    dispatchMEOS("meos:maddy-voice-disconnect-requested", {
+      reason: "user",
+      communicationMode: state.communicationMode,
+      source: "executive-hub",
+      legacyBridgeStopped: stopped
+    });
+
+    setConversationStatus("disconnected");
+    setTokenActivity("idle");
+  }
+
+  function toggleVoiceConnection() {
+    const connected = state.conversationStatus !== "disconnected";
+
+    if (connected) {
+      stopMaddyVoice();
+      return;
+    }
+
+    startMaddyVoice();
   }
 
   function setCommunicationMode(mode) {
@@ -2198,9 +2314,10 @@ document
 
   function initialize() {
     createDashboardShell();
+    installLegacyVoicePanelRetirement();
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Modular Executive Dashboard initialized.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; legacy voice panel retired.`
     );
   }
 
