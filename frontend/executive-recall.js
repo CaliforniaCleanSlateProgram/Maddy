@@ -1,6 +1,7 @@
 /*
  * MEOS Executive Recall Engine
- * Version: 1.0.0
+ * Version: 1.0.1
+ * Build: ERCL101-MADDY-20260801-A
  *
  * Mission:
  * Reconstruct executive context from MEOS knowledge, memory, search results,
@@ -30,7 +31,8 @@
 
     const ExecutiveRecall = {
         name: "MEOS Executive Recall Engine",
-        version: "1.0.0",
+        version: "1.0.1",
+        buildId: "ERCL101-MADDY-20260801-A",
         status: "initializing",
         operatingMode: "context-reconstruction",
 
@@ -127,6 +129,43 @@
                     item.confidence >=
                     this.configuration.minimumConfidence
                 )
+                .filter((item) =>
+                    this.isUsefulEvidence(item)
+                )
+                .map((item) => ({
+                    ...item,
+                    relevanceScore:
+                        this.calculateEvidenceRelevance(
+                            item,
+                            subject
+                        )
+                }))
+                .sort((first, second) => {
+                    if (
+                        second.relevanceScore !==
+                        first.relevanceScore
+                    ) {
+                        return (
+                            second.relevanceScore -
+                            first.relevanceScore
+                        );
+                    }
+
+                    if (
+                        second.confidence !==
+                        first.confidence
+                    ) {
+                        return (
+                            second.confidence -
+                            first.confidence
+                        );
+                    }
+
+                    return (
+                        Date.parse(second.date || 0) -
+                        Date.parse(first.date || 0)
+                    );
+                })
                 .slice(0, limit);
 
             const timeline = this.configuration.includeTimeline &&
@@ -404,10 +443,12 @@
                 typeof memory.executiveRecall === "function"
             ) {
                 try {
-                    response = memory.executiveRecall(subject, {
+                    response = memory.executiveRecall({
+                        query: subject,
                         limit:
                             options.limit ||
                             this.configuration.defaultLimit,
+                        office: options.office || null,
                         mode
                     });
                 } catch (error) {
@@ -418,34 +459,32 @@
                 }
             }
 
-            let items = [];
-
-            if (Array.isArray(response)) {
-                items = response;
-            } else if (response) {
-                items = [
-                    ...(response.results || []),
-                    ...(response.passages || []),
-                    ...(response.context || [])
-                ];
-            }
+            /*
+             * Knowledge Memory's authoritative recall contract returns actual
+             * passage objects in response.passages. Use those first. Generic
+             * Knowledge Engine records remain available through the separate
+             * Knowledge recall path and must not crowd out passage text.
+             */
+            let items = Array.isArray(response?.passages)
+                ? response.passages
+                : [];
 
             if (
                 items.length === 0 &&
                 typeof memory.query === "function"
             ) {
                 try {
-                    const queryResponse = memory.query(subject, {
+                    const queryResponse = memory.query({
+                        query: subject,
                         limit:
                             options.limit ||
-                            this.configuration.defaultLimit
+                            this.configuration.defaultLimit,
+                        office: options.office || null
                     });
 
-                    items = Array.isArray(queryResponse)
-                        ? queryResponse
-                        : queryResponse?.results ||
-                          queryResponse?.passages ||
-                          [];
+                    items = Array.isArray(queryResponse?.passages)
+                        ? queryResponse.passages
+                        : [];
                 } catch (error) {
                     console.warn(
                         "[MEOS Executive Recall] Knowledge Memory query failed:",
@@ -454,59 +493,121 @@
                 }
             }
 
-            return items.map((item) =>
-                this.createEvidence({
-                    sourceType: "memory",
-                    sourceId: item.id,
-                    title:
-                        item.title ||
-                        item.documentTitle ||
-                        item.sectionTitle ||
-                        "Memory Passage",
-                    summary:
-                        item.summary ||
-                        item.text ||
-                        item.content ||
-                        "",
-                    content:
+            return items
+                .filter((item) =>
+                    item &&
+                    String(
                         item.text ||
                         item.content ||
                         item.summary ||
-                        "",
-                    date:
-                        item.updatedAt ||
-                        item.createdAt ||
-                        item.ingestedAt ||
-                        null,
-                    authority:
-                        item.authority ||
-                        "unreviewed",
-                    sensitivity:
-                        item.sensitivity ||
-                        "internal",
-                    office:
-                        item.office ||
-                        null,
-                    topics: item.topics || [],
-                    tags: item.tags || [],
-                    confidence:
-                        Number(item.confidence) ||
-                        this.estimateItemConfidence(item),
-                    citation: this.createCitation({
-                        sourceType: "memory",
+                        ""
+                    ).trim()
+                )
+                .map((item) => {
+                    const document =
+                        memory.getDocumentById?.(
+                            item.documentId
+                        ) || null;
+
+                    const citation =
+                        memory.getCitationByPassageId?.(
+                            item.id
+                        ) || null;
+
+                    const passageText = String(
+                        item.text ||
+                        item.content ||
+                        item.summary ||
+                        ""
+                    ).trim();
+
+                    return this.createEvidence({
+                        sourceType:
+                            document?.sourceType ===
+                            "official-organization-website"
+                                ? "official-organization-website"
+                                : "memory",
                         sourceId: item.id,
                         title:
                             item.documentTitle ||
-                            item.title,
-                        locator:
-                            item.citationLabel ||
-                            item.pageNumber ||
+                            document?.title ||
                             item.sectionTitle ||
-                            ""
-                    }),
-                    raw: item
-                })
-            );
+                            "Memory Passage",
+                        summary:
+                            passageText,
+                        content:
+                            passageText,
+                        date:
+                            item.updatedAt ||
+                            item.createdAt ||
+                            item.ingestedAt ||
+                            document?.updatedAt ||
+                            document?.ingestedAt ||
+                            null,
+                        authority:
+                            item.authority ||
+                            document?.authority ||
+                            (
+                                document?.sourceType ===
+                                "official-organization-website"
+                                    ? "official"
+                                    : "unreviewed"
+                            ),
+                        sensitivity:
+                            item.sensitivity ||
+                            document?.sensitivity ||
+                            "internal",
+                        office:
+                            item.office ||
+                            null,
+                        topics:
+                            this.uniqueStrings([
+                                ...(item.topics || []),
+                                ...(item.keywords || []),
+                                item.sectionTitle,
+                                document?.documentType
+                            ]),
+                        tags:
+                            this.uniqueStrings([
+                                ...(item.tags || []),
+                                ...(document?.tags || []),
+                                document?.sourceType
+                            ]),
+                        confidence:
+                            Number(item.confidence) ||
+                            Number(document?.confidence) ||
+                            (
+                                document?.sourceType ===
+                                "official-organization-website"
+                                    ? 0.96
+                                    : this.estimateItemConfidence(
+                                        item
+                                    )
+                            ),
+                        citation:
+                            citation ||
+                            this.createCitation({
+                                sourceType:
+                                    document?.sourceType ||
+                                    "memory",
+                                sourceId: item.id,
+                                title:
+                                    document?.title ||
+                                    item.documentTitle ||
+                                    item.sectionTitle,
+                                locator:
+                                    item.citationLabel ||
+                                    item.pageNumber ||
+                                    item.sectionTitle ||
+                                    document?.url ||
+                                    ""
+                            }),
+                        raw: {
+                            ...item,
+                            document
+                        }
+                    });
+                });
         },
 
         collectMissionRecall(subject, mode, options = {}) {
@@ -1549,6 +1650,7 @@
                 officeAccess: ["all"],
                 metadata: {
                     componentVersion: this.version,
+                    buildId: this.buildId,
                     organizationNeutralCore: true,
                     brickBoundary:
                         "Context reconstruction only; no source modification or silent decision-making."
@@ -1580,6 +1682,7 @@
             return {
                 name: this.name,
                 version: this.version,
+                buildId: this.buildId,
                 status: this.status,
                 operatingMode: this.operatingMode,
                 organizationNeutralCore:
@@ -1888,6 +1991,111 @@
                     terms.length >=
                     0.6
             );
+        },
+
+        isUsefulEvidence(item) {
+            const value = this.normalizeText(
+                [
+                    item?.title,
+                    item?.summary,
+                    item?.content
+                ].join(" ")
+            );
+
+            if (!value) {
+                return false;
+            }
+
+            const placeholders = [
+                "document entered meos institutional memory",
+                "document received for review",
+                "universal controlled executive",
+                "system component",
+                "status online version"
+            ];
+
+            const isPlaceholder = placeholders.some(
+                (phrase) =>
+                    value.includes(phrase) &&
+                    !String(item?.content || "").trim()
+                        .includes("\n")
+            );
+
+            return !isPlaceholder;
+        },
+
+        calculateEvidenceRelevance(item, subject) {
+            const query = this.normalizeText(subject);
+            const terms = query
+                .split(" ")
+                .filter((term) => term.length >= 2);
+
+            const title = this.normalizeText(
+                item?.title || ""
+            );
+            const summary = this.normalizeText(
+                item?.summary || ""
+            );
+            const content = this.normalizeText(
+                item?.content || ""
+            );
+            const topics = this.normalizeText(
+                [
+                    ...(item?.topics || []),
+                    ...(item?.tags || [])
+                ].join(" ")
+            );
+
+            let score = 0;
+
+            if (title === query) {
+                score += 140;
+            } else if (title.includes(query)) {
+                score += 100;
+            }
+
+            if (summary.includes(query)) {
+                score += 80;
+            }
+
+            if (content.includes(query)) {
+                score += 70;
+            }
+
+            if (topics.includes(query)) {
+                score += 55;
+            }
+
+            terms.forEach((term) => {
+                if (title.includes(term)) score += 22;
+                if (summary.includes(term)) score += 16;
+                if (content.includes(term)) score += 12;
+                if (topics.includes(term)) score += 10;
+            });
+
+            const sourcePriority = {
+                "official-organization-website": 45,
+                memory: 35,
+                document: 28,
+                knowledge: 18,
+                mission: 16,
+                timeline: 10
+            };
+
+            score += sourcePriority[item?.sourceType] || 0;
+            score += Math.round(
+                (Number(item?.confidence) || 0) * 20
+            );
+
+            if (
+                item?.authority === "official" ||
+                item?.authority === "approved" ||
+                item?.authority === "authoritative"
+            ) {
+                score += 25;
+            }
+
+            return score;
         },
 
         estimateItemConfidence(item) {
