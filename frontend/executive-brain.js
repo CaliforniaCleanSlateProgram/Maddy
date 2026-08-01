@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.0.0
- * Build: EB100-MADDY-20260731-A
+ * Version: 1.0.1
+ * Build: EB101-MADDY-20260731-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.0.0";
-  const BUILD_ID = "EB100-MADDY-20260731-A";
+  const VERSION = "1.0.1";
+  const BUILD_ID = "EB101-MADDY-20260731-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
 
   const REQUEST_TYPES = Object.freeze({
@@ -225,6 +225,11 @@
         authority: {
           finalExecutiveAuthority:
             this.profileName(this.profiles.founder),
+          finalExecutiveAuthorityRole:
+            this.profiles.founder?.role ||
+            this.profiles.founder?.title ||
+            this.profiles.founder?.position ||
+            null,
           externalProvidersAreAdvisory: true,
           humanApprovalRequiredForExternalAction:
             this.configuration.requireHumanApprovalForExternalAction
@@ -607,32 +612,126 @@
         };
       }
 
+      const organization =
+        profile.organization ||
+        profile.identity ||
+        profile.organizationIdentity ||
+        {};
+
+      const purpose =
+        profile.purpose ||
+        profile.missionAndPurpose ||
+        {};
+
+      const organizationType =
+        organization.organizationType ||
+        organization.legalStructure ||
+        organization.entityType ||
+        profile.organizationType ||
+        profile.legalStructure ||
+        profile.entityType ||
+        null;
+
+      const federalTaxStatus =
+        organization.federalTaxStatus ||
+        organization.taxStatus ||
+        organization.irsClassification ||
+        profile.federalTaxStatus ||
+        profile.taxStatus ||
+        profile.irsClassification ||
+        null;
+
+      const combinedStatus = [
+        organizationType,
+        federalTaxStatus
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      const taxExempt =
+        typeof organization.taxExempt === "boolean"
+          ? organization.taxExempt
+          : typeof profile.taxExempt === "boolean"
+            ? profile.taxExempt
+            : /tax[- ]?exempt|501\s*\(?c\)?\s*\(?3\)?/i.test(
+                combinedStatus
+              );
+
+      const publicCharity =
+        typeof organization.publicCharity === "boolean"
+          ? organization.publicCharity
+          : typeof profile.publicCharity === "boolean"
+            ? profile.publicCharity
+            : /public charity/i.test(combinedStatus);
+
       return {
         available: true,
         name:
+          organization.name ||
+          organization.legalName ||
+          organization.organizationName ||
           profile.name ||
-          profile.organizationName ||
-          profile.identity?.name ||
           profile.legalName ||
+          profile.organizationName ||
+          null,
+        abbreviation:
+          organization.abbreviation ||
+          organization.shortName ||
+          profile.abbreviation ||
+          profile.shortName ||
           null,
         summary:
           profile.summary ||
           profile.description ||
-          profile.identity?.summary ||
+          organization.summary ||
+          organization.description ||
+          purpose.operatingPurpose ||
           null,
         mission:
           profile.mission ||
-          profile.identity?.mission ||
           profile.missionStatement ||
+          organization.mission ||
+          purpose.mission ||
+          null,
+        operatingPurpose:
+          purpose.operatingPurpose ||
+          profile.operatingPurpose ||
+          null,
+        longTermPurpose:
+          purpose.longTermPurpose ||
+          profile.longTermPurpose ||
+          null,
+        organizationType,
+        legalStructure:
+          organization.legalStructure ||
+          profile.legalStructure ||
+          organizationType,
+        federalTaxStatus,
+        taxExempt,
+        publicCharity,
+        website:
+          organization.website ||
+          profile.website ||
+          null,
+        primaryServiceArea:
+          organization.primaryServiceArea ||
+          profile.primaryServiceArea ||
           null,
         leadership:
           profile.leadership ||
           profile.governance?.leadership ||
+          organization.leadership ||
           [],
         priorities:
-          profile.priorities || profile.currentPriorities || [],
+          profile.priorities ||
+          profile.currentPriorities ||
+          purpose.priorities ||
+          [],
         boundaries:
-          profile.boundaries || profile.exclusions || [],
+          profile.boundaries ||
+          profile.exclusions ||
+          profile.legalAndOperationalBoundaries ||
+          [],
         source: "Active Organization Package",
         organizationSpecificDataInCore: false
       };
@@ -1053,7 +1152,7 @@
     },
 
     resolveFounderProfile() {
-      return (
+      const explicitProfile =
         global.FounderProfile ||
         global.MEOSFounderProfile ||
         global.UserProfile ||
@@ -1061,8 +1160,67 @@
         global.OrganizationalProfile?.founder ||
         global.OrganizationalProfile?.leadership?.founder ||
         global.OrganizationalProfile?.leadership?.executiveDirector ||
-        null
-      );
+        null;
+
+      if (explicitProfile) {
+        return explicitProfile;
+      }
+
+      const leadership =
+        global.OrganizationalProfile?.leadership ||
+        global.MEOSOrganizationProfile?.leadership ||
+        global.ActiveOrganization?.leadership ||
+        null;
+
+      if (!leadership || typeof leadership !== "object") {
+        return null;
+      }
+
+      const roleCandidates = [
+        ["founderAndExecutiveDirector", "Founder and Executive Director"],
+        ["founderExecutiveDirector", "Founder and Executive Director"],
+        ["founder", "Founder"],
+        ["executiveDirector", "Executive Director"],
+        ["chiefExecutiveOfficer", "Chief Executive Officer"],
+        ["ceo", "Chief Executive Officer"],
+        ["authorizedHuman", "Authorized Human Leadership"]
+      ];
+
+      for (const [field, role] of roleCandidates) {
+        const candidate = leadership[field];
+
+        if (!candidate) {
+          continue;
+        }
+
+        if (typeof candidate === "string") {
+          return {
+            name: candidate,
+            role,
+            authority: "final-executive-authority",
+            source: "Active Organization Package"
+          };
+        }
+
+        if (typeof candidate === "object") {
+          return {
+            ...candidate,
+            role:
+              candidate.role ||
+              candidate.title ||
+              candidate.position ||
+              role,
+            authority:
+              candidate.authority ||
+              "final-executive-authority",
+            source:
+              candidate.source ||
+              "Active Organization Package"
+          };
+        }
+      }
+
+      return null;
     },
 
     resolveOrganizationProfile() {
