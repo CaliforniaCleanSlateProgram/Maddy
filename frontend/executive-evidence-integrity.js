@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Evidence Integrity Engine
  *
- * Version: 1.0.0
- * Build: EEI100-MADDY-20260801-A
+ * Version: 1.0.1
+ * Build: EEI101-TERMINOLOGY-REFINEMENT-20260801-A
  * Status: Commissioned
  *
  * Governing motto:
@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Evidence Integrity Engine";
-  const VERSION = "1.0.0";
-  const BUILD_ID = "EEI100-MADDY-20260801-A";
+  const VERSION = "1.0.1";
+  const BUILD_ID = "EEI101-TERMINOLOGY-REFINEMENT-20260801-A";
   const SCHEMA = "meos.executive-evidence-integrity.package.v1";
 
   const EVIDENCE_CLASSES = Object.freeze({
@@ -279,24 +279,97 @@
     return REPRESENTATION_MODES.FACT;
   }
 
+  function isHighValueInstitutionalTerm(value, source = "derived") {
+    const term = String(value || "").trim();
+    const normalized = normalizeText(term);
+
+    if (!normalized || normalized.length < 4 || normalized.length > 120) {
+      return false;
+    }
+
+    const genericTerms = new Set([
+      "description",
+      "content",
+      "summary",
+      "information",
+      "organization",
+      "program",
+      "services",
+      "support",
+      "community",
+      "county",
+      "website",
+      "page",
+      "document",
+      "official",
+      "institutional",
+      "knowledge",
+      "memory",
+      "general",
+      "other"
+    ]);
+
+    if (genericTerms.has(normalized)) {
+      return false;
+    }
+
+    /*
+     * Explicit terminology supplied by an authoritative source is trusted,
+     * including lowercase phrases such as "emergency hotel vouchers."
+     */
+    if (source === "explicit") {
+      return true;
+    }
+
+    const words = normalized.split(" ").filter(Boolean);
+    const originalWords = term.split(/\s+/).filter(Boolean);
+
+    const isMultiWordPhrase = words.length >= 2;
+    const isAcronym =
+      /^[A-Z0-9][A-Z0-9&./-]{1,14}$/.test(term);
+    const hasInstitutionalCapitalization =
+      originalWords.length >= 2 &&
+      originalWords.filter((word) =>
+        /^[A-Z][A-Za-z0-9'’&/-]*$/.test(word)
+      ).length >= 2;
+    const looksLikeFormalHeading =
+      isMultiWordPhrase &&
+      (
+        hasInstitutionalCapitalization ||
+        /[:—–-]/.test(term)
+      );
+
+    return isAcronym || looksLikeFormalHeading;
+  }
+
   function extractOfficialTerms(item = {}) {
     const explicitTerms = uniqueStrings([
       ...(item.officialTerms || []),
       ...(item.terminologyLocks || []),
       ...(item.raw?.officialTerms || []),
       ...(item.raw?.terminologyLocks || [])
-    ]);
+    ]).filter((value) =>
+      isHighValueInstitutionalTerm(value, "explicit")
+    );
 
     const headingTerms = uniqueStrings([
       item.sectionTitle,
-      item.title,
-      ...(item.topics || [])
-    ]).filter((value) => {
-      const normalized = normalizeText(value);
-      return normalized.length >= 4 && normalized.length <= 120;
-    });
+      item.title
+    ]).filter((value) =>
+      isHighValueInstitutionalTerm(value, "heading")
+    );
 
-    return uniqueStrings([...explicitTerms, ...headingTerms]);
+    const topicTerms = uniqueStrings([
+      ...(item.topics || [])
+    ]).filter((value) =>
+      isHighValueInstitutionalTerm(value, "topic")
+    );
+
+    return uniqueStrings([
+      ...explicitTerms,
+      ...headingTerms,
+      ...topicTerms
+    ]);
   }
 
   function buildProvenance(item = {}) {
@@ -877,7 +950,14 @@
           "Emergency Extractions",
           "emergency hotel vouchers"
         ],
-        topics: ["veterans", "crisis support"],
+        topics: [
+          "veterans",
+          "crisis support",
+          "Frontline Fellowship",
+          "Description",
+          "county",
+          "running"
+        ],
         mission: "Emergency Extraction",
         methods: [
           "emergency hotel vouchers",
@@ -981,6 +1061,33 @@
         passed:
           correction.success === true &&
           correction.correction.acknowledged === true
+      },
+      {
+        name: "Generic words are not terminology locks",
+        passed:
+          !result.terminologyLocks.some(
+            (item) =>
+              ["description", "county", "running", "veterans"]
+                .includes(item.normalized)
+          )
+      },
+      {
+        name: "High-value institutional phrases remain protected",
+        passed:
+          result.terminologyLocks.some(
+            (item) => item.term === "Frontline Fellowship"
+          ) &&
+          result.terminologyLocks.some(
+            (item) => item.term === "Emergency Extractions"
+          ) &&
+          result.terminologyLocks.some(
+            (item) => item.term === "emergency hotel vouchers"
+          )
+      },
+      {
+        name: "Terminology lock set remains concise",
+        passed:
+          result.terminologyLocks.length <= 8
       },
       {
         name: "Language contract prohibits paraphrase-as-quote",
