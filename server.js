@@ -17,9 +17,11 @@
 import express from "express";
 import path from "path";
 import crypto from "crypto";
+import dns from "dns/promises";
+import net from "net";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.0.1";
+const VERSION = "2.0.2";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -35,6 +37,30 @@ const ELEVENLABS_MODEL_ID =
 
 const MAX_SDP_LENGTH = 1_000_000;
 const MAX_TTS_TEXT_LENGTH = 5_000;
+
+const WEBSITE_FETCH_TIMEOUT_MS = Number(
+  process.env.MEOS_WEBSITE_FETCH_TIMEOUT_MS || 15000
+);
+const WEBSITE_FETCH_MAX_BYTES = Number(
+  process.env.MEOS_WEBSITE_FETCH_MAX_BYTES || 2_000_000
+);
+const WEBSITE_FETCH_MAX_REDIRECTS = Number(
+  process.env.MEOS_WEBSITE_FETCH_MAX_REDIRECTS || 5
+);
+const WEBSITE_FETCH_ALLOWED_ORIGINS = new Set(
+  String(process.env.MEOS_WEBSITE_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean)
+    .map(value => {
+      try {
+        return new URL(value).origin;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+);
 
 /**
  * Completed audio remains briefly available so a repeated request carrying
@@ -121,6 +147,259 @@ function normalizeIdentifier(value) {
   }
 
   return normalized.replace(/[^a-zA-Z0-9._:-]/g, "");
+}
+
+
+function isPrivateOrReservedIp(address) {
+  const family = net.isIP(address);
+
+  if (family === 4) {
+    const parts = address.split(".").map(Number);
+    const [a, b] = parts;
+
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 198 && (b === 18 || b === 19)) ||
+      a >= 224
+    );
+  }
+
+  if (family === 6) {
+    const normalized = address.toLowerCase();
+
+    return (
+      normalized === "::" ||
+      normalized === "::1" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe8") ||
+      normalized.startsWith("fe9") ||
+      normalized.startsWith("fea") ||
+      normalized.startsWith("feb") ||
+      normalized.startsWith("ff") ||
+      normalized.startsWith("2001:db8:")
+    );
+  }
+
+  return true;
+}
+
+async function validateWebsiteFetchUrl(value) {
+  let target;
+
+  try {
+    target = new URL(String(value || ""));
+  } catch {
+    const error = new Error("A valid website URL is required.");
+    error.status = 400;
+    error.code = "WEBSITE_FETCH_INVALID_URL";
+    throw error;
+  }
+
+  target.hash = "";
+
+  if (!['http:', 'https:'].includes(target.protocol)) {
+    const error = new Error("Only HTTP and HTTPS website URLs are allowed.");
+    error.status = 400;
+    error.code = "WEBSITE_FETCH_PROTOCOL_BLOCKED";
+    throw error;
+  }
+
+  if (!WEBSITE_FETCH_ALLOWED_ORIGINS.has(target.origin)) {
+    const error = new Error("This website origin is not approved for MEOS crawling.");
+    error.status = 403;
+    error.code = "WEBSITE_FETCH_ORIGIN_NOT_ALLOWED";
+    error.details = {
+      origin: target.origin,
+      configuredOrigins: [...WEBSITE_FETCH_ALLOWED_ORIGINS]
+    };
+    throw error;
+  }
+
+  let addresses;
+
+  try {
+    addresses = await dns.lookup(target.hostname, { all: true, verbatim: true });
+  } catch {
+    const error = new Error("The approved website hostname could not be resolved.");
+    error.status = 502;
+    error.code = "WEBSITE_FETCH_DNS_FAILED";
+    throw error;
+  }
+
+  if (
+    addresses.length === 0 ||
+    addresses.some(record => isPrivateOrReservedIp(record.address))
+  ) {
+    const error = new Error("The website resolved to a blocked network address.");
+    error.status = 403;
+    error.code = "WEBSITE_FETCH_PRIVATE_NETWORK_BLOCKED";
+    throw error;
+  }
+
+  return target;
+}
+
+async function readLimitedResponseBody(providerResponse) {
+  const declaredLength = Number(
+    providerResponse.headers.get("content-length") || 0
+  );
+
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > WEBSITE_FETCH_MAX_BYTES
+  ) {
+    const error = new Error("The website page is larger than the MEOS crawl limit.");
+    error.status = 413;
+    error.code = "WEBSITE_FETCH_PAGE_TOO_LARGE";
+    throw error;
+  }
+
+  if (!providerResponse.body) {
+    return Buffer.alloc(0);
+  }
+
+  const chunks = [];
+  let totalBytes = 0;
+
+  for await (const chunk of providerResponse.body) {
+    const buffer = Buffer.from(chunk);
+    totalBytes += buffer.length;
+
+    if (totalBytes > WEBSITE_FETCH_MAX_BYTES) {
+      const error = new Error("The website page exceeded the MEOS crawl limit.");
+      error.status = 413;
+      error.code = "WEBSITE_FETCH_PAGE_TOO_LARGE";
+      throw error;
+    }
+
+    chunks.push(buffer);
+  }
+
+  return Buffer.concat(chunks);
+}
+
+async function fetchApprovedWebsitePage(initialUrl) {
+  let target = await validateWebsiteFetchUrl(initialUrl);
+  const visited = new Set();
+
+  for (let redirectCount = 0; redirectCount <= WEBSITE_FETCH_MAX_REDIRECTS; redirectCount += 1) {
+    if (visited.has(target.href)) {
+      const error = new Error("The website returned a redirect loop.");
+      error.status = 502;
+      error.code = "WEBSITE_FETCH_REDIRECT_LOOP";
+      throw error;
+    }
+
+    visited.add(target.href);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      WEBSITE_FETCH_TIMEOUT_MS
+    );
+
+    let providerResponse;
+
+    try {
+      providerResponse = await fetch(target, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+          "User-Agent": "MEOS-Website-Intelligence/1.0 (+authorized-organization-crawl)"
+        }
+      });
+    } catch (error) {
+      const fetchError = new Error(
+        error?.name === "AbortError"
+          ? "The approved website request timed out."
+          : "The approved website could not be retrieved."
+      );
+      fetchError.status = error?.name === "AbortError" ? 504 : 502;
+      fetchError.code =
+        error?.name === "AbortError"
+          ? "WEBSITE_FETCH_TIMEOUT"
+          : "WEBSITE_FETCH_FAILED";
+      throw fetchError;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (
+      providerResponse.status >= 300 &&
+      providerResponse.status < 400
+    ) {
+      const location = providerResponse.headers.get("location");
+
+      if (!location) {
+        const error = new Error("The website returned a redirect without a destination.");
+        error.status = 502;
+        error.code = "WEBSITE_FETCH_REDIRECT_INVALID";
+        throw error;
+      }
+
+      if (redirectCount === WEBSITE_FETCH_MAX_REDIRECTS) {
+        const error = new Error("The website exceeded the MEOS redirect limit.");
+        error.status = 502;
+        error.code = "WEBSITE_FETCH_TOO_MANY_REDIRECTS";
+        throw error;
+      }
+
+      target = await validateWebsiteFetchUrl(
+        new URL(location, target).href
+      );
+      continue;
+    }
+
+    if (!providerResponse.ok) {
+      const error = new Error(
+        `The approved website returned HTTP ${providerResponse.status}.`
+      );
+      error.status = 502;
+      error.code = "WEBSITE_FETCH_UPSTREAM_HTTP_ERROR";
+      error.details = { upstreamStatus: providerResponse.status };
+      throw error;
+    }
+
+    const contentType =
+      providerResponse.headers.get("content-type") ||
+      "application/octet-stream";
+
+    if (
+      !contentType.includes("text/html") &&
+      !contentType.includes("application/xhtml+xml") &&
+      !contentType.includes("text/plain")
+    ) {
+      const error = new Error("The approved URL did not return readable website content.");
+      error.status = 415;
+      error.code = "WEBSITE_FETCH_UNSUPPORTED_CONTENT";
+      error.details = { contentType };
+      throw error;
+    }
+
+    const body = await readLimitedResponseBody(providerResponse);
+
+    return {
+      requestedUrl: initialUrl,
+      finalUrl: target.href,
+      status: providerResponse.status,
+      contentType,
+      body
+    };
+  }
+
+  const error = new Error("The website fetch could not be completed.");
+  error.status = 502;
+  error.code = "WEBSITE_FETCH_INCOMPLETE";
+  throw error;
 }
 
 function isVoiceEngineV2Request(request) {
@@ -536,6 +815,79 @@ app.post(
   }
 );
 
+
+
+/**
+ * Fetch one approved organization website page for the frontend Website
+ * Intelligence Connector.
+ *
+ * Security:
+ * - Exact origins must be configured in MEOS_WEBSITE_ALLOWED_ORIGINS.
+ * - Private, loopback, link-local, multicast, and reserved addresses are blocked.
+ * - Redirect destinations are revalidated against the same rules.
+ * - Response size, timeout, redirect count, and content type are restricted.
+ */
+app.get("/api/website-intelligence/fetch", async (request, response) => {
+  const requestId = createRequestId("website-fetch");
+  const requestedUrl =
+    typeof request.query?.url === "string"
+      ? request.query.url.trim()
+      : "";
+
+  if (!requestedUrl) {
+    response.status(400).json({
+      error: "Website URL is required.",
+      code: "WEBSITE_FETCH_URL_REQUIRED"
+    });
+    return;
+  }
+
+  if (WEBSITE_FETCH_ALLOWED_ORIGINS.size === 0) {
+    response.status(503).json({
+      error: "Website Intelligence has no approved website origins configured.",
+      code: "WEBSITE_FETCH_NOT_CONFIGURED"
+    });
+    return;
+  }
+
+  console.log(
+    `[MEOS][${requestId}] Website Intelligence fetch requested. ` +
+      `url=${requestedUrl}`
+  );
+
+  try {
+    const result = await fetchApprovedWebsitePage(requestedUrl);
+
+    response
+      .status(200)
+      .type(result.contentType)
+      .set({
+        "Cache-Control": "no-store",
+        "X-MEOS-Website-Intelligence": "1.0.0",
+        "X-MEOS-Final-URL": result.finalUrl,
+        "X-Content-Type-Options": "nosniff",
+        "Content-Length": String(result.body.length)
+      })
+      .send(result.body);
+
+    console.log(
+      `[MEOS][${requestId}] Website Intelligence fetch completed. ` +
+        `finalUrl=${result.finalUrl}, bytes=${result.body.length}.`
+    );
+  } catch (error) {
+    console.error(
+      `[MEOS][${requestId}] Website Intelligence fetch failed:`,
+      error
+    );
+
+    response.status(error.status || 500).json({
+      error: error.message || "The approved website could not be retrieved.",
+      code: error.code || "WEBSITE_FETCH_ERROR",
+      details: error.details || null
+    });
+  }
+});
+
 app.get("/health", (request, response) => {
   pruneTtsCache();
 
@@ -550,7 +902,17 @@ app.get("/health", (request, response) => {
       elevenlabs:
         ELEVENLABS_API_KEY && ELEVENLABS_VOICE_ID
           ? "configured"
-          : "missing"
+          : "missing",
+      websiteIntelligence:
+        WEBSITE_FETCH_ALLOWED_ORIGINS.size > 0
+          ? "configured"
+          : "missing-allowlist"
+    },
+    websiteIntelligence: {
+      approvedOrigins: [...WEBSITE_FETCH_ALLOWED_ORIGINS],
+      timeoutMs: WEBSITE_FETCH_TIMEOUT_MS,
+      maximumBytes: WEBSITE_FETCH_MAX_BYTES,
+      maximumRedirects: WEBSITE_FETCH_MAX_REDIRECTS
     },
     ttsDeduplication: {
       activeRequests: inFlightTtsRequests.size,
