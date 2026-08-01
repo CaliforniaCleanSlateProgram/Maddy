@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.0
+ * File Version: 2.0.1
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -18,14 +18,15 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.0";
+  const VERSION = "2.0.1";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE200-OPENAI-20260730-A";
+  const BUILD_ID = "VE201-MEOS-ROUTED-20260731-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
 
   const RESPONSE_TIMEOUT_MS = 45_000;
+  const TRANSCRIPT_TIMEOUT_MS = 5_000;
   const MAX_HANDLED_RESPONSE_IDS = 200;
 
   const state = {
@@ -52,7 +53,12 @@
 
     responseTextById: new Map(),
     handledResponseIds: new Set(),
-    responseTimeout: null
+    responseTimeout: null,
+
+    awaitingTranscript: false,
+    transcriptTimeout: null,
+    lastTranscript: "",
+    lastRouterResult: null
   };
 
   function now() {
@@ -116,6 +122,10 @@
 
       responseInProgress: state.responseInProgress,
       activeResponseId: state.activeResponseId,
+
+      awaitingTranscript: state.awaitingTranscript,
+      lastTranscript: state.lastTranscript,
+      lastRoute: state.lastRouterResult?.route || null,
 
       microphoneActive: Boolean(
         state.microphoneStream?.getTracks().some(
@@ -260,6 +270,11 @@
 
         audio: {
           input: {
+            transcription: {
+              model: "gpt-4o-mini-transcribe",
+              language: "en"
+            },
+
             turn_detection: {
                 type: "server_vad",
                 threshold: 0.72,
@@ -321,6 +336,11 @@
     state.responseRequestedForTurn = false;
     state.responseRequestedAt = null;
 
+    clearTranscriptTimeout();
+    state.awaitingTranscript = false;
+    state.lastTranscript = "";
+    state.lastRouterResult = null;
+
     resetActiveResponseState();
 
     log(`User turn started: ${state.activeTurnId}`, {
@@ -333,7 +353,289 @@
     });
   }
 
-  function authorizeSingleResponse(message = {}) {
+  function clearTranscriptTimeout() {
+    if (state.transcriptTimeout !== null) {
+      global.clearTimeout(state.transcriptTimeout);
+      state.transcriptTimeout = null;
+    }
+  }
+
+  function buildCompactExecutiveContext(routerResult, transcript) {
+    const executivePackage =
+      routerResult?.package ||
+      routerResult?.output?.package ||
+      null;
+
+    const output = routerResult?.output || {};
+    const organization =
+      executivePackage?.organization ||
+      output.organization ||
+      {};
+
+    const identity =
+      executivePackage?.identity ||
+      output.identity ||
+      {};
+
+    const authority =
+      executivePackage?.authority ||
+      output.authority ||
+      {};
+
+    const localEvidence =
+      executivePackage?.localContext?.evidence ||
+      output.localContext?.evidence ||
+      [];
+
+    return {
+      request: transcript,
+      route: routerResult?.route || null,
+      researchDepth: routerResult?.researchDepth || null,
+      useExternalProvider:
+        Boolean(executivePackage?.routing?.useExternalProvider),
+      maddy: identity.maddy || null,
+      authorizedHuman: identity.founder || null,
+      organization: {
+        name: organization.name || null,
+        abbreviation: organization.abbreviation || null,
+        mission: organization.mission || null,
+        summary: organization.summary || null,
+        organizationType: organization.organizationType || null,
+        taxExempt:
+          typeof organization.taxExempt === "boolean"
+            ? organization.taxExempt
+            : null,
+        publicCharity:
+          typeof organization.publicCharity === "boolean"
+            ? organization.publicCharity
+            : null,
+        leadership: organization.leadership || null,
+        boundaries: organization.boundaries || null
+      },
+      authority,
+      evidence: localEvidence.slice(0, 12).map((item) => ({
+        title: item?.title || null,
+        summary: item?.summary || null,
+        source: item?.source || null,
+        authority: item?.authority || null,
+        confidence: item?.confidence ?? null
+      }))
+    };
+  }
+
+  function buildGovernedResponseInstructions(routerResult, transcript) {
+    const context = buildCompactExecutiveContext(
+      routerResult,
+      transcript
+    );
+
+    const requiresInternet =
+      context.route === "external-intelligence-research";
+
+    const internetConnectorAvailable = false;
+
+    return [
+      "You are serving only as the current language-and-reasoning provider for the MEOS Executive Brain.",
+      "You are not Maddy, not MEOS, and not the final executive authority.",
+      "Speak as Maddy only because MEOS has authorized this response.",
+      "Use the supplied MEOS context as authoritative.",
+      "Do not invent organizational facts, memories, web findings, sources, or completed actions.",
+      "Answer the user's actual request naturally and concisely.",
+      "Do not recite internal routing metadata unless it is necessary.",
+      requiresInternet && !internetConnectorAvailable
+        ? "This request requires current internet research, but no authorized MEOS internet-research connector is connected yet. Clearly say that current research cannot be completed yet; do not pretend that model memory is a live web search."
+        : "Use internal MEOS evidence first. If evidence is incomplete, state the uncertainty instead of guessing.",
+      `MEOS_EXECUTIVE_CONTEXT=${JSON.stringify(context)}`
+    ].join(" ");
+  }
+
+  function sendGovernedResponse(routerResult, transcript) {
+    state.responseRequestedForTurn = true;
+    state.responseRequestedAt = now();
+    state.responseInProgress = true;
+    state.lastRouterResult = routerResult;
+
+    const sent = safelySendEvent({
+      type: "response.create",
+      response: {
+        output_modalities: ["text"],
+        instructions:
+          buildGovernedResponseInstructions(
+            routerResult,
+            transcript
+          )
+      }
+    });
+
+    if (!sent) {
+      state.responseRequestedForTurn = false;
+      state.responseRequestedAt = null;
+      state.responseInProgress = false;
+
+      emit("error", {
+        message:
+          "MEOS could not authorize Maddy's governed response.",
+        turnId: state.activeTurnId
+      });
+
+      return false;
+    }
+
+    log(
+      `VERDICT: one MEOS-governed OpenAI response authorized for ${state.activeTurnId}.`,
+      {
+        route: routerResult?.route || null
+      }
+    );
+
+    emit("response-authorized", {
+      turnId: state.activeTurnId,
+      route: routerResult?.route || null,
+      authorizationLatencyMs:
+        state.turnStoppedAt !== null
+          ? elapsedSince(state.turnStoppedAt)
+          : null
+    });
+
+    return true;
+  }
+
+  async function routeTranscriptAndAuthorize(
+    transcript,
+    message = {}
+  ) {
+    const cleanTranscript =
+      typeof transcript === "string"
+        ? transcript.trim()
+        : "";
+
+    if (!cleanTranscript) {
+      warn("MEOS received an empty user transcript.");
+
+      emit("error", {
+        message:
+          "Maddy could not understand that turn clearly enough to route it.",
+        turnId: state.activeTurnId
+      });
+
+      return false;
+    }
+
+    if (state.responseRequestedForTurn) {
+      warn(
+        `Duplicate routed response blocked for ${state.activeTurnId}.`
+      );
+
+      emit("duplicate-blocked", {
+        layer: "meos-router-authorization",
+        turnId: state.activeTurnId
+      });
+
+      return false;
+    }
+
+    if (state.responseInProgress) {
+      warn(
+        `Routed response blocked because another response is active: ` +
+          `${state.activeResponseId || "unknown"}.`
+      );
+
+      return false;
+    }
+
+    const router = global.ExecutiveRouter;
+
+    if (!router || typeof router.handle !== "function") {
+      emit("error", {
+        message:
+          "The MEOS Executive Router is not available.",
+        turnId: state.activeTurnId
+      });
+
+      return false;
+    }
+
+    state.lastTranscript = cleanTranscript;
+
+    emit("transcript-completed", {
+      turnId: state.activeTurnId,
+      transcript: cleanTranscript,
+      itemId: message.item_id || null
+    });
+
+    try {
+      const routerResult = await router.handle(
+        cleanTranscript,
+        {
+          source: "openai-realtime-transcript",
+          requestId: state.activeTurnId
+        }
+      );
+
+      emit("request-routed", {
+        turnId: state.activeTurnId,
+        route: routerResult.route,
+        researchDepth: routerResult.researchDepth,
+        provider: routerResult.provider || null
+      });
+
+      return sendGovernedResponse(
+        routerResult,
+        cleanTranscript
+      );
+    } catch (error) {
+      const brain = global.ExecutiveBrain;
+      const brainResult =
+        brain && typeof brain.routeRequest === "function"
+          ? brain.routeRequest(cleanTranscript, {
+              requestId: state.activeTurnId,
+              source: "openai-realtime-transcript"
+            })
+          : null;
+
+      if (brainResult?.success && brainResult?.package) {
+        const limitedResult = {
+          success: true,
+          route: brainResult.route,
+          researchDepth: brainResult.researchDepth,
+          provider: null,
+          package: brainResult.package,
+          limitation: {
+            code: error?.code || "MEOS_PROVIDER_UNAVAILABLE",
+            message:
+              "No authorized current-internet connector is connected."
+          }
+        };
+
+        emit("provider-unavailable", {
+          turnId: state.activeTurnId,
+          route: brainResult.route,
+          message: error?.message || String(error)
+        });
+
+        return sendGovernedResponse(
+          limitedResult,
+          cleanTranscript
+        );
+      }
+
+      console.error(
+        `[MEOS Voice v${VERSION}] Executive routing failed:`,
+        error
+      );
+
+      emit("error", {
+        message:
+          error?.message ||
+          "MEOS could not route the user request.",
+        turnId: state.activeTurnId
+      });
+
+      return false;
+    }
+  }
+
+  function awaitTranscriptBeforeResponse(message = {}) {
     if (!state.activeTurnId) {
       warn(
         "Speech stopped without an active turn. Creating a recovery turn."
@@ -345,6 +647,7 @@
     }
 
     state.turnStoppedAt = now();
+    state.awaitingTranscript = true;
 
     emit("speech-stopped", {
       turnId: state.activeTurnId,
@@ -355,77 +658,61 @@
           : null
     });
 
-    if (state.responseRequestedForTurn) {
-      warn(
-        `Duplicate response authorization blocked for ${state.activeTurnId}.`
-      );
+    clearTranscriptTimeout();
 
-      emit("duplicate-blocked", {
-        layer: "openai-authorization",
-        turnId: state.activeTurnId
-      });
-
-      return false;
-    }
-
-    if (state.responseInProgress) {
-      warn(
-        `Response authorization blocked because another response is active: ` +
-          `${state.activeResponseId || "unknown"}.`
-      );
-
-      emit("duplicate-blocked", {
-        layer: "openai-active-response",
-        turnId: state.activeTurnId,
-        responseId: state.activeResponseId
-      });
-
-      return false;
-    }
-
-    /**
-     * Lock the turn before sending response.create.
-     * A duplicate speech_stopped event therefore cannot create another
-     * billable model response.
-     */
-    state.responseRequestedForTurn = true;
-    state.responseRequestedAt = now();
-    state.responseInProgress = true;
-
-    const sent = safelySendEvent({
-      type: "response.create",
-      response: {
-        output_modalities: ["text"]
+    state.transcriptTimeout = global.setTimeout(() => {
+      if (!state.awaitingTranscript) {
+        return;
       }
-    });
 
-    if (!sent) {
-      state.responseRequestedForTurn = false;
-      state.responseRequestedAt = null;
-      state.responseInProgress = false;
+      state.awaitingTranscript = false;
+
+      warn(
+        `Transcript timed out for ${state.activeTurnId}; no model response was created.`
+      );
 
       emit("error", {
         message:
-          "MEOS could not authorize Maddy's response.",
+          "Maddy heard the turn but did not receive a usable transcript.",
         turnId: state.activeTurnId
       });
-
-      return false;
-    }
+    }, TRANSCRIPT_TIMEOUT_MS);
 
     log(
-      `VERDICT: one OpenAI response authorized for ${state.activeTurnId}.`
+      `User turn committed; awaiting MEOS transcript routing: ${state.activeTurnId}.`
     );
 
-    emit("response-authorized", {
-      turnId: state.activeTurnId,
-      authorizationLatencyMs:
-        state.turnStoppedAt !== null
-          ? elapsedSince(state.turnStoppedAt)
-          : null
-    });
-
     return true;
+  }
+
+  function handleInputTranscriptionCompleted(message = {}) {
+    if (!state.awaitingTranscript) {
+      return;
+    }
+
+    clearTranscriptTimeout();
+    state.awaitingTranscript = false;
+
+    void routeTranscriptAndAuthorize(
+      message.transcript,
+      message
+    );
+  }
+
+  function handleInputTranscriptionFailed(message = {}) {
+    clearTranscriptTimeout();
+    state.awaitingTranscript = false;
+
+    const failure =
+      message?.error?.message ||
+      "Input transcription failed.";
+
+    warn(failure, message);
+
+    emit("error", {
+      message: failure,
+      turnId: state.activeTurnId
+    });
   }
 
   function cancelActiveResponse(reason = "cancelled") {
@@ -782,7 +1069,7 @@
       new CustomEvent("meos:maddy:response", {
         detail: {
           text: responseText,
-          source: "openai-realtime",
+          source: "meos-governed-openai-realtime",
 
           authorized: true,
           turnId: state.activeTurnId,
@@ -848,7 +1135,15 @@
         break;
 
       case "input_audio_buffer.speech_stopped":
-        authorizeSingleResponse(message);
+        awaitTranscriptBeforeResponse(message);
+        break;
+
+      case "conversation.item.input_audio_transcription.completed":
+        handleInputTranscriptionCompleted(message);
+        break;
+
+      case "conversation.item.input_audio_transcription.failed":
+        handleInputTranscriptionFailed(message);
         break;
 
       case "response.created":
@@ -1096,6 +1391,8 @@
       options.reason || "manual-disconnect";
 
     clearResponseTimeout();
+    clearTranscriptTimeout();
+    state.awaitingTranscript = false;
 
     if (state.responseInProgress) {
       cancelActiveResponse(reason);
