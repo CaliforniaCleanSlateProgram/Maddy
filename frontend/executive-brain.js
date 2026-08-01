@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.0.1
- * Build: EB101-MADDY-20260731-A
+ * Version: 1.0.2
+ * Build: EB102-EVIDENCE-INTEGRITY-20260801-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.0.1";
-  const BUILD_ID = "EB101-MADDY-20260731-A";
+  const VERSION = "1.0.2";
+  const BUILD_ID = "EB102-EVIDENCE-INTEGRITY-20260801-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
 
   const REQUEST_TYPES = Object.freeze({
@@ -37,6 +37,7 @@
     ["KnowledgeEngine", "Knowledge Engine", "Institutional facts, entities, relationships, sources, and timelines."],
     ["KnowledgeMemory", "Knowledge Memory", "Documents, passages, citations, versions, conflicts, and executive recall."],
     ["ExecutiveRecall", "Executive Recall", "Reconstructs relevant executive context."],
+    ["ExecutiveEvidenceIntegrity", "Executive Evidence Integrity", "Classifies evidence, preserves institutional terminology, and separates facts, summaries, inferences, and recommendations."],
     ["ExecutiveDecision", "Executive Decision", "Compares options and prepares explainable recommendations."],
     ["ExecutiveLearning", "Executive Learning", "Turns outcomes and feedback into governed lessons."],
     ["ExecutiveMonitoring", "Executive Monitoring", "Watches risks, deadlines, stalled work, and approvals."],
@@ -66,7 +67,9 @@
       requestCacheTtlMs: 15000,
       maximumEvidenceItems: 24,
       maximumOpenWorkItems: 20,
-      requireHumanApprovalForExternalAction: true
+      requireHumanApprovalForExternalAction: true,
+      requireEvidenceIntegrity: true,
+      allowIntegrityFallback: true
     },
 
     initializedAt: null,
@@ -263,10 +266,19 @@
       const started = this.now();
       const classification = this.classifyRequest(text, options);
       const startup = this.buildStartupContext();
-      const localContext = this.collectLocalContext(
+      const rawLocalContext = this.collectLocalContext(
         text,
         classification,
         options
+      );
+      const evidenceIntegrity = this.prepareEvidenceIntegrity(
+        text,
+        rawLocalContext,
+        options
+      );
+      const localContext = this.applyIntegrityToLocalContext(
+        rawLocalContext,
+        evidenceIntegrity
       );
       const routing = this.route(
         classification,
@@ -304,6 +316,7 @@
         },
 
         localContext,
+        evidenceIntegrity,
         routing,
 
         providerInstructions: this.buildProviderInstructions({
@@ -311,6 +324,7 @@
           classification,
           startup,
           localContext,
+          evidenceIntegrity,
           routing
         }),
 
@@ -339,6 +353,12 @@
         requestId: prepared.request.id,
         type: prepared.request.type,
         route: prepared.routing.primaryRoute,
+        evidenceIntegrityApplied:
+          prepared.localContext?.integrity?.applied === true,
+        evidenceIntegrityConfidence:
+          prepared.evidenceIntegrity?.confidence || 0,
+        integrityConflictCount:
+          prepared.evidenceIntegrity?.conflicts?.length || 0,
         durationMs: prepared.durationMs
       });
 
@@ -496,6 +516,156 @@
       };
     },
 
+    prepareEvidenceIntegrity(subject, localContext, options = {}) {
+      const engine = global.ExecutiveEvidenceIntegrity;
+
+      if (!engine || typeof engine.prepare !== "function") {
+        if (
+          this.configuration.requireEvidenceIntegrity &&
+          !this.configuration.allowIntegrityFallback
+        ) {
+          throw new Error(
+            "Executive Evidence Integrity is required but unavailable."
+          );
+        }
+
+        return {
+          success: false,
+          available: false,
+          fallback: true,
+          subject,
+          confidence: localContext?.confidence || 0,
+          officialFacts: [],
+          verifiedInstitutionalKnowledge: [],
+          verifiedExternalSources: [],
+          executiveSummaries: [],
+          executiveInferences: [],
+          executiveRecommendations: [],
+          unverifiedInformation: [],
+          terminologyLocks: [],
+          missionRelationships: [],
+          conflicts: [],
+          citations: [],
+          allEvidence: [],
+          languageContract: {
+            primaryRule:
+              "Use available MEOS evidence honestly and do not invent unsupported organizational language.",
+            uncertaintyRequired: true,
+            evidenceDetailsAvailable: true
+          },
+          generatedAt: new Date().toISOString()
+        };
+      }
+
+      return this.safe(
+        () =>
+          engine.prepare({
+            subject,
+            evidence: localContext?.evidence || [],
+            requestType: options.requestType || null,
+            source: options.source || "executive-brain"
+          }),
+        {
+          success: false,
+          available: true,
+          fallback: true,
+          subject,
+          confidence: localContext?.confidence || 0,
+          officialFacts: [],
+          verifiedInstitutionalKnowledge: [],
+          verifiedExternalSources: [],
+          executiveSummaries: [],
+          executiveInferences: [],
+          executiveRecommendations: [],
+          unverifiedInformation: [],
+          terminologyLocks: [],
+          missionRelationships: [],
+          conflicts: [],
+          citations: [],
+          allEvidence: [],
+          languageContract: {
+            primaryRule:
+              "Evidence integrity processing failed. Use available evidence cautiously and state uncertainty.",
+            uncertaintyRequired: true,
+            evidenceDetailsAvailable: true
+          },
+          generatedAt: new Date().toISOString()
+        }
+      );
+    },
+
+    applyIntegrityToLocalContext(localContext, integrityPackage) {
+      const governedEvidence =
+        Array.isArray(integrityPackage?.allEvidence) &&
+        integrityPackage.allEvidence.length > 0
+          ? integrityPackage.allEvidence.map(item => ({
+              id: item.id,
+              title: item.title,
+              summary: item.summary || item.content || "",
+              content: item.content || item.summary || "",
+              source:
+                item.provenance?.sourceType ||
+                item.original?.source ||
+                item.original?.sourceType ||
+                "Executive Evidence Integrity",
+              authority:
+                item.provenance?.authority ||
+                item.original?.authority ||
+                "unknown",
+              confidence: item.confidence,
+              date:
+                item.provenance?.retrievedAt ||
+                item.original?.date ||
+                null,
+              citation:
+                item.provenance?.citation ||
+                item.original?.citation ||
+                null,
+              evidenceClass: item.evidenceClass,
+              representationMode: item.representationMode,
+              officialTerms: item.officialTerms || [],
+              provenance: item.provenance || null,
+              raw: item.original || item
+            }))
+          : localContext?.evidence || [];
+
+      return {
+        ...localContext,
+        evidence: governedEvidence,
+        confidence:
+          integrityPackage?.success === true
+            ? integrityPackage.confidence
+            : localContext?.confidence || 0,
+        answerableLocally:
+          Boolean(localContext?.answerableLocally) &&
+          governedEvidence.length > 0,
+        integrity: {
+          available:
+            integrityPackage?.available !== false,
+          applied:
+            integrityPackage?.success === true,
+          fallback:
+            integrityPackage?.fallback === true,
+          confidence:
+            integrityPackage?.confidence || 0,
+          officialFactCount:
+            integrityPackage?.officialFacts?.length || 0,
+          verifiedInstitutionalCount:
+            integrityPackage?.verifiedInstitutionalKnowledge?.length || 0,
+          verifiedExternalCount:
+            integrityPackage?.verifiedExternalSources?.length || 0,
+          conflictCount:
+            integrityPackage?.conflicts?.length || 0,
+          terminologyLockCount:
+            integrityPackage?.terminologyLocks?.length || 0,
+          uncertaintyRequired:
+            Boolean(
+              integrityPackage?.languageContract?.uncertaintyRequired
+            )
+        }
+      };
+    },
+
     route(classification, localContext, options = {}) {
       const supportingRoutes = [];
       let primaryRoute = "local-recall-plus-provider-reasoning";
@@ -564,8 +734,40 @@
           summary: item.summary,
           source: item.source,
           authority: item.authority,
-          confidence: item.confidence
+          confidence: item.confidence,
+          evidenceClass: item.evidenceClass || null,
+          representationMode: item.representationMode || null,
+          officialTerms: item.officialTerms || []
         })),
+        evidenceIntegrity: context.evidenceIntegrity
+          ? {
+              confidence: context.evidenceIntegrity.confidence,
+              officialFacts:
+                context.evidenceIntegrity.officialFacts?.map(item => ({
+                  title: item.title,
+                  summary: item.summary,
+                  content: item.content,
+                  officialTerms: item.officialTerms,
+                  provenance: item.provenance
+                })) || [],
+              verifiedInstitutionalKnowledge:
+                context.evidenceIntegrity.verifiedInstitutionalKnowledge?.map(item => ({
+                  title: item.title,
+                  summary: item.summary,
+                  content: item.content,
+                  officialTerms: item.officialTerms,
+                  provenance: item.provenance
+                })) || [],
+              terminologyLocks:
+                context.evidenceIntegrity.terminologyLocks || [],
+              missionRelationships:
+                context.evidenceIntegrity.missionRelationships || [],
+              conflicts:
+                context.evidenceIntegrity.conflicts || [],
+              languageContract:
+                context.evidenceIntegrity.languageContract || null
+            }
+          : null,
         routing: context.routing
       };
     },
@@ -1112,7 +1314,28 @@
             raw.createdAt ||
             raw.ingestedAt ||
             item?.date ||
-            null
+            null,
+          evidenceClass:
+            raw.evidenceClass ||
+            item?.evidenceClass ||
+            null,
+          representationMode:
+            raw.representationMode ||
+            item?.representationMode ||
+            null,
+          officialTerms: this.mergeArrays([
+            raw.officialTerms,
+            item?.officialTerms
+          ]),
+          topics: this.mergeArrays([
+            raw.topics,
+            item?.topics
+          ]),
+          citation:
+            item?.citation ||
+            raw.citation ||
+            null,
+          raw
         };
       });
     },
