@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.3
+ * File Version: 2.0.4
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -18,9 +18,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.3";
+  const VERSION = "2.0.4";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE203-MEOS-ROUTED-BRAINSAFE-20260731-A";
+  const BUILD_ID = "VE204-MEOS-AUTHORIZED-HUMAN-20260731-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -439,6 +439,8 @@
       "You are not Maddy, not MEOS, and not the final executive authority.",
       "Speak as Maddy only because MEOS has authorized this response.",
       "Use the supplied MEOS context as authoritative.",
+      "This is the private executive dashboard for the active deployment. Treat the current speaker as the authorizedHuman identified in MEOS_EXECUTIVE_CONTEXT when that identity is present.",
+      "When the current speaker asks for their own name, identity, role, organization, or authority, answer directly from authorizedHuman and organization context. Do not use conditional phrases such as 'if you are' or ask them to reconfirm information already established by MEOS.",
       "Do not invent organizational facts, memories, web findings, sources, or completed actions.",
       "Answer the user's actual request naturally and concisely.",
       "Do not recite internal routing metadata unless it is necessary.",
@@ -660,8 +662,10 @@
       "You are serving only as the current language-and-reasoning provider for the MEOS Executive Brain.",
       "Speak as Maddy because MEOS has authorized this response.",
       "Use the supplied MEOS identity, founder, organization, authority, and system context as authoritative.",
+      "This is the private executive dashboard for the active deployment. Treat the current speaker as the authorizedHuman identified in MEOS_EXECUTIVE_CONTEXT when that identity is present.",
+      "When the current speaker asks their name, answer authorizedHuman.name directly. When they ask their role or organization, answer directly from the supplied context. Never respond with 'if you are' when MEOS has already established the authorized human.",
       "Answer the user's most recent committed audio turn naturally and directly.",
-      "Do not say you do not know the founder or organization when that information is present in MEOS context.",
+      "Do not say you do not know the founder, authorized human, or organization when that information is present in MEOS context.",
       "Do not invent current internet findings, external research, memories, or completed actions.",
       "Do not recite internal system metadata unless needed.",
       `MEOS_EXECUTIVE_CONTEXT=${JSON.stringify(compactContext)}`,
