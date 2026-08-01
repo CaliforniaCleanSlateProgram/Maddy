@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.2
+ * File Version: 2.0.3
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -18,15 +18,15 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.2";
+  const VERSION = "2.0.3";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE202-MEOS-ROUTED-FAILSAFE-20260731-A";
+  const BUILD_ID = "VE203-MEOS-ROUTED-BRAINSAFE-20260731-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
 
   const RESPONSE_TIMEOUT_MS = 45_000;
-  const TRANSCRIPT_TIMEOUT_MS = 8_000;
+  const TRANSCRIPT_TIMEOUT_MS = 900;
   const MAX_HANDLED_RESPONSE_IDS = 200;
 
   const state = {
@@ -271,9 +271,8 @@
         audio: {
           input: {
             transcription: {
-              model: "gpt-live-transcribe",
-              languages: ["en"],
-              delay: "low"
+              model: "gpt-4o-mini-transcribe",
+              language: "en"
             },
 
             turn_detection: {
@@ -638,6 +637,38 @@
     }
   }
 
+  function buildBrainSafeFallbackInstructions(reason) {
+    const brain = global.ExecutiveBrain;
+    const startupContext =
+      brain && typeof brain.buildStartupContext === "function"
+        ? brain.buildStartupContext({ force: true })
+        : null;
+
+    const compactContext = startupContext
+      ? {
+          maddy: startupContext.identity?.maddy || null,
+          authorizedHuman:
+            startupContext.identity?.founder || null,
+          organization: startupContext.organization || null,
+          authority: startupContext.authority || null,
+          availableSystems:
+            startupContext.system?.available || []
+        }
+      : null;
+
+    return [
+      "You are serving only as the current language-and-reasoning provider for the MEOS Executive Brain.",
+      "Speak as Maddy because MEOS has authorized this response.",
+      "Use the supplied MEOS identity, founder, organization, authority, and system context as authoritative.",
+      "Answer the user's most recent committed audio turn naturally and directly.",
+      "Do not say you do not know the founder or organization when that information is present in MEOS context.",
+      "Do not invent current internet findings, external research, memories, or completed actions.",
+      "Do not recite internal system metadata unless needed.",
+      `MEOS_EXECUTIVE_CONTEXT=${JSON.stringify(compactContext)}`,
+      `ROUTING_NOTE=${reason || "transcript not available before response deadline"}`
+    ].join(" ");
+  }
+
   function authorizeFallbackResponse(reason) {
     if (state.responseRequestedForTurn || state.responseInProgress) {
       return false;
@@ -651,13 +682,7 @@
       type: "response.create",
       response: {
         output_modalities: ["text"],
-        instructions: [
-          "Respond naturally to the user's most recent committed audio turn.",
-          "MEOS transcript routing was unavailable for this turn.",
-          "Do not claim that live internet research, memory retrieval, or MEOS internal routing occurred.",
-          "Do not invent organizational facts.",
-          `Fallback reason: ${reason || "transcript unavailable"}`
-        ].join(" ")
+        instructions: buildBrainSafeFallbackInstructions(reason)
       }
     });
 
@@ -669,13 +694,13 @@
     }
 
     warn(
-      `MEOS transcript routing fallback authorized one response for ${state.activeTurnId}.`,
+      `MEOS Brain-safe response authorized for ${state.activeTurnId}.`,
       { reason }
     );
 
     emit("response-authorized", {
       turnId: state.activeTurnId,
-      route: "realtime-fallback",
+      route: "brain-context-fallback",
       fallback: true,
       reason
     });
@@ -716,14 +741,14 @@
       state.awaitingTranscript = false;
 
       warn(
-        `Transcript timed out for ${state.activeTurnId}; using one-response fail-safe.`
+        `Transcript was not ready within ${TRANSCRIPT_TIMEOUT_MS}ms for ${state.activeTurnId}; using Brain-safe response.`
       );
 
       emit("transcript-timeout", {
         turnId: state.activeTurnId
       });
 
-      authorizeFallbackResponse("input transcript timeout");
+      authorizeFallbackResponse("transcript not ready within 900ms");
     }, TRANSCRIPT_TIMEOUT_MS);
 
     log(
@@ -734,15 +759,63 @@
   }
 
   function handleInputTranscriptionCompleted(message = {}) {
-    if (!state.awaitingTranscript) {
+    const transcript =
+      typeof message.transcript === "string"
+        ? message.transcript.trim()
+        : "";
+
+    clearTranscriptTimeout();
+
+    const wasAwaiting = state.awaitingTranscript;
+    state.awaitingTranscript = false;
+
+    if (!transcript) {
+      if (wasAwaiting) {
+        authorizeFallbackResponse("empty input transcript");
+      }
       return;
     }
 
-    clearTranscriptTimeout();
-    state.awaitingTranscript = false;
+    if (state.responseRequestedForTurn || state.responseInProgress) {
+      state.lastTranscript = transcript;
+
+      const router = global.ExecutiveRouter;
+
+      if (router && typeof router.handle === "function") {
+        void router
+          .handle(transcript, {
+            source: "openai-realtime-late-transcript",
+            requestId: state.activeTurnId
+          })
+          .then((routerResult) => {
+            state.lastRouterResult = routerResult;
+
+            emit("request-routed-late", {
+              turnId: state.activeTurnId,
+              route: routerResult.route,
+              researchDepth: routerResult.researchDepth
+            });
+          })
+          .catch((error) => {
+            warn(
+              "Late transcript routing failed.",
+              error
+            );
+          });
+      }
+
+      emit("transcript-completed", {
+        turnId: state.activeTurnId,
+        transcript,
+        itemId: message.item_id || null,
+        late: true
+      });
+
+      return;
+    }
 
     void routeTranscriptAndAuthorize(
-      message.transcript,
+      transcript,
       message
     );
   }
