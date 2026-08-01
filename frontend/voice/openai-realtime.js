@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.1
+ * File Version: 2.0.2
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -18,15 +18,15 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.1";
+  const VERSION = "2.0.2";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE201-MEOS-ROUTED-20260731-A";
+  const BUILD_ID = "VE202-MEOS-ROUTED-FAILSAFE-20260731-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
 
   const RESPONSE_TIMEOUT_MS = 45_000;
-  const TRANSCRIPT_TIMEOUT_MS = 5_000;
+  const TRANSCRIPT_TIMEOUT_MS = 8_000;
   const MAX_HANDLED_RESPONSE_IDS = 200;
 
   const state = {
@@ -271,8 +271,9 @@
         audio: {
           input: {
             transcription: {
-              model: "gpt-4o-mini-transcribe",
-              language: "en"
+              model: "gpt-live-transcribe",
+              languages: ["en"],
+              delay: "low"
             },
 
             turn_detection: {
@@ -512,13 +513,11 @@
     if (!cleanTranscript) {
       warn("MEOS received an empty user transcript.");
 
-      emit("error", {
-        message:
-          "Maddy could not understand that turn clearly enough to route it.",
+      emit("transcript-empty", {
         turnId: state.activeTurnId
       });
 
-      return false;
+      return authorizeFallbackResponse("empty input transcript");
     }
 
     if (state.responseRequestedForTurn) {
@@ -546,13 +545,15 @@
     const router = global.ExecutiveRouter;
 
     if (!router || typeof router.handle !== "function") {
-      emit("error", {
+      emit("router-unavailable", {
         message:
           "The MEOS Executive Router is not available.",
         turnId: state.activeTurnId
       });
 
-      return false;
+      return authorizeFallbackResponse(
+        "MEOS Executive Router unavailable"
+      );
     }
 
     state.lastTranscript = cleanTranscript;
@@ -624,15 +625,62 @@
         error
       );
 
-      emit("error", {
+      emit("routing-failed", {
         message:
           error?.message ||
           "MEOS could not route the user request.",
         turnId: state.activeTurnId
       });
 
+      return authorizeFallbackResponse(
+        error?.message || "MEOS routing failed"
+      );
+    }
+  }
+
+  function authorizeFallbackResponse(reason) {
+    if (state.responseRequestedForTurn || state.responseInProgress) {
       return false;
     }
+
+    state.responseRequestedForTurn = true;
+    state.responseRequestedAt = now();
+    state.responseInProgress = true;
+
+    const sent = safelySendEvent({
+      type: "response.create",
+      response: {
+        output_modalities: ["text"],
+        instructions: [
+          "Respond naturally to the user's most recent committed audio turn.",
+          "MEOS transcript routing was unavailable for this turn.",
+          "Do not claim that live internet research, memory retrieval, or MEOS internal routing occurred.",
+          "Do not invent organizational facts.",
+          `Fallback reason: ${reason || "transcript unavailable"}`
+        ].join(" ")
+      }
+    });
+
+    if (!sent) {
+      state.responseRequestedForTurn = false;
+      state.responseRequestedAt = null;
+      state.responseInProgress = false;
+      return false;
+    }
+
+    warn(
+      `MEOS transcript routing fallback authorized one response for ${state.activeTurnId}.`,
+      { reason }
+    );
+
+    emit("response-authorized", {
+      turnId: state.activeTurnId,
+      route: "realtime-fallback",
+      fallback: true,
+      reason
+    });
+
+    return true;
   }
 
   function awaitTranscriptBeforeResponse(message = {}) {
@@ -668,14 +716,14 @@
       state.awaitingTranscript = false;
 
       warn(
-        `Transcript timed out for ${state.activeTurnId}; no model response was created.`
+        `Transcript timed out for ${state.activeTurnId}; using one-response fail-safe.`
       );
 
-      emit("error", {
-        message:
-          "Maddy heard the turn but did not receive a usable transcript.",
+      emit("transcript-timeout", {
         turnId: state.activeTurnId
       });
+
+      authorizeFallbackResponse("input transcript timeout");
     }, TRANSCRIPT_TIMEOUT_MS);
 
     log(
@@ -709,10 +757,12 @@
 
     warn(failure, message);
 
-    emit("error", {
+    emit("transcript-failed", {
       message: failure,
       turnId: state.activeTurnId
     });
+
+    authorizeFallbackResponse(failure);
   }
 
   function cancelActiveResponse(reason = "cancelled") {
