@@ -1,884 +1,2993 @@
 /*
- * MEOS Grant Office
- * Version: 1.0.0
+ * Maddy Executive Operating System (MEOS)
+ * Grant Office
  *
- * Purpose:
- * Discover, evaluate, organize, and prepare grant opportunities
- * for Executive Review.
+ * Version: 1.1.0
+ * Build: GO110-EXECUTIVE-OPPORTUNITY-20260801-A
  *
- * Operating Principle:
- * Adapt to the situation. Stay true to the mission.
+ * Mission:
+ * Protect executive time by converting large volumes of possible funding
+ * and resource opportunities into a small number of defensible,
+ * mission-aligned, executable recommendations.
+ *
+ * Operating rule:
+ * Finding an opportunity is not success.
+ * Converting the right opportunity into organizational capacity is success.
+ *
+ * Brick boundary:
+ * This office evaluates and organizes opportunities. It does not fabricate
+ * eligibility, submit applications without authorization, promise awards,
+ * or replace the Executive Director's authority.
  */
 
 (function initializeGrantOffice(global) {
     "use strict";
 
+    const NAME = "MEOS Grant Office";
+    const VERSION = "1.1.0";
+    const BUILD_ID = "GO110-EXECUTIVE-OPPORTUNITY-20260801-A";
+    const STORAGE_KEY = "meos.grant-office.v1";
+    const SCHEMA = "meos.grant-office.opportunity.v1";
+
+    const OPPORTUNITY_TYPES = Object.freeze({
+        FEDERAL_GRANT: "federal-grant",
+        STATE_GRANT: "state-grant",
+        LOCAL_GRANT: "local-grant",
+        PRIVATE_FOUNDATION: "private-foundation",
+        COMMUNITY_FOUNDATION: "community-foundation",
+        CORPORATE_PHILANTHROPY: "corporate-philanthropy",
+        INDIVIDUAL_DONOR: "individual-donor",
+        SPONSORSHIP: "sponsorship",
+        GOVERNMENT_CONTRACT: "government-contract",
+        COURT_SETTLEMENT: "court-settlement",
+        LEGISLATIVE_SIGNAL: "legislative-signal",
+        BUDGET_SIGNAL: "budget-signal",
+        TECHNOLOGY_BENEFIT: "technology-benefit",
+        IN_KIND_RESOURCE: "in-kind-resource",
+        STRATEGIC_PARTNERSHIP: "strategic-partnership",
+        CROWDFUNDING: "crowdfunding",
+        DIGITAL_REVENUE: "digital-revenue",
+        COST_SAVINGS: "cost-savings",
+        FUTURE_FUNDING_SIGNAL: "future-funding-signal",
+        OTHER: "other"
+    });
+
+    const LIFECYCLE_STATES = Object.freeze({
+        SIGNAL: "pre-announcement",
+        EXPECTED: "expected",
+        OPEN: "open",
+        PREPARING: "preparing",
+        CLOSING_SOON: "closing-soon",
+        CLOSED: "closed",
+        SUBMITTED: "submitted",
+        AWARD_PENDING: "award-pending",
+        AWARDED: "awarded",
+        DECLINED: "declined",
+        ARCHIVED: "archived"
+    });
+
+    const RECOMMENDATIONS = Object.freeze({
+        PURSUE_NOW: "pursue-now",
+        PREPARE_FOR_FUTURE: "prepare-for-future",
+        PURSUE_WITH_PARTNER: "pursue-with-partner",
+        REQUEST_CLARIFICATION: "request-clarification",
+        WATCH_AND_TRACK: "watch-and-track",
+        SKIP_NOT_ELIGIBLE: "skip-not-eligible",
+        SKIP_LOW_RETURN: "skip-low-return",
+        SKIP_MISSION_MISALIGNMENT: "skip-mission-misalignment"
+    });
+
+    const DISQUALIFIER_TYPES = Object.freeze({
+        ORGANIZATIONAL_AGE: "organizational-age",
+        FINANCIAL_HISTORY: "financial-history",
+        AUDITED_FINANCIALS: "audited-financials",
+        OPERATING_HISTORY: "operating-history",
+        PROGRAM_HISTORY: "program-history",
+        OUTCOME_HISTORY: "outcome-history",
+        MINIMUM_BUDGET: "minimum-budget",
+        GEOGRAPHY: "geography",
+        POPULATION: "population",
+        LICENSE: "license",
+        ACCREDITATION: "accreditation",
+        FACILITY: "facility",
+        STAFFING: "staffing",
+        PARTNER_REQUIRED: "partner-required",
+        MATCH_REQUIRED: "match-required",
+        REIMBURSEMENT_ONLY: "reimbursement-only",
+        OTHER: "other"
+    });
+
     const GrantOffice = {
-        name: "Grant Office",
-        version: "1.0.0",
-        status: "online",
-        operatingMode: "continuous",
+        name: NAME,
+        version: VERSION,
+        buildId: BUILD_ID,
+        schema: SCHEMA,
+        status: "initializing",
+        operatingMode: "continuous-opportunity-intelligence",
+
+        configuration: {
+            organizationNeutralCore: true,
+            persistenceEnabled: true,
+            automaticPersistence: true,
+            localStorageKey: STORAGE_KEY,
+            maximumOpportunities: 2000,
+            maximumExecutiveReviews: 200,
+            executiveDeskLimit: 20,
+            minimumDeskScore: 72,
+            minimumPursueScore: 82,
+            minimumVerifiedConfidence: 0.72,
+            requireOfficialSource: true,
+            requireEligibilityReview: true,
+            requireExecutiveApproval: true,
+            rejectKnownDisqualifiers: true,
+            protectExecutiveTime: true
+        },
+
         activeMissions: [],
         opportunities: [],
         executiveReviews: [],
+        analytics: {
+            opportunitiesEvaluated: 0,
+            opportunitiesRejected: 0,
+            opportunitiesRecommended: 0,
+            executiveHoursProtectedEstimate: 0,
+            currentPipelineValue: 0,
+            futurePipelineValue: 0,
+            lastEvaluationAt: null
+        },
+
+        initialize(options = {}) {
+            this.configuration = {
+                ...this.configuration,
+                ...(options.configuration || options)
+            };
+
+            this.restore();
+            this.status = "online";
+
+            console.info(
+                `[MEOS] ${this.name} v${this.version} online. Build ${this.buildId}.`
+            );
+
+            return this.getStatus();
+        },
 
         getOrganizationProfile() {
-            if (!global.OrganizationalProfile) {
-                console.warn(
-                    "[MEOS Grant Office] Organizational Profile is not available."
-                );
-
-                return null;
-            }
-
-            return global.OrganizationalProfile;
+            return (
+                global.OrganizationalProfile ||
+                global.CCSPOrganizationalProfile ||
+                null
+            );
         },
 
         createMission(request = {}) {
             const profile = this.getOrganizationProfile();
 
             const mission = {
-                id: this.createId("grant-mission"),
-                type: "grant",
+                id: this.createId("opportunity-mission"),
+                type: "executive-opportunity-intelligence",
                 title:
                     request.title ||
-                    "Find and evaluate mission-aligned grant opportunities",
+                    "Identify and convert high-value organizational opportunities",
                 objective:
                     request.objective ||
-                    "Identify funding opportunities that advance the organization's mission.",
+                    "Increase organizational capacity while protecting executive time.",
                 requestedBy:
                     request.requestedBy ||
                     profile?.organization?.executiveDirector?.preferredName ||
                     "Executive Director",
-                targetPrograms: Array.isArray(request.targetPrograms)
-                    ? request.targetPrograms
-                    : [],
-                targetFundingAreas: Array.isArray(request.targetFundingAreas)
-                    ? request.targetFundingAreas
-                    : [],
+                targetComponents:
+                    this.uniqueStrings(
+                        request.targetComponents ||
+                        request.targetPrograms ||
+                        []
+                    ),
+                targetOutcomes:
+                    this.uniqueStrings(
+                        request.targetOutcomes ||
+                        request.targetFundingAreas ||
+                        []
+                    ),
                 geography:
                     request.geography ||
                     profile?.organization?.serviceArea ||
                     "",
-                minimumFunding:
-                    Number.isFinite(request.minimumFunding)
-                        ? request.minimumFunding
-                        : null,
-                maximumFunding:
-                    Number.isFinite(request.maximumFunding)
-                        ? request.maximumFunding
-                        : null,
-                deadlinePreference:
-                    request.deadlinePreference || "Any open deadline",
+                minimumValue:
+                    this.numberOrNull(
+                        request.minimumValue ??
+                        request.minimumFunding
+                    ),
+                maximumValue:
+                    this.numberOrNull(
+                        request.maximumValue ??
+                        request.maximumFunding
+                    ),
+                includeCurrent:
+                    request.includeCurrent !== false,
+                includeFuture:
+                    request.includeFuture !== false,
                 status: "received",
-                priority: request.priority || "opportunity",
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
+                priority: request.priority || "high",
+                createdAt: this.now(),
+                updatedAt: this.now(),
                 findings: [],
                 missingInformation: [],
                 recommendation: null
             };
 
             this.activeMissions.push(mission);
+            this.persistIfEnabled();
 
-            console.info(
-                `[MEOS Grant Office] Mission received: ${mission.title}`
-            );
-
-            return mission;
+            return this.clone(mission);
         },
 
-        addOpportunity(opportunity = {}) {
-            const grant = {
-                id: this.createId("grant-opportunity"),
-                title: opportunity.title || "Untitled Grant Opportunity",
-                funder: opportunity.funder || "Unknown Funder",
-                sourceUrl: opportunity.sourceUrl || "",
-                description: opportunity.description || "",
-                fundingAmount:
-                    Number.isFinite(opportunity.fundingAmount)
-                        ? opportunity.fundingAmount
-                        : null,
-                fundingRange: opportunity.fundingRange || "",
-                deadline: opportunity.deadline || "",
-                geography: opportunity.geography || "",
-                eligibleApplicants: Array.isArray(
-                    opportunity.eligibleApplicants
-                )
-                    ? opportunity.eligibleApplicants
-                    : [],
-                fundingAreas: Array.isArray(opportunity.fundingAreas)
-                    ? opportunity.fundingAreas
-                    : [],
-                requiredDocuments: Array.isArray(
-                    opportunity.requiredDocuments
-                )
-                    ? opportunity.requiredDocuments
-                    : [],
-                restrictions: Array.isArray(opportunity.restrictions)
-                    ? opportunity.restrictions
-                    : [],
-                status: opportunity.status || "discovered",
-                verified: opportunity.verified === true,
-                discoveredAt: new Date().toISOString(),
-                evaluation: null
+        addOpportunity(input = {}) {
+            const opportunity = {
+                id:
+                    input.id ||
+                    this.createId("opportunity"),
+                schema: SCHEMA,
+                type:
+                    input.type ||
+                    input.opportunityType ||
+                    OPPORTUNITY_TYPES.OTHER,
+                title:
+                    input.title ||
+                    "Untitled Opportunity",
+                provider:
+                    input.provider ||
+                    input.funder ||
+                    "Unknown Provider",
+                sourceUrl:
+                    input.sourceUrl ||
+                    input.officialUrl ||
+                    "",
+                sourceType:
+                    input.sourceType ||
+                    "discovered",
+                description:
+                    String(input.description || ""),
+                statedPurpose:
+                    String(
+                        input.statedPurpose ||
+                        input.funderIntent ||
+                        ""
+                    ),
+                desiredOutcomes:
+                    this.uniqueStrings(
+                        input.desiredOutcomes ||
+                        input.outcomes ||
+                        []
+                    ),
+                targetPopulations:
+                    this.uniqueStrings(
+                        input.targetPopulations ||
+                        []
+                    ),
+                geography:
+                    input.geography ||
+                    "",
+                eligibleApplicants:
+                    this.uniqueStrings(
+                        input.eligibleApplicants ||
+                        []
+                    ),
+                fundingAreas:
+                    this.uniqueStrings(
+                        input.fundingAreas ||
+                        []
+                    ),
+                awardAmount:
+                    this.numberOrNull(
+                        input.awardAmount ??
+                        input.fundingAmount
+                    ),
+                awardMinimum:
+                    this.numberOrNull(input.awardMinimum),
+                awardMaximum:
+                    this.numberOrNull(input.awardMaximum),
+                totalFundingPool:
+                    this.numberOrNull(input.totalFundingPool),
+                numberOfAwards:
+                    this.numberOrNull(input.numberOfAwards),
+                restricted:
+                    input.restricted !== false,
+                advanceOrReimbursement:
+                    input.advanceOrReimbursement ||
+                    "unknown",
+                matchRequired:
+                    input.matchRequired === true,
+                matchAmount:
+                    this.numberOrNull(input.matchAmount),
+                indirectCostsAllowed:
+                    input.indirectCostsAllowed ?? null,
+                allowableCosts:
+                    this.uniqueStrings(input.allowableCosts || []),
+                openDate:
+                    input.openDate || "",
+                deadline:
+                    input.deadline || "",
+                awardDate:
+                    input.awardDate || "",
+                projectStartDate:
+                    input.projectStartDate || "",
+                projectEndDate:
+                    input.projectEndDate || "",
+                renewalCycle:
+                    input.renewalCycle || "",
+                lifecycle:
+                    input.lifecycle ||
+                    this.determineLifecycle(input),
+                requiredDocuments:
+                    this.uniqueStrings(input.requiredDocuments || []),
+                requirements:
+                    this.normalizeRequirements(input.requirements || {}),
+                restrictions:
+                    this.uniqueStrings(input.restrictions || []),
+                partnerRequirements:
+                    this.uniqueStrings(input.partnerRequirements || []),
+                reportingRequirements:
+                    this.uniqueStrings(input.reportingRequirements || []),
+                complianceRequirements:
+                    this.uniqueStrings(input.complianceRequirements || []),
+                historicalRecipients:
+                    Array.isArray(input.historicalRecipients)
+                        ? this.clone(input.historicalRecipients)
+                        : [],
+                competition:
+                    input.competition || {},
+                verified:
+                    input.verified === true,
+                confidence:
+                    this.clamp(input.confidence, input.verified ? 0.9 : 0.5),
+                discoveredAt:
+                    input.discoveredAt || this.now(),
+                updatedAt: this.now(),
+                status:
+                    input.status ||
+                    "discovered",
+                evaluation: null,
+                tracking: {
+                    enabled:
+                        input.tracking?.enabled !== false,
+                    lastCheckedAt:
+                        input.tracking?.lastCheckedAt || null,
+                    nextCheckAt:
+                        input.tracking?.nextCheckAt || null,
+                    changes:
+                        Array.isArray(input.tracking?.changes)
+                            ? this.clone(input.tracking.changes)
+                            : []
+                },
+                raw:
+                    input.raw || null
             };
 
-            this.opportunities.push(grant);
+            this.opportunities.push(opportunity);
+            this.enforceOpportunityLimit();
+            this.persistIfEnabled();
 
-            console.info(
-                `[MEOS Grant Office] Opportunity added: ${grant.title}`
-            );
-
-            return grant;
+            return this.clone(opportunity);
         },
 
-        evaluateOpportunity(opportunityId, missionId = null) {
+        evaluateOpportunity(opportunityId, missionId = null, options = {}) {
             const opportunity = this.getOpportunityById(opportunityId);
-
-            if (!opportunity) {
-                return {
-                    success: false,
-                    error: "Grant opportunity not found."
-                };
-            }
-
+            const profile = this.getOrganizationProfile();
             const mission = missionId
                 ? this.getMissionById(missionId)
                 : null;
 
-            const profile = this.getOrganizationProfile();
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found."
+                };
+            }
 
             if (!profile) {
                 return {
                     success: false,
                     error:
-                        "Organizational Profile is required before evaluating grants."
+                        "Organizational Profile is required before evaluation."
                 };
             }
 
-            const missionText = [
-                profile.organization?.mission || "",
-                profile.organization?.slogan || "",
-                ...(profile.programs?.primaryPrograms || []).map(
-                    (program) =>
-                        `${program.name} ${program.purpose}`
-                ),
-                ...(mission?.targetPrograms || []),
-                ...(mission?.targetFundingAreas || [])
-            ]
-                .join(" ")
-                .toLowerCase();
+            const organizationSnapshot =
+                this.buildOrganizationSnapshot(profile);
 
-            const opportunityText = [
-                opportunity.title,
-                opportunity.description,
-                opportunity.geography,
-                ...(opportunity.fundingAreas || []),
-                ...(opportunity.eligibleApplicants || [])
-            ]
-                .join(" ")
-                .toLowerCase();
+            const understanding =
+                this.understandOpportunity(opportunity);
 
-            const missionAlignment = this.calculateKeywordAlignment(
-                missionText,
-                opportunityText
-            );
-
-            const eligibilityScore =
-                this.evaluateEligibility(opportunity, profile);
-
-            const geographyScore =
-                this.evaluateGeography(opportunity, profile);
-
-            const deadlineScore =
-                this.evaluateDeadline(opportunity.deadline);
-
-            const fundingScore =
-                this.evaluateFundingAmount(
+            const organizationalFit =
+                this.evaluateOrganizationalFit({
                     opportunity,
+                    understanding,
+                    organizationSnapshot,
                     mission
-                );
+                });
 
-            const readinessScore =
-                this.evaluateDocumentReadiness(opportunity);
+            const eligibility =
+                this.evaluateEligibility({
+                    opportunity,
+                    organizationSnapshot
+                });
 
-            const totalScore = Math.round(
-                missionAlignment * 0.35 +
-                    eligibilityScore * 0.2 +
-                    geographyScore * 0.15 +
-                    deadlineScore * 0.1 +
-                    fundingScore * 0.1 +
-                    readinessScore * 0.1
-            );
+            const moneyReality =
+                this.evaluateMoneyReality({
+                    opportunity,
+                    organizationSnapshot,
+                    mission
+                });
+
+            const timing =
+                this.evaluateTiming(opportunity);
+
+            const competitiveness =
+                this.evaluateCompetitiveness({
+                    opportunity,
+                    organizationSnapshot,
+                    organizationalFit,
+                    eligibility
+                });
+
+            const execution =
+                this.evaluateExecution({
+                    opportunity,
+                    organizationSnapshot,
+                    eligibility
+                });
+
+            const strategicValue =
+                this.evaluateStrategicValue({
+                    opportunity,
+                    organizationalFit,
+                    moneyReality,
+                    timing,
+                    execution
+                });
+
+            const disqualifiers =
+                this.identifyDisqualifiers({
+                    opportunity,
+                    organizationSnapshot,
+                    organizationalFit,
+                    eligibility,
+                    execution,
+                    moneyReality
+                });
+
+            const score =
+                this.calculateExecutiveScore({
+                    organizationalFit,
+                    eligibility,
+                    moneyReality,
+                    timing,
+                    competitiveness,
+                    execution,
+                    strategicValue,
+                    disqualifiers,
+                    opportunity
+                });
+
+            const recommendation =
+                this.determineRecommendation({
+                    opportunity,
+                    score,
+                    organizationalFit,
+                    eligibility,
+                    moneyReality,
+                    timing,
+                    competitiveness,
+                    execution,
+                    strategicValue,
+                    disqualifiers
+                });
+
+            const missingInformation =
+                this.identifyMissingInformation({
+                    opportunity,
+                    organizationalFit,
+                    eligibility,
+                    moneyReality,
+                    timing,
+                    competitiveness,
+                    execution
+                });
 
             const evaluation = {
-                totalScore,
-                rating: this.getScoreRating(totalScore),
-                missionAlignment,
-                eligibilityScore,
-                geographyScore,
-                deadlineScore,
-                fundingScore,
-                readinessScore,
-                strengths: [],
-                concerns: [],
-                missingInformation: [],
-                recommendedAction: "",
-                evaluatedAt: new Date().toISOString()
+                success: true,
+                schema:
+                    "meos.grant-office.evaluation.v1",
+                opportunityId:
+                    opportunity.id,
+                title:
+                    opportunity.title,
+                type:
+                    opportunity.type,
+                understanding,
+                organizationalFit,
+                eligibility,
+                moneyReality,
+                timing,
+                competitiveness,
+                execution,
+                strategicValue,
+                disqualifiers,
+                score,
+                recommendation,
+                missingInformation,
+                executiveSummary:
+                    this.buildExecutiveSummary({
+                        opportunity,
+                        score,
+                        recommendation,
+                        organizationalFit,
+                        eligibility,
+                        moneyReality,
+                        timing,
+                        competitiveness,
+                        execution,
+                        strategicValue,
+                        disqualifiers,
+                        missingInformation
+                    }),
+                evaluatedAt: this.now(),
+                evaluatedBy: this.name,
+                executiveApprovalRequired:
+                    this.configuration.requireExecutiveApproval
             };
-
-            if (missionAlignment >= 75) {
-                evaluation.strengths.push(
-                    "Strong alignment with the organization's mission and programs."
-                );
-            } else if (missionAlignment < 50) {
-                evaluation.concerns.push(
-                    "Limited evidence of direct mission alignment."
-                );
-            }
-
-            if (eligibilityScore >= 80) {
-                evaluation.strengths.push(
-                    "The organization appears to meet the basic applicant eligibility."
-                );
-            } else {
-                evaluation.concerns.push(
-                    "Applicant eligibility requires additional verification."
-                );
-            }
-
-            if (!opportunity.verified) {
-                evaluation.missingInformation.push(
-                    "The opportunity has not yet been verified against the official funder source."
-                );
-            }
-
-            if (!opportunity.deadline) {
-                evaluation.missingInformation.push(
-                    "Application deadline is missing."
-                );
-            }
-
-            if (
-                !opportunity.fundingAmount &&
-                !opportunity.fundingRange
-            ) {
-                evaluation.missingInformation.push(
-                    "Funding amount or award range is missing."
-                );
-            }
-
-            if (!opportunity.sourceUrl) {
-                evaluation.missingInformation.push(
-                    "Official opportunity URL is missing."
-                );
-            }
-
-            evaluation.recommendedAction =
-                this.buildRecommendedAction(evaluation);
 
             opportunity.evaluation = evaluation;
             opportunity.status =
-                totalScore >= 70
-                    ? "recommended"
-                    : totalScore >= 50
-                      ? "review"
-                      : "low-priority";
+                this.mapRecommendationToStatus(
+                    recommendation.decision
+                );
+            opportunity.updatedAt = this.now();
 
             if (mission) {
-                mission.updatedAt = new Date().toISOString();
+                mission.updatedAt = this.now();
                 mission.findings.push({
                     opportunityId: opportunity.id,
-                    opportunityTitle: opportunity.title,
-                    score: totalScore,
-                    rating: evaluation.rating,
-                    recommendedAction:
-                        evaluation.recommendedAction
+                    score: score.total,
+                    decision: recommendation.decision
                 });
             }
 
-            console.info(
-                `[MEOS Grant Office] Evaluated ${opportunity.title}: ${totalScore}/100`
-            );
+            this.updateAnalytics(opportunity, evaluation);
+            this.persistIfEnabled();
 
+            return this.clone(evaluation);
+        },
+
+        understandOpportunity(opportunity) {
             return {
-                success: true,
-                opportunity,
-                evaluation
+                whatItIs:
+                    opportunity.type,
+                provider:
+                    opportunity.provider,
+                currentOrFuture:
+                    [
+                        LIFECYCLE_STATES.SIGNAL,
+                        LIFECYCLE_STATES.EXPECTED
+                    ].includes(opportunity.lifecycle)
+                        ? "future"
+                        : "current",
+                statedPurpose:
+                    opportunity.statedPurpose ||
+                    opportunity.description,
+                desiredOutcomes:
+                    opportunity.desiredOutcomes,
+                targetPopulations:
+                    opportunity.targetPopulations,
+                geography:
+                    opportunity.geography,
+                resourceForm:
+                    this.determineResourceForm(opportunity),
+                officialSourceAvailable:
+                    Boolean(opportunity.sourceUrl),
+                verified:
+                    opportunity.verified
             };
         },
 
-        prepareExecutiveReview(opportunityId, missionId = null) {
-            const opportunity = this.getOpportunityById(opportunityId);
+        buildOrganizationSnapshot(profile) {
+            const organization = profile.organization || {};
+            const programs =
+                profile.programs?.primaryPrograms ||
+                profile.programs ||
+                [];
+            const initiatives =
+                profile.initiatives ||
+                profile.projects ||
+                [];
 
-            if (!opportunity) {
-                return {
-                    success: false,
-                    error: "Grant opportunity not found."
+            const programArray =
+                Array.isArray(programs)
+                    ? programs
+                    : Object.values(programs || {});
+
+            const initiativeArray =
+                Array.isArray(initiatives)
+                    ? initiatives
+                    : Object.values(initiatives || {});
+
+            const components = [
+                ...programArray,
+                ...initiativeArray
+            ].filter(Boolean);
+
+            const capabilityText = [
+                organization.mission,
+                organization.slogan,
+                organization.purpose,
+                organization.serviceArea,
+                organization.organizationType,
+                organization.federalTaxStatus,
+                ...components.flatMap((component) => [
+                    component.name,
+                    component.title,
+                    component.purpose,
+                    component.mission,
+                    component.description,
+                    ...(component.outcomes || []),
+                    ...(component.capabilities || []),
+                    ...(component.fundingDomains || [])
+                ])
+            ]
+                .filter(Boolean)
+                .join(" ");
+
+            return {
+                legalName:
+                    organization.legalName ||
+                    organization.name ||
+                    "",
+                organizationType:
+                    organization.organizationType ||
+                    "",
+                federalTaxStatus:
+                    organization.federalTaxStatus ||
+                    "",
+                serviceArea:
+                    organization.serviceArea ||
+                    "",
+                mission:
+                    organization.mission ||
+                    "",
+                slogan:
+                    organization.slogan ||
+                    "",
+                formedDate:
+                    organization.formedDate ||
+                    organization.incorporationDate ||
+                    null,
+                annualBudget:
+                    this.numberOrNull(
+                        organization.annualBudget
+                    ),
+                financialYearsAvailable:
+                    Number(
+                        organization.financialYearsAvailable ||
+                        profile.financials?.yearsAvailable ||
+                        0
+                    ),
+                auditedFinancialYears:
+                    Number(
+                        organization.auditedFinancialYears ||
+                        profile.financials?.auditedYears ||
+                        0
+                    ),
+                operatingYears:
+                    Number(
+                        organization.operatingYears ||
+                        profile.history?.operatingYears ||
+                        0
+                    ),
+                programOutcomeYears:
+                    Number(
+                        profile.outcomes?.yearsAvailable ||
+                        0
+                    ),
+                licenses:
+                    this.uniqueStrings(
+                        profile.compliance?.licenses || []
+                    ),
+                accreditations:
+                    this.uniqueStrings(
+                        profile.compliance?.accreditations || []
+                    ),
+                facilities:
+                    this.uniqueStrings(
+                        profile.operations?.facilities || []
+                    ),
+                staffCapacity:
+                    profile.operations?.staffCapacity || null,
+                liquidCashAvailable:
+                    this.numberOrNull(
+                        profile.financials?.liquidCashAvailable
+                    ),
+                components:
+                    components.map((component) => ({
+                        name:
+                            component.name ||
+                            component.title ||
+                            "Unnamed Component",
+                        type:
+                            component.type ||
+                            "program",
+                        mission:
+                            component.mission ||
+                            component.purpose ||
+                            component.description ||
+                            "",
+                        outcomes:
+                            this.uniqueStrings(
+                                component.outcomes || []
+                            ),
+                        capabilities:
+                            this.uniqueStrings(
+                                component.capabilities || []
+                            ),
+                        targetPopulations:
+                            this.uniqueStrings(
+                                component.targetPopulations || []
+                            ),
+                        fundingDomains:
+                            this.uniqueStrings(
+                                component.fundingDomains || []
+                            )
+                    })),
+                capabilityText:
+                    this.normalizeText(capabilityText)
+            };
+        },
+
+        evaluateOrganizationalFit(context) {
+            const opportunity = context.opportunity;
+            const organization =
+                context.organizationSnapshot;
+
+            const opportunityConcepts =
+                this.extractConcepts([
+                    opportunity.title,
+                    opportunity.description,
+                    opportunity.statedPurpose,
+                    opportunity.geography,
+                    ...opportunity.desiredOutcomes,
+                    ...opportunity.targetPopulations,
+                    ...opportunity.fundingAreas
+                ].join(" "));
+
+            const componentScores =
+                organization.components.map((component) => {
+                    const componentText =
+                        this.normalizeText([
+                            component.name,
+                            component.mission,
+                            ...component.outcomes,
+                            ...component.capabilities,
+                            ...component.targetPopulations,
+                            ...component.fundingDomains
+                        ].join(" "));
+
+                    const semanticBridge =
+                        this.calculateConceptBridge(
+                            opportunityConcepts,
+                            componentText
+                        );
+
+                    return {
+                        component:
+                            component.name,
+                        componentType:
+                            component.type,
+                        score:
+                            semanticBridge.score,
+                        directMatches:
+                            semanticBridge.directMatches,
+                        inferredConnections:
+                            semanticBridge.inferredConnections,
+                        explanation:
+                            semanticBridge.explanation
+                    };
+                })
+                .sort((a, b) => b.score - a.score);
+
+            const best =
+                componentScores[0] || {
+                    component: null,
+                    score: 0,
+                    directMatches: [],
+                    inferredConnections: [],
+                    explanation:
+                        "No commissioned organizational component was available."
                 };
-            }
 
-            if (!opportunity.evaluation) {
-                const result = this.evaluateOpportunity(
-                    opportunityId,
-                    missionId
+            const populationConflict =
+                this.detectPopulationConflict(
+                    opportunity,
+                    organization
                 );
 
-                if (!result.success) {
-                    return result;
+            return {
+                score:
+                    populationConflict.hardConflict
+                        ? Math.min(best.score, 30)
+                        : best.score,
+                bestComponent:
+                    best.component,
+                bestComponentType:
+                    best.componentType,
+                directMatches:
+                    best.directMatches,
+                inferredConnections:
+                    best.inferredConnections,
+                populationConflict,
+                canHonestlyPerform:
+                    best.score >= 60 &&
+                    !populationConflict.hardConflict,
+                missionDriftRisk:
+                    best.score < 45
+                        ? "high"
+                        : best.score < 68
+                            ? "moderate"
+                            : "low",
+                alignmentType:
+                    best.directMatches.length > 0
+                        ? "direct"
+                        : best.inferredConnections.length > 0
+                            ? "indirect-but-defensible"
+                            : "speculative",
+                explanation:
+                    best.explanation,
+                componentScores:
+                    componentScores.slice(0, 5)
+            };
+        },
+
+        calculateConceptBridge(concepts, componentText) {
+            const directMatches = [];
+            const inferredConnections = [];
+
+            const conceptFamilies = {
+                "ocean-health": [
+                    "ocean health",
+                    "marine health",
+                    "marine sanctuary",
+                    "coastal resilience",
+                    "marine debris",
+                    "ocean preservation",
+                    "coastal ecosystem"
+                ],
+                "watershed-intervention": [
+                    "watershed",
+                    "river",
+                    "upstream",
+                    "runoff",
+                    "riparian",
+                    "source interception",
+                    "stormwater"
+                ],
+                "homeless-stabilization": [
+                    "homeless",
+                    "unhoused",
+                    "housing instability",
+                    "street outreach",
+                    "stabilization",
+                    "mobile hygiene",
+                    "continuum of care"
+                ],
+                "substance-use": [
+                    "substance use",
+                    "sud",
+                    "opioid",
+                    "opiate",
+                    "addiction",
+                    "recovery",
+                    "overdose"
+                ],
+                "veteran-response": [
+                    "veteran",
+                    "first responder",
+                    "ptsd",
+                    "peer support",
+                    "suicide prevention",
+                    "crisis support"
+                ],
+                "workforce": [
+                    "workforce",
+                    "employment",
+                    "job readiness",
+                    "trade school",
+                    "economic mobility",
+                    "self sufficiency"
+                ],
+                "public-health": [
+                    "public health",
+                    "hygiene",
+                    "sanitation",
+                    "health equity",
+                    "disease prevention",
+                    "community health"
+                ],
+                "environmental-justice": [
+                    "environmental justice",
+                    "disproportionate impact",
+                    "pollution prevention",
+                    "community resilience"
+                ]
+            };
+
+            const normalizedConcepts =
+                this.normalizeText(concepts.join(" "));
+
+            Object.entries(conceptFamilies).forEach(
+                ([family, terms]) => {
+                    const opportunityHas =
+                        terms.some((term) =>
+                            normalizedConcepts.includes(
+                                this.normalizeText(term)
+                            )
+                        );
+
+                    const organizationHas =
+                        terms.some((term) =>
+                            componentText.includes(
+                                this.normalizeText(term)
+                            )
+                        );
+
+                    if (opportunityHas && organizationHas) {
+                        directMatches.push(family);
+                    }
+                }
+            );
+
+            const bridges = [
+                {
+                    opportunity: [
+                        "ocean health",
+                        "marine debris",
+                        "coastal resilience",
+                        "ocean preservation"
+                    ],
+                    organization: [
+                        "upstream",
+                        "watershed",
+                        "river",
+                        "runoff",
+                        "source interception",
+                        "marine sanctuary"
+                    ],
+                    label:
+                        "Upstream watershed intervention can produce downstream ocean-health outcomes."
+                },
+                {
+                    opportunity: [
+                        "opioid",
+                        "opiate",
+                        "overdose",
+                        "settlement"
+                    ],
+                    organization: [
+                        "substance use",
+                        "sud",
+                        "recovery",
+                        "stabilization",
+                        "outreach"
+                    ],
+                    label:
+                        "Substance-use stabilization may align with opioid-abatement outcomes."
+                },
+                {
+                    opportunity: [
+                        "community resilience",
+                        "public health",
+                        "health equity"
+                    ],
+                    organization: [
+                        "mobile hygiene",
+                        "street outreach",
+                        "stabilization",
+                        "dignity"
+                    ],
+                    label:
+                        "Mobile hygiene and stabilization can advance community-health outcomes."
+                },
+                {
+                    opportunity: [
+                        "workforce development",
+                        "economic mobility"
+                    ],
+                    organization: [
+                        "employment",
+                        "job skills",
+                        "self sufficiency",
+                        "trade school"
+                    ],
+                    label:
+                        "Employment and skills support can advance workforce-development outcomes."
+                }
+            ];
+
+            bridges.forEach((bridge) => {
+                const opportunityHit =
+                    bridge.opportunity.some((term) =>
+                        normalizedConcepts.includes(
+                            this.normalizeText(term)
+                        )
+                    );
+
+                const organizationHit =
+                    bridge.organization.some((term) =>
+                        componentText.includes(
+                            this.normalizeText(term)
+                        )
+                    );
+
+                if (opportunityHit && organizationHit) {
+                    inferredConnections.push(
+                        bridge.label
+                    );
+                }
+            });
+
+            const titleWords =
+                this.extractMeaningfulWords(
+                    normalizedConcepts
+                );
+            const componentWords =
+                new Set(
+                    this.extractMeaningfulWords(componentText)
+                );
+            const lexicalMatches =
+                titleWords.filter((word) =>
+                    componentWords.has(word)
+                );
+
+            let score =
+                Math.min(100,
+                    directMatches.length * 22 +
+                    inferredConnections.length * 28 +
+                    lexicalMatches.length * 3
+                );
+
+            if (
+                inferredConnections.length > 0 &&
+                score < 68
+            ) {
+                score = 68;
+            }
+
+            return {
+                score:
+                    Math.round(score),
+                directMatches:
+                    this.uniqueStrings(directMatches),
+                inferredConnections:
+                    this.uniqueStrings(inferredConnections),
+                explanation:
+                    inferredConnections[0] ||
+                    (
+                        directMatches.length > 0
+                            ? `Shared mission domain: ${directMatches.join(", ")}.`
+                            : "No defensible mission bridge was established."
+                    )
+            };
+        },
+
+        detectPopulationConflict(opportunity, organization) {
+            const opportunityText =
+                this.normalizeText([
+                    opportunity.title,
+                    opportunity.description,
+                    ...opportunity.targetPopulations
+                ].join(" "));
+
+            const organizationText =
+                this.normalizeText([
+                    organization.mission,
+                    organization.capabilityText,
+                    ...organization.components.flatMap(
+                        (component) =>
+                            component.targetPopulations
+                    )
+                ].join(" "));
+
+            const exclusivePopulations = [
+                {
+                    label: "homeless youth",
+                    indicators: [
+                        "homeless youth",
+                        "unaccompanied youth",
+                        "ages 12 24",
+                        "youth only"
+                    ]
+                },
+                {
+                    label: "children only",
+                    indicators: [
+                        "children only",
+                        "pediatric only"
+                    ]
+                },
+                {
+                    label: "tribal governments only",
+                    indicators: [
+                        "tribal governments only",
+                        "federally recognized tribes only"
+                    ]
+                }
+            ];
+
+            for (const population of exclusivePopulations) {
+                const required =
+                    population.indicators.some((indicator) =>
+                        opportunityText.includes(
+                            this.normalizeText(indicator)
+                        )
+                    );
+
+                const supported =
+                    population.indicators.some((indicator) =>
+                        organizationText.includes(
+                            this.normalizeText(indicator)
+                        )
+                    );
+
+                if (required && !supported) {
+                    return {
+                        hardConflict: true,
+                        population:
+                            population.label,
+                        explanation:
+                            `The opportunity is restricted to ${population.label}, which is not supported by the current organizational profile.`
+                    };
                 }
             }
 
-            const profile = this.getOrganizationProfile();
-            const mission = missionId
-                ? this.getMissionById(missionId)
-                : null;
-
-            const review = {
-                id: this.createId("executive-review"),
-                office: this.name,
-                organization:
-                    profile?.organization?.legalName ||
-                    "Organization",
-                opportunityId: opportunity.id,
-                grantTitle: opportunity.title,
-                funder: opportunity.funder,
-                whatChanged:
-                    "A grant opportunity has been identified and evaluated.",
-                whyItMatters:
-                    "The opportunity may provide resources that advance the organization's mission and programs.",
-                missionImpact:
-                    opportunity.evaluation.missionAlignment >= 70
-                        ? "Strong potential mission impact."
-                        : "Mission impact requires further review.",
-                opportunityOrRisk: {
-                    opportunity:
-                        opportunity.evaluation.recommendedAction,
-                    risks:
-                        opportunity.evaluation.concerns
-                },
-                recommendedActions: [
-                    "Verify the opportunity using the official funder source.",
-                    "Confirm organizational eligibility.",
-                    "Review all required documents.",
-                    "Confirm the application deadline.",
-                    "Assign drafting and budget responsibilities.",
-                    "Prepare the complete application for Executive Director approval."
-                ],
-                leadOffice: "Grant Office",
-                supportingOffices: [
-                    "Finance Office",
-                    "Programs Office",
-                    "Compliance Office",
-                    "Community Relations Office",
-                    "Communications and Marketing Office"
-                ],
-                executiveDecisionRequired:
-                    opportunity.evaluation.totalScore >= 70
-                        ? "Approve moving the opportunity into application development."
-                        : "Decide whether additional research is justified before proceeding.",
-                deadline:
-                    opportunity.deadline ||
-                    "Deadline not yet verified",
-                score: opportunity.evaluation.totalScore,
-                rating: opportunity.evaluation.rating,
-                missingInformation:
-                    opportunity.evaluation.missingInformation,
-                status: "ready-for-executive-review",
-                callout: "I'm Up.",
-                preparedAt: new Date().toISOString()
-            };
-
-            this.executiveReviews.push(review);
-
-            if (mission) {
-                mission.status = "executive-review";
-                mission.recommendation = review;
-                mission.updatedAt = new Date().toISOString();
-            }
-
-            console.info(
-                `[MEOS Grant Office] Executive Review prepared: ${opportunity.title}`
-            );
-
             return {
-                success: true,
-                review
+                hardConflict: false,
+                population: null,
+                explanation:
+                    "No exclusive target-population conflict was identified."
             };
         },
 
-        buildApplicationChecklist(opportunityId) {
-            const opportunity = this.getOpportunityById(opportunityId);
-
-            if (!opportunity) {
-                return {
-                    success: false,
-                    error: "Grant opportunity not found."
-                };
-            }
-
-            const standardDocuments = [
-                "IRS determination letter",
-                "Articles of incorporation",
-                "Current bylaws",
-                "Board of Directors list",
-                "Organizational budget",
-                "Program budget",
-                "Most recent financial statements",
-                "Mission statement",
-                "Program description",
-                "Statement of need",
-                "Goals and measurable outcomes",
-                "Implementation timeline",
-                "Leadership biographies",
-                "Letters of support",
-                "Required certifications and assurances"
-            ];
-
-            const combinedDocuments = [
-                ...standardDocuments,
-                ...(opportunity.requiredDocuments || [])
-            ];
-
-            const uniqueDocuments = [
-                ...new Set(combinedDocuments)
-            ];
-
-            return {
-                success: true,
-                opportunityId,
-                grantTitle: opportunity.title,
-                checklist: uniqueDocuments.map(
-                    (documentName, index) => ({
-                        id: index + 1,
-                        document: documentName,
-                        status: "not-confirmed",
-                        assignedOffice:
-                            this.assignDocumentOffice(documentName),
-                        notes: ""
-                    })
-                )
-            };
-        },
-
-        identifyMissingInformation(opportunityId) {
-            const opportunity = this.getOpportunityById(opportunityId);
-
-            if (!opportunity) {
-                return {
-                    success: false,
-                    error: "Grant opportunity not found."
-                };
-            }
-
-            const missing = [];
-
-            if (!opportunity.funder) {
-                missing.push("Funder name");
-            }
-
-            if (!opportunity.description) {
-                missing.push("Grant description");
-            }
-
-            if (!opportunity.sourceUrl) {
-                missing.push("Official grant webpage");
-            }
-
-            if (!opportunity.deadline) {
-                missing.push("Application deadline");
-            }
-
-            if (
-                !opportunity.fundingAmount &&
-                !opportunity.fundingRange
-            ) {
-                missing.push("Award amount");
-            }
-
-            if (!opportunity.geography) {
-                missing.push("Eligible geographic area");
-            }
-
-            if (
-                opportunity.eligibleApplicants.length === 0
-            ) {
-                missing.push("Eligible applicant types");
-            }
-
-            if (opportunity.fundingAreas.length === 0) {
-                missing.push("Funding priorities");
-            }
-
-            return {
-                success: true,
-                opportunityId,
-                missingInformation: missing,
-                complete: missing.length === 0
-            };
-        },
-
-        rankOpportunities() {
-            return [...this.opportunities]
-                .filter((opportunity) => opportunity.evaluation)
-                .sort(
-                    (first, second) =>
-                        second.evaluation.totalScore -
-                        first.evaluation.totalScore
-                );
-        },
-
-        getMissionById(missionId) {
-            return (
-                this.activeMissions.find(
-                    (mission) => mission.id === missionId
-                ) || null
-            );
-        },
-
-        getOpportunityById(opportunityId) {
-            return (
-                this.opportunities.find(
-                    (opportunity) =>
-                        opportunity.id === opportunityId
-                ) || null
-            );
-        },
-
-        calculateKeywordAlignment(
-            organizationText,
-            opportunityText
-        ) {
-            const missionKeywords = [
-                "hygiene",
-                "mobile",
-                "homeless",
-                "homelessness",
-                "housing",
-                "recovery",
-                "substance",
-                "stabilization",
-                "workforce",
-                "employment",
-                "environment",
-                "watershed",
-                "river",
-                "ocean",
-                "beach",
-                "community",
-                "outreach",
-                "health",
-                "dignity",
-                "veteran",
-                "volunteer",
-                "nonprofit",
-                "sober living",
-                "self-sufficiency"
-            ];
-
-            const relevantKeywords = missionKeywords.filter(
-                (keyword) =>
-                    organizationText.includes(keyword)
-            );
-
-            if (relevantKeywords.length === 0) {
-                return 50;
-            }
-
-            const matchedKeywords = relevantKeywords.filter(
-                (keyword) =>
-                    opportunityText.includes(keyword)
-            );
-
-            const rawScore =
-                (matchedKeywords.length /
-                    relevantKeywords.length) *
-                100;
-
-            return Math.max(
-                20,
-                Math.min(100, Math.round(rawScore))
-            );
-        },
-
-        evaluateEligibility(opportunity, profile) {
-            if (
-                opportunity.eligibleApplicants.length === 0
-            ) {
-                return 60;
-            }
+        evaluateEligibility(context) {
+            const opportunity =
+                context.opportunity;
+            const organization =
+                context.organizationSnapshot;
+            const requirements =
+                opportunity.requirements;
+            const failures = [];
+            const conditions = [];
+            const confirmed = [];
 
             const applicantText =
-                opportunity.eligibleApplicants
-                    .join(" ")
-                    .toLowerCase();
+                this.normalizeText(
+                    opportunity.eligibleApplicants.join(" ")
+                );
+            const organizationText =
+                this.normalizeText([
+                    organization.organizationType,
+                    organization.federalTaxStatus,
+                    organization.legalName
+                ].join(" "));
 
-            const organizationText = [
-                profile.organization?.organizationType || "",
-                profile.organization?.federalTaxStatus || "",
-                profile.organization?.legalName || ""
-            ]
-                .join(" ")
-                .toLowerCase();
-
-            if (
+            if (!applicantText) {
+                conditions.push(
+                    "Applicant eligibility language is missing."
+                );
+            } else if (
                 applicantText.includes("nonprofit") ||
-                applicantText.includes("501(c)(3)") ||
+                applicantText.includes("501 c 3") ||
                 applicantText.includes("public charity")
             ) {
-                return 95;
-            }
-
-            if (
-                applicantText.includes("organization") ||
-                applicantText.includes("community")
-            ) {
-                return 75;
-            }
-
-            if (
-                applicantText
+                confirmed.push(
+                    "Nonprofit/public-charity applicant class appears permitted."
+                );
+            } else if (
+                !applicantText
                     .split(" ")
                     .some((word) =>
                         organizationText.includes(word)
                     )
             ) {
-                return 70;
+                failures.push(
+                    "Applicant class does not clearly include the organization."
+                );
             }
 
-            return 40;
-        },
-
-        evaluateGeography(opportunity, profile) {
-            if (!opportunity.geography) {
-                return 60;
-            }
-
-            const grantGeography =
-                opportunity.geography.toLowerCase();
-
-            const organizationGeography = (
-                profile.organization?.serviceArea || ""
-            ).toLowerCase();
-
-            if (
-                grantGeography.includes("national") ||
-                grantGeography.includes("united states") ||
-                grantGeography.includes("california") ||
-                grantGeography.includes("santa cruz")
-            ) {
-                return 95;
-            }
-
-            if (
-                organizationGeography &&
-                grantGeography.includes(
-                    organizationGeography
-                )
-            ) {
-                return 100;
-            }
-
-            return 45;
-        },
-
-        evaluateDeadline(deadline) {
-            if (!deadline) {
-                return 50;
-            }
-
-            const deadlineDate = new Date(deadline);
-
-            if (Number.isNaN(deadlineDate.getTime())) {
-                return 50;
-            }
-
-            const millisecondsRemaining =
-                deadlineDate.getTime() - Date.now();
-
-            const daysRemaining = Math.ceil(
-                millisecondsRemaining /
-                    (1000 * 60 * 60 * 24)
+            this.checkMinimumRequirement(
+                failures,
+                conditions,
+                confirmed,
+                "operating years",
+                requirements.minimumOperatingYears,
+                organization.operatingYears
             );
 
-            if (daysRemaining < 0) {
-                return 0;
+            this.checkMinimumRequirement(
+                failures,
+                conditions,
+                confirmed,
+                "years of financial statements",
+                requirements.minimumFinancialYears,
+                organization.financialYearsAvailable
+            );
+
+            this.checkMinimumRequirement(
+                failures,
+                conditions,
+                confirmed,
+                "years of audited financials",
+                requirements.minimumAuditedFinancialYears,
+                organization.auditedFinancialYears
+            );
+
+            this.checkMinimumRequirement(
+                failures,
+                conditions,
+                confirmed,
+                "years of program outcomes",
+                requirements.minimumOutcomeYears,
+                organization.programOutcomeYears
+            );
+
+            if (
+                requirements.minimumAnnualBudget &&
+                organization.annualBudget === null
+            ) {
+                conditions.push(
+                    "Annual budget must be confirmed."
+                );
+            } else if (
+                requirements.minimumAnnualBudget &&
+                organization.annualBudget <
+                    requirements.minimumAnnualBudget
+            ) {
+                failures.push(
+                    "Organization does not meet the minimum annual-budget requirement."
+                );
             }
 
-            if (daysRemaining < 7) {
-                return 30;
+            if (
+                requirements.requiredLicense &&
+                !organization.licenses.includes(
+                    requirements.requiredLicense
+                )
+            ) {
+                failures.push(
+                    `Required license is not documented: ${requirements.requiredLicense}.`
+                );
             }
 
-            if (daysRemaining < 21) {
-                return 65;
+            if (
+                requirements.requiredAccreditation &&
+                !organization.accreditations.includes(
+                    requirements.requiredAccreditation
+                )
+            ) {
+                failures.push(
+                    `Required accreditation is not documented: ${requirements.requiredAccreditation}.`
+                );
             }
 
-            if (daysRemaining < 60) {
-                return 90;
+            const geography =
+                this.evaluateGeography(
+                    opportunity,
+                    organization
+                );
+
+            if (geography.disqualified) {
+                failures.push(
+                    geography.explanation
+                );
+            } else if (!geography.confirmed) {
+                conditions.push(
+                    geography.explanation
+                );
+            } else {
+                confirmed.push(
+                    geography.explanation
+                );
             }
 
-            return 100;
+            const score =
+                failures.length > 0
+                    ? 0
+                    : Math.max(
+                        35,
+                        Math.min(
+                            100,
+                            100 -
+                            conditions.length * 12
+                        )
+                    );
+
+            return {
+                score,
+                eligible:
+                    failures.length === 0 &&
+                    conditions.length === 0,
+                conditionallyEligible:
+                    failures.length === 0 &&
+                    conditions.length > 0,
+                disqualified:
+                    failures.length > 0,
+                failures,
+                conditions,
+                confirmed
+            };
         },
 
-        evaluateFundingAmount(opportunity, mission) {
-            if (!opportunity.fundingAmount) {
-                return opportunity.fundingRange ? 75 : 60;
+        evaluateMoneyReality(context) {
+            const opportunity = context.opportunity;
+            const organization =
+                context.organizationSnapshot;
+            const mission = context.mission;
+
+            const value =
+                opportunity.awardAmount ||
+                opportunity.awardMaximum ||
+                opportunity.awardMinimum ||
+                0;
+
+            const concerns = [];
+            const strengths = [];
+
+            if (
+                opportunity.advanceOrReimbursement ===
+                "reimbursement"
+            ) {
+                concerns.push(
+                    "Funding is reimbursement-based and may require the organization to front expenses."
+                );
+
+                if (
+                    organization.liquidCashAvailable !== null &&
+                    value > organization.liquidCashAvailable
+                ) {
+                    concerns.push(
+                        "Current documented liquid cash may be insufficient to front the award."
+                    );
+                }
+            }
+
+            if (opportunity.matchRequired) {
+                concerns.push(
+                    "Matching funds are required."
+                );
             }
 
             if (
-                mission?.minimumFunding &&
-                opportunity.fundingAmount <
-                    mission.minimumFunding
+                opportunity.indirectCostsAllowed === false
             ) {
-                return 45;
+                concerns.push(
+                    "Administrative or indirect costs are not allowed."
+                );
+            } else if (
+                opportunity.indirectCostsAllowed === true
+            ) {
+                strengths.push(
+                    "Administrative or indirect costs are allowed."
+                );
+            }
+
+            if (value > 0) {
+                strengths.push(
+                    `Potential organizational value: ${value}.`
+                );
             }
 
             if (
-                mission?.maximumFunding &&
-                opportunity.fundingAmount >
-                    mission.maximumFunding
+                mission?.minimumValue &&
+                value > 0 &&
+                value < mission.minimumValue
             ) {
-                return 75;
+                concerns.push(
+                    "Opportunity value is below the mission's minimum target."
+                );
             }
 
-            return 90;
+            const pursuitCostEstimate =
+                Math.max(
+                    250,
+                    opportunity.requiredDocuments.length * 175 +
+                    opportunity.reportingRequirements.length * 125 +
+                    opportunity.partnerRequirements.length * 250
+                );
+
+            const valueToEffort =
+                value > 0
+                    ? Math.min(
+                        100,
+                        Math.round(
+                            (value /
+                                Math.max(
+                                    1,
+                                    pursuitCostEstimate * 25
+                                )) *
+                            100
+                        )
+                    )
+                    : 50;
+
+            return {
+                score:
+                    Math.max(
+                        0,
+                        Math.min(
+                            100,
+                            valueToEffort -
+                            concerns.length * 8 +
+                            strengths.length * 4
+                        )
+                    ),
+                estimatedAwardValue: value,
+                totalFundingPool:
+                    opportunity.totalFundingPool,
+                numberOfAwards:
+                    opportunity.numberOfAwards,
+                restricted:
+                    opportunity.restricted,
+                paymentModel:
+                    opportunity.advanceOrReimbursement,
+                matchRequired:
+                    opportunity.matchRequired,
+                indirectCostsAllowed:
+                    opportunity.indirectCostsAllowed,
+                pursuitCostEstimate,
+                valueToEffort,
+                concerns,
+                strengths
+            };
         },
 
-        evaluateDocumentReadiness(opportunity) {
+        evaluateTiming(opportunity) {
+            const now = Date.now();
+            const open =
+                this.parseDate(opportunity.openDate);
+            const deadline =
+                this.parseDate(opportunity.deadline);
+            const daysUntilOpen =
+                open === null
+                    ? null
+                    : Math.ceil(
+                        (open - now) /
+                        86400000
+                    );
+            const daysRemaining =
+                deadline === null
+                    ? null
+                    : Math.ceil(
+                        (deadline - now) /
+                        86400000
+                    );
+
+            let score = 60;
+            let urgency = "unknown";
+            const actions = [];
+
             if (
-                opportunity.requiredDocuments.length === 0
+                [
+                    LIFECYCLE_STATES.SIGNAL,
+                    LIFECYCLE_STATES.EXPECTED
+                ].includes(opportunity.lifecycle)
             ) {
-                return 65;
+                score = 85;
+                urgency = "prepare";
+                actions.push(
+                    "Track the funding signal and begin readiness work before applications open."
+                );
+            } else if (
+                daysUntilOpen !== null &&
+                daysUntilOpen > 0
+            ) {
+                score = 90;
+                urgency = "prepare";
+                actions.push(
+                    `Applications are expected to open in ${daysUntilOpen} days.`
+                );
+            } else if (
+                daysRemaining === null
+            ) {
+                score = 55;
+                urgency = "verify";
+                actions.push(
+                    "Verify the official opening and closing dates."
+                );
+            } else if (daysRemaining < 0) {
+                score = 0;
+                urgency = "closed";
+                actions.push(
+                    "The current cycle is closed; determine whether it recurs."
+                );
+            } else if (daysRemaining <= 7) {
+                score = 35;
+                urgency = "critical";
+                actions.push(
+                    "Deadline is within seven days; pursue only if application readiness is already high."
+                );
+            } else if (daysRemaining <= 30) {
+                score = 80;
+                urgency = "high";
+                actions.push(
+                    "Application work should begin immediately."
+                );
+            } else if (daysRemaining <= 90) {
+                score = 95;
+                urgency = "planned";
+                actions.push(
+                    "Sufficient preparation window exists."
+                );
+            } else {
+                score = 90;
+                urgency = "early";
+                actions.push(
+                    "Use the long lead time to strengthen evidence, partnerships, and required documents."
+                );
+            }
+
+            return {
+                score,
+                lifecycle:
+                    opportunity.lifecycle,
+                openDate:
+                    opportunity.openDate || null,
+                deadline:
+                    opportunity.deadline || null,
+                daysUntilOpen,
+                daysRemaining,
+                urgency,
+                recurring:
+                    Boolean(opportunity.renewalCycle),
+                renewalCycle:
+                    opportunity.renewalCycle || null,
+                actions
+            };
+        },
+
+        evaluateCompetitiveness(context) {
+            const opportunity =
+                context.opportunity;
+            const competition =
+                opportunity.competition || {};
+            const concerns = [];
+            const advantages = [];
+
+            if (
+                opportunity.numberOfAwards === 1
+            ) {
+                concerns.push(
+                    "Only one award is expected."
+                );
+            }
+
+            if (
+                competition.newOrganizationsEncouraged === true
+            ) {
+                advantages.push(
+                    "New organizations are encouraged to apply."
+                );
+            }
+
+            if (
+                competition.establishedGranteesFavored === true
+            ) {
+                concerns.push(
+                    "Historical funding appears concentrated among established grantees."
+                );
+            }
+
+            if (
+                opportunity.historicalRecipients.length > 0
+            ) {
+                advantages.push(
+                    "Historical recipient data is available for competitive analysis."
+                );
+            }
+
+            const base =
+                Number(competition.estimatedWinProbability);
+
+            let probability =
+                Number.isFinite(base)
+                    ? this.clamp(base, 0.5)
+                    : (
+                        context.organizationalFit.score * 0.45 +
+                        context.eligibility.score * 0.35 +
+                        (
+                            opportunity.verified
+                                ? 90
+                                : 55
+                        ) * 0.2
+                    ) / 100;
+
+            probability =
+                Math.max(
+                    0,
+                    Math.min(
+                        0.98,
+                        probability -
+                        concerns.length * 0.07 +
+                        advantages.length * 0.04
+                    )
+                );
+
+            return {
+                score:
+                    Math.round(probability * 100),
+                estimatedWinProbability:
+                    Number(probability.toFixed(3)),
+                concerns,
+                advantages,
+                historicalRecipientCount:
+                    opportunity.historicalRecipients.length
+            };
+        },
+
+        evaluateExecution(context) {
+            const opportunity =
+                context.opportunity;
+            const organization =
+                context.organizationSnapshot;
+            const blockers = [];
+            const conditions = [];
+            const strengths = [];
+
+            if (
+                opportunity.partnerRequirements.length > 0
+            ) {
+                conditions.push(
+                    "Required partner commitments must be secured."
+                );
+            }
+
+            if (
+                opportunity.requirements.requiredFacility &&
+                organization.facilities.length === 0
+            ) {
+                blockers.push(
+                    "A required facility is not documented."
+                );
+            }
+
+            if (
+                opportunity.requirements.minimumStaff &&
+                (
+                    !organization.staffCapacity ||
+                    organization.staffCapacity <
+                        opportunity.requirements.minimumStaff
+                )
+            ) {
+                conditions.push(
+                    "Staffing capacity must be confirmed or expanded."
+                );
+            }
+
+            if (
+                opportunity.reportingRequirements.length > 8
+            ) {
+                conditions.push(
+                    "Reporting burden is substantial."
+                );
+            }
+
+            if (
+                opportunity.complianceRequirements.length > 0
+            ) {
+                conditions.push(
+                    "Compliance obligations require review before acceptance."
+                );
             }
 
             if (
                 opportunity.requiredDocuments.length <= 5
             ) {
-                return 85;
+                strengths.push(
+                    "Required-document burden appears manageable."
+                );
             }
 
-            if (
-                opportunity.requiredDocuments.length <= 10
-            ) {
-                return 70;
-            }
+            const score =
+                blockers.length > 0
+                    ? 0
+                    : Math.max(
+                        30,
+                        90 -
+                        conditions.length * 10 +
+                        strengths.length * 5
+                    );
 
-            return 55;
+            return {
+                score:
+                    Math.min(100, score),
+                executable:
+                    blockers.length === 0,
+                blockers,
+                conditions,
+                strengths,
+                requiredDocuments:
+                    opportunity.requiredDocuments,
+                partnerRequirements:
+                    opportunity.partnerRequirements,
+                reportingRequirements:
+                    opportunity.reportingRequirements,
+                complianceRequirements:
+                    opportunity.complianceRequirements,
+                sustainabilityRisk:
+                    opportunity.projectEndDate &&
+                    !opportunity.renewalCycle
+                        ? "funding-cliff-review-required"
+                        : "not-yet-identified"
+            };
         },
 
-        getScoreRating(score) {
-            if (score >= 85) {
-                return "Exceptional Fit";
+        evaluateStrategicValue(context) {
+            const valueTypes = [];
+            const opportunity =
+                context.opportunity;
+
+            if (
+                context.moneyReality.estimatedAwardValue > 0
+            ) {
+                valueTypes.push("cash");
             }
 
-            if (score >= 70) {
-                return "Strong Fit";
+            if (
+                opportunity.type ===
+                OPPORTUNITY_TYPES.TECHNOLOGY_BENEFIT ||
+                opportunity.type ===
+                OPPORTUNITY_TYPES.COST_SAVINGS
+            ) {
+                valueTypes.push("cost-savings");
             }
 
-            if (score >= 50) {
-                return "Possible Fit";
+            if (
+                opportunity.type ===
+                OPPORTUNITY_TYPES.IN_KIND_RESOURCE
+            ) {
+                valueTypes.push("in-kind-capacity");
             }
 
-            return "Low Fit";
+            if (
+                opportunity.type ===
+                OPPORTUNITY_TYPES.STRATEGIC_PARTNERSHIP
+            ) {
+                valueTypes.push("partnership");
+            }
+
+            if (
+                [
+                    OPPORTUNITY_TYPES.LEGISLATIVE_SIGNAL,
+                    OPPORTUNITY_TYPES.BUDGET_SIGNAL,
+                    OPPORTUNITY_TYPES.COURT_SETTLEMENT,
+                    OPPORTUNITY_TYPES.FUTURE_FUNDING_SIGNAL
+                ].includes(opportunity.type)
+            ) {
+                valueTypes.push("future-positioning");
+            }
+
+            const multiplier =
+                valueTypes.includes("future-positioning")
+                    ? 15
+                    : 0;
+
+            const score =
+                Math.min(
+                    100,
+                    context.organizationalFit.score * 0.3 +
+                    context.moneyReality.score * 0.25 +
+                    context.execution.score * 0.2 +
+                    context.timing.score * 0.15 +
+                    valueTypes.length * 5 +
+                    multiplier
+                );
+
+            return {
+                score:
+                    Math.round(score),
+                valueTypes:
+                    this.uniqueStrings(valueTypes),
+                strengthensCapacity:
+                    score >= 65,
+                opensFuturePathway:
+                    valueTypes.includes(
+                        "future-positioning"
+                    ),
+                explanation:
+                    valueTypes.length > 0
+                        ? `Potential value includes ${valueTypes.join(", ")}.`
+                        : "Strategic value is not yet established."
+            };
         },
 
-        buildRecommendedAction(evaluation) {
-            if (evaluation.totalScore >= 85) {
-                return "Advance immediately to application development and Executive Review.";
+        identifyDisqualifiers(context) {
+            const items = [];
+
+            context.eligibility.failures.forEach(
+                (reason) => {
+                    items.push({
+                        type:
+                            this.classifyDisqualifier(reason),
+                        reason,
+                        hard:
+                            true
+                    });
+                }
+            );
+
+            context.execution.blockers.forEach(
+                (reason) => {
+                    items.push({
+                        type:
+                            DISQUALIFIER_TYPES.OTHER,
+                        reason,
+                        hard:
+                            true
+                    });
+                }
+            );
+
+            if (
+                context.organizationalFit?.populationConflict?.hardConflict
+            ) {
+                items.push({
+                    type:
+                        DISQUALIFIER_TYPES.POPULATION,
+                    reason:
+                        context.organizationalFit.populationConflict.explanation,
+                    hard:
+                        true
+                });
             }
 
-            if (evaluation.totalScore >= 70) {
-                return "Verify remaining requirements and prepare for Executive Review.";
-            }
-
-            if (evaluation.totalScore >= 50) {
-                return "Conduct additional research before committing organizational resources.";
-            }
-
-            return "Log the opportunity and prioritize stronger mission-aligned funding sources.";
+            return items;
         },
 
-        assignDocumentOffice(documentName) {
-            const normalized =
-                documentName.toLowerCase();
+        calculateExecutiveScore(context) {
+            const weights = {
+                missionAlignment: 0.23,
+                eligibility: 0.2,
+                moneyReality: 0.12,
+                timing: 0.1,
+                competitiveness: 0.13,
+                execution: 0.12,
+                strategicValue: 0.1
+            };
 
-            if (
-                normalized.includes("budget") ||
-                normalized.includes("financial")
-            ) {
-                return "Finance Office";
+            let total =
+                context.organizationalFit.score *
+                    weights.missionAlignment +
+                context.eligibility.score *
+                    weights.eligibility +
+                context.moneyReality.score *
+                    weights.moneyReality +
+                context.timing.score *
+                    weights.timing +
+                context.competitiveness.score *
+                    weights.competitiveness +
+                context.execution.score *
+                    weights.execution +
+                context.strategicValue.score *
+                    weights.strategicValue;
+
+            const hardDisqualifiers =
+                context.disqualifiers.filter(
+                    (item) => item.hard
+                ).length;
+
+            if (hardDisqualifiers > 0) {
+                total = Math.min(total, 20);
             }
 
             if (
-                normalized.includes("irs") ||
-                normalized.includes("bylaws") ||
-                normalized.includes("articles") ||
-                normalized.includes("certification")
+                this.configuration.requireOfficialSource &&
+                !context.opportunity.sourceUrl
             ) {
-                return "Compliance Office";
+                total -= 8;
             }
 
-            if (
-                normalized.includes("program") ||
-                normalized.includes("outcome") ||
-                normalized.includes("implementation")
-            ) {
-                return "Programs Office";
+            if (!context.opportunity.verified) {
+                total -= 6;
             }
 
-            if (
-                normalized.includes("letter of support") ||
-                normalized.includes("partner")
-            ) {
-                return "Community Relations Office";
-            }
+            total =
+                Math.max(
+                    0,
+                    Math.min(100, Math.round(total))
+                );
 
-            if (
-                normalized.includes("biograph") ||
-                normalized.includes("board") ||
-                normalized.includes("mission")
-            ) {
-                return "Executive Office";
-            }
-
-            return "Grant Office";
+            return {
+                total,
+                rating:
+                    total >= 90
+                        ? "executive-priority"
+                        : total >= 82
+                            ? "strong-candidate"
+                            : total >= 72
+                                ? "strategic-opportunity"
+                                : total >= 55
+                                    ? "watch-list"
+                                    : "reject",
+                probability:
+                    context.competitiveness
+                        .estimatedWinProbability,
+                components: {
+                    missionAlignment:
+                        context.organizationalFit.score,
+                    eligibility:
+                        context.eligibility.score,
+                    moneyReality:
+                        context.moneyReality.score,
+                    timing:
+                        context.timing.score,
+                    competitiveness:
+                        context.competitiveness.score,
+                    execution:
+                        context.execution.score,
+                    strategicValue:
+                        context.strategicValue.score
+                }
+            };
         },
 
-        createId(prefix) {
-            const randomPart = Math.random()
-                .toString(36)
-                .slice(2, 9);
+        determineRecommendation(context) {
+            let decision =
+                RECOMMENDATIONS.WATCH_AND_TRACK;
+            let rationale =
+                "Continue monitoring while missing information is resolved.";
 
-            return `${prefix}-${Date.now()}-${randomPart}`;
+            if (
+                context.disqualifiers.some(
+                    (item) => item.hard
+                )
+            ) {
+                decision =
+                    RECOMMENDATIONS.SKIP_NOT_ELIGIBLE;
+                rationale =
+                    "A confirmed eligibility or execution disqualifier prevents pursuit.";
+            } else if (
+                context.organizationalFit.score < 45 ||
+                !context.organizationalFit.canHonestlyPerform
+            ) {
+                decision =
+                    RECOMMENDATIONS.SKIP_MISSION_MISALIGNMENT;
+                rationale =
+                    "The opportunity is not sufficiently aligned with a current organizational capability.";
+            } else if (
+                context.moneyReality.valueToEffort < 30 &&
+                !context.strategicValue.opensFuturePathway
+            ) {
+                decision =
+                    RECOMMENDATIONS.SKIP_LOW_RETURN;
+                rationale =
+                    "Likely organizational value does not justify the expected pursuit cost.";
+            } else if (
+                [
+                    LIFECYCLE_STATES.SIGNAL,
+                    LIFECYCLE_STATES.EXPECTED
+                ].includes(context.opportunity.lifecycle)
+            ) {
+                decision =
+                    RECOMMENDATIONS.PREPARE_FOR_FUTURE;
+                rationale =
+                    "The opportunity is not open yet, but the organization should prepare before funding becomes available.";
+            } else if (
+                context.eligibility.conditionallyEligible ||
+                context.execution.conditions.some(
+                    (condition) =>
+                        condition.toLowerCase()
+                            .includes("partner")
+                )
+            ) {
+                decision =
+                    context.opportunity.partnerRequirements.length > 0
+                        ? RECOMMENDATIONS.PURSUE_WITH_PARTNER
+                        : RECOMMENDATIONS.REQUEST_CLARIFICATION;
+                rationale =
+                    "The opportunity appears promising but requires a partner or material eligibility clarification.";
+            } else if (
+                context.score.total >=
+                this.configuration.minimumPursueScore
+            ) {
+                decision =
+                    RECOMMENDATIONS.PURSUE_NOW;
+                rationale =
+                    "The opportunity earned executive attention through strong fit, eligibility, value, timing, and execution readiness.";
+            }
+
+            return {
+                decision,
+                rationale,
+                interruptExecutiveDirector:
+                    decision ===
+                    RECOMMENDATIONS.PURSUE_NOW,
+                executivePriority:
+                    context.score.rating,
+                immediateAction:
+                    this.buildImmediateAction({
+                        ...context,
+                        decision
+                    }),
+                owner:
+                    "Grant Office",
+                approvalRequired:
+                    this.configuration.requireExecutiveApproval
+            };
+        },
+
+        identifyMissingInformation(context) {
+            const missing = [];
+
+            if (!context.opportunity.sourceUrl) {
+                missing.push(
+                    "Official source URL"
+                );
+            }
+
+            if (!context.opportunity.verified) {
+                missing.push(
+                    "Official-source verification"
+                );
+            }
+
+            if (
+                context.opportunity.eligibleApplicants.length === 0
+            ) {
+                missing.push(
+                    "Eligible applicant classes"
+                );
+            }
+
+            if (
+                !context.opportunity.openDate &&
+                ![
+                    LIFECYCLE_STATES.SIGNAL,
+                    LIFECYCLE_STATES.EXPECTED
+                ].includes(context.opportunity.lifecycle)
+            ) {
+                missing.push(
+                    "Application opening date"
+                );
+            }
+
+            if (
+                !context.opportunity.deadline &&
+                context.opportunity.lifecycle ===
+                    LIFECYCLE_STATES.OPEN
+            ) {
+                missing.push(
+                    "Application deadline"
+                );
+            }
+
+            if (
+                !context.opportunity.awardAmount &&
+                !context.opportunity.awardMinimum &&
+                !context.opportunity.awardMaximum
+            ) {
+                missing.push(
+                    "Award amount or range"
+                );
+            }
+
+            if (
+                context.competitiveness
+                    .historicalRecipientCount === 0
+            ) {
+                missing.push(
+                    "Historical recipient analysis"
+                );
+            }
+
+            return this.uniqueStrings(missing);
+        },
+
+        buildExecutiveSummary(context) {
+            return {
+                headline:
+                    `${context.recommendation.decision} — score ${context.score.total}/100`,
+                whyItFits:
+                    context.organizationalFit.explanation,
+                organizationalComponent:
+                    context.organizationalFit.bestComponent,
+                eligibility:
+                    context.eligibility.disqualified
+                        ? "not eligible"
+                        : context.eligibility.conditionallyEligible
+                            ? "conditional"
+                            : "appears eligible",
+                probabilityOfSuccess:
+                    context.competitiveness
+                        .estimatedWinProbability,
+                potentialValue:
+                    context.moneyReality
+                        .estimatedAwardValue,
+                costToPursue:
+                    context.moneyReality
+                        .pursuitCostEstimate,
+                deadline:
+                    context.timing.deadline,
+                daysRemaining:
+                    context.timing.daysRemaining,
+                blockers:
+                    context.disqualifiers.map(
+                        (item) => item.reason
+                    ),
+                missingRequirements:
+                    context.missingInformation,
+                immediateAction:
+                    context.recommendation
+                        .immediateAction,
+                executiveTimeProtected:
+                    context.recommendation
+                        .interruptExecutiveDirector
+                        ? false
+                        : true
+            };
+        },
+
+        getExecutiveDesk(options = {}) {
+            const limit =
+                Math.max(
+                    1,
+                    Math.min(
+                        100,
+                        Number(
+                            options.limit ||
+                            this.configuration.executiveDeskLimit
+                        )
+                    )
+                );
+
+            const evaluated =
+                this.opportunities
+                    .filter(
+                        (item) =>
+                            item.evaluation?.success
+                    )
+                    .filter(
+                        (item) =>
+                            item.evaluation.score.total >=
+                            (
+                                options.minimumScore ||
+                                this.configuration.minimumDeskScore
+                            )
+                    )
+                    .filter(
+                        (item) =>
+                            item.evaluation.recommendation.decision !==
+                                RECOMMENDATIONS.SKIP_NOT_ELIGIBLE &&
+                            item.evaluation.recommendation.decision !==
+                                RECOMMENDATIONS.SKIP_LOW_RETURN &&
+                            item.evaluation.recommendation.decision !==
+                                RECOMMENDATIONS.SKIP_MISSION_MISALIGNMENT
+                    )
+                    .sort((a, b) => {
+                        if (
+                            b.evaluation.score.total !==
+                            a.evaluation.score.total
+                        ) {
+                            return (
+                                b.evaluation.score.total -
+                                a.evaluation.score.total
+                            );
+                        }
+
+                        return (
+                            (
+                                b.evaluation.moneyReality
+                                    .estimatedAwardValue || 0
+                            ) -
+                            (
+                                a.evaluation.moneyReality
+                                    .estimatedAwardValue || 0
+                            )
+                        );
+                    })
+                    .slice(0, limit);
+
+            return {
+                success: true,
+                reviewed:
+                    this.opportunities.filter(
+                        (item) => item.evaluation
+                    ).length,
+                rejectedBeforeDesk:
+                    this.opportunities.filter(
+                        (item) =>
+                            item.evaluation &&
+                            !evaluated.includes(item)
+                    ).length,
+                deskCount:
+                    evaluated.length,
+                executiveDesk:
+                    evaluated.map((item) => ({
+                        id: item.id,
+                        title: item.title,
+                        provider: item.provider,
+                        type: item.type,
+                        score:
+                            item.evaluation.score,
+                        recommendation:
+                            item.evaluation.recommendation,
+                        executiveSummary:
+                            item.evaluation.executiveSummary
+                    }))
+            };
+        },
+
+        rankOpportunities() {
+            return this.opportunities
+                .filter((item) => item.evaluation)
+                .sort(
+                    (a, b) =>
+                        b.evaluation.score.total -
+                        a.evaluation.score.total
+                )
+                .map((item) =>
+                    this.clone(item)
+                );
+        },
+
+        trackOpportunity(opportunityId, update = {}) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error:
+                        "Opportunity not found."
+                };
+            }
+
+            const previous = {
+                lifecycle:
+                    opportunity.lifecycle,
+                openDate:
+                    opportunity.openDate,
+                deadline:
+                    opportunity.deadline,
+                awardAmount:
+                    opportunity.awardAmount
+            };
+
+            Object.assign(
+                opportunity,
+                {
+                    ...update,
+                    updatedAt:
+                        this.now()
+                }
+            );
+
+            const current = {
+                lifecycle:
+                    opportunity.lifecycle,
+                openDate:
+                    opportunity.openDate,
+                deadline:
+                    opportunity.deadline,
+                awardAmount:
+                    opportunity.awardAmount
+            };
+
+            opportunity.tracking.changes.push({
+                previous,
+                current,
+                observedAt:
+                    this.now()
+            });
+            opportunity.tracking.lastCheckedAt =
+                this.now();
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        determineLifecycle(input) {
+            const now = Date.now();
+            const open =
+                this.parseDate(input.openDate);
+            const deadline =
+                this.parseDate(input.deadline);
+
+            if (
+                input.futureSignal === true ||
+                input.preAnnouncement === true
+            ) {
+                return LIFECYCLE_STATES.SIGNAL;
+            }
+
+            if (
+                open !== null &&
+                open > now
+            ) {
+                return LIFECYCLE_STATES.EXPECTED;
+            }
+
+            if (
+                deadline !== null &&
+                deadline < now
+            ) {
+                return LIFECYCLE_STATES.CLOSED;
+            }
+
+            if (
+                deadline !== null &&
+                deadline - now <=
+                    14 * 86400000
+            ) {
+                return LIFECYCLE_STATES.CLOSING_SOON;
+            }
+
+            return LIFECYCLE_STATES.OPEN;
+        },
+
+        determineResourceForm(opportunity) {
+            if (
+                opportunity.type ===
+                OPPORTUNITY_TYPES.IN_KIND_RESOURCE
+            ) {
+                return "in-kind";
+            }
+
+            if (
+                opportunity.type ===
+                    OPPORTUNITY_TYPES.TECHNOLOGY_BENEFIT ||
+                opportunity.type ===
+                    OPPORTUNITY_TYPES.COST_SAVINGS
+            ) {
+                return "cost-savings";
+            }
+
+            if (
+                opportunity.type ===
+                OPPORTUNITY_TYPES.STRATEGIC_PARTNERSHIP
+            ) {
+                return "relationship";
+            }
+
+            if (
+                [
+                    OPPORTUNITY_TYPES.LEGISLATIVE_SIGNAL,
+                    OPPORTUNITY_TYPES.BUDGET_SIGNAL,
+                    OPPORTUNITY_TYPES.FUTURE_FUNDING_SIGNAL,
+                    OPPORTUNITY_TYPES.COURT_SETTLEMENT
+                ].includes(opportunity.type)
+            ) {
+                return "future-funding-pathway";
+            }
+
+            return "cash-or-contract";
+        },
+
+        normalizeRequirements(requirements) {
+            return {
+                minimumOperatingYears:
+                    this.numberOrNull(
+                        requirements.minimumOperatingYears
+                    ),
+                minimumFinancialYears:
+                    this.numberOrNull(
+                        requirements.minimumFinancialYears
+                    ),
+                minimumAuditedFinancialYears:
+                    this.numberOrNull(
+                        requirements.minimumAuditedFinancialYears
+                    ),
+                minimumOutcomeYears:
+                    this.numberOrNull(
+                        requirements.minimumOutcomeYears
+                    ),
+                minimumAnnualBudget:
+                    this.numberOrNull(
+                        requirements.minimumAnnualBudget
+                    ),
+                requiredLicense:
+                    requirements.requiredLicense ||
+                    null,
+                requiredAccreditation:
+                    requirements.requiredAccreditation ||
+                    null,
+                requiredFacility:
+                    requirements.requiredFacility ||
+                    null,
+                minimumStaff:
+                    this.numberOrNull(
+                        requirements.minimumStaff
+                    )
+            };
+        },
+
+        checkMinimumRequirement(
+            failures,
+            conditions,
+            confirmed,
+            label,
+            required,
+            available
+        ) {
+            if (!required) {
+                return;
+            }
+
+            if (!available) {
+                conditions.push(
+                    `Current ${label} must be confirmed; requirement is ${required}.`
+                );
+                return;
+            }
+
+            if (available < required) {
+                failures.push(
+                    `Requires ${required} ${label}; current documented amount is ${available}.`
+                );
+                return;
+            }
+
+            confirmed.push(
+                `${label} requirement appears satisfied.`
+            );
+        },
+
+        evaluateGeography(opportunity, organization) {
+            const grant =
+                this.normalizeText(
+                    opportunity.geography
+                );
+            const service =
+                this.normalizeText(
+                    organization.serviceArea
+                );
+
+            if (!grant) {
+                return {
+                    confirmed: false,
+                    disqualified: false,
+                    explanation:
+                        "Geographic eligibility is not stated."
+                };
+            }
+
+            if (
+                [
+                    "national",
+                    "united states",
+                    "california",
+                    "statewide"
+                ].some((term) =>
+                    grant.includes(term)
+                )
+            ) {
+                return {
+                    confirmed: true,
+                    disqualified: false,
+                    explanation:
+                        "Geography appears compatible with the service area."
+                };
+            }
+
+            const serviceTerms =
+                service
+                    .split(" ")
+                    .filter(
+                        (term) =>
+                            term.length >= 4
+                    );
+
+            const overlap =
+                serviceTerms.some(
+                    (term) =>
+                        grant.includes(term)
+                );
+
+            if (overlap) {
+                return {
+                    confirmed: true,
+                    disqualified: false,
+                    explanation:
+                        "Opportunity geography overlaps the organizational service area."
+                };
+            }
+
+            return {
+                confirmed: false,
+                disqualified: true,
+                explanation:
+                    "Opportunity geography does not appear to include the organizational service area."
+            };
+        },
+
+        classifyDisqualifier(reason) {
+            const value =
+                this.normalizeText(reason);
+
+            if (
+                value.includes("audited financial")
+            ) {
+                return DISQUALIFIER_TYPES.AUDITED_FINANCIALS;
+            }
+
+            if (
+                value.includes("financial statement")
+            ) {
+                return DISQUALIFIER_TYPES.FINANCIAL_HISTORY;
+            }
+
+            if (
+                value.includes("operating year")
+            ) {
+                return DISQUALIFIER_TYPES.OPERATING_HISTORY;
+            }
+
+            if (
+                value.includes("program outcome")
+            ) {
+                return DISQUALIFIER_TYPES.OUTCOME_HISTORY;
+            }
+
+            if (
+                value.includes("annual budget")
+            ) {
+                return DISQUALIFIER_TYPES.MINIMUM_BUDGET;
+            }
+
+            if (
+                value.includes("geograph")
+            ) {
+                return DISQUALIFIER_TYPES.GEOGRAPHY;
+            }
+
+            if (
+                value.includes("license")
+            ) {
+                return DISQUALIFIER_TYPES.LICENSE;
+            }
+
+            if (
+                value.includes("accreditation")
+            ) {
+                return DISQUALIFIER_TYPES.ACCREDITATION;
+            }
+
+            return DISQUALIFIER_TYPES.OTHER;
+        },
+
+        buildImmediateAction(context) {
+            switch (context.decision) {
+                case RECOMMENDATIONS.PURSUE_NOW:
+                    return "Verify the official notice, open an application mission, and assemble the required documents immediately.";
+
+                case RECOMMENDATIONS.PREPARE_FOR_FUTURE:
+                    return "Track the funding source and begin building eligibility, outcome evidence, partnerships, and application materials before opening.";
+
+                case RECOMMENDATIONS.PURSUE_WITH_PARTNER:
+                    return "Identify and secure the required or strategically strongest partner before committing application resources.";
+
+                case RECOMMENDATIONS.REQUEST_CLARIFICATION:
+                    return "Contact the provider or review the official notice to resolve material eligibility questions.";
+
+                case RECOMMENDATIONS.WATCH_AND_TRACK:
+                    return "Keep the opportunity in the monitored pipeline and re-evaluate when material facts change.";
+
+                case RECOMMENDATIONS.SKIP_NOT_ELIGIBLE:
+                    return "Do not spend executive time unless eligibility rules materially change.";
+
+                case RECOMMENDATIONS.SKIP_LOW_RETURN:
+                    return "Archive the opportunity and prioritize stronger value-to-effort candidates.";
+
+                case RECOMMENDATIONS.SKIP_MISSION_MISALIGNMENT:
+                    return "Reject the opportunity to prevent mission drift.";
+
+                default:
+                    return "Review the evidence before action.";
+            }
+        },
+
+        mapRecommendationToStatus(decision) {
+            const map = {
+                [RECOMMENDATIONS.PURSUE_NOW]:
+                    "executive-priority",
+                [RECOMMENDATIONS.PREPARE_FOR_FUTURE]:
+                    "future-pipeline",
+                [RECOMMENDATIONS.PURSUE_WITH_PARTNER]:
+                    "partner-required",
+                [RECOMMENDATIONS.REQUEST_CLARIFICATION]:
+                    "verification-required",
+                [RECOMMENDATIONS.WATCH_AND_TRACK]:
+                    "watch-list",
+                [RECOMMENDATIONS.SKIP_NOT_ELIGIBLE]:
+                    "rejected-not-eligible",
+                [RECOMMENDATIONS.SKIP_LOW_RETURN]:
+                    "rejected-low-return",
+                [RECOMMENDATIONS.SKIP_MISSION_MISALIGNMENT]:
+                    "rejected-mission-misalignment"
+            };
+
+            return map[decision] || "review";
+        },
+
+        updateAnalytics(opportunity, evaluation) {
+            this.analytics.opportunitiesEvaluated += 1;
+            this.analytics.lastEvaluationAt =
+                evaluation.evaluatedAt;
+
+            const decision =
+                evaluation.recommendation.decision;
+
+            if (
+                decision.startsWith("skip-")
+            ) {
+                this.analytics.opportunitiesRejected += 1;
+                this.analytics.executiveHoursProtectedEstimate =
+                    Number(
+                        (
+                            this.analytics.executiveHoursProtectedEstimate +
+                            2.5
+                        ).toFixed(1)
+                    );
+            } else if (
+                decision ===
+                RECOMMENDATIONS.PURSUE_NOW
+            ) {
+                this.analytics.opportunitiesRecommended += 1;
+            }
+
+            const value =
+                evaluation.moneyReality
+                    .estimatedAwardValue || 0;
+
+            if (
+                evaluation.understanding
+                    .currentOrFuture === "future"
+            ) {
+                this.analytics.futurePipelineValue += value;
+            } else {
+                this.analytics.currentPipelineValue += value;
+            }
+        },
+
+        getMissionById(id) {
+            return (
+                this.activeMissions.find(
+                    (item) => item.id === id
+                ) || null
+            );
+        },
+
+        getOpportunityById(id) {
+            return (
+                this.opportunities.find(
+                    (item) => item.id === id
+                ) || null
+            );
+        },
+
+        enforceOpportunityLimit() {
+            if (
+                this.opportunities.length >
+                this.configuration.maximumOpportunities
+            ) {
+                this.opportunities =
+                    this.opportunities.slice(
+                        -this.configuration.maximumOpportunities
+                    );
+            }
         },
 
         getStatus() {
             return {
                 name: this.name,
                 version: this.version,
+                buildId: this.buildId,
                 status: this.status,
                 operatingMode: this.operatingMode,
+                organizationConnected:
+                    Boolean(
+                        this.getOrganizationProfile()
+                    ),
                 activeMissionCount:
                     this.activeMissions.length,
                 opportunityCount:
                     this.opportunities.length,
-                executiveReviewCount:
-                    this.executiveReviews.length,
-                organizationConnected:
-                    Boolean(this.getOrganizationProfile())
+                evaluatedOpportunityCount:
+                    this.opportunities.filter(
+                        (item) => item.evaluation
+                    ).length,
+                executiveDeskCount:
+                    this.getExecutiveDesk().deskCount,
+                analytics:
+                    this.clone(this.analytics)
             };
+        },
+
+        exportState() {
+            return {
+                schema:
+                    "meos.grant-office.state.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                exportedAt:
+                    this.now(),
+                activeMissions:
+                    this.activeMissions,
+                opportunities:
+                    this.opportunities,
+                executiveReviews:
+                    this.executiveReviews,
+                analytics:
+                    this.analytics
+            };
+        },
+
+        persistIfEnabled() {
+            if (
+                !this.configuration.persistenceEnabled ||
+                !this.configuration.automaticPersistence
+            ) {
+                return {
+                    success: true,
+                    persisted: false
+                };
+            }
+
+            return this.persist();
+        },
+
+        persist() {
+            if (!global.localStorage) {
+                return {
+                    success: false,
+                    error:
+                        "Browser local storage is unavailable."
+                };
+            }
+
+            try {
+                global.localStorage.setItem(
+                    this.configuration.localStorageKey,
+                    JSON.stringify(
+                        this.exportState()
+                    )
+                );
+
+                return {
+                    success: true,
+                    persisted: true
+                };
+            } catch (error) {
+                console.warn(
+                    "[MEOS Grant Office] State persistence failed:",
+                    error
+                );
+
+                return {
+                    success: false,
+                    persisted: false,
+                    error:
+                        error.message
+                };
+            }
+        },
+
+        restore() {
+            if (
+                !this.configuration.persistenceEnabled ||
+                !global.localStorage
+            ) {
+                return {
+                    success: false,
+                    restored: false
+                };
+            }
+
+            const stored =
+                global.localStorage.getItem(
+                    this.configuration.localStorageKey
+                );
+
+            if (!stored) {
+                return {
+                    success: true,
+                    restored: false
+                };
+            }
+
+            try {
+                const data =
+                    JSON.parse(stored);
+
+                if (
+                    data.schema !==
+                    "meos.grant-office.state.v1"
+                ) {
+                    return {
+                        success: false,
+                        restored: false,
+                        error:
+                            "Stored Grant Office data uses an unsupported schema."
+                    };
+                }
+
+                this.activeMissions =
+                    data.activeMissions || [];
+                this.opportunities =
+                    data.opportunities || [];
+                this.executiveReviews =
+                    data.executiveReviews || [];
+                this.analytics = {
+                    ...this.analytics,
+                    ...(data.analytics || {})
+                };
+
+                return {
+                    success: true,
+                    restored: true
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    restored: false,
+                    error:
+                        error.message
+                };
+            }
+        },
+
+        extractConcepts(value) {
+            return this.uniqueStrings(
+                this.normalizeText(value)
+                    .split(" ")
+                    .filter(
+                        (word) =>
+                            word.length >= 4
+                    )
+            );
+        },
+
+        extractMeaningfulWords(value) {
+            const stop = new Set([
+                "that",
+                "this",
+                "with",
+                "from",
+                "into",
+                "through",
+                "their",
+                "there",
+                "where",
+                "which",
+                "would",
+                "could",
+                "should",
+                "program",
+                "grant",
+                "funding",
+                "support",
+                "services",
+                "community"
+            ]);
+
+            return this.normalizeText(value)
+                .split(" ")
+                .filter(
+                    (word) =>
+                        word.length >= 4 &&
+                        !stop.has(word)
+                );
+        },
+
+        uniqueStrings(values) {
+            if (!Array.isArray(values)) {
+                return [];
+            }
+
+            return Array.from(
+                new Set(
+                    values
+                        .map(
+                            (value) =>
+                                String(value || "").trim()
+                        )
+                        .filter(Boolean)
+                )
+            );
+        },
+
+        numberOrNull(value) {
+            const number =
+                Number(value);
+
+            return Number.isFinite(number)
+                ? number
+                : null;
+        },
+
+        clamp(value, fallback = 0.5) {
+            const number =
+                Number(value);
+
+            if (!Number.isFinite(number)) {
+                return fallback;
+            }
+
+            return Math.max(
+                0,
+                Math.min(1, number)
+            );
+        },
+
+        parseDate(value) {
+            if (!value) {
+                return null;
+            }
+
+            const timestamp =
+                Date.parse(value);
+
+            return Number.isFinite(timestamp)
+                ? timestamp
+                : null;
+        },
+
+        normalizeText(value) {
+            return String(value ?? "")
+                .normalize("NFKD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .replace(/[^a-z0-9$%()]+/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+        },
+
+        createId(prefix = "item") {
+            const random =
+                global.crypto?.randomUUID
+                    ? global.crypto.randomUUID()
+                    : `${Date.now().toString(36)}-${Math.random()
+                        .toString(36)
+                        .slice(2, 10)}`;
+
+            return `${prefix}-${random}`;
+        },
+
+        now() {
+            return new Date().toISOString();
+        },
+
+        clone(value) {
+            if (value === undefined) {
+                return undefined;
+            }
+
+            return JSON.parse(
+                JSON.stringify(value)
+            );
         }
     };
 
+    GrantOffice.OPPORTUNITY_TYPES =
+        OPPORTUNITY_TYPES;
+    GrantOffice.LIFECYCLE_STATES =
+        LIFECYCLE_STATES;
+    GrantOffice.RECOMMENDATIONS =
+        RECOMMENDATIONS;
+    GrantOffice.DISQUALIFIER_TYPES =
+        DISQUALIFIER_TYPES;
+
     global.GrantOffice = GrantOffice;
-
-    console.info(
-        `[MEOS] ${GrantOffice.name} v${GrantOffice.version} online.`
-    );
-
-    console.info(
-        "[MEOS Grant Office] Organizational Profile connected:",
-        Boolean(global.OrganizationalProfile)
-    );
+    GrantOffice.initialize();
 })(window);
