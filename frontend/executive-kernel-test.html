@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MEOS Executive Kernel Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+    main { max-width: 900px; margin: 40px auto; padding: 24px; }
+    h1 { margin-bottom: 8px; }
+    .note { color: #94a3b8; margin-bottom: 24px; }
+    button { padding: 12px 18px; font-size: 16px; cursor: pointer; }
+    .card { margin-top: 18px; padding: 18px; border: 1px solid #334155; border-radius: 10px; background: #111827; }
+    .pass { color: #86efac; }
+    .fail { color: #fca5a5; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #020617; padding: 14px; border-radius: 8px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MEOS Executive Kernel Test</h1>
+    <p class="note">Read-only test. Does not start voice, call OpenAI, or change existing MEOS files.</p>
+    <button id="run-test">Run Test</button>
+    <div id="results"></div>
+  </main>
+
+  <script src="executive-offices.js"></script>
+  <script src="mission-engine.js"></script>
+  <script src="profiles/ccsp-organizational-profile.js"></script>
+  <script src="intelligence-engine.js"></script>
+  <script src="knowledge-engine.js"></script>
+  <script src="knowledge-memory.js"></script>
+  <script src="document-ingestion.js"></script>
+  <script src="document-classifier.js"></script>
+  <script src="executive-search.js"></script>
+  <script src="executive-recall.js"></script>
+  <script src="institutional-reasoning.js"></script>
+  <script src="executive-planning.js"></script>
+  <script src="executive-workflow.js"></script>
+  <script src="executive-decision.js"></script>
+  <script src="executive-collaboration.js"></script>
+  <script src="executive-automation.js"></script>
+  <script src="executive-monitoring.js"></script>
+  <script src="executive-learning.js"></script>
+  <script src="executive-brain.js"></script>
+  <script src="executive-router.js"></script>
+  <script src="maddy/biography.js"></script>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const results = document.getElementById("results");
+      const button = document.getElementById("run-test");
+
+      function addCard(title, passed, data) {
+        const card = document.createElement("section");
+        card.className = "card";
+
+        const heading = document.createElement("h2");
+        heading.className = passed ? "pass" : "fail";
+        heading.textContent = `${passed ? "PASS" : "FAIL"} — ${title}`;
+
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(data, null, 2);
+
+        card.appendChild(heading);
+        card.appendChild(pre);
+        results.appendChild(card);
+      }
+
+      async function run() {
+        results.innerHTML = "";
+        button.disabled = true;
+
+        try {
+          const brainExists = Boolean(window.ExecutiveBrain);
+          addCard("Executive Brain loaded", brainExists, {
+            global: "window.ExecutiveBrain",
+            exists: brainExists
+          });
+
+          const routerExists = Boolean(window.ExecutiveRouter);
+          addCard("Executive Router loaded", routerExists, {
+            global: "window.ExecutiveRouter",
+            exists: routerExists
+          });
+
+          if (!brainExists || !routerExists) {
+            return;
+          }
+
+          const brainStatus = window.ExecutiveBrain.getStatus();
+          addCard(
+            "Executive Brain online",
+            brainStatus.status === "online",
+            brainStatus
+          );
+
+          const routerStatus = window.ExecutiveRouter.getStatus();
+          addCard(
+            "Executive Router online and connected to Brain",
+            routerStatus.status === "online" && routerStatus.brainReady === true,
+            routerStatus
+          );
+
+          const identityResult = await window.ExecutiveRouter.handle(
+            "What is my name?",
+            { source: "kernel-test" }
+          );
+
+          const identityText = JSON.stringify(identityResult).toLowerCase();
+          addCard(
+            "Internal identity request routed through MEOS",
+            identityResult.success === true &&
+              identityResult.route === "instant-meos-context" &&
+              identityText.includes("mandel"),
+            identityResult
+          );
+
+          const organizationResult = await window.ExecutiveRouter.handle(
+            "What organization are you serving?",
+            { source: "kernel-test" }
+          );
+
+          const organizationText = JSON.stringify(organizationResult).toLowerCase();
+          addCard(
+            "Organizational profile available internally",
+            organizationResult.success === true &&
+              organizationResult.route === "instant-meos-context" &&
+              (
+                organizationText.includes("california clean slate program") ||
+                organizationText.includes("ccsp")
+              ),
+            organizationResult
+          );
+
+          const externalRoute = window.ExecutiveBrain.routeRequest(
+            "What federal grants are open today?",
+            { source: "kernel-test" }
+          );
+
+          addCard(
+            "Current grant question marked for external research",
+            externalRoute.success === true &&
+              externalRoute.route === "external-intelligence-research" &&
+              externalRoute.package?.request?.requiresCurrentInternet === true,
+            externalRoute
+          );
+        } catch (error) {
+          addCard("Unexpected test error", false, {
+            name: error?.name || "Error",
+            message: error?.message || String(error),
+            stack: error?.stack || null
+          });
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      button.addEventListener("click", run);
+    })();
+  </script>
+</body>
+</html>
