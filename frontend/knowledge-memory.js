@@ -1,6 +1,6 @@
 /*
  * MEOS Knowledge Memory
- * Version: 1.0.0
+ * Version: 1.1.0
  *
  * Purpose:
  * Upgrade the completed MEOS Knowledge Engine with document memory,
@@ -26,7 +26,11 @@
 
     const STORAGE_KEY = "meos.knowledge-memory.v1";
     const SCHEMA = "meos-knowledge-memory";
-    const VERSION = "1.0.0";
+    const VERSION = "1.1.0";
+    const EXECUTIVE_MEMORY_COLLECTION = "investigation-history";
+    const EXECUTIVE_MEMORY_ENDPOINT = "/api/executive-memory";
+    const EXECUTIVE_MEMORY_MANIFEST_ID = "knowledge-memory-manifest-v1";
+    const EXECUTIVE_MEMORY_SHARD_TARGET_BYTES = 320000;
 
     const KnowledgeMemory = {
         name: "MEOS Knowledge Memory",
@@ -38,6 +42,14 @@
             persistenceEnabled: true,
             automaticPersistence: true,
             localStorageKey: STORAGE_KEY,
+            authoritativeStorage: "executive-memory",
+            executiveMemoryEndpoint: EXECUTIVE_MEMORY_ENDPOINT,
+            executiveMemoryCollection: EXECUTIVE_MEMORY_COLLECTION,
+            executiveMemoryManifestId: EXECUTIVE_MEMORY_MANIFEST_ID,
+            executiveMemoryShardTargetBytes:
+                EXECUTIVE_MEMORY_SHARD_TARGET_BYTES,
+            localStorageRole: "legacy-migration-only",
+            persistenceDebounceMs: 450,
 
             defaultChunkSize: 1200,
             defaultChunkOverlap: 180,
@@ -71,6 +83,12 @@
 
         connectedEngine: null,
         initializedAt: null,
+        persistenceTimer: null,
+        persistencePromise: null,
+        restorePromise: null,
+        lastPersistenceAt: null,
+        lastPersistenceError: null,
+        restoredFromExecutiveMemory: false,
 
         initialize(options = {}) {
             this.configuration = {
@@ -78,7 +96,24 @@
                 ...(options.configuration || options)
             };
 
-            this.restore();
+            this.restorePromise = this.restore().catch(
+                (error) => {
+                    this.lastPersistenceError =
+                        error?.message || String(error);
+
+                    console.error(
+                        "[MEOS Knowledge Memory] Executive Memory restore failed:",
+                        error
+                    );
+
+                    return {
+                        success: false,
+                        restored: false,
+                        error:
+                            this.lastPersistenceError
+                    };
+                }
+            );
 
             const connected = this.connect(global.KnowledgeEngine);
 
@@ -3359,6 +3394,15 @@
                 persistenceEnabled:
                     this.configuration
                         .persistenceEnabled,
+                authoritativeStorage:
+                    this.configuration
+                        .authoritativeStorage,
+                restoredFromExecutiveMemory:
+                    this.restoredFromExecutiveMemory,
+                lastPersistenceAt:
+                    this.lastPersistenceAt,
+                lastPersistenceError:
+                    this.lastPersistenceError,
                 documentCount:
                     this.documents.length,
                 currentDocumentCount:
@@ -3495,7 +3539,10 @@
             );
 
             this.reconcileWithKnowledgeEngine();
-            this.persistIfEnabled();
+
+            if (options.skipPersistence !== true) {
+                this.persistIfEnabled();
+            }
 
             this.emit("memory:imported", {
                 importedAt:
@@ -3508,22 +3555,228 @@
             };
         },
 
+        getExecutiveMemoryCollectionUrl(
+            recordId = null
+        ) {
+            const base = String(
+                this.configuration
+                    .executiveMemoryEndpoint
+            ).replace(/\/+$/, "");
+
+            const collection =
+                encodeURIComponent(
+                    this.configuration
+                        .executiveMemoryCollection
+                );
+
+            return recordId
+                ? `${base}/${collection}/${encodeURIComponent(
+                      recordId
+                  )}`
+                : `${base}/${collection}`;
+        },
+
+        async executiveMemoryRequest(
+            method,
+            recordId = null,
+            body = null
+        ) {
+            if (
+                typeof global.fetch !== "function"
+            ) {
+                throw new Error(
+                    "Executive Memory transport is unavailable."
+                );
+            }
+
+            const response = await global.fetch(
+                this.getExecutiveMemoryCollectionUrl(
+                    recordId
+                ),
+                {
+                    method,
+                    headers:
+                        body === null
+                            ? {
+                                  Accept:
+                                      "application/json"
+                              }
+                            : {
+                                  Accept:
+                                      "application/json",
+                                  "Content-Type":
+                                      "application/json"
+                              },
+                    body:
+                        body === null
+                            ? undefined
+                            : JSON.stringify(body),
+                    cache: "no-store",
+                    credentials: "same-origin"
+                }
+            );
+
+            const payload = await response
+                .json()
+                .catch(() => null);
+
+            if (!response.ok) {
+                const error = new Error(
+                    payload?.error ||
+                        `Executive Memory returned HTTP ${response.status}.`
+                );
+
+                error.code =
+                    payload?.code ||
+                    "EXECUTIVE_MEMORY_HTTP_ERROR";
+                error.details =
+                    payload?.details || null;
+
+                throw error;
+            }
+
+            return payload;
+        },
+
+        createPersistenceShards(exportData) {
+            const targetBytes = Math.max(
+                50000,
+                Number(
+                    this.configuration
+                        .executiveMemoryShardTargetBytes
+                ) ||
+                    EXECUTIVE_MEMORY_SHARD_TARGET_BYTES
+            );
+
+            const categories = [
+                "documents",
+                "passages",
+                "citations",
+                "versions",
+                "crossReferences",
+                "conflicts"
+            ];
+
+            const encoder =
+                typeof global.TextEncoder ===
+                "function"
+                    ? new global.TextEncoder()
+                    : null;
+
+            const byteLength = (value) =>
+                encoder
+                    ? encoder.encode(
+                          JSON.stringify(value)
+                      ).length
+                    : JSON.stringify(value).length * 2;
+
+            const shards = [];
+
+            categories.forEach((category) => {
+                const items = Array.isArray(
+                    exportData[category]
+                )
+                    ? exportData[category]
+                    : [];
+
+                let currentItems = [];
+                let currentBytes = 2;
+                let shardIndex = 0;
+
+                const flush = () => {
+                    if (
+                        currentItems.length === 0
+                    ) {
+                        return;
+                    }
+
+                    shardIndex += 1;
+
+                    const id =
+                        `knowledge-memory-${category}-` +
+                        String(shardIndex).padStart(
+                            4,
+                            "0"
+                        );
+
+                    shards.push({
+                        id,
+                        schema:
+                            "meos.knowledge-memory.shard.v1",
+                        type:
+                            "knowledge-memory-state-shard",
+                        category,
+                        shardIndex,
+                        items: currentItems,
+                        itemCount:
+                            currentItems.length,
+                        updatedAt:
+                            new Date().toISOString()
+                    });
+
+                    currentItems = [];
+                    currentBytes = 2;
+                };
+
+                items.forEach((item) => {
+                    const itemBytes =
+                        byteLength(item) + 1;
+
+                    if (
+                        currentItems.length > 0 &&
+                        currentBytes + itemBytes >
+                            targetBytes
+                    ) {
+                        flush();
+                    }
+
+                    currentItems.push(item);
+                    currentBytes += itemBytes;
+                });
+
+                flush();
+            });
+
+            return shards;
+        },
+
+        schedulePersistence() {
+            if (this.persistenceTimer) {
+                global.clearTimeout(
+                    this.persistenceTimer
+                );
+            }
+
+            this.persistenceTimer =
+                global.setTimeout(() => {
+                    this.persistenceTimer = null;
+                    void this.persist();
+                }, this.configuration.persistenceDebounceMs);
+
+            return {
+                success: true,
+                persisted: false,
+                scheduled: true
+            };
+        },
+
         persistIfEnabled() {
             if (
                 this.configuration.persistenceEnabled &&
                 this.configuration
                     .automaticPersistence
             ) {
-                return this.persist();
+                return this.schedulePersistence();
             }
 
             return {
                 success: true,
-                persisted: false
+                persisted: false,
+                scheduled: false
             };
         },
 
-        persist() {
+        async persist() {
             if (
                 !this.configuration.persistenceEnabled
             ) {
@@ -3534,53 +3787,290 @@
                 };
             }
 
-            if (!global.localStorage) {
-                return {
-                    success: false,
-                    error:
-                        "Browser local storage is unavailable."
-                };
+            if (this.persistencePromise) {
+                return this.persistencePromise;
             }
 
-            try {
-                global.localStorage.setItem(
-                    this.configuration
-                        .localStorageKey,
-                    JSON.stringify(
-                        this.exportMemory().data
+            this.persistencePromise = (async () => {
+                const data =
+                    this.exportMemory().data;
+                const shards =
+                    this.createPersistenceShards(
+                        data
+                    );
+
+                const previousManifest =
+                    await this.executiveMemoryRequest(
+                        "GET",
+                        this.configuration
+                            .executiveMemoryManifestId
                     )
+                        .then(
+                            (payload) =>
+                                payload?.record ||
+                                null
+                        )
+                        .catch((error) => {
+                            if (
+                                error?.code ===
+                                "EXECUTIVE_MEMORY_RECORD_NOT_FOUND"
+                            ) {
+                                return null;
+                            }
+
+                            throw error;
+                        });
+
+                for (const shard of shards) {
+                    await this.executiveMemoryRequest(
+                        "PUT",
+                        shard.id,
+                        shard
+                    );
+                }
+
+                const manifest = {
+                    id:
+                        this.configuration
+                            .executiveMemoryManifestId,
+                    schema:
+                        "meos.knowledge-memory.manifest.v1",
+                    type:
+                        "knowledge-memory-state-manifest",
+                    memoryVersion: this.version,
+                    exportedAt: data.exportedAt,
+                    organizationNeutralCore:
+                        data.organizationNeutralCore,
+                    shardIds: shards.map(
+                        (shard) => shard.id
+                    ),
+                    counts: {
+                        documents:
+                            data.documents.length,
+                        passages:
+                            data.passages.length,
+                        citations:
+                            data.citations.length,
+                        versions:
+                            data.versions.length,
+                        crossReferences:
+                            data.crossReferences
+                                .length,
+                        conflicts:
+                            data.conflicts.length
+                    }
+                };
+
+                await this.executiveMemoryRequest(
+                    "PUT",
+                    manifest.id,
+                    manifest
                 );
+
+                const previousShardIds =
+                    Array.isArray(
+                        previousManifest?.shardIds
+                    )
+                        ? previousManifest.shardIds
+                        : [];
+
+                const currentShardIds =
+                    new Set(manifest.shardIds);
+
+                for (const shardId of previousShardIds) {
+                    if (
+                        !currentShardIds.has(
+                            shardId
+                        )
+                    ) {
+                        await this.executiveMemoryRequest(
+                            "DELETE",
+                            shardId
+                        ).catch(() => null);
+                    }
+                }
+
+                this.lastPersistenceAt =
+                    new Date().toISOString();
+                this.lastPersistenceError = null;
 
                 this.emit("memory:persisted", {
                     timestamp:
-                        new Date().toISOString()
+                        this.lastPersistenceAt,
+                    authoritativeStorage:
+                        "executive-memory",
+                    manifestId: manifest.id,
+                    shardCount: shards.length,
+                    counts: manifest.counts
                 });
 
                 return {
                     success: true,
-                    persisted: true
+                    persisted: true,
+                    authoritativeStorage:
+                        "executive-memory",
+                    manifestId: manifest.id,
+                    shardCount: shards.length,
+                    counts: manifest.counts
                 };
-            } catch (error) {
-                console.error(
-                    "[MEOS Knowledge Memory] Persistence failed:",
-                    error
-                );
+            })()
+                .catch((error) => {
+                    this.lastPersistenceError =
+                        error?.message ||
+                        String(error);
 
-                return {
-                    success: false,
-                    error: error.message
-                };
-            }
+                    console.error(
+                        "[MEOS Knowledge Memory] Executive Memory persistence failed:",
+                        error
+                    );
+
+                    return {
+                        success: false,
+                        persisted: false,
+                        error:
+                            this.lastPersistenceError,
+                        code: error?.code || null
+                    };
+                })
+                .finally(() => {
+                    this.persistencePromise = null;
+                });
+
+            return this.persistencePromise;
         },
 
-        restore() {
+        async restore() {
             if (
-                !this.configuration.persistenceEnabled ||
-                !global.localStorage
+                !this.configuration.persistenceEnabled
             ) {
                 return {
                     success: false,
-                    restored: false
+                    restored: false,
+                    error:
+                        "Knowledge Memory persistence is disabled."
+                };
+            }
+
+            let manifest = null;
+
+            try {
+                const payload =
+                    await this.executiveMemoryRequest(
+                        "GET",
+                        this.configuration
+                            .executiveMemoryManifestId
+                    );
+
+                manifest =
+                    payload?.record || null;
+            } catch (error) {
+                if (
+                    error?.code !==
+                    "EXECUTIVE_MEMORY_RECORD_NOT_FOUND"
+                ) {
+                    throw error;
+                }
+            }
+
+            if (!manifest) {
+                const migration =
+                    await this.migrateLegacyLocalStorage();
+
+                return {
+                    success: true,
+                    restored: migration.migrated,
+                    migratedLegacyStorage:
+                        migration.migrated
+                };
+            }
+
+            const restored = {
+                schema: SCHEMA,
+                version:
+                    manifest.memoryVersion ||
+                    this.version,
+                exportedAt:
+                    manifest.exportedAt ||
+                    new Date().toISOString(),
+                organizationNeutralCore:
+                    manifest
+                        .organizationNeutralCore !==
+                    false,
+                documents: [],
+                passages: [],
+                citations: [],
+                versions: [],
+                crossReferences: [],
+                conflicts: []
+            };
+
+            const shardIds = Array.isArray(
+                manifest.shardIds
+            )
+                ? manifest.shardIds
+                : [];
+
+            for (const shardId of shardIds) {
+                const payload =
+                    await this.executiveMemoryRequest(
+                        "GET",
+                        shardId
+                    );
+
+                const shard =
+                    payload?.record || null;
+
+                if (
+                    !shard ||
+                    !Array.isArray(shard.items) ||
+                    !Object.prototype.hasOwnProperty.call(
+                        restored,
+                        shard.category
+                    )
+                ) {
+                    continue;
+                }
+
+                restored[shard.category].push(
+                    ...shard.items
+                );
+            }
+
+            const result = this.importMemory(
+                restored,
+                {
+                    replace: false,
+                    skipPersistence: true
+                }
+            );
+
+            this.restoredFromExecutiveMemory =
+                result.success;
+
+            this.emit("memory:restored", {
+                authoritativeStorage:
+                    "executive-memory",
+                manifestId: manifest.id,
+                shardCount: shardIds.length,
+                counts:
+                    manifest.counts || null
+            });
+
+            return {
+                ...result,
+                restored: result.success,
+                authoritativeStorage:
+                    "executive-memory",
+                manifestId: manifest.id,
+                shardCount: shardIds.length
+            };
+        },
+
+        async migrateLegacyLocalStorage() {
+            if (!global.localStorage) {
+                return {
+                    success: true,
+                    migrated: false
                 };
             }
 
@@ -3593,20 +4083,50 @@
             if (!stored) {
                 return {
                     success: true,
-                    restored: false
+                    migrated: false
                 };
             }
 
-            const result = this.importMemory(
-                stored,
-                {
-                    replace: true
-                }
-            );
+            let data;
+
+            try {
+                data = JSON.parse(stored);
+            } catch (_error) {
+                return {
+                    success: false,
+                    migrated: false,
+                    error:
+                        "Legacy Knowledge Memory data is invalid JSON."
+                };
+            }
+
+            const imported =
+                this.importMemory(data, {
+                    replace: false,
+                    skipPersistence: true
+                });
+
+            if (!imported.success) {
+                return {
+                    ...imported,
+                    migrated: false
+                };
+            }
+
+            const persisted =
+                await this.persist();
+
+            if (persisted.success) {
+                global.localStorage.removeItem(
+                    this.configuration
+                        .localStorageKey
+                );
+            }
 
             return {
-                ...result,
-                restored: result.success
+                success: persisted.success,
+                migrated: persisted.success,
+                persisted
             };
         },
 
@@ -3634,6 +4154,8 @@
             global.localStorage?.removeItem(
                 this.configuration.localStorageKey
             );
+
+            void this.persist();
 
             this.emit("memory:cleared", {
                 timestamp:
