@@ -1,14 +1,14 @@
 /**
  * MEOS Website Intelligence Connector
- * Version: 1.0.0
- * Build: WI100-MADDY-20260801-A
+ * Version: 1.1.0
+ * Build: WI110-MADDY-20260802-A
  * Mission: 003
  *
  * Purpose:
  * - Discover the active organization's approved website dynamically.
  * - Crawl approved same-site pages through an authorized fetch transport.
  * - Extract readable page intelligence.
- * - Create versioned website snapshots.
+ * - Create versioned website snapshots and store authoritative evidence in Executive Memory.
  * - Detect added, changed, removed, and unchanged pages.
  * - Register website intelligence capabilities with the MEOS Provider Manager.
  * - Return structured current-state and change intelligence to MEOS.
@@ -16,7 +16,7 @@
  * Governance boundaries:
  * - This connector does not make executive decisions.
  * - This connector does not silently rewrite the Organization Package.
- * - This connector does not crawl arbitrary third-party sites by default.
+ * - This connector follows organization-approved crawl scope; source discovery is handled by Executive Investigation.
  * - Website findings are evidence for the Executive Brain and Knowledge systems.
  * - Customer-specific domains are read from the active Organization Package,
  *   request payload, or explicit runtime configuration; none are hard-coded.
@@ -26,12 +26,15 @@
   "use strict";
 
   const NAME = "MEOS Website Intelligence";
-  const VERSION = "1.0.0";
-  const BUILD_ID = "WI100-MADDY-20260801-A";
+  const VERSION = "1.1.0";
+  const BUILD_ID = "WI110-MADDY-20260802-A";
   const PROVIDER_ID = "website-intelligence";
   const SCHEMA = "meos.website-intelligence.v1";
   const STORAGE_KEY = "meos.website-intelligence.snapshots.v1";
   const CONFIG_KEY = "meos.website-intelligence.configuration.v1";
+  const EXECUTIVE_MEMORY_BASE = "/api/executive-memory";
+  const WEBSITE_EVIDENCE_COLLECTION = "website-evidence";
+  const INVESTIGATION_HISTORY_COLLECTION = "investigation-history";
 
   const DEFAULT_CONFIGURATION = Object.freeze({
     maximumPages: 30,
@@ -42,7 +45,10 @@
     honorNoFollow: true,
     sameOriginOnly: true,
     persistSnapshots: true,
+    persistToExecutiveMemory: true,
+    localCacheEnabled: true,
     maximumStoredSnapshots: 12,
+    executiveMemoryEndpoint: EXECUTIVE_MEMORY_BASE,
     proxyEndpoint: "/api/website-intelligence/fetch",
     allowDirectFetch: true,
     allowProxyFetch: true,
@@ -554,6 +560,294 @@
     };
   }
 
+
+  function executiveMemoryCollectionUrl(collection, recordId = null) {
+    const base = String(
+      state.configuration.executiveMemoryEndpoint ||
+      EXECUTIVE_MEMORY_BASE
+    ).replace(/\/+$/, "");
+
+    const collectionUrl =
+      `${base}/${encodeURIComponent(collection)}`;
+
+    return recordId
+      ? `${collectionUrl}/${encodeURIComponent(recordId)}`
+      : collectionUrl;
+  }
+
+  async function executiveMemoryRequest(
+    collection,
+    {
+      method = "GET",
+      recordId = null,
+      body = null,
+      timeoutMs = state.configuration.requestTimeoutMs
+    } = {}
+  ) {
+    if (typeof global.fetch !== "function") {
+      throw new WebsiteIntelligenceError(
+        "Executive Memory transport is unavailable.",
+        "EXECUTIVE_MEMORY_TRANSPORT_UNAVAILABLE"
+      );
+    }
+
+    const controller =
+      typeof global.AbortController === "function"
+        ? new global.AbortController()
+        : null;
+
+    const timeoutId = global.setTimeout(
+      () => controller?.abort(),
+      Math.max(1000, Number(timeoutMs) || 15000)
+    );
+
+    try {
+      const response = await global.fetch(
+        executiveMemoryCollectionUrl(collection, recordId),
+        {
+          method,
+          headers:
+            body === null
+              ? { Accept: "application/json" }
+              : {
+                  Accept: "application/json",
+                  "Content-Type": "application/json"
+                },
+          body: body === null ? undefined : JSON.stringify(body),
+          cache: "no-store",
+          credentials: "same-origin",
+          signal: controller?.signal
+        }
+      );
+
+      let payload = null;
+
+      try {
+        payload = await response.json();
+      } catch (_error) {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        throw new WebsiteIntelligenceError(
+          payload?.error ||
+            `Executive Memory returned HTTP ${response.status}.`,
+          payload?.code || "EXECUTIVE_MEMORY_HTTP_ERROR",
+          {
+            status: response.status,
+            collection,
+            recordId,
+            details: payload?.details || null
+          }
+        );
+      }
+
+      return payload;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new WebsiteIntelligenceError(
+          "Executive Memory request timed out.",
+          "EXECUTIVE_MEMORY_TIMEOUT",
+          { collection, recordId }
+        );
+      }
+
+      if (error instanceof WebsiteIntelligenceError) {
+        throw error;
+      }
+
+      throw new WebsiteIntelligenceError(
+        "Executive Memory request failed.",
+        "EXECUTIVE_MEMORY_REQUEST_FAILED",
+        {
+          collection,
+          recordId,
+          message: error?.message || String(error)
+        }
+      );
+    } finally {
+      global.clearTimeout(timeoutId);
+    }
+  }
+
+  function createWebsiteEvidenceRecord(snapshot, page) {
+    return {
+      id: `website-evidence-${page.contentHash}`,
+      schema: "meos.website-intelligence.evidence-record.v1",
+      organizationName: snapshot.organizationName,
+      rootUrl: snapshot.rootUrl,
+      snapshotId: snapshot.id,
+      pageUrl: page.url,
+      title: page.title,
+      description: page.description,
+      language: page.language,
+      text: page.text,
+      headings: page.headings,
+      wordCount: page.wordCount,
+      contentHash: page.contentHash,
+      fetchedAt: page.fetchedAt,
+      transport: page.transport,
+      contentType: page.contentType,
+      sourceType: "official-organization-website",
+      authority: "official-organization-website",
+      confidence: 0.96,
+      lastSeenAt: snapshot.completedAt
+    };
+  }
+
+  async function persistSnapshotToExecutiveMemory(
+    snapshot,
+    changes,
+    durationMs
+  ) {
+    if (!state.configuration.persistToExecutiveMemory) {
+      return {
+        success: false,
+        skipped: true,
+        reason: "Executive Memory persistence is disabled."
+      };
+    }
+
+    const evidenceResults = [];
+
+    for (const page of snapshot.pages) {
+      const record = createWebsiteEvidenceRecord(snapshot, page);
+
+      try {
+        const saved = await executiveMemoryRequest(
+          WEBSITE_EVIDENCE_COLLECTION,
+          {
+            method: "PUT",
+            recordId: record.id,
+            body: record
+          }
+        );
+
+        evidenceResults.push({
+          success: true,
+          id: record.id,
+          pageUrl: page.url,
+          record: saved?.record || null
+        });
+      } catch (error) {
+        evidenceResults.push({
+          success: false,
+          id: record.id,
+          pageUrl: page.url,
+          code: error?.code || "EXECUTIVE_MEMORY_WRITE_FAILED",
+          message: error?.message || String(error)
+        });
+      }
+    }
+
+    const historyRecord = {
+      id: `investigation-${snapshot.id}`,
+      schema: "meos.website-intelligence.investigation-record.v1",
+      type: "website-crawl",
+      organizationName: snapshot.organizationName,
+      rootUrl: snapshot.rootUrl,
+      snapshotId: snapshot.id,
+      startedAt: snapshot.startedAt,
+      completedAt: snapshot.completedAt,
+      durationMs,
+      summary: clone(snapshot.summary),
+      changes: clone(changes.summary),
+      pageUrls: snapshot.pages.map(page => page.url),
+      failureCount: snapshot.failures.length,
+      failures: clone(snapshot.failures),
+      evidenceRecordIds: evidenceResults
+        .filter(item => item.success)
+        .map(item => item.id),
+      status:
+        evidenceResults.every(item => item.success)
+          ? "complete"
+          : evidenceResults.some(item => item.success)
+            ? "partial"
+            : "failed"
+    };
+
+    let historyResult;
+
+    try {
+      const saved = await executiveMemoryRequest(
+        INVESTIGATION_HISTORY_COLLECTION,
+        {
+          method: "PUT",
+          recordId: historyRecord.id,
+          body: historyRecord
+        }
+      );
+
+      historyResult = {
+        success: true,
+        id: historyRecord.id,
+        record: saved?.record || null
+      };
+    } catch (error) {
+      historyResult = {
+        success: false,
+        id: historyRecord.id,
+        code: error?.code || "EXECUTIVE_MEMORY_WRITE_FAILED",
+        message: error?.message || String(error)
+      };
+    }
+
+    const evidenceSaved = evidenceResults.filter(item => item.success).length;
+    const success =
+      evidenceSaved === snapshot.pages.length &&
+      historyResult.success;
+
+    return {
+      success,
+      skipped: false,
+      evidence: {
+        attempted: snapshot.pages.length,
+        saved: evidenceSaved,
+        failed: snapshot.pages.length - evidenceSaved,
+        results: evidenceResults
+      },
+      investigationHistory: historyResult
+    };
+  }
+
+  async function loadSnapshotsFromExecutiveMemory(rootUrl = null) {
+    if (!state.configuration.persistToExecutiveMemory) {
+      return [];
+    }
+
+    const payload = await executiveMemoryRequest(
+      INVESTIGATION_HISTORY_COLLECTION
+    );
+
+    const records = Array.isArray(payload?.records)
+      ? payload.records
+      : [];
+
+    const normalizedRoot = rootUrl ? normalizeUrl(rootUrl) : null;
+
+    return records
+      .filter(record => record?.type === "website-crawl")
+      .filter(record =>
+        !normalizedRoot || record.rootUrl === normalizedRoot
+      )
+      .map(record => ({
+        id: record.snapshotId,
+        schema: "meos.website-intelligence.snapshot-reference.v1",
+        organizationName: record.organizationName || null,
+        rootUrl: record.rootUrl,
+        startedAt: record.startedAt || null,
+        completedAt: record.completedAt || null,
+        summary: clone(record.summary || {}),
+        failures: clone(record.failures || []),
+        evidenceRecordIds: clone(record.evidenceRecordIds || []),
+        executiveMemoryReference: true
+      }))
+      .sort((left, right) =>
+        Date.parse(right.completedAt || right.startedAt || 0) -
+        Date.parse(left.completedAt || left.startedAt || 0)
+      );
+  }
+
   function loadSnapshots() {
     if (!global.localStorage) {
       return [];
@@ -570,7 +864,11 @@
   }
 
   function saveSnapshot(snapshot) {
-    if (!state.configuration.persistSnapshots || !global.localStorage) {
+    if (
+      !state.configuration.persistSnapshots ||
+      !state.configuration.localCacheEnabled ||
+      !global.localStorage
+    ) {
       return false;
     }
 
@@ -711,7 +1009,7 @@
     const crawlId = createId("website-crawl");
     const started = nowMs();
     const startedAt = new Date().toISOString();
-    const previousSnapshot = getLatestSnapshot(rootUrl);
+    const previousSnapshot = getLatestSnapshot(rootUrl); // Local comparison cache only.
 
     state.activeCrawl = {
       id: crawlId,
@@ -850,8 +1148,15 @@
       };
 
       const changes = compareSnapshots(previousSnapshot, snapshot);
-      const persisted = saveSnapshot(snapshot);
       const durationMs = Number((nowMs() - started).toFixed(2));
+
+      const executiveMemory = await persistSnapshotToExecutiveMemory(
+        snapshot,
+        changes,
+        durationMs
+      );
+
+      const localCachePersisted = saveSnapshot(snapshot);
 
       const result = {
         success: true,
@@ -861,7 +1166,12 @@
         rootUrl,
         snapshot,
         changes,
-        persisted,
+        persisted: executiveMemory.success,
+        persistence: {
+          authoritative: "executive-memory",
+          executiveMemory,
+          localCachePersisted
+        },
         durationMs,
         completedAt: snapshot.completedAt
       };
@@ -943,6 +1253,7 @@
         crawlId: result.crawlId,
         snapshotId: result.snapshot.id,
         persisted: result.persisted,
+        persistence: clone(result.persistence),
         durationMs: result.durationMs
       }
     };
@@ -950,28 +1261,54 @@
 
   async function healthCheck() {
     const website = resolveOrganizationWebsite();
+    let executiveMemory = null;
+
+    try {
+      executiveMemory = await global
+        .fetch(state.configuration.executiveMemoryEndpoint, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+        .then(async response => ({
+          ok: response.ok,
+          status: response.status,
+          body: await response.json().catch(() => null)
+        }));
+    } catch (error) {
+      executiveMemory = {
+        ok: false,
+        status: 0,
+        error: error?.message || String(error)
+      };
+    }
 
     if (!website) {
       return {
         success: false,
         status: "unavailable",
         details: {
-          reason: "No organization website is configured."
+          reason: "No organization website is configured.",
+          executiveMemory
         }
       };
     }
 
     return {
-      success: true,
-      status: "degraded",
+      success: Boolean(executiveMemory?.ok),
+      status: executiveMemory?.ok ? "online" : "degraded",
       details: {
         website,
         directFetchConfigured: state.configuration.allowDirectFetch,
         proxyFetchConfigured:
           state.configuration.allowProxyFetch &&
           Boolean(state.configuration.proxyEndpoint),
+        executiveMemoryConfigured:
+          state.configuration.persistToExecutiveMemory,
+        executiveMemory,
         note:
-          "Actual cross-origin reachability is verified during crawl execution."
+          "Cross-origin reachability is verified during crawl execution."
       }
     };
   }
@@ -998,7 +1335,7 @@
       id: PROVIDER_ID,
       name: NAME,
       type: "internet-research",
-      status: "degraded",
+      status: "online",
       capabilities: [
         "current-web-research",
         "website-crawling",
@@ -1007,7 +1344,7 @@
         "structured-data-retrieval"
       ],
       description:
-        "Crawls the active organization's approved website, creates versioned snapshots, and reports meaningful changes.",
+        "Crawls the active organization website, stores page evidence in durable Executive Memory, creates versioned crawl history, and reports meaningful changes.",
       providerGroup: "website-intelligence",
       priority: 0.92,
       reliability: 0.82,
@@ -1018,6 +1355,8 @@
       metadata: {
         organizationNeutral: true,
         approvedSiteOnly: true,
+        authoritativeStorage: "executive-memory",
+        localStorageRole: "temporary-cache",
         version: VERSION,
         buildId: BUILD_ID
       },
@@ -1115,7 +1454,10 @@
       providerStatus: provider?.status || null,
       activeCrawl: clone(state.activeCrawl),
       lastCrawlAt: state.lastCrawlAt,
-      storedSnapshots: loadSnapshots().length,
+      cachedSnapshots: loadSnapshots().length,
+      authoritativeStorage: "executive-memory",
+      executiveMemoryEndpoint:
+        state.configuration.executiveMemoryEndpoint,
       configuration: getConfiguration(),
       initializedAt: state.initializedAt
     };
@@ -1134,10 +1476,14 @@
       );
   }
 
+  async function getDurableHistory(rootUrl = null) {
+    return loadSnapshotsFromExecutiveMemory(rootUrl);
+  }
+
   function clearHistory() {
     try {
       global.localStorage?.removeItem(STORAGE_KEY);
-      emit("history-cleared", {});
+      emit("history-cache-cleared", {});
       return true;
     } catch (_error) {
       return false;
@@ -1183,7 +1529,9 @@
         maximumPages: 10,
         maximumDepth: 3,
         delayBetweenRequestsMs: 0,
-        persistSnapshots: true
+        persistSnapshots: true,
+        persistToExecutiveMemory: false,
+        localCacheEnabled: true
       };
 
       setTransport(async url => {
@@ -1249,6 +1597,21 @@
           manager.getProvider(PROVIDER_ID)
         ),
         manager?.getProvider?.(PROVIDER_ID) || null
+      );
+
+
+      assert(
+        "Executive Memory is configured as authoritative storage",
+        originalConfiguration.persistToExecutiveMemory === true &&
+          Boolean(originalConfiguration.executiveMemoryEndpoint),
+        {
+          persistToExecutiveMemory:
+            originalConfiguration.persistToExecutiveMemory,
+          executiveMemoryEndpoint:
+            originalConfiguration.executiveMemoryEndpoint,
+          localCacheEnabled:
+            originalConfiguration.localCacheEnabled
+        }
       );
     } catch (error) {
       assert("Unexpected self-test exception", false, {
@@ -1400,6 +1763,7 @@
     compareSnapshots,
     getLatestSnapshot,
     getHistory,
+    getDurableHistory,
     clearHistory,
     getStatus,
     registerWithProviderManager,
