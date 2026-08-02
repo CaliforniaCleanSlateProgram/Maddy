@@ -1,8 +1,8 @@
 /**
  * Maddy Executive Operations System (MEOS)
- * Modular Executive Dashboard Shell
+ * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 0.5.0
+ * Version: 2.0.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "0.5.0";
+  const DASHBOARD_VERSION = "2.0.0";
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
   const STORAGE_KEY = "meos.dashboard.build.v0.4.0";
@@ -967,11 +967,6 @@
       }
 
       @media (max-width: 1120px) {
-        .meos-command-hero { grid-template-columns: 1fr auto; }
-        .meos-live-spectrum { display: none; }
-        .meos-hero-brief { grid-column: 1; border-left: 0; padding-left: 0; }
-        .meos-up-button { grid-column: 2; grid-row: 1 / span 2; }
-
         .meos-widget {
           grid-column: span min(var(--meos-col-span, 4), 6);
         }
@@ -986,273 +981,56 @@
       }
 
 
-
-      /* MEOS Executive Headquarters v0.5.0 — visual-only redesign */
-      body {
-        background:
-          radial-gradient(circle at 78% 8%, rgba(86, 110, 255, .16), transparent 30%),
-          radial-gradient(circle at 18% 58%, rgba(32, 220, 214, .08), transparent 34%),
-          linear-gradient(145deg, #030711 0%, #07111f 42%, #040813 100%) !important;
-      }
-
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        opacity: .18;
-        background-image:
-          linear-gradient(rgba(130, 160, 220, .08) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(130, 160, 220, .08) 1px, transparent 1px);
-        background-size: 54px 54px;
-        mask-image: linear-gradient(to bottom, rgba(0,0,0,.7), transparent 88%);
-      }
-
-      .sidebar {
-        background: rgba(5, 10, 20, .78) !important;
-        backdrop-filter: blur(26px) saturate(135%);
-        border-right: 1px solid rgba(150, 175, 230, .13) !important;
-        box-shadow: 18px 0 70px rgba(0,0,0,.2);
-      }
-
-      .brand-mark {
-        background: rgba(18, 28, 47, .78) url("maddy-executive-insignia.png") center / 84% no-repeat !important;
-        color: transparent !important;
-        border: 1px solid rgba(133, 167, 255, .35);
-        box-shadow: 0 0 34px rgba(89, 113, 255, .22) !important;
-      }
-
-      .sidebar nav a,
-      .nav-dropdown {
-        border-radius: 14px !important;
-        border: 1px solid transparent;
-        transition: background .2s ease, border-color .2s ease, transform .2s ease;
-      }
-
-      .sidebar nav a:hover,
-      .sidebar nav a.active,
-      .nav-dropdown:hover {
-        background: linear-gradient(90deg, rgba(88, 113, 255, .16), rgba(39, 225, 206, .05)) !important;
-        border-color: rgba(123, 151, 255, .24);
-        transform: translateX(3px);
-      }
-
-      .topbar {
-        margin: 14px 18px 0;
-        padding: 14px 18px !important;
-        border: 1px solid rgba(145, 170, 225, .12) !important;
-        border-radius: 18px;
-        background: rgba(8, 15, 28, .56) !important;
-        backdrop-filter: blur(20px);
-      }
-
-      .progress-panel { display: none !important; }
-
+      /* MEOS Executive Headquarters v2.0 — cinematic intelligence shell */
       #${ROOT_ID} {
-        padding: 18px 24px 34px;
-        background: transparent;
-        overflow: hidden;
-      }
-
-      .meos-dashboard-shell { width: min(1560px, 100%); }
-
-      .meos-command-hero {
-        position: relative;
-        display: grid;
-        grid-template-columns: minmax(310px, 1.45fr) minmax(150px, .55fr) minmax(250px, .85fr) auto;
-        gap: 26px;
-        align-items: center;
-        min-height: 176px;
-        margin-bottom: 18px;
-        padding: 24px 26px;
-        border: 1px solid rgba(150, 176, 232, .18);
-        border-radius: 30px;
+        --hud-cyan:#69efff; --hud-blue:#4d91ff; --hud-violet:#a86eff;
+        position:relative; isolation:isolate; overflow:hidden;
         background:
-          radial-gradient(circle at 15% 0%, rgba(89, 113, 255, .22), transparent 35%),
-          radial-gradient(circle at 72% 110%, rgba(35, 221, 205, .11), transparent 42%),
-          linear-gradient(135deg, rgba(15, 25, 44, .9), rgba(7, 13, 25, .78));
-        backdrop-filter: blur(26px) saturate(125%);
-        box-shadow: 0 28px 90px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.04);
-        isolation: isolate;
+          radial-gradient(circle at 50% 8%,rgba(61,171,255,.20),transparent 29%),
+          radial-gradient(circle at 7% 86%,rgba(133,87,255,.13),transparent 31%),
+          radial-gradient(circle at 94% 72%,rgba(49,231,255,.10),transparent 25%),
+          linear-gradient(145deg,#01050c,#061725 48%,#01050b);
       }
-
-      .meos-command-hero::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        pointer-events: none;
-        background: linear-gradient(105deg, transparent 18%, rgba(255,255,255,.035) 46%, transparent 74%);
-        transform: translateX(-80%);
-        animation: meosHeroSweep 9s ease-in-out infinite;
-        z-index: -1;
-      }
-
-      @keyframes meosHeroSweep { 0%, 55% { transform: translateX(-80%); } 78%, 100% { transform: translateX(80%); } }
-
-      .meos-hero-identity { display: flex; align-items: center; gap: 18px; min-width: 0; }
-      .meos-hero-avatar-wrap { position: relative; flex: 0 0 auto; }
-      .meos-hero-avatar {
-        width: 92px;
-        height: 92px;
-        object-fit: contain;
-        padding: 8px;
-        border-radius: 28px;
-        background: linear-gradient(145deg, rgba(25,39,65,.96), rgba(10,18,32,.96));
-        border: 1px solid rgba(136, 166, 255, .34);
-        box-shadow: 0 0 0 8px rgba(88, 114, 255, .045), 0 18px 50px rgba(0,0,0,.35);
-      }
-      .meos-hero-presence {
-        position: absolute;
-        right: -3px;
-        bottom: 3px;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: #52e3a4;
-        border: 3px solid #0a1221;
-        box-shadow: 0 0 18px rgba(82,227,164,.8);
-      }
-
-      .meos-kicker {
-        display: block;
-        margin-bottom: 8px;
-        color: #89a9ff;
-        font-size: .68rem;
-        font-weight: 760;
-        letter-spacing: .18em;
-        text-transform: uppercase;
-      }
-      .meos-dashboard-heading h1 { font-size: clamp(1.55rem, 2.4vw, 2.7rem); font-weight: 630; }
-      .meos-dashboard-heading p { font-size: .92rem; }
-
-      .meos-live-spectrum,
-      .meos-pulse-wave {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 5px;
-        height: 76px;
-      }
-      .meos-live-spectrum span,
-      .meos-pulse-wave i {
-        width: 5px;
-        height: var(--h);
-        min-height: 8px;
-        border-radius: 99px;
-        background: linear-gradient(to top, rgba(72,226,205,.35), #86a7ff);
-        box-shadow: 0 0 14px rgba(96, 130, 255, .28);
-        animation: meosSpectrum 1.35s ease-in-out infinite alternate;
-        animation-delay: calc(var(--h) * -0.013);
-      }
-      @keyframes meosSpectrum { from { transform: scaleY(.45); opacity: .48; } to { transform: scaleY(1); opacity: 1; } }
-
-      .meos-hero-brief {
-        padding-left: 22px;
-        border-left: 1px solid rgba(144, 169, 225, .16);
-      }
-      .meos-live-label { display: inline-flex; align-items: center; gap: 7px; color: #83ddb8; font-size: .72rem; }
-      .meos-live-label i { width: 7px; height: 7px; border-radius: 50%; background: #4fe0a1; box-shadow: 0 0 14px #4fe0a1; }
-      .meos-hero-brief strong { display: block; margin: 10px 0 4px; font-size: 1.02rem; }
-      .meos-hero-brief p { margin: 0; color: var(--meos-muted); font-size: .78rem; line-height: 1.5; }
-
-      .meos-up-button {
-        align-self: stretch;
-        min-width: 108px;
-        border-radius: 22px;
-        border-color: rgba(124, 151, 255, .42);
-        background: linear-gradient(155deg, rgba(81, 108, 238, .9), rgba(75, 53, 164, .88));
-        box-shadow: 0 16px 44px rgba(67, 77, 205, .3), inset 0 1px 0 rgba(255,255,255,.16);
-      }
-
-      .meos-widget-grid { gap: 16px; }
-
-      .meos-widget {
-        border-radius: 24px;
-        border-color: rgba(145, 171, 229, .14);
-        background:
-          radial-gradient(circle at 100% 0%, rgba(98, 124, 255, .09), transparent 34%),
-          linear-gradient(145deg, rgba(16, 27, 46, .82), rgba(7, 14, 27, .78));
-        backdrop-filter: blur(22px) saturate(118%);
-        box-shadow: 0 22px 68px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.035);
-        transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
-      }
-      .meos-widget:hover {
-        transform: translateY(-3px);
-        border-color: rgba(127, 157, 255, .34);
-        box-shadow: 0 30px 80px rgba(0,0,0,.34), 0 0 36px rgba(74, 101, 255, .07);
-      }
-      .meos-widget-inner { padding: 20px; }
-      .meos-widget-title { color: #cdd8f1; letter-spacing: .12em; }
-      .meos-widget-link { color: #90adff; }
-
-      #meos-widget-build-progress {
-        min-height: 82px;
-        border-radius: 20px;
-        background: linear-gradient(90deg, rgba(17,30,51,.72), rgba(13,23,42,.5));
-      }
-      #meos-widget-today-glance { border-radius: 26px 26px 54px 26px; }
-      #meos-widget-mission-pulse { border-radius: 26px 54px 26px 26px; }
-      #meos-widget-briefing { background: radial-gradient(circle at 15% 0%, rgba(75,211,188,.12), transparent 38%), linear-gradient(145deg, rgba(14,31,47,.9), rgba(7,14,27,.8)); }
-      #meos-widget-grant-intelligence { border-radius: 30px 30px 30px 58px; }
-      #meos-widget-risk-center { border-radius: 30px 58px 30px 30px; }
-
-      .meos-pulse-stage { display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 12px; }
-      .meos-mission-ring {
-        margin: 0;
-        width: 104px;
-        height: 104px;
-        background: conic-gradient(#61e1bd 0 92%, rgba(113,137,181,.15) 92% 100%);
-        box-shadow: 0 0 40px rgba(71, 222, 188, .12);
-      }
-      .meos-mission-ring::after { background: #0a1425; }
-      .meos-mission-ring span { display: block; margin-top: 3px; color: var(--meos-muted); font-size: .54rem; }
-      .meos-pulse-copy { margin-top: 12px; text-align: center; }
-      .meos-pulse-copy p { margin: 7px 0 0; font-size: .76rem; }
-      .meos-pulse-wave { height: 86px; gap: 4px; }
-      .meos-pulse-wave i { width: 4px; }
-
-      #meos-widget-grant-intelligence .meos-list li { position: relative; padding-bottom: 15px; }
-      #meos-widget-grant-intelligence .meos-list li::after {
-        content: "";
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 5px;
-        height: 4px;
-        border-radius: 99px;
-        background: linear-gradient(90deg, #54deb9 var(--match, 85%), rgba(122,147,190,.13) var(--match, 85%));
-      }
-      #meos-widget-grant-intelligence .meos-list li:nth-child(1) { --match: 95%; }
-      #meos-widget-grant-intelligence .meos-list li:nth-child(2) { --match: 88%; }
-      #meos-widget-grant-intelligence .meos-list li:nth-child(3) { --match: 82%; }
-
-      .meos-impact-card {
-        border-radius: 18px;
-        background: linear-gradient(145deg, rgba(31,47,75,.52), rgba(14,24,42,.45));
-      }
-
-      .meos-list li { border-bottom-color: rgba(150,174,220,.08); }
-      .meos-alert { border-radius: 16px; }
-      .meos-progress-track { background: rgba(124, 148, 192, .13); }
-      .meos-progress-fill { background: linear-gradient(90deg, #4fdcc2, #668fff 55%, #9a68ff); }
-
-      @media (prefers-reduced-motion: reduce) {
-        .meos-command-hero::after,
-        .meos-live-spectrum span,
-        .meos-pulse-wave i { animation: none !important; }
-      }
+      #${ROOT_ID}::before {content:"";position:fixed;inset:0;z-index:-3;pointer-events:none;opacity:.5;
+        background-image:linear-gradient(rgba(105,239,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(105,239,255,.05) 1px,transparent 1px);
+        background-size:42px 42px;transform:perspective(800px) rotateX(60deg) scale(1.55) translateY(22%);transform-origin:center bottom;animation:hudGrid 22s linear infinite}
+      #${ROOT_ID}::after {content:"";position:fixed;inset:-35%;z-index:-2;pointer-events:none;background:conic-gradient(from 0deg,transparent,rgba(105,239,255,.035),transparent 25%,rgba(168,110,255,.03),transparent 60%);animation:hudAmbient 46s linear infinite}
+      .meos-dashboard-shell{width:min(1640px,100%);position:relative}
+      .meos-dashboard-topline{margin:0 0 8px;padding:0 4px 12px;border-bottom:1px solid rgba(105,239,255,.2)}
+      .meos-dashboard-heading h1{font-weight:480;letter-spacing:.08em;text-transform:uppercase;color:#effdff;text-shadow:0 0 12px rgba(105,239,255,.35),0 0 34px rgba(77,145,255,.18)}
+      .meos-dashboard-heading p{letter-spacing:.14em;text-transform:uppercase;font-size:.67rem;color:rgba(200,239,255,.62)}
+      .meos-up-button{position:relative;overflow:hidden;border:1px solid rgba(105,239,255,.55);border-radius:2px 18px 2px 18px;background:linear-gradient(120deg,rgba(8,67,105,.55),rgba(78,37,132,.45));box-shadow:inset 0 0 18px rgba(105,239,255,.1),0 0 22px rgba(105,239,255,.14);text-transform:uppercase;letter-spacing:.14em}
+      .meos-up-button::after{content:"";position:absolute;inset:0;transform:translateX(-130%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);animation:hudButtonScan 3.8s ease-in-out infinite}
+      .meos-hq-hero{position:relative;min-height:430px;display:grid;grid-template-columns:minmax(260px,.85fr) minmax(390px,1.35fr) minmax(250px,.8fr);gap:24px;align-items:center;margin:12px 0 20px;padding:26px clamp(16px,2.5vw,38px);overflow:hidden;border-top:1px solid rgba(105,239,255,.3);border-bottom:1px solid rgba(105,239,255,.2);background:linear-gradient(90deg,rgba(3,14,25,.2),rgba(7,35,54,.46),rgba(3,14,25,.2));clip-path:polygon(0 8%,2% 0,98% 0,100% 8%,100% 92%,98% 100%,2% 100%,0 92%)}
+      .meos-hq-hero::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent 0 11%,rgba(105,239,255,.08) 11.2% 11.35%,transparent 11.5% 88.5%,rgba(105,239,255,.08) 88.65% 88.8%,transparent 89%),linear-gradient(180deg,transparent 49.8%,rgba(105,239,255,.09) 50%,transparent 50.2%)}
+      .meos-hq-hero::after{content:"";position:absolute;left:0;right:0;height:2px;top:-2px;background:linear-gradient(90deg,transparent,var(--hud-cyan),transparent);box-shadow:0 0 18px var(--hud-cyan);animation:hudScan 5.7s linear infinite}
+      .meos-hq-identity,.meos-hq-center,.meos-hq-telemetry{position:relative;z-index:2}
+      .meos-hq-kicker,.meos-hud-label{color:rgba(164,229,255,.76);font-size:.64rem;letter-spacing:.19em;text-transform:uppercase}
+      .meos-hq-title{margin:12px 0 7px;font-size:clamp(2rem,4vw,4.75rem);line-height:.94;font-weight:280;letter-spacing:-.045em;color:#effcff;text-shadow:0 0 15px rgba(105,239,255,.28),0 0 52px rgba(77,145,255,.18)}
+      .meos-hq-title strong{display:block;font-weight:720;letter-spacing:.06em;color:var(--hud-cyan)}
+      .meos-hq-subtitle{max-width:430px;color:rgba(206,234,247,.72);line-height:1.65;font-size:.84rem}
+      .meos-hq-status-strip{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:22px}.meos-hq-status{display:inline-flex;align-items:center;gap:7px;color:rgba(214,245,255,.82);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase}.meos-hq-status i{width:6px;height:6px;border-radius:50%;background:var(--hud-cyan);box-shadow:0 0 11px var(--hud-cyan);animation:hudBlink 1.9s ease-in-out infinite}
+      .meos-hq-core{position:relative;width:min(350px,78vw);aspect-ratio:1;margin:auto;display:grid;place-items:center;filter:drop-shadow(0 0 34px rgba(74,184,255,.24))}.meos-hq-core-ring{position:absolute;border-radius:50%;border:1px solid rgba(105,239,255,.31)}.meos-hq-core-ring.r1{inset:1%;border-style:dashed;animation:hudSpin 17s linear infinite}.meos-hq-core-ring.r2{inset:10%;border-color:rgba(168,110,255,.45);border-left-color:transparent;border-bottom-color:transparent;animation:hudSpinR 10s linear infinite}.meos-hq-core-ring.r3{inset:20%;border-width:2px;border-right-color:transparent;animation:hudSpin 7s linear infinite}.meos-hq-core-ring.r4{inset:30%;border-color:rgba(105,239,255,.64);box-shadow:0 0 17px rgba(105,239,255,.27),inset 0 0 18px rgba(105,239,255,.11);animation:hudBreathe 2.8s ease-in-out infinite}
+      .meos-hq-core::before,.meos-hq-core::after{content:"";position:absolute;inset:9%;border-radius:50%;background:repeating-conic-gradient(rgba(105,239,255,.18) 0 1deg,transparent 1deg 13deg);mask:radial-gradient(circle,transparent 56%,#000 57%);opacity:.58;animation:hudSpin 32s linear infinite}.meos-hq-core::after{inset:25%;opacity:.3;animation:hudSpinR 18s linear infinite}
+      .meos-hq-portrait{width:43%;aspect-ratio:1;object-fit:cover;border-radius:50%;position:relative;z-index:3;filter:contrast(1.12) brightness(1.06) saturate(.88) drop-shadow(0 0 14px rgba(105,239,255,.42));border:1px solid rgba(215,250,255,.75);box-shadow:0 0 0 6px rgba(105,239,255,.05),0 0 48px rgba(105,239,255,.24)}
+      .meos-hq-core-caption{position:absolute;z-index:4;bottom:9%;left:50%;transform:translateX(-50%);white-space:nowrap;padding:5px 12px;color:#effcff;border-top:1px solid rgba(105,239,255,.4);border-bottom:1px solid rgba(105,239,255,.2);background:rgba(4,17,29,.5);backdrop-filter:blur(9px);font-size:.66rem;letter-spacing:.19em;text-transform:uppercase}
+      .meos-hq-telemetry{display:grid;gap:18px}.meos-hud-readout{position:relative;padding:11px 0 12px 17px;border-left:1px solid rgba(105,239,255,.35)}.meos-hud-readout::before{content:"";position:absolute;left:-3px;top:0;width:5px;height:5px;background:var(--hud-cyan);box-shadow:0 0 11px var(--hud-cyan)}.meos-hud-readout strong{display:block;margin:4px 0 6px;font-size:clamp(1.35rem,2vw,2.15rem);font-weight:350;color:#effcff}.meos-hud-readout small{color:rgba(194,230,246,.58)}
+      .meos-hud-equalizer{height:48px;display:flex;align-items:end;gap:4px;margin-top:8px;overflow:hidden}.meos-hud-equalizer span{width:4px;min-height:8%;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#fff,var(--hud-cyan),rgba(77,145,255,.25));box-shadow:0 0 9px rgba(105,239,255,.55);animation:hudEq 1.1s ease-in-out infinite alternate}.meos-hud-equalizer span:nth-child(2n){animation-duration:.72s}.meos-hud-equalizer span:nth-child(3n){animation-duration:1.42s}.meos-hud-equalizer span:nth-child(5n){animation-duration:.94s}
+      .meos-hud-radar{position:relative;width:96px;height:96px;margin-left:auto;border-radius:50%;border:1px solid rgba(105,239,255,.38);background:radial-gradient(circle,transparent 24%,rgba(105,239,255,.15) 25% 26%,transparent 27% 49%,rgba(105,239,255,.1) 50% 51%,transparent 52%),linear-gradient(90deg,transparent 49%,rgba(105,239,255,.17) 50%,transparent 51%),linear-gradient(transparent 49%,rgba(105,239,255,.17) 50%,transparent 51%);box-shadow:inset 0 0 22px rgba(105,239,255,.07);overflow:hidden}.meos-hud-radar::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(105,239,255,.45),transparent 24%);animation:hudSpin 2.7s linear infinite}.meos-hud-radar::after{content:"";position:absolute;left:65%;top:31%;width:5px;height:5px;border-radius:50%;background:#fff;box-shadow:0 0 12px var(--hud-cyan);animation:hudTarget 1.7s ease-in-out infinite}
+      .meos-widget-grid{gap:3px 18px;background:transparent}.meos-widget{border:0;border-radius:0;background:linear-gradient(145deg,rgba(4,20,34,.40),rgba(7,29,46,.16));box-shadow:none;backdrop-filter:blur(13px) saturate(1.15);clip-path:polygon(0 14px,14px 0,calc(100% - 28px) 0,100% 28px,100% calc(100% - 12px),calc(100% - 12px) 100%,22px 100%,0 calc(100% - 22px));transition:transform .22s ease,background .22s ease,filter .22s ease}.meos-widget:hover{z-index:4;transform:translateY(-3px) scale(1.008);background:linear-gradient(145deg,rgba(7,34,52,.6),rgba(8,28,47,.28));filter:drop-shadow(0 0 19px rgba(105,239,255,.12))}.meos-widget::before{opacity:.75;background:linear-gradient(90deg,rgba(105,239,255,.35),transparent 22%,transparent 78%,rgba(168,110,255,.2)),linear-gradient(180deg,rgba(105,239,255,.13),transparent 22%);mask:linear-gradient(#000 0 0) top/100% 1px no-repeat,linear-gradient(#000 0 0) bottom/100% 1px no-repeat,linear-gradient(#000 0 0) left/1px 100% no-repeat,linear-gradient(#000 0 0) right/1px 100% no-repeat}.meos-widget::after{content:"";position:absolute;left:14px;top:0;width:58px;height:1px;background:var(--hud-cyan);box-shadow:0 0 11px var(--hud-cyan)}
+      .meos-widget-title{color:rgba(178,235,255,.8);letter-spacing:.19em;font-weight:550}.meos-widget-link{color:var(--hud-cyan);text-transform:uppercase;letter-spacing:.12em}.meos-list li{border-bottom-color:rgba(105,239,255,.1)}
+      .meos-progress-track{height:4px;border-radius:0;background:rgba(105,239,255,.08);overflow:visible}.meos-progress-fill{position:relative;border-radius:0;background:linear-gradient(90deg,var(--hud-blue),var(--hud-cyan),#fff);box-shadow:0 0 11px rgba(105,239,255,.45),0 0 28px rgba(77,145,255,.22)}.meos-progress-fill::after{content:"";position:absolute;right:-4px;top:50%;width:8px;height:8px;transform:translateY(-50%) rotate(45deg);background:#fff;box-shadow:0 0 13px var(--hud-cyan)}
+      .meos-mission-ring{position:relative;width:142px;height:142px;background:radial-gradient(circle,rgba(4,19,31,.96) 49%,transparent 50%),conic-gradient(from -45deg,var(--hud-cyan) 0 92%,rgba(105,239,255,.08) 92%);border:1px solid rgba(105,239,255,.3);box-shadow:0 0 26px rgba(105,239,255,.17),inset 0 0 30px rgba(105,239,255,.06)}.meos-mission-ring::before{content:"";position:absolute;inset:-13px;border-radius:50%;border:1px dashed rgba(105,239,255,.25);animation:hudSpin 12s linear infinite}.meos-mission-ring::after{content:"";position:absolute;inset:12px;border-radius:50%;border-top:2px solid rgba(255,255,255,.85);border-right:2px solid transparent;animation:hudSpinR 2.8s linear infinite}
+      .meos-alert,.meos-impact-card,.office-panel{border-radius:0 15px 0 15px;background:linear-gradient(90deg,rgba(7,27,43,.52),rgba(7,27,43,.13));border-color:rgba(105,239,255,.16)}.meos-maddy-bar{display:none}.meos-office-detail{border:1px solid rgba(105,239,255,.28);border-radius:0 26px 0 26px;background:rgba(4,17,29,.72);backdrop-filter:blur(20px)}
+      @keyframes hudGrid{to{background-position:0 84px,84px 0}}@keyframes hudAmbient{to{transform:rotate(360deg)}}@keyframes hudButtonScan{0%,52%{transform:translateX(-130%)}74%,100%{transform:translateX(130%)}}@keyframes hudScan{0%{top:-2px;opacity:0}8%{opacity:1}92%{opacity:1}100%{top:calc(100% + 2px);opacity:0}}@keyframes hudSpin{to{transform:rotate(360deg)}}@keyframes hudSpinR{to{transform:rotate(-360deg)}}@keyframes hudBreathe{50%{transform:scale(1.035);box-shadow:0 0 28px rgba(105,239,255,.35),inset 0 0 24px rgba(105,239,255,.17)}}@keyframes hudBlink{50%{opacity:.35;transform:scale(.72)}}@keyframes hudEq{0%{height:12%;opacity:.45}100%{height:100%;opacity:1}}@keyframes hudTarget{50%{opacity:.25;transform:scale(.45)}}
+      @media(max-width:1120px){.meos-hq-hero{grid-template-columns:1fr 1fr}.meos-hq-telemetry{grid-column:1/-1;grid-template-columns:repeat(3,1fr)}}
+      @media(max-width:760px){.meos-hq-hero{grid-template-columns:1fr;text-align:center;clip-path:polygon(0 12px,12px 0,calc(100% - 12px) 0,100% 12px,100% calc(100% - 12px),calc(100% - 12px) 100%,12px 100%,0 calc(100% - 12px))}.meos-hq-title,.meos-hq-subtitle{margin-left:auto;margin-right:auto}.meos-hq-status-strip{justify-content:center}.meos-hq-telemetry{grid-template-columns:1fr;text-align:left}.meos-hud-radar{margin:8px auto}.meos-hq-core{width:min(300px,85vw)}}
+      @media(prefers-reduced-motion:reduce){#${ROOT_ID}::before,#${ROOT_ID}::after,.meos-hq-hero::after,.meos-hq-core-ring,.meos-hq-core::before,.meos-hq-core::after,.meos-hud-equalizer span,.meos-hud-radar::before,.meos-hud-radar::after,.meos-up-button::after,.meos-mission-ring::before,.meos-mission-ring::after{animation:none!important}}
 
       @media (max-width: 760px) {
         #${ROOT_ID} {
           padding: 12px;
         }
-
-        .meos-command-hero { grid-template-columns: 1fr; padding: 18px; border-radius: 24px; }
-        .meos-hero-identity { align-items: flex-start; }
-        .meos-hero-avatar { width: 72px; height: 72px; border-radius: 22px; }
-        .meos-hero-brief, .meos-up-button { grid-column: 1; grid-row: auto; }
-        .meos-up-button { min-height: 54px; }
 
         .meos-dashboard-topline,
         .meos-progress-shell {
@@ -1891,17 +1669,10 @@ document
       "mission-pulse": `
         <div class="meos-widget-inner">
           <div class="meos-widget-header"><h2 class="meos-widget-title">Mission Pulse</h2></div>
-          <div class="meos-pulse-stage">
-            <div class="meos-mission-ring"><strong>92%</strong><span>Mission health</span></div>
-            <div class="meos-pulse-wave" aria-hidden="true">
-              <i style="--h:24%"></i><i style="--h:52%"></i><i style="--h:84%"></i><i style="--h:42%"></i>
-              <i style="--h:96%"></i><i style="--h:61%"></i><i style="--h:78%"></i><i style="--h:36%"></i>
-              <i style="--h:70%"></i><i style="--h:88%"></i><i style="--h:47%"></i><i style="--h:66%"></i>
-            </div>
-          </div>
-          <div class="meos-pulse-copy">
+          <div class="meos-mission-ring"><strong>92%</strong></div>
+          <div style="text-align:center;">
             <strong>On Track</strong>
-            <p class="meos-muted">All systems aligned with <span style="color:var(--meos-green);">CCSP Mission</span></p>
+            <p class="meos-muted" style="margin:10px 0 0;font-size:.82rem;">All systems aligned with <span style="color:var(--meos-green);">CCSP Mission</span></p>
           </div>
         </div>
       `,
@@ -2025,33 +1796,70 @@ document
 
     root.innerHTML = `
       <div class="meos-dashboard-shell">
-        <section class="meos-command-hero" aria-label="Maddy executive command briefing">
-          <div class="meos-hero-identity">
-            <div class="meos-hero-avatar-wrap">
-              <img class="meos-hero-avatar" src="maddy-executive-insignia.png" alt="Maddy executive insignia">
-              <span class="meos-hero-presence" aria-hidden="true"></span>
+        <div class="meos-dashboard-topline">
+          <div class="meos-dashboard-heading">
+            <h1 id="meosGreeting">Good Morning, Executive Director.</h1>
+            <p>MEOS secure executive operating environment</p>
+          </div>
+          <button id="meosImUpButton" class="meos-up-button" type="button">⌁ &nbsp; I’m Up</button>
+        </div>
+
+        <section class="meos-hq-hero" aria-label="Maddy Executive Headquarters command core">
+          <div class="meos-hq-identity">
+            <div class="meos-hq-kicker">Maddy Executive Operating System</div>
+            <div class="meos-hq-title">Executive <strong>Headquarters</strong></div>
+            <p class="meos-hq-subtitle">Autonomous executive intelligence, live organizational awareness, and coordinated office operations — already in motion.</p>
+            <div class="meos-hq-status-strip"><span class="meos-hq-status"><i></i>Executive Brain Online</span><span class="meos-hq-status"><i></i>Offices Active</span><span class="meos-hq-status"><i></i>Constitution Intact</span></div>
+          </div>
+          <div class="meos-hq-center">
+            <div class="meos-hq-core" aria-label="Maddy command core online">
+              <span class="meos-hq-core-ring r1"></span><span class="meos-hq-core-ring r2"></span><span class="meos-hq-core-ring r3"></span><span class="meos-hq-core-ring r4"></span>
+              <img class="meos-hq-portrait" src="maddy-executive-insignia.png" alt="Maddy Executive Office insignia" onerror="this.style.visibility='hidden';" />
+              <span class="meos-hq-core-caption">Maddy · Executive Command</span>
             </div>
-            <div class="meos-dashboard-heading">
-              <span class="meos-kicker">Maddy Executive Headquarters</span>
-              <h1 id="meosGreeting">Good Morning, Executive Director.</h1>
-              <p>I’m Up. Here’s what matters right now.</p>
-            </div>
           </div>
-
-          <div class="meos-live-spectrum" aria-label="Executive offices active">
-            <span style="--h:28%"></span><span style="--h:54%"></span><span style="--h:82%"></span>
-            <span style="--h:44%"></span><span style="--h:94%"></span><span style="--h:63%"></span>
-            <span style="--h:76%"></span><span style="--h:38%"></span><span style="--h:68%"></span>
-            <span style="--h:88%"></span><span style="--h:48%"></span><span style="--h:72%"></span>
+          <div class="meos-hq-telemetry">
+            <div class="meos-hud-readout"><span class="meos-hud-label">Mission alignment</span><strong>92%</strong><small>CCSP objectives synchronized</small></div>
+            <div class="meos-hud-readout"><span class="meos-hud-label">Executive activity</span><div class="meos-hud-equalizer" aria-label="Executive office activity visualization">
+                  <span style="animation-delay:-0.09s"></span>
+                  <span style="animation-delay:-0.18s"></span>
+                  <span style="animation-delay:-0.27s"></span>
+                  <span style="animation-delay:-0.36s"></span>
+                  <span style="animation-delay:-0.45s"></span>
+                  <span style="animation-delay:-0.54s"></span>
+                  <span style="animation-delay:-0.63s"></span>
+                  <span style="animation-delay:-0.72s"></span>
+                  <span style="animation-delay:-0.00s"></span>
+                  <span style="animation-delay:-0.09s"></span>
+                  <span style="animation-delay:-0.18s"></span>
+                  <span style="animation-delay:-0.27s"></span>
+                  <span style="animation-delay:-0.36s"></span>
+                  <span style="animation-delay:-0.45s"></span>
+                  <span style="animation-delay:-0.54s"></span>
+                  <span style="animation-delay:-0.63s"></span>
+                  <span style="animation-delay:-0.72s"></span>
+                  <span style="animation-delay:-0.00s"></span>
+                  <span style="animation-delay:-0.09s"></span>
+                  <span style="animation-delay:-0.18s"></span>
+                  <span style="animation-delay:-0.27s"></span>
+                  <span style="animation-delay:-0.36s"></span>
+                  <span style="animation-delay:-0.45s"></span>
+                  <span style="animation-delay:-0.54s"></span>
+                  <span style="animation-delay:-0.63s"></span>
+                  <span style="animation-delay:-0.72s"></span>
+                  <span style="animation-delay:-0.00s"></span>
+                  <span style="animation-delay:-0.09s"></span>
+                  <span style="animation-delay:-0.18s"></span>
+                  <span style="animation-delay:-0.27s"></span>
+                  <span style="animation-delay:-0.36s"></span>
+                  <span style="animation-delay:-0.45s"></span>
+                  <span style="animation-delay:-0.54s"></span>
+                  <span style="animation-delay:-0.63s"></span>
+                  <span style="animation-delay:-0.72s"></span>
+                  <span style="animation-delay:-0.00s"></span>
+              </div><small>Continuous office telemetry</small></div>
+            <div class="meos-hud-readout"><span class="meos-hud-label">Investigation network</span><div class="meos-hud-radar" aria-label="Executive investigation radar active"></div><small>Public intelligence gateway staged</small></div>
           </div>
-
-          <div class="meos-hero-brief">
-            <span class="meos-live-label"><i></i> Executive systems active</span>
-            <strong>While you were away</strong>
-            <p>Offices are monitoring missions, funding, risk, and approvals.</p>
-          </div>
-
-          <button id="meosImUpButton" class="meos-up-button" type="button">I’m Up</button>
         </section>
 
         <section id="meosWidgetGrid" class="meos-widget-grid" aria-label="MEOS Executive Dashboard"></section>
