@@ -13,6 +13,7 @@
  * - Authorize and deduplicate ElevenLabs speech requests.
  * - Serve the existing MEOS frontend without changing its structure.
  * - Run durable standing office missions through Continuous Operations.
+ * - Operate the autonomous Funding Intelligence Network.
  */
 
 import express from "express";
@@ -23,7 +24,7 @@ import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.2.0";
+const VERSION = "2.3.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -178,6 +179,220 @@ const continuousOperationsState = {
   failedRuns: 0,
   recoveredLeases: 0,
   lastError: null
+};
+
+
+/**
+ * MEOS Funding Intelligence Network v1.0
+ *
+ * The Funding Office continuously secures resource intelligence across:
+ * - government grants;
+ * - private and community foundations;
+ * - corporate giving and corporate foundations;
+ * - sponsorships, matching gifts, volunteer grants, and in-kind programs;
+ * - partnerships, RFPs, contracts, awards, and innovation challenges.
+ *
+ * The network uses authoritative structured APIs where available and safely
+ * monitors public program pages for newly referenced funding sources.
+ */
+const FUNDING_INTELLIGENCE_VERSION = "1.0.0";
+const FUNDING_SOURCE_COLLECTION = "discovered-sources";
+const FUNDING_OPPORTUNITY_COLLECTION = "grant-recommendations";
+const FUNDING_HISTORY_COLLECTION = "investigation-history";
+
+const FUNDING_DISCOVERY_MAX_SOURCES_PER_RUN = Number(
+  process.env.MEOS_FUNDING_MAX_SOURCES_PER_RUN || 12
+);
+const FUNDING_DISCOVERY_MAX_OPPORTUNITIES_PER_QUERY = Number(
+  process.env.MEOS_FUNDING_MAX_OPPORTUNITIES_PER_QUERY || 25
+);
+const FUNDING_DISCOVERY_SOURCE_REFRESH_MS = Number(
+  process.env.MEOS_FUNDING_SOURCE_REFRESH_MS || 24 * 60 * 60_000
+);
+const FUNDING_PUBLIC_FETCH_TIMEOUT_MS = Number(
+  process.env.MEOS_FUNDING_PUBLIC_FETCH_TIMEOUT_MS || 15_000
+);
+const FUNDING_PUBLIC_FETCH_MAX_BYTES = Number(
+  process.env.MEOS_FUNDING_PUBLIC_FETCH_MAX_BYTES || 1_500_000
+);
+const FUNDING_PUBLIC_FETCH_MAX_REDIRECTS = Number(
+  process.env.MEOS_FUNDING_PUBLIC_FETCH_MAX_REDIRECTS || 5
+);
+
+const FUNDING_SEARCH_TERMS = String(
+  process.env.MEOS_FUNDING_SEARCH_TERMS ||
+    [
+      "homelessness",
+      "mobile hygiene",
+      "substance use recovery",
+      "community development",
+      "water quality",
+      "watershed",
+      "workforce development"
+    ].join("|")
+)
+  .split("|")
+  .map(value => value.trim())
+  .filter(Boolean)
+  .slice(0, 20);
+
+const FUNDING_SOURCE_SEEDS = Object.freeze([
+  {
+    id: "funding-source-grants-gov",
+    name: "Grants.gov",
+    category: "government",
+    authorityType: "federal-government",
+    sourceType: "structured-api",
+    homepage: "https://www.grants.gov/",
+    endpoint: "https://api.grants.gov/v1/api/search2",
+    trustScore: 1,
+    priority: 100,
+    investigationFrequencyMs: 6 * 60 * 60_000,
+    capabilities: ["grants", "forecasted-opportunities", "posted-opportunities"]
+  },
+  {
+    id: "funding-source-california-grants",
+    name: "California Grants Portal",
+    category: "government",
+    authorityType: "state-government",
+    sourceType: "public-portal",
+    homepage: "https://www.grants.ca.gov/",
+    trustScore: 1,
+    priority: 98,
+    investigationFrequencyMs: 12 * 60 * 60_000,
+    capabilities: ["grants", "loans", "california-state-opportunities"]
+  },
+  {
+    id: "funding-source-sam-assistance",
+    name: "SAM.gov Assistance Listings",
+    category: "government",
+    authorityType: "federal-government",
+    sourceType: "public-portal",
+    homepage: "https://sam.gov/assistance-listings",
+    trustScore: 1,
+    priority: 90,
+    investigationFrequencyMs: 24 * 60 * 60_000,
+    capabilities: ["assistance-programs", "grants", "loans"]
+  },
+  {
+    id: "funding-source-walmart-org",
+    name: "Walmart.org",
+    category: "corporate-giving",
+    authorityType: "corporation",
+    sourceType: "public-program-page",
+    homepage: "https://walmart.org/how-we-give/local-community-grants",
+    trustScore: 0.95,
+    priority: 90,
+    investigationFrequencyMs: 24 * 60 * 60_000,
+    capabilities: ["corporate-grants", "community-giving"]
+  },
+  {
+    id: "funding-source-home-depot-foundation",
+    name: "The Home Depot Foundation",
+    category: "corporate-giving",
+    authorityType: "corporate-foundation",
+    sourceType: "public-program-page",
+    homepage: "https://corporate.homedepot.com/page/home-depot-foundation",
+    trustScore: 0.95,
+    priority: 88,
+    investigationFrequencyMs: 24 * 60 * 60_000,
+    capabilities: ["corporate-grants", "housing", "community-support"]
+  },
+  {
+    id: "funding-source-lowes-foundation",
+    name: "Lowe's Foundation",
+    category: "corporate-giving",
+    authorityType: "corporate-foundation",
+    sourceType: "public-program-page",
+    homepage: "https://www.lowes.com/l/about/lowes-foundation",
+    trustScore: 0.95,
+    priority: 86,
+    investigationFrequencyMs: 24 * 60 * 60_000,
+    capabilities: ["corporate-grants", "workforce-development", "community-projects"]
+  },
+  {
+    id: "funding-source-bank-of-america-charitable",
+    name: "Bank of America Charitable Foundation",
+    category: "corporate-giving",
+    authorityType: "corporate-foundation",
+    sourceType: "public-program-page",
+    homepage: "https://about.bankofamerica.com/en/making-an-impact/charitable-foundation-funding",
+    trustScore: 0.95,
+    priority: 86,
+    investigationFrequencyMs: 24 * 60 * 60_000,
+    capabilities: ["corporate-grants", "community-development", "economic-mobility"]
+  },
+  {
+    id: "funding-source-wells-fargo-foundation",
+    name: "Wells Fargo Foundation",
+    category: "corporate-giving",
+    authorityType: "corporate-foundation",
+    sourceType: "public-program-page",
+    homepage: "https://www.wellsfargo.com/about/corporate-responsibility/community-giving/",
+    trustScore: 0.95,
+    priority: 84,
+    investigationFrequencyMs: 24 * 60 * 60_000,
+    capabilities: ["corporate-grants", "housing", "financial-health"]
+  },
+  {
+    id: "funding-source-google-org",
+    name: "Google.org",
+    category: "corporate-giving",
+    authorityType: "corporate-foundation",
+    sourceType: "public-program-page",
+    homepage: "https://www.google.org/",
+    trustScore: 0.95,
+    priority: 80,
+    investigationFrequencyMs: 48 * 60 * 60_000,
+    capabilities: ["corporate-grants", "technology", "innovation-challenges"]
+  },
+  {
+    id: "funding-source-microsoft-nonprofits",
+    name: "Microsoft for Nonprofits",
+    category: "in-kind-giving",
+    authorityType: "corporation",
+    sourceType: "public-program-page",
+    homepage: "https://www.microsoft.com/en-us/nonprofits",
+    trustScore: 0.95,
+    priority: 78,
+    investigationFrequencyMs: 48 * 60 * 60_000,
+    capabilities: ["in-kind-technology", "discounts", "nonprofit-resources"]
+  },
+  {
+    id: "funding-source-cisco-foundation",
+    name: "Cisco Foundation",
+    category: "corporate-giving",
+    authorityType: "corporate-foundation",
+    sourceType: "public-program-page",
+    homepage: "https://www.cisco.com/c/en/us/about/csr/community/nonprofits.html",
+    trustScore: 0.95,
+    priority: 76,
+    investigationFrequencyMs: 48 * 60 * 60_000,
+    capabilities: ["corporate-grants", "technology", "community-partnerships"]
+  },
+  {
+    id: "funding-source-candid",
+    name: "Candid",
+    category: "foundation-intelligence",
+    authorityType: "nonprofit",
+    sourceType: "public-program-page",
+    homepage: "https://candid.org/find-funding",
+    trustScore: 0.9,
+    priority: 72,
+    investigationFrequencyMs: 72 * 60 * 60_000,
+    capabilities: ["foundation-research", "funder-intelligence"]
+  }
+]);
+
+const fundingIntelligenceState = {
+  status: "initializing",
+  lastRunAt: null,
+  lastSuccessAt: null,
+  lastError: null,
+  sourcesInvestigated: 0,
+  sourcesDiscovered: 0,
+  opportunitiesDiscovered: 0,
+  duplicatesRejected: 0
 };
 
 /**
@@ -688,6 +903,978 @@ async function executiveMemoryStorageStatus() {
 }
 
 
+
+function normalizeFundingUrl(value) {
+  try {
+    const target = new URL(String(value || ""));
+    target.hash = "";
+
+    if (!["http:", "https:"].includes(target.protocol)) {
+      return "";
+    }
+
+    if (
+      (target.protocol === "https:" && target.port === "443") ||
+      (target.protocol === "http:" && target.port === "80")
+    ) {
+      target.port = "";
+    }
+
+    target.hostname = target.hostname.toLowerCase();
+
+    if (target.pathname !== "/") {
+      target.pathname = target.pathname.replace(/\/+$/, "");
+    }
+
+    return target.href;
+  } catch {
+    return "";
+  }
+}
+
+function fundingSourceIdFromUrl(value) {
+  const normalized = normalizeFundingUrl(value);
+
+  if (!normalized) {
+    return "";
+  }
+
+  return `funding-source-${crypto
+    .createHash("sha256")
+    .update(normalized)
+    .digest("hex")
+    .slice(0, 24)}`;
+}
+
+function fundingOpportunityId(provider, externalId, url = "") {
+  const identity = [
+    String(provider || "").trim().toLowerCase(),
+    String(externalId || "").trim().toLowerCase(),
+    normalizeFundingUrl(url)
+  ].join("|");
+
+  return `funding-opportunity-${crypto
+    .createHash("sha256")
+    .update(identity)
+    .digest("hex")
+    .slice(0, 28)}`;
+}
+
+async function validatePublicFundingUrl(value) {
+  let target;
+
+  try {
+    target = new URL(String(value || ""));
+  } catch {
+    const error = new Error("A valid public funding URL is required.");
+    error.code = "FUNDING_PUBLIC_URL_INVALID";
+    throw error;
+  }
+
+  target.hash = "";
+
+  if (!["http:", "https:"].includes(target.protocol)) {
+    const error = new Error(
+      "Only HTTP and HTTPS funding sources are allowed."
+    );
+    error.code = "FUNDING_PUBLIC_PROTOCOL_BLOCKED";
+    throw error;
+  }
+
+  let addresses;
+
+  try {
+    addresses = await dns.lookup(target.hostname, {
+      all: true,
+      verbatim: true
+    });
+  } catch {
+    const error = new Error(
+      "The public funding hostname could not be resolved."
+    );
+    error.code = "FUNDING_PUBLIC_DNS_FAILED";
+    throw error;
+  }
+
+  if (
+    addresses.length === 0 ||
+    addresses.some(record => isPrivateOrReservedIp(record.address))
+  ) {
+    const error = new Error(
+      "The funding source resolved to a blocked network address."
+    );
+    error.code = "FUNDING_PUBLIC_PRIVATE_NETWORK_BLOCKED";
+    throw error;
+  }
+
+  return target;
+}
+
+async function fetchPublicFundingResource(
+  initialUrl,
+  options = {}
+) {
+  let target = await validatePublicFundingUrl(initialUrl);
+  const visited = new Set();
+  const method = options.method || "GET";
+  const requestBody = options.body || undefined;
+  const headers = {
+    Accept:
+      options.accept ||
+      "application/json,text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.4",
+    "User-Agent":
+      "MEOS-Funding-Intelligence/1.0 (+public-resource-discovery)",
+    ...(options.headers || {})
+  };
+
+  for (
+    let redirectCount = 0;
+    redirectCount <= FUNDING_PUBLIC_FETCH_MAX_REDIRECTS;
+    redirectCount += 1
+  ) {
+    if (visited.has(target.href)) {
+      const error = new Error(
+        "The public funding source returned a redirect loop."
+      );
+      error.code = "FUNDING_PUBLIC_REDIRECT_LOOP";
+      throw error;
+    }
+
+    visited.add(target.href);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      FUNDING_PUBLIC_FETCH_TIMEOUT_MS
+    );
+
+    let providerResponse;
+
+    try {
+      providerResponse = await fetch(target, {
+        method,
+        redirect: "manual",
+        signal: controller.signal,
+        headers,
+        body: requestBody
+      });
+    } catch (error) {
+      const fetchError = new Error(
+        error?.name === "AbortError"
+          ? "The public funding request timed out."
+          : "The public funding source could not be retrieved."
+      );
+      fetchError.code =
+        error?.name === "AbortError"
+          ? "FUNDING_PUBLIC_TIMEOUT"
+          : "FUNDING_PUBLIC_FETCH_FAILED";
+      throw fetchError;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (
+      providerResponse.status >= 300 &&
+      providerResponse.status < 400
+    ) {
+      const location = providerResponse.headers.get("location");
+
+      if (!location) {
+        const error = new Error(
+          "The public funding source returned an invalid redirect."
+        );
+        error.code = "FUNDING_PUBLIC_REDIRECT_INVALID";
+        throw error;
+      }
+
+      if (redirectCount === FUNDING_PUBLIC_FETCH_MAX_REDIRECTS) {
+        const error = new Error(
+          "The public funding source exceeded the redirect limit."
+        );
+        error.code = "FUNDING_PUBLIC_TOO_MANY_REDIRECTS";
+        throw error;
+      }
+
+      target = await validatePublicFundingUrl(
+        new URL(location, target).href
+      );
+      continue;
+    }
+
+    if (!providerResponse.ok) {
+      const error = new Error(
+        `The public funding source returned HTTP ${providerResponse.status}.`
+      );
+      error.code = "FUNDING_PUBLIC_UPSTREAM_HTTP_ERROR";
+      error.details = {
+        upstreamStatus: providerResponse.status,
+        url: target.href
+      };
+      throw error;
+    }
+
+    const declaredLength = Number(
+      providerResponse.headers.get("content-length") || 0
+    );
+
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > FUNDING_PUBLIC_FETCH_MAX_BYTES
+    ) {
+      const error = new Error(
+        "The public funding response exceeds the size limit."
+      );
+      error.code = "FUNDING_PUBLIC_RESPONSE_TOO_LARGE";
+      throw error;
+    }
+
+    const body = await readLimitedFundingResponseBody(providerResponse);
+
+    return {
+      requestedUrl: initialUrl,
+      finalUrl: target.href,
+      status: providerResponse.status,
+      contentType:
+        providerResponse.headers.get("content-type") ||
+        "application/octet-stream",
+      body,
+      headers: providerResponse.headers
+    };
+  }
+
+  const error = new Error(
+    "The public funding request could not be completed."
+  );
+  error.code = "FUNDING_PUBLIC_INCOMPLETE";
+  throw error;
+}
+
+async function readLimitedFundingResponseBody(providerResponse) {
+  if (!providerResponse.body) {
+    return Buffer.alloc(0);
+  }
+
+  const chunks = [];
+  let totalBytes = 0;
+
+  for await (const chunk of providerResponse.body) {
+    const buffer = Buffer.from(chunk);
+    totalBytes += buffer.length;
+
+    if (totalBytes > FUNDING_PUBLIC_FETCH_MAX_BYTES) {
+      const error = new Error(
+        "The public funding response exceeded the size limit."
+      );
+      error.code = "FUNDING_PUBLIC_RESPONSE_TOO_LARGE";
+      throw error;
+    }
+
+    chunks.push(buffer);
+  }
+
+  return Buffer.concat(chunks);
+}
+
+function decodeBasicHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function stripHtml(value) {
+  return decodeBasicHtmlEntities(
+    String(value || "")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+function extractFundingLinks(html, baseUrl) {
+  const links = [];
+  const pattern =
+    /<a\b[^>]*href\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a>/gi;
+  const relevant =
+    /\b(grant|funding|foundation|giving|sponsor|donat|community|nonprofit|rfp|request for proposal|matching gift|volunteer grant|in-kind|challenge|award|partnership|apply|application)\b/i;
+  let match;
+
+  while ((match = pattern.exec(String(html || "")))) {
+    const rawHref = match[1] || match[2] || match[3] || "";
+    const label = stripHtml(match[4] || "");
+
+    if (!rawHref || rawHref.startsWith("#")) {
+      continue;
+    }
+
+    let resolved;
+
+    try {
+      resolved = new URL(rawHref, baseUrl);
+    } catch {
+      continue;
+    }
+
+    if (!["http:", "https:"].includes(resolved.protocol)) {
+      continue;
+    }
+
+    const combined = `${resolved.href} ${label}`;
+
+    if (!relevant.test(combined)) {
+      continue;
+    }
+
+    const normalizedUrl = normalizeFundingUrl(resolved.href);
+
+    if (!normalizedUrl) {
+      continue;
+    }
+
+    links.push({
+      url: normalizedUrl,
+      label: label.slice(0, 220),
+      relationship:
+        resolved.origin === new URL(baseUrl).origin
+          ? "program-link"
+          : "referenced-funding-source"
+    });
+  }
+
+  const unique = new Map();
+
+  for (const link of links) {
+    if (!unique.has(link.url)) {
+      unique.set(link.url, link);
+    }
+  }
+
+  return [...unique.values()].slice(0, 75);
+}
+
+function normalizeFundingSource(seed, existing = null) {
+  const now = continuousOperationsNow();
+  const homepage = normalizeFundingUrl(
+    seed.homepage || existing?.homepage || ""
+  );
+  const endpoint = normalizeFundingUrl(
+    seed.endpoint || existing?.endpoint || ""
+  );
+  const id =
+    normalizeIdentifier(seed.id || existing?.id || "") ||
+    fundingSourceIdFromUrl(endpoint || homepage);
+
+  if (!id || (!homepage && !endpoint)) {
+    throw new Error(
+      "Funding intelligence sources require an ID and public URL."
+    );
+  }
+
+  return normalizeExecutiveMemoryRecord(
+    {
+      ...existing,
+      ...seed,
+      id,
+      schema: "meos.funding-intelligence.source.v1",
+      type: "funding-intelligence-source",
+      office: "Funding Office",
+      category: seed.category || existing?.category || "funding",
+      authorityType:
+        seed.authorityType ||
+        existing?.authorityType ||
+        "unknown",
+      sourceType:
+        seed.sourceType ||
+        existing?.sourceType ||
+        "public-program-page",
+      homepage,
+      endpoint,
+      trustScore: Math.max(
+        0,
+        Math.min(
+          1,
+          Number(seed.trustScore ?? existing?.trustScore ?? 0.7)
+        )
+      ),
+      priority: Math.max(
+        1,
+        Math.min(
+          100,
+          Number(seed.priority ?? existing?.priority ?? 50)
+        )
+      ),
+      status: seed.status || existing?.status || "active",
+      investigationFrequencyMs: Math.max(
+        60_000,
+        Number(
+          seed.investigationFrequencyMs ??
+            existing?.investigationFrequencyMs ??
+            FUNDING_DISCOVERY_SOURCE_REFRESH_MS
+        )
+      ),
+      lastInvestigatedAt:
+        seed.lastInvestigatedAt ||
+        existing?.lastInvestigatedAt ||
+        null,
+      nextInvestigationAt:
+        seed.nextInvestigationAt ||
+        existing?.nextInvestigationAt ||
+        now,
+      discoveryMethod:
+        seed.discoveryMethod ||
+        existing?.discoveryMethod ||
+        "commissioned-seed",
+      discoveredFromSourceId:
+        seed.discoveredFromSourceId ||
+        existing?.discoveredFromSourceId ||
+        null,
+      capabilities: Array.from(
+        new Set([
+          ...(existing?.capabilities || []),
+          ...(seed.capabilities || [])
+        ])
+      ),
+      relationshipIds: Array.from(
+        new Set([
+          ...(existing?.relationshipIds || []),
+          ...(seed.relationshipIds || [])
+        ])
+      ),
+      evidence: {
+        ...(existing?.evidence || {}),
+        ...(seed.evidence || {})
+      },
+      createdAt: existing?.createdAt || seed.createdAt || now,
+      updatedAt: now
+    },
+    existing
+  );
+}
+
+async function ensureFundingSourceRegistry() {
+  return withExecutiveMemoryWriteLock(
+    FUNDING_SOURCE_COLLECTION,
+    async () => {
+      const records = await readExecutiveMemoryCollection(
+        FUNDING_SOURCE_COLLECTION
+      );
+      const indexById = new Map(
+        records.map((record, index) => [record.id, index])
+      );
+      let added = 0;
+      let updated = 0;
+
+      for (const seed of FUNDING_SOURCE_SEEDS) {
+        const index = indexById.get(seed.id);
+        const existing = index === undefined ? null : records[index];
+        const normalized = normalizeFundingSource(seed, existing);
+
+        if (index === undefined) {
+          records.push(normalized);
+          indexById.set(normalized.id, records.length - 1);
+          added += 1;
+        } else {
+          records[index] = normalized;
+          updated += 1;
+        }
+      }
+
+      await writeExecutiveMemoryCollection(
+        FUNDING_SOURCE_COLLECTION,
+        records
+      );
+
+      return {
+        added,
+        updated,
+        total: records.filter(
+          record => record?.type === "funding-intelligence-source"
+        ).length
+      };
+    }
+  );
+}
+
+async function upsertFundingSources(sources) {
+  return withExecutiveMemoryWriteLock(
+    FUNDING_SOURCE_COLLECTION,
+    async () => {
+      const records = await readExecutiveMemoryCollection(
+        FUNDING_SOURCE_COLLECTION
+      );
+      const indexById = new Map(
+        records.map((record, index) => [record.id, index])
+      );
+      let added = 0;
+      let updated = 0;
+
+      for (const source of sources) {
+        const candidateId =
+          normalizeIdentifier(source.id || "") ||
+          fundingSourceIdFromUrl(
+            source.endpoint || source.homepage
+          );
+
+        if (!candidateId) {
+          continue;
+        }
+
+        const index = indexById.get(candidateId);
+        const existing = index === undefined ? null : records[index];
+        const normalized = normalizeFundingSource(
+          {
+            ...source,
+            id: candidateId
+          },
+          existing
+        );
+
+        if (index === undefined) {
+          records.push(normalized);
+          indexById.set(normalized.id, records.length - 1);
+          added += 1;
+        } else {
+          records[index] = normalized;
+          updated += 1;
+        }
+      }
+
+      await writeExecutiveMemoryCollection(
+        FUNDING_SOURCE_COLLECTION,
+        records
+      );
+
+      return {
+        added,
+        updated,
+        total: records.filter(
+          record => record?.type === "funding-intelligence-source"
+        ).length
+      };
+    }
+  );
+}
+
+async function upsertFundingOpportunities(opportunities) {
+  return withExecutiveMemoryWriteLock(
+    FUNDING_OPPORTUNITY_COLLECTION,
+    async () => {
+      const records = await readExecutiveMemoryCollection(
+        FUNDING_OPPORTUNITY_COLLECTION
+      );
+      const indexById = new Map(
+        records.map((record, index) => [record.id, index])
+      );
+      let added = 0;
+      let updated = 0;
+      let duplicates = 0;
+
+      for (const opportunity of opportunities) {
+        if (!opportunity?.id) {
+          continue;
+        }
+
+        const index = indexById.get(opportunity.id);
+        const existing = index === undefined ? null : records[index];
+
+        const normalized = normalizeExecutiveMemoryRecord(
+          {
+            ...existing,
+            ...opportunity,
+            schema:
+              "meos.funding-intelligence.opportunity.v1",
+            type: "funding-opportunity",
+            office: "Funding Office",
+            status:
+              opportunity.status ||
+              existing?.status ||
+              "discovered-unqualified",
+            firstDiscoveredAt:
+              existing?.firstDiscoveredAt ||
+              opportunity.firstDiscoveredAt ||
+              continuousOperationsNow(),
+            lastSeenAt: continuousOperationsNow()
+          },
+          existing
+        );
+
+        if (index === undefined) {
+          records.push(normalized);
+          indexById.set(normalized.id, records.length - 1);
+          added += 1;
+        } else {
+          records[index] = normalized;
+          updated += 1;
+          duplicates += 1;
+        }
+      }
+
+      await writeExecutiveMemoryCollection(
+        FUNDING_OPPORTUNITY_COLLECTION,
+        records
+      );
+
+      return {
+        added,
+        updated,
+        duplicates,
+        total: records.filter(
+          record => record?.type === "funding-opportunity"
+        ).length
+      };
+    }
+  );
+}
+
+function parseGrantsGovOpportunity(hit, searchTerm, sourceId) {
+  const externalId = String(
+    hit?.id || hit?.number || ""
+  ).trim();
+
+  if (!externalId) {
+    return null;
+  }
+
+  const opportunityUrl = hit?.id
+    ? `https://www.grants.gov/search-results-detail/${encodeURIComponent(
+        hit.id
+      )}`
+    : "https://www.grants.gov/search-grants";
+
+  return {
+    id: fundingOpportunityId(
+      "grants.gov",
+      externalId,
+      opportunityUrl
+    ),
+    provider: "Grants.gov",
+    sourceId,
+    externalId,
+    opportunityNumber: hit?.number || "",
+    title: hit?.title || "Untitled federal funding opportunity",
+    agencyCode: hit?.agencyCode || "",
+    agencyName: hit?.agencyName || "",
+    openDate: hit?.openDate || null,
+    deadline: hit?.closeDate || null,
+    opportunityStatus: hit?.oppStatus || "",
+    documentType: hit?.docType || "",
+    assistanceListings: Array.isArray(hit?.alnist)
+      ? hit.alnist
+      : [],
+    url: opportunityUrl,
+    discoveryQuery: searchTerm,
+    category: "government-grant",
+    authorityType: "federal-government",
+    trustScore: 1,
+    qualificationStatus: "pending-opportunity-office",
+    status: "discovered-unqualified",
+    humanApprovalRequiredBeforeApplication: true,
+    evidence: {
+      providerEndpoint:
+        "https://api.grants.gov/v1/api/search2",
+      retrievedAt: continuousOperationsNow()
+    }
+  };
+}
+
+async function investigateGrantsGov(source) {
+  const opportunities = [];
+  const queryResults = [];
+  const errors = [];
+
+  for (const searchTerm of FUNDING_SEARCH_TERMS) {
+    try {
+      const result = await fetchPublicFundingResource(
+        source.endpoint,
+        {
+          method: "POST",
+          accept: "application/json",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            rows:
+              FUNDING_DISCOVERY_MAX_OPPORTUNITIES_PER_QUERY,
+            keyword: searchTerm,
+            oppStatuses: "forecasted|posted",
+            startRecordNum: 0
+          })
+        }
+      );
+
+      const payload = JSON.parse(result.body.toString("utf8"));
+      const hits = Array.isArray(payload?.data?.oppHits)
+        ? payload.data.oppHits
+        : [];
+
+      for (const hit of hits) {
+        const normalized = parseGrantsGovOpportunity(
+          hit,
+          searchTerm,
+          source.id
+        );
+
+        if (normalized) {
+          opportunities.push(normalized);
+        }
+      }
+
+      queryResults.push({
+        searchTerm,
+        hitCount: Number(payload?.data?.hitCount || hits.length),
+        returned: hits.length,
+        success: true
+      });
+    } catch (error) {
+      errors.push({
+        searchTerm,
+        code: error?.code || "GRANTS_GOV_QUERY_FAILED",
+        message: error?.message || String(error)
+      });
+    }
+  }
+
+  const unique = new Map();
+
+  for (const opportunity of opportunities) {
+    unique.set(opportunity.id, opportunity);
+  }
+
+  return {
+    success: errors.length < FUNDING_SEARCH_TERMS.length,
+    sourceId: source.id,
+    opportunities: [...unique.values()],
+    discoveredSources: [],
+    queryResults,
+    errors
+  };
+}
+
+async function investigateFundingProgramPage(source) {
+  const targetUrl = source.homepage || source.endpoint;
+  const result = await fetchPublicFundingResource(targetUrl, {
+    method: "GET",
+    accept:
+      "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.4"
+  });
+  const html = result.body.toString("utf8");
+  const pageText = stripHtml(html).slice(0, 12_000);
+  const links = extractFundingLinks(html, result.finalUrl);
+  const sourceDomain = new URL(result.finalUrl).hostname;
+  const discoveredSources = links.map(link => {
+    const targetDomain = new URL(link.url).hostname;
+    const external = targetDomain !== sourceDomain;
+
+    return {
+      id: fundingSourceIdFromUrl(link.url),
+      name:
+        link.label ||
+        `${targetDomain} funding resource`,
+      category:
+        source.category || "funding",
+      authorityType: external
+        ? "referenced-organization"
+        : source.authorityType,
+      sourceType: "discovered-public-program-page",
+      homepage: link.url,
+      trustScore: external
+        ? Math.max(0.55, source.trustScore * 0.75)
+        : Math.max(0.7, source.trustScore * 0.9),
+      priority: Math.max(
+        25,
+        Number(source.priority || 50) - (external ? 15 : 5)
+      ),
+      investigationFrequencyMs:
+        FUNDING_DISCOVERY_SOURCE_REFRESH_MS,
+      discoveryMethod: "public-link-discovery",
+      discoveredFromSourceId: source.id,
+      capabilities: [
+        "funding-program-page",
+        link.relationship
+      ],
+      evidence: {
+        referringUrl: result.finalUrl,
+        referringLabel: link.label,
+        discoveredAt: continuousOperationsNow()
+      }
+    };
+  });
+
+  const pageSignals = [
+    "grant",
+    "funding",
+    "foundation",
+    "sponsorship",
+    "matching gift",
+    "volunteer grant",
+    "in-kind",
+    "partnership",
+    "application"
+  ].filter(signal =>
+    pageText.toLowerCase().includes(signal)
+  );
+
+  return {
+    success: true,
+    sourceId: source.id,
+    opportunities: [],
+    discoveredSources,
+    page: {
+      requestedUrl: targetUrl,
+      finalUrl: result.finalUrl,
+      contentType: result.contentType,
+      byteLength: result.body.length,
+      relevantSignals: pageSignals,
+      discoveredLinkCount: links.length
+    },
+    errors: []
+  };
+}
+
+async function investigateFundingSource(source) {
+  if (
+    source.id === "funding-source-grants-gov" &&
+    source.endpoint
+  ) {
+    return investigateGrantsGov(source);
+  }
+
+  return investigateFundingProgramPage(source);
+}
+
+async function markFundingSourceInvestigated(
+  source,
+  investigation
+) {
+  const now = continuousOperationsNow();
+  const nextInvestigationAt = new Date(
+    Date.now() +
+      Math.max(
+        60_000,
+        Number(
+          source.investigationFrequencyMs ||
+            FUNDING_DISCOVERY_SOURCE_REFRESH_MS
+        )
+      )
+  ).toISOString();
+
+  return upsertFundingSources([
+    {
+      ...source,
+      lastInvestigatedAt: now,
+      nextInvestigationAt,
+      lastInvestigationStatus:
+        investigation.success ? "success" : "failed",
+      lastOpportunityCount:
+        investigation.opportunities?.length || 0,
+      lastDiscoveredSourceCount:
+        investigation.discoveredSources?.length || 0,
+      lastError:
+        investigation.success
+          ? null
+          : investigation.errors?.[0] || null,
+      evidence: {
+        ...(source.evidence || {}),
+        lastInvestigationAt: now,
+        lastInvestigationSummary: {
+          opportunityCount:
+            investigation.opportunities?.length || 0,
+          discoveredSourceCount:
+            investigation.discoveredSources?.length || 0,
+          errorCount:
+            investigation.errors?.length || 0
+        }
+      }
+    }
+  ]);
+}
+
+async function writeFundingInvestigationRecord(record) {
+  return withExecutiveMemoryWriteLock(
+    FUNDING_HISTORY_COLLECTION,
+    async () => {
+      const records = await readExecutiveMemoryCollection(
+        FUNDING_HISTORY_COLLECTION
+      );
+      const normalized = normalizeExecutiveMemoryRecord(record);
+      records.push(normalized);
+      await writeExecutiveMemoryCollection(
+        FUNDING_HISTORY_COLLECTION,
+        records
+      );
+      return normalized;
+    }
+  );
+}
+
+async function getFundingIntelligenceStatus() {
+  const sources = (
+    await readExecutiveMemoryCollection(
+      FUNDING_SOURCE_COLLECTION
+    )
+  ).filter(
+    record => record?.type === "funding-intelligence-source"
+  );
+  const opportunities = (
+    await readExecutiveMemoryCollection(
+      FUNDING_OPPORTUNITY_COLLECTION
+    )
+  ).filter(
+    record => record?.type === "funding-opportunity"
+  );
+  const history = (
+    await readExecutiveMemoryCollection(
+      FUNDING_HISTORY_COLLECTION
+    )
+  )
+    .filter(
+      record => record?.type === "funding-intelligence-run"
+    )
+    .sort((left, right) =>
+      String(right.completedAt || "").localeCompare(
+        String(left.completedAt || "")
+      )
+    )
+    .slice(0, 10);
+
+  const categories = {};
+
+  for (const source of sources) {
+    const category = source.category || "uncategorized";
+    categories[category] = (categories[category] || 0) + 1;
+  }
+
+  return {
+    schema: "meos.funding-intelligence.status.v1",
+    version: FUNDING_INTELLIGENCE_VERSION,
+    status: fundingIntelligenceState.status,
+    lastRunAt: fundingIntelligenceState.lastRunAt,
+    lastSuccessAt: fundingIntelligenceState.lastSuccessAt,
+    lastError: fundingIntelligenceState.lastError,
+    searchTerms: FUNDING_SEARCH_TERMS,
+    totals: {
+      sources: sources.length,
+      opportunities: opportunities.length
+    },
+    categories,
+    runtimeMetrics: {
+      sourcesInvestigated:
+        fundingIntelligenceState.sourcesInvestigated,
+      sourcesDiscovered:
+        fundingIntelligenceState.sourcesDiscovered,
+      opportunitiesDiscovered:
+        fundingIntelligenceState.opportunitiesDiscovered,
+      duplicatesRejected:
+        fundingIntelligenceState.duplicatesRejected
+    },
+    recentInvestigations: history
+  };
+}
+
 function continuousOperationsNow() {
   return new Date().toISOString();
 }
@@ -909,8 +2096,8 @@ async function ensureContinuousOperationsStandingMissions() {
       id: "standing-funding-office-pipeline",
       office: "Funding Office",
       mission:
-        "Continuously maintain the funding investigation pipeline, preserve operational records, identify missing discovery work, and prepare the next authorized funding investigation cycle.",
-      handler: "funding-office-pipeline-maintenance",
+        "Continuously discover, investigate, preserve, and expand government, foundation, corporate-giving, sponsorship, partnership, RFP, contract, matching-gift, volunteer-grant, in-kind, award, and innovation-challenge resource intelligence.",
+      handler: "funding-intelligence-network",
       intervalMs: CONTINUOUS_OPERATIONS_DEFAULT_INTERVAL_MS,
       nextRunAt: now,
       priority: 100,
@@ -920,8 +2107,10 @@ async function ensureContinuousOperationsStandingMissions() {
       metadata: {
         standingMission: true,
         organizationNeutral: true,
-        nextCapability:
-          "independent-public-source-discovery"
+        commissionedCapability:
+          "independent-public-source-discovery",
+        fundingIntelligenceVersion:
+          FUNDING_INTELLIGENCE_VERSION
       }
     }
   ];
@@ -957,120 +2146,213 @@ function registerContinuousOperationsHandler(
   };
 }
 
-async function fundingOfficePipelineMaintenanceHandler(context) {
-  const records = await readExecutiveMemoryCollection(
-    "discovered-sources"
-  );
-  const recommendations = await readExecutiveMemoryCollection(
-    "grant-recommendations"
-  );
-  const history = await readExecutiveMemoryCollection(
-    "investigation-history"
-  );
+async function fundingIntelligenceNetworkHandler(context) {
+  fundingIntelligenceState.status = "running";
+  fundingIntelligenceState.lastRunAt =
+    continuousOperationsNow();
+  fundingIntelligenceState.lastError = null;
 
-  const fundingSources = records.filter(
-    record =>
-      record?.status !== "rejected" &&
-      (
-        record?.category === "funding" ||
-        record?.office === "Funding Office" ||
-        record?.sourceType === "funding-source"
+  const runStartedAt = continuousOperationsNow();
+  const runStartedMs = Date.now();
+
+  try {
+    const registry = await ensureFundingSourceRegistry();
+    const allRecords = await readExecutiveMemoryCollection(
+      FUNDING_SOURCE_COLLECTION
+    );
+    const now = Date.now();
+
+    const dueSources = allRecords
+      .filter(
+        record =>
+          record?.type === "funding-intelligence-source" &&
+          record.status !== "rejected" &&
+          record.status !== "disabled"
       )
-  );
-
-  const activeRecommendations = recommendations.filter(
-    record =>
-      record?.status !== "rejected" &&
-      record?.status !== "archived"
-  );
-
-  const latestFundingInvestigation = history
-    .filter(
-      record =>
-        record?.type === "funding-investigation" ||
-        record?.office === "Funding Office"
-    )
-    .sort((left, right) =>
-      String(right.completedAt || right.updatedAt || "").localeCompare(
-        String(left.completedAt || left.updatedAt || "")
-      )
-    )[0] || null;
-
-  const now = continuousOperationsNow();
-  const needsDiscovery =
-    fundingSources.length === 0 ||
-    !latestFundingInvestigation;
-
-  const operationalRecord = {
-    id: `funding-office-readiness-${Date.now()}`,
-    schema:
-      "meos.continuous-operations.funding-readiness.v1",
-    type: "funding-office-readiness",
-    office: "Funding Office",
-    missionId: context.job.id,
-    runId: context.runId,
-    assessedAt: now,
-    sourceCount: fundingSources.length,
-    activeRecommendationCount:
-      activeRecommendations.length,
-    latestFundingInvestigationAt:
-      latestFundingInvestigation?.completedAt ||
-      latestFundingInvestigation?.updatedAt ||
-      null,
-    needsIndependentDiscovery: needsDiscovery,
-    nextAuthorizedAction: needsDiscovery
-      ? "Run independent public-source discovery."
-      : "Refresh known funding sources and requalify opportunities.",
-    status: needsDiscovery
-      ? "discovery-required"
-      : "pipeline-maintained",
-    authorityBoundary:
-      "No external application, message, commitment, or expenditure was made."
-  };
-
-  await withExecutiveMemoryWriteLock(
-    "investigation-history",
-    async () => {
-      const investigationRecords =
-        await readExecutiveMemoryCollection(
-          "investigation-history"
+      .filter(source => {
+        const dueAt = Date.parse(
+          source.nextInvestigationAt || 0
         );
 
-      investigationRecords.push(
-        normalizeExecutiveMemoryRecord(
-          operationalRecord
-        )
+        return !Number.isFinite(dueAt) || dueAt <= now;
+      })
+      .sort(
+        (left, right) =>
+          Number(right.priority || 0) -
+            Number(left.priority || 0) ||
+          String(left.nextInvestigationAt || "").localeCompare(
+            String(right.nextInvestigationAt || "")
+          )
+      )
+      .slice(0, FUNDING_DISCOVERY_MAX_SOURCES_PER_RUN);
+
+    const investigations = [];
+    const allDiscoveredSources = [];
+    const allOpportunities = [];
+
+    for (const source of dueSources) {
+      let investigation;
+
+      try {
+        investigation = await investigateFundingSource(source);
+      } catch (error) {
+        investigation = {
+          success: false,
+          sourceId: source.id,
+          opportunities: [],
+          discoveredSources: [],
+          errors: [
+            {
+              code:
+                error?.code ||
+                "FUNDING_SOURCE_INVESTIGATION_FAILED",
+              message: error?.message || String(error)
+            }
+          ]
+        };
+      }
+
+      investigations.push({
+        sourceId: source.id,
+        sourceName: source.name,
+        success: investigation.success,
+        opportunityCount:
+          investigation.opportunities?.length || 0,
+        discoveredSourceCount:
+          investigation.discoveredSources?.length || 0,
+        queryResults:
+          investigation.queryResults || null,
+        page: investigation.page || null,
+        errors: investigation.errors || []
+      });
+
+      allDiscoveredSources.push(
+        ...(investigation.discoveredSources || [])
+      );
+      allOpportunities.push(
+        ...(investigation.opportunities || [])
       );
 
-      await writeExecutiveMemoryCollection(
-        "investigation-history",
-        investigationRecords
+      await markFundingSourceInvestigated(
+        source,
+        investigation
       );
     }
-  );
 
-  return {
-    success: true,
-    summary:
-      needsDiscovery
-        ? "Funding pipeline assessed; independent public-source discovery is due."
-        : "Funding pipeline assessed and existing intelligence remains available.",
-    metrics: {
-      knownFundingSources: fundingSources.length,
-      activeRecommendations:
-        activeRecommendations.length,
-      previousFundingInvestigation:
-        Boolean(latestFundingInvestigation)
-    },
-    nextAction:
-      operationalRecord.nextAuthorizedAction,
-    recordId: operationalRecord.id
-  };
+    const sourceWriteResult = await upsertFundingSources(
+      allDiscoveredSources
+    );
+    const opportunityWriteResult =
+      await upsertFundingOpportunities(
+        allOpportunities
+      );
+
+    const completedAt = continuousOperationsNow();
+    const successfulInvestigations =
+      investigations.filter(item => item.success).length;
+    const failedInvestigations =
+      investigations.length - successfulInvestigations;
+
+    const investigationRecord =
+      await writeFundingInvestigationRecord({
+        id: `funding-intelligence-run-${context.runId}`,
+        schema:
+          "meos.funding-intelligence.run.v1",
+        type: "funding-intelligence-run",
+        office: "Funding Office",
+        missionId: context.job.id,
+        continuousOperationsRunId: context.runId,
+        startedAt: runStartedAt,
+        completedAt,
+        durationMs: Date.now() - runStartedMs,
+        status:
+          failedInvestigations === 0
+            ? "complete"
+            : successfulInvestigations > 0
+              ? "partial"
+              : "failed",
+        registry,
+        metrics: {
+          dueSources: dueSources.length,
+          sourcesInvestigated:
+            investigations.length,
+          successfulInvestigations,
+          failedInvestigations,
+          newSources: sourceWriteResult.added,
+          updatedSources: sourceWriteResult.updated,
+          newOpportunities:
+            opportunityWriteResult.added,
+          updatedOpportunities:
+            opportunityWriteResult.updated,
+          duplicatesRejected:
+            opportunityWriteResult.duplicates
+        },
+        investigations,
+        authorityBoundary:
+          "The Funding Office researched, recorded, and queued intelligence only. No application, external message, commitment, expenditure, or representation was made."
+      });
+
+    fundingIntelligenceState.status =
+      failedInvestigations === investigations.length &&
+      investigations.length > 0
+        ? "degraded"
+        : "online";
+    fundingIntelligenceState.lastSuccessAt =
+      successfulInvestigations > 0 ||
+      investigations.length === 0
+        ? completedAt
+        : fundingIntelligenceState.lastSuccessAt;
+    fundingIntelligenceState.sourcesInvestigated +=
+      investigations.length;
+    fundingIntelligenceState.sourcesDiscovered +=
+      sourceWriteResult.added;
+    fundingIntelligenceState.opportunitiesDiscovered +=
+      opportunityWriteResult.added;
+    fundingIntelligenceState.duplicatesRejected +=
+      opportunityWriteResult.duplicates;
+
+    return {
+      success:
+        investigations.length === 0 ||
+        successfulInvestigations > 0,
+      summary:
+        `Funding Intelligence investigated ${investigations.length} source` +
+        `${investigations.length === 1 ? "" : "s"}, added ` +
+        `${sourceWriteResult.added} source` +
+        `${sourceWriteResult.added === 1 ? "" : "s"}, and discovered ` +
+        `${opportunityWriteResult.added} new ` +
+        `${opportunityWriteResult.added === 1 ? "opportunity" : "opportunities"}.`,
+      metrics:
+        investigationRecord.metrics,
+      investigationRecordId:
+        investigationRecord.id,
+      nextAction:
+        opportunityWriteResult.added > 0
+          ? "Opportunity Office qualification is required."
+          : "Continue monitoring and expand the funding intelligence network.",
+      authorityBoundary:
+        investigationRecord.authorityBoundary
+    };
+  } catch (error) {
+    fundingIntelligenceState.status = "degraded";
+    fundingIntelligenceState.lastError =
+      error?.message || String(error);
+
+    return {
+      success: false,
+      error: {
+        code:
+          error?.code ||
+          "FUNDING_INTELLIGENCE_RUN_FAILED",
+        message: error?.message || String(error)
+      }
+    };
+  }
 }
 
 registerContinuousOperationsHandler(
-  "funding-office-pipeline-maintenance",
-  fundingOfficePipelineMaintenanceHandler
+  "funding-intelligence-network",
+  fundingIntelligenceNetworkHandler
 );
 
 async function recoverExpiredContinuousOperationsLeases() {
@@ -1944,6 +3226,62 @@ app.post(
 
 
 
+
+/**
+ * Funding Intelligence Network API
+ *
+ * Read-only operational view plus a controlled registry refresh endpoint.
+ */
+app.get(
+  "/api/funding-intelligence",
+  async (request, response) => {
+    try {
+      response.status(200).json(
+        await getFundingIntelligenceStatus()
+      );
+    } catch (error) {
+      response.status(500).json({
+        error:
+          error?.message ||
+          "Funding Intelligence status could not be read.",
+        code:
+          error?.code ||
+          "FUNDING_INTELLIGENCE_STATUS_FAILED"
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/funding-intelligence/registry/seed",
+  express.json({
+    limit: "16kb",
+    strict: true
+  }),
+  async (request, response) => {
+    try {
+      const result = await ensureFundingSourceRegistry();
+
+      response.status(200).json({
+        schema:
+          "meos.funding-intelligence.registry.v1",
+        version: FUNDING_INTELLIGENCE_VERSION,
+        result
+      });
+    } catch (error) {
+      response.status(500).json({
+        error:
+          error?.message ||
+          "Funding Intelligence registry could not be commissioned.",
+        code:
+          error?.code ||
+          "FUNDING_INTELLIGENCE_REGISTRY_FAILED"
+      });
+    }
+  }
+);
+
+
 /**
  * Continuous Operations Runtime API
  *
@@ -2502,6 +3840,12 @@ app.get("/health", async (request, response) => {
       status: "unavailable",
       error: error?.message || String(error)
     }));
+  const fundingIntelligence =
+    await getFundingIntelligenceStatus().catch(error => ({
+      version: FUNDING_INTELLIGENCE_VERSION,
+      status: "unavailable",
+      error: error?.message || String(error)
+    }));
 
   response.json({
     application: "MEOS",
@@ -2534,6 +3878,7 @@ app.get("/health", async (request, response) => {
       maximumRecordBytes: EXECUTIVE_MEMORY_MAX_RECORD_BYTES
     },
     continuousOperations,
+    fundingIntelligence,
     ttsDeduplication: {
       activeRequests: inFlightTtsRequests.size,
       cachedResponses: completedTtsCache.size
@@ -2577,6 +3922,26 @@ app.listen(PORT, () => {
         `persistentDiskExpected=${status.persistentDiskExpected}.`
     );
   });
+
+  ensureFundingSourceRegistry()
+    .then(result => {
+      fundingIntelligenceState.status = "online";
+      console.log(
+        `[MEOS] Funding Intelligence Network ` +
+          `v${FUNDING_INTELLIGENCE_VERSION} registry ready. ` +
+          `sources=${result.total}.`
+      );
+    })
+    .catch(error => {
+      fundingIntelligenceState.status = "degraded";
+      fundingIntelligenceState.lastError =
+        error?.message || String(error);
+
+      console.error(
+        "[MEOS] Funding Intelligence registry failed to initialize:",
+        error
+      );
+    });
 
   startContinuousOperationsRuntime()
     .then(status => {
