@@ -19,9 +19,10 @@ import path from "path";
 import crypto from "crypto";
 import dns from "dns/promises";
 import net from "net";
+import fs from "fs/promises";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.0.2";
+const VERSION = "2.1.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -82,6 +83,46 @@ app.disable("x-powered-by");
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
 const frontendDirectory = path.join(currentDirectory, "frontend");
+
+
+/**
+ * Phase 1 — Durable Executive Memory
+ *
+ * The browser is no longer the authoritative home for institutional records.
+ * This server-side JSON store uses Node built-ins so it does not require a
+ * package.json change.
+ *
+ * IMPORTANT:
+ * On Render without a Persistent Disk, the filesystem is ephemeral and may be
+ * reset by a redeploy or instance replacement. Set MEOS_DATA_DIR to a mounted
+ * persistent path before production use.
+ */
+const MEOS_DATA_DIR =
+  process.env.MEOS_DATA_DIR ||
+  path.join(currentDirectory, "data");
+
+const EXECUTIVE_MEMORY_DIR = path.join(
+  MEOS_DATA_DIR,
+  "executive-memory"
+);
+
+const EXECUTIVE_MEMORY_COLLECTIONS = new Set([
+  "website-evidence",
+  "discovered-sources",
+  "opportunity-state",
+  "grant-recommendations",
+  "investigation-history"
+]);
+
+const EXECUTIVE_MEMORY_MAX_RECORDS = Number(
+  process.env.MEOS_EXECUTIVE_MEMORY_MAX_RECORDS || 5000
+);
+
+const EXECUTIVE_MEMORY_MAX_RECORD_BYTES = Number(
+  process.env.MEOS_EXECUTIVE_MEMORY_MAX_RECORD_BYTES || 500000
+);
+
+const executiveMemoryWriteLocks = new Map();
 
 /**
  * OpenAI's unified WebRTC endpoint sends the browser SDP offer as plain text.
@@ -400,6 +441,194 @@ async function fetchApprovedWebsitePage(initialUrl) {
   error.status = 502;
   error.code = "WEBSITE_FETCH_INCOMPLETE";
   throw error;
+}
+
+
+function validateExecutiveMemoryCollection(value) {
+  const collection = String(value || "").trim();
+
+  if (!EXECUTIVE_MEMORY_COLLECTIONS.has(collection)) {
+    const error = new Error("Unsupported Executive Memory collection.");
+    error.status = 400;
+    error.code = "EXECUTIVE_MEMORY_COLLECTION_INVALID";
+    error.details = {
+      collection,
+      allowedCollections: [...EXECUTIVE_MEMORY_COLLECTIONS]
+    };
+    throw error;
+  }
+
+  return collection;
+}
+
+function executiveMemoryCollectionPath(collection) {
+  return path.join(
+    EXECUTIVE_MEMORY_DIR,
+    `${validateExecutiveMemoryCollection(collection)}.json`
+  );
+}
+
+async function ensureExecutiveMemoryDirectory() {
+  await fs.mkdir(EXECUTIVE_MEMORY_DIR, {
+    recursive: true
+  });
+}
+
+function normalizeExecutiveMemoryRecord(record, existingRecord = null) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    const error = new Error("Executive Memory records must be JSON objects.");
+    error.status = 400;
+    error.code = "EXECUTIVE_MEMORY_RECORD_INVALID";
+    throw error;
+  }
+
+  const now = new Date().toISOString();
+  const suppliedId = normalizeIdentifier(record.id || "");
+  const id = suppliedId || existingRecord?.id || crypto.randomUUID();
+
+  const normalized = {
+    ...existingRecord,
+    ...record,
+    id,
+    createdAt: existingRecord?.createdAt || record.createdAt || now,
+    updatedAt: now
+  };
+
+  const bytes = Buffer.byteLength(
+    JSON.stringify(normalized),
+    "utf8"
+  );
+
+  if (bytes > EXECUTIVE_MEMORY_MAX_RECORD_BYTES) {
+    const error = new Error("Executive Memory record exceeds the size limit.");
+    error.status = 413;
+    error.code = "EXECUTIVE_MEMORY_RECORD_TOO_LARGE";
+    error.details = {
+      maximumBytes: EXECUTIVE_MEMORY_MAX_RECORD_BYTES,
+      actualBytes: bytes
+    };
+    throw error;
+  }
+
+  return normalized;
+}
+
+async function readExecutiveMemoryCollection(collection) {
+  await ensureExecutiveMemoryDirectory();
+
+  const filePath = executiveMemoryCollectionPath(collection);
+
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) {
+      throw new Error("Stored Executive Memory collection is not an array.");
+    }
+
+    return parsed;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return [];
+    }
+
+    if (error instanceof SyntaxError) {
+      const storageError = new Error(
+        "Executive Memory storage contains invalid JSON."
+      );
+      storageError.status = 500;
+      storageError.code = "EXECUTIVE_MEMORY_STORAGE_CORRUPT";
+      throw storageError;
+    }
+
+    throw error;
+  }
+}
+
+async function writeExecutiveMemoryCollection(collection, records) {
+  await ensureExecutiveMemoryDirectory();
+
+  if (!Array.isArray(records)) {
+    throw new TypeError("Executive Memory collection must be an array.");
+  }
+
+  if (records.length > EXECUTIVE_MEMORY_MAX_RECORDS) {
+    const error = new Error(
+      "Executive Memory collection exceeds the record limit."
+    );
+    error.status = 413;
+    error.code = "EXECUTIVE_MEMORY_COLLECTION_TOO_LARGE";
+    error.details = {
+      maximumRecords: EXECUTIVE_MEMORY_MAX_RECORDS,
+      actualRecords: records.length
+    };
+    throw error;
+  }
+
+  const filePath = executiveMemoryCollectionPath(collection);
+  const temporaryPath =
+    `${filePath}.${process.pid}.${Date.now()}.tmp`;
+
+  await fs.writeFile(
+    temporaryPath,
+    `${JSON.stringify(records, null, 2)}\n`,
+    {
+      encoding: "utf8",
+      mode: 0o600
+    }
+  );
+
+  await fs.rename(temporaryPath, filePath);
+}
+
+function withExecutiveMemoryWriteLock(collection, operation) {
+  const previous =
+    executiveMemoryWriteLocks.get(collection) ||
+    Promise.resolve();
+
+  const current = previous
+    .catch(() => undefined)
+    .then(operation);
+
+  executiveMemoryWriteLocks.set(collection, current);
+
+  return current.finally(() => {
+    if (executiveMemoryWriteLocks.get(collection) === current) {
+      executiveMemoryWriteLocks.delete(collection);
+    }
+  });
+}
+
+async function executiveMemoryStorageStatus() {
+  try {
+    await ensureExecutiveMemoryDirectory();
+
+    const probePath = path.join(
+      EXECUTIVE_MEMORY_DIR,
+      `.meos-write-probe-${process.pid}`
+    );
+
+    await fs.writeFile(probePath, "ok", {
+      encoding: "utf8",
+      mode: 0o600
+    });
+    await fs.unlink(probePath);
+
+    return {
+      status: "ready",
+      dataDirectory: MEOS_DATA_DIR,
+      memoryDirectory: EXECUTIVE_MEMORY_DIR,
+      persistentDiskExpected: Boolean(process.env.MEOS_DATA_DIR)
+    };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      dataDirectory: MEOS_DATA_DIR,
+      memoryDirectory: EXECUTIVE_MEMORY_DIR,
+      persistentDiskExpected: Boolean(process.env.MEOS_DATA_DIR),
+      error: error.message
+    };
+  }
 }
 
 function isVoiceEngineV2Request(request) {
@@ -817,6 +1046,305 @@ app.post(
 
 
 
+
+/**
+ * Durable Executive Memory API
+ *
+ * These routes provide the server-side persistence contract that Website
+ * Intelligence, Executive Opportunity Office, Grant Office, and Executive
+ * Investigation will use in the next commissions.
+ */
+app.get("/api/executive-memory", async (request, response) => {
+  const storage = await executiveMemoryStorageStatus();
+
+  response.status(storage.status === "ready" ? 200 : 503).json({
+    schema: "meos.executive-memory.status.v1",
+    version: "1.0.0",
+    storage,
+    collections: [...EXECUTIVE_MEMORY_COLLECTIONS],
+    limits: {
+      maximumRecordsPerCollection: EXECUTIVE_MEMORY_MAX_RECORDS,
+      maximumRecordBytes: EXECUTIVE_MEMORY_MAX_RECORD_BYTES
+    }
+  });
+});
+
+app.get(
+  "/api/executive-memory/:collection",
+  async (request, response) => {
+    try {
+      const collection = validateExecutiveMemoryCollection(
+        request.params.collection
+      );
+
+      const records = await readExecutiveMemoryCollection(collection);
+      const requestedLimit = Number(request.query?.limit || 0);
+      const limit =
+        Number.isInteger(requestedLimit) && requestedLimit > 0
+          ? Math.min(requestedLimit, 1000)
+          : records.length;
+
+      const sorted = records
+        .slice()
+        .sort((a, b) =>
+          String(b.updatedAt || "").localeCompare(
+            String(a.updatedAt || "")
+          )
+        )
+        .slice(0, limit);
+
+      response.status(200).json({
+        schema: "meos.executive-memory.collection.v1",
+        collection,
+        count: sorted.length,
+        totalCount: records.length,
+        records: sorted
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error.message || "Executive Memory could not be read.",
+        code: error.code || "EXECUTIVE_MEMORY_READ_FAILED",
+        details: error.details || null
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/executive-memory/:collection/:recordId",
+  async (request, response) => {
+    try {
+      const collection = validateExecutiveMemoryCollection(
+        request.params.collection
+      );
+      const recordId = normalizeIdentifier(
+        request.params.recordId
+      );
+
+      if (!recordId) {
+        response.status(400).json({
+          error: "A valid Executive Memory record ID is required.",
+          code: "EXECUTIVE_MEMORY_RECORD_ID_INVALID"
+        });
+        return;
+      }
+
+      const records = await readExecutiveMemoryCollection(collection);
+      const record = records.find(item => item.id === recordId);
+
+      if (!record) {
+        response.status(404).json({
+          error: "Executive Memory record was not found.",
+          code: "EXECUTIVE_MEMORY_RECORD_NOT_FOUND"
+        });
+        return;
+      }
+
+      response.status(200).json({
+        schema: "meos.executive-memory.record.v1",
+        collection,
+        record
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error.message || "Executive Memory could not be read.",
+        code: error.code || "EXECUTIVE_MEMORY_READ_FAILED",
+        details: error.details || null
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/executive-memory/:collection/:recordId",
+  express.json({
+    limit: "600kb",
+    strict: true
+  }),
+  async (request, response) => {
+    try {
+      const collection = validateExecutiveMemoryCollection(
+        request.params.collection
+      );
+      const recordId = normalizeIdentifier(
+        request.params.recordId
+      );
+
+      if (!recordId) {
+        response.status(400).json({
+          error: "A valid Executive Memory record ID is required.",
+          code: "EXECUTIVE_MEMORY_RECORD_ID_INVALID"
+        });
+        return;
+      }
+
+      const savedRecord = await withExecutiveMemoryWriteLock(
+        collection,
+        async () => {
+          const records = await readExecutiveMemoryCollection(
+            collection
+          );
+          const existingIndex = records.findIndex(
+            item => item.id === recordId
+          );
+          const existingRecord =
+            existingIndex >= 0
+              ? records[existingIndex]
+              : null;
+
+          const normalized = normalizeExecutiveMemoryRecord(
+            {
+              ...request.body,
+              id: recordId
+            },
+            existingRecord
+          );
+
+          if (existingIndex >= 0) {
+            records[existingIndex] = normalized;
+          } else {
+            records.push(normalized);
+          }
+
+          await writeExecutiveMemoryCollection(
+            collection,
+            records
+          );
+
+          return normalized;
+        }
+      );
+
+      response.status(200).json({
+        schema: "meos.executive-memory.record.v1",
+        collection,
+        record: savedRecord
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error.message || "Executive Memory could not be saved.",
+        code: error.code || "EXECUTIVE_MEMORY_WRITE_FAILED",
+        details: error.details || null
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/executive-memory/:collection",
+  express.json({
+    limit: "600kb",
+    strict: true
+  }),
+  async (request, response) => {
+    try {
+      const collection = validateExecutiveMemoryCollection(
+        request.params.collection
+      );
+
+      const savedRecord = await withExecutiveMemoryWriteLock(
+        collection,
+        async () => {
+          const records = await readExecutiveMemoryCollection(
+            collection
+          );
+          const normalized = normalizeExecutiveMemoryRecord(
+            request.body
+          );
+
+          records.push(normalized);
+
+          await writeExecutiveMemoryCollection(
+            collection,
+            records
+          );
+
+          return normalized;
+        }
+      );
+
+      response.status(201).json({
+        schema: "meos.executive-memory.record.v1",
+        collection,
+        record: savedRecord
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error.message || "Executive Memory could not be saved.",
+        code: error.code || "EXECUTIVE_MEMORY_WRITE_FAILED",
+        details: error.details || null
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/executive-memory/:collection/:recordId",
+  async (request, response) => {
+    try {
+      const collection = validateExecutiveMemoryCollection(
+        request.params.collection
+      );
+      const recordId = normalizeIdentifier(
+        request.params.recordId
+      );
+
+      if (!recordId) {
+        response.status(400).json({
+          error: "A valid Executive Memory record ID is required.",
+          code: "EXECUTIVE_MEMORY_RECORD_ID_INVALID"
+        });
+        return;
+      }
+
+      const deleted = await withExecutiveMemoryWriteLock(
+        collection,
+        async () => {
+          const records = await readExecutiveMemoryCollection(
+            collection
+          );
+          const filtered = records.filter(
+            item => item.id !== recordId
+          );
+
+          if (filtered.length === records.length) {
+            return false;
+          }
+
+          await writeExecutiveMemoryCollection(
+            collection,
+            filtered
+          );
+
+          return true;
+        }
+      );
+
+      if (!deleted) {
+        response.status(404).json({
+          error: "Executive Memory record was not found.",
+          code: "EXECUTIVE_MEMORY_RECORD_NOT_FOUND"
+        });
+        return;
+      }
+
+      response.status(200).json({
+        schema: "meos.executive-memory.delete.v1",
+        collection,
+        recordId,
+        deleted: true
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error.message || "Executive Memory record could not be deleted.",
+        code: error.code || "EXECUTIVE_MEMORY_DELETE_FAILED",
+        details: error.details || null
+      });
+    }
+  }
+);
+
+
 /**
  * Fetch one approved organization website page for the frontend Website
  * Intelligence Connector.
@@ -888,8 +1416,9 @@ app.get("/api/website-intelligence/fetch", async (request, response) => {
   }
 });
 
-app.get("/health", (request, response) => {
+app.get("/health", async (request, response) => {
   pruneTtsCache();
+  const executiveMemory = await executiveMemoryStorageStatus();
 
   response.json({
     application: "MEOS",
@@ -913,6 +1442,13 @@ app.get("/health", (request, response) => {
       timeoutMs: WEBSITE_FETCH_TIMEOUT_MS,
       maximumBytes: WEBSITE_FETCH_MAX_BYTES,
       maximumRedirects: WEBSITE_FETCH_MAX_REDIRECTS
+    },
+    executiveMemory: {
+      version: "1.0.0",
+      ...executiveMemory,
+      collections: [...EXECUTIVE_MEMORY_COLLECTIONS],
+      maximumRecordsPerCollection: EXECUTIVE_MEMORY_MAX_RECORDS,
+      maximumRecordBytes: EXECUTIVE_MEMORY_MAX_RECORD_BYTES
     },
     ttsDeduplication: {
       activeRequests: inFlightTtsRequests.size,
@@ -949,4 +1485,12 @@ app.listen(PORT, () => {
   console.log(
     `[MEOS] Voice Engine v${VOICE_ENGINE_VERSION} server authority ready.`
   );
+
+  executiveMemoryStorageStatus().then(status => {
+    console.log(
+      `[MEOS] Executive Memory v1.0.0 ${status.status}. ` +
+        `directory=${status.memoryDirectory}, ` +
+        `persistentDiskExpected=${status.persistentDiskExpected}.`
+    );
+  });
 });
