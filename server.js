@@ -12,6 +12,7 @@
  * - Support Voice Engine v2 manual single-response authority.
  * - Authorize and deduplicate ElevenLabs speech requests.
  * - Serve the existing MEOS frontend without changing its structure.
+ * - Run durable standing office missions through Continuous Operations.
  */
 
 import express from "express";
@@ -22,7 +23,7 @@ import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -123,6 +124,61 @@ const EXECUTIVE_MEMORY_MAX_RECORD_BYTES = Number(
 );
 
 const executiveMemoryWriteLocks = new Map();
+
+
+/**
+ * MEOS Continuous Operations Runtime v1.0
+ *
+ * Server-side operating heartbeat for standing office missions.
+ * The runtime does not depend on an open browser session.
+ *
+ * This commission establishes:
+ * - durable standing mission definitions;
+ * - due-job claiming and duplicate-run prevention;
+ * - run history, retry state, and next-run scheduling;
+ * - safe restart recovery;
+ * - a universal handler registry for future executive offices.
+ *
+ * The first commissioned standing mission is Funding Office readiness and
+ * pipeline maintenance. Independent public-source discovery is connected in
+ * the next commission through the same handler registry.
+ */
+const CONTINUOUS_OPERATIONS_VERSION = "1.0.0";
+const CONTINUOUS_OPERATIONS_COLLECTION = "opportunity-state";
+const CONTINUOUS_OPERATIONS_RUNTIME_ID =
+  "continuous-operations-runtime-v1";
+const CONTINUOUS_OPERATIONS_TICK_MS = Number(
+  process.env.MEOS_CONTINUOUS_OPERATIONS_TICK_MS || 60_000
+);
+const CONTINUOUS_OPERATIONS_LEASE_MS = Number(
+  process.env.MEOS_CONTINUOUS_OPERATIONS_LEASE_MS || 10 * 60_000
+);
+const CONTINUOUS_OPERATIONS_DEFAULT_INTERVAL_MS = Number(
+  process.env.MEOS_CONTINUOUS_OPERATIONS_DEFAULT_INTERVAL_MS ||
+    6 * 60 * 60_000
+);
+const CONTINUOUS_OPERATIONS_MAX_RUN_HISTORY = Number(
+  process.env.MEOS_CONTINUOUS_OPERATIONS_MAX_RUN_HISTORY || 100
+);
+const CONTINUOUS_OPERATIONS_ENABLED =
+  String(process.env.MEOS_CONTINUOUS_OPERATIONS_ENABLED || "true")
+    .trim()
+    .toLowerCase() !== "false";
+
+const continuousOperationsHandlers = new Map();
+const continuousOperationsState = {
+  status: "initializing",
+  startedAt: null,
+  lastTickAt: null,
+  nextTickAt: null,
+  activeJobIds: new Set(),
+  timer: null,
+  tickInProgress: false,
+  completedRuns: 0,
+  failedRuns: 0,
+  recoveredLeases: 0,
+  lastError: null
+};
 
 /**
  * OpenAI's unified WebRTC endpoint sends the browser SDP offer as plain text.
@@ -631,6 +687,846 @@ async function executiveMemoryStorageStatus() {
   }
 }
 
+
+function continuousOperationsNow() {
+  return new Date().toISOString();
+}
+
+function normalizePositiveInteger(value, fallback, minimum = 1) {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric) || numeric < minimum) {
+    return fallback;
+  }
+
+  return Math.floor(numeric);
+}
+
+function normalizeContinuousOperationsJob(input = {}, existing = null) {
+  const now = continuousOperationsNow();
+  const id = normalizeIdentifier(
+    input.id || existing?.id || ""
+  );
+
+  if (!id) {
+    const error = new Error(
+      "Continuous Operations jobs require a valid ID."
+    );
+    error.status = 400;
+    error.code = "CONTINUOUS_OPERATIONS_JOB_ID_INVALID";
+    throw error;
+  }
+
+  const office = String(
+    input.office || existing?.office || ""
+  ).trim();
+  const mission = String(
+    input.mission || existing?.mission || ""
+  ).trim();
+  const handler = normalizeIdentifier(
+    input.handler || existing?.handler || ""
+  );
+
+  if (!office || !mission || !handler) {
+    const error = new Error(
+      "Continuous Operations jobs require office, mission, and handler."
+    );
+    error.status = 400;
+    error.code = "CONTINUOUS_OPERATIONS_JOB_INVALID";
+    throw error;
+  }
+
+  const intervalMs = normalizePositiveInteger(
+    input.intervalMs ?? existing?.intervalMs,
+    CONTINUOUS_OPERATIONS_DEFAULT_INTERVAL_MS,
+    60_000
+  );
+
+  const nextRunAt =
+    input.nextRunAt ||
+    existing?.nextRunAt ||
+    now;
+
+  return {
+    ...existing,
+    ...input,
+    id,
+    schema: "meos.continuous-operations.job.v1",
+    type: "continuous-operations-job",
+    office,
+    mission,
+    handler,
+    enabled:
+      input.enabled === undefined
+        ? existing?.enabled !== false
+        : input.enabled === true,
+    intervalMs,
+    nextRunAt,
+    priority: normalizePositiveInteger(
+      input.priority ?? existing?.priority,
+      50,
+      1
+    ),
+    requiresHumanApproval:
+      input.requiresHumanApproval === true ||
+      existing?.requiresHumanApproval === true,
+    autonomousAuthority:
+      input.autonomousAuthority ||
+      existing?.autonomousAuthority ||
+      "research-record-organize-recommend",
+    status: input.status || existing?.status || "scheduled",
+    lease: input.lease || existing?.lease || null,
+    runCount: Number(existing?.runCount || input.runCount || 0),
+    successCount: Number(
+      existing?.successCount || input.successCount || 0
+    ),
+    failureCount: Number(
+      existing?.failureCount || input.failureCount || 0
+    ),
+    consecutiveFailures: Number(
+      existing?.consecutiveFailures ||
+        input.consecutiveFailures ||
+        0
+    ),
+    lastRunAt: input.lastRunAt || existing?.lastRunAt || null,
+    lastSuccessAt:
+      input.lastSuccessAt || existing?.lastSuccessAt || null,
+    lastFailureAt:
+      input.lastFailureAt || existing?.lastFailureAt || null,
+    lastResult: input.lastResult || existing?.lastResult || null,
+    lastError: input.lastError || existing?.lastError || null,
+    createdAt: existing?.createdAt || input.createdAt || now,
+    updatedAt: now,
+    metadata: {
+      ...(existing?.metadata || {}),
+      ...(input.metadata || {})
+    }
+  };
+}
+
+function calculateContinuousOperationsNextRun(job, completedAt) {
+  const base = Date.parse(completedAt);
+  const intervalMs = normalizePositiveInteger(
+    job.intervalMs,
+    CONTINUOUS_OPERATIONS_DEFAULT_INTERVAL_MS,
+    60_000
+  );
+
+  return new Date(
+    (Number.isFinite(base) ? base : Date.now()) + intervalMs
+  ).toISOString();
+}
+
+function calculateContinuousOperationsRetry(job, completedAt) {
+  const failureCount = Math.max(
+    1,
+    Number(job.consecutiveFailures || 1)
+  );
+  const retryMs = Math.min(
+    job.intervalMs,
+    Math.max(
+      5 * 60_000,
+      2 ** Math.min(failureCount - 1, 6) * 5 * 60_000
+    )
+  );
+  const base = Date.parse(completedAt);
+
+  return new Date(
+    (Number.isFinite(base) ? base : Date.now()) + retryMs
+  ).toISOString();
+}
+
+async function readContinuousOperationsRecords() {
+  return readExecutiveMemoryCollection(
+    CONTINUOUS_OPERATIONS_COLLECTION
+  );
+}
+
+async function writeContinuousOperationsRecords(records) {
+  return writeExecutiveMemoryCollection(
+    CONTINUOUS_OPERATIONS_COLLECTION,
+    records
+  );
+}
+
+async function getContinuousOperationsJobs() {
+  const records = await readContinuousOperationsRecords();
+
+  return records.filter(
+    record => record?.type === "continuous-operations-job"
+  );
+}
+
+async function getContinuousOperationsRuns(limit = 50) {
+  const records = await readContinuousOperationsRecords();
+
+  return records
+    .filter(
+      record =>
+        record?.type === "continuous-operations-run"
+    )
+    .sort((left, right) =>
+      String(right.completedAt || right.startedAt || "").localeCompare(
+        String(left.completedAt || left.startedAt || "")
+      )
+    )
+    .slice(0, Math.max(1, Math.min(Number(limit) || 50, 500)));
+}
+
+async function upsertContinuousOperationsJob(input) {
+  return withExecutiveMemoryWriteLock(
+    CONTINUOUS_OPERATIONS_COLLECTION,
+    async () => {
+      const records = await readContinuousOperationsRecords();
+      const index = records.findIndex(
+        record =>
+          record?.type === "continuous-operations-job" &&
+          record.id === input.id
+      );
+      const existing = index >= 0 ? records[index] : null;
+      const normalized = normalizeContinuousOperationsJob(
+        input,
+        existing
+      );
+
+      if (index >= 0) {
+        records[index] = normalized;
+      } else {
+        records.push(normalized);
+      }
+
+      await writeContinuousOperationsRecords(records);
+      return normalized;
+    }
+  );
+}
+
+async function ensureContinuousOperationsStandingMissions() {
+  const now = continuousOperationsNow();
+
+  const definitions = [
+    {
+      id: "standing-funding-office-pipeline",
+      office: "Funding Office",
+      mission:
+        "Continuously maintain the funding investigation pipeline, preserve operational records, identify missing discovery work, and prepare the next authorized funding investigation cycle.",
+      handler: "funding-office-pipeline-maintenance",
+      intervalMs: CONTINUOUS_OPERATIONS_DEFAULT_INTERVAL_MS,
+      nextRunAt: now,
+      priority: 100,
+      requiresHumanApproval: false,
+      autonomousAuthority:
+        "research-record-organize-recommend",
+      metadata: {
+        standingMission: true,
+        organizationNeutral: true,
+        nextCapability:
+          "independent-public-source-discovery"
+      }
+    }
+  ];
+
+  const jobs = [];
+
+  for (const definition of definitions) {
+    jobs.push(
+      await upsertContinuousOperationsJob(definition)
+    );
+  }
+
+  return jobs;
+}
+
+function registerContinuousOperationsHandler(
+  handlerId,
+  handler
+) {
+  const normalizedId = normalizeIdentifier(handlerId);
+
+  if (!normalizedId || typeof handler !== "function") {
+    throw new TypeError(
+      "Continuous Operations handlers require a valid ID and function."
+    );
+  }
+
+  continuousOperationsHandlers.set(normalizedId, handler);
+
+  return {
+    handlerId: normalizedId,
+    registered: true
+  };
+}
+
+async function fundingOfficePipelineMaintenanceHandler(context) {
+  const records = await readExecutiveMemoryCollection(
+    "discovered-sources"
+  );
+  const recommendations = await readExecutiveMemoryCollection(
+    "grant-recommendations"
+  );
+  const history = await readExecutiveMemoryCollection(
+    "investigation-history"
+  );
+
+  const fundingSources = records.filter(
+    record =>
+      record?.status !== "rejected" &&
+      (
+        record?.category === "funding" ||
+        record?.office === "Funding Office" ||
+        record?.sourceType === "funding-source"
+      )
+  );
+
+  const activeRecommendations = recommendations.filter(
+    record =>
+      record?.status !== "rejected" &&
+      record?.status !== "archived"
+  );
+
+  const latestFundingInvestigation = history
+    .filter(
+      record =>
+        record?.type === "funding-investigation" ||
+        record?.office === "Funding Office"
+    )
+    .sort((left, right) =>
+      String(right.completedAt || right.updatedAt || "").localeCompare(
+        String(left.completedAt || left.updatedAt || "")
+      )
+    )[0] || null;
+
+  const now = continuousOperationsNow();
+  const needsDiscovery =
+    fundingSources.length === 0 ||
+    !latestFundingInvestigation;
+
+  const operationalRecord = {
+    id: `funding-office-readiness-${Date.now()}`,
+    schema:
+      "meos.continuous-operations.funding-readiness.v1",
+    type: "funding-office-readiness",
+    office: "Funding Office",
+    missionId: context.job.id,
+    runId: context.runId,
+    assessedAt: now,
+    sourceCount: fundingSources.length,
+    activeRecommendationCount:
+      activeRecommendations.length,
+    latestFundingInvestigationAt:
+      latestFundingInvestigation?.completedAt ||
+      latestFundingInvestigation?.updatedAt ||
+      null,
+    needsIndependentDiscovery: needsDiscovery,
+    nextAuthorizedAction: needsDiscovery
+      ? "Run independent public-source discovery."
+      : "Refresh known funding sources and requalify opportunities.",
+    status: needsDiscovery
+      ? "discovery-required"
+      : "pipeline-maintained",
+    authorityBoundary:
+      "No external application, message, commitment, or expenditure was made."
+  };
+
+  await withExecutiveMemoryWriteLock(
+    "investigation-history",
+    async () => {
+      const investigationRecords =
+        await readExecutiveMemoryCollection(
+          "investigation-history"
+        );
+
+      investigationRecords.push(
+        normalizeExecutiveMemoryRecord(
+          operationalRecord
+        )
+      );
+
+      await writeExecutiveMemoryCollection(
+        "investigation-history",
+        investigationRecords
+      );
+    }
+  );
+
+  return {
+    success: true,
+    summary:
+      needsDiscovery
+        ? "Funding pipeline assessed; independent public-source discovery is due."
+        : "Funding pipeline assessed and existing intelligence remains available.",
+    metrics: {
+      knownFundingSources: fundingSources.length,
+      activeRecommendations:
+        activeRecommendations.length,
+      previousFundingInvestigation:
+        Boolean(latestFundingInvestigation)
+    },
+    nextAction:
+      operationalRecord.nextAuthorizedAction,
+    recordId: operationalRecord.id
+  };
+}
+
+registerContinuousOperationsHandler(
+  "funding-office-pipeline-maintenance",
+  fundingOfficePipelineMaintenanceHandler
+);
+
+async function recoverExpiredContinuousOperationsLeases() {
+  const nowMs = Date.now();
+
+  return withExecutiveMemoryWriteLock(
+    CONTINUOUS_OPERATIONS_COLLECTION,
+    async () => {
+      const records = await readContinuousOperationsRecords();
+      let recovered = 0;
+
+      const updated = records.map(record => {
+        if (
+          record?.type !== "continuous-operations-job" ||
+          !record.lease?.expiresAt
+        ) {
+          return record;
+        }
+
+        const expiresAt = Date.parse(record.lease.expiresAt);
+
+        if (
+          Number.isFinite(expiresAt) &&
+          expiresAt <= nowMs
+        ) {
+          recovered += 1;
+
+          return {
+            ...record,
+            status: "scheduled",
+            lease: null,
+            updatedAt: continuousOperationsNow(),
+            lastError: {
+              code: "CONTINUOUS_OPERATIONS_LEASE_RECOVERED",
+              message:
+                "An expired execution lease was recovered after restart or interruption."
+            }
+          };
+        }
+
+        return record;
+      });
+
+      if (recovered > 0) {
+        await writeContinuousOperationsRecords(updated);
+        continuousOperationsState.recoveredLeases += recovered;
+      }
+
+      return recovered;
+    }
+  );
+}
+
+async function claimContinuousOperationsJob(jobId) {
+  return withExecutiveMemoryWriteLock(
+    CONTINUOUS_OPERATIONS_COLLECTION,
+    async () => {
+      const records = await readContinuousOperationsRecords();
+      const index = records.findIndex(
+        record =>
+          record?.type === "continuous-operations-job" &&
+          record.id === jobId
+      );
+
+      if (index < 0) {
+        return null;
+      }
+
+      const current = records[index];
+      const now = Date.now();
+      const nextRun = Date.parse(current.nextRunAt || 0);
+      const leaseExpires = Date.parse(
+        current.lease?.expiresAt || 0
+      );
+
+      if (
+        current.enabled === false ||
+        (Number.isFinite(nextRun) && nextRun > now) ||
+        (current.lease &&
+          Number.isFinite(leaseExpires) &&
+          leaseExpires > now)
+      ) {
+        return null;
+      }
+
+      const leaseId = createRequestId("operations-lease");
+      const claimedAt = continuousOperationsNow();
+
+      const claimed = {
+        ...current,
+        status: "running",
+        lease: {
+          id: leaseId,
+          claimedAt,
+          expiresAt: new Date(
+            now + CONTINUOUS_OPERATIONS_LEASE_MS
+          ).toISOString(),
+          processId: process.pid
+        },
+        updatedAt: claimedAt
+      };
+
+      records[index] = claimed;
+      await writeContinuousOperationsRecords(records);
+
+      return claimed;
+    }
+  );
+}
+
+async function completeContinuousOperationsJob(
+  job,
+  run,
+  execution
+) {
+  return withExecutiveMemoryWriteLock(
+    CONTINUOUS_OPERATIONS_COLLECTION,
+    async () => {
+      const records = await readContinuousOperationsRecords();
+      const jobIndex = records.findIndex(
+        record =>
+          record?.type === "continuous-operations-job" &&
+          record.id === job.id
+      );
+
+      if (jobIndex < 0) {
+        throw new Error(
+          `Continuous Operations job ${job.id} disappeared during execution.`
+        );
+      }
+
+      const current = records[jobIndex];
+      const completedAt = run.completedAt;
+      const successful = execution.success !== false;
+      const consecutiveFailures = successful
+        ? 0
+        : Number(current.consecutiveFailures || 0) + 1;
+
+      const updatedJob = {
+        ...current,
+        status: successful ? "scheduled" : "retry-scheduled",
+        lease: null,
+        runCount: Number(current.runCount || 0) + 1,
+        successCount:
+          Number(current.successCount || 0) +
+          (successful ? 1 : 0),
+        failureCount:
+          Number(current.failureCount || 0) +
+          (successful ? 0 : 1),
+        consecutiveFailures,
+        lastRunAt: completedAt,
+        lastSuccessAt: successful
+          ? completedAt
+          : current.lastSuccessAt || null,
+        lastFailureAt: successful
+          ? current.lastFailureAt || null
+          : completedAt,
+        lastResult: successful ? execution : null,
+        lastError: successful
+          ? null
+          : execution.error || {
+              code: "CONTINUOUS_OPERATIONS_HANDLER_FAILED",
+              message:
+                "The office handler reported failure."
+            },
+        nextRunAt: successful
+          ? calculateContinuousOperationsNextRun(
+              current,
+              completedAt
+            )
+          : calculateContinuousOperationsRetry(
+              {
+                ...current,
+                consecutiveFailures
+              },
+              completedAt
+            ),
+        updatedAt: completedAt
+      };
+
+      records[jobIndex] = updatedJob;
+      records.push(
+        normalizeExecutiveMemoryRecord({
+          ...run,
+          success: successful,
+          result: successful ? execution : null,
+          error: successful
+            ? null
+            : execution.error || execution
+        })
+      );
+
+      const runRecords = records
+        .filter(
+          record =>
+            record?.type === "continuous-operations-run"
+        )
+        .sort((left, right) =>
+          String(right.completedAt || "").localeCompare(
+            String(left.completedAt || "")
+          )
+        );
+
+      const allowedRunIds = new Set(
+        runRecords
+          .slice(0, CONTINUOUS_OPERATIONS_MAX_RUN_HISTORY)
+          .map(record => record.id)
+      );
+
+      const pruned = records.filter(
+        record =>
+          record?.type !== "continuous-operations-run" ||
+          allowedRunIds.has(record.id)
+      );
+
+      await writeContinuousOperationsRecords(pruned);
+      return updatedJob;
+    }
+  );
+}
+
+async function executeContinuousOperationsJob(job) {
+  const handler = continuousOperationsHandlers.get(
+    job.handler
+  );
+  const runId = createRequestId("operations-run");
+  const startedAt = continuousOperationsNow();
+  const startedMs = Date.now();
+
+  continuousOperationsState.activeJobIds.add(job.id);
+
+  let execution;
+
+  try {
+    if (!handler) {
+      execution = {
+        success: false,
+        error: {
+          code: "CONTINUOUS_OPERATIONS_HANDLER_NOT_REGISTERED",
+          message:
+            `No handler is registered for ${job.handler}.`
+        }
+      };
+    } else {
+      execution = await handler({
+        job,
+        runId,
+        startedAt,
+        executiveMemory: {
+          read: readExecutiveMemoryCollection,
+          write: writeExecutiveMemoryCollection,
+          withWriteLock: withExecutiveMemoryWriteLock
+        }
+      });
+
+      if (!execution || typeof execution !== "object") {
+        execution = {
+          success: true,
+          result: execution ?? null
+        };
+      }
+    }
+  } catch (error) {
+    execution = {
+      success: false,
+      error: {
+        code:
+          error?.code ||
+          "CONTINUOUS_OPERATIONS_HANDLER_EXCEPTION",
+        message: error?.message || String(error)
+      }
+    };
+  }
+
+  const completedAt = continuousOperationsNow();
+  const run = {
+    id: runId,
+    schema: "meos.continuous-operations.run.v1",
+    type: "continuous-operations-run",
+    jobId: job.id,
+    office: job.office,
+    mission: job.mission,
+    handler: job.handler,
+    leaseId: job.lease?.id || null,
+    startedAt,
+    completedAt,
+    durationMs: Date.now() - startedMs,
+    autonomousAuthority: job.autonomousAuthority,
+    requiresHumanApproval: job.requiresHumanApproval
+  };
+
+  const updatedJob =
+    await completeContinuousOperationsJob(
+      job,
+      run,
+      execution
+    );
+
+  if (execution.success === false) {
+    continuousOperationsState.failedRuns += 1;
+  } else {
+    continuousOperationsState.completedRuns += 1;
+  }
+
+  continuousOperationsState.activeJobIds.delete(job.id);
+
+  console.log(
+    `[MEOS Continuous Operations] ${job.office} job ${job.id} ` +
+      `${execution.success === false ? "failed" : "completed"}. ` +
+      `nextRunAt=${updatedJob.nextRunAt}.`
+  );
+
+  return {
+    job: updatedJob,
+    run,
+    execution
+  };
+}
+
+async function continuousOperationsTick() {
+  if (
+    !CONTINUOUS_OPERATIONS_ENABLED ||
+    continuousOperationsState.tickInProgress
+  ) {
+    return;
+  }
+
+  continuousOperationsState.tickInProgress = true;
+  continuousOperationsState.lastTickAt =
+    continuousOperationsNow();
+
+  try {
+    await recoverExpiredContinuousOperationsLeases();
+    const jobs = await getContinuousOperationsJobs();
+    const now = Date.now();
+
+    const dueJobs = jobs
+      .filter(job => {
+        const nextRun = Date.parse(job.nextRunAt || 0);
+
+        return (
+          job.enabled !== false &&
+          (!Number.isFinite(nextRun) || nextRun <= now) &&
+          !continuousOperationsState.activeJobIds.has(job.id)
+        );
+      })
+      .sort(
+        (left, right) =>
+          Number(right.priority || 0) -
+            Number(left.priority || 0) ||
+          String(left.nextRunAt || "").localeCompare(
+            String(right.nextRunAt || "")
+          )
+      );
+
+    for (const job of dueJobs) {
+      const claimed = await claimContinuousOperationsJob(
+        job.id
+      );
+
+      if (claimed) {
+        await executeContinuousOperationsJob(claimed);
+      }
+    }
+
+    continuousOperationsState.status = "online";
+    continuousOperationsState.lastError = null;
+  } catch (error) {
+    continuousOperationsState.status = "degraded";
+    continuousOperationsState.lastError =
+      error?.message || String(error);
+
+    console.error(
+      "[MEOS Continuous Operations] Tick failed:",
+      error
+    );
+  } finally {
+    continuousOperationsState.tickInProgress = false;
+    continuousOperationsState.nextTickAt = new Date(
+      Date.now() + CONTINUOUS_OPERATIONS_TICK_MS
+    ).toISOString();
+  }
+}
+
+async function startContinuousOperationsRuntime() {
+  if (!CONTINUOUS_OPERATIONS_ENABLED) {
+    continuousOperationsState.status = "disabled";
+    return {
+      enabled: false,
+      status: "disabled"
+    };
+  }
+
+  if (continuousOperationsState.timer) {
+    return {
+      enabled: true,
+      status: continuousOperationsState.status,
+      alreadyStarted: true
+    };
+  }
+
+  continuousOperationsState.startedAt =
+    continuousOperationsNow();
+
+  await ensureContinuousOperationsStandingMissions();
+  await recoverExpiredContinuousOperationsLeases();
+  await continuousOperationsTick();
+
+  continuousOperationsState.timer = setInterval(
+    () => {
+      void continuousOperationsTick();
+    },
+    CONTINUOUS_OPERATIONS_TICK_MS
+  );
+
+  continuousOperationsState.timer.unref?.();
+
+  return {
+    enabled: true,
+    status: continuousOperationsState.status,
+    version: CONTINUOUS_OPERATIONS_VERSION,
+    tickMs: CONTINUOUS_OPERATIONS_TICK_MS
+  };
+}
+
+async function getContinuousOperationsStatus() {
+  const jobs = await getContinuousOperationsJobs();
+  const runs = await getContinuousOperationsRuns(10);
+
+  return {
+    schema: "meos.continuous-operations.status.v1",
+    version: CONTINUOUS_OPERATIONS_VERSION,
+    enabled: CONTINUOUS_OPERATIONS_ENABLED,
+    status: continuousOperationsState.status,
+    startedAt: continuousOperationsState.startedAt,
+    lastTickAt: continuousOperationsState.lastTickAt,
+    nextTickAt: continuousOperationsState.nextTickAt,
+    tickMs: CONTINUOUS_OPERATIONS_TICK_MS,
+    leaseMs: CONTINUOUS_OPERATIONS_LEASE_MS,
+    activeJobIds: [
+      ...continuousOperationsState.activeJobIds
+    ],
+    completedRuns:
+      continuousOperationsState.completedRuns,
+    failedRuns: continuousOperationsState.failedRuns,
+    recoveredLeases:
+      continuousOperationsState.recoveredLeases,
+    lastError: continuousOperationsState.lastError,
+    handlerIds: [
+      ...continuousOperationsHandlers.keys()
+    ],
+    jobs,
+    recentRuns: runs
+  };
+}
+
 function isVoiceEngineV2Request(request) {
   return (
     request.query?.voiceEngine === VOICE_ENGINE_VERSION ||
@@ -1047,6 +1943,186 @@ app.post(
 
 
 
+
+/**
+ * Continuous Operations Runtime API
+ *
+ * Read-only status and controlled job management endpoints. These routes do
+ * not authorize external messages, applications, commitments, or spending.
+ */
+app.get(
+  "/api/continuous-operations",
+  async (request, response) => {
+    try {
+      response.status(200).json(
+        await getContinuousOperationsStatus()
+      );
+    } catch (error) {
+      response.status(500).json({
+        error:
+          error?.message ||
+          "Continuous Operations status could not be read.",
+        code:
+          error?.code ||
+          "CONTINUOUS_OPERATIONS_STATUS_FAILED"
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/continuous-operations/run/:jobId",
+  express.json({
+    limit: "16kb",
+    strict: true
+  }),
+  async (request, response) => {
+    try {
+      const jobId = normalizeIdentifier(
+        request.params.jobId
+      );
+
+      if (!jobId) {
+        response.status(400).json({
+          error:
+            "A valid Continuous Operations job ID is required.",
+          code:
+            "CONTINUOUS_OPERATIONS_JOB_ID_INVALID"
+        });
+        return;
+      }
+
+      const jobs = await getContinuousOperationsJobs();
+      const existing = jobs.find(job => job.id === jobId);
+
+      if (!existing) {
+        response.status(404).json({
+          error:
+            "Continuous Operations job was not found.",
+          code:
+            "CONTINUOUS_OPERATIONS_JOB_NOT_FOUND"
+        });
+        return;
+      }
+
+      await upsertContinuousOperationsJob({
+        ...existing,
+        nextRunAt: continuousOperationsNow(),
+        status: "scheduled",
+        lease: null,
+        metadata: {
+          ...existing.metadata,
+          manuallyQueuedAt:
+            continuousOperationsNow()
+        }
+      });
+
+      await continuousOperationsTick();
+
+      const updatedJobs =
+        await getContinuousOperationsJobs();
+
+      response.status(200).json({
+        schema:
+          "meos.continuous-operations.manual-run.v1",
+        queued: true,
+        job:
+          updatedJobs.find(job => job.id === jobId) ||
+          null
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error:
+          error?.message ||
+          "Continuous Operations job could not be queued.",
+        code:
+          error?.code ||
+          "CONTINUOUS_OPERATIONS_QUEUE_FAILED"
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/continuous-operations/jobs/:jobId",
+  express.json({
+    limit: "64kb",
+    strict: true
+  }),
+  async (request, response) => {
+    try {
+      const jobId = normalizeIdentifier(
+        request.params.jobId
+      );
+
+      if (!jobId) {
+        response.status(400).json({
+          error:
+            "A valid Continuous Operations job ID is required.",
+          code:
+            "CONTINUOUS_OPERATIONS_JOB_ID_INVALID"
+        });
+        return;
+      }
+
+      const jobs = await getContinuousOperationsJobs();
+      const existing = jobs.find(job => job.id === jobId);
+
+      if (!existing) {
+        response.status(404).json({
+          error:
+            "Continuous Operations job was not found.",
+          code:
+            "CONTINUOUS_OPERATIONS_JOB_NOT_FOUND"
+        });
+        return;
+      }
+
+      const allowed = {
+        ...existing,
+        enabled:
+          request.body?.enabled === undefined
+            ? existing.enabled
+            : request.body.enabled === true,
+        intervalMs:
+          request.body?.intervalMs ??
+          existing.intervalMs,
+        nextRunAt:
+          request.body?.nextRunAt ||
+          existing.nextRunAt,
+        priority:
+          request.body?.priority ??
+          existing.priority,
+        metadata: {
+          ...existing.metadata,
+          ...(request.body?.metadata || {})
+        }
+      };
+
+      const saved =
+        await upsertContinuousOperationsJob(
+          allowed
+        );
+
+      response.status(200).json({
+        schema:
+          "meos.continuous-operations.job.v1",
+        job: saved
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error:
+          error?.message ||
+          "Continuous Operations job could not be updated.",
+        code:
+          error?.code ||
+          "CONTINUOUS_OPERATIONS_JOB_UPDATE_FAILED"
+      });
+    }
+  }
+);
+
+
 /**
  * Durable Executive Memory API
  *
@@ -1419,6 +2495,13 @@ app.get("/api/website-intelligence/fetch", async (request, response) => {
 app.get("/health", async (request, response) => {
   pruneTtsCache();
   const executiveMemory = await executiveMemoryStorageStatus();
+  const continuousOperations =
+    await getContinuousOperationsStatus().catch(error => ({
+      version: CONTINUOUS_OPERATIONS_VERSION,
+      enabled: CONTINUOUS_OPERATIONS_ENABLED,
+      status: "unavailable",
+      error: error?.message || String(error)
+    }));
 
   response.json({
     application: "MEOS",
@@ -1450,6 +2533,7 @@ app.get("/health", async (request, response) => {
       maximumRecordsPerCollection: EXECUTIVE_MEMORY_MAX_RECORDS,
       maximumRecordBytes: EXECUTIVE_MEMORY_MAX_RECORD_BYTES
     },
+    continuousOperations,
     ttsDeduplication: {
       activeRequests: inFlightTtsRequests.size,
       cachedResponses: completedTtsCache.size
@@ -1493,4 +2577,23 @@ app.listen(PORT, () => {
         `persistentDiskExpected=${status.persistentDiskExpected}.`
     );
   });
+
+  startContinuousOperationsRuntime()
+    .then(status => {
+      console.log(
+        `[MEOS] Continuous Operations Runtime ` +
+          `v${CONTINUOUS_OPERATIONS_VERSION} ${status.status}. ` +
+          `enabled=${status.enabled}, tickMs=${status.tickMs || 0}.`
+      );
+    })
+    .catch(error => {
+      continuousOperationsState.status = "degraded";
+      continuousOperationsState.lastError =
+        error?.message || String(error);
+
+      console.error(
+        "[MEOS] Continuous Operations Runtime failed to start:",
+        error
+      );
+    });
 });
