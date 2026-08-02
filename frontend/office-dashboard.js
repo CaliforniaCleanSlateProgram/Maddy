@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Modular Executive Dashboard Shell
  *
- * Version: 0.4.2
+ * Version: 0.5.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "0.4.2";
+  const DASHBOARD_VERSION = "0.5.0";
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
   const STORAGE_KEY = "meos.dashboard.build.v0.4.0";
@@ -967,6 +967,11 @@
       }
 
       @media (max-width: 1120px) {
+        .meos-command-hero { grid-template-columns: 1fr auto; }
+        .meos-live-spectrum { display: none; }
+        .meos-hero-brief { grid-column: 1; border-left: 0; padding-left: 0; }
+        .meos-up-button { grid-column: 2; grid-row: 1 / span 2; }
+
         .meos-widget {
           grid-column: span min(var(--meos-col-span, 4), 6);
         }
@@ -980,10 +985,274 @@
         }
       }
 
+
+
+      /* MEOS Executive Headquarters v0.5.0 — visual-only redesign */
+      body {
+        background:
+          radial-gradient(circle at 78% 8%, rgba(86, 110, 255, .16), transparent 30%),
+          radial-gradient(circle at 18% 58%, rgba(32, 220, 214, .08), transparent 34%),
+          linear-gradient(145deg, #030711 0%, #07111f 42%, #040813 100%) !important;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: .18;
+        background-image:
+          linear-gradient(rgba(130, 160, 220, .08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(130, 160, 220, .08) 1px, transparent 1px);
+        background-size: 54px 54px;
+        mask-image: linear-gradient(to bottom, rgba(0,0,0,.7), transparent 88%);
+      }
+
+      .sidebar {
+        background: rgba(5, 10, 20, .78) !important;
+        backdrop-filter: blur(26px) saturate(135%);
+        border-right: 1px solid rgba(150, 175, 230, .13) !important;
+        box-shadow: 18px 0 70px rgba(0,0,0,.2);
+      }
+
+      .brand-mark {
+        background: rgba(18, 28, 47, .78) url("maddy-executive-insignia.png") center / 84% no-repeat !important;
+        color: transparent !important;
+        border: 1px solid rgba(133, 167, 255, .35);
+        box-shadow: 0 0 34px rgba(89, 113, 255, .22) !important;
+      }
+
+      .sidebar nav a,
+      .nav-dropdown {
+        border-radius: 14px !important;
+        border: 1px solid transparent;
+        transition: background .2s ease, border-color .2s ease, transform .2s ease;
+      }
+
+      .sidebar nav a:hover,
+      .sidebar nav a.active,
+      .nav-dropdown:hover {
+        background: linear-gradient(90deg, rgba(88, 113, 255, .16), rgba(39, 225, 206, .05)) !important;
+        border-color: rgba(123, 151, 255, .24);
+        transform: translateX(3px);
+      }
+
+      .topbar {
+        margin: 14px 18px 0;
+        padding: 14px 18px !important;
+        border: 1px solid rgba(145, 170, 225, .12) !important;
+        border-radius: 18px;
+        background: rgba(8, 15, 28, .56) !important;
+        backdrop-filter: blur(20px);
+      }
+
+      .progress-panel { display: none !important; }
+
+      #${ROOT_ID} {
+        padding: 18px 24px 34px;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      .meos-dashboard-shell { width: min(1560px, 100%); }
+
+      .meos-command-hero {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(310px, 1.45fr) minmax(150px, .55fr) minmax(250px, .85fr) auto;
+        gap: 26px;
+        align-items: center;
+        min-height: 176px;
+        margin-bottom: 18px;
+        padding: 24px 26px;
+        border: 1px solid rgba(150, 176, 232, .18);
+        border-radius: 30px;
+        background:
+          radial-gradient(circle at 15% 0%, rgba(89, 113, 255, .22), transparent 35%),
+          radial-gradient(circle at 72% 110%, rgba(35, 221, 205, .11), transparent 42%),
+          linear-gradient(135deg, rgba(15, 25, 44, .9), rgba(7, 13, 25, .78));
+        backdrop-filter: blur(26px) saturate(125%);
+        box-shadow: 0 28px 90px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.04);
+        isolation: isolate;
+      }
+
+      .meos-command-hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background: linear-gradient(105deg, transparent 18%, rgba(255,255,255,.035) 46%, transparent 74%);
+        transform: translateX(-80%);
+        animation: meosHeroSweep 9s ease-in-out infinite;
+        z-index: -1;
+      }
+
+      @keyframes meosHeroSweep { 0%, 55% { transform: translateX(-80%); } 78%, 100% { transform: translateX(80%); } }
+
+      .meos-hero-identity { display: flex; align-items: center; gap: 18px; min-width: 0; }
+      .meos-hero-avatar-wrap { position: relative; flex: 0 0 auto; }
+      .meos-hero-avatar {
+        width: 92px;
+        height: 92px;
+        object-fit: contain;
+        padding: 8px;
+        border-radius: 28px;
+        background: linear-gradient(145deg, rgba(25,39,65,.96), rgba(10,18,32,.96));
+        border: 1px solid rgba(136, 166, 255, .34);
+        box-shadow: 0 0 0 8px rgba(88, 114, 255, .045), 0 18px 50px rgba(0,0,0,.35);
+      }
+      .meos-hero-presence {
+        position: absolute;
+        right: -3px;
+        bottom: 3px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #52e3a4;
+        border: 3px solid #0a1221;
+        box-shadow: 0 0 18px rgba(82,227,164,.8);
+      }
+
+      .meos-kicker {
+        display: block;
+        margin-bottom: 8px;
+        color: #89a9ff;
+        font-size: .68rem;
+        font-weight: 760;
+        letter-spacing: .18em;
+        text-transform: uppercase;
+      }
+      .meos-dashboard-heading h1 { font-size: clamp(1.55rem, 2.4vw, 2.7rem); font-weight: 630; }
+      .meos-dashboard-heading p { font-size: .92rem; }
+
+      .meos-live-spectrum,
+      .meos-pulse-wave {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        height: 76px;
+      }
+      .meos-live-spectrum span,
+      .meos-pulse-wave i {
+        width: 5px;
+        height: var(--h);
+        min-height: 8px;
+        border-radius: 99px;
+        background: linear-gradient(to top, rgba(72,226,205,.35), #86a7ff);
+        box-shadow: 0 0 14px rgba(96, 130, 255, .28);
+        animation: meosSpectrum 1.35s ease-in-out infinite alternate;
+        animation-delay: calc(var(--h) * -0.013);
+      }
+      @keyframes meosSpectrum { from { transform: scaleY(.45); opacity: .48; } to { transform: scaleY(1); opacity: 1; } }
+
+      .meos-hero-brief {
+        padding-left: 22px;
+        border-left: 1px solid rgba(144, 169, 225, .16);
+      }
+      .meos-live-label { display: inline-flex; align-items: center; gap: 7px; color: #83ddb8; font-size: .72rem; }
+      .meos-live-label i { width: 7px; height: 7px; border-radius: 50%; background: #4fe0a1; box-shadow: 0 0 14px #4fe0a1; }
+      .meos-hero-brief strong { display: block; margin: 10px 0 4px; font-size: 1.02rem; }
+      .meos-hero-brief p { margin: 0; color: var(--meos-muted); font-size: .78rem; line-height: 1.5; }
+
+      .meos-up-button {
+        align-self: stretch;
+        min-width: 108px;
+        border-radius: 22px;
+        border-color: rgba(124, 151, 255, .42);
+        background: linear-gradient(155deg, rgba(81, 108, 238, .9), rgba(75, 53, 164, .88));
+        box-shadow: 0 16px 44px rgba(67, 77, 205, .3), inset 0 1px 0 rgba(255,255,255,.16);
+      }
+
+      .meos-widget-grid { gap: 16px; }
+
+      .meos-widget {
+        border-radius: 24px;
+        border-color: rgba(145, 171, 229, .14);
+        background:
+          radial-gradient(circle at 100% 0%, rgba(98, 124, 255, .09), transparent 34%),
+          linear-gradient(145deg, rgba(16, 27, 46, .82), rgba(7, 14, 27, .78));
+        backdrop-filter: blur(22px) saturate(118%);
+        box-shadow: 0 22px 68px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.035);
+        transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+      }
+      .meos-widget:hover {
+        transform: translateY(-3px);
+        border-color: rgba(127, 157, 255, .34);
+        box-shadow: 0 30px 80px rgba(0,0,0,.34), 0 0 36px rgba(74, 101, 255, .07);
+      }
+      .meos-widget-inner { padding: 20px; }
+      .meos-widget-title { color: #cdd8f1; letter-spacing: .12em; }
+      .meos-widget-link { color: #90adff; }
+
+      #meos-widget-build-progress {
+        min-height: 82px;
+        border-radius: 20px;
+        background: linear-gradient(90deg, rgba(17,30,51,.72), rgba(13,23,42,.5));
+      }
+      #meos-widget-today-glance { border-radius: 26px 26px 54px 26px; }
+      #meos-widget-mission-pulse { border-radius: 26px 54px 26px 26px; }
+      #meos-widget-briefing { background: radial-gradient(circle at 15% 0%, rgba(75,211,188,.12), transparent 38%), linear-gradient(145deg, rgba(14,31,47,.9), rgba(7,14,27,.8)); }
+      #meos-widget-grant-intelligence { border-radius: 30px 30px 30px 58px; }
+      #meos-widget-risk-center { border-radius: 30px 58px 30px 30px; }
+
+      .meos-pulse-stage { display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 12px; }
+      .meos-mission-ring {
+        margin: 0;
+        width: 104px;
+        height: 104px;
+        background: conic-gradient(#61e1bd 0 92%, rgba(113,137,181,.15) 92% 100%);
+        box-shadow: 0 0 40px rgba(71, 222, 188, .12);
+      }
+      .meos-mission-ring::after { background: #0a1425; }
+      .meos-mission-ring span { display: block; margin-top: 3px; color: var(--meos-muted); font-size: .54rem; }
+      .meos-pulse-copy { margin-top: 12px; text-align: center; }
+      .meos-pulse-copy p { margin: 7px 0 0; font-size: .76rem; }
+      .meos-pulse-wave { height: 86px; gap: 4px; }
+      .meos-pulse-wave i { width: 4px; }
+
+      #meos-widget-grant-intelligence .meos-list li { position: relative; padding-bottom: 15px; }
+      #meos-widget-grant-intelligence .meos-list li::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 5px;
+        height: 4px;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #54deb9 var(--match, 85%), rgba(122,147,190,.13) var(--match, 85%));
+      }
+      #meos-widget-grant-intelligence .meos-list li:nth-child(1) { --match: 95%; }
+      #meos-widget-grant-intelligence .meos-list li:nth-child(2) { --match: 88%; }
+      #meos-widget-grant-intelligence .meos-list li:nth-child(3) { --match: 82%; }
+
+      .meos-impact-card {
+        border-radius: 18px;
+        background: linear-gradient(145deg, rgba(31,47,75,.52), rgba(14,24,42,.45));
+      }
+
+      .meos-list li { border-bottom-color: rgba(150,174,220,.08); }
+      .meos-alert { border-radius: 16px; }
+      .meos-progress-track { background: rgba(124, 148, 192, .13); }
+      .meos-progress-fill { background: linear-gradient(90deg, #4fdcc2, #668fff 55%, #9a68ff); }
+
+      @media (prefers-reduced-motion: reduce) {
+        .meos-command-hero::after,
+        .meos-live-spectrum span,
+        .meos-pulse-wave i { animation: none !important; }
+      }
+
       @media (max-width: 760px) {
         #${ROOT_ID} {
           padding: 12px;
         }
+
+        .meos-command-hero { grid-template-columns: 1fr; padding: 18px; border-radius: 24px; }
+        .meos-hero-identity { align-items: flex-start; }
+        .meos-hero-avatar { width: 72px; height: 72px; border-radius: 22px; }
+        .meos-hero-brief, .meos-up-button { grid-column: 1; grid-row: auto; }
+        .meos-up-button { min-height: 54px; }
 
         .meos-dashboard-topline,
         .meos-progress-shell {
@@ -1622,10 +1891,17 @@ document
       "mission-pulse": `
         <div class="meos-widget-inner">
           <div class="meos-widget-header"><h2 class="meos-widget-title">Mission Pulse</h2></div>
-          <div class="meos-mission-ring"><strong>92%</strong></div>
-          <div style="text-align:center;">
+          <div class="meos-pulse-stage">
+            <div class="meos-mission-ring"><strong>92%</strong><span>Mission health</span></div>
+            <div class="meos-pulse-wave" aria-hidden="true">
+              <i style="--h:24%"></i><i style="--h:52%"></i><i style="--h:84%"></i><i style="--h:42%"></i>
+              <i style="--h:96%"></i><i style="--h:61%"></i><i style="--h:78%"></i><i style="--h:36%"></i>
+              <i style="--h:70%"></i><i style="--h:88%"></i><i style="--h:47%"></i><i style="--h:66%"></i>
+            </div>
+          </div>
+          <div class="meos-pulse-copy">
             <strong>On Track</strong>
-            <p class="meos-muted" style="margin:10px 0 0;font-size:.82rem;">All systems aligned with <span style="color:var(--meos-green);">CCSP Mission</span></p>
+            <p class="meos-muted">All systems aligned with <span style="color:var(--meos-green);">CCSP Mission</span></p>
           </div>
         </div>
       `,
@@ -1749,13 +2025,34 @@ document
 
     root.innerHTML = `
       <div class="meos-dashboard-shell">
-        <div class="meos-dashboard-topline">
-          <div class="meos-dashboard-heading">
-            <h1 id="meosGreeting">Good Morning, Executive Director.</h1>
-            <p>I'm Up. Here's what's important today.</p>
+        <section class="meos-command-hero" aria-label="Maddy executive command briefing">
+          <div class="meos-hero-identity">
+            <div class="meos-hero-avatar-wrap">
+              <img class="meos-hero-avatar" src="maddy-executive-insignia.png" alt="Maddy executive insignia">
+              <span class="meos-hero-presence" aria-hidden="true"></span>
+            </div>
+            <div class="meos-dashboard-heading">
+              <span class="meos-kicker">Maddy Executive Headquarters</span>
+              <h1 id="meosGreeting">Good Morning, Executive Director.</h1>
+              <p>I’m Up. Here’s what matters right now.</p>
+            </div>
           </div>
-          <button id="meosImUpButton" class="meos-up-button" type="button">⌁ &nbsp; I’m Up</button>
-        </div>
+
+          <div class="meos-live-spectrum" aria-label="Executive offices active">
+            <span style="--h:28%"></span><span style="--h:54%"></span><span style="--h:82%"></span>
+            <span style="--h:44%"></span><span style="--h:94%"></span><span style="--h:63%"></span>
+            <span style="--h:76%"></span><span style="--h:38%"></span><span style="--h:68%"></span>
+            <span style="--h:88%"></span><span style="--h:48%"></span><span style="--h:72%"></span>
+          </div>
+
+          <div class="meos-hero-brief">
+            <span class="meos-live-label"><i></i> Executive systems active</span>
+            <strong>While you were away</strong>
+            <p>Offices are monitoring missions, funding, risk, and approvals.</p>
+          </div>
+
+          <button id="meosImUpButton" class="meos-up-button" type="button">I’m Up</button>
+        </section>
 
         <section id="meosWidgetGrid" class="meos-widget-grid" aria-label="MEOS Executive Dashboard"></section>
 
