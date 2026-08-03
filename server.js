@@ -24,7 +24,7 @@ import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.6.3";
+const VERSION = "2.6.4";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -5378,8 +5378,8 @@ app.get("/health", async (request, response) => {
  * instead of rejecting them without evidence.
  */
 
-const RESOURCE_DEVELOPMENT_VERSION = "1.0.3";
-const BUILD_ID = "ERDO103-MISSION-SCOPE-FINAL-20260803-A";
+const RESOURCE_DEVELOPMENT_VERSION = "1.0.4";
+const BUILD_ID = "ERDO104-EXECUTIVE-WORK-QUEUE-20260803-A";
 const JOB_ID = "standing-executive-resource-development-office";
 
 const RESOURCE_CHANNELS = Object.freeze([
@@ -6295,6 +6295,462 @@ function deriveDeskDecision(opportunity, fastGate, investigationGate, priority) 
   return "reject";
 }
 
+
+function normalizeDeadlineValue(opportunity = {}) {
+  const raw =
+    opportunity.deadline ||
+    opportunity.executiveQualification?.executiveBrief?.timing?.deadline ||
+    null;
+
+  if (!raw) {
+    return {
+      raw: null,
+      date: null,
+      daysRemaining: null,
+      label: "Deadline not verified",
+      urgency: "unknown"
+    };
+  }
+
+  const timestamp = Date.parse(raw);
+
+  if (!Number.isFinite(timestamp)) {
+    return {
+      raw,
+      date: null,
+      daysRemaining: null,
+      label: String(raw),
+      urgency: "unknown"
+    };
+  }
+
+  const daysRemaining = Math.ceil(
+    (timestamp - Date.now()) / 86_400_000
+  );
+
+  return {
+    raw,
+    date: new Date(timestamp).toISOString(),
+    daysRemaining,
+    label:
+      daysRemaining < 0
+        ? `Closed ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? "" : "s"} ago`
+        : daysRemaining === 0
+          ? "Closes today"
+          : daysRemaining === 1
+            ? "Closes tomorrow"
+            : `Closes in ${daysRemaining} days`,
+    urgency:
+      daysRemaining < 0
+        ? "closed"
+        : daysRemaining <= 3
+          ? "immediate"
+          : daysRemaining <= 7
+            ? "urgent"
+            : daysRemaining <= 21
+              ? "active"
+              : daysRemaining <= 90
+                ? "planned"
+                : "future"
+  };
+}
+
+function determineResourceLabel(opportunity = {}, channel) {
+  const q = opportunity.executiveQualification || {};
+  const funding = q.executiveBrief?.funding || {};
+  const amount =
+    funding.ceiling ||
+    funding.floor ||
+    opportunity.awardCeiling ||
+    opportunity.awardFloor ||
+    null;
+
+  if (amount) {
+    return `${amount} ${channel.replace(/-/g, " ")}`;
+  }
+
+  const labels = {
+    "government-grant": "Government grant",
+    "foundation-grant": "Foundation grant",
+    "community-foundation": "Community foundation funding",
+    "family-foundation": "Family foundation funding",
+    "corporate-giving": "Corporate giving",
+    "corporate-sponsorship": "Corporate sponsorship",
+    "major-donor": "Major donor opportunity",
+    "donor-advised-fund": "Donor-advised fund opportunity",
+    "government-contract": "Government contract",
+    "rfp": "Request for proposal",
+    "in-kind": "In-kind resource",
+    "equipment": "Equipment",
+    "vehicle": "Vehicle",
+    "property": "Property or facility",
+    "strategic-partnership": "Strategic partnership",
+    "earned-revenue": "Earned revenue opportunity",
+    "other-lawful-resource": "Resource opportunity"
+  };
+
+  return labels[channel] || "Resource opportunity";
+}
+
+function determineStrategicPhase(opportunity = {}) {
+  const missionScope =
+    opportunity.resourceDevelopment?.missionScope ||
+    opportunity.executiveQualification?.missionScope ||
+    evaluateMissionScope(opportunity);
+
+  const ids = [
+    ...(missionScope.directMatches || []).map(item => item.id),
+    ...(missionScope.strategicMatches || []).map(item => item.id)
+  ];
+
+  if (
+    ids.includes("mobile-hygiene") ||
+    ids.includes("vehicles-and-equipment") ||
+    ids.includes("operations-and-capacity")
+  ) {
+    return {
+      id: "phase-1",
+      label: "Current / Phase 1",
+      reason: "Supports immediate launch, operations, mobile services, or foundational capacity."
+    };
+  }
+
+  if (
+    ids.includes("substance-use-and-recovery") ||
+    ids.includes("stabilization-and-housing")
+  ) {
+    return {
+      id: "phase-2-3",
+      label: "Phase 2–3",
+      reason: "Supports stabilization, recovery, housing, or treatment expansion."
+    };
+  }
+
+  if (
+    ids.includes("capital-and-facilities") ||
+    ids.includes("treatment-and-rehabilitation-buildout")
+  ) {
+    return {
+      id: "phase-3-5",
+      label: "Future Buildout",
+      reason: "Supports facilities, treatment, rehabilitation, property, or long-term organizational growth."
+    };
+  }
+
+  if (ids.includes("employment-and-self-sufficiency")) {
+    return {
+      id: "phase-4-5",
+      label: "Phase 4–5",
+      reason: "Supports employment, self-sufficiency, and long-term independence."
+    };
+  }
+
+  if (ids.includes("watershed-and-environmental-health")) {
+    return {
+      id: "cross-cutting",
+      label: "Cross-Cutting Mission",
+      reason: "Supports CCSP's environmental health and watershed responsibilities."
+    };
+  }
+
+  return {
+    id: "organization-wide",
+    label: "Organization-Wide",
+    reason: "Supports the organization broadly or requires executive classification."
+  };
+}
+
+function determineExecutiveTiming(opportunity = {}, decision) {
+  const deadline = normalizeDeadlineValue(opportunity);
+
+  if (deadline.urgency === "immediate") {
+    return {
+      bucket: "immediate-action",
+      label: "Immediate Action",
+      order: 1,
+      reason: deadline.label
+    };
+  }
+
+  if (deadline.urgency === "urgent") {
+    return {
+      bucket: "urgent",
+      label: "Urgent",
+      order: 2,
+      reason: deadline.label
+    };
+  }
+
+  if (decision === "pursue") {
+    return {
+      bucket: "pursue-now",
+      label: "Pursue Now",
+      order: 3,
+      reason:
+        deadline.daysRemaining === null
+          ? "Actionable now; deadline requires confirmation."
+          : deadline.label
+    };
+  }
+
+  if (decision === "partner") {
+    return {
+      bucket: "build-partnership",
+      label: "Build Partnership",
+      order: 4,
+      reason: "Requires a lead, funded partner role, or formal collaboration."
+    };
+  }
+
+  if (decision === "prepare") {
+    return {
+      bucket: "prepare",
+      label: "Prepare",
+      order: 5,
+      reason:
+        deadline.urgency === "future"
+          ? deadline.label
+          : "Resolve readiness requirements before pursuit."
+    };
+  }
+
+  if (decision === "monitor") {
+    return {
+      bucket: "future-cycle",
+      label: "Future / Monitor",
+      order: 6,
+      reason:
+        deadline.daysRemaining !== null
+          ? deadline.label
+          : "Monitor timing, opening status, or next funding cycle."
+    };
+  }
+
+  if (decision === "research") {
+    return {
+      bucket: "research",
+      label: "Research",
+      order: 7,
+      reason: "Resolve eligibility, money-flow, timing, or strategic unknowns."
+    };
+  }
+
+  return {
+    bucket: "off-desk",
+    label: "Off Desk",
+    order: 99,
+    reason: "Not recommended for active executive attention."
+  };
+}
+
+function estimateOpportunityEffort(opportunity = {}) {
+  const q = opportunity.executiveQualification || {};
+  const text = opportunityText(opportunity);
+  let points = 0;
+  const drivers = [];
+
+  if (/cost share|required match/.test(text)) {
+    points += 2;
+    drivers.push("cost share");
+  }
+
+  if (/mandatory partners|required partners|consortium/.test(text)) {
+    points += 2;
+    drivers.push("mandatory partnership");
+  }
+
+  if (/clinical trial|research institution|licensed provider/.test(text)) {
+    points += 3;
+    drivers.push("specialized institutional requirements");
+  }
+
+  if ((q.unknowns || []).length >= 4) {
+    points += 2;
+    drivers.push("multiple unresolved facts");
+  }
+
+  const label =
+    points >= 5
+      ? "High"
+      : points >= 2
+        ? "Medium"
+        : "Low";
+
+  return {
+    label,
+    score: points,
+    drivers
+  };
+}
+
+function buildExecutiveWorkQueueEntry(opportunity = {}, resourceDevelopment = {}) {
+  const deadline = normalizeDeadlineValue(opportunity);
+  const phase = determineStrategicPhase({
+    ...opportunity,
+    resourceDevelopment
+  });
+  const effort = estimateOpportunityEffort(opportunity);
+  const timing = determineExecutiveTiming(
+    opportunity,
+    resourceDevelopment.executiveDecision
+  );
+
+  const q = opportunity.executiveQualification || {};
+  const brief = q.executiveBrief || {};
+  const probability =
+    Number.isFinite(Number(brief.confidence))
+      ? Math.round(Number(brief.confidence) * 100)
+      : null;
+
+  const ifMissed =
+    deadline.daysRemaining !== null &&
+    deadline.daysRemaining >= 0
+      ? (
+          /annual|recurring|next cycle/.test(opportunityText(opportunity))
+            ? "Likely wait until the next funding cycle."
+            : "This opportunity may be lost when the deadline passes."
+        )
+      : resourceDevelopment.executiveDecision === "monitor"
+        ? "No immediate loss; continue monitoring."
+        : "Loss or next-cycle timing has not been verified.";
+
+  return {
+    schema: "meos.executive-resource-work-queue-entry.v1",
+    priorityRank: null,
+    timingBucket: timing,
+    opportunity: {
+      id: opportunity.id,
+      title: opportunity.title,
+      channel: resourceDevelopment.channel,
+      source: opportunity.provider || opportunity.agencyName || null,
+      sourceUrl: opportunity.url || null
+    },
+    resource: {
+      label: determineResourceLabel(
+        opportunity,
+        resourceDevelopment.channel
+      ),
+      estimatedValue:
+        resourceDevelopment.executivePriority
+          ?.estimatedResourceValue ?? null,
+      valueBasis:
+        resourceDevelopment.executivePriority?.valueBasis || null
+    },
+    acquisition: {
+      canAcquire:
+        q.participation?.canLead === true ||
+        q.participation?.canPartner === true,
+      leadPossible: q.participation?.canLead ?? null,
+      partnerPossible: q.participation?.canPartner ?? null,
+      directFundingPossible:
+        q.moneyFlow?.directAwardPossible ?? null,
+      partnerFundingPossible:
+        q.moneyFlow?.partnerFundingPossible ?? null,
+      explanation:
+        q.participation?.explanation ||
+        q.moneyFlow?.plainEnglish ||
+        "Acquisition path requires confirmation."
+    },
+    strategicValue: {
+      phase,
+      whyItMatters:
+        brief.reason ||
+        resourceDevelopment.reason ||
+        "The opportunity advances an approved CCSP objective.",
+      missionDirect:
+        resourceDevelopment.missionScope?.directScore || 0,
+      missionStrategic:
+        resourceDevelopment.missionScope?.strategicScore || 0
+    },
+    action: {
+      recommendation:
+        resourceDevelopment.executiveDecision,
+      label:
+        resourceDevelopment.executiveDecision === "pursue"
+          ? "Apply Now"
+          : resourceDevelopment.executiveDecision === "partner"
+            ? "Build Partnership"
+            : resourceDevelopment.executiveDecision === "prepare"
+              ? "Prepare"
+              : resourceDevelopment.executiveDecision === "monitor"
+                ? "Calendar / Monitor"
+                : resourceDevelopment.executiveDecision === "research"
+                  ? "Research"
+                  : "Reject",
+      nextAction:
+        resourceDevelopment.nextAction ||
+        brief.nextAction ||
+        "Complete the next authorized step."
+    },
+    timing: {
+      ...deadline,
+      bucket: timing
+    },
+    effort,
+    probability: {
+      percentage: probability,
+      label:
+        probability === null
+          ? "Unverified"
+          : probability >= 75
+            ? "High"
+            : probability >= 50
+              ? "Medium"
+              : "Low"
+    },
+    consequenceOfDelay: ifMissed,
+    executiveSummary: {
+      recommendation:
+        resourceDevelopment.executiveDecision,
+      whyOnDesk:
+        brief.whySeeingThis ||
+        "This opportunity has a realistic path to advancing CCSP.",
+      reason:
+        brief.reason ||
+        resourceDevelopment.reason ||
+        "Executive reasoning is available in the full investigation.",
+      unknowns: Array.isArray(q.unknowns)
+        ? q.unknowns
+        : []
+    }
+  };
+}
+
+function rankExecutiveWorkQueue(records = []) {
+  const ranked = [...records].sort((left, right) => {
+    const leftTiming =
+      left.resourceDevelopment?.workQueue?.timingBucket?.order ?? 99;
+    const rightTiming =
+      right.resourceDevelopment?.workQueue?.timingBucket?.order ?? 99;
+
+    if (leftTiming !== rightTiming) {
+      return leftTiming - rightTiming;
+    }
+
+    const leftScore =
+      Number(
+        left.resourceDevelopment?.executivePriority?.score || 0
+      );
+    const rightScore =
+      Number(
+        right.resourceDevelopment?.executivePriority?.score || 0
+      );
+
+    return rightScore - leftScore;
+  });
+
+  return ranked.map((record, index) => ({
+    ...record,
+    resourceDevelopment: {
+      ...record.resourceDevelopment,
+      workQueue: {
+        ...record.resourceDevelopment.workQueue,
+        priorityRank: index + 1
+      }
+    }
+  }));
+}
+
 function buildResourceDevelopmentRecord(opportunity = {}, now) {
   const channel = inferResourceChannel(opportunity);
   const fastGate = fastExclusionGate(opportunity);
@@ -6320,9 +6776,7 @@ function buildResourceDevelopmentRecord(opportunity = {}, now) {
           ? "monitor"
           : "off-desk";
 
-  return {
-    ...opportunity,
-    resourceDevelopment: {
+  const resourceDevelopment = {
       schema: "meos.executive-resource-development.v1",
       version: RESOURCE_DEVELOPMENT_VERSION,
       buildId: BUILD_ID,
@@ -6369,7 +6823,17 @@ function buildResourceDevelopmentRecord(opportunity = {}, now) {
                 : executiveDecision === "monitor"
                   ? "Monitor the opportunity and schedule the next review."
                   : "Keep off the active desk while preserving the decision evidence."
-    }
+  };
+
+  resourceDevelopment.workQueue =
+    buildExecutiveWorkQueueEntry(
+      opportunity,
+      resourceDevelopment
+    );
+
+  return {
+    ...opportunity,
+    resourceDevelopment
   };
 }
 
@@ -6508,6 +6972,8 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
         )
       );
 
+    const rankedRecords = rankExecutiveWorkQueue(records);
+
     const requestedLimit = Number(query.limit || 50);
     const limit = Math.max(
       1,
@@ -6519,7 +6985,7 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
       )
     );
 
-    return records.slice(0, limit);
+    return rankedRecords.slice(0, limit);
   }
 
   async function applyExecutiveDecision(id, input = {}) {
@@ -6618,6 +7084,61 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
         response.status(500).json({
           error: error?.message || "Resource Development rebuild failed.",
           code: error?.code || "RESOURCE_DEVELOPMENT_REBUILD_FAILED"
+        });
+      }
+    }
+  );
+
+  app.get(
+    "/api/resource-development/work-queue",
+    async (request, response) => {
+      try {
+        const records = await readDesk({
+          ...request.query,
+          includeAll:
+            request.query.includeAll || "false"
+        });
+
+        const buckets = {};
+
+        for (const record of records) {
+          const bucket =
+            record.resourceDevelopment?.workQueue
+              ?.timingBucket?.bucket ||
+            "unclassified";
+
+          if (!buckets[bucket]) {
+            buckets[bucket] = [];
+          }
+
+          buckets[bucket].push({
+            id: record.id,
+            title: record.title,
+            resourceDevelopment:
+              record.resourceDevelopment,
+            executiveQualification:
+              record.executiveQualification
+          });
+        }
+
+        response.status(200).json({
+          schema:
+            "meos.executive-resource-development.work-queue.v1",
+          version: RESOURCE_DEVELOPMENT_VERSION,
+          buildId: BUILD_ID,
+          generatedAt: now(),
+          total: records.length,
+          buckets,
+          records
+        });
+      } catch (error) {
+        response.status(500).json({
+          error:
+            error?.message ||
+            "Executive Resource Development work queue failed.",
+          code:
+            error?.code ||
+            "RESOURCE_DEVELOPMENT_WORK_QUEUE_FAILED"
         });
       }
     }
