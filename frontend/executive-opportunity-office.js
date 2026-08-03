@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Opportunity Office
  *
- * Version: 1.0.0
- * Build: EOO100-DISCOVERY-PIPELINE-20260801-A
+ * Version: 2.0.0
+ * Build: EOO200-EXECUTIVE-REASONING-20260802-A
  *
  * Purpose:
  * - Maintain an approved registry of public opportunity sources.
@@ -28,8 +28,8 @@
     "use strict";
 
     const NAME = "MEOS Executive Opportunity Office";
-    const VERSION = "1.0.0";
-    const BUILD_ID = "EOO100-DISCOVERY-PIPELINE-20260801-A";
+    const VERSION = "2.0.0";
+    const BUILD_ID = "EOO200-EXECUTIVE-REASONING-20260802-A";
     const SCHEMA = "meos.executive-opportunity-office.v1";
     const STORAGE_KEY = "meos.executive-opportunity-office.v1";
 
@@ -57,6 +57,15 @@
         REMOVED: "removed",
         REJECTED: "rejected",
         EVALUATED: "evaluated"
+    });
+
+    const EXECUTIVE_RECOMMENDATIONS = Object.freeze({
+        PURSUE: "pursue",
+        PREPARE: "prepare",
+        MONITOR: "monitor",
+        PARTNER: "partner",
+        HUMAN_REVIEW: "human-review",
+        DECLINE: "decline"
     });
 
     const DEFAULT_CONFIGURATION = Object.freeze({
@@ -244,6 +253,157 @@
 
     function getGrantOffice() {
         return global.GrantOffice || null;
+    }
+
+    function getLongTermStrategy() {
+        return (
+            global.CCSPLongTermStrategy ||
+            global.MEOSOrganizationLongTermStrategy ||
+            null
+        );
+    }
+
+    function getBuildPortfolio() {
+        return (
+            global.ExecutiveBuildPortfolio ||
+            global.MEOSExecutiveBuildPortfolio ||
+            null
+        );
+    }
+
+    function calculateCurrentReadiness(opportunity = {}) {
+        let score = 35;
+        const applicants = opportunity.eligibleApplicants || [];
+        const requirements = opportunity.requirements || {};
+        const geography = normalizeText(opportunity.geography || "");
+
+        if (
+            applicants.length === 0 ||
+            applicants.some(item =>
+                normalizeText(item).includes("501 c 3") ||
+                normalizeText(item).includes("nonprofit")
+            )
+        ) score += 20;
+
+        if (
+            !geography ||
+            geography.includes("california") ||
+            geography.includes("santa cruz") ||
+            geography.includes("monterey")
+        ) score += 15;
+
+        if (!requirements.requiredLicense) score += 10;
+        if (!requirements.requiredFacility) score += 10;
+        if (!requirements.requiredAccreditation) score += 5;
+        if (!requirements.minimumOperatingYears) score += 5;
+
+        return Math.max(0, Math.min(100, score));
+    }
+
+    function determineExecutiveRecommendation(opportunity, strategyResult, portfolioResult) {
+        const lifecycle = String(opportunity.lifecycle || "").toLowerCase();
+        const currentReadiness = calculateCurrentReadiness(opportunity);
+        const strategyScore =
+            Number(strategyResult?.matches?.strategicSignalScore || 0);
+        const bestBuildMatch = portfolioResult?.bestMatch || null;
+        const awardAmount = Number(opportunity.awardAmount || 0);
+        const reasons = [];
+        const requiredActions = [];
+
+        let recommendation = EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW;
+
+        if (
+            lifecycle === "pre-announcement" ||
+            lifecycle === "expected" ||
+            lifecycle === "coming-soon" ||
+            lifecycle === "closed"
+        ) {
+            recommendation = EXECUTIVE_RECOMMENDATIONS.MONITOR;
+            reasons.push("The opportunity is not currently actionable and must remain scheduled for future review.");
+            requiredActions.push("Set a proportionate recheck date and prepare only when the opportunity approaches actionability.");
+        }
+
+        if (bestBuildMatch?.material) {
+            recommendation =
+                currentReadiness >= 70
+                    ? EXECUTIVE_RECOMMENDATIONS.PURSUE
+                    : EXECUTIVE_RECOMMENDATIONS.PREPARE;
+            reasons.push(
+                `The opportunity advances the approved Executive Build "${bestBuildMatch.buildName}".`
+            );
+            requiredActions.push("Link the opportunity to the active build and assign the relevant offices.");
+        } else if (strategyScore >= 65) {
+            recommendation =
+                currentReadiness >= 70
+                    ? EXECUTIVE_RECOMMENDATIONS.PURSUE
+                    : EXECUTIVE_RECOMMENDATIONS.PREPARE;
+            reasons.push("The opportunity strongly advances CCSP's long-term strategy.");
+        } else if (strategyScore >= 30) {
+            recommendation = EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW;
+            reasons.push("The opportunity has adaptive or strategic potential that deserves human judgment.");
+        }
+
+        if (
+            /partner|collaboration|coalition|mou/.test(
+                normalizeText(`${opportunity.title} ${opportunity.description}`)
+            ) &&
+            recommendation !== EXECUTIVE_RECOMMENDATIONS.PURSUE
+        ) {
+            recommendation = EXECUTIVE_RECOMMENDATIONS.PARTNER;
+            reasons.push("A partnership path may make the opportunity viable.");
+        }
+
+        if (
+            awardAmount >= 1_000_000 &&
+            recommendation === EXECUTIVE_RECOMMENDATIONS.DECLINE
+        ) {
+            recommendation = EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW;
+            reasons.push("The scale of the opportunity requires executive review before any decline.");
+        }
+
+        if (reasons.length === 0) {
+            reasons.push("Automated evidence is insufficient for a confident executive decision.");
+        }
+
+        return {
+            schema: "meos.executive-qualification-report.v1",
+            generatedAt: now(),
+            recommendation,
+            currentOperationalReadiness: currentReadiness,
+            purposeAndStrategyAlignment: strategyScore,
+            executiveBuildMatch: bestBuildMatch,
+            strategyAnalysis: strategyResult || null,
+            portfolioAnalysis: portfolioResult || null,
+            reasons,
+            requiredActions,
+            confidence: Math.min(
+                0.98,
+                0.55 +
+                strategyScore / 250 +
+                (bestBuildMatch?.score || 0) / 300
+            )
+        };
+    }
+
+    function evaluateExecutiveOpportunity(opportunity = {}) {
+        const strategy = getLongTermStrategy();
+        const portfolio = getBuildPortfolio();
+
+        const strategyResult =
+            strategy?.recommendOpportunityRelationship
+                ? strategy.recommendOpportunityRelationship(opportunity)
+                : null;
+
+        const portfolioResult =
+            portfolio?.matchOpportunity
+                ? portfolio.matchOpportunity(opportunity, { record: true })
+                : null;
+
+        return determineExecutiveRecommendation(
+            opportunity,
+            strategyResult,
+            portfolioResult
+        );
     }
 
     function configure(options = {}) {
@@ -798,12 +958,23 @@
         }
 
         const opportunityInput = buildOpportunityInput(source, candidate, signal);
-        const opportunity = grantOffice.addOpportunity(opportunityInput);
+        const executiveQualification =
+            evaluateExecutiveOpportunity(opportunityInput);
 
-        let evaluation = null;
+        const opportunity = grantOffice.addOpportunity({
+            ...opportunityInput,
+            executiveQualification
+        });
+
+        let grantEvaluation = null;
         if (state.configuration.evaluateImmediately) {
-            evaluation = grantOffice.evaluateOpportunity(opportunity.id);
+            grantEvaluation = grantOffice.evaluateOpportunity(opportunity.id);
         }
+
+        const evaluation = {
+            executiveQualification,
+            grantEvaluation
+        };
 
         return recordDiscovery(
             source,
@@ -1192,6 +1363,12 @@
                 getGrantOffice()?.addOpportunity &&
                 getGrantOffice()?.evaluateOpportunity
             ),
+            longTermStrategyConnected: Boolean(
+                getLongTermStrategy()?.recommendOpportunityRelationship
+            ),
+            buildPortfolioConnected: Boolean(
+                getBuildPortfolio()?.matchOpportunity
+            ),
             automaticScanning: Boolean(state.timerId),
             sourceCount: state.sources.length,
             enabledSourceCount: state.sources.filter(source => source.enabled).length,
@@ -1259,6 +1436,7 @@
         schema: SCHEMA,
         SOURCE_TYPES,
         DISCOVERY_STATES,
+        EXECUTIVE_RECOMMENDATIONS,
         configure,
         registerSource,
         removeSource,
@@ -1267,6 +1445,7 @@
         scanSource,
         scanAll,
         getDiscoveries,
+        evaluateExecutiveOpportunity,
         getExecutiveDesk,
         startContinuousScanning,
         stopContinuousScanning,
