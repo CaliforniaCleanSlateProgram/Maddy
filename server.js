@@ -24,7 +24,7 @@ import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.6.1";
+const VERSION = "2.6.2";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -1715,26 +1715,89 @@ function fundingOpportunityLifecycle(opportunity) {
 }
 
 function determineFundingGeography(opportunity = {}) {
-  const text = fundingQualificationText(opportunity);
+  const titleText = normalizeFundingQualificationText(
+    [
+      opportunity.title,
+      opportunity.agencyName,
+      opportunity.agencyCode
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const projectText = normalizeFundingQualificationText(
+    [
+      opportunity.title,
+      opportunity.description,
+      opportunity.statedPurpose,
+      opportunity.geography,
+      opportunity.location,
+      opportunity.locations,
+      opportunity.jurisdiction,
+      opportunity.state,
+      opportunity.states,
+      opportunity.fundingActivityCategories,
+      opportunity.fullNotice?.projectLocation,
+      opportunity.fullNotice?.placeOfPerformance
+    ]
+      .flat(Infinity)
+      .filter(Boolean)
+      .map(value =>
+        typeof value === "object"
+          ? JSON.stringify(value)
+          : String(value)
+      )
+      .join(" ")
+  );
+
   const evidence = [];
   const addEvidence = value => {
-    if (value && !evidence.includes(value)) evidence.push(value);
+    if (value && !evidence.includes(value)) {
+      evidence.push(value);
+    }
   };
 
-  const foreignMission = text.match(
-    /\b(?:u s |united states )?(?:embassy|mission|consulate) (?:to|in) ([a-z][a-z ]{2,60})\b/
-  );
-  const foreignCountry = FUNDING_FOREIGN_COUNTRIES.find(country =>
-    text.includes(country)
-  );
-  const internationalSignal = text.match(
-    /\b(?:africa|europe|asia|south america|central america|middle east|outside the united states|foreign entities|international applicants)\b/
+  /*
+   * International classification requires evidence about the funded work,
+   * beneficiaries, or a foreign diplomatic program. Boilerplate eligibility
+   * phrases such as "foreign entities are not eligible" are not project
+   * geography and must not trigger an international classification.
+   */
+  const foreignMission = titleText.match(
+    /\b(?:u s |united states )?(?:embassy|mission|consulate|american center|jefferson center) (?:to|in|at)? ?([a-z][a-z ]{2,60})\b/
   );
 
-  if (foreignMission || foreignCountry || internationalSignal) {
-    addEvidence(
-      foreignMission?.[0] || foreignCountry || internationalSignal?.[0]
+  const foreignCountryInTitle = FUNDING_FOREIGN_COUNTRIES.find(country =>
+    titleText.includes(country)
+  );
+
+  const foreignProjectPhrase = projectText.match(
+    /\b(?:work|services|program|project|activities|beneficiaries|implementation|assistance|capacity building|public diplomacy)\s+(?:in|for|across|within|throughout)\s+([a-z][a-z ]{2,60})\b/
+  );
+
+  const foreignCountryInProjectPhrase =
+    foreignProjectPhrase &&
+    FUNDING_FOREIGN_COUNTRIES.find(country =>
+      foreignProjectPhrase[0].includes(country)
     );
+
+  const explicitInternationalProgram = projectText.match(
+    /\b(?:partner countries|developing countries|global health security|international development|foreign assistance|overseas program|public diplomacy program)\b/
+  );
+
+  if (
+    foreignMission ||
+    foreignCountryInTitle ||
+    foreignCountryInProjectPhrase ||
+    explicitInternationalProgram
+  ) {
+    addEvidence(
+      foreignMission?.[0] ||
+      foreignCountryInTitle ||
+      foreignProjectPhrase?.[0] ||
+      explicitInternationalProgram?.[0]
+    );
+
     return {
       level: FUNDING_GEOGRAPHY_LEVELS.INTERNATIONAL,
       label: "International",
@@ -1744,13 +1807,14 @@ function determineFundingGeography(opportunity = {}) {
       restrictedRegion: null,
       evidence,
       explanation:
-        "Required activity or primary beneficiaries are outside CCSP's approved United States operating footprint."
+        "The funded work, beneficiaries, or diplomatic program are outside CCSP's approved United States operating footprint."
     };
   }
 
-  const local = text.match(
+  const local = projectText.match(
     /\b(?:santa cruz county|city of santa cruz|watsonville|capitola|scotts valley|aptos|soquel|felton|ben lomond|boulder creek)\b/
   );
+
   if (local) {
     addEvidence(local[0]);
     return {
@@ -1766,9 +1830,10 @@ function determineFundingGeography(opportunity = {}) {
     };
   }
 
-  const regional = text.match(
+  const regional = projectText.match(
     /\b(?:monterey county|san benito county|santa clara county|central coast|monterey bay|tri county|bay area)\b/
   );
+
   if (regional) {
     addEvidence(regional[0]);
     return {
@@ -1784,9 +1849,10 @@ function determineFundingGeography(opportunity = {}) {
     };
   }
 
-  const california = text.match(
+  const california = projectText.match(
     /\b(?:california|state of california|california nonprofits|california organizations)\b/
   );
+
   if (california) {
     addEvidence(california[0]);
     return {
@@ -1802,9 +1868,10 @@ function determineFundingGeography(opportunity = {}) {
     };
   }
 
-  const restrictedDomestic = text.match(
-    /\b(?:great lakes basin|appalachian region|delta states|new england|gulf coast states|pacific northwest|mid atlantic|tribal lands only|rural alaska|hawaii only|puerto rico only)\b/
+  const restrictedDomestic = projectText.match(
+    /\b(?:great lakes basin|appalachian region|delta states|new england|gulf coast states|pacific northwest|mid atlantic|tribal lands only|rural alaska|hawaii only|puerto rico only|eastern nevada|nevada only)\b/
   );
+
   if (restrictedDomestic) {
     addEvidence(restrictedDomestic[0]);
     return {
@@ -1820,21 +1887,29 @@ function determineFundingGeography(opportunity = {}) {
     };
   }
 
-  const usa = text.match(
-    /\b(?:united states|u s |usa|nationwide|national|federal|domestic applicants|501 c 3|state governments|county governments|city or township governments)\b/
+  const domesticAuthority =
+    opportunity.authorityType === "federal-government" ||
+    opportunity.authorityType === "state-government" ||
+    opportunity.authorityType === "county-government" ||
+    opportunity.authorityType === "city-government" ||
+    opportunity.provider === "Grants.gov";
+
+  const usa = projectText.match(
+    /\b(?:united states|u s |usa|nationwide|national|federal|domestic applicants|state governments|county governments|city or township governments)\b/
   );
-  if (usa) {
-    addEvidence(usa[0]);
+
+  if (usa || domesticAuthority) {
+    addEvidence(usa?.[0] || opportunity.authorityType || opportunity.provider);
     return {
       level: FUNDING_GEOGRAPHY_LEVELS.USA,
       label: "USA",
       priorityOrder: 4,
       eligibleOperatingFootprint: true,
-      confirmed: true,
+      confirmed: Boolean(usa),
       restrictedRegion: null,
       evidence,
       explanation:
-        "The opportunity appears available within the United States but is not tied to a nearer geographic priority."
+        "The opportunity is issued through a United States funding source and no foreign place of performance is established."
     };
   }
 
@@ -1847,7 +1922,7 @@ function determineFundingGeography(opportunity = {}) {
     restrictedRegion: null,
     evidence,
     explanation:
-      "The available evidence does not support a reliable geographic conclusion."
+      "The available evidence does not support a reliable project-location conclusion."
   };
 }
 
@@ -5303,8 +5378,8 @@ app.get("/health", async (request, response) => {
  * instead of rejecting them without evidence.
  */
 
-const RESOURCE_DEVELOPMENT_VERSION = "1.0.1";
-const BUILD_ID = "ERDO100-RESOURCE-ACQUISITION-20260803-A";
+const RESOURCE_DEVELOPMENT_VERSION = "1.0.2";
+const BUILD_ID = "ERDO102-ACCURACY-GATE-20260803-A";
 const JOB_ID = "standing-executive-resource-development-office";
 
 const RESOURCE_CHANNELS = Object.freeze([
@@ -5376,55 +5451,173 @@ function opportunityText(opportunity = {}) {
 }
 
 function inferResourceChannel(opportunity = {}) {
-  const text = opportunityText(opportunity);
   const category = normalizeText(opportunity.category);
+  const authority = normalizeText(opportunity.authorityType);
+  const provider = normalizeText(opportunity.provider);
+  const sourceType = normalizeText(
+    opportunity.sourceType ||
+    opportunity.investigation?.provider
+  );
+  const capabilities = normalizeText(
+    Array.isArray(opportunity.capabilities)
+      ? opportunity.capabilities.join(" ")
+      : opportunity.capabilities
+  );
+  const title = normalizeText(opportunity.title);
+  const text = opportunityText(opportunity);
 
-  if (/contract|procurement|request for proposal|\brfp\b/.test(text)) {
-    return text.includes("contract") ? "government-contract" : "rfp";
+  /*
+   * Authoritative source and category fields take priority. A grant that
+   * mentions partnerships remains a grant; a notice that mentions resources
+   * does not become an in-kind opportunity.
+   */
+  const governmentAuthority =
+    /federal government|state government|county government|city government/.test(authority);
+
+  const grantAuthority =
+    governmentAuthority ||
+    provider === "grants gov" ||
+    sourceType.includes("grants gov") ||
+    category.includes("government grant");
+
+  if (
+    grantAuthority &&
+    (
+      category.includes("grant") ||
+      /grant|cooperative agreement|funding opportunity/.test(
+        `${title} ${category}`
+      )
+    )
+  ) {
+    return "government-grant";
   }
-  if (/vehicle donation|donated vehicle|fleet donation/.test(text)) {
-    return "vehicle";
+
+  if (
+    category.includes("contract") ||
+    category.includes("procurement") ||
+    sourceType.includes("procurement") ||
+    provider === "sam gov contract opportunities"
+  ) {
+    return "government-contract";
   }
-  if (/equipment donation|donated equipment|in kind|in-kind/.test(text)) {
-    return "in-kind";
+
+  if (
+    category === "rfp" ||
+    category.includes("request for proposal") ||
+    sourceType.includes("rfp")
+  ) {
+    return "rfp";
   }
-  if (/property donation|land donation|building donation/.test(text)) {
-    return "property";
-  }
-  if (/sponsor|sponsorship|naming rights/.test(text)) {
-    return "corporate-sponsorship";
-  }
-  if (/donor advised|donor-advised|\bdaf\b/.test(text)) {
-    return "donor-advised-fund";
-  }
-  if (/family foundation/.test(text)) {
-    return "family-foundation";
-  }
-  if (/community foundation/.test(text)) {
+
+  if (
+    category.includes("community foundation") ||
+    sourceType.includes("community foundation")
+  ) {
     return "community-foundation";
   }
-  if (/corporate foundation|corporate giving|employee matching/.test(text)) {
+
+  if (
+    category.includes("family foundation") ||
+    sourceType.includes("family foundation")
+  ) {
+    return "family-foundation";
+  }
+
+  if (
+    category.includes("foundation grant") ||
+    category.includes("private foundation") ||
+    (
+      authority.includes("foundation") &&
+      /grant|funding opportunity/.test(`${title} ${category}`)
+    )
+  ) {
+    return "foundation-grant";
+  }
+
+  if (
+    category.includes("corporate giving") ||
+    category.includes("corporate grant") ||
+    sourceType.includes("corporate giving") ||
+    authority.includes("corporate foundation")
+  ) {
     return "corporate-giving";
   }
-  if (/major donor|philanthropist|individual donor/.test(text)) {
+
+  if (
+    category.includes("sponsorship") ||
+    sourceType.includes("sponsorship")
+  ) {
+    return "corporate-sponsorship";
+  }
+
+  if (
+    category.includes("donor advised") ||
+    sourceType.includes("donor advised")
+  ) {
+    return "donor-advised-fund";
+  }
+
+  if (
+    category.includes("major donor") ||
+    category.includes("individual donor")
+  ) {
     return "major-donor";
   }
-  if (/partnership|coalition|collaboration|consortium/.test(text)) {
-    return "strategic-partnership";
+
+  if (
+    category.includes("vehicle") ||
+    capabilities.includes("vehicle donation") ||
+    /vehicle donation|donated vehicle|fleet donation/.test(title)
+  ) {
+    return "vehicle";
   }
-  if (/earned revenue|fee for service|licensing|consulting/.test(text)) {
+
+  if (
+    category.includes("equipment") ||
+    capabilities.includes("equipment donation") ||
+    /equipment donation|donated equipment/.test(title)
+  ) {
+    return "equipment";
+  }
+
+  if (
+    category.includes("property") ||
+    capabilities.includes("property donation") ||
+    /property donation|land donation|building donation/.test(title)
+  ) {
+    return "property";
+  }
+
+  if (
+    category.includes("in kind") ||
+    sourceType.includes("in kind") ||
+    capabilities.includes("in kind")
+  ) {
+    return "in-kind";
+  }
+
+  if (
+    category.includes("earned revenue") ||
+    category.includes("fee for service") ||
+    sourceType.includes("earned revenue")
+  ) {
     return "earned-revenue";
   }
+
   if (
-    category.includes("grant") ||
-    /grant|cooperative agreement|funding opportunity/.test(text)
+    category.includes("partnership") ||
+    sourceType.includes("partnership") ||
+    capabilities.includes("strategic partnership")
   ) {
-    return opportunity.authorityType === "federal-government" ||
-      opportunity.authorityType === "state-government" ||
-      opportunity.authorityType === "county-government" ||
-      opportunity.authorityType === "city-government"
-      ? "government-grant"
-      : "foundation-grant";
+    return "strategic-partnership";
+  }
+
+  if (
+    /grant|cooperative agreement|funding opportunity/.test(
+      `${title} ${category}`
+    )
+  ) {
+    return grantAuthority ? "government-grant" : "foundation-grant";
   }
 
   return "other-lawful-resource";
@@ -5657,7 +5850,47 @@ function strategicValueScore(opportunity = {}) {
   return clamp(mission * 0.65 + roadmapScore * 0.35);
 }
 
-function calculateExecutivePriority(opportunity = {}) {
+function calculateExecutivePriority(
+  opportunity = {},
+  fastGate = { passed: true },
+  investigationGate = { readyForPriority: true }
+) {
+  if (!fastGate.passed) {
+    return {
+      score: 0,
+      priority: "excluded",
+      components: {
+        fundability: 0,
+        geography: 0,
+        urgency: 0,
+        resourceValue: 0,
+        effort: 0,
+        strategicValue: 0
+      },
+      deadline: deadlineUrgency(opportunity),
+      estimatedResourceValue: null,
+      valueBasis: "excluded-before-scoring"
+    };
+  }
+
+  if (!investigationGate.readyForPriority) {
+    return {
+      score: 0,
+      priority: "research",
+      components: {
+        fundability: 0,
+        geography: geographyPriorityScore(opportunity),
+        urgency: 0,
+        resourceValue: 0,
+        effort: 0,
+        strategicValue: 0
+      },
+      deadline: deadlineUrgency(opportunity),
+      estimatedResourceValue: null,
+      valueBasis: "research-required-before-scoring"
+    };
+  }
+
   const urgency = deadlineUrgency(opportunity);
   const resourceValue = resourceValueScore(opportunity);
   const geography = geographyPriorityScore(opportunity);
@@ -5666,12 +5899,12 @@ function calculateExecutivePriority(opportunity = {}) {
   const strategicValue = strategicValueScore(opportunity);
 
   const score = clamp(
-    fundability * 0.3 +
+    fundability * 0.32 +
     geography * 0.2 +
-    urgency.score * 0.15 +
-    resourceValue.score * 0.15 +
-    effort * 0.1 +
-    strategicValue * 0.1
+    urgency.score * 0.13 +
+    resourceValue.score * 0.13 +
+    effort * 0.07 +
+    strategicValue * 0.15
   );
 
   const priority =
@@ -5721,7 +5954,11 @@ function buildResourceDevelopmentRecord(opportunity = {}, now) {
   const channel = inferResourceChannel(opportunity);
   const fastGate = fastExclusionGate(opportunity);
   const investigationGate = fullInvestigationGate(opportunity);
-  const priority = calculateExecutivePriority(opportunity);
+  const priority = calculateExecutivePriority(
+    opportunity,
+    fastGate,
+    investigationGate
+  );
   const executiveDecision = deriveDeskDecision(
     opportunity,
     fastGate,
@@ -5895,7 +6132,15 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
       .filter(record => record?.type === "funding-opportunity")
       .filter(record => record.resourceDevelopment)
       .filter(record => {
-        const status = String(query.status || "").trim();
+        const requestedStatus = String(
+          query.status || ""
+        ).trim();
+        const includeAll =
+          String(query.includeAll || "").trim().toLowerCase() ===
+          "true";
+        const status =
+          requestedStatus ||
+          (includeAll ? "" : "active");
         const decision = String(query.decision || "").trim();
         const channel = String(query.channel || "").trim();
 
