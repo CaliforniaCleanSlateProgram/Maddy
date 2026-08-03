@@ -25,13 +25,14 @@ import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
 import CaliforniaGrantsPortalAdapter from "./california-grants-portal-adapter.js";
+import LocalResourceDiscoveryAdapter from "./local-resource-discovery-adapter.js";
 
-const VERSION = "2.6.6";
+const VERSION = "2.6.7";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
-const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.0.0";
+const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.1.0";
 const RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID =
-  "RDI100-CALIFORNIA-LIVE-20260803-A";
+  "RDI110-LOCAL-CALIFORNIA-LIVE-20260803-A";
 
 const resourceDiscoveryIntegrationState = {
   status: "initializing",
@@ -42,9 +43,15 @@ const resourceDiscoveryIntegrationState = {
 };
 
 function registerResourceDiscoveryAdapters() {
-  const result = CaliforniaGrantsPortalAdapter.register(
-    ResourceDiscoveryNetwork
-  );
+  const californiaResult =
+    CaliforniaGrantsPortalAdapter.register(
+      ResourceDiscoveryNetwork
+    );
+
+  const localResult =
+    LocalResourceDiscoveryAdapter.register(
+      ResourceDiscoveryNetwork
+    );
 
   resourceDiscoveryIntegrationState.registeredAdapters =
     ResourceDiscoveryNetwork.listAdapters();
@@ -53,7 +60,10 @@ function registerResourceDiscoveryAdapters() {
   resourceDiscoveryIntegrationState.lastError = null;
 
   return {
-    result,
+    results: {
+      california: californiaResult,
+      local: localResult
+    },
     adapters:
       resourceDiscoveryIntegrationState.registeredAdapters
   };
@@ -7273,6 +7283,21 @@ app.get("/api/resource-discovery/status", (request, response) => {
             adapter.id === CaliforniaGrantsPortalAdapter.id
         )
       },
+      localAdapter: {
+        name: LocalResourceDiscoveryAdapter.name,
+        version: LocalResourceDiscoveryAdapter.version,
+        buildId: LocalResourceDiscoveryAdapter.buildId,
+        registered: adapters.some(
+          adapter =>
+            adapter.id === LocalResourceDiscoveryAdapter.id
+        ),
+        currentOperatingAreas:
+          LocalResourceDiscoveryAdapter.defaultGeography
+            .currentOperatingAreas,
+        expansionStrategy:
+          LocalResourceDiscoveryAdapter.defaultGeography
+            .expansionStrategy
+      },
       adapters,
       lastRunAt: resourceDiscoveryIntegrationState.lastRunAt,
       lastResultCount:
@@ -7286,6 +7311,71 @@ app.get("/api/resource-discovery/status", (request, response) => {
     });
   }
 });
+
+app.get(
+  "/api/resource-discovery/local",
+  async (request, response) => {
+    try {
+      const includeFutureExpansion =
+        String(
+          request.query.includeFutureExpansion || ""
+        ).toLowerCase() === "true";
+
+      const run = await ResourceDiscoveryNetwork.discoverAll({
+        adapterIds: [LocalResourceDiscoveryAdapter.id],
+        context: {
+          geographyProfile:
+            LocalResourceDiscoveryAdapter.defaultGeography,
+          includeFutureExpansion
+        }
+      });
+
+      resourceDiscoveryIntegrationState.status =
+        run.failedAdapters > 0 ? "degraded" : "online";
+      resourceDiscoveryIntegrationState.lastRunAt =
+        run.completedAt;
+      resourceDiscoveryIntegrationState.lastResultCount =
+        run.total;
+      resourceDiscoveryIntegrationState.lastError =
+        run.failures?.[0]?.message || null;
+
+      response.json({
+        schema: "meos.resource-discovery.local.v1",
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID,
+        status: resourceDiscoveryIntegrationState.status,
+        source: {
+          id: LocalResourceDiscoveryAdapter.id,
+          name: LocalResourceDiscoveryAdapter.name,
+          region: LocalResourceDiscoveryAdapter.region
+        },
+        geography: {
+          currentOperatingAreas:
+            LocalResourceDiscoveryAdapter.defaultGeography
+              .currentOperatingAreas,
+          expansionStrategy:
+            LocalResourceDiscoveryAdapter.defaultGeography
+              .expansionStrategy,
+          includeFutureExpansion
+        },
+        total: run.total,
+        failures: run.failures,
+        records: run.records
+      });
+    } catch (error) {
+      resourceDiscoveryIntegrationState.status = "degraded";
+      resourceDiscoveryIntegrationState.lastError =
+        error?.message || String(error);
+
+      response.status(500).json({
+        error: "local_resource_discovery_failed",
+        message: error?.message || String(error),
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
+      });
+    }
+  }
+);
 
 app.get(
   "/api/resource-discovery/california",
