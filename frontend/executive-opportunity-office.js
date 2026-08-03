@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Opportunity Office
  *
- * Version: 2.0.0
- * Build: EOO200-EXECUTIVE-REASONING-20260802-A
+ * Version: 2.1.0
+ * Build: EOO210-ONE-AUTHORITY-20260803-A
  *
  * Purpose:
  * - Maintain an approved registry of public opportunity sources.
@@ -28,8 +28,8 @@
     "use strict";
 
     const NAME = "MEOS Executive Opportunity Office";
-    const VERSION = "2.0.0";
-    const BUILD_ID = "EOO200-EXECUTIVE-REASONING-20260802-A";
+    const VERSION = "2.1.0";
+    const BUILD_ID = "EOO210-ONE-AUTHORITY-20260803-A";
     const SCHEMA = "meos.executive-opportunity-office.v1";
     const STORAGE_KEY = "meos.executive-opportunity-office.v1";
 
@@ -255,6 +255,14 @@
         return global.GrantOffice || null;
     }
 
+    function getResourceAcquisitionEngine() {
+        return (
+            global.ExecutiveResourceAcquisitionEngine ||
+            global.MEOSExecutiveResourceAcquisitionEngine ||
+            null
+        );
+    }
+
     function getLongTermStrategy() {
         return (
             global.CCSPLongTermStrategy ||
@@ -386,6 +394,73 @@
     }
 
     function evaluateExecutiveOpportunity(opportunity = {}) {
+        const engine = getResourceAcquisitionEngine();
+
+        if (engine?.decide) {
+            const resourceDecision = engine.decide(opportunity, {
+                source: NAME,
+                officeVersion: VERSION,
+                longTermStrategy: getLongTermStrategy(),
+                buildPortfolio: getBuildPortfolio()
+            });
+
+            return {
+                schema: "meos.executive-qualification-report.v2",
+                version: "2.0.0",
+                generatedAt: resourceDecision.evaluatedAt || now(),
+                authoritativeEngine: {
+                    name: engine.name,
+                    version: engine.version,
+                    buildId: engine.buildId
+                },
+                authoritativeResourceDecision: resourceDecision,
+                recommendation: resourceDecision.decision,
+                currentOperationalReadiness:
+                    resourceDecision.reasoning?.eligibility?.readinessScore ??
+                    null,
+                purposeAndStrategyAlignment:
+                    resourceDecision.reasoning?.advancement?.score ??
+                    null,
+                executiveBuildMatch:
+                    resourceDecision.reasoning?.advancement?.strategic?.[0] ??
+                    null,
+                strategyAnalysis:
+                    resourceDecision.reasoning?.advancement || null,
+                portfolioAnalysis: null,
+                reasons: [
+                    resourceDecision.reasoning?.reason ||
+                    "The authoritative Resource Acquisition Engine completed the decision."
+                ],
+                requiredActions: [
+                    resourceDecision.nextAction ||
+                    "Complete the next authorized executive action."
+                ],
+                confidence:
+                    resourceDecision.reasoning?.worth?.confidence ??
+                    null,
+                showExecutiveDirector:
+                    resourceDecision.showExecutiveDirector,
+                canAcquire:
+                    resourceDecision.canAcquire,
+                acquisitionPath:
+                    resourceDecision.acquisitionPath,
+                strategicTiming:
+                    resourceDecision.strategicTiming,
+                worthPursuing:
+                    resourceDecision.worthPursuing,
+                unknowns:
+                    resourceDecision.unknowns || [],
+                executiveBrief:
+                    resourceDecision.executiveBrief
+            };
+        }
+
+        /*
+         * Compatibility fallback only.
+         * The authoritative engine is expected to be loaded before this office.
+         * Existing reasoning remains available so discovery does not fail if a
+         * deployment temporarily loads files out of order.
+         */
         const strategy = getLongTermStrategy();
         const portfolio = getBuildPortfolio();
 
@@ -399,11 +474,17 @@
                 ? portfolio.matchOpportunity(opportunity, { record: true })
                 : null;
 
-        return determineExecutiveRecommendation(
+        const fallback = determineExecutiveRecommendation(
             opportunity,
             strategyResult,
             portfolioResult
         );
+
+        return {
+            ...fallback,
+            authoritativeEngine: null,
+            fallbackUsed: true
+        };
     }
 
     function configure(options = {}) {
