@@ -23,9 +23,42 @@ import dns from "dns/promises";
 import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
+import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
+import CaliforniaGrantsPortalAdapter from "./california-grants-portal-adapter.js";
 
-const VERSION = "2.6.4";
+const VERSION = "2.6.5";
 const VOICE_ENGINE_VERSION = "2.0.0";
+
+const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.0.0";
+const RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID =
+  "RDI100-CALIFORNIA-LIVE-20260803-A";
+
+const resourceDiscoveryIntegrationState = {
+  status: "initializing",
+  registeredAdapters: [],
+  lastRunAt: null,
+  lastError: null,
+  lastResultCount: 0
+};
+
+function registerResourceDiscoveryAdapters() {
+  const result = CaliforniaGrantsPortalAdapter.register(
+    ResourceDiscoveryNetwork
+  );
+
+  resourceDiscoveryIntegrationState.registeredAdapters =
+    ResourceDiscoveryNetwork.listAdapters();
+
+  resourceDiscoveryIntegrationState.status = "online";
+  resourceDiscoveryIntegrationState.lastError = null;
+
+  return {
+    result,
+    adapters:
+      resourceDiscoveryIntegrationState.registeredAdapters
+  };
+}
+
 
 const PORT = Number(process.env.PORT || 3000);
 
@@ -7236,6 +7269,104 @@ app.use((error, request, response, next) => {
   });
 });
 
+
+app.get("/api/resource-discovery/status", (request, response) => {
+  try {
+    const adapters = ResourceDiscoveryNetwork.listAdapters();
+
+    response.json({
+      schema: "meos.resource-discovery.integration-status.v1",
+      version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+      buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID,
+      status: resourceDiscoveryIntegrationState.status,
+      network: {
+        name: ResourceDiscoveryNetwork.name,
+        version: ResourceDiscoveryNetwork.version,
+        buildId: ResourceDiscoveryNetwork.buildId
+      },
+      californiaAdapter: {
+        name: CaliforniaGrantsPortalAdapter.name,
+        version: CaliforniaGrantsPortalAdapter.version,
+        buildId: CaliforniaGrantsPortalAdapter.buildId,
+        registered: adapters.some(
+          adapter =>
+            adapter.id === CaliforniaGrantsPortalAdapter.id
+        )
+      },
+      adapters,
+      lastRunAt: resourceDiscoveryIntegrationState.lastRunAt,
+      lastResultCount:
+        resourceDiscoveryIntegrationState.lastResultCount,
+      lastError: resourceDiscoveryIntegrationState.lastError
+    });
+  } catch (error) {
+    response.status(500).json({
+      error: "resource_discovery_status_failed",
+      message: error?.message || String(error)
+    });
+  }
+});
+
+app.get(
+  "/api/resource-discovery/california",
+  async (request, response) => {
+    try {
+      const limit = Math.max(
+        1,
+        Math.min(250, Number(request.query.limit || 25))
+      );
+
+      const query = String(request.query.q || "").trim();
+
+      const run = await ResourceDiscoveryNetwork.discoverAll({
+        adapterIds: [CaliforniaGrantsPortalAdapter.id],
+        context: {
+          maxRecords: limit,
+          pageSize: Math.min(limit, 100),
+          query
+        }
+      });
+
+      resourceDiscoveryIntegrationState.status =
+        run.failedAdapters > 0 ? "degraded" : "online";
+      resourceDiscoveryIntegrationState.lastRunAt =
+        run.completedAt;
+      resourceDiscoveryIntegrationState.lastResultCount =
+        run.total;
+      resourceDiscoveryIntegrationState.lastError =
+        run.failures?.[0]?.message || null;
+
+      response.json({
+        schema: "meos.resource-discovery.california.v1",
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID,
+        status: resourceDiscoveryIntegrationState.status,
+        source: {
+          id: CaliforniaGrantsPortalAdapter.id,
+          name: CaliforniaGrantsPortalAdapter.name,
+          region: CaliforniaGrantsPortalAdapter.region
+        },
+        requestedLimit: limit,
+        query,
+        total: run.total,
+        failures: run.failures,
+        records: run.records
+      });
+    } catch (error) {
+      resourceDiscoveryIntegrationState.status = "degraded";
+      resourceDiscoveryIntegrationState.lastError =
+        error?.message || String(error);
+
+      response.status(500).json({
+        error: "california_resource_discovery_failed",
+        message: error?.message || String(error),
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
+      });
+    }
+  }
+);
+
 app.listen(PORT, () => {
   console.log(
     `[MEOS] Secure Realtime Session Server v${VERSION} online ` +
@@ -7245,6 +7376,26 @@ app.listen(PORT, () => {
   console.log(
     `[MEOS] Voice Engine v${VOICE_ENGINE_VERSION} server authority ready.`
   );
+
+  try {
+    const discovery = registerResourceDiscoveryAdapters();
+
+    console.log(
+      `[MEOS] Resource Discovery Integration ` +
+        `v${RESOURCE_DISCOVERY_INTEGRATION_VERSION} online. ` +
+        `adapters=${discovery.adapters.length}, ` +
+        `build=${RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID}.`
+    );
+  } catch (error) {
+    resourceDiscoveryIntegrationState.status = "degraded";
+    resourceDiscoveryIntegrationState.lastError =
+      error?.message || String(error);
+
+    console.error(
+      "[MEOS] Resource Discovery Integration failed to initialize:",
+      error
+    );
+  }
 
   executiveMemoryStorageStatus().then(status => {
     console.log(
