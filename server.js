@@ -24,7 +24,7 @@ import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.4.0";
+const VERSION = "2.5.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -219,6 +219,21 @@ const FUNDING_PUBLIC_FETCH_MAX_REDIRECTS = Number(
   process.env.MEOS_FUNDING_PUBLIC_FETCH_MAX_REDIRECTS || 5
 );
 
+const FUNDING_INVESTIGATION_CONCURRENCY = Math.max(
+  1,
+  Math.min(
+    8,
+    Number(process.env.MEOS_FUNDING_INVESTIGATION_CONCURRENCY || 4)
+  )
+);
+const FUNDING_REINVESTIGATION_MAX_RECORDS = Math.max(
+  1,
+  Math.min(
+    500,
+    Number(process.env.MEOS_FUNDING_REINVESTIGATION_MAX_RECORDS || 500)
+  )
+);
+
 const FUNDING_SEARCH_TERMS = String(
   process.env.MEOS_FUNDING_SEARCH_TERMS ||
     [
@@ -384,7 +399,7 @@ const FUNDING_SOURCE_SEEDS = Object.freeze([
   }
 ]);
 
-const FUNDING_QUALIFICATION_VERSION = "1.0.0";
+const FUNDING_QUALIFICATION_VERSION = "2.0.0";
 
 const fundingIntelligenceState = {
   status: "initializing",
@@ -402,7 +417,10 @@ const fundingIntelligenceState = {
     monitor: 0,
     partner: 0,
     humanReview: 0,
-    decline: 0
+    decline: 0,
+    executiveQualified: 0,
+    executiveReviewRequired: 0,
+    executiveRejected: 0
   }
 };
 
@@ -1480,81 +1498,132 @@ const FUNDING_EXECUTIVE_RECOMMENDATIONS = Object.freeze({
   DECLINE: "decline"
 });
 
+const FUNDING_QUALIFICATION_STATUSES = Object.freeze({
+  QUALIFIED: "executive-qualified",
+  REVIEW_REQUIRED: "executive-review-required",
+  REJECTED: "executive-rejected"
+});
+
+const FUNDING_GEOGRAPHY_LEVELS = Object.freeze({
+  LOCAL: "local",
+  REGIONAL: "regional",
+  CALIFORNIA: "california",
+  USA: "usa",
+  INTERNATIONAL: "international",
+  UNKNOWN: "unknown"
+});
+
+const FUNDING_PARTICIPATION_LABELS = Object.freeze({
+  CAN_LEAD: "Can Lead",
+  CAN_PARTNER: "Can Partner",
+  LEAD_OR_PARTNER: "Lead or Partner",
+  NEEDS_RESEARCH: "Needs Research",
+  NOT_ELIGIBLE: "Not Eligible"
+});
+
 const CCSP_FUNDING_STRATEGY_SIGNALS = Object.freeze([
   {
     id: "mobile-hygiene",
+    roadmap: "Mobile hygiene and low-barrier outreach",
     terms: [
-      "mobile hygiene",
-      "hygiene",
-      "shower",
-      "sanitation",
-      "homeless outreach",
-      "street outreach"
+      "mobile hygiene", "hygiene", "shower", "sanitation",
+      "homeless outreach", "street outreach"
     ],
     weight: 24
   },
   {
     id: "substance-use-recovery",
+    roadmap: "Stabilization, recovery navigation, and treatment",
     terms: [
-      "substance use",
-      "substance abuse",
-      "sud",
-      "recovery",
-      "behavioral health",
-      "treatment",
-      "residential treatment"
+      "substance use", "substance abuse", "sud", "recovery",
+      "behavioral health", "treatment", "residential treatment",
+      "medication assisted treatment", "opioid", "overdose"
     ],
     weight: 28
   },
   {
     id: "housing-and-stabilization",
+    roadmap: "Sober living, supportive housing, and permanent stability",
     terms: [
-      "homelessness",
-      "housing",
-      "supportive housing",
-      "transitional housing",
-      "sober living",
-      "community stabilization"
+      "homelessness", "housing", "supportive housing",
+      "transitional housing", "sober living",
+      "community stabilization", "permanent housing"
     ],
     weight: 26
   },
   {
     id: "workforce-development",
+    roadmap: "Workforce readiness, employment, and self-sufficiency",
     terms: [
-      "workforce",
-      "employment",
-      "job training",
-      "apprenticeship",
-      "skilled trades",
-      "economic mobility"
+      "workforce", "employment", "job training", "apprenticeship",
+      "skilled trades", "economic mobility", "career readiness"
     ],
     weight: 22
   },
   {
     id: "watershed-and-environment",
+    roadmap: "Watershed protection and environmental stewardship",
     terms: [
-      "watershed",
-      "water quality",
-      "environmental",
-      "river",
-      "monterey bay",
-      "pollution prevention"
+      "watershed", "water quality", "environmental", "river",
+      "monterey bay", "pollution prevention"
     ],
     weight: 20
   },
   {
     id: "organizational-capacity",
+    roadmap: "Organizational capacity, infrastructure, and sustainability",
     terms: [
-      "capacity building",
-      "nonprofit",
-      "community development",
-      "technology",
-      "infrastructure",
-      "capital",
-      "equipment"
+      "capacity building", "nonprofit", "community development",
+      "technology", "infrastructure", "capital", "equipment",
+      "operating support"
     ],
     weight: 16
   }
+]);
+
+const FUNDING_FOREIGN_COUNTRIES = Object.freeze([
+  "afghanistan", "albania", "algeria", "andorra", "angola",
+  "antigua and barbuda", "argentina", "armenia", "australia",
+  "austria", "azerbaijan", "bahamas", "bahrain", "bangladesh",
+  "barbados", "belarus", "belgium", "belize", "benin", "bhutan",
+  "bolivia", "bosnia and herzegovina", "botswana", "brazil",
+  "brunei", "bulgaria", "burkina faso", "burundi", "cabo verde",
+  "cambodia", "cameroon", "canada", "central african republic",
+  "chad", "chile", "china", "colombia", "comoros",
+  "democratic republic of the congo", "republic of the congo",
+  "costa rica", "cote d ivoire", "croatia", "cuba", "cyprus",
+  "czechia", "denmark", "djibouti", "dominica",
+  "dominican republic", "ecuador", "egypt", "el salvador",
+  "equatorial guinea", "eritrea", "estonia", "eswatini",
+  "ethiopia", "fiji", "finland", "france", "gabon", "gambia",
+  "georgia", "germany", "ghana", "greece", "grenada",
+  "guatemala", "guinea", "guinea bissau", "guyana", "haiti",
+  "honduras", "hungary", "iceland", "india", "indonesia", "iran",
+  "iraq", "ireland", "israel", "italy", "jamaica", "japan",
+  "jordan", "kazakhstan", "kenya", "kiribati", "kosovo", "kuwait",
+  "kyrgyzstan", "laos", "latvia", "lebanon", "lesotho", "liberia",
+  "libya", "liechtenstein", "lithuania", "luxembourg",
+  "madagascar", "malawi", "malaysia", "maldives", "mali", "malta",
+  "marshall islands", "mauritania", "mauritius", "mexico",
+  "micronesia", "moldova", "monaco", "mongolia", "montenegro",
+  "morocco", "mozambique", "myanmar", "namibia", "nauru", "nepal",
+  "netherlands", "new zealand", "nicaragua", "niger", "nigeria",
+  "north korea", "north macedonia", "norway", "oman", "pakistan",
+  "palau", "panama", "papua new guinea", "paraguay", "peru",
+  "philippines", "poland", "portugal", "qatar", "romania", "russia",
+  "rwanda", "saint kitts and nevis", "saint lucia",
+  "saint vincent and the grenadines", "samoa", "san marino",
+  "sao tome and principe", "saudi arabia", "senegal", "serbia",
+  "seychelles", "sierra leone", "singapore", "slovakia",
+  "slovenia", "solomon islands", "somalia", "south africa",
+  "south korea", "south sudan", "spain", "sri lanka", "sudan",
+  "suriname", "sweden", "switzerland", "syria", "taiwan",
+  "tajikistan", "tanzania", "thailand", "timor leste", "togo",
+  "tonga", "trinidad and tobago", "tunisia", "turkey",
+  "turkmenistan", "tuvalu", "uganda", "ukraine",
+  "united arab emirates", "united kingdom", "uruguay", "uzbekistan",
+  "vanuatu", "vatican city", "venezuela", "vietnam", "yemen",
+  "zambia", "zimbabwe"
 ]);
 
 function normalizeFundingQualificationText(value) {
@@ -1567,22 +1636,55 @@ function normalizeFundingQualificationText(value) {
     .trim();
 }
 
+function fundingQualificationText(opportunity = {}) {
+  return normalizeFundingQualificationText(
+    [
+      opportunity.title,
+      opportunity.description,
+      opportunity.statedPurpose,
+      opportunity.agencyName,
+      opportunity.agencyCode,
+      opportunity.category,
+      opportunity.discoveryQuery,
+      opportunity.geography,
+      opportunity.location,
+      opportunity.locations,
+      opportunity.jurisdiction,
+      opportunity.state,
+      opportunity.states,
+      opportunity.eligibleApplicants,
+      opportunity.additionalEligibility,
+      opportunity.additionalEligibilityInformation,
+      opportunity.restrictions,
+      opportunity.partnerRequirements,
+      opportunity.requirements,
+      opportunity.fundingAreas,
+      opportunity.assistanceListings,
+      opportunity.capabilities,
+      opportunity.fullNotice,
+      opportunity.url
+    ]
+      .flat(Infinity)
+      .filter(Boolean)
+      .map(value =>
+        typeof value === "object"
+          ? JSON.stringify(value)
+          : String(value)
+      )
+      .join(" ")
+  );
+}
+
 function fundingOpportunityLifecycle(opportunity) {
   const nowMs = Date.now();
   const openMs = Date.parse(
-    opportunity.openDate ||
-      opportunity.postedDate ||
-      ""
+    opportunity.openDate || opportunity.postedDate || ""
   );
   const deadlineMs = Date.parse(
-    opportunity.deadline ||
-      opportunity.closeDate ||
-      ""
+    opportunity.deadline || opportunity.closeDate || ""
   );
   const rawStatus = normalizeFundingQualificationText(
-    opportunity.opportunityStatus ||
-      opportunity.status ||
-      ""
+    opportunity.opportunityStatus || opportunity.status || ""
   );
 
   if (
@@ -1612,228 +1714,618 @@ function fundingOpportunityLifecycle(opportunity) {
   return "unknown";
 }
 
-function calculateFundingStrategyAlignment(opportunity) {
-  const text = normalizeFundingQualificationText(
-    [
-      opportunity.title,
-      opportunity.description,
-      opportunity.agencyName,
-      opportunity.category,
-      opportunity.discoveryQuery,
-      opportunity.fundingAreas,
-      opportunity.assistanceListings,
-      opportunity.capabilities
-    ]
-      .flat(Infinity)
-      .filter(Boolean)
-      .join(" ")
+function determineFundingGeography(opportunity = {}) {
+  const text = fundingQualificationText(opportunity);
+  const evidence = [];
+  const addEvidence = value => {
+    if (value && !evidence.includes(value)) evidence.push(value);
+  };
+
+  const foreignMission = text.match(
+    /\b(?:u s |united states )?(?:embassy|mission|consulate) (?:to|in) ([a-z][a-z ]{2,60})\b/
+  );
+  const foreignCountry = FUNDING_FOREIGN_COUNTRIES.find(country =>
+    text.includes(country)
+  );
+  const internationalSignal = text.match(
+    /\b(?:africa|europe|asia|south america|central america|middle east|outside the united states|foreign entities|international applicants)\b/
   );
 
+  if (foreignMission || foreignCountry || internationalSignal) {
+    addEvidence(
+      foreignMission?.[0] || foreignCountry || internationalSignal?.[0]
+    );
+    return {
+      level: FUNDING_GEOGRAPHY_LEVELS.INTERNATIONAL,
+      label: "International",
+      priorityOrder: 99,
+      eligibleOperatingFootprint: false,
+      confirmed: true,
+      restrictedRegion: null,
+      evidence,
+      explanation:
+        "Required activity or primary beneficiaries are outside CCSP's approved United States operating footprint."
+    };
+  }
+
+  const local = text.match(
+    /\b(?:santa cruz county|city of santa cruz|watsonville|capitola|scotts valley|aptos|soquel|felton|ben lomond|boulder creek)\b/
+  );
+  if (local) {
+    addEvidence(local[0]);
+    return {
+      level: FUNDING_GEOGRAPHY_LEVELS.LOCAL,
+      label: "Local",
+      priorityOrder: 1,
+      eligibleOperatingFootprint: true,
+      confirmed: true,
+      restrictedRegion: null,
+      evidence,
+      explanation:
+        "The opportunity is tied directly to Santa Cruz County or CCSP's immediate service area."
+    };
+  }
+
+  const regional = text.match(
+    /\b(?:monterey county|san benito county|santa clara county|central coast|monterey bay|tri county|bay area)\b/
+  );
+  if (regional) {
+    addEvidence(regional[0]);
+    return {
+      level: FUNDING_GEOGRAPHY_LEVELS.REGIONAL,
+      label: "Regional",
+      priorityOrder: 2,
+      eligibleOperatingFootprint: true,
+      confirmed: true,
+      restrictedRegion: null,
+      evidence,
+      explanation:
+        "The opportunity falls within CCSP's established outward regional funding priority."
+    };
+  }
+
+  const california = text.match(
+    /\b(?:california|state of california|california nonprofits|california organizations)\b/
+  );
+  if (california) {
+    addEvidence(california[0]);
+    return {
+      level: FUNDING_GEOGRAPHY_LEVELS.CALIFORNIA,
+      label: "California",
+      priorityOrder: 3,
+      eligibleOperatingFootprint: true,
+      confirmed: true,
+      restrictedRegion: null,
+      evidence,
+      explanation:
+        "The opportunity is available within California and fits CCSP's established outward funding priority."
+    };
+  }
+
+  const restrictedDomestic = text.match(
+    /\b(?:great lakes basin|appalachian region|delta states|new england|gulf coast states|pacific northwest|mid atlantic|tribal lands only|rural alaska|hawaii only|puerto rico only)\b/
+  );
+  if (restrictedDomestic) {
+    addEvidence(restrictedDomestic[0]);
+    return {
+      level: FUNDING_GEOGRAPHY_LEVELS.USA,
+      label: "USA — Restricted Region",
+      priorityOrder: 5,
+      eligibleOperatingFootprint: false,
+      confirmed: true,
+      restrictedRegion: restrictedDomestic[0],
+      evidence,
+      explanation:
+        "The opportunity is domestic, but required project geography is outside CCSP's current viable service footprint."
+    };
+  }
+
+  const usa = text.match(
+    /\b(?:united states|u s |usa|nationwide|national|federal|domestic applicants|501 c 3|state governments|county governments|city or township governments)\b/
+  );
+  if (usa) {
+    addEvidence(usa[0]);
+    return {
+      level: FUNDING_GEOGRAPHY_LEVELS.USA,
+      label: "USA",
+      priorityOrder: 4,
+      eligibleOperatingFootprint: true,
+      confirmed: true,
+      restrictedRegion: null,
+      evidence,
+      explanation:
+        "The opportunity appears available within the United States but is not tied to a nearer geographic priority."
+    };
+  }
+
+  return {
+    level: FUNDING_GEOGRAPHY_LEVELS.UNKNOWN,
+    label: "Unknown",
+    priorityOrder: 6,
+    eligibleOperatingFootprint: null,
+    confirmed: false,
+    restrictedRegion: null,
+    evidence,
+    explanation:
+      "The available evidence does not support a reliable geographic conclusion."
+  };
+}
+
+function determineFundingParticipation(opportunity = {}, geography) {
+  const text = fundingQualificationText(opportunity);
+  const evidence = [];
+
+  if (geography?.eligibleOperatingFootprint === false) {
+    return {
+      label: FUNDING_PARTICIPATION_LABELS.NOT_ELIGIBLE,
+      canLead: false,
+      canPartner: false,
+      partnershipRequired: false,
+      confirmed: true,
+      evidence: geography.evidence || [],
+      explanation:
+        "The required project geography is outside CCSP's approved operating footprint."
+    };
+  }
+
+  const explicitExclusion = text.match(
+    /\b(?:nonprofits are not eligible|nonprofit organizations are not eligible|for profit entities only|individuals only|foreign entities only)\b/
+  );
+  if (explicitExclusion) {
+    evidence.push(explicitExclusion[0]);
+    return {
+      label: FUNDING_PARTICIPATION_LABELS.NOT_ELIGIBLE,
+      canLead: false,
+      canPartner: false,
+      partnershipRequired: false,
+      confirmed: true,
+      evidence,
+      explanation:
+        "The available eligibility language excludes CCSP as an applicant or funded participant."
+    };
+  }
+
+  const partnershipRequired = Boolean(
+    text.match(
+      /\b(?:mandatory partners|required partners|regional partnership|consortium required|coalition required|must partner|must include|collaborative agreement|required collaboration)\b/
+    )
+  );
+  const partnerPath = Boolean(
+    text.match(
+      /\b(?:subaward|subrecipient|community based organization|community organization|optional partners|implementation partner|funded partner|contractor|coalition member|consortium member)\b/
+    )
+  );
+  const nonprofitEligible = Boolean(
+    text.match(
+      /\b(?:nonprofits|nonprofit organizations|501 c 3|public charity|community based organizations|faith based and community organizations)\b/
+    )
+  );
+
+  if (partnershipRequired) {
+    evidence.push("mandatory partnership structure");
+    return {
+      label: FUNDING_PARTICIPATION_LABELS.CAN_PARTNER,
+      canLead: nonprofitEligible ? null : false,
+      canPartner: true,
+      partnershipRequired: true,
+      confirmed: true,
+      evidence,
+      explanation:
+        nonprofitEligible
+          ? "CCSP appears eligible to participate, but the opportunity requires partners. Lead eligibility and lead capacity require confirmation."
+          : "CCSP may be viable as a funded partner, but the available evidence does not establish direct lead eligibility."
+    };
+  }
+
+  if (nonprofitEligible && partnerPath) {
+    evidence.push("nonprofit eligibility", "partner path");
+    return {
+      label: FUNDING_PARTICIPATION_LABELS.LEAD_OR_PARTNER,
+      canLead: true,
+      canPartner: true,
+      partnershipRequired: false,
+      confirmed: true,
+      evidence,
+      explanation:
+        "The available notice permits nonprofit participation and identifies a partner or subrecipient path."
+    };
+  }
+
+  if (nonprofitEligible) {
+    evidence.push("nonprofit eligibility");
+    return {
+      label: FUNDING_PARTICIPATION_LABELS.CAN_LEAD,
+      canLead: true,
+      canPartner: partnerPath || null,
+      partnershipRequired: false,
+      confirmed: true,
+      evidence,
+      explanation:
+        "The available notice permits nonprofit applicants and does not show a mandatory partnership structure."
+    };
+  }
+
+  if (partnerPath) {
+    evidence.push("partner or subrecipient path");
+    return {
+      label: FUNDING_PARTICIPATION_LABELS.CAN_PARTNER,
+      canLead: null,
+      canPartner: true,
+      partnershipRequired: false,
+      confirmed: true,
+      evidence,
+      explanation:
+        "A funded partner or subrecipient path is visible, but direct lead eligibility is not established."
+    };
+  }
+
+  return {
+    label: FUNDING_PARTICIPATION_LABELS.NEEDS_RESEARCH,
+    canLead: null,
+    canPartner: null,
+    partnershipRequired: null,
+    confirmed: false,
+    evidence,
+    explanation:
+      "The available evidence is not enough to decide whether CCSP should lead, partner, or decline."
+  };
+}
+
+function calculateFundingStrategyAlignment(opportunity) {
+  const text = fundingQualificationText(opportunity);
   const matches = CCSP_FUNDING_STRATEGY_SIGNALS
     .map(signal => {
       const matchedTerms = signal.terms.filter(term =>
-        text.includes(
-          normalizeFundingQualificationText(term)
-        )
+        text.includes(normalizeFundingQualificationText(term))
       );
-
       return {
         id: signal.id,
+        roadmap: signal.roadmap,
         matchedTerms,
         score:
           matchedTerms.length > 0
-            ? Math.min(
-                signal.weight,
-                8 + matchedTerms.length * 6
-              )
+            ? Math.min(signal.weight, 8 + matchedTerms.length * 6)
             : 0
       };
     })
     .filter(match => match.score > 0)
-    .sort((left, right) => right.score - left.score);
+    .sort((a, b) => b.score - a.score);
 
   const score = Math.min(
     100,
-    matches.reduce(
-      (total, match) => total + match.score,
-      0
-    )
+    matches.reduce((total, match) => total + match.score, 0)
   );
 
   return {
     score,
+    label:
+      score >= 60 ? "strong" :
+      score >= 30 ? "moderate" :
+      score > 0 ? "weak" : "none",
     matches
   };
 }
 
 function calculateFundingOperationalReadiness(opportunity) {
   let score = 45;
-  const text = normalizeFundingQualificationText(
-    [
-      opportunity.title,
-      opportunity.description,
-      opportunity.category,
-      opportunity.agencyName
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
+  const text = fundingQualificationText(opportunity);
 
-  if (
-    /nonprofit|community organization|501 c 3|public charity/.test(
-      text
-    )
-  ) {
+  if (/nonprofit|community organization|501 c 3|public charity/.test(text)) {
     score += 20;
   }
-
-  if (
-    /california|santa cruz|monterey|central coast/.test(
-      text
-    )
-  ) {
+  if (/california|santa cruz|monterey|central coast/.test(text)) {
     score += 15;
   }
-
-  if (
-    /planning|capacity building|technical assistance|equipment|operating support/.test(
-      text
-    )
-  ) {
+  if (/planning|capacity building|technical assistance|equipment|operating support/.test(text)) {
     score += 10;
   }
-
-  if (
-    /licensed facility|licensed provider|accreditation|required match|cost share/.test(
-      text
-    )
-  ) {
+  if (/licensed facility|licensed provider|accreditation|required match|cost share/.test(text)) {
     score -= 20;
   }
-
   return Math.max(0, Math.min(100, score));
+}
+
+function analyzeFundingCostShare(opportunity) {
+  const text = fundingQualificationText(opportunity);
+  const explicit = opportunity.costSharing;
+  const required =
+    explicit === true ||
+    /\b(?:cost sharing required|required match|matching requirement yes|cost share required)\b/.test(text);
+
+  return {
+    required,
+    confirmed: explicit !== undefined && explicit !== null,
+    type:
+      required
+        ? /\bin kind\b/.test(text)
+          ? "cash-or-in-kind"
+          : "unknown"
+        : "none-known",
+    percentage: null,
+    plainEnglish:
+      required
+        ? "The funder requires part of the project value to come from CCSP, partners, or another allowed source. The exact percentage and whether cash or in-kind support counts must be confirmed from the full notice."
+        : "No cost-share requirement is confirmed in the available notice.",
+    feasibility:
+      required ? "requires-partner-and-source-analysis" : "not-applicable"
+  };
+}
+
+function analyzeFundingMoneyFlow(opportunity, participation) {
+  const text = fundingQualificationText(opportunity);
+  const subawardPath = /\b(?:subaward|subrecipient|contractor|implementation partner|funded partner)\b/.test(text);
+
+  return {
+    directAwardPossible:
+      participation.canLead === true ? true :
+      participation.canLead === false ? false : null,
+    partnerFundingPossible:
+      participation.canPartner === true && subawardPath ? true :
+      participation.canPartner === false ? false : null,
+    confirmed: participation.confirmed && (participation.canLead === true || subawardPath),
+    plainEnglish:
+      participation.canLead === true
+        ? "CCSP may receive award funds directly if it serves as the approved lead applicant."
+        : participation.canPartner === true
+          ? "Money may flow to CCSP through a subaward, subcontract, or funded implementation-partner agreement, but the exact mechanism must be confirmed."
+          : "The available evidence does not yet establish a lawful funding path into CCSP."
+  };
+}
+
+function determineFundingRoadmap(strategy) {
+  return strategy.matches.map(match => ({
+    id: match.id,
+    objective: match.roadmap,
+    score: match.score,
+    evidence: match.matchedTerms
+  }));
+}
+
+function identifyFundingUnknowns(opportunity, geography, participation, costShare, moneyFlow) {
+  const unknowns = [];
+  if (!opportunity.description) {
+    unknowns.push("Full opportunity description has not been retrieved.");
+  }
+  if (geography.level === FUNDING_GEOGRAPHY_LEVELS.UNKNOWN) {
+    unknowns.push("Required project and beneficiary geography is not verified.");
+  }
+  if (participation.label === FUNDING_PARTICIPATION_LABELS.NEEDS_RESEARCH) {
+    unknowns.push("Lead and partner eligibility are not verified.");
+  }
+  if (costShare.required && !costShare.confirmed) {
+    unknowns.push("Cost-share percentage and eligible match sources are not verified.");
+  }
+  if (!moneyFlow.confirmed) {
+    unknowns.push("The exact mechanism for funds to flow into CCSP is not verified.");
+  }
+  if (!opportunity.awardFloor && !opportunity.awardCeiling) {
+    unknowns.push("Award range is not verified.");
+  }
+  if (!opportunity.deadline) {
+    unknowns.push("Application deadline is not verified.");
+  }
+  return [...new Set(unknowns)];
+}
+
+function deriveFundingQualificationStatus(recommendation) {
+  if (
+    recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE ||
+    recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.PARTNER ||
+    recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.PREPARE
+  ) {
+    return {
+      qualificationStatus: FUNDING_QUALIFICATION_STATUSES.QUALIFIED,
+      status:
+        recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.PARTNER
+          ? "partnership-required"
+          : recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.PREPARE
+            ? "strategic-preparation"
+            : "executive-priority"
+    };
+  }
+
+  if (recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.DECLINE) {
+    return {
+      qualificationStatus: FUNDING_QUALIFICATION_STATUSES.REJECTED,
+      status: "declined"
+    };
+  }
+
+  return {
+    qualificationStatus: FUNDING_QUALIFICATION_STATUSES.REVIEW_REQUIRED,
+    status:
+      recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.MONITOR
+        ? "monitor"
+        : "executive-review"
+  };
 }
 
 function qualifyFundingOpportunity(opportunity) {
   const lifecycle = fundingOpportunityLifecycle(opportunity);
-  const strategy =
-    calculateFundingStrategyAlignment(opportunity);
-  const readiness =
-    calculateFundingOperationalReadiness(opportunity);
-  const text = normalizeFundingQualificationText(
-    [
-      opportunity.title,
-      opportunity.description,
-      opportunity.category,
-      opportunity.agencyName
-    ]
-      .filter(Boolean)
-      .join(" ")
+  const geography = determineFundingGeography(opportunity);
+  const participation = determineFundingParticipation(opportunity, geography);
+  const strategy = calculateFundingStrategyAlignment(opportunity);
+  const readiness = calculateFundingOperationalReadiness(opportunity);
+  const roadmap = determineFundingRoadmap(strategy);
+  const costShare = analyzeFundingCostShare(opportunity);
+  const moneyFlow = analyzeFundingMoneyFlow(opportunity, participation);
+  const unknowns = identifyFundingUnknowns(
+    opportunity,
+    geography,
+    participation,
+    costShare,
+    moneyFlow
   );
 
   const reasons = [];
   const requiredActions = [];
-  let recommendation =
-    FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW;
+  let recommendation = FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW;
 
   if (
-    lifecycle === "coming-soon" ||
-    lifecycle === "closed"
+    geography.eligibleOperatingFootprint === false ||
+    participation.label === FUNDING_PARTICIPATION_LABELS.NOT_ELIGIBLE
   ) {
-    recommendation =
-      FUNDING_EXECUTIVE_RECOMMENDATIONS.MONITOR;
+    recommendation = FUNDING_EXECUTIVE_RECOMMENDATIONS.DECLINE;
     reasons.push(
-      lifecycle === "coming-soon"
-        ? "The opportunity is not yet actionable and should remain scheduled for preparation."
-        : "The opportunity is currently closed and should remain visible for recurrence or replacement monitoring."
+      geography.eligibleOperatingFootprint === false
+        ? geography.explanation
+        : participation.explanation
+    );
+  } else if (lifecycle === "closed" || lifecycle === "coming-soon") {
+    recommendation = FUNDING_EXECUTIVE_RECOMMENDATIONS.MONITOR;
+    reasons.push(
+      lifecycle === "closed"
+        ? "The current cycle is closed; preserve it for recurrence and replacement monitoring."
+        : "The opportunity is forecasted or not yet actionable; prepare proportionately and monitor."
+    );
+  } else if (
+    participation.canPartner === true &&
+    participation.partnershipRequired &&
+    strategy.score >= 30
+  ) {
+    recommendation = FUNDING_EXECUTIVE_RECOMMENDATIONS.PARTNER;
+    reasons.push(
+      "The opportunity has meaningful mission or roadmap value and requires a partnership structure."
     );
     requiredActions.push(
-      "Preserve the record, monitor lifecycle changes, and schedule a proportionate future review."
+      "Confirm lead eligibility, mandatory partners, cost share, and the funded role available to CCSP."
     );
-  }
-
-  if (strategy.score >= 60) {
-    recommendation =
-      readiness >= 65 && lifecycle === "open"
-        ? FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE
-        : FUNDING_EXECUTIVE_RECOMMENDATIONS.PREPARE;
-
-    reasons.push(
-      "The opportunity strongly advances CCSP's current purposes or long-term strategy."
-    );
-  } else if (strategy.score >= 30) {
-    recommendation =
-      lifecycle === "open"
-        ? FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW
-        : recommendation;
-
-    reasons.push(
-      "The opportunity has meaningful strategic or adaptive potential that deserves executive review."
-    );
-  }
-
-  if (
-    /partnership|coalition|collaboration|consortium|subaward/.test(
-      text
-    ) &&
-    recommendation !==
-      FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE
-  ) {
-    recommendation =
-      FUNDING_EXECUTIVE_RECOMMENDATIONS.PARTNER;
-    reasons.push(
-      "A partnership, subaward, or consortium path may improve eligibility or competitiveness."
-    );
-    requiredActions.push(
-      "Identify qualified partners and evaluate a shared application or subrecipient role."
-    );
-  }
-
-  if (
-    recommendation ===
-      FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW &&
-    strategy.score === 0 &&
+  } else if (
+    strategy.score >= 60 &&
+    participation.canLead === true &&
+    readiness >= 65 &&
     lifecycle === "open"
   ) {
+    recommendation = FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE;
     reasons.push(
-      "The available structured evidence is insufficient for a confident automated recommendation."
+      "The opportunity strongly advances CCSP's mission or approved roadmap and appears actionable."
     );
-    requiredActions.push(
-      "Retrieve the full notice, eligibility rules, award amount, and program purpose before deciding."
+  } else if (strategy.score >= 60) {
+    recommendation = FUNDING_EXECUTIVE_RECOMMENDATIONS.PREPARE;
+    reasons.push(
+      "The opportunity strongly fits CCSP, but readiness, eligibility, partnership, or evidence gaps remain."
+    );
+  } else if (strategy.score >= 30) {
+    recommendation = FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW;
+    reasons.push(
+      "The opportunity has meaningful strategic value but requires executive review of the remaining evidence."
+    );
+  } else {
+    recommendation =
+      unknowns.length > 0
+        ? FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW
+        : FUNDING_EXECUTIVE_RECOMMENDATIONS.DECLINE;
+    reasons.push(
+      unknowns.length > 0
+        ? "Maddy has not completed enough evidence review for a defensible decision."
+        : "The available evidence does not show a defensible mission or roadmap connection."
     );
   }
 
+  const confidence = Math.max(
+    0.2,
+    Math.min(
+      0.98,
+      0.42 +
+        strategy.score / 250 +
+        readiness / 600 +
+        (geography.confirmed ? 0.08 : 0) +
+        (participation.confirmed ? 0.08 : 0) +
+        (opportunity.investigation?.status === "complete" ? 0.12 : 0) -
+        unknowns.length * 0.04
+    )
+  );
+
+  const nextAction =
+    requiredActions[0] ||
+    (
+      recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE
+        ? "Open the application workspace and begin the authorized pursuit workflow."
+        : recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.PARTNER
+          ? "Identify the strongest lead and funded-partner structure before authorizing pursuit."
+          : recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.PREPARE
+            ? "Resolve the listed readiness and evidence gaps before the current or next viable cycle."
+            : recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.MONITOR
+              ? "Track the opportunity and schedule the next evidence review."
+              : recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.DECLINE
+                ? "Remove it from the active executive desk while preserving the reason."
+                : "Complete the missing investigation steps and return a firm recommendation."
+    );
+
+  const whySeeingThis =
+    recommendation === FUNDING_EXECUTIVE_RECOMMENDATIONS.DECLINE
+      ? "Maddy completed enough review to keep this discovery off the active executive desk."
+      : strategy.label === "strong"
+        ? "Maddy found a strong connection to CCSP's current mission or approved five-year roadmap."
+        : strategy.label === "moderate"
+          ? "Maddy found a defensible strategic connection that requires executive judgment."
+          : "Maddy is preserving this record only because important evidence remains unresolved.";
+
+  const executiveBrief = {
+    whySeeingThis,
+    recommendation,
+    reason: reasons[0],
+    nextAction,
+    unknowns,
+    confidence,
+    geography,
+    participation,
+    missionFit: {
+      label: strategy.label,
+      score: strategy.score,
+      matches: strategy.matches
+    },
+    roadmap,
+    costShare,
+    moneyFlow,
+    funding: {
+      floor: opportunity.awardFloor || null,
+      ceiling: opportunity.awardCeiling || null,
+      estimatedTotal: opportunity.estimatedFunding || null,
+      expectedAwards: opportunity.expectedAwards || null
+    },
+    timing: {
+      lifecycle,
+      postedDate: opportunity.postedDate || opportunity.openDate || null,
+      deadline: opportunity.deadline || null,
+      timeSensitive:
+        lifecycle === "open" && Boolean(opportunity.deadline)
+    }
+  };
+
   return {
-    schema: "meos.executive-qualification-report.v1",
+    schema: "meos.executive-funding-investigation-report.v1",
     version: FUNDING_QUALIFICATION_VERSION,
     generatedAt: continuousOperationsNow(),
     recommendation,
     lifecycle,
+    geography,
+    participation,
+    missionFit: executiveBrief.missionFit,
+    roadmap,
+    costShare,
+    moneyFlow,
+    unknowns,
+    executiveBrief,
     currentOperationalReadiness: readiness,
     purposeAndStrategyAlignment: strategy.score,
     strategyMatches: strategy.matches,
-    executiveBuildMatch: null,
     reasons,
     requiredActions,
-    confidence: Math.min(
-      0.95,
-      0.5 +
-        strategy.score / 250 +
-        readiness / 500
-    ),
+    confidence,
     evidenceBasis: {
       sourceId: opportunity.sourceId || null,
       provider: opportunity.provider || null,
       externalId: opportunity.externalId || null,
       url: opportunity.url || null,
-      trustScore: opportunity.trustScore ?? null
+      trustScore: opportunity.trustScore ?? null,
+      fullNoticeRetrieved:
+        opportunity.investigation?.status === "complete"
     },
     engine: {
       mode: "server-autonomous",
-      compatibilityTarget:
-        "MEOS Executive Opportunity Office v2.0",
-      buildPortfolioContext:
-        "not-yet-synchronized-to-server"
+      compatibilityTarget: "MEOS Executive Opportunity Office v2.0",
+      buildPortfolioContext: "server-investigation-v1"
     }
   };
 }
@@ -1846,52 +2338,43 @@ function qualifyFundingOpportunities(opportunities) {
     monitor: 0,
     partner: 0,
     humanReview: 0,
-    decline: 0
+    decline: 0,
+    executiveQualified: 0,
+    executiveReviewRequired: 0,
+    executiveRejected: 0
   };
 
   const qualified = opportunities.map(opportunity => {
-    const executiveQualification =
-      qualifyFundingOpportunity(opportunity);
+    const executiveQualification = qualifyFundingOpportunity(opportunity);
+    const lifecycleState = deriveFundingQualificationStatus(
+      executiveQualification.recommendation
+    );
 
     summary.total += 1;
+    const key =
+      executiveQualification.recommendation === "human-review"
+        ? "humanReview"
+        : executiveQualification.recommendation;
+    if (Object.hasOwn(summary, key)) summary[key] += 1;
 
-    switch (executiveQualification.recommendation) {
-      case FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE:
-        summary.pursue += 1;
-        break;
-      case FUNDING_EXECUTIVE_RECOMMENDATIONS.PREPARE:
-        summary.prepare += 1;
-        break;
-      case FUNDING_EXECUTIVE_RECOMMENDATIONS.MONITOR:
-        summary.monitor += 1;
-        break;
-      case FUNDING_EXECUTIVE_RECOMMENDATIONS.PARTNER:
-        summary.partner += 1;
-        break;
-      case FUNDING_EXECUTIVE_RECOMMENDATIONS.DECLINE:
-        summary.decline += 1;
-        break;
-      default:
-        summary.humanReview += 1;
-        break;
+    if (lifecycleState.qualificationStatus === FUNDING_QUALIFICATION_STATUSES.QUALIFIED) {
+      summary.executiveQualified += 1;
+    } else if (lifecycleState.qualificationStatus === FUNDING_QUALIFICATION_STATUSES.REJECTED) {
+      summary.executiveRejected += 1;
+    } else {
+      summary.executiveReviewRequired += 1;
     }
 
     return {
       ...opportunity,
-      qualificationStatus: "executive-qualified",
-      status: "qualified",
+      ...lifecycleState,
       executiveQualification,
-      executiveRecommendation:
-        executiveQualification.recommendation,
-      qualifiedAt:
-        executiveQualification.generatedAt
+      executiveRecommendation: executiveQualification.recommendation,
+      qualifiedAt: executiveQualification.generatedAt
     };
   });
 
-  return {
-    opportunities: qualified,
-    summary
-  };
+  return { opportunities: qualified, summary };
 }
 
 
@@ -1963,6 +2446,288 @@ async function upsertFundingOpportunities(opportunities) {
         ).length
       };
     }
+  );
+}
+
+
+function grantsGovValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  return value;
+}
+
+function normalizeGrantsGovDetail(opportunity, detailPayload) {
+  const data = detailPayload?.data || detailPayload || {};
+  const synopsis = data.synopsis || {};
+  const applicantTypes = Array.isArray(synopsis.applicantTypes)
+    ? synopsis.applicantTypes.map(item => item?.description).filter(Boolean)
+    : [];
+  const instruments = Array.isArray(synopsis.fundingInstruments)
+    ? synopsis.fundingInstruments.map(item => item?.description).filter(Boolean)
+    : [];
+  const activities = Array.isArray(synopsis.fundingActivityCategories)
+    ? synopsis.fundingActivityCategories.map(item => item?.description).filter(Boolean)
+    : [];
+  const alns = Array.isArray(data.alns)
+    ? data.alns.map(item => ({
+        number: item?.alnNumber || null,
+        title: item?.programTitle || null
+      }))
+    : [];
+  const attachments = Array.isArray(data.synopsisAttachmentFolders)
+    ? data.synopsisAttachmentFolders.flatMap(folder =>
+        Array.isArray(folder?.synopsisAttachments)
+          ? folder.synopsisAttachments.map(item => ({
+              id: item?.id || null,
+              name: item?.fileName || null,
+              description: item?.fileDescription || null,
+              mimeType: item?.mimeType || null,
+              size: item?.fileLobSize || null
+            }))
+          : []
+      )
+    : [];
+
+  return {
+    ...opportunity,
+    title:
+      grantsGovValue(data.opportunityTitle) ||
+      opportunity.title,
+    opportunityNumber:
+      grantsGovValue(data.opportunityNumber) ||
+      opportunity.opportunityNumber,
+    agencyName:
+      grantsGovValue(synopsis.agencyName) ||
+      grantsGovValue(data.agencyDetails?.agencyName) ||
+      opportunity.agencyName,
+    description:
+      grantsGovValue(synopsis.synopsisDesc) ||
+      opportunity.description ||
+      null,
+    additionalEligibilityInformation:
+      grantsGovValue(
+        synopsis.applicantEligibilityDesc ||
+        synopsis.additionalEligibilityDesc ||
+        synopsis.eligibilityDesc
+      ),
+    eligibleApplicants: applicantTypes,
+    fundingInstruments: instruments,
+    fundingActivityCategories: activities,
+    assistanceListings: alns.length > 0 ? alns : opportunity.assistanceListings,
+    postedDate:
+      grantsGovValue(synopsis.postingDate) ||
+      opportunity.openDate ||
+      null,
+    deadline:
+      grantsGovValue(
+        synopsis.responseDate ||
+        synopsis.responseDateDesc ||
+        data.originalDueDateDesc
+      ) ||
+      opportunity.deadline ||
+      null,
+    costSharing:
+      typeof synopsis.costSharing === "boolean"
+        ? synopsis.costSharing
+        : opportunity.costSharing,
+    awardCeiling:
+      grantsGovValue(
+        synopsis.awardCeilingFormatted ||
+        synopsis.awardCeiling
+      ),
+    awardFloor:
+      grantsGovValue(
+        synopsis.awardFloorFormatted ||
+        synopsis.awardFloor
+      ),
+    expectedAwards:
+      grantsGovValue(
+        synopsis.expectedNumberOfAwards ||
+        synopsis.numberOfAwards
+      ),
+    estimatedFunding:
+      grantsGovValue(
+        synopsis.estimatedFundingFormatted ||
+        synopsis.estimatedFunding
+      ),
+    agencyContact: {
+      name: grantsGovValue(synopsis.agencyContactName),
+      email: grantsGovValue(synopsis.agencyContactEmail),
+      phone:
+        grantsGovValue(synopsis.agencyContactPhone) ||
+        grantsGovValue(synopsis.agencyPhone),
+      description: grantsGovValue(synopsis.agencyContactDesc)
+    },
+    attachments,
+    relatedOpportunities: Array.isArray(data.relatedOpps)
+      ? data.relatedOpps
+      : [],
+    fullNotice: {
+      opportunityCategory:
+        data.opportunityCategory?.description || null,
+      documentType: data.docType || opportunity.documentType || null,
+      originalDueDate: data.originalDueDateDesc || null,
+      synopsisVersion: synopsis.version || null,
+      attachmentCount: attachments.length,
+      packageCount: Array.isArray(data.opportunityPkgs)
+        ? data.opportunityPkgs.length
+        : 0
+    },
+    investigation: {
+      schema: "meos.funding-investigation.v1",
+      status: "complete",
+      provider: "Grants.gov fetchOpportunity",
+      investigatedAt: continuousOperationsNow(),
+      sourceOpportunityId:
+        data.id || opportunity.externalId || null,
+      evidenceCompleteness: {
+        description: Boolean(synopsis.synopsisDesc),
+        eligibility: applicantTypes.length > 0,
+        geography:
+          Boolean(synopsis.synopsisDesc) ||
+          Boolean(
+            synopsis.applicantEligibilityDesc ||
+            synopsis.additionalEligibilityDesc
+          ),
+        costShare:
+          typeof synopsis.costSharing === "boolean",
+        awardRange:
+          Boolean(synopsis.awardFloor || synopsis.awardCeiling),
+        deadline:
+          Boolean(
+            synopsis.responseDate ||
+            synopsis.responseDateDesc ||
+            data.originalDueDateDesc
+          ),
+        attachments: attachments.length > 0
+      }
+    },
+    evidence: {
+      ...(opportunity.evidence || {}),
+      detailEndpoint:
+        "https://api.grants.gov/v1/api/fetchOpportunity",
+      detailRetrievedAt: continuousOperationsNow()
+    }
+  };
+}
+
+async function fetchGrantsGovOpportunityDetail(opportunity) {
+  const opportunityId = Number(opportunity.externalId);
+
+  if (!Number.isFinite(opportunityId)) {
+    return {
+      ...opportunity,
+      investigation: {
+        schema: "meos.funding-investigation.v1",
+        status: "incomplete",
+        provider: "Grants.gov fetchOpportunity",
+        investigatedAt: continuousOperationsNow(),
+        error: {
+          code: "GRANTS_GOV_OPPORTUNITY_ID_INVALID",
+          message: "A numeric Grants.gov opportunity ID is required."
+        }
+      }
+    };
+  }
+
+  try {
+    const result = await fetchPublicFundingResource(
+      "https://api.grants.gov/v1/api/fetchOpportunity",
+      {
+        method: "POST",
+        accept: "application/json",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opportunityId })
+      }
+    );
+    const payload = JSON.parse(result.body.toString("utf8"));
+
+    if (Number(payload?.errorcode || 0) !== 0 || !payload?.data) {
+      throw Object.assign(
+        new Error(payload?.msg || "Grants.gov detail response was incomplete."),
+        { code: "GRANTS_GOV_DETAIL_INCOMPLETE" }
+      );
+    }
+
+    return normalizeGrantsGovDetail(opportunity, payload);
+  } catch (error) {
+    return {
+      ...opportunity,
+      investigation: {
+        schema: "meos.funding-investigation.v1",
+        status: "incomplete",
+        provider: "Grants.gov fetchOpportunity",
+        investigatedAt: continuousOperationsNow(),
+        error: {
+          code: error?.code || "GRANTS_GOV_DETAIL_FAILED",
+          message: error?.message || String(error)
+        }
+      }
+    };
+  }
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, items.length) },
+      () => worker()
+    )
+  );
+
+  return results;
+}
+
+async function investigateFundingOpportunities(opportunities) {
+  return mapWithConcurrency(
+    opportunities,
+    FUNDING_INVESTIGATION_CONCURRENCY,
+    async opportunity =>
+      opportunity.provider === "Grants.gov"
+        ? fetchGrantsGovOpportunityDetail(opportunity)
+        : {
+            ...opportunity,
+            investigation: {
+              schema: "meos.funding-investigation.v1",
+              status:
+                opportunity.description
+                  ? "complete"
+                  : "incomplete",
+              provider:
+                opportunity.provider || "public-source",
+              investigatedAt: continuousOperationsNow(),
+              evidenceCompleteness: {
+                description: Boolean(opportunity.description),
+                eligibility: Boolean(opportunity.eligibleApplicants),
+                geography: Boolean(
+                  opportunity.geography ||
+                  opportunity.location ||
+                  opportunity.description
+                ),
+                costShare:
+                  opportunity.costSharing !== undefined,
+                awardRange: Boolean(
+                  opportunity.awardFloor ||
+                  opportunity.awardCeiling
+                ),
+                deadline: Boolean(opportunity.deadline)
+              }
+            }
+          }
   );
 }
 
@@ -2684,9 +3449,14 @@ async function fundingIntelligenceNetworkHandler(context) {
       allDiscoveredSources
     );
 
+    const investigatedOpportunities =
+      await investigateFundingOpportunities(
+        allOpportunities
+      );
+
     const qualificationResult =
       qualifyFundingOpportunities(
-        allOpportunities
+        investigatedOpportunities
       );
 
     fundingIntelligenceState.lastQualificationSummary =
@@ -3782,6 +4552,99 @@ app.get(
     }
   }
 );
+
+app.post(
+  "/api/funding-intelligence/reinvestigate",
+  express.json({
+    limit: "16kb",
+    strict: true
+  }),
+  async (request, response) => {
+    try {
+      const requestedLimit = Number(
+        request.body?.limit ||
+        FUNDING_REINVESTIGATION_MAX_RECORDS
+      );
+      const limit = Math.max(
+        1,
+        Math.min(
+          FUNDING_REINVESTIGATION_MAX_RECORDS,
+          Number.isFinite(requestedLimit)
+            ? Math.floor(requestedLimit)
+            : FUNDING_REINVESTIGATION_MAX_RECORDS
+        )
+      );
+
+      const stored = (
+        await readExecutiveMemoryCollection(
+          FUNDING_OPPORTUNITY_COLLECTION
+        )
+      )
+        .filter(
+          record =>
+            record?.type === "funding-opportunity"
+        )
+        .sort((left, right) =>
+          String(
+            right.lastSeenAt ||
+            right.updatedAt ||
+            ""
+          ).localeCompare(
+            String(
+              left.lastSeenAt ||
+              left.updatedAt ||
+              ""
+            )
+          )
+        )
+        .slice(0, limit);
+
+      const investigated =
+        await investigateFundingOpportunities(stored);
+      const qualificationResult =
+        qualifyFundingOpportunities(investigated);
+      const writeResult =
+        await upsertFundingOpportunities(
+          qualificationResult.opportunities
+        );
+
+      fundingIntelligenceState.lastQualificationSummary =
+        qualificationResult.summary;
+
+      response.status(200).json({
+        schema:
+          "meos.funding-intelligence.reinvestigation.v1",
+        version: FUNDING_INTELLIGENCE_VERSION,
+        qualificationVersion:
+          FUNDING_QUALIFICATION_VERSION,
+        requested: stored.length,
+        completed:
+          investigated.filter(
+            item =>
+              item.investigation?.status === "complete"
+          ).length,
+        incomplete:
+          investigated.filter(
+            item =>
+              item.investigation?.status !== "complete"
+          ).length,
+        qualification:
+          qualificationResult.summary,
+        storage: writeResult
+      });
+    } catch (error) {
+      response.status(500).json({
+        error:
+          error?.message ||
+          "Funding opportunities could not be reinvestigated.",
+        code:
+          error?.code ||
+          "FUNDING_REINVESTIGATION_FAILED"
+      });
+    }
+  }
+);
+
 
 app.post(
   "/api/funding-intelligence/registry/seed",
