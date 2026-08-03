@@ -24,7 +24,7 @@ import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.3.0";
+const VERSION = "2.4.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -384,6 +384,8 @@ const FUNDING_SOURCE_SEEDS = Object.freeze([
   }
 ]);
 
+const FUNDING_QUALIFICATION_VERSION = "1.0.0";
+
 const fundingIntelligenceState = {
   status: "initializing",
   lastRunAt: null,
@@ -392,7 +394,16 @@ const fundingIntelligenceState = {
   sourcesInvestigated: 0,
   sourcesDiscovered: 0,
   opportunitiesDiscovered: 0,
-  duplicatesRejected: 0
+  duplicatesRejected: 0,
+  lastQualificationSummary: {
+    total: 0,
+    pursue: 0,
+    prepare: 0,
+    monitor: 0,
+    partner: 0,
+    humanReview: 0,
+    decline: 0
+  }
 };
 
 /**
@@ -1459,6 +1470,431 @@ async function upsertFundingSources(sources) {
   );
 }
 
+
+const FUNDING_EXECUTIVE_RECOMMENDATIONS = Object.freeze({
+  PURSUE: "pursue",
+  PREPARE: "prepare",
+  MONITOR: "monitor",
+  PARTNER: "partner",
+  HUMAN_REVIEW: "human-review",
+  DECLINE: "decline"
+});
+
+const CCSP_FUNDING_STRATEGY_SIGNALS = Object.freeze([
+  {
+    id: "mobile-hygiene",
+    terms: [
+      "mobile hygiene",
+      "hygiene",
+      "shower",
+      "sanitation",
+      "homeless outreach",
+      "street outreach"
+    ],
+    weight: 24
+  },
+  {
+    id: "substance-use-recovery",
+    terms: [
+      "substance use",
+      "substance abuse",
+      "sud",
+      "recovery",
+      "behavioral health",
+      "treatment",
+      "residential treatment"
+    ],
+    weight: 28
+  },
+  {
+    id: "housing-and-stabilization",
+    terms: [
+      "homelessness",
+      "housing",
+      "supportive housing",
+      "transitional housing",
+      "sober living",
+      "community stabilization"
+    ],
+    weight: 26
+  },
+  {
+    id: "workforce-development",
+    terms: [
+      "workforce",
+      "employment",
+      "job training",
+      "apprenticeship",
+      "skilled trades",
+      "economic mobility"
+    ],
+    weight: 22
+  },
+  {
+    id: "watershed-and-environment",
+    terms: [
+      "watershed",
+      "water quality",
+      "environmental",
+      "river",
+      "monterey bay",
+      "pollution prevention"
+    ],
+    weight: 20
+  },
+  {
+    id: "organizational-capacity",
+    terms: [
+      "capacity building",
+      "nonprofit",
+      "community development",
+      "technology",
+      "infrastructure",
+      "capital",
+      "equipment"
+    ],
+    weight: 16
+  }
+]);
+
+function normalizeFundingQualificationText(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fundingOpportunityLifecycle(opportunity) {
+  const nowMs = Date.now();
+  const openMs = Date.parse(
+    opportunity.openDate ||
+      opportunity.postedDate ||
+      ""
+  );
+  const deadlineMs = Date.parse(
+    opportunity.deadline ||
+      opportunity.closeDate ||
+      ""
+  );
+  const rawStatus = normalizeFundingQualificationText(
+    opportunity.opportunityStatus ||
+      opportunity.status ||
+      ""
+  );
+
+  if (
+    rawStatus.includes("forecast") ||
+    rawStatus.includes("expected") ||
+    (Number.isFinite(openMs) && openMs > nowMs)
+  ) {
+    return "coming-soon";
+  }
+
+  if (
+    rawStatus.includes("closed") ||
+    (Number.isFinite(deadlineMs) && deadlineMs < nowMs)
+  ) {
+    return "closed";
+  }
+
+  if (
+    rawStatus.includes("posted") ||
+    rawStatus.includes("open") ||
+    !Number.isFinite(deadlineMs) ||
+    deadlineMs >= nowMs
+  ) {
+    return "open";
+  }
+
+  return "unknown";
+}
+
+function calculateFundingStrategyAlignment(opportunity) {
+  const text = normalizeFundingQualificationText(
+    [
+      opportunity.title,
+      opportunity.description,
+      opportunity.agencyName,
+      opportunity.category,
+      opportunity.discoveryQuery,
+      opportunity.fundingAreas,
+      opportunity.assistanceListings,
+      opportunity.capabilities
+    ]
+      .flat(Infinity)
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const matches = CCSP_FUNDING_STRATEGY_SIGNALS
+    .map(signal => {
+      const matchedTerms = signal.terms.filter(term =>
+        text.includes(
+          normalizeFundingQualificationText(term)
+        )
+      );
+
+      return {
+        id: signal.id,
+        matchedTerms,
+        score:
+          matchedTerms.length > 0
+            ? Math.min(
+                signal.weight,
+                8 + matchedTerms.length * 6
+              )
+            : 0
+      };
+    })
+    .filter(match => match.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  const score = Math.min(
+    100,
+    matches.reduce(
+      (total, match) => total + match.score,
+      0
+    )
+  );
+
+  return {
+    score,
+    matches
+  };
+}
+
+function calculateFundingOperationalReadiness(opportunity) {
+  let score = 45;
+  const text = normalizeFundingQualificationText(
+    [
+      opportunity.title,
+      opportunity.description,
+      opportunity.category,
+      opportunity.agencyName
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  if (
+    /nonprofit|community organization|501 c 3|public charity/.test(
+      text
+    )
+  ) {
+    score += 20;
+  }
+
+  if (
+    /california|santa cruz|monterey|central coast/.test(
+      text
+    )
+  ) {
+    score += 15;
+  }
+
+  if (
+    /planning|capacity building|technical assistance|equipment|operating support/.test(
+      text
+    )
+  ) {
+    score += 10;
+  }
+
+  if (
+    /licensed facility|licensed provider|accreditation|required match|cost share/.test(
+      text
+    )
+  ) {
+    score -= 20;
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function qualifyFundingOpportunity(opportunity) {
+  const lifecycle = fundingOpportunityLifecycle(opportunity);
+  const strategy =
+    calculateFundingStrategyAlignment(opportunity);
+  const readiness =
+    calculateFundingOperationalReadiness(opportunity);
+  const text = normalizeFundingQualificationText(
+    [
+      opportunity.title,
+      opportunity.description,
+      opportunity.category,
+      opportunity.agencyName
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const reasons = [];
+  const requiredActions = [];
+  let recommendation =
+    FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW;
+
+  if (
+    lifecycle === "coming-soon" ||
+    lifecycle === "closed"
+  ) {
+    recommendation =
+      FUNDING_EXECUTIVE_RECOMMENDATIONS.MONITOR;
+    reasons.push(
+      lifecycle === "coming-soon"
+        ? "The opportunity is not yet actionable and should remain scheduled for preparation."
+        : "The opportunity is currently closed and should remain visible for recurrence or replacement monitoring."
+    );
+    requiredActions.push(
+      "Preserve the record, monitor lifecycle changes, and schedule a proportionate future review."
+    );
+  }
+
+  if (strategy.score >= 60) {
+    recommendation =
+      readiness >= 65 && lifecycle === "open"
+        ? FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE
+        : FUNDING_EXECUTIVE_RECOMMENDATIONS.PREPARE;
+
+    reasons.push(
+      "The opportunity strongly advances CCSP's current purposes or long-term strategy."
+    );
+  } else if (strategy.score >= 30) {
+    recommendation =
+      lifecycle === "open"
+        ? FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW
+        : recommendation;
+
+    reasons.push(
+      "The opportunity has meaningful strategic or adaptive potential that deserves executive review."
+    );
+  }
+
+  if (
+    /partnership|coalition|collaboration|consortium|subaward/.test(
+      text
+    ) &&
+    recommendation !==
+      FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE
+  ) {
+    recommendation =
+      FUNDING_EXECUTIVE_RECOMMENDATIONS.PARTNER;
+    reasons.push(
+      "A partnership, subaward, or consortium path may improve eligibility or competitiveness."
+    );
+    requiredActions.push(
+      "Identify qualified partners and evaluate a shared application or subrecipient role."
+    );
+  }
+
+  if (
+    recommendation ===
+      FUNDING_EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW &&
+    strategy.score === 0 &&
+    lifecycle === "open"
+  ) {
+    reasons.push(
+      "The available structured evidence is insufficient for a confident automated recommendation."
+    );
+    requiredActions.push(
+      "Retrieve the full notice, eligibility rules, award amount, and program purpose before deciding."
+    );
+  }
+
+  return {
+    schema: "meos.executive-qualification-report.v1",
+    version: FUNDING_QUALIFICATION_VERSION,
+    generatedAt: continuousOperationsNow(),
+    recommendation,
+    lifecycle,
+    currentOperationalReadiness: readiness,
+    purposeAndStrategyAlignment: strategy.score,
+    strategyMatches: strategy.matches,
+    executiveBuildMatch: null,
+    reasons,
+    requiredActions,
+    confidence: Math.min(
+      0.95,
+      0.5 +
+        strategy.score / 250 +
+        readiness / 500
+    ),
+    evidenceBasis: {
+      sourceId: opportunity.sourceId || null,
+      provider: opportunity.provider || null,
+      externalId: opportunity.externalId || null,
+      url: opportunity.url || null,
+      trustScore: opportunity.trustScore ?? null
+    },
+    engine: {
+      mode: "server-autonomous",
+      compatibilityTarget:
+        "MEOS Executive Opportunity Office v2.0",
+      buildPortfolioContext:
+        "not-yet-synchronized-to-server"
+    }
+  };
+}
+
+function qualifyFundingOpportunities(opportunities) {
+  const summary = {
+    total: 0,
+    pursue: 0,
+    prepare: 0,
+    monitor: 0,
+    partner: 0,
+    humanReview: 0,
+    decline: 0
+  };
+
+  const qualified = opportunities.map(opportunity => {
+    const executiveQualification =
+      qualifyFundingOpportunity(opportunity);
+
+    summary.total += 1;
+
+    switch (executiveQualification.recommendation) {
+      case FUNDING_EXECUTIVE_RECOMMENDATIONS.PURSUE:
+        summary.pursue += 1;
+        break;
+      case FUNDING_EXECUTIVE_RECOMMENDATIONS.PREPARE:
+        summary.prepare += 1;
+        break;
+      case FUNDING_EXECUTIVE_RECOMMENDATIONS.MONITOR:
+        summary.monitor += 1;
+        break;
+      case FUNDING_EXECUTIVE_RECOMMENDATIONS.PARTNER:
+        summary.partner += 1;
+        break;
+      case FUNDING_EXECUTIVE_RECOMMENDATIONS.DECLINE:
+        summary.decline += 1;
+        break;
+      default:
+        summary.humanReview += 1;
+        break;
+    }
+
+    return {
+      ...opportunity,
+      qualificationStatus: "executive-qualified",
+      status: "qualified",
+      executiveQualification,
+      executiveRecommendation:
+        executiveQualification.recommendation,
+      qualifiedAt:
+        executiveQualification.generatedAt
+    };
+  });
+
+  return {
+    opportunities: qualified,
+    summary
+  };
+}
+
+
 async function upsertFundingOpportunities(opportunities) {
   return withExecutiveMemoryWriteLock(
     FUNDING_OPPORTUNITY_COLLECTION,
@@ -1871,6 +2307,11 @@ async function getFundingIntelligenceStatus() {
       duplicatesRejected:
         fundingIntelligenceState.duplicatesRejected
     },
+    qualification: {
+      version: FUNDING_QUALIFICATION_VERSION,
+      lastSummary:
+        fundingIntelligenceState.lastQualificationSummary
+    },
     recentInvestigations: history
   };
 }
@@ -2242,9 +2683,18 @@ async function fundingIntelligenceNetworkHandler(context) {
     const sourceWriteResult = await upsertFundingSources(
       allDiscoveredSources
     );
+
+    const qualificationResult =
+      qualifyFundingOpportunities(
+        allOpportunities
+      );
+
+    fundingIntelligenceState.lastQualificationSummary =
+      qualificationResult.summary;
+
     const opportunityWriteResult =
       await upsertFundingOpportunities(
-        allOpportunities
+        qualificationResult.opportunities
       );
 
     const completedAt = continuousOperationsNow();
@@ -2285,7 +2735,9 @@ async function fundingIntelligenceNetworkHandler(context) {
           updatedOpportunities:
             opportunityWriteResult.updated,
           duplicatesRejected:
-            opportunityWriteResult.duplicates
+            opportunityWriteResult.duplicates,
+          qualification:
+            qualificationResult.summary
         },
         investigations,
         authorityBoundary:
@@ -2328,7 +2780,7 @@ async function fundingIntelligenceNetworkHandler(context) {
         investigationRecord.id,
       nextAction:
         opportunityWriteResult.added > 0
-          ? "Opportunity Office qualification is required."
+          ? "Review the highest-priority Executive Qualification Reports and route approved work."
           : "Continue monitoring and expand the funding intelligence network.",
       authorityBoundary:
         investigationRecord.authorityBoundary
@@ -3252,6 +3704,85 @@ app.get(
   }
 );
 
+
+app.get(
+  "/api/funding-intelligence/opportunities",
+  async (request, response) => {
+    try {
+      const requestedLimit = Number(
+        request.query.limit || 50
+      );
+      const limit = Math.max(
+        1,
+        Math.min(
+          Number.isFinite(requestedLimit)
+            ? Math.floor(requestedLimit)
+            : 50,
+          500
+        )
+      );
+      const recommendation = String(
+        request.query.recommendation || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const opportunities = (
+        await readExecutiveMemoryCollection(
+          FUNDING_OPPORTUNITY_COLLECTION
+        )
+      )
+        .filter(
+          record =>
+            record?.type === "funding-opportunity"
+        )
+        .filter(
+          record =>
+            !recommendation ||
+            record.executiveRecommendation ===
+              recommendation
+        )
+        .sort((left, right) =>
+          String(
+            right.qualifiedAt ||
+              right.lastSeenAt ||
+              right.updatedAt ||
+              ""
+          ).localeCompare(
+            String(
+              left.qualifiedAt ||
+                left.lastSeenAt ||
+                left.updatedAt ||
+                ""
+            )
+          )
+        )
+        .slice(0, limit);
+
+      response.status(200).json({
+        schema:
+          "meos.funding-intelligence.opportunities.v1",
+        version: FUNDING_INTELLIGENCE_VERSION,
+        qualificationVersion:
+          FUNDING_QUALIFICATION_VERSION,
+        count: opportunities.length,
+        recommendation:
+          recommendation || null,
+        opportunities
+      });
+    } catch (error) {
+      response.status(500).json({
+        error:
+          error?.message ||
+          "Funding Intelligence opportunities could not be read.",
+        code:
+          error?.code ||
+          "FUNDING_INTELLIGENCE_OPPORTUNITIES_FAILED"
+      });
+    }
+  }
+);
+
 app.post(
   "/api/funding-intelligence/registry/seed",
   express.json({
@@ -3930,6 +4461,11 @@ app.listen(PORT, () => {
         `[MEOS] Funding Intelligence Network ` +
           `v${FUNDING_INTELLIGENCE_VERSION} registry ready. ` +
           `sources=${result.total}.`
+      );
+
+      console.log(
+        `[MEOS] Autonomous Executive Qualification ` +
+          `v${FUNDING_QUALIFICATION_VERSION} ready.`
       );
     })
     .catch(error => {
