@@ -2197,6 +2197,130 @@ document
     return dashboard;
   }
 
+  function getFundingDeadline(opportunity) {
+    const raw = firstDefined(
+      opportunity?.deadline,
+      opportunity?.closeDate,
+      opportunity?.applicationDeadline,
+      opportunity?.opportunityCloseDate,
+      ""
+    );
+    if (!raw) return "No deadline listed";
+
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime())
+      ? String(raw)
+      : parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  function getFundingDescription(opportunity) {
+    return firstDefined(
+      opportunity?.executiveSummary,
+      opportunity?.summary,
+      opportunity?.description,
+      opportunity?.synopsis,
+      opportunity?.qualification?.reason,
+      "No executive summary is available for this opportunity."
+    );
+  }
+
+  function renderFundingOpportunityDetail(opportunity) {
+    const detail = document.getElementById("meosFundingBrowserDetail");
+    if (!detail || !opportunity) return;
+
+    const title = firstDefined(opportunity?.title, "Untitled funding opportunity");
+    const provider = firstDefined(opportunity?.agencyName, opportunity?.provider, opportunity?.sourceName, "Funding source");
+    const score = getFundingScore(opportunity);
+    const amount = getFundingAmount(opportunity);
+    const recommendation = getFundingRecommendation(opportunity);
+    const url = firstDefined(opportunity?.url, opportunity?.sourceUrl, opportunity?.source?.url, "");
+
+    detail.innerHTML = `
+      <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px;">
+        <div>
+          <div class="meos-widget-title" style="margin-bottom:8px;">Funding Opportunity</div>
+          <h2 style="margin:0 0 8px;font-size:1.35rem;line-height:1.25;">${escapeHtml(title)}</h2>
+          <div class="meos-muted">${escapeHtml(provider)}</div>
+        </div>
+        <span class="meos-priority high">${escapeHtml(recommendation)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0;">
+        <div class="meos-alert"><strong>${score === null ? "Qualified" : `${score}%`}</strong><span class="meos-muted">Executive match</span></div>
+        <div class="meos-alert"><strong>${escapeHtml(amount)}</strong><span class="meos-muted">Funding amount</span></div>
+        <div class="meos-alert"><strong>${escapeHtml(getFundingDeadline(opportunity))}</strong><span class="meos-muted">Deadline</span></div>
+      </div>
+      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(getFundingDescription(opportunity))}</p>
+      ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="take-it-button" style="display:inline-block;text-decoration:none;margin-top:8px;">Open Official Opportunity</a>` : ""}
+    `;
+  }
+
+  function openFundingIntelligenceBrowser(selectedOpportunity = null) {
+    let overlay = document.getElementById("meosFundingBrowserOverlay");
+
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "meosFundingBrowserOverlay";
+      overlay.style.cssText = "position:fixed;inset:0;z-index:10000;background:rgba(0,5,12,.86);backdrop-filter:blur(10px);padding:24px;overflow:auto;";
+      overlay.innerHTML = `
+        <section style="width:min(1280px,100%);min-height:75vh;margin:0 auto;background:#071523;border:1px solid rgba(105,239,255,.35);box-shadow:0 0 50px rgba(0,0,0,.55);">
+          <header style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid rgba(105,239,255,.2);">
+            <div>
+              <div class="meos-widget-title">Live Funding Intelligence</div>
+              <div id="meosFundingBrowserCount" class="meos-muted" style="margin-top:5px;"></div>
+            </div>
+            <button id="meosFundingBrowserClose" class="office-dashboard-close" type="button" aria-label="Close">×</button>
+          </header>
+          <div style="display:grid;grid-template-columns:minmax(280px,38%) minmax(0,62%);min-height:65vh;">
+            <div style="border-right:1px solid rgba(105,239,255,.16);padding:14px;overflow:auto;max-height:72vh;">
+              <input id="meosFundingBrowserSearch" class="meos-maddy-input" type="search" placeholder="Search 152 qualified opportunities…" style="width:100%;margin-bottom:12px;" />
+              <ul id="meosFundingBrowserList" class="meos-list"></ul>
+            </div>
+            <div id="meosFundingBrowserDetail" style="padding:22px;overflow:auto;max-height:72vh;"></div>
+          </div>
+        </section>
+      `;
+      document.body.appendChild(overlay);
+
+      overlay.querySelector("#meosFundingBrowserClose")?.addEventListener("click", () => overlay.remove());
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) overlay.remove();
+      });
+      overlay.querySelector("#meosFundingBrowserSearch")?.addEventListener("input", (event) => {
+        renderFundingBrowserList(event.target.value);
+      });
+    }
+
+    renderFundingBrowserList("");
+    const first = selectedOpportunity || state.fundingIntelligence.opportunities[0];
+    if (first) renderFundingOpportunityDetail(first);
+    overlay.querySelector("#meosFundingBrowserCount").textContent = `${state.fundingIntelligence.totalQualified} executive-qualified opportunities`;
+    overlay.querySelector("#meosFundingBrowserSearch").placeholder = `Search ${state.fundingIntelligence.totalQualified} qualified opportunities…`;
+  }
+
+  function renderFundingBrowserList(query = "") {
+    const list = document.getElementById("meosFundingBrowserList");
+    if (!list) return;
+
+    const normalized = String(query || "").trim().toLowerCase();
+    const matches = state.fundingIntelligence.opportunities.filter((opportunity) => {
+      if (!normalized) return true;
+      return [opportunity?.title, opportunity?.agencyName, opportunity?.provider, opportunity?.sourceName]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalized));
+    });
+
+    list.innerHTML = matches.map((opportunity, index) => {
+      const title = firstDefined(opportunity?.title, "Untitled funding opportunity");
+      const provider = firstDefined(opportunity?.agencyName, opportunity?.provider, opportunity?.sourceName, "Funding source");
+      const score = getFundingScore(opportunity);
+      return `<li><button type="button" data-funding-browser-index="${index}" style="width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:2px 0;"><strong>${escapeHtml(title)}</strong><br><small class="meos-muted">${escapeHtml(provider)} · ${score === null ? "Qualified" : `${score}% match`}</small></button></li>`;
+    }).join("") || '<li><span></span><span>No matching opportunities.</span><span></span></li>';
+
+    list.querySelectorAll("[data-funding-browser-index]").forEach((button) => {
+      button.addEventListener("click", () => renderFundingOpportunityDetail(matches[Number(button.dataset.fundingBrowserIndex)]));
+    });
+  }
+
   function bindDashboardEvents() {
     document.getElementById("meosImUpButton")?.addEventListener("click", () => {
       document.getElementById("meosMaddyInput")?.focus();
@@ -2219,10 +2343,22 @@ document
     });
 
     document.getElementById("meosFundingViewAll")?.addEventListener("click", () => {
-      dispatchMEOS("meos:funding-intelligence-view-all", {
-        opportunities: state.fundingIntelligence.opportunities.map((item) => ({ ...item })),
-        totalQualified: state.fundingIntelligence.totalQualified
-      });
+      openFundingIntelligenceBrowser();
+    });
+
+    document.getElementById("meosFundingOpportunityList")?.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-funding-opportunity-id]");
+      if (!row) return;
+
+      if (event.target.closest("a")) return;
+
+      const opportunity = state.fundingIntelligence.opportunities.find(
+        (item) => String(item?.id || "") === String(row.dataset.fundingOpportunityId || "")
+      );
+
+      if (opportunity) {
+        openFundingIntelligenceBrowser(opportunity);
+      }
     });
   }
 
