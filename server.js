@@ -26,7 +26,7 @@ import { fileURLToPath } from "url";
 import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
 import CaliforniaGrantsPortalAdapter from "./california-grants-portal-adapter.js";
 
-const VERSION = "2.6.5";
+const VERSION = "2.6.6";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.0.0";
@@ -7250,26 +7250,6 @@ const executiveResourceDevelopmentOffice =
     now: continuousOperationsNow
   });
 
-app.get("*", (request, response) => {
-  response.sendFile(path.join(frontendDirectory, "index.html"));
-});
-
-app.use((error, request, response, next) => {
-  if (error instanceof SyntaxError && "body" in error) {
-    response.status(400).json({
-      error: "Invalid JSON request body."
-    });
-    return;
-  }
-
-  console.error("[MEOS] Unhandled server error:", error);
-
-  response.status(500).json({
-    error: "An unexpected MEOS server error occurred."
-  });
-});
-
-
 app.get("/api/resource-discovery/status", (request, response) => {
   try {
     const adapters = ResourceDiscoveryNetwork.listAdapters();
@@ -7366,6 +7346,27 @@ app.get(
     }
   }
 );
+
+app.get("*", (request, response) => {
+  response.sendFile(path.join(frontendDirectory, "index.html"));
+});
+
+app.use((error, request, response, next) => {
+  if (error instanceof SyntaxError && "body" in error) {
+    response.status(400).json({
+      error: "Invalid JSON request body."
+    });
+    return;
+  }
+
+  console.error("[MEOS] Unhandled server error:", error);
+
+  response.status(500).json({
+    error: "An unexpected MEOS server error occurred."
+  });
+});
+
+
 
 app.listen(PORT, () => {
   console.log(
