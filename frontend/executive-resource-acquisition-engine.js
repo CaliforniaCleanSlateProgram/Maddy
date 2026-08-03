@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Resource Acquisition Engine
  *
- * Version: 2.1.0
- * Build: ERAE210-DECISION-QUALITY-20260803-A
+ * Version: 2.1.1
+ * Build: ERAE211-LIVE-RECORD-GATE-20260803-A
  *
  * Mission:
  * Make one authoritative executive decision for every grant or resource
@@ -16,8 +16,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Resource Acquisition Engine";
-  const VERSION = "2.1.0";
-  const BUILD_ID = "ERAE210-DECISION-QUALITY-20260803-A";
+  const VERSION = "2.1.1";
+  const BUILD_ID = "ERAE211-LIVE-RECORD-GATE-20260803-A";
   const SCHEMA = "meos.executive-resource-decision.v2";
 
   const DECISIONS = Object.freeze({
@@ -58,26 +58,142 @@
     return [value];
   }
 
-  function text(opportunity = {}) {
-    return normalize([
-      opportunity.title,
-      opportunity.description,
-      opportunity.statedPurpose,
-      opportunity.category,
-      opportunity.type,
-      opportunity.provider,
-      opportunity.agencyName,
-      opportunity.geography,
-      opportunity.location,
-      ...array(opportunity.eligibleApplicants),
-      opportunity.additionalEligibilityInformation,
-      ...array(opportunity.targetPopulations),
-      ...array(opportunity.desiredOutcomes),
-      ...array(opportunity.fundingAreas),
-      opportunity.fullNotice,
-      opportunity.raw
-    ].map(value => typeof value === "object" ? JSON.stringify(value) : value).join(" "));
+  const DERIVED_DECISION_KEYS = new Set([
+    "authoritativeResourceDecision",
+    "resourceDecision",
+    "resourceDevelopment",
+    "executiveQualification",
+    "executivePriority",
+    "workQueue",
+    "qualification",
+    "evaluation",
+    "executiveBrief",
+    "reasoning",
+    "recommendation"
+  ]);
+
+  function collectSourceText(value, depth = 0, key = "") {
+    if (depth > 6 || value === null || value === undefined) return [];
+
+    if (DERIVED_DECISION_KEYS.has(key)) {
+      return [];
+    }
+
+    if (typeof value === "string" || typeof value === "number") {
+      return [String(value)];
+    }
+
+    if (Array.isArray(value)) {
+      return value.flatMap(item =>
+        collectSourceText(item, depth + 1, key)
+      );
+    }
+
+    if (typeof value === "object") {
+      return Object.entries(value).flatMap(([childKey, childValue]) =>
+        collectSourceText(childValue, depth + 1, childKey)
+      );
+    }
+
+    return [];
   }
+
+  function text(opportunity = {}) {
+    const explicitSourceFields = {
+      title: opportunity.title,
+      description: opportunity.description,
+      synopsis: opportunity.synopsis,
+      summary: opportunity.summary,
+      statedPurpose: opportunity.statedPurpose,
+      category: opportunity.category,
+      type: opportunity.type,
+      provider: opportunity.provider,
+      agencyName: opportunity.agencyName,
+      geography: opportunity.geography,
+      location: opportunity.location,
+      eligibleApplicants: opportunity.eligibleApplicants,
+      additionalEligibilityInformation:
+        opportunity.additionalEligibilityInformation,
+      targetPopulations: opportunity.targetPopulations,
+      desiredOutcomes: opportunity.desiredOutcomes,
+      fundingAreas: opportunity.fundingAreas,
+      fullNotice: opportunity.fullNotice,
+      notice: opportunity.notice,
+      details: opportunity.details,
+      source: opportunity.source,
+      raw: opportunity.raw
+    };
+
+    return normalize(
+      collectSourceText(explicitSourceFields).join(" ")
+    );
+  }
+
+  function primaryTitleGate(opportunity = {}) {
+    const title = normalize(opportunity.title);
+
+    const rejectRules = [
+      {
+        id: "oil-gas-technology",
+        rule:
+          /\bimproved oil and gas recovery\b|\boil and gas recovery\b|\bproduced water management technologies\b/,
+        reason:
+          "The primary funded work is oil-and-gas technology development, which does not advance CCSP."
+      },
+      {
+        id: "wildland-forestry",
+        rule:
+          /\bwildland fire\b|\bforest and woodlands\b|\brangeland resource\b|\bferal swine\b|\binvasive and noxious plant\b/,
+        reason:
+          "The primary funded work is natural-resource management outside CCSP's mission."
+      },
+      {
+        id: "desalination-research",
+        rule:
+          /\bdesalination and water purification research\b/,
+        reason:
+          "The primary funded work is scientific desalination research rather than CCSP service delivery or strategic development."
+      },
+      {
+        id: "foreign-diplomatic-program",
+        rule:
+          /\bjefferson center mandalay\b|\bamerican center yangon\b/,
+        reason:
+          "The opportunity funds foreign public-diplomacy work outside CCSP's operating footprint."
+      }
+    ];
+
+    for (const item of rejectRules) {
+      if (item.rule.test(title)) {
+        return {
+          status: "reject",
+          id: item.id,
+          reason: item.reason
+        };
+      }
+    }
+
+    if (
+      /\bcontinuum of care competition and youth homelessness demonstration program grants\b/.test(
+        title
+      )
+    ) {
+      return {
+        status: "research",
+        id: "mixed-program-notice",
+        reason:
+          "This bundled notice contains distinct Continuum of Care and youth-demonstration tracks. The specific track CCSP can pursue must be identified before it reaches the Executive Director's desk."
+      };
+    }
+
+    return {
+      status: "continue",
+      id: null,
+      reason: null
+    };
+  }
+
+
 
   function getProfile(context = {}) {
     return context.organizationProfile ||
@@ -240,10 +356,19 @@
       strategic.length > 0 ||
       strategyScore >= 75 ||
       portfolioScore >= 75;
+    const title = normalize(opportunity.title);
+    const primarySectorMismatch =
+      /\bimproved oil and gas recovery\b|\boil and gas recovery\b|\bproduced water management technologies\b|\bwildland fire\b|\bforest and woodlands\b|\brangeland resource\b|\bferal swine\b|\bdesalination and water purification research\b/.test(
+        title
+      );
+
     const unrelatedDominant =
-      unrelated.length > 0 &&
-      direct.length === 0 &&
-      strategic.length === 0;
+      primarySectorMismatch ||
+      (
+        unrelated.length > 0 &&
+        direct.length === 0 &&
+        strategic.length === 0
+      );
 
     return {
       advances: explicitPath && !unrelatedDominant,
@@ -337,6 +462,7 @@
 
   function decide(opportunity = {}, context = {}) {
     const evaluatedAt = now();
+    const titleGate = primaryTitleGate(opportunity);
     const eligibility = explicitEligibility(opportunity);
     const advances = advancement(opportunity, context);
     const timingResult = deadline(opportunity);
@@ -354,7 +480,17 @@
     let reason = "The opportunity does not meet the Executive Resource Acquisition standard.";
     let nextAction = "Keep off the active Executive Director desk and preserve the decision evidence.";
 
-    if (eligibility.hardExclusions.length > 0) {
+    if (titleGate.status === "reject") {
+      reason = titleGate.reason;
+    } else if (titleGate.status === "research") {
+      decision = DECISIONS.RESEARCH;
+      strategicTiming = TIMING.BUILD_NOW_FOR_FUTURE;
+      showExecutiveDirector = false;
+      acquisitionPath = "unresolved-track";
+      reason = titleGate.reason;
+      nextAction =
+        "Separate the bundled notice into its distinct program tracks and verify CCSP eligibility for the applicable track.";
+    } else if (eligibility.hardExclusions.length > 0) {
       reason = eligibility.hardExclusions[0];
     } else if (!advances.advances) {
       reason = advances.explanation;
@@ -424,6 +560,7 @@
       effort: worthResult.effort,
       reasoning: {
         reason,
+        primaryTitleGate: titleGate,
         eligibility,
         advancement: advances,
         worth: worthResult
@@ -496,7 +633,41 @@
       { name: "Municipal wastewater program stays off desk", opportunity: { id: "bad-wastewater", title: "Technical Assistance for Rural Municipalities and Wastewater Treatment Systems", description: "Technical assistance to municipal wastewater treatment systems and public utilities.", eligibleApplicants: ["municipalities only"], awardCeiling: 3000000, deadline: future(11) }, expected: { show: false, decision: "reject" } },
       { name: "Veteran-only Stand Down grant stays off desk", opportunity: { id: "bad-veteran", title: "Announcement of Stand Down Grants", description: "Funding for organizations serving eligible veterans through Stand Down events.", eligibleApplicants: ["nonprofits"], awardCeiling: 10000, deadline: future(58) }, expected: { show: false, decision: "reject" } },
       { name: "Clinical research stays off desk", opportunity: { id: "bad-clinical", title: "Substance Use Clinical Trial R01", description: "Clinical trial research for university medical research institutions.", awardCeiling: 1500000, deadline: future(100) }, expected: { show: false, decision: "reject" } },
-      { name: "Unknown applicant path stays in research and off desk", opportunity: { id: "research-eligibility", title: "Regional Recovery Facility Capital Opportunity", description: "Capital funding for a regional recovery facility. Applicant types are not stated.", awardCeiling: 2500000, deadline: future(60) }, expected: { show: false, decision: "research" } }
+      { name: "Unknown applicant path stays in research and off desk", opportunity: { id: "research-eligibility", title: "Regional Recovery Facility Capital Opportunity", description: "Capital funding for a regional recovery facility. Applicant types are not stated.", awardCeiling: 2500000, deadline: future(60) }, expected: { show: false, decision: "research" } },
+      {
+        name: "Exact live oil-and-gas title stays off desk despite cached mission language",
+        opportunity: {
+          id: "live-oil-record",
+          title: "Improved Oil and Gas Recovery and Produced Water Management Technologies",
+          description: "Technology research and development opportunity.",
+          eligibleApplicants: ["nonprofit organizations"],
+          executiveQualification: {
+            executiveBrief: {
+              reason: "Old cached record mentioned recovery services and community stabilization."
+            }
+          },
+          resourceDevelopment: {
+            missionScope: {
+              directMatches: ["recovery-treatment-navigation"]
+            }
+          },
+          awardCeiling: 1000000,
+          deadline: future(36)
+        },
+        expected: { show: false, decision: "reject" }
+      },
+      {
+        name: "Exact bundled CoC and youth NOFO stays in research off desk",
+        opportunity: {
+          id: "live-coc-youth-record",
+          title: "FY 2026 Continuum of Care Competition and Youth Homelessness Demonstration Program Grants NOFO",
+          description: "A bundled federal notice containing multiple program tracks.",
+          eligibleApplicants: ["nonprofit organizations"],
+          awardCeiling: 3000000,
+          deadline: future(23)
+        },
+        expected: { show: false, decision: "research" }
+      }
     ];
 
     const checks = cases.map(testCase => {
@@ -513,7 +684,7 @@
 
     return {
       success: checks.every(check => check.passed),
-      schema: "meos.executive-resource-acquisition.acceptance-test.v2",
+      schema: "meos.executive-resource-acquisition.acceptance-test.v2.1",
       version: VERSION,
       buildId: BUILD_ID,
       passed: checks.filter(check => check.passed).length,
