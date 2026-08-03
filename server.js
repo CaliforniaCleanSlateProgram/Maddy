@@ -24,7 +24,7 @@ import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 
-const VERSION = "2.6.2";
+const VERSION = "2.6.3";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -5378,8 +5378,8 @@ app.get("/health", async (request, response) => {
  * instead of rejecting them without evidence.
  */
 
-const RESOURCE_DEVELOPMENT_VERSION = "1.0.2";
-const BUILD_ID = "ERDO102-ACCURACY-GATE-20260803-A";
+const RESOURCE_DEVELOPMENT_VERSION = "1.0.3";
+const BUILD_ID = "ERDO103-MISSION-SCOPE-FINAL-20260803-A";
 const JOB_ID = "standing-executive-resource-development-office";
 
 const RESOURCE_CHANNELS = Object.freeze([
@@ -5623,40 +5623,376 @@ function inferResourceChannel(opportunity = {}) {
   return "other-lawful-resource";
 }
 
+
+const CCSP_DIRECT_MISSION_SIGNALS = Object.freeze([
+  {
+    id: "mobile-hygiene",
+    terms: [
+      "mobile hygiene", "mobile shower", "shower trailer", "hygiene services",
+      "sanitation services", "personal hygiene", "laundry services"
+    ],
+    weight: 40
+  },
+  {
+    id: "homelessness-and-street-outreach",
+    terms: [
+      "homelessness", "homeless", "unsheltered", "street outreach",
+      "encampment outreach", "housing instability", "housing insecurity"
+    ],
+    weight: 36
+  },
+  {
+    id: "substance-use-and-recovery",
+    terms: [
+      "substance use disorder", "substance abuse", "addiction treatment",
+      "recovery services", "recovery housing", "sober living",
+      "medication assisted treatment", "opioid response", "overdose prevention"
+    ],
+    weight: 40
+  },
+  {
+    id: "stabilization-and-housing",
+    terms: [
+      "supportive housing", "transitional housing", "permanent housing",
+      "housing navigation", "community stabilization", "rapid rehousing",
+      "continuum of care"
+    ],
+    weight: 34
+  },
+  {
+    id: "employment-and-self-sufficiency",
+    terms: [
+      "workforce development", "job training", "employment services",
+      "career pathways", "apprenticeship", "economic self sufficiency",
+      "economic mobility"
+    ],
+    weight: 26
+  },
+  {
+    id: "watershed-and-environmental-health",
+    terms: [
+      "watershed protection", "water quality", "river restoration",
+      "san lorenzo river", "monterey bay", "pollution prevention",
+      "environmental health"
+    ],
+    weight: 24
+  }
+]);
+
+const CCSP_STRATEGIC_BUILD_SIGNALS = Object.freeze([
+  {
+    id: "operations-and-capacity",
+    terms: [
+      "general operating support", "operating support", "capacity building",
+      "nonprofit capacity", "organizational development", "technology grant"
+    ],
+    weight: 24
+  },
+  {
+    id: "capital-and-facilities",
+    terms: [
+      "capital grant", "capital project", "facility acquisition",
+      "facility renovation", "building acquisition", "land acquisition",
+      "property donation"
+    ],
+    weight: 30
+  },
+  {
+    id: "vehicles-and-equipment",
+    terms: [
+      "vehicle donation", "fleet donation", "equipment donation",
+      "mobile unit", "trailer donation", "capital equipment"
+    ],
+    weight: 30
+  },
+  {
+    id: "treatment-and-rehabilitation-buildout",
+    terms: [
+      "residential treatment facility", "rehabilitation center",
+      "recovery campus", "behavioral health facility",
+      "substance use treatment facility"
+    ],
+    weight: 34
+  },
+  {
+    id: "partnership-and-service-contract",
+    terms: [
+      "service contract", "government contract", "subrecipient",
+      "implementation partner", "community based organization partner"
+    ],
+    weight: 22
+  }
+]);
+
+const CCSP_OUT_OF_SCOPE_SECTORS = Object.freeze([
+  {
+    id: "natural-resource-management",
+    terms: [
+      "forest management", "woodlands resource management",
+      "fuels management", "wildland fire science", "rangeland resource",
+      "invasive and noxious plant", "plant conservation",
+      "abandoned mine lands", "oil and gas recovery",
+      "produced water management", "desalination research",
+      "agricultural conservation", "fish and wildlife restoration"
+    ]
+  },
+  {
+    id: "academic-and-scientific-research",
+    terms: [
+      "clinical trial required", "clinical trials not allowed",
+      "research center", "research infrastructure", "medical student education",
+      "postdoctoral training", "scientific research", "laboratory research",
+      "university research"
+    ]
+  },
+  {
+    id: "law-enforcement-only",
+    terms: [
+      "law enforcement agency only", "police department applicants",
+      "prosecutor offices only", "correctional agency applicants"
+    ]
+  },
+  {
+    id: "utility-and-municipal-infrastructure",
+    terms: [
+      "municipal wastewater system", "public water system",
+      "rural utility", "water treatment plant", "electric grid"
+    ]
+  }
+]);
+
+const CCSP_EXCLUSIVE_POPULATION_RESTRICTIONS = Object.freeze([
+  {
+    id: "youth-only",
+    terms: [
+      "youth only", "children only", "adolescents only",
+      "runaway and homeless youth", "youth homelessness",
+      "minor children", "ages 12 to 17", "ages 14 to 24",
+      "young adults only"
+    ],
+    exceptionTerms: [
+      "all ages", "families and adults", "general population"
+    ]
+  },
+  {
+    id: "veterans-only",
+    terms: [
+      "veterans only", "eligible veterans", "veteran households only"
+    ],
+    exceptionTerms: [
+      "general homeless population", "all eligible populations"
+    ]
+  },
+  {
+    id: "tribal-only",
+    terms: [
+      "tribal entities only", "federally recognized tribes only",
+      "tribal colleges and universities"
+    ],
+    exceptionTerms: [
+      "community based organizations", "nonprofit partners"
+    ]
+  }
+]);
+
+function evaluateMissionScope(opportunity = {}) {
+  const text = opportunityText(opportunity);
+  const title = normalizeText(opportunity.title);
+  const directMatches = [];
+  const strategicMatches = [];
+  const exclusionMatches = [];
+  const populationRestrictions = [];
+
+  for (const signal of CCSP_DIRECT_MISSION_SIGNALS) {
+    const matchedTerms = signal.terms.filter(term =>
+      text.includes(normalizeText(term))
+    );
+    if (matchedTerms.length > 0) {
+      directMatches.push({
+        id: signal.id,
+        matchedTerms,
+        score: Math.min(
+          signal.weight,
+          12 + matchedTerms.length * 8
+        )
+      });
+    }
+  }
+
+  for (const signal of CCSP_STRATEGIC_BUILD_SIGNALS) {
+    const matchedTerms = signal.terms.filter(term =>
+      text.includes(normalizeText(term))
+    );
+    if (matchedTerms.length > 0) {
+      strategicMatches.push({
+        id: signal.id,
+        matchedTerms,
+        score: Math.min(
+          signal.weight,
+          10 + matchedTerms.length * 7
+        )
+      });
+    }
+  }
+
+  for (const sector of CCSP_OUT_OF_SCOPE_SECTORS) {
+    const matchedTerms = sector.terms.filter(term =>
+      text.includes(normalizeText(term))
+    );
+    if (matchedTerms.length > 0) {
+      exclusionMatches.push({
+        id: sector.id,
+        matchedTerms
+      });
+    }
+  }
+
+  for (const restriction of CCSP_EXCLUSIVE_POPULATION_RESTRICTIONS) {
+    const restrictionMatch = restriction.terms.find(term =>
+      text.includes(normalizeText(term))
+    );
+    const exceptionMatch = restriction.exceptionTerms.find(term =>
+      text.includes(normalizeText(term))
+    );
+
+    if (restrictionMatch && !exceptionMatch) {
+      populationRestrictions.push({
+        id: restriction.id,
+        evidence: restrictionMatch
+      });
+    }
+  }
+
+  const directScore = Math.min(
+    100,
+    directMatches.reduce((total, item) => total + item.score, 0)
+  );
+  const strategicScore = Math.min(
+    100,
+    strategicMatches.reduce((total, item) => total + item.score, 0)
+  );
+
+  const explicitResourceChannel = [
+    "community-foundation", "family-foundation", "corporate-giving",
+    "corporate-sponsorship", "major-donor", "donor-advised-fund",
+    "in-kind", "equipment", "vehicle", "property", "earned-revenue"
+  ].includes(inferResourceChannel(opportunity));
+
+  const hasMissionPath =
+    directScore >= 24 ||
+    strategicScore >= 24 ||
+    (
+      explicitResourceChannel &&
+      (
+        directScore > 0 ||
+        strategicScore > 0 ||
+        /general operating support|unrestricted support|nonprofit support/.test(text)
+      )
+    );
+
+  const hardSectorExclusion =
+    exclusionMatches.length > 0 &&
+    directScore < 30 &&
+    strategicScore < 30;
+
+  const hardPopulationExclusion =
+    populationRestrictions.length > 0 &&
+    directScore < 36 &&
+    strategicScore < 30;
+
+  const passed =
+    hasMissionPath &&
+    !hardSectorExclusion &&
+    !hardPopulationExclusion;
+
+  const reasons = [];
+
+  if (!hasMissionPath) {
+    reasons.push(
+      "No evidence-supported connection to CCSP's approved mission, operations, or five-year strategic buildout."
+    );
+  }
+  if (hardSectorExclusion) {
+    reasons.push(
+      "The opportunity is primarily for a sector outside CCSP's approved work."
+    );
+  }
+  if (hardPopulationExclusion) {
+    reasons.push(
+      "The opportunity is restricted to a beneficiary population or institution type that CCSP is not organized to serve exclusively."
+    );
+  }
+
+  return {
+    passed,
+    status: passed ? "in-scope" : "out-of-scope",
+    directScore,
+    strategicScore,
+    directMatches,
+    strategicMatches,
+    exclusionMatches,
+    populationRestrictions,
+    reasons,
+    explanation:
+      passed
+        ? "The opportunity has a documented path to CCSP's mission, operations, or approved five-year buildout."
+        : reasons[0]
+  };
+}
+
 function fastExclusionGate(opportunity = {}) {
   const q = opportunity.executiveQualification || {};
   const geography = q.geography || {};
   const participation = q.participation || {};
   const lifecycle = q.lifecycle || opportunity.investigation?.lifecycle;
+  const missionScope = evaluateMissionScope(opportunity);
   const reasons = [];
 
   if (
     geography.level === "international" ||
     geography.eligibleOperatingFootprint === false
   ) {
-    reasons.push("Required work or beneficiaries are outside CCSP's approved operating footprint.");
+    reasons.push(
+      "Required work or beneficiaries are outside CCSP's approved operating footprint."
+    );
   }
 
   if (
     participation.label === "Not Eligible" ||
-    participation.canLead === false && participation.canPartner === false
+    (
+      participation.canLead === false &&
+      participation.canPartner === false
+    )
   ) {
-    reasons.push("Available evidence shows no lawful applicant or funded-partner path for CCSP.");
+    reasons.push(
+      "Available evidence shows no lawful applicant or funded-partner path for CCSP."
+    );
   }
 
   if (
     lifecycle === "closed" &&
-    !/forecast|recurring|annual|renewal|next cycle/.test(opportunityText(opportunity))
+    !/forecast|recurring|annual|renewal|next cycle/.test(
+      opportunityText(opportunity)
+    )
   ) {
-    reasons.push("The opportunity is closed and no recurrence value is established.");
+    reasons.push(
+      "The opportunity is closed and no recurrence value is established."
+    );
+  }
+
+  if (!missionScope.passed) {
+    reasons.push(
+      missionScope.explanation ||
+      "The opportunity is outside CCSP's approved mission and strategic roadmap."
+    );
   }
 
   return {
     passed: reasons.length === 0,
     decision: reasons.length === 0 ? "continue" : "reject",
     reasons,
-    confidence:
-      reasons.length === 0 ? 0.7 : 0.95
+    confidence: reasons.length === 0 ? 0.8 : 0.98,
+    missionScope
   };
 }
 
@@ -5897,14 +6233,22 @@ function calculateExecutivePriority(
   const fundability = fundabilityScore(opportunity);
   const effort = effortScore(opportunity);
   const strategicValue = strategicValueScore(opportunity);
+  const missionScope = fastGate.missionScope || evaluateMissionScope(opportunity);
+  const missionScopeScore = clamp(
+    Math.max(
+      missionScope.directScore || 0,
+      missionScope.strategicScore || 0
+    )
+  );
 
   const score = clamp(
-    fundability * 0.32 +
-    geography * 0.2 +
-    urgency.score * 0.13 +
-    resourceValue.score * 0.13 +
-    effort * 0.07 +
-    strategicValue * 0.15
+    fundability * 0.27 +
+    geography * 0.16 +
+    urgency.score * 0.11 +
+    resourceValue.score * 0.11 +
+    effort * 0.05 +
+    strategicValue * 0.10 +
+    missionScopeScore * 0.20
   );
 
   const priority =
@@ -5923,7 +6267,8 @@ function calculateExecutivePriority(
       urgency: urgency.score,
       resourceValue: resourceValue.score,
       effort,
-      strategicValue: Math.round(strategicValue * 10) / 10
+      strategicValue: Math.round(strategicValue * 10) / 10,
+      missionScope: Math.round(missionScopeScore * 10) / 10
     },
     deadline: urgency,
     estimatedResourceValue: resourceValue.estimatedValue,
@@ -5984,6 +6329,7 @@ function buildResourceDevelopmentRecord(opportunity = {}, now) {
       evaluatedAt: now,
       channel,
       fastExclusionGate: fastGate,
+      missionScope: fastGate.missionScope,
       fullInvestigationGate: investigationGate,
       executivePriority: priority,
       executiveDecision,
