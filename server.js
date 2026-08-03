@@ -23,9 +23,8 @@ import dns from "dns/promises";
 import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
-import { createExecutiveResourceDevelopmentOffice } from "./server/executive-resource-development-office.js";
 
-const VERSION = "2.6.0";
+const VERSION = "2.6.1";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -5281,6 +5280,816 @@ app.get("/health", async (request, response) => {
   });
 });
 
+
+
+/* ========================================================================== */
+/* MEOS Executive Resource Development Office v1.0.1 — Inline Server Module   */
+/* ========================================================================== */
+
+/**
+ * MEOS Executive Resource Development Office v1.0.0
+ *
+ * Mission:
+ * - Do not miss realistic money or resources.
+ * - Do not waste executive time on opportunities CCSP cannot pursue.
+ *
+ * This server-side office sits after broad discovery and investigation.
+ * It applies:
+ *   1. Fast exclusion gate
+ *   2. Full-investigation gate
+ *   3. Executive priority gate
+ *
+ * It preserves unclear-but-potentially-valuable opportunities for research
+ * instead of rejecting them without evidence.
+ */
+
+const RESOURCE_DEVELOPMENT_VERSION = "1.0.1";
+const BUILD_ID = "ERDO100-RESOURCE-ACQUISITION-20260803-A";
+const JOB_ID = "standing-executive-resource-development-office";
+
+const RESOURCE_CHANNELS = Object.freeze([
+  "government-grant",
+  "foundation-grant",
+  "community-foundation",
+  "family-foundation",
+  "corporate-giving",
+  "corporate-sponsorship",
+  "major-donor",
+  "donor-advised-fund",
+  "government-contract",
+  "rfp",
+  "in-kind",
+  "equipment",
+  "vehicle",
+  "property",
+  "strategic-partnership",
+  "earned-revenue",
+  "other-lawful-resource"
+]);
+
+const DECISIONS = Object.freeze([
+  "pursue",
+  "prepare",
+  "partner",
+  "monitor",
+  "research",
+  "reject",
+  "won",
+  "lost"
+]);
+
+function clamp(value, minimum = 0, maximum = 100) {
+  return Math.max(minimum, Math.min(maximum, Number(value) || 0));
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function opportunityText(opportunity = {}) {
+  return normalizeText(
+    [
+      opportunity.title,
+      opportunity.description,
+      opportunity.category,
+      opportunity.provider,
+      opportunity.agencyName,
+      opportunity.eligibleApplicants,
+      opportunity.additionalEligibilityInformation,
+      opportunity.fullNotice,
+      opportunity.executiveQualification,
+      opportunity.investigation
+    ]
+      .flat(Infinity)
+      .filter(Boolean)
+      .map(value =>
+        typeof value === "object" ? JSON.stringify(value) : String(value)
+      )
+      .join(" ")
+  );
+}
+
+function inferResourceChannel(opportunity = {}) {
+  const text = opportunityText(opportunity);
+  const category = normalizeText(opportunity.category);
+
+  if (/contract|procurement|request for proposal|\brfp\b/.test(text)) {
+    return text.includes("contract") ? "government-contract" : "rfp";
+  }
+  if (/vehicle donation|donated vehicle|fleet donation/.test(text)) {
+    return "vehicle";
+  }
+  if (/equipment donation|donated equipment|in kind|in-kind/.test(text)) {
+    return "in-kind";
+  }
+  if (/property donation|land donation|building donation/.test(text)) {
+    return "property";
+  }
+  if (/sponsor|sponsorship|naming rights/.test(text)) {
+    return "corporate-sponsorship";
+  }
+  if (/donor advised|donor-advised|\bdaf\b/.test(text)) {
+    return "donor-advised-fund";
+  }
+  if (/family foundation/.test(text)) {
+    return "family-foundation";
+  }
+  if (/community foundation/.test(text)) {
+    return "community-foundation";
+  }
+  if (/corporate foundation|corporate giving|employee matching/.test(text)) {
+    return "corporate-giving";
+  }
+  if (/major donor|philanthropist|individual donor/.test(text)) {
+    return "major-donor";
+  }
+  if (/partnership|coalition|collaboration|consortium/.test(text)) {
+    return "strategic-partnership";
+  }
+  if (/earned revenue|fee for service|licensing|consulting/.test(text)) {
+    return "earned-revenue";
+  }
+  if (
+    category.includes("grant") ||
+    /grant|cooperative agreement|funding opportunity/.test(text)
+  ) {
+    return opportunity.authorityType === "federal-government" ||
+      opportunity.authorityType === "state-government" ||
+      opportunity.authorityType === "county-government" ||
+      opportunity.authorityType === "city-government"
+      ? "government-grant"
+      : "foundation-grant";
+  }
+
+  return "other-lawful-resource";
+}
+
+function fastExclusionGate(opportunity = {}) {
+  const q = opportunity.executiveQualification || {};
+  const geography = q.geography || {};
+  const participation = q.participation || {};
+  const lifecycle = q.lifecycle || opportunity.investigation?.lifecycle;
+  const reasons = [];
+
+  if (
+    geography.level === "international" ||
+    geography.eligibleOperatingFootprint === false
+  ) {
+    reasons.push("Required work or beneficiaries are outside CCSP's approved operating footprint.");
+  }
+
+  if (
+    participation.label === "Not Eligible" ||
+    participation.canLead === false && participation.canPartner === false
+  ) {
+    reasons.push("Available evidence shows no lawful applicant or funded-partner path for CCSP.");
+  }
+
+  if (
+    lifecycle === "closed" &&
+    !/forecast|recurring|annual|renewal|next cycle/.test(opportunityText(opportunity))
+  ) {
+    reasons.push("The opportunity is closed and no recurrence value is established.");
+  }
+
+  return {
+    passed: reasons.length === 0,
+    decision: reasons.length === 0 ? "continue" : "reject",
+    reasons,
+    confidence:
+      reasons.length === 0 ? 0.7 : 0.95
+  };
+}
+
+function fullInvestigationGate(opportunity = {}) {
+  const q = opportunity.executiveQualification || {};
+  const unknowns = Array.isArray(q.unknowns) ? q.unknowns : [];
+  const investigation = opportunity.investigation || {};
+  const hasCoreEvidence = Boolean(
+    q.geography?.label &&
+    q.participation?.label &&
+    q.missionFit?.label &&
+    q.executiveBrief?.reason
+  );
+
+  if (!hasCoreEvidence || investigation.status !== "complete") {
+    return {
+      status: "research",
+      readyForPriority: false,
+      reasons: [
+        "The opportunity has not yet produced a complete, defensible executive investigation."
+      ],
+      unknowns
+    };
+  }
+
+  if (
+    q.participation?.label === "Needs Research" ||
+    q.geography?.level === "unknown" ||
+    unknowns.length >= 4
+  ) {
+    return {
+      status: "research",
+      readyForPriority: false,
+      reasons: [
+        "The opportunity may be valuable, but material eligibility, geography, money-flow, or notice evidence remains unresolved."
+      ],
+      unknowns
+    };
+  }
+
+  return {
+    status: "complete",
+    readyForPriority: true,
+    reasons: [],
+    unknowns
+  };
+}
+
+function parseMoney(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const numeric = Number(
+    String(value || "")
+      .replace(/[^0-9.-]+/g, "")
+  );
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function deadlineUrgency(opportunity = {}) {
+  const deadline = Date.parse(
+    opportunity.deadline ||
+    opportunity.executiveQualification?.executiveBrief?.timing?.deadline ||
+    ""
+  );
+
+  if (!Number.isFinite(deadline)) {
+    return { score: 35, daysRemaining: null, label: "deadline-unverified" };
+  }
+
+  const daysRemaining = Math.ceil((deadline - Date.now()) / 86_400_000);
+
+  if (daysRemaining < 0) return { score: 0, daysRemaining, label: "closed" };
+  if (daysRemaining <= 7) return { score: 100, daysRemaining, label: "immediate" };
+  if (daysRemaining <= 21) return { score: 90, daysRemaining, label: "urgent" };
+  if (daysRemaining <= 45) return { score: 75, daysRemaining, label: "active" };
+  if (daysRemaining <= 90) return { score: 55, daysRemaining, label: "planned" };
+  return { score: 35, daysRemaining, label: "future" };
+}
+
+function resourceValueScore(opportunity = {}) {
+  const q = opportunity.executiveQualification || {};
+  const floor = parseMoney(
+    opportunity.awardFloor ||
+    q.executiveBrief?.funding?.floor
+  );
+  const ceiling = parseMoney(
+    opportunity.awardCeiling ||
+    q.executiveBrief?.funding?.ceiling
+  );
+  const amount = ceiling || floor;
+
+  if (!amount) {
+    const channel = inferResourceChannel(opportunity);
+    return {
+      score:
+        ["in-kind", "equipment", "vehicle", "property"].includes(channel)
+          ? 60
+          : 35,
+      estimatedValue: null,
+      basis: "value-unverified"
+    };
+  }
+
+  let score = 25;
+  if (amount >= 10_000) score = 45;
+  if (amount >= 50_000) score = 65;
+  if (amount >= 250_000) score = 80;
+  if (amount >= 1_000_000) score = 90;
+  if (amount >= 5_000_000) score = 95;
+
+  return {
+    score,
+    estimatedValue: amount,
+    basis: ceiling ? "award-ceiling" : "award-floor"
+  };
+}
+
+function geographyPriorityScore(opportunity = {}) {
+  const geography =
+    opportunity.executiveQualification?.geography || {};
+
+  switch (geography.level) {
+    case "local":
+      return 100;
+    case "regional":
+      return 90;
+    case "california":
+      return 80;
+    case "usa":
+      return 65;
+    case "unknown":
+      return 35;
+    default:
+      return 0;
+  }
+}
+
+function fundabilityScore(opportunity = {}) {
+  const q = opportunity.executiveQualification || {};
+  const participation = q.participation || {};
+  const moneyFlow = q.moneyFlow || {};
+  const confidence = clamp((q.confidence || 0) * 100);
+  const missionFit = clamp(q.missionFit?.score || q.purposeAndStrategyAlignment);
+  const readiness = clamp(q.currentOperationalReadiness);
+  const flowScore =
+    moneyFlow.directAwardPossible === true ? 100 :
+    moneyFlow.partnerFundingPossible === true ? 80 :
+    participation.canPartner === true ? 65 :
+    35;
+
+  return clamp(
+    confidence * 0.25 +
+    missionFit * 0.25 +
+    readiness * 0.2 +
+    flowScore * 0.3
+  );
+}
+
+function effortScore(opportunity = {}) {
+  const q = opportunity.executiveQualification || {};
+  const text = opportunityText(opportunity);
+  let score = 55;
+
+  if (/letter of intent|short application|rolling|simple application/.test(text)) {
+    score += 20;
+  }
+  if (/cost share|required match|consortium|mandatory partners/.test(text)) {
+    score -= 20;
+  }
+  if (/clinical trial|research institution|licensed provider|accreditation/.test(text)) {
+    score -= 25;
+  }
+  if ((q.unknowns || []).length >= 4) {
+    score -= 15;
+  }
+
+  return clamp(score);
+}
+
+function strategicValueScore(opportunity = {}) {
+  const q = opportunity.executiveQualification || {};
+  const mission = clamp(q.missionFit?.score || q.purposeAndStrategyAlignment);
+  const roadmap = Array.isArray(q.roadmap) ? q.roadmap : [];
+  const roadmapScore = clamp(
+    roadmap.reduce(
+      (total, item) => total + Number(item.score || 0),
+      0
+    )
+  );
+  return clamp(mission * 0.65 + roadmapScore * 0.35);
+}
+
+function calculateExecutivePriority(opportunity = {}) {
+  const urgency = deadlineUrgency(opportunity);
+  const resourceValue = resourceValueScore(opportunity);
+  const geography = geographyPriorityScore(opportunity);
+  const fundability = fundabilityScore(opportunity);
+  const effort = effortScore(opportunity);
+  const strategicValue = strategicValueScore(opportunity);
+
+  const score = clamp(
+    fundability * 0.3 +
+    geography * 0.2 +
+    urgency.score * 0.15 +
+    resourceValue.score * 0.15 +
+    effort * 0.1 +
+    strategicValue * 0.1
+  );
+
+  const priority =
+    score >= 80 ? "critical" :
+    score >= 68 ? "high" :
+    score >= 52 ? "medium" :
+    score >= 38 ? "low" :
+    "archive";
+
+  return {
+    score: Math.round(score * 10) / 10,
+    priority,
+    components: {
+      fundability: Math.round(fundability * 10) / 10,
+      geography,
+      urgency: urgency.score,
+      resourceValue: resourceValue.score,
+      effort,
+      strategicValue: Math.round(strategicValue * 10) / 10
+    },
+    deadline: urgency,
+    estimatedResourceValue: resourceValue.estimatedValue,
+    valueBasis: resourceValue.basis
+  };
+}
+
+function deriveDeskDecision(opportunity, fastGate, investigationGate, priority) {
+  const existing =
+    opportunity.resourceDevelopment?.executiveDecision ||
+    opportunity.executiveRecommendation;
+
+  if (!fastGate.passed) return "reject";
+  if (!investigationGate.readyForPriority) return "research";
+
+  if (existing === "partner") return "partner";
+  if (existing === "monitor") return "monitor";
+  if (existing === "prepare") return "prepare";
+  if (existing === "decline") return "reject";
+
+  if (priority.score >= 72) return "pursue";
+  if (priority.score >= 58) return "prepare";
+  if (priority.score >= 42) return "monitor";
+  return "reject";
+}
+
+function buildResourceDevelopmentRecord(opportunity = {}, now) {
+  const channel = inferResourceChannel(opportunity);
+  const fastGate = fastExclusionGate(opportunity);
+  const investigationGate = fullInvestigationGate(opportunity);
+  const priority = calculateExecutivePriority(opportunity);
+  const executiveDecision = deriveDeskDecision(
+    opportunity,
+    fastGate,
+    investigationGate,
+    priority
+  );
+
+  const deskStatus =
+    ["pursue", "prepare", "partner"].includes(executiveDecision)
+      ? "active"
+      : executiveDecision === "research"
+        ? "research"
+        : executiveDecision === "monitor"
+          ? "monitor"
+          : "off-desk";
+
+  return {
+    ...opportunity,
+    resourceDevelopment: {
+      schema: "meos.executive-resource-development.v1",
+      version: RESOURCE_DEVELOPMENT_VERSION,
+      buildId: BUILD_ID,
+      evaluatedAt: now,
+      channel,
+      fastExclusionGate: fastGate,
+      fullInvestigationGate: investigationGate,
+      executivePriority: priority,
+      executiveDecision,
+      deskStatus,
+      pursuitState:
+        opportunity.resourceDevelopment?.pursuitState ||
+        (
+          executiveDecision === "pursue"
+            ? "awaiting-authorization"
+            : executiveDecision
+        ),
+      resourcePath: {
+        direct:
+          opportunity.executiveQualification?.moneyFlow
+            ?.directAwardPossible ?? null,
+        partner:
+          opportunity.executiveQualification?.moneyFlow
+            ?.partnerFundingPossible ?? null,
+        inKind:
+          ["in-kind", "equipment", "vehicle", "property"]
+            .includes(channel)
+      },
+      reason:
+        fastGate.reasons[0] ||
+        investigationGate.reasons[0] ||
+        opportunity.executiveQualification?.executiveBrief?.reason ||
+        "The opportunity was evaluated for realistic resource value to CCSP.",
+      nextAction:
+        executiveDecision === "pursue"
+          ? "Authorize pursuit and open the preparation workflow."
+          : executiveDecision === "partner"
+            ? "Confirm the lead organization and funded CCSP role."
+            : executiveDecision === "prepare"
+              ? "Resolve readiness gaps before the deadline or next cycle."
+              : executiveDecision === "research"
+                ? "Complete the unresolved investigation before making a desk decision."
+                : executiveDecision === "monitor"
+                  ? "Monitor the opportunity and schedule the next review."
+                  : "Keep off the active desk while preserving the decision evidence."
+    }
+  };
+}
+
+function createSummary(records) {
+  const summary = {
+    total: records.length,
+    executiveDesk: 0,
+    active: 0,
+    research: 0,
+    monitor: 0,
+    offDesk: 0,
+    decisions: {},
+    channels: {},
+    priorities: {}
+  };
+
+  for (const record of records) {
+    const rd = record.resourceDevelopment || {};
+    const decision = rd.executiveDecision || "unknown";
+    const channel = rd.channel || "unknown";
+    const priority = rd.executivePriority?.priority || "unknown";
+
+    summary.decisions[decision] =
+      (summary.decisions[decision] || 0) + 1;
+    summary.channels[channel] =
+      (summary.channels[channel] || 0) + 1;
+    summary.priorities[priority] =
+      (summary.priorities[priority] || 0) + 1;
+
+    if (rd.deskStatus === "active") {
+      summary.active += 1;
+      summary.executiveDesk += 1;
+    } else if (rd.deskStatus === "research") {
+      summary.research += 1;
+    } else if (rd.deskStatus === "monitor") {
+      summary.monitor += 1;
+    } else {
+      summary.offDesk += 1;
+    }
+  }
+
+  return summary;
+}
+
+function createExecutiveResourceDevelopmentOffice(dependencies) {
+  const {
+    app,
+    express,
+    collection,
+    readCollection,
+    upsertOpportunities,
+    registerContinuousHandler,
+    upsertContinuousJob,
+    now
+  } = dependencies;
+
+  const state = {
+    status: "initializing",
+    lastRunAt: null,
+    lastError: null,
+    summary: {
+      total: 0,
+      executiveDesk: 0
+    }
+  };
+
+  async function rebuildPortfolio() {
+    state.status = "running";
+    state.lastRunAt = now();
+    state.lastError = null;
+
+    try {
+      const records = (
+        await readCollection(collection)
+      ).filter(record => record?.type === "funding-opportunity");
+
+      const evaluated = records.map(record =>
+        buildResourceDevelopmentRecord(record, now())
+      );
+
+      if (evaluated.length > 0) {
+        await upsertOpportunities(evaluated);
+      }
+
+      state.summary = createSummary(evaluated);
+      state.status = "online";
+
+      return {
+        schema: "meos.executive-resource-development.run.v1",
+        version: RESOURCE_DEVELOPMENT_VERSION,
+        buildId: BUILD_ID,
+        completedAt: now(),
+        ...state.summary
+      };
+    } catch (error) {
+      state.status = "degraded";
+      state.lastError = error?.message || String(error);
+      throw error;
+    }
+  }
+
+  async function readDesk(query = {}) {
+    const records = (
+      await readCollection(collection)
+    )
+      .filter(record => record?.type === "funding-opportunity")
+      .filter(record => record.resourceDevelopment)
+      .filter(record => {
+        const status = String(query.status || "").trim();
+        const decision = String(query.decision || "").trim();
+        const channel = String(query.channel || "").trim();
+
+        return (
+          (!status ||
+            record.resourceDevelopment?.deskStatus === status) &&
+          (!decision ||
+            record.resourceDevelopment?.executiveDecision === decision) &&
+          (!channel ||
+            record.resourceDevelopment?.channel === channel)
+        );
+      })
+      .sort((left, right) =>
+        Number(
+          right.resourceDevelopment?.executivePriority?.score || 0
+        ) -
+        Number(
+          left.resourceDevelopment?.executivePriority?.score || 0
+        )
+      );
+
+    const requestedLimit = Number(query.limit || 50);
+    const limit = Math.max(
+      1,
+      Math.min(
+        Number.isFinite(requestedLimit)
+          ? Math.floor(requestedLimit)
+          : 50,
+        500
+      )
+    );
+
+    return records.slice(0, limit);
+  }
+
+  async function applyExecutiveDecision(id, input = {}) {
+    const decision = String(input.decision || "").trim().toLowerCase();
+
+    if (!DECISIONS.includes(decision)) {
+      const error = new Error("Unsupported Executive Resource Development decision.");
+      error.status = 400;
+      error.code = "RESOURCE_DEVELOPMENT_DECISION_INVALID";
+      throw error;
+    }
+
+    const records = (
+      await readCollection(collection)
+    ).filter(record => record?.type === "funding-opportunity");
+    const record = records.find(item => item.id === id);
+
+    if (!record) {
+      const error = new Error("Resource opportunity not found.");
+      error.status = 404;
+      error.code = "RESOURCE_DEVELOPMENT_RECORD_NOT_FOUND";
+      throw error;
+    }
+
+    const updated = {
+      ...record,
+      resourceDevelopment: {
+        ...(record.resourceDevelopment || {}),
+        executiveDecision: decision,
+        pursuitState: decision,
+        humanDecision: {
+          decidedAt: now(),
+          decision,
+          reason: String(input.reason || "").trim() || null
+        }
+      }
+    };
+
+    await upsertOpportunities([updated]);
+    return updated;
+  }
+
+  registerContinuousHandler(
+    "executive-resource-development-office",
+    async () => rebuildPortfolio()
+  );
+
+  app.get(
+    "/api/resource-development",
+    async (request, response) => {
+      try {
+        response.status(200).json({
+          schema: "meos.executive-resource-development.status.v1",
+          version: RESOURCE_DEVELOPMENT_VERSION,
+          buildId: BUILD_ID,
+          status: state.status,
+          lastRunAt: state.lastRunAt,
+          lastError: state.lastError,
+          channels: RESOURCE_CHANNELS,
+          summary: state.summary
+        });
+      } catch (error) {
+        response.status(500).json({
+          error: error?.message || "Resource Development status failed."
+        });
+      }
+    }
+  );
+
+  app.get(
+    "/api/resource-development/desk",
+    async (request, response) => {
+      try {
+        const records = await readDesk(request.query);
+        response.status(200).json({
+          schema: "meos.executive-resource-development.desk.v1",
+          version: RESOURCE_DEVELOPMENT_VERSION,
+          total: records.length,
+          records
+        });
+      } catch (error) {
+        response.status(500).json({
+          error: error?.message || "Executive Resource Development desk failed."
+        });
+      }
+    }
+  );
+
+  app.post(
+    "/api/resource-development/rebuild",
+    express.json({ limit: "16kb", strict: true }),
+    async (request, response) => {
+      try {
+        response.status(200).json(await rebuildPortfolio());
+      } catch (error) {
+        response.status(500).json({
+          error: error?.message || "Resource Development rebuild failed.",
+          code: error?.code || "RESOURCE_DEVELOPMENT_REBUILD_FAILED"
+        });
+      }
+    }
+  );
+
+  app.post(
+    "/api/resource-development/:id/decision",
+    express.json({ limit: "16kb", strict: true }),
+    async (request, response) => {
+      try {
+        response.status(200).json(
+          await applyExecutiveDecision(
+            request.params.id,
+            request.body || {}
+          )
+        );
+      } catch (error) {
+        response.status(error.status || 500).json({
+          error: error?.message || "Executive decision failed.",
+          code: error?.code || "RESOURCE_DEVELOPMENT_DECISION_FAILED"
+        });
+      }
+    }
+  );
+
+  async function initialize() {
+    await upsertContinuousJob({
+      id: JOB_ID,
+      office: "Executive Resource Development Office",
+      mission:
+        "Continuously convert broad resource discovery into a tightly ranked executive desk without missing realistic money or wasting time on impossible opportunities.",
+      handler: "executive-resource-development-office",
+      intervalMs: 60 * 60_000,
+      nextRunAt: now(),
+      priority: 100,
+      requiresHumanApproval: false,
+      autonomousAuthority: "research-rank-recommend",
+      metadata: {
+        standingMission: true,
+        version: RESOURCE_DEVELOPMENT_VERSION,
+        buildId: BUILD_ID
+      }
+    });
+
+    const result = await rebuildPortfolio();
+
+    return {
+      version: RESOURCE_DEVELOPMENT_VERSION,
+      buildId: BUILD_ID,
+      status: state.status,
+      portfolioTotal: result.total,
+      executiveDeskTotal: result.executiveDesk
+    };
+  }
+
+  return Object.freeze({
+    version: RESOURCE_DEVELOPMENT_VERSION,
+    buildId: BUILD_ID,
+    initialize,
+    rebuildPortfolio,
+    readDesk
+  });
+}
 
 const executiveResourceDevelopmentOffice =
   createExecutiveResourceDevelopmentOffice({
