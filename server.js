@@ -23,8 +23,9 @@ import dns from "dns/promises";
 import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
+import { createExecutiveResourceDevelopmentOffice } from "./server/executive-resource-development-office.js";
 
-const VERSION = "2.5.0";
+const VERSION = "2.6.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -5280,6 +5281,21 @@ app.get("/health", async (request, response) => {
   });
 });
 
+
+const executiveResourceDevelopmentOffice =
+  createExecutiveResourceDevelopmentOffice({
+    app,
+    express,
+    collection: FUNDING_OPPORTUNITY_COLLECTION,
+    readCollection: readExecutiveMemoryCollection,
+    upsertOpportunities: upsertFundingOpportunities,
+    registerContinuousHandler:
+      registerContinuousOperationsHandler,
+    upsertContinuousJob:
+      upsertContinuousOperationsJob,
+    now: continuousOperationsNow
+  });
+
 app.get("*", (request, response) => {
   response.sendFile(path.join(frontendDirectory, "index.html"));
 });
@@ -5338,6 +5354,22 @@ app.listen(PORT, () => {
 
       console.error(
         "[MEOS] Funding Intelligence registry failed to initialize:",
+        error
+      );
+    });
+
+  executiveResourceDevelopmentOffice
+    .initialize()
+    .then(status => {
+      console.log(
+        `[MEOS] Executive Resource Development Office ` +
+          `v${status.version} ${status.status}. ` +
+          `portfolio=${status.portfolioTotal}, desk=${status.executiveDeskTotal}.`
+      );
+    })
+    .catch(error => {
+      console.error(
+        "[MEOS] Executive Resource Development Office failed to initialize:",
         error
       );
     });
