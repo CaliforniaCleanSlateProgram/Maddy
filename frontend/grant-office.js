@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.1.0
- * Build: GO110-EXECUTIVE-OPPORTUNITY-20260801-A
+ * Version: 1.2.0
+ * Build: GO120-ONE-AUTHORITY-20260803-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.1.0";
-    const BUILD_ID = "GO110-EXECUTIVE-OPPORTUNITY-20260801-A";
+    const VERSION = "1.2.0";
+    const BUILD_ID = "GO120-ONE-AUTHORITY-20260803-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -469,7 +469,7 @@
                     opportunity
                 });
 
-            const recommendation =
+            const legacyRecommendation =
                 this.determineRecommendation({
                     opportunity,
                     score,
@@ -482,6 +482,50 @@
                     strategicValue,
                     disqualifiers
                 });
+
+            const acquisitionEngine =
+                global.ExecutiveResourceAcquisitionEngine;
+
+            if (
+                !acquisitionEngine ||
+                typeof acquisitionEngine.decide !== "function" ||
+                typeof acquisitionEngine.toGrantOfficeEvaluation !== "function"
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Executive Resource Acquisition Engine is required before Grant Office evaluation.",
+                    code: "EXECUTIVE_RESOURCE_ACQUISITION_ENGINE_REQUIRED"
+                };
+            }
+
+            const authoritativeResourceDecision =
+                acquisitionEngine.decide(opportunity, {
+                    profile,
+                    mission,
+                    organizationSnapshot,
+                    evidence: {
+                        understanding,
+                        organizationalFit,
+                        eligibility,
+                        moneyReality,
+                        timing,
+                        competitiveness,
+                        execution,
+                        strategicValue,
+                        disqualifiers,
+                        score
+                    }
+                });
+
+            const authoritativeEvaluation =
+                acquisitionEngine.toGrantOfficeEvaluation(
+                    opportunity,
+                    authoritativeResourceDecision
+                );
+
+            const recommendation =
+                authoritativeEvaluation.recommendation;
 
             const missingInformation =
                 this.identifyMissingInformation({
@@ -515,26 +559,18 @@
                 disqualifiers,
                 score,
                 recommendation,
-                missingInformation,
+                legacyRecommendation,
+                authoritativeResourceDecision,
+                missingInformation:
+                    authoritativeEvaluation.missingInformation,
                 executiveSummary:
-                    this.buildExecutiveSummary({
-                        opportunity,
-                        score,
-                        recommendation,
-                        organizationalFit,
-                        eligibility,
-                        moneyReality,
-                        timing,
-                        competitiveness,
-                        execution,
-                        strategicValue,
-                        disqualifiers,
-                        missingInformation
-                    }),
-                evaluatedAt: this.now(),
-                evaluatedBy: this.name,
+                    authoritativeEvaluation.executiveSummary,
+                evaluatedAt:
+                    authoritativeEvaluation.evaluatedAt,
+                evaluatedBy:
+                    authoritativeEvaluation.evaluatedBy,
                 executiveApprovalRequired:
-                    this.configuration.requireExecutiveApproval
+                    authoritativeEvaluation.executiveApprovalRequired
             };
 
             opportunity.evaluation = evaluation;
