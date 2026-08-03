@@ -26,13 +26,15 @@ import { fileURLToPath } from "url";
 import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
 import CaliforniaGrantsPortalAdapter from "./california-grants-portal-adapter.js";
 import LocalResourceDiscoveryAdapter from "./local-resource-discovery-adapter.js";
+import LocalCSRDiscoveryAdapter from "./local-csr-discovery-adapter.js";
+import CommunityFoundationDiscoveryAdapter from "./community-foundation-discovery-adapter.js";
 
-const VERSION = "2.6.7";
+const VERSION = "2.6.8";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
-const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.1.0";
+const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.2.0";
 const RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID =
-  "RDI110-LOCAL-CALIFORNIA-LIVE-20260803-A";
+  "RDI120-LOCAL-CSR-FOUNDATION-LIVE-20260803-A";
 
 const resourceDiscoveryIntegrationState = {
   status: "initializing",
@@ -53,6 +55,16 @@ function registerResourceDiscoveryAdapters() {
       ResourceDiscoveryNetwork
     );
 
+  const csrResult =
+    LocalCSRDiscoveryAdapter.register(
+      ResourceDiscoveryNetwork
+    );
+
+  const communityFoundationResult =
+    CommunityFoundationDiscoveryAdapter.register(
+      ResourceDiscoveryNetwork
+    );
+
   resourceDiscoveryIntegrationState.registeredAdapters =
     ResourceDiscoveryNetwork.listAdapters();
 
@@ -62,7 +74,10 @@ function registerResourceDiscoveryAdapters() {
   return {
     results: {
       california: californiaResult,
-      local: localResult
+      local: localResult,
+      csr: csrResult,
+      communityFoundation:
+        communityFoundationResult
     },
     adapters:
       resourceDiscoveryIntegrationState.registeredAdapters
@@ -7298,6 +7313,39 @@ app.get("/api/resource-discovery/status", (request, response) => {
           LocalResourceDiscoveryAdapter.defaultGeography
             .expansionStrategy
       },
+      csrAdapter: {
+        name: LocalCSRDiscoveryAdapter.name,
+        version: LocalCSRDiscoveryAdapter.version,
+        buildId: LocalCSRDiscoveryAdapter.buildId,
+        registered: adapters.some(
+          adapter =>
+            adapter.id === LocalCSRDiscoveryAdapter.id
+        ),
+        currentOperatingAreas:
+          LocalCSRDiscoveryAdapter.defaultGeography
+            .currentOperatingAreas,
+        channelCount:
+          LocalCSRDiscoveryAdapter.csrChannels.length
+      },
+      communityFoundationAdapter: {
+        name: CommunityFoundationDiscoveryAdapter.name,
+        version: CommunityFoundationDiscoveryAdapter.version,
+        buildId: CommunityFoundationDiscoveryAdapter.buildId,
+        registered: adapters.some(
+          adapter =>
+            adapter.id ===
+              CommunityFoundationDiscoveryAdapter.id
+        ),
+        currentOperatingAreas:
+          CommunityFoundationDiscoveryAdapter
+            .defaultGeography.currentOperatingAreas,
+        missionDomains:
+          CommunityFoundationDiscoveryAdapter
+            .missionDomains,
+        foundationChannels:
+          CommunityFoundationDiscoveryAdapter
+            .foundationChannels
+      },
       adapters,
       lastRunAt: resourceDiscoveryIntegrationState.lastRunAt,
       lastResultCount:
@@ -7369,6 +7417,145 @@ app.get(
 
       response.status(500).json({
         error: "local_resource_discovery_failed",
+        message: error?.message || String(error),
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/resource-discovery/csr",
+  async (request, response) => {
+    try {
+      const run = await ResourceDiscoveryNetwork.discoverAll({
+        adapterIds: [LocalCSRDiscoveryAdapter.id],
+        context: {
+          geographyProfile:
+            LocalCSRDiscoveryAdapter.defaultGeography
+        }
+      });
+
+      resourceDiscoveryIntegrationState.status =
+        run.failedAdapters > 0 ? "degraded" : "online";
+      resourceDiscoveryIntegrationState.lastRunAt =
+        run.completedAt;
+      resourceDiscoveryIntegrationState.lastResultCount =
+        run.total;
+      resourceDiscoveryIntegrationState.lastError =
+        run.failures?.[0]?.message || null;
+
+      response.json({
+        schema: "meos.resource-discovery.csr.v1",
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID,
+        status: resourceDiscoveryIntegrationState.status,
+        source: {
+          id: LocalCSRDiscoveryAdapter.id,
+          name: LocalCSRDiscoveryAdapter.name,
+          region: LocalCSRDiscoveryAdapter.region
+        },
+        geography: {
+          currentOperatingAreas:
+            LocalCSRDiscoveryAdapter.defaultGeography
+              .currentOperatingAreas,
+          expansionStrategy:
+            LocalCSRDiscoveryAdapter.defaultGeography
+              .expansionStrategy
+        },
+        csrChannels:
+          LocalCSRDiscoveryAdapter.csrChannels,
+        total: run.total,
+        failures: run.failures,
+        records: run.records
+      });
+    } catch (error) {
+      resourceDiscoveryIntegrationState.status = "degraded";
+      resourceDiscoveryIntegrationState.lastError =
+        error?.message || String(error);
+
+      response.status(500).json({
+        error: "local_csr_discovery_failed",
+        message: error?.message || String(error),
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/resource-discovery/community-foundations",
+  async (request, response) => {
+    try {
+      const includeFutureExpansion =
+        String(
+          request.query.includeFutureExpansion || ""
+        ).toLowerCase() === "true";
+
+      const run = await ResourceDiscoveryNetwork.discoverAll({
+        adapterIds: [
+          CommunityFoundationDiscoveryAdapter.id
+        ],
+        context: {
+          geographyProfile:
+            CommunityFoundationDiscoveryAdapter
+              .defaultGeography,
+          includeFutureExpansion
+        }
+      });
+
+      resourceDiscoveryIntegrationState.status =
+        run.failedAdapters > 0 ? "degraded" : "online";
+      resourceDiscoveryIntegrationState.lastRunAt =
+        run.completedAt;
+      resourceDiscoveryIntegrationState.lastResultCount =
+        run.total;
+      resourceDiscoveryIntegrationState.lastError =
+        run.failures?.[0]?.message || null;
+
+      response.json({
+        schema:
+          "meos.resource-discovery.community-foundations.v1",
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID,
+        status: resourceDiscoveryIntegrationState.status,
+        source: {
+          id:
+            CommunityFoundationDiscoveryAdapter.id,
+          name:
+            CommunityFoundationDiscoveryAdapter.name,
+          region:
+            CommunityFoundationDiscoveryAdapter.region
+        },
+        geography: {
+          currentOperatingAreas:
+            CommunityFoundationDiscoveryAdapter
+              .defaultGeography.currentOperatingAreas,
+          expansionStrategy:
+            CommunityFoundationDiscoveryAdapter
+              .defaultGeography.expansionStrategy,
+          includeFutureExpansion
+        },
+        missionDomains:
+          CommunityFoundationDiscoveryAdapter
+            .missionDomains,
+        foundationChannels:
+          CommunityFoundationDiscoveryAdapter
+            .foundationChannels,
+        total: run.total,
+        failures: run.failures,
+        records: run.records
+      });
+    } catch (error) {
+      resourceDiscoveryIntegrationState.status = "degraded";
+      resourceDiscoveryIntegrationState.lastError =
+        error?.message || String(error);
+
+      response.status(500).json({
+        error:
+          "community_foundation_discovery_failed",
         message: error?.message || String(error),
         version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
         buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
