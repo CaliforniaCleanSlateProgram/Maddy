@@ -20,7 +20,9 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.0.0";
+  const DASHBOARD_VERSION = "2.1.0";
+  const FUNDING_API_URL = "/api/executive-memory/grant-recommendations?limit=1000";
+  const FUNDING_CARD_LIMIT = 3;
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
   const STORAGE_KEY = "meos.dashboard.build.v0.4.0";
@@ -111,7 +113,14 @@
     communicationMode: "professional",
     conversationStatus: "disconnected",
     tokenActivity: "idle",
-    muted: false
+    muted: false,
+    fundingIntelligence: {
+      status: "idle",
+      opportunities: [],
+      totalQualified: 0,
+      lastLoadedAt: null,
+      error: null
+    }
   };
 
   function loadBuildTasks() {
@@ -1713,12 +1722,11 @@ document
         <div class="meos-widget-inner">
           <div class="meos-widget-header">
             <h2 class="meos-widget-title">Grant Intelligence</h2>
-            <button class="meos-widget-link" type="button">View All</button>
+            <button id="meosFundingViewAll" class="meos-widget-link" type="button">View All</button>
           </div>
-          <ul class="meos-list">
-            <li><span></span><span><strong>Reentry Support Services Expansion</strong><br><small class="meos-muted">$250,000 · Foundation for Change</small><br><small style="color:var(--meos-green);">Match: 95%</small></span><span class="meos-priority high">Highly Recommended</span></li>
-            <li><span></span><span><strong>Workforce Development Initiative</strong><br><small class="meos-muted">$100,000 · State Community Fund</small><br><small style="color:var(--meos-green);">Match: 88%</small></span><span class="meos-priority high">Recommended</span></li>
-            <li><span></span><span><strong>Youth Justice Prevention Program</strong><br><small class="meos-muted">$75,000 · Justice Impact Fund</small><br><small style="color:var(--meos-green);">Match: 82%</small></span><span class="meos-priority high">Recommended</span></li>
+          <p id="meosFundingSummary" class="meos-muted" style="margin:0 0 10px;font-size:.76rem;">Loading live qualified opportunities…</p>
+          <ul id="meosFundingOpportunityList" class="meos-list">
+            <li><span></span><span><strong>Connecting to Funding Intelligence…</strong><br><small class="meos-muted">Only executive-qualified records will be displayed.</small></span><span class="meos-priority medium">Loading</span></li>
           </ul>
         </div>
       `,
@@ -1776,6 +1784,175 @@ document
     };
 
     return widgets[id] || "";
+  }
+
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function firstDefined(...values) {
+    return values.find((value) => value !== undefined && value !== null && value !== "");
+  }
+
+  function getFundingScore(opportunity) {
+    const value = Number(firstDefined(
+      opportunity?.qualification?.score,
+      opportunity?.evaluation?.score?.total,
+      opportunity?.score?.total,
+      opportunity?.executiveScore,
+      opportunity?.fitScore,
+      opportunity?.matchScore
+    ));
+
+    return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : null;
+  }
+
+  function getFundingAmount(opportunity) {
+    const value = firstDefined(
+      opportunity?.awardAmount,
+      opportunity?.amount,
+      opportunity?.fundingAmount,
+      opportunity?.estimatedAward,
+      opportunity?.awardCeiling,
+      opportunity?.moneyReality?.maximumAward
+    );
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0
+      }).format(value);
+    }
+
+    return value ? String(value) : "Amount not stated";
+  }
+
+  function getFundingRecommendation(opportunity) {
+    const value = String(firstDefined(
+      opportunity?.recommendation,
+      opportunity?.qualification?.recommendation,
+      opportunity?.evaluation?.recommendation?.decision,
+      opportunity?.evaluation?.recommendation,
+      "human-review"
+    )).toLowerCase();
+
+    if (value.includes("high") || value.includes("pursue")) return "Highly Recommended";
+    if (value.includes("reject") || value.includes("decline") || value.includes("no-go")) return "Do Not Pursue";
+    if (value.includes("review")) return "Human Review";
+    return value.split(/[-_ ]+/).filter(Boolean).map((word) => word[0].toUpperCase() + word.slice(1)).join(" ") || "Qualified";
+  }
+
+  function isExecutiveQualified(opportunity) {
+    return String(firstDefined(
+      opportunity?.qualificationStatus,
+      opportunity?.qualification?.status,
+      opportunity?.status
+    )).toLowerCase() === "executive-qualified";
+  }
+
+  function sortFundingOpportunities(left, right) {
+    const scoreDifference = (getFundingScore(right) ?? -1) - (getFundingScore(left) ?? -1);
+    if (scoreDifference) return scoreDifference;
+
+    const leftDeadline = Date.parse(firstDefined(left?.deadline, left?.closeDate, ""));
+    const rightDeadline = Date.parse(firstDefined(right?.deadline, right?.closeDate, ""));
+    const safeLeft = Number.isFinite(leftDeadline) ? leftDeadline : Number.MAX_SAFE_INTEGER;
+    const safeRight = Number.isFinite(rightDeadline) ? rightDeadline : Number.MAX_SAFE_INTEGER;
+    return safeLeft - safeRight;
+  }
+
+  function renderFundingIntelligence() {
+    const list = document.getElementById("meosFundingOpportunityList");
+    const summary = document.getElementById("meosFundingSummary");
+    if (!list || !summary) return;
+
+    if (state.fundingIntelligence.status === "loading") {
+      summary.textContent = "Loading live qualified opportunities…";
+      return;
+    }
+
+    if (state.fundingIntelligence.status === "error") {
+      summary.textContent = "Live Funding Intelligence is temporarily unavailable.";
+      list.innerHTML = `<li><span></span><span><strong>Connection failed</strong><br><small class="meos-muted">${escapeHtml(state.fundingIntelligence.error || "Unknown error")}</small></span><span class="meos-priority medium">Retry</span></li>`;
+      return;
+    }
+
+    const opportunities = state.fundingIntelligence.opportunities.slice(0, FUNDING_CARD_LIMIT);
+    const total = state.fundingIntelligence.totalQualified;
+    summary.textContent = `${total} live executive-qualified opportunit${total === 1 ? "y" : "ies"}. Showing the highest-priority ${Math.min(total, FUNDING_CARD_LIMIT)}.`;
+
+    if (!opportunities.length) {
+      list.innerHTML = '<li><span></span><span><strong>No qualified opportunities available</strong><br><small class="meos-muted">Funding Intelligence returned no executive-qualified records.</small></span><span class="meos-priority medium">Live</span></li>';
+      return;
+    }
+
+    list.innerHTML = opportunities.map((opportunity) => {
+      const title = firstDefined(opportunity?.title, "Untitled funding opportunity");
+      const provider = firstDefined(opportunity?.agencyName, opportunity?.provider, opportunity?.sourceName, "Funding source");
+      const amount = getFundingAmount(opportunity);
+      const score = getFundingScore(opportunity);
+      const recommendation = getFundingRecommendation(opportunity);
+      const url = firstDefined(opportunity?.url, opportunity?.sourceUrl, "");
+      const titleMarkup = url
+        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;">${escapeHtml(title)}</a>`
+        : escapeHtml(title);
+
+      return `<li data-funding-opportunity-id="${escapeHtml(opportunity?.id || "")}"><span></span><span><strong>${titleMarkup}</strong><br><small class="meos-muted">${escapeHtml(amount)} · ${escapeHtml(provider)}</small><br><small style="color:var(--meos-green);">${score === null ? "Executive Qualified" : `Match: ${score}%`}</small></span><span class="meos-priority high">${escapeHtml(recommendation)}</span></li>`;
+    }).join("");
+  }
+
+  async function loadFundingIntelligence() {
+    state.fundingIntelligence.status = "loading";
+    state.fundingIntelligence.error = null;
+    renderFundingIntelligence();
+
+    try {
+      const response = await fetch(FUNDING_API_URL, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        throw new Error(`Funding Intelligence returned HTTP ${response.status}.`);
+      }
+
+      const payload = await response.json();
+      const records = Array.isArray(payload?.records) ? payload.records : [];
+      const qualified = records
+        .filter((record) => record?.type === "funding-opportunity" || !record?.type)
+        .filter(isExecutiveQualified)
+        .sort(sortFundingOpportunities);
+
+      state.fundingIntelligence.status = "ready";
+      state.fundingIntelligence.opportunities = qualified;
+      state.fundingIntelligence.totalQualified = qualified.length;
+      state.fundingIntelligence.lastLoadedAt = new Date().toISOString();
+      renderFundingIntelligence();
+
+      dispatchMEOS("meos:funding-intelligence-loaded", {
+        totalQualified: qualified.length,
+        displayed: Math.min(qualified.length, FUNDING_CARD_LIMIT),
+        loadedAt: state.fundingIntelligence.lastLoadedAt
+      });
+
+      return qualified;
+    } catch (error) {
+      state.fundingIntelligence.status = "error";
+      state.fundingIntelligence.error = error?.message || String(error);
+      state.fundingIntelligence.opportunities = [];
+      state.fundingIntelligence.totalQualified = 0;
+      renderFundingIntelligence();
+      console.error("MEOS Funding Intelligence dashboard connection failed.", error);
+      return [];
+    }
   }
 
   function createDashboardShell() {
@@ -2038,6 +2215,13 @@ document
         dispatchMEOS("meos:quick-action", {
           action: button.dataset.meosAction
         });
+      });
+    });
+
+    document.getElementById("meosFundingViewAll")?.addEventListener("click", () => {
+      dispatchMEOS("meos:funding-intelligence-view-all", {
+        opportunities: state.fundingIntelligence.opportunities.map((item) => ({ ...item })),
+        totalQualified: state.fundingIntelligence.totalQualified
       });
     });
   }
@@ -2420,6 +2604,7 @@ document
   function initialize() {
     createDashboardShell();
     installLegacyVoicePanelRetirement();
+    void loadFundingIntelligence();
 
     console.info(
       `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; legacy voice panel retired.`
@@ -2451,6 +2636,16 @@ document
       getState: () => ({
         mode: state.costMode,
         paidSessionActive: state.paidSessionActive
+      })
+    }),
+    funding: Object.freeze({
+      refresh: loadFundingIntelligence,
+      getState: () => ({
+        status: state.fundingIntelligence.status,
+        totalQualified: state.fundingIntelligence.totalQualified,
+        lastLoadedAt: state.fundingIntelligence.lastLoadedAt,
+        error: state.fundingIntelligence.error,
+        opportunities: state.fundingIntelligence.opportunities.map((item) => ({ ...item }))
       })
     }),
     executiveOffice: Object.freeze({
