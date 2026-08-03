@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.1.0";
+  const DASHBOARD_VERSION = "2.2.0";
   const FUNDING_API_URL = "/api/executive-memory/grant-recommendations?limit=1000";
   const FUNDING_CARD_LIMIT = 3;
   const ROOT_ID = "executive-office";
@@ -1721,12 +1721,12 @@ document
       "grant-intelligence": `
         <div class="meos-widget-inner">
           <div class="meos-widget-header">
-            <h2 class="meos-widget-title">Grant Intelligence</h2>
+            <h2 class="meos-widget-title">Resource Acquisition Desk</h2>
             <button id="meosFundingViewAll" class="meos-widget-link" type="button">View All</button>
           </div>
           <p id="meosFundingSummary" class="meos-muted" style="margin:0 0 10px;font-size:.76rem;">Loading live qualified opportunities…</p>
           <ul id="meosFundingOpportunityList" class="meos-list">
-            <li><span></span><span><strong>Connecting to Funding Intelligence…</strong><br><small class="meos-muted">Only executive-qualified records will be displayed.</small></span><span class="meos-priority medium">Loading</span></li>
+            <li><span></span><span><strong>Connecting to Resource Acquisition…</strong><br><small class="meos-muted">Only opportunities approved by the authoritative acquisition engine will be displayed.</small></span><span class="meos-priority medium">Loading</span></li>
           </ul>
         </div>
       `,
@@ -1800,6 +1800,65 @@ document
     return values.find((value) => value !== undefined && value !== null && value !== "");
   }
 
+  function getResourceAcquisitionEngine() {
+    return (
+      window.ExecutiveResourceAcquisitionEngine ||
+      window.MEOSExecutiveResourceAcquisitionEngine ||
+      null
+    );
+  }
+
+  function getResourceDecision(opportunity) {
+    return firstDefined(
+      opportunity?.authoritativeResourceDecision,
+      opportunity?.resourceDecision,
+      opportunity?.executiveQualification?.authoritativeResourceDecision,
+      opportunity?.evaluation?.authoritativeResourceDecision,
+      null
+    );
+  }
+
+  function evaluateFundingOpportunity(opportunity) {
+    const engine = getResourceAcquisitionEngine();
+
+    if (!engine?.decide) {
+      throw new Error(
+        "Executive Resource Acquisition Engine is not available to the dashboard."
+      );
+    }
+
+    const resourceDecision = engine.decide(opportunity, {
+      source: "MEOS Executive Dashboard",
+      dashboardVersion: DASHBOARD_VERSION
+    });
+
+    return {
+      ...opportunity,
+      authoritativeResourceDecision: resourceDecision
+    };
+  }
+
+  function getDecisionPriority(decision) {
+    const value = String(decision || "").toLowerCase();
+
+    if (value === "pursue") return 1;
+    if (value === "partner") return 2;
+    if (value === "prepare") return 3;
+    if (value === "monitor") return 4;
+    if (value === "research") return 5;
+    return 99;
+  }
+
+  function getStrategicTimingPriority(timing) {
+    const value = String(timing || "").toLowerCase();
+
+    if (value === "immediate") return 1;
+    if (value === "now") return 2;
+    if (value === "build-now-for-future") return 3;
+    if (value === "future-cycle") return 4;
+    return 99;
+  }
+
   function getFundingScore(opportunity) {
     const value = Number(firstDefined(
       opportunity?.qualification?.score,
@@ -1835,37 +1894,67 @@ document
   }
 
   function getFundingRecommendation(opportunity) {
-    const value = String(firstDefined(
-      opportunity?.recommendation,
-      opportunity?.qualification?.recommendation,
-      opportunity?.evaluation?.recommendation?.decision,
-      opportunity?.evaluation?.recommendation,
-      "human-review"
-    )).toLowerCase();
+    const decision = getResourceDecision(opportunity);
+    const value = String(
+      decision?.decision ||
+      decision?.recommendation ||
+      "research"
+    ).toLowerCase();
 
-    if (value.includes("high") || value.includes("pursue")) return "Highly Recommended";
-    if (value.includes("reject") || value.includes("decline") || value.includes("no-go")) return "Do Not Pursue";
-    if (value.includes("review")) return "Human Review";
-    return value.split(/[-_ ]+/).filter(Boolean).map((word) => word[0].toUpperCase() + word.slice(1)).join(" ") || "Qualified";
+    if (value === "pursue") return "Apply Now";
+    if (value === "partner") return "Build Partnership";
+    if (value === "prepare") return "Prepare";
+    if (value === "monitor") return "Monitor";
+    if (value === "research") return "Research";
+    return "Off Desk";
   }
 
   function isExecutiveQualified(opportunity) {
-    return String(firstDefined(
-      opportunity?.qualificationStatus,
-      opportunity?.qualification?.status,
-      opportunity?.status
-    )).toLowerCase() === "executive-qualified";
+    const decision = getResourceDecision(opportunity);
+
+    return Boolean(
+      decision?.showExecutiveDirector === true &&
+      ["pursue", "prepare", "partner"].includes(
+        String(decision?.decision || "").toLowerCase()
+      )
+    );
   }
 
   function sortFundingOpportunities(left, right) {
-    const scoreDifference = (getFundingScore(right) ?? -1) - (getFundingScore(left) ?? -1);
-    if (scoreDifference) return scoreDifference;
+    const leftDecision = getResourceDecision(left) || {};
+    const rightDecision = getResourceDecision(right) || {};
 
-    const leftDeadline = Date.parse(firstDefined(left?.deadline, left?.closeDate, ""));
-    const rightDeadline = Date.parse(firstDefined(right?.deadline, right?.closeDate, ""));
-    const safeLeft = Number.isFinite(leftDeadline) ? leftDeadline : Number.MAX_SAFE_INTEGER;
-    const safeRight = Number.isFinite(rightDeadline) ? rightDeadline : Number.MAX_SAFE_INTEGER;
-    return safeLeft - safeRight;
+    const timingDifference =
+      getStrategicTimingPriority(leftDecision.strategicTiming) -
+      getStrategicTimingPriority(rightDecision.strategicTiming);
+
+    if (timingDifference) return timingDifference;
+
+    const decisionDifference =
+      getDecisionPriority(leftDecision.decision) -
+      getDecisionPriority(rightDecision.decision);
+
+    if (decisionDifference) return decisionDifference;
+
+    const leftDeadline = Number(leftDecision?.deadline?.daysRemaining);
+    const rightDeadline = Number(rightDecision?.deadline?.daysRemaining);
+    const safeLeftDeadline =
+      Number.isFinite(leftDeadline) && leftDeadline >= 0
+        ? leftDeadline
+        : Number.MAX_SAFE_INTEGER;
+    const safeRightDeadline =
+      Number.isFinite(rightDeadline) && rightDeadline >= 0
+        ? rightDeadline
+        : Number.MAX_SAFE_INTEGER;
+
+    if (safeLeftDeadline !== safeRightDeadline) {
+      return safeLeftDeadline - safeRightDeadline;
+    }
+
+    const leftValue = Number(leftDecision?.resourceValue?.amount || 0);
+    const rightValue = Number(rightDecision?.resourceValue?.amount || 0);
+
+    return rightValue - leftValue;
   }
 
   function renderFundingIntelligence() {
@@ -1874,37 +1963,73 @@ document
     if (!list || !summary) return;
 
     if (state.fundingIntelligence.status === "loading") {
-      summary.textContent = "Loading live qualified opportunities…";
+      summary.textContent = "Loading the authoritative Resource Acquisition Desk…";
       return;
     }
 
     if (state.fundingIntelligence.status === "error") {
-      summary.textContent = "Live Funding Intelligence is temporarily unavailable.";
+      summary.textContent = "The Resource Acquisition Desk is temporarily unavailable.";
       list.innerHTML = `<li><span></span><span><strong>Connection failed</strong><br><small class="meos-muted">${escapeHtml(state.fundingIntelligence.error || "Unknown error")}</small></span><span class="meos-priority medium">Retry</span></li>`;
       return;
     }
 
-    const opportunities = state.fundingIntelligence.opportunities.slice(0, FUNDING_CARD_LIMIT);
+    const opportunities =
+      state.fundingIntelligence.opportunities.slice(0, FUNDING_CARD_LIMIT);
     const total = state.fundingIntelligence.totalQualified;
-    summary.textContent = `${total} live executive-qualified opportunit${total === 1 ? "y" : "ies"}. Showing the highest-priority ${Math.min(total, FUNDING_CARD_LIMIT)}.`;
+
+    summary.textContent =
+      `${total} opportunit${total === 1 ? "y" : "ies"} approved for the Executive Director's desk. ` +
+      `Showing the first ${Math.min(total, FUNDING_CARD_LIMIT)} by timing and action priority.`;
 
     if (!opportunities.length) {
-      list.innerHTML = '<li><span></span><span><strong>No qualified opportunities available</strong><br><small class="meos-muted">Funding Intelligence returned no executive-qualified records.</small></span><span class="meos-priority medium">Live</span></li>';
+      list.innerHTML =
+        '<li><span></span><span><strong>No opportunities approved for the desk</strong><br>' +
+        '<small class="meos-muted">The authoritative acquisition engine did not recommend any current records for Executive Director action.</small>' +
+        '</span><span class="meos-priority medium">Live</span></li>';
       return;
     }
 
     list.innerHTML = opportunities.map((opportunity) => {
-      const title = firstDefined(opportunity?.title, "Untitled funding opportunity");
-      const provider = firstDefined(opportunity?.agencyName, opportunity?.provider, opportunity?.sourceName, "Funding source");
-      const amount = getFundingAmount(opportunity);
-      const score = getFundingScore(opportunity);
+      const decision = getResourceDecision(opportunity) || {};
+      const brief = decision.executiveBrief || {};
+      const title = firstDefined(
+        opportunity?.title,
+        decision?.title,
+        "Untitled resource opportunity"
+      );
+      const provider = firstDefined(
+        opportunity?.agencyName,
+        opportunity?.provider,
+        opportunity?.sourceName,
+        "Resource source"
+      );
+      const resource = firstDefined(
+        brief?.resource,
+        decision?.resourceValue?.label,
+        getFundingAmount(opportunity)
+      );
+      const deadline = firstDefined(
+        decision?.deadline?.label,
+        getFundingDeadline(opportunity)
+      );
       const recommendation = getFundingRecommendation(opportunity);
-      const url = firstDefined(opportunity?.url, opportunity?.sourceUrl, "");
-      const titleMarkup = url
-        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;">${escapeHtml(title)}</a>`
-        : escapeHtml(title);
+      const timing = String(decision?.strategicTiming || "now")
+        .split(/[-_ ]+/)
+        .filter(Boolean)
+        .map((word) => word[0].toUpperCase() + word.slice(1))
+        .join(" ");
 
-      return `<li data-funding-opportunity-id="${escapeHtml(opportunity?.id || "")}"><span></span><span><strong>${titleMarkup}</strong><br><small class="meos-muted">${escapeHtml(amount)} · ${escapeHtml(provider)}</small><br><small style="color:var(--meos-green);">${score === null ? "Executive Qualified" : `Match: ${score}%`}</small></span><span class="meos-priority high">${escapeHtml(recommendation)}</span></li>`;
+      return `
+        <li data-funding-opportunity-id="${escapeHtml(opportunity?.id || "")}">
+          <span></span>
+          <span>
+            <strong>${escapeHtml(title)}</strong><br>
+            <small class="meos-muted">${escapeHtml(resource)} · ${escapeHtml(provider)}</small><br>
+            <small style="color:var(--meos-green);">${escapeHtml(deadline)} · ${escapeHtml(timing)}</small>
+          </span>
+          <span class="meos-priority high">${escapeHtml(recommendation)}</span>
+        </li>
+      `;
     }).join("");
   }
 
@@ -1914,6 +2039,14 @@ document
     renderFundingIntelligence();
 
     try {
+      const engine = getResourceAcquisitionEngine();
+
+      if (!engine?.decide) {
+        throw new Error(
+          "Executive Resource Acquisition Engine did not load before the dashboard."
+        );
+      }
+
       const response = await fetch(FUNDING_API_URL, {
         method: "GET",
         headers: { Accept: "application/json" },
@@ -1926,31 +2059,45 @@ document
 
       const payload = await response.json();
       const records = Array.isArray(payload?.records) ? payload.records : [];
-      const qualified = records
-        .filter((record) => record?.type === "funding-opportunity" || !record?.type)
+
+      const executiveDesk = records
+        .filter(
+          (record) =>
+            record?.type === "funding-opportunity" ||
+            !record?.type
+        )
+        .map(evaluateFundingOpportunity)
         .filter(isExecutiveQualified)
         .sort(sortFundingOpportunities);
 
       state.fundingIntelligence.status = "ready";
-      state.fundingIntelligence.opportunities = qualified;
-      state.fundingIntelligence.totalQualified = qualified.length;
+      state.fundingIntelligence.opportunities = executiveDesk;
+      state.fundingIntelligence.totalQualified = executiveDesk.length;
       state.fundingIntelligence.lastLoadedAt = new Date().toISOString();
       renderFundingIntelligence();
 
-      dispatchMEOS("meos:funding-intelligence-loaded", {
-        totalQualified: qualified.length,
-        displayed: Math.min(qualified.length, FUNDING_CARD_LIMIT),
+      dispatchMEOS("meos:resource-acquisition-desk-loaded", {
+        authority: {
+          name: engine.name,
+          version: engine.version,
+          buildId: engine.buildId
+        },
+        totalOnDesk: executiveDesk.length,
+        displayed: Math.min(executiveDesk.length, FUNDING_CARD_LIMIT),
         loadedAt: state.fundingIntelligence.lastLoadedAt
       });
 
-      return qualified;
+      return executiveDesk;
     } catch (error) {
       state.fundingIntelligence.status = "error";
       state.fundingIntelligence.error = error?.message || String(error);
       state.fundingIntelligence.opportunities = [];
       state.fundingIntelligence.totalQualified = 0;
       renderFundingIntelligence();
-      console.error("MEOS Funding Intelligence dashboard connection failed.", error);
+      console.error(
+        "MEOS Resource Acquisition dashboard connection failed.",
+        error
+      );
       return [];
     }
   }
@@ -2228,29 +2375,130 @@ document
     const detail = document.getElementById("meosFundingBrowserDetail");
     if (!detail || !opportunity) return;
 
-    const title = firstDefined(opportunity?.title, "Untitled funding opportunity");
-    const provider = firstDefined(opportunity?.agencyName, opportunity?.provider, opportunity?.sourceName, "Funding source");
-    const score = getFundingScore(opportunity);
-    const amount = getFundingAmount(opportunity);
+    const decision = getResourceDecision(opportunity) || {};
+    const brief = decision.executiveBrief || {};
+    const reasoning = decision.reasoning || {};
+    const title = firstDefined(
+      opportunity?.title,
+      decision?.title,
+      "Untitled resource opportunity"
+    );
+    const provider = firstDefined(
+      opportunity?.agencyName,
+      opportunity?.provider,
+      opportunity?.sourceName,
+      "Resource source"
+    );
+    const resource = firstDefined(
+      brief?.resource,
+      decision?.resourceValue?.label,
+      getFundingAmount(opportunity)
+    );
+    const deadline = firstDefined(
+      decision?.deadline?.label,
+      getFundingDeadline(opportunity)
+    );
     const recommendation = getFundingRecommendation(opportunity);
-    const url = firstDefined(opportunity?.url, opportunity?.sourceUrl, opportunity?.source?.url, "");
+    const url = firstDefined(
+      opportunity?.url,
+      opportunity?.sourceUrl,
+      opportunity?.source?.url,
+      ""
+    );
+    const unknowns = Array.isArray(decision?.unknowns)
+      ? decision.unknowns
+      : [];
+    const acquisitionPath = String(
+      decision?.acquisitionPath || "unresolved"
+    )
+      .split(/[-_ ]+/)
+      .filter(Boolean)
+      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .join(" ");
+    const strategicTiming = String(
+      decision?.strategicTiming || "unresolved"
+    )
+      .split(/[-_ ]+/)
+      .filter(Boolean)
+      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .join(" ");
 
     detail.innerHTML = `
       <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px;">
         <div>
-          <div class="meos-widget-title" style="margin-bottom:8px;">Funding Opportunity</div>
+          <div class="meos-widget-title" style="margin-bottom:8px;">Executive Resource Brief</div>
           <h2 style="margin:0 0 8px;font-size:1.35rem;line-height:1.25;">${escapeHtml(title)}</h2>
           <div class="meos-muted">${escapeHtml(provider)}</div>
         </div>
         <span class="meos-priority high">${escapeHtml(recommendation)}</span>
       </div>
+
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0;">
-        <div class="meos-alert"><strong>${score === null ? "Qualified" : `${score}%`}</strong><span class="meos-muted">Executive match</span></div>
-        <div class="meos-alert"><strong>${escapeHtml(amount)}</strong><span class="meos-muted">Funding amount</span></div>
-        <div class="meos-alert"><strong>${escapeHtml(getFundingDeadline(opportunity))}</strong><span class="meos-muted">Deadline</span></div>
+        <div class="meos-alert">
+          <strong>${decision?.canAcquire === true ? "Yes" : decision?.canAcquire === false ? "No" : "Research"}</strong>
+          <span class="meos-muted">Can CCSP acquire?</span>
+        </div>
+        <div class="meos-alert">
+          <strong>${escapeHtml(resource)}</strong>
+          <span class="meos-muted">Resource</span>
+        </div>
+        <div class="meos-alert">
+          <strong>${escapeHtml(deadline)}</strong>
+          <span class="meos-muted">Deadline</span>
+        </div>
+        <div class="meos-alert">
+          <strong>${escapeHtml(acquisitionPath)}</strong>
+          <span class="meos-muted">Acquisition path</span>
+        </div>
+        <div class="meos-alert">
+          <strong>${escapeHtml(strategicTiming)}</strong>
+          <span class="meos-muted">Strategic timing</span>
+        </div>
+        <div class="meos-alert">
+          <strong>${decision?.worthPursuing === true ? "Worth Pursuing" : "Not Recommended"}</strong>
+          <span class="meos-muted">Executive value</span>
+        </div>
       </div>
-      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(getFundingDescription(opportunity))}</p>
-      ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="take-it-button" style="display:inline-block;text-decoration:none;margin-top:8px;">Open Official Opportunity</a>` : ""}
+
+      <h3 style="margin:18px 0 8px;">Why this is on your desk</h3>
+      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(
+        brief?.whyOnDesk ||
+        reasoning?.reason ||
+        getFundingDescription(opportunity)
+      )}</p>
+
+      <h3 style="margin:18px 0 8px;">Maddy's decision</h3>
+      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(
+        brief?.reason ||
+        reasoning?.reason ||
+        "The authoritative acquisition engine completed the decision."
+      )}</p>
+
+      <h3 style="margin:18px 0 8px;">Next action</h3>
+      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(
+        decision?.nextAction ||
+        brief?.nextAction ||
+        "Complete the next authorized executive step."
+      )}</p>
+
+      <h3 style="margin:18px 0 8px;">If CCSP delays</h3>
+      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(
+        brief?.consequenceOfDelay ||
+        "The consequence of delay has not been verified."
+      )}</p>
+
+      <h3 style="margin:18px 0 8px;">Unknowns</h3>
+      ${
+        unknowns.length
+          ? `<ul>${unknowns.map((unknown) => `<li>${escapeHtml(unknown)}</li>`).join("")}</ul>`
+          : '<p class="meos-muted">No material unknowns were identified.</p>'
+      }
+
+      ${
+        url
+          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="take-it-button" style="display:inline-block;text-decoration:none;margin-top:12px;">Open Official Evidence</a>`
+          : ""
+      }
     `;
   }
 
@@ -2265,14 +2513,14 @@ document
         <section style="width:min(1280px,100%);min-height:75vh;margin:0 auto;background:#071523;border:1px solid rgba(105,239,255,.35);box-shadow:0 0 50px rgba(0,0,0,.55);">
           <header style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid rgba(105,239,255,.2);">
             <div>
-              <div class="meos-widget-title">Live Funding Intelligence</div>
+              <div class="meos-widget-title">Executive Resource Acquisition Desk</div>
               <div id="meosFundingBrowserCount" class="meos-muted" style="margin-top:5px;"></div>
             </div>
             <button id="meosFundingBrowserClose" class="office-dashboard-close" type="button" aria-label="Close">×</button>
           </header>
           <div style="display:grid;grid-template-columns:minmax(280px,38%) minmax(0,62%);min-height:65vh;">
             <div style="border-right:1px solid rgba(105,239,255,.16);padding:14px;overflow:auto;max-height:72vh;">
-              <input id="meosFundingBrowserSearch" class="meos-maddy-input" type="search" placeholder="Search 152 qualified opportunities…" style="width:100%;margin-bottom:12px;" />
+              <input id="meosFundingBrowserSearch" class="meos-maddy-input" type="search" placeholder="Search Executive Director opportunities…" style="width:100%;margin-bottom:12px;" />
               <ul id="meosFundingBrowserList" class="meos-list"></ul>
             </div>
             <div id="meosFundingBrowserDetail" style="padding:22px;overflow:auto;max-height:72vh;"></div>
@@ -2293,8 +2541,8 @@ document
     renderFundingBrowserList("");
     const first = selectedOpportunity || state.fundingIntelligence.opportunities[0];
     if (first) renderFundingOpportunityDetail(first);
-    overlay.querySelector("#meosFundingBrowserCount").textContent = `${state.fundingIntelligence.totalQualified} executive-qualified opportunities`;
-    overlay.querySelector("#meosFundingBrowserSearch").placeholder = `Search ${state.fundingIntelligence.totalQualified} qualified opportunities…`;
+    overlay.querySelector("#meosFundingBrowserCount").textContent = `${state.fundingIntelligence.totalQualified} opportunities approved for the Executive Director desk`;
+    overlay.querySelector("#meosFundingBrowserSearch").placeholder = `Search ${state.fundingIntelligence.totalQualified} Executive Director opportunities…`;
   }
 
   function renderFundingBrowserList(query = "") {
@@ -2312,8 +2560,13 @@ document
     list.innerHTML = matches.map((opportunity, index) => {
       const title = firstDefined(opportunity?.title, "Untitled funding opportunity");
       const provider = firstDefined(opportunity?.agencyName, opportunity?.provider, opportunity?.sourceName, "Funding source");
-      const score = getFundingScore(opportunity);
-      return `<li><button type="button" data-funding-browser-index="${index}" style="width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:2px 0;"><strong>${escapeHtml(title)}</strong><br><small class="meos-muted">${escapeHtml(provider)} · ${score === null ? "Qualified" : `${score}% match`}</small></button></li>`;
+      const decision = getResourceDecision(opportunity) || {};
+      const action = getFundingRecommendation(opportunity);
+      const deadline = firstDefined(
+        decision?.deadline?.label,
+        getFundingDeadline(opportunity)
+      );
+      return `<li><button type="button" data-funding-browser-index="${index}" style="width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:2px 0;"><strong>${escapeHtml(title)}</strong><br><small class="meos-muted">${escapeHtml(provider)} · ${escapeHtml(action)} · ${escapeHtml(deadline)}</small></button></li>`;
     }).join("") || '<li><span></span><span>No matching opportunities.</span><span></span></li>';
 
     list.querySelectorAll("[data-funding-browser-index]").forEach((button) => {
@@ -2781,6 +3034,16 @@ document
         totalQualified: state.fundingIntelligence.totalQualified,
         lastLoadedAt: state.fundingIntelligence.lastLoadedAt,
         error: state.fundingIntelligence.error,
+        authority: (() => {
+          const engine = getResourceAcquisitionEngine();
+          return engine
+            ? {
+                name: engine.name,
+                version: engine.version,
+                buildId: engine.buildId
+              }
+            : null;
+        })(),
         opportunities: state.fundingIntelligence.opportunities.map((item) => ({ ...item }))
       })
     }),
