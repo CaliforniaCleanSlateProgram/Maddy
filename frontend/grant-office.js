@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.7.0
- * Build: GO170-SUBMISSION-PORTAL-INTELLIGENCE-20260804-A
+ * Version: 1.8.0
+ * Build: GO180-EXECUTIVE-SUBMISSION-AWARD-TRACKING-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.7.0";
-    const BUILD_ID = "GO170-SUBMISSION-PORTAL-INTELLIGENCE-20260804-A";
+    const VERSION = "1.8.0";
+    const BUILD_ID = "GO180-EXECUTIVE-SUBMISSION-AWARD-TRACKING-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -242,6 +242,30 @@
         SUBMITTED: "submitted"
     });
 
+    const SUBMISSION_EXECUTION_STATES = Object.freeze({
+        NOT_SUBMITTED: "not-submitted",
+        AUTHORIZED: "authorized",
+        SUBMITTED: "submitted",
+        RECEIPT_VERIFIED: "receipt-verified",
+        DUPLICATE_BLOCKED: "duplicate-blocked"
+    });
+
+    const AWARD_DECISION_STATES = Object.freeze({
+        NOT_DECIDED: "not-decided",
+        AWARD_PENDING: "award-pending",
+        AWARDED: "awarded",
+        DECLINED: "declined",
+        WITHDRAWN: "withdrawn"
+    });
+
+    const FUNDING_RECEIPT_STATES = Object.freeze({
+        NOT_RECEIVED: "not-received",
+        PARTIALLY_RECEIVED: "partially-received",
+        FULLY_RECEIVED: "fully-received",
+        OVERDUE: "overdue"
+    });
+
+
 
 
 
@@ -333,7 +357,18 @@
             portalWorkflowStepsMapped: 0,
             portalSubmissionPackagesCreated: 0,
             portalAuthorizationBlocksTriggered: 0,
+            submissionExecutionsRecorded: 0,
+            duplicateSubmissionsBlocked: 0,
+            submissionReceiptsVerified: 0,
+            awardDecisionsRecorded: 0,
+            awardedValue: 0,
+            submittedValue: 0,
+            fundsReceivedValue: 0,
+            pendingAwardValue: 0,
             submissionBlocksTriggered: 0,
+            lastFundsReceivedAt: null,
+            lastAwardDecisionAt: null,
+            lastSubmissionExecutionAt: null,
             lastPortalIntelligenceAt: null,
             lastApplicationAssemblyAt: null,
             lastApplicationIntelligenceAt: null,
@@ -620,6 +655,18 @@
                     input.portalSubmissionPackage
                         ? this.clone(input.portalSubmissionPackage)
                         : null,
+                submissionExecution:
+                    input.submissionExecution
+                        ? this.clone(input.submissionExecution)
+                        : null,
+                awardTracking:
+                    input.awardTracking
+                        ? this.clone(input.awardTracking)
+                        : null,
+                fundingReceipts:
+                    Array.isArray(input.fundingReceipts)
+                        ? this.clone(input.fundingReceipts)
+                        : [],
                 evaluation: null,
                 tracking: {
                     enabled:
@@ -10105,6 +10152,1386 @@
             };
         },
 
+        calculateRequestedAmount(opportunity) {
+            return (
+                opportunity.awardAmount ||
+                opportunity.awardMaximum ||
+                opportunity.awardMinimum ||
+                0
+            );
+        },
+
+        createSubmissionFingerprint(
+            opportunity,
+            details = {}
+        ) {
+            const normalized = [
+                opportunity.id,
+                details.portalType ||
+                    opportunity
+                        .submissionPortalIntelligence
+                        ?.portal
+                        ?.type ||
+                    "unknown",
+                details.confirmationNumber ||
+                    "",
+                details.submittedAt ||
+                    "",
+                details.applicationPackageId ||
+                    opportunity
+                        .executiveApplicationPackage
+                        ?.id ||
+                    ""
+            ]
+                .map(value =>
+                    this.normalizeText(
+                        String(value || "")
+                    )
+                )
+                .join("|");
+
+            let hash = 0;
+
+            for (
+                let index = 0;
+                index < normalized.length;
+                index += 1
+            ) {
+                hash =
+                    (
+                        (
+                            hash << 5
+                        ) -
+                        hash
+                    ) +
+                    normalized.charCodeAt(
+                        index
+                    );
+                hash |= 0;
+            }
+
+            return `submission-${Math.abs(hash)}`;
+        },
+
+        recordAuthorizedSubmission(
+            opportunityId,
+            details = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const portalIntelligence =
+                opportunity
+                    ?.submissionPortalIntelligence;
+            const portalPackage =
+                opportunity
+                    ?.portalSubmissionPackage;
+            const applicationPackage =
+                opportunity
+                    ?.executiveApplicationPackage;
+
+            if (
+                !opportunity ||
+                !portalIntelligence ||
+                !portalPackage ||
+                !applicationPackage
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Submission requires opportunity, application package, portal intelligence, and portal package.",
+                    code:
+                        "GRANT_SUBMISSION_PREREQUISITES_MISSING"
+                };
+            }
+
+            if (
+                portalPackage
+                    .finalSubmitBlocked !== false ||
+                portalIntelligence
+                    .authorization
+                    .authorized !== true
+            ) {
+                this.analytics
+                    .submissionBlocksTriggered += 1;
+
+                return {
+                    success: false,
+                    error:
+                        "Submission execution is blocked until final executive authorization is complete.",
+                    code:
+                        "GRANT_SUBMISSION_EXECUTION_BLOCKED"
+                };
+            }
+
+            const submittedBy =
+                String(
+                    details.submittedBy ||
+                    ""
+                ).trim();
+
+            if (!submittedBy) {
+                return {
+                    success: false,
+                    error:
+                        "Submission execution requires submittedBy."
+                };
+            }
+
+            const submittedAt =
+                details.submittedAt ||
+                this.now();
+
+            const fingerprint =
+                this.createSubmissionFingerprint(
+                    opportunity,
+                    {
+                        ...details,
+                        submittedAt
+                    }
+                );
+
+            if (
+                opportunity
+                    .submissionExecution
+                    ?.fingerprint ===
+                    fingerprint ||
+                (
+                    opportunity
+                        .submissionExecution
+                        ?.state ===
+                        SUBMISSION_EXECUTION_STATES.SUBMITTED &&
+                    details.allowResubmission !== true
+                )
+            ) {
+                this.analytics
+                    .duplicateSubmissionsBlocked += 1;
+
+                return {
+                    success: false,
+                    error:
+                        "Duplicate submission blocked.",
+                    code:
+                        "GRANT_DUPLICATE_SUBMISSION_BLOCKED",
+                    existingSubmission:
+                        this.clone(
+                            opportunity
+                                .submissionExecution
+                        )
+                };
+            }
+
+            const requestedAmount =
+                this.numberOrNull(
+                    details.requestedAmount
+                ) ??
+                this.calculateRequestedAmount(
+                    opportunity
+                );
+
+            const execution = {
+                schema:
+                    "meos.grant-office.submission-execution.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                id:
+                    this.createId(
+                        "submission-execution"
+                    ),
+                opportunityId:
+                    opportunity.id,
+                applicationPackageId:
+                    applicationPackage.id,
+                portalSubmissionPackageId:
+                    portalPackage.id,
+                state:
+                    SUBMISSION_EXECUTION_STATES.SUBMITTED,
+                submittedAt,
+                submittedBy,
+                method:
+                    details.method ||
+                    portalIntelligence
+                        .portal
+                        .type ||
+                    "unknown",
+                portalType:
+                    portalIntelligence
+                        .portal
+                        .type,
+                portalName:
+                    portalIntelligence
+                        .portal
+                        .name,
+                confirmationNumber:
+                    String(
+                        details.confirmationNumber ||
+                        ""
+                    ),
+                receiptDocumentId:
+                    details.receiptDocumentId ||
+                    null,
+                receiptVerified:
+                    details.receiptVerified === true,
+                requestedAmount,
+                fingerprint,
+                notes:
+                    String(
+                        details.notes || ""
+                    ),
+                history: [
+                    {
+                        state:
+                            SUBMISSION_EXECUTION_STATES.SUBMITTED,
+                        enteredAt:
+                            submittedAt,
+                        actor:
+                            submittedBy,
+                        note:
+                            "Authorized application submission recorded."
+                    }
+                ]
+            };
+
+            if (
+                execution.receiptVerified
+            ) {
+                execution.state =
+                    SUBMISSION_EXECUTION_STATES.RECEIPT_VERIFIED;
+                execution.history.push({
+                    state:
+                        SUBMISSION_EXECUTION_STATES.RECEIPT_VERIFIED,
+                    enteredAt:
+                        submittedAt,
+                    actor:
+                        submittedBy,
+                    note:
+                        "Submission receipt verified at execution."
+                });
+                this.analytics
+                    .submissionReceiptsVerified += 1;
+            }
+
+            opportunity.submissionExecution =
+                execution;
+            opportunity.status =
+                "submitted";
+            opportunity.updatedAt =
+                this.now();
+
+            this.ensurePipelineRecord(
+                opportunity
+            );
+
+            if (
+                opportunity.pipelineStage ===
+                PIPELINE_STAGES.PREPARING
+            ) {
+                opportunity.pipelineStage =
+                    PIPELINE_STAGES.SUBMITTED;
+                this.appendPipelineHistory(
+                    opportunity,
+                    PIPELINE_STAGES.SUBMITTED,
+                    {
+                        actor:
+                            submittedBy,
+                        authority:
+                            "authorized-submission",
+                        note:
+                            "Application submission recorded."
+                    }
+                );
+            }
+
+            opportunity.awardTracking = {
+                schema:
+                    "meos.grant-office.award-tracking.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                opportunityId:
+                    opportunity.id,
+                submissionExecutionId:
+                    execution.id,
+                decisionState:
+                    AWARD_DECISION_STATES.AWARD_PENDING,
+                requestedAmount,
+                awardedAmount:
+                    null,
+                decisionAt:
+                    null,
+                decisionBy:
+                    null,
+                decisionReference:
+                    null,
+                conditions:
+                    [],
+                paymentSchedule:
+                    [],
+                outstandingRequirements:
+                    [],
+                receiptState:
+                    FUNDING_RECEIPT_STATES.NOT_RECEIVED,
+                totalReceived:
+                    0,
+                balanceRemaining:
+                    null,
+                history: [
+                    {
+                        state:
+                            AWARD_DECISION_STATES.AWARD_PENDING,
+                        enteredAt:
+                            submittedAt,
+                        actor:
+                            "MEOS Grant Office",
+                        note:
+                            "Award decision monitoring started."
+                    }
+                ]
+            };
+
+            if (
+                opportunity.pipelineStage ===
+                PIPELINE_STAGES.SUBMITTED
+            ) {
+                opportunity.pipelineStage =
+                    PIPELINE_STAGES.AWARD_PENDING;
+                this.appendPipelineHistory(
+                    opportunity,
+                    PIPELINE_STAGES.AWARD_PENDING,
+                    {
+                        actor:
+                            "MEOS Grant Office",
+                        authority:
+                            "award-monitoring",
+                        note:
+                            "Submission moved into award-pending monitoring."
+                    }
+                );
+            }
+
+            this.analytics
+                .submissionExecutionsRecorded += 1;
+            this.analytics
+                .submittedValue +=
+                Number(
+                    requestedAmount || 0
+                );
+            this.analytics
+                .pendingAwardValue +=
+                Number(
+                    requestedAmount || 0
+                );
+            this.analytics
+                .lastSubmissionExecutionAt =
+                submittedAt;
+
+            this.recalculatePipelineAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                submissionExecution:
+                    this.clone(
+                        execution
+                    ),
+                awardTracking:
+                    this.clone(
+                        opportunity
+                            .awardTracking
+                    ),
+                pipelineStage:
+                    opportunity.pipelineStage
+            };
+        },
+
+        verifySubmissionReceipt(
+            opportunityId,
+            details = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const execution =
+                opportunity
+                    ?.submissionExecution;
+
+            if (!execution) {
+                return {
+                    success: false,
+                    error:
+                        "Submission execution record not found."
+                };
+            }
+
+            execution.receiptVerified =
+                true;
+            execution.receiptDocumentId =
+                details.receiptDocumentId ||
+                execution.receiptDocumentId ||
+                null;
+            execution.confirmationNumber =
+                String(
+                    details.confirmationNumber ||
+                    execution.confirmationNumber ||
+                    ""
+                );
+            execution.state =
+                SUBMISSION_EXECUTION_STATES.RECEIPT_VERIFIED;
+            execution.history.push({
+                state:
+                    SUBMISSION_EXECUTION_STATES.RECEIPT_VERIFIED,
+                enteredAt:
+                    details.verifiedAt ||
+                    this.now(),
+                actor:
+                    details.verifiedBy ||
+                    "MEOS Grant Office",
+                note:
+                    details.note ||
+                    "Submission receipt verified."
+            });
+
+            this.analytics
+                .submissionReceiptsVerified += 1;
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                submissionExecution:
+                    this.clone(
+                        execution
+                    )
+            };
+        },
+
+        recordAwardDecision(
+            opportunityId,
+            decision = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const tracking =
+                opportunity
+                    ?.awardTracking;
+
+            if (
+                !opportunity ||
+                !tracking
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Award tracking has not started."
+                };
+            }
+
+            const state =
+                String(
+                    decision.state ||
+                    ""
+                ).trim();
+
+            if (
+                ![
+                    AWARD_DECISION_STATES.AWARDED,
+                    AWARD_DECISION_STATES.DECLINED,
+                    AWARD_DECISION_STATES.WITHDRAWN
+                ].includes(state)
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Award decision must be awarded, declined, or withdrawn."
+                };
+            }
+
+            const decidedAt =
+                decision.decidedAt ||
+                this.now();
+
+            tracking.decisionState =
+                state;
+            tracking.decisionAt =
+                decidedAt;
+            tracking.decisionBy =
+                String(
+                    decision.decidedBy ||
+                    decision.provider ||
+                    opportunity.provider ||
+                    ""
+                );
+            tracking.decisionReference =
+                decision.reference ||
+                decision.referenceNumber ||
+                null;
+            tracking.conditions =
+                this.uniqueStrings(
+                    decision.conditions || []
+                );
+            tracking.outstandingRequirements =
+                this.uniqueStrings(
+                    decision.outstandingRequirements ||
+                    []
+                );
+            tracking.paymentSchedule =
+                Array.isArray(
+                    decision.paymentSchedule
+                )
+                    ? this.clone(
+                        decision.paymentSchedule
+                    )
+                    : [];
+
+            if (
+                state ===
+                AWARD_DECISION_STATES.AWARDED
+            ) {
+                const awardedAmount =
+                    this.numberOrNull(
+                        decision.awardedAmount
+                    );
+
+                if (
+                    awardedAmount === null ||
+                    awardedAmount < 0
+                ) {
+                    return {
+                        success: false,
+                        error:
+                            "Awarded decisions require a valid awardedAmount."
+                    };
+                }
+
+                tracking.awardedAmount =
+                    awardedAmount;
+                tracking.balanceRemaining =
+                    awardedAmount -
+                    Number(
+                        tracking.totalReceived ||
+                        0
+                    );
+                opportunity.status =
+                    "awarded";
+
+                this.ensurePipelineRecord(
+                    opportunity
+                );
+
+                if (
+                    opportunity.pipelineStage ===
+                    PIPELINE_STAGES.AWARD_PENDING
+                ) {
+                    opportunity.pipelineStage =
+                        PIPELINE_STAGES.AWARDED;
+                    this.appendPipelineHistory(
+                        opportunity,
+                        PIPELINE_STAGES.AWARDED,
+                        {
+                            actor:
+                                tracking.decisionBy ||
+                                "Funding Provider",
+                            authority:
+                                "award-decision",
+                            note:
+                                `Award recorded for ${awardedAmount}.`
+                        }
+                    );
+                }
+
+                this.analytics
+                    .awardedValue +=
+                    awardedAmount;
+                this.analytics
+                    .pendingAwardValue =
+                    Math.max(
+                        0,
+                        this.analytics
+                            .pendingAwardValue -
+                        Number(
+                            tracking.requestedAmount ||
+                            0
+                        )
+                    );
+            } else {
+                tracking.awardedAmount =
+                    0;
+                tracking.balanceRemaining =
+                    0;
+                opportunity.status =
+                    state;
+
+                this.ensurePipelineRecord(
+                    opportunity
+                );
+
+                const targetStage =
+                    state ===
+                    AWARD_DECISION_STATES.DECLINED
+                        ? PIPELINE_STAGES.DECLINED
+                        : PIPELINE_STAGES.WITHDRAWN;
+
+                if (
+                    opportunity.pipelineStage ===
+                    PIPELINE_STAGES.AWARD_PENDING
+                ) {
+                    opportunity.pipelineStage =
+                        targetStage;
+                    this.appendPipelineHistory(
+                        opportunity,
+                        targetStage,
+                        {
+                            actor:
+                                tracking.decisionBy ||
+                                "Funding Provider",
+                            authority:
+                                "award-decision",
+                            note:
+                                `Award decision recorded: ${state}.`
+                        }
+                    );
+                }
+
+                this.analytics
+                    .pendingAwardValue =
+                    Math.max(
+                        0,
+                        this.analytics
+                            .pendingAwardValue -
+                        Number(
+                            tracking.requestedAmount ||
+                            0
+                        )
+                    );
+            }
+
+            tracking.history.push({
+                state,
+                enteredAt:
+                    decidedAt,
+                actor:
+                    tracking.decisionBy ||
+                    "Funding Provider",
+                note:
+                    decision.note ||
+                    `Award decision recorded: ${state}.`
+            });
+
+            this.analytics
+                .awardDecisionsRecorded += 1;
+            this.analytics
+                .lastAwardDecisionAt =
+                decidedAt;
+
+            this.recalculatePipelineAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                awardTracking:
+                    this.clone(
+                        tracking
+                    ),
+                pipelineStage:
+                    opportunity.pipelineStage
+            };
+        },
+
+        recordFundingReceipt(
+            opportunityId,
+            receipt = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const tracking =
+                opportunity
+                    ?.awardTracking;
+
+            if (
+                !opportunity ||
+                !tracking ||
+                tracking.decisionState !==
+                    AWARD_DECISION_STATES.AWARDED
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Funding receipts require an awarded opportunity.",
+                    code:
+                        "GRANT_FUNDING_RECEIPT_REQUIRES_AWARD"
+                };
+            }
+
+            const amount =
+                this.numberOrNull(
+                    receipt.amount
+                );
+
+            if (
+                amount === null ||
+                amount <= 0
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Funding receipt amount must be greater than zero."
+                };
+            }
+
+            const awardedAmount =
+                Number(
+                    tracking.awardedAmount ||
+                    0
+                );
+            const currentReceived =
+                Number(
+                    tracking.totalReceived ||
+                    0
+                );
+
+            if (
+                currentReceived + amount >
+                awardedAmount
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Funding receipt exceeds the recorded award amount.",
+                    code:
+                        "GRANT_FUNDING_RECEIPT_EXCEEDS_AWARD"
+                };
+            }
+
+            const record = {
+                id:
+                    this.createId(
+                        "funding-receipt"
+                    ),
+                opportunityId:
+                    opportunity.id,
+                amount,
+                receivedAt:
+                    receipt.receivedAt ||
+                    this.now(),
+                receivedBy:
+                    String(
+                        receipt.receivedBy ||
+                        "Organization"
+                    ),
+                method:
+                    receipt.method ||
+                    "unknown",
+                reference:
+                    receipt.reference ||
+                    receipt.transactionId ||
+                    null,
+                restricted:
+                    receipt.restricted !== false,
+                conditions:
+                    this.uniqueStrings(
+                        receipt.conditions || []
+                    ),
+                note:
+                    String(
+                        receipt.note || ""
+                    )
+            };
+
+            opportunity
+                .fundingReceipts
+                .push(record);
+
+            tracking.totalReceived =
+                currentReceived + amount;
+            tracking.balanceRemaining =
+                Math.max(
+                    0,
+                    awardedAmount -
+                    tracking.totalReceived
+                );
+
+            tracking.receiptState =
+                tracking.totalReceived >=
+                awardedAmount
+                    ? FUNDING_RECEIPT_STATES.FULLY_RECEIVED
+                    : FUNDING_RECEIPT_STATES.PARTIALLY_RECEIVED;
+
+            tracking.history.push({
+                state:
+                    tracking.receiptState,
+                enteredAt:
+                    record.receivedAt,
+                actor:
+                    record.receivedBy,
+                note:
+                    `Funding receipt recorded: ${amount}.`
+            });
+
+            this.analytics
+                .fundsReceivedValue +=
+                amount;
+            this.analytics
+                .lastFundsReceivedAt =
+                record.receivedAt;
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                fundingReceipt:
+                    this.clone(
+                        record
+                    ),
+                awardTracking:
+                    this.clone(
+                        tracking
+                    ),
+                moneyReceived:
+                    tracking.totalReceived,
+                balanceRemaining:
+                    tracking.balanceRemaining
+            };
+        },
+
+        getFundingPerformanceMetrics() {
+            const submissions =
+                this.opportunities.filter(
+                    item =>
+                        item.submissionExecution
+                );
+
+            const awarded =
+                submissions.filter(
+                    item =>
+                        item.awardTracking
+                            ?.decisionState ===
+                        AWARD_DECISION_STATES.AWARDED
+                );
+
+            const declined =
+                submissions.filter(
+                    item =>
+                        item.awardTracking
+                            ?.decisionState ===
+                        AWARD_DECISION_STATES.DECLINED
+                );
+
+            const pending =
+                submissions.filter(
+                    item =>
+                        item.awardTracking
+                            ?.decisionState ===
+                        AWARD_DECISION_STATES.AWARD_PENDING
+                );
+
+            const submittedValue =
+                submissions.reduce(
+                    (total, item) =>
+                        total +
+                        Number(
+                            item.submissionExecution
+                                ?.requestedAmount ||
+                            0
+                        ),
+                    0
+                );
+
+            const awardedValue =
+                awarded.reduce(
+                    (total, item) =>
+                        total +
+                        Number(
+                            item.awardTracking
+                                ?.awardedAmount ||
+                            0
+                        ),
+                    0
+                );
+
+            const fundsReceived =
+                this.opportunities.reduce(
+                    (total, item) =>
+                        total +
+                        (
+                            item.fundingReceipts ||
+                            []
+                        ).reduce(
+                            (sum, receipt) =>
+                                sum +
+                                Number(
+                                    receipt.amount ||
+                                    0
+                                ),
+                            0
+                        ),
+                    0
+                );
+
+            const decisionDurations =
+                submissions
+                    .filter(
+                        item =>
+                            item.submissionExecution
+                                ?.submittedAt &&
+                            item.awardTracking
+                                ?.decisionAt
+                    )
+                    .map(
+                        item =>
+                            (
+                                new Date(
+                                    item.awardTracking
+                                        .decisionAt
+                                ).getTime() -
+                                new Date(
+                                    item.submissionExecution
+                                        .submittedAt
+                                ).getTime()
+                            ) /
+                            86400000
+                    )
+                    .filter(
+                        value =>
+                            Number.isFinite(
+                                value
+                            ) &&
+                            value >= 0
+                    );
+
+            const awardToCashDurations =
+                awarded
+                    .filter(
+                        item =>
+                            item.awardTracking
+                                ?.decisionAt &&
+                            item.fundingReceipts
+                                ?.length > 0
+                    )
+                    .map(
+                        item =>
+                            (
+                                new Date(
+                                    item.fundingReceipts[0]
+                                        .receivedAt
+                                ).getTime() -
+                                new Date(
+                                    item.awardTracking
+                                        .decisionAt
+                                ).getTime()
+                            ) /
+                            86400000
+                    )
+                    .filter(
+                        value =>
+                            Number.isFinite(
+                                value
+                            ) &&
+                            value >= 0
+                    );
+
+            const average = values =>
+                values.length > 0
+                    ? this.roundNumber(
+                        values.reduce(
+                            (sum, value) =>
+                                sum + value,
+                            0
+                        ) /
+                        values.length,
+                        2
+                    )
+                    : null;
+
+            return {
+                schema:
+                    "meos.grant-office.funding-performance.v1",
+                generatedAt:
+                    this.now(),
+                submissions:
+                    submissions.length,
+                awarded:
+                    awarded.length,
+                declined:
+                    declined.length,
+                pending:
+                    pending.length,
+                submittedValue,
+                awardedValue,
+                pendingValue:
+                    pending.reduce(
+                        (total, item) =>
+                            total +
+                            Number(
+                                item.awardTracking
+                                    ?.requestedAmount ||
+                                0
+                            ),
+                        0
+                    ),
+                fundsReceived,
+                outstandingAwardBalance:
+                    awarded.reduce(
+                        (total, item) =>
+                            total +
+                            Number(
+                                item.awardTracking
+                                    ?.balanceRemaining ||
+                                0
+                            ),
+                        0
+                    ),
+                awardRate:
+                    submissions.length > 0
+                        ? this.roundNumber(
+                            awarded.length /
+                            submissions.length,
+                            3
+                        )
+                        : 0,
+                averageDaysSubmissionToDecision:
+                    average(
+                        decisionDurations
+                    ),
+                averageDaysAwardToFirstReceipt:
+                    average(
+                        awardToCashDurations
+                    )
+            };
+        },
+
+        runSubmissionAwardTrackingAcceptanceTest() {
+            const originalPersistence =
+                this.configuration
+                    .automaticPersistence;
+            const testId =
+                this.createId(
+                    "submission-award-test"
+                );
+
+            this.configuration
+                .automaticPersistence =
+                false;
+
+            try {
+                this.addOpportunity({
+                    id:
+                        testId,
+                    title:
+                        "Executive Submission and Award Tracking Test",
+                    provider:
+                        "Acceptance Test Foundation",
+                    awardAmount:
+                        100000,
+                    verified:
+                        true,
+                    sourceUrl:
+                        "https://example.org/test"
+                });
+
+                const opportunity =
+                    this.getOpportunityById(
+                        testId
+                    );
+
+                opportunity.pipelineStage =
+                    PIPELINE_STAGES.PREPARING;
+                opportunity.pipelineHistory =
+                    this.normalizePipelineHistory(
+                        [],
+                        PIPELINE_STAGES.PREPARING,
+                        this.now()
+                    );
+
+                opportunity
+                    .executiveApplicationPackage = {
+                        id:
+                            "package-test",
+                        readiness: {
+                            readyForSubmission:
+                                true
+                        }
+                    };
+
+                opportunity
+                    .submissionPortalIntelligence = {
+                        portal: {
+                            type:
+                                SUBMISSION_PORTAL_TYPES.SUBMITTABLE,
+                            name:
+                                "Submittable"
+                        },
+                        authorization: {
+                            authorized:
+                                true,
+                            authorizedBy:
+                                "Acceptance Test Executive"
+                        }
+                    };
+
+                opportunity
+                    .portalSubmissionPackage = {
+                        id:
+                            "portal-package-test",
+                        finalSubmitBlocked:
+                            false
+                    };
+
+                const submission =
+                    this.recordAuthorizedSubmission(
+                        testId,
+                        {
+                            submittedBy:
+                                "Acceptance Test Executive",
+                            confirmationNumber:
+                                "CONF-001",
+                            receiptDocumentId:
+                                "receipt-001",
+                            receiptVerified:
+                                true,
+                            requestedAmount:
+                                100000
+                        }
+                    );
+
+                const duplicate =
+                    this.recordAuthorizedSubmission(
+                        testId,
+                        {
+                            submittedBy:
+                                "Acceptance Test Executive",
+                            confirmationNumber:
+                                "CONF-001",
+                            receiptDocumentId:
+                                "receipt-001",
+                            receiptVerified:
+                                true,
+                            requestedAmount:
+                                100000
+                        }
+                    );
+
+                const award =
+                    this.recordAwardDecision(
+                        testId,
+                        {
+                            state:
+                                AWARD_DECISION_STATES.AWARDED,
+                            awardedAmount:
+                                80000,
+                            decidedBy:
+                                "Acceptance Test Foundation",
+                            reference:
+                                "AWARD-001",
+                            conditions: [
+                                "Quarterly reporting"
+                            ],
+                            paymentSchedule: [
+                                {
+                                    amount:
+                                        40000,
+                                    due:
+                                        "installment-1"
+                                },
+                                {
+                                    amount:
+                                        40000,
+                                    due:
+                                        "installment-2"
+                                }
+                            ]
+                        }
+                    );
+
+                const firstReceipt =
+                    this.recordFundingReceipt(
+                        testId,
+                        {
+                            amount:
+                                40000,
+                            receivedBy:
+                                "Acceptance Test Organization",
+                            reference:
+                                "TX-001"
+                        }
+                    );
+
+                const secondReceipt =
+                    this.recordFundingReceipt(
+                        testId,
+                        {
+                            amount:
+                                40000,
+                            receivedBy:
+                                "Acceptance Test Organization",
+                            reference:
+                                "TX-002"
+                        }
+                    );
+
+                const metrics =
+                    this.getFundingPerformanceMetrics();
+
+                const finalOpportunity =
+                    this.getOpportunityById(
+                        testId
+                    );
+
+                const checks = [
+                    {
+                        name:
+                            "Authorized submission recorded",
+                        passed:
+                            submission.success === true &&
+                            Boolean(
+                                submission
+                                    .submissionExecution
+                                    .id
+                            )
+                    },
+                    {
+                        name:
+                            "Submission receipt verified",
+                        passed:
+                            submission
+                                .submissionExecution
+                                .receiptVerified === true &&
+                            submission
+                                .submissionExecution
+                                .state ===
+                                SUBMISSION_EXECUTION_STATES.RECEIPT_VERIFIED
+                    },
+                    {
+                        name:
+                            "Pipeline advanced to award pending",
+                        passed:
+                            submission.pipelineStage ===
+                            PIPELINE_STAGES.AWARD_PENDING
+                    },
+                    {
+                        name:
+                            "Duplicate submission blocked",
+                        passed:
+                            duplicate.success === false &&
+                            duplicate.code ===
+                            "GRANT_DUPLICATE_SUBMISSION_BLOCKED"
+                    },
+                    {
+                        name:
+                            "Award decision recorded",
+                        passed:
+                            award.success === true &&
+                            award
+                                .awardTracking
+                                .decisionState ===
+                                AWARD_DECISION_STATES.AWARDED
+                    },
+                    {
+                        name:
+                            "Awarded amount tracked",
+                        passed:
+                            award
+                                .awardTracking
+                                .awardedAmount ===
+                            80000
+                    },
+                    {
+                        name:
+                            "Partial funding receipt tracked",
+                        passed:
+                            firstReceipt.success === true &&
+                            firstReceipt
+                                .awardTracking
+                                .receiptState ===
+                                FUNDING_RECEIPT_STATES.PARTIALLY_RECEIVED
+                    },
+                    {
+                        name:
+                            "Full funding receipt tracked",
+                        passed:
+                            secondReceipt.success === true &&
+                            secondReceipt
+                                .awardTracking
+                                .receiptState ===
+                                FUNDING_RECEIPT_STATES.FULLY_RECEIVED &&
+                            secondReceipt.balanceRemaining ===
+                            0
+                    },
+                    {
+                        name:
+                            "Money received metric calculated",
+                        passed:
+                            metrics.fundsReceived ===
+                            80000
+                    },
+                    {
+                        name:
+                            "Funding performance metrics generated",
+                        passed:
+                            metrics.submissions === 1 &&
+                            metrics.awarded === 1 &&
+                            metrics.awardRate === 1 &&
+                            metrics.awardedValue === 80000
+                    },
+                    {
+                        name:
+                            "Final pipeline stage is awarded",
+                        passed:
+                            finalOpportunity
+                                .pipelineStage ===
+                            PIPELINE_STAGES.AWARDED
+                    }
+                ];
+
+                return {
+                    success:
+                        checks.every(
+                            check =>
+                                check.passed
+                        ),
+                    passed:
+                        checks.filter(
+                            check =>
+                                check.passed
+                        ).length,
+                    total:
+                        checks.length,
+                    checks,
+                    pipelineStage:
+                        finalOpportunity
+                            .pipelineStage,
+                    receiptState:
+                        finalOpportunity
+                            .awardTracking
+                            .receiptState,
+                    moneyReceived:
+                        finalOpportunity
+                            .awardTracking
+                            .totalReceived,
+                    blockedDuplicateCode:
+                        duplicate.code,
+                    metrics
+                };
+            } finally {
+                this.opportunities =
+                    this.opportunities.filter(
+                        opportunity =>
+                            opportunity.id !==
+                            testId
+                    );
+                this.configuration
+                    .automaticPersistence =
+                    originalPersistence;
+            }
+        },
+
         runSubmissionPortalIntelligenceAcceptanceTest() {
             const originalPersistence =
                 this.configuration
@@ -11691,6 +13118,16 @@
                     this.opportunities.filter(
                         item => item.portalSubmissionPackage
                     ).length,
+                submissionExecutionCount:
+                    this.opportunities.filter(
+                        item => item.submissionExecution
+                    ).length,
+                awardTrackingCount:
+                    this.opportunities.filter(
+                        item => item.awardTracking
+                    ).length,
+                fundingPerformance:
+                    this.getFundingPerformanceMetrics(),
                 pipelineCounts:
                     this.getPipelineCounts(),
                 analytics:
@@ -12003,6 +13440,12 @@
         SUBMISSION_FIELD_TYPES;
     GrantOffice.SUBMISSION_PORTAL_STATES =
         SUBMISSION_PORTAL_STATES;
+    GrantOffice.SUBMISSION_EXECUTION_STATES =
+        SUBMISSION_EXECUTION_STATES;
+    GrantOffice.AWARD_DECISION_STATES =
+        AWARD_DECISION_STATES;
+    GrantOffice.FUNDING_RECEIPT_STATES =
+        FUNDING_RECEIPT_STATES;
     GrantOffice.RECOMMENDATIONS =
         RECOMMENDATIONS;
     GrantOffice.DISQUALIFIER_TYPES =
