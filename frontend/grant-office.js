@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.3.0
- * Build: GO130-FULL-PURSUIT-PIPELINE-20260803-A
+ * Version: 1.4.0
+ * Build: GO140-EXECUTIVE-ALIGNMENT-STRATEGY-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.3.0";
-    const BUILD_ID = "GO130-FULL-PURSUIT-PIPELINE-20260803-A";
+    const VERSION = "1.4.0";
+    const BUILD_ID = "GO140-EXECUTIVE-ALIGNMENT-STRATEGY-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -197,6 +197,10 @@
             awardPendingApplications: 0,
             awardedApplications: 0,
             declinedApplications: 0,
+            alignmentStrategiesBuilt: 0,
+            strongAlignmentStrategies: 0,
+            unsupportedClaimsBlocked: 0,
+            lastAlignmentStrategyAt: null,
             lastPipelineTransitionAt: null,
             lastEvaluationAt: null
         },
@@ -450,6 +454,14 @@
                 outcome:
                     input.outcome
                         ? this.clone(input.outcome)
+                        : null,
+                alignmentStrategy:
+                    input.alignmentStrategy
+                        ? this.clone(input.alignmentStrategy)
+                        : null,
+                grantNarrativeStrategy:
+                    input.grantNarrativeStrategy
+                        ? this.clone(input.grantNarrativeStrategy)
                         : null,
                 evaluation: null,
                 tracking: {
@@ -4037,6 +4049,926 @@
             return counts;
         },
 
+        resolveOrganizationAlignmentContext(input = {}) {
+            const profile =
+                input.organizationProfile ||
+                this.getOrganizationProfile() ||
+                {};
+
+            const strategy =
+                input.organizationStrategy ||
+                global.CCSPLongTermStrategy ||
+                global.MEOSLongTermStrategy ||
+                {};
+
+            const explicitActivities =
+                this.uniqueStrings([
+                    ...(input.activities || []),
+                    ...(input.programs || []),
+                    ...(profile.programs || []),
+                    ...(profile.services || []),
+                    ...(profile.activities || []),
+                    ...(strategy.programs || []),
+                    ...(strategy.objectives || [])
+                ]);
+
+            const explicitOutcomes =
+                this.uniqueStrings([
+                    ...(input.outcomes || []),
+                    ...(profile.outcomes || []),
+                    ...(profile.intendedOutcomes || []),
+                    ...(strategy.outcomes || []),
+                    ...(strategy.impactObjectives || [])
+                ]);
+
+            const mission =
+                String(
+                    input.organizationMission ||
+                    profile.mission ||
+                    strategy.mission ||
+                    ""
+                ).trim();
+
+            const evidence =
+                this.normalizeAlignmentEvidence([
+                    ...(input.evidence || []),
+                    ...(profile.evidence || []),
+                    ...(strategy.evidence || [])
+                ]);
+
+            return {
+                organizationId:
+                    input.organizationId ||
+                    profile.id ||
+                    profile.organizationId ||
+                    "organization",
+                organizationName:
+                    input.organizationName ||
+                    profile.name ||
+                    profile.organizationName ||
+                    "Organization",
+                mission,
+                activities: explicitActivities,
+                outcomes: explicitOutcomes,
+                evidence
+            };
+        },
+
+        normalizeAlignmentEvidence(evidence = []) {
+            return (Array.isArray(evidence) ? evidence : [])
+                .filter(Boolean)
+                .map((item, index) => {
+                    if (typeof item === "string") {
+                        return {
+                            id: `evidence-${index + 1}`,
+                            statement: item,
+                            sourceType: "provided",
+                            authority: "unknown",
+                            verified: false,
+                            confidence: 0.5,
+                            citation: null
+                        };
+                    }
+
+                    return {
+                        id:
+                            item.id ||
+                            `evidence-${index + 1}`,
+                        statement:
+                            String(
+                                item.statement ||
+                                item.claim ||
+                                item.summary ||
+                                item.text ||
+                                ""
+                            ).trim(),
+                        sourceType:
+                            item.sourceType ||
+                            item.type ||
+                            "provided",
+                        authority:
+                            item.authority ||
+                            "unknown",
+                        verified:
+                            item.verified === true ||
+                            item.authority === "authoritative" ||
+                            item.authority === "primary",
+                        confidence:
+                            this.clamp01(
+                                item.confidence ??
+                                (
+                                    item.verified === true
+                                        ? 0.9
+                                        : 0.6
+                                )
+                            ),
+                        citation:
+                            item.citation ||
+                            item.url ||
+                            item.sourceId ||
+                            null,
+                        metadata:
+                            item.metadata &&
+                            typeof item.metadata === "object"
+                                ? this.clone(item.metadata)
+                                : {}
+                    };
+                })
+                .filter(item => item.statement);
+        },
+
+        extractAlignmentConcepts(value) {
+            const stopWords = new Set([
+                "the", "and", "for", "with", "that", "this",
+                "from", "into", "their", "they", "our", "your",
+                "will", "would", "could", "should", "have",
+                "has", "are", "was", "were", "its", "through",
+                "using", "use", "support", "program", "project",
+                "organization", "community"
+            ]);
+
+            return this.uniqueStrings(
+                this.normalizeText(value)
+                    .split(" ")
+                    .filter(
+                        word =>
+                            word.length >= 3 &&
+                            !stopWords.has(word)
+                    )
+            );
+        },
+
+        scoreConceptOverlap(left, right) {
+            const leftSet =
+                new Set(this.extractAlignmentConcepts(left));
+            const rightSet =
+                new Set(this.extractAlignmentConcepts(right));
+
+            if (
+                leftSet.size === 0 ||
+                rightSet.size === 0
+            ) {
+                return 0;
+            }
+
+            const overlap =
+                [...leftSet].filter(
+                    item => rightSet.has(item)
+                ).length;
+
+            return overlap /
+                Math.max(
+                    1,
+                    Math.min(
+                        leftSet.size,
+                        rightSet.size
+                    )
+                );
+        },
+
+        inferOutcomeBridge(activity, objective, evidence = []) {
+            const activityText =
+                this.normalizeText(activity);
+            const objectiveText =
+                this.normalizeText(objective);
+            const combined =
+                `${activityText} ${objectiveText}`;
+
+            const bridges = [
+                {
+                    id: "watershed-pollution-aquatic-habitat",
+                    activitySignals: [
+                        "watershed", "river", "trash", "litter",
+                        "cleanup", "sanitation", "encampment",
+                        "pollution", "runoff", "water quality"
+                    ],
+                    objectiveSignals: [
+                        "fish", "salmon", "aquatic", "habitat",
+                        "stream", "river", "water quality",
+                        "species"
+                    ],
+                    intermediateOutcomes: [
+                        "reduced trash and pollutant loading",
+                        "cleaner river corridors",
+                        "improved watershed conditions",
+                        "reduced pressure on aquatic habitat"
+                    ],
+                    caution:
+                        "Do not claim direct fish restoration unless CCSP performs or documents direct habitat work."
+                },
+                {
+                    id: "hygiene-public-health",
+                    activitySignals: [
+                        "hygiene", "shower", "sanitation",
+                        "outreach", "clean water"
+                    ],
+                    objectiveSignals: [
+                        "public health", "disease", "health",
+                        "prevention", "wellness"
+                    ],
+                    intermediateOutcomes: [
+                        "improved access to hygiene",
+                        "reduced exposure to preventable health risks",
+                        "improved connection to health services"
+                    ],
+                    caution:
+                        "Use measured service and health-referral evidence; do not promise clinical outcomes without data."
+                },
+                {
+                    id: "stabilization-workforce",
+                    activitySignals: [
+                        "recovery", "stabilization", "housing",
+                        "navigation", "treatment", "sober"
+                    ],
+                    objectiveSignals: [
+                        "workforce", "employment", "economic",
+                        "job", "self sufficiency", "mobility"
+                    ],
+                    intermediateOutcomes: [
+                        "increased personal stability",
+                        "reduced barriers to employment",
+                        "improved readiness for training and work"
+                    ],
+                    caution:
+                        "Do not claim job placement or wage gains unless those results are measured."
+                }
+            ];
+
+            const bridge =
+                bridges.find(candidate => {
+                    const activityMatch =
+                        candidate.activitySignals.some(
+                            signal =>
+                                activityText.includes(signal)
+                        );
+                    const objectiveMatch =
+                        candidate.objectiveSignals.some(
+                            signal =>
+                                objectiveText.includes(signal)
+                        );
+
+                    return activityMatch && objectiveMatch;
+                }) || null;
+
+            if (!bridge) {
+                return null;
+            }
+
+            const supportingEvidence =
+                evidence.filter(item =>
+                    this.scoreConceptOverlap(
+                        item.statement,
+                        [
+                            activity,
+                            objective,
+                            ...bridge.intermediateOutcomes
+                        ].join(" ")
+                    ) > 0
+                );
+
+            return {
+                ...bridge,
+                supportingEvidenceIds:
+                    supportingEvidence.map(
+                        item => item.id
+                    ),
+                evidenceStrength:
+                    supportingEvidence.length > 0
+                        ? Math.min(
+                            1,
+                            supportingEvidence.reduce(
+                                (total, item) =>
+                                    total + item.confidence,
+                                0
+                            ) /
+                            supportingEvidence.length
+                        )
+                        : 0
+            };
+        },
+
+        buildAlignmentClaim({
+            objective,
+            activity,
+            directScore,
+            bridge,
+            evidence
+        }) {
+            const directEvidence =
+                evidence.filter(item =>
+                    this.scoreConceptOverlap(
+                        item.statement,
+                        `${objective} ${activity}`
+                    ) >= 0.2
+                );
+
+            const evidenceIds =
+                this.uniqueStrings([
+                    ...directEvidence.map(item => item.id),
+                    ...(bridge?.supportingEvidenceIds || [])
+                ]);
+
+            const evidenceRecords =
+                evidence.filter(
+                    item => evidenceIds.includes(item.id)
+                );
+
+            const verifiedEvidence =
+                evidenceRecords.filter(
+                    item => item.verified
+                );
+
+            const evidenceStrength =
+                evidenceRecords.length > 0
+                    ? evidenceRecords.reduce(
+                        (total, item) =>
+                            total + item.confidence,
+                        0
+                    ) /
+                    evidenceRecords.length
+                    : 0;
+
+            const connectionType =
+                directScore >= 0.45
+                    ? "direct"
+                    : bridge
+                    ? "indirect-evidence-required"
+                    : "unsupported";
+
+            const supported =
+                connectionType === "direct"
+                    ? evidenceRecords.length > 0
+                    : connectionType ===
+                      "indirect-evidence-required"
+                    ? verifiedEvidence.length > 0
+                    : false;
+
+            const confidence =
+                connectionType === "direct"
+                    ? Math.min(
+                        1,
+                        0.55 +
+                        directScore * 0.25 +
+                        evidenceStrength * 0.2
+                    )
+                    : bridge
+                    ? Math.min(
+                        0.88,
+                        0.35 +
+                        bridge.evidenceStrength * 0.35 +
+                        evidenceStrength * 0.18
+                    )
+                    : 0.15;
+
+            let claim = "";
+            let framing = "";
+
+            if (
+                connectionType ===
+                "direct"
+            ) {
+                framing =
+                    "direct organizational contribution";
+                claim =
+                    `${activity} directly contributes to the funder's objective: ${objective}.`;
+            } else if (bridge) {
+                framing =
+                    "legitimate indirect mission intersection";
+                claim =
+                    `${activity} can contribute to ${objective} through ${bridge.intermediateOutcomes.join(
+                        ", "
+                    )}.`;
+            } else {
+                framing =
+                    "no defensible connection established";
+                claim =
+                    `MEOS has not established a defensible connection between ${activity} and ${objective}.`;
+            }
+
+            return {
+                objective,
+                activity,
+                connectionType,
+                framing,
+                claim,
+                supported,
+                confidence:
+                    this.round(confidence, 3),
+                evidenceIds,
+                verifiedEvidenceCount:
+                    verifiedEvidence.length,
+                intermediateOutcomes:
+                    bridge?.intermediateOutcomes || [],
+                caution:
+                    bridge?.caution ||
+                    (
+                        supported
+                            ? "Use only the verified evidence attached to this claim."
+                            : "Do not use this claim in an application until evidence is added."
+                    ),
+                status:
+                    supported
+                        ? confidence >= 0.75
+                            ? "verified"
+                            : "supported-indirect"
+                        : "blocked"
+            };
+        },
+
+        deriveFunderObjectives(opportunity, input = {}) {
+            const supplied =
+                this.uniqueStrings(
+                    input.funderObjectives || []
+                );
+
+            if (supplied.length > 0) {
+                return supplied;
+            }
+
+            return this.uniqueStrings([
+                opportunity.statedPurpose,
+                opportunity.description,
+                opportunity.title,
+                ...(opportunity.fundingAreas || []),
+                ...(opportunity.requirements || [])
+            ])
+                .filter(Boolean)
+                .slice(0, 8);
+        },
+
+        buildExecutiveAlignmentStrategy(
+            opportunityId,
+            input = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found.",
+                    code:
+                        "GRANT_ALIGNMENT_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            const organization =
+                this.resolveOrganizationAlignmentContext(
+                    input
+                );
+            const objectives =
+                this.deriveFunderObjectives(
+                    opportunity,
+                    input
+                );
+            const activities =
+                organization.activities;
+
+            if (objectives.length === 0) {
+                return {
+                    success: false,
+                    error:
+                        "Funder objectives are required before alignment strategy can be built.",
+                    code:
+                        "GRANT_ALIGNMENT_FUNDER_OBJECTIVES_REQUIRED"
+                };
+            }
+
+            if (activities.length === 0) {
+                return {
+                    success: false,
+                    error:
+                        "Organization activities or programs are required before alignment strategy can be built.",
+                    code:
+                        "GRANT_ALIGNMENT_ORGANIZATION_ACTIVITIES_REQUIRED"
+                };
+            }
+
+            const claims = [];
+
+            objectives.forEach(objective => {
+                activities.forEach(activity => {
+                    const directScore =
+                        this.scoreConceptOverlap(
+                            objective,
+                            activity
+                        );
+                    const bridge =
+                        this.inferOutcomeBridge(
+                            activity,
+                            objective,
+                            organization.evidence
+                        );
+
+                    if (
+                        directScore < 0.12 &&
+                        !bridge
+                    ) {
+                        return;
+                    }
+
+                    claims.push(
+                        this.buildAlignmentClaim({
+                            objective,
+                            activity,
+                            directScore,
+                            bridge,
+                            evidence:
+                                organization.evidence
+                        })
+                    );
+                });
+            });
+
+            const supportedClaims =
+                claims.filter(
+                    claim => claim.supported
+                );
+            const blockedClaims =
+                claims.filter(
+                    claim => !claim.supported
+                );
+            const verifiedClaims =
+                supportedClaims.filter(
+                    claim =>
+                        claim.status === "verified"
+                );
+
+            const overallScore =
+                claims.length > 0
+                    ? Math.round(
+                        (
+                            claims.reduce(
+                                (total, claim) =>
+                                    total +
+                                    claim.confidence *
+                                    (
+                                        claim.supported
+                                            ? 1
+                                            : 0.25
+                                    ),
+                                0
+                            ) /
+                            claims.length
+                        ) * 100
+                    )
+                    : 0;
+
+            const evidenceCoverage =
+                claims.length > 0
+                    ? Math.round(
+                        supportedClaims.length /
+                        claims.length *
+                        100
+                    )
+                    : 0;
+
+            const strategyStatus =
+                supportedClaims.length === 0
+                    ? "do-not-write"
+                    : overallScore >= 75 &&
+                      evidenceCoverage >= 70
+                    ? "strong"
+                    : overallScore >= 50
+                    ? "conditional"
+                    : "weak";
+
+            const leadClaims =
+                supportedClaims
+                    .sort(
+                        (left, right) =>
+                            right.confidence -
+                            left.confidence
+                    )
+                    .slice(0, 5);
+
+            const narrativeStrategy = {
+                positioning:
+                    leadClaims.length > 0
+                        ? `Lead with ${leadClaims[0].framing}: ${leadClaims[0].activity}.`
+                        : "Do not draft a mission-alignment narrative yet.",
+                leadClaims:
+                    leadClaims.map(
+                        claim => claim.claim
+                    ),
+                claimsToAvoid:
+                    blockedClaims.map(
+                        claim => claim.claim
+                    ),
+                evidenceRules: [
+                    "Every material claim must cite organizational or authoritative external evidence.",
+                    "Indirect outcomes must be described as contributions, not guaranteed impacts.",
+                    "Do not claim direct service, expertise, or results the organization does not possess.",
+                    "Unknowns must be disclosed or resolved before executive approval."
+                ],
+                reviewerDefense:
+                    leadClaims.map(claim => ({
+                        claim: claim.claim,
+                        whyCredible:
+                            claim.evidenceIds.length > 0
+                                ? `Supported by ${claim.evidenceIds.length} evidence record(s).`
+                                : "Evidence is incomplete.",
+                        confidence:
+                            claim.confidence
+                    }))
+            };
+
+            const alignmentStrategy = {
+                schema:
+                    "meos.grant-office.executive-alignment-strategy.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                opportunityId:
+                    opportunity.id,
+                organizationId:
+                    organization.organizationId,
+                organizationName:
+                    organization.organizationName,
+                createdAt:
+                    this.now(),
+                status:
+                    strategyStatus,
+                overallScore,
+                evidenceCoverage,
+                funderObjectives:
+                    objectives,
+                organizationMission:
+                    organization.mission,
+                organizationActivities:
+                    activities,
+                claims:
+                    claims,
+                supportedClaims:
+                    supportedClaims.length,
+                verifiedClaims:
+                    verifiedClaims.length,
+                blockedClaims:
+                    blockedClaims.length,
+                unknowns: [
+                    ...(
+                        organization.evidence.length === 0
+                            ? [
+                                "No organizational or authoritative evidence was supplied."
+                            ]
+                            : []
+                    ),
+                    ...(
+                        blockedClaims.length > 0
+                            ? [
+                                `${blockedClaims.length} possible alignment claim(s) are blocked pending evidence.`
+                            ]
+                            : []
+                    )
+                ],
+                recommendation:
+                    strategyStatus === "strong"
+                        ? "Proceed to grant narrative development using only the supported claims."
+                        : strategyStatus === "conditional"
+                        ? "Resolve evidence gaps before final narrative approval."
+                        : "Do not write or submit the alignment narrative until a defensible strategy exists.",
+                narrativeStrategy
+            };
+
+            opportunity.alignmentStrategy =
+                alignmentStrategy;
+            opportunity.grantNarrativeStrategy =
+                narrativeStrategy;
+            opportunity.updatedAt =
+                this.now();
+
+            this.analytics.alignmentStrategiesBuilt += 1;
+            this.analytics.lastAlignmentStrategyAt =
+                alignmentStrategy.createdAt;
+            this.analytics.unsupportedClaimsBlocked +=
+                blockedClaims.length;
+
+            if (strategyStatus === "strong") {
+                this.analytics.strongAlignmentStrategies += 1;
+            }
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                alignmentStrategy:
+                    this.clone(alignmentStrategy),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        getExecutiveAlignmentStrategy(
+            opportunityId
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found."
+                };
+            }
+
+            return {
+                success: true,
+                alignmentStrategy:
+                    this.clone(
+                        opportunity.alignmentStrategy
+                    ),
+                narrativeStrategy:
+                    this.clone(
+                        opportunity.grantNarrativeStrategy
+                    )
+            };
+        },
+
+        runAlignmentStrategyAcceptanceTest() {
+            const originalPersistence =
+                this.configuration.automaticPersistence;
+            const testId =
+                this.createId(
+                    "alignment-acceptance-test"
+                );
+
+            this.configuration.automaticPersistence =
+                false;
+
+            try {
+                this.addOpportunity({
+                    id: testId,
+                    title:
+                        "Protect Native Salmon Habitat",
+                    statedPurpose:
+                        "Improve watershed conditions and protect native salmon habitat.",
+                    description:
+                        "Reduce pollution and habitat pressure in a river watershed.",
+                    verified: true,
+                    sourceUrl:
+                        "https://example.org/salmon"
+                });
+
+                const result =
+                    this.buildExecutiveAlignmentStrategy(
+                        testId,
+                        {
+                            organizationId:
+                                "acceptance-test-organization",
+                            organizationName:
+                                "Acceptance Test Organization",
+                            organizationMission:
+                                "Improve human dignity and watershed health.",
+                            activities: [
+                                "River corridor outreach and encampment trash removal",
+                                "Mobile hygiene and sanitation services near watershed areas"
+                            ],
+                            evidence: [
+                                {
+                                    id:
+                                        "org-river-work",
+                                    statement:
+                                        "The organization performs river corridor outreach and removes trash from encampment areas near the watershed.",
+                                    authority:
+                                        "primary",
+                                    verified: true,
+                                    confidence: 0.95
+                                },
+                                {
+                                    id:
+                                        "watershed-evidence",
+                                    statement:
+                                        "Reducing trash and pollutant loading supports cleaner river corridors and healthier aquatic habitat.",
+                                    authority:
+                                        "authoritative",
+                                    verified: true,
+                                    confidence: 0.9
+                                }
+                            ],
+                            funderObjectives: [
+                                "Protect native salmon habitat by improving watershed water quality and reducing pollution."
+                            ]
+                        }
+                    );
+
+                const strategy =
+                    result.alignmentStrategy;
+                const indirectClaim =
+                    strategy?.claims?.find(
+                        claim =>
+                            claim.connectionType ===
+                            "indirect-evidence-required" &&
+                            claim.supported
+                    );
+                const directFishClaim =
+                    strategy?.claims?.find(
+                        claim =>
+                            claim.claim
+                                .toLowerCase()
+                                .includes(
+                                    "direct fish restoration"
+                                )
+                    );
+
+                const checks = [
+                    {
+                        name:
+                            "Funder objective identified",
+                        passed:
+                            strategy?.funderObjectives
+                                ?.length === 1
+                    },
+                    {
+                        name:
+                            "Land-based work connected to aquatic outcome",
+                        passed:
+                            Boolean(indirectClaim)
+                    },
+                    {
+                        name:
+                            "Indirect connection is evidence-gated",
+                        passed:
+                            indirectClaim
+                                ?.verifiedEvidenceCount >= 1 &&
+                            indirectClaim
+                                ?.evidenceIds?.length >= 1
+                    },
+                    {
+                        name:
+                            "Overstatement warning preserved",
+                        passed:
+                            strategy?.claims?.some(
+                                claim =>
+                                    claim.caution
+                                        ?.toLowerCase()
+                                        .includes(
+                                            "do not claim direct fish restoration"
+                                        )
+                            )
+                    },
+                    {
+                        name:
+                            "Narrative strategy produced",
+                        passed:
+                            Boolean(
+                                strategy
+                                    ?.narrativeStrategy
+                                    ?.positioning
+                            )
+                    },
+                    {
+                        name:
+                            "Unsupported claims are blocked",
+                        passed:
+                            strategy?.claims?.every(
+                                claim =>
+                                    claim.supported ||
+                                    claim.status ===
+                                        "blocked"
+                            )
+                    }
+                ];
+
+                return {
+                    success:
+                        result.success === true &&
+                        checks.every(
+                            check => check.passed
+                        ),
+                    passed:
+                        checks.filter(
+                            check => check.passed
+                        ).length,
+                    total:
+                        checks.length,
+                    checks,
+                    status:
+                        strategy?.status,
+                    overallScore:
+                        strategy?.overallScore,
+                    evidenceCoverage:
+                        strategy?.evidenceCoverage,
+                    leadClaim:
+                        strategy
+                            ?.narrativeStrategy
+                            ?.leadClaims?.[0] ||
+                        null,
+                    caution:
+                        indirectClaim?.caution ||
+                        null
+                };
+            } finally {
+                this.opportunities =
+                    this.opportunities.filter(
+                        opportunity =>
+                            opportunity.id !== testId
+                    );
+                this.configuration.automaticPersistence =
+                    originalPersistence;
+            }
+        },
+
         runPipelineAcceptanceTest() {
             const originalPersistence =
                 this.configuration.automaticPersistence;
@@ -4355,6 +5287,10 @@
                     ).length,
                 executiveDeskCount:
                     this.getExecutiveDesk().deskCount,
+                alignmentStrategyCount:
+                    this.opportunities.filter(
+                        item => item.alignmentStrategy
+                    ).length,
                 pipelineCounts:
                     this.getPipelineCounts(),
                 analytics:
