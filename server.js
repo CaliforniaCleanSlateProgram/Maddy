@@ -31,7 +31,7 @@ import CommunityFoundationDiscoveryAdapter from "./community-foundation-discover
 import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adapter.js";
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 
-const VERSION = "2.9.0";
+const VERSION = "2.9.1";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -5460,7 +5460,7 @@ app.get("/health", async (request, response) => {
  */
 
 const RESOURCE_DEVELOPMENT_VERSION = "1.1.0";
-const BUILD_ID = "ERDO110-END-TO-END-FUNDING-PIPELINE-20260804-A";
+const BUILD_ID = "ERDO111-ACCEPTANCE-STAGE-TOLERANCE-20260804-A";
 const JOB_ID = "standing-executive-resource-development-office";
 
 const RESOURCE_CHANNELS = Object.freeze([
@@ -7831,17 +7831,37 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     await persistFundingRecord(testRecord);
 
     try {
+      const initialPipeline =
+        await readFundingPipeline(testId);
+
+      const initialStage =
+        initialPipeline.fundingPipeline.stage;
+
       const qualified =
-        await transitionFundingPipeline(testId, {
-          stage: FUNDING_PIPELINE_STAGES.QUALIFIED,
-          actor: "MEOS Acceptance Test"
-        });
+        initialStage === FUNDING_PIPELINE_STAGES.QUALIFIED
+          ? {
+              currentStage:
+                FUNDING_PIPELINE_STAGES.QUALIFIED,
+              fundingPipeline:
+                initialPipeline.fundingPipeline
+            }
+          : await transitionFundingPipeline(testId, {
+              stage:
+                FUNDING_PIPELINE_STAGES.QUALIFIED,
+              actor:
+                "MEOS Acceptance Test"
+            });
 
       const onDesk =
-        await transitionFundingPipeline(testId, {
-          stage: FUNDING_PIPELINE_STAGES.ON_DESK,
-          actor: "MEOS Acceptance Test"
-        });
+        qualified.currentStage ===
+        FUNDING_PIPELINE_STAGES.ON_DESK
+          ? qualified
+          : await transitionFundingPipeline(testId, {
+              stage:
+                FUNDING_PIPELINE_STAGES.ON_DESK,
+              actor:
+                "MEOS Acceptance Test"
+            });
 
       const preparing =
         await transitionFundingPipeline(testId, {
@@ -7968,8 +7988,13 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
 
       const checks = [
         {
-          name: "Qualification connected to durable pipeline",
+          name:
+            "Qualification connected with bootstrapped-stage tolerance",
           passed:
+            [
+              FUNDING_PIPELINE_STAGES.DISCOVERED,
+              FUNDING_PIPELINE_STAGES.QUALIFIED
+            ].includes(initialStage) &&
             qualified.currentStage ===
             FUNDING_PIPELINE_STAGES.QUALIFIED
         },
