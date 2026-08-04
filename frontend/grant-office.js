@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.6.0
- * Build: GO160-EXECUTIVE-APPLICATION-ASSEMBLY-20260804-A
+ * Version: 1.7.0
+ * Build: GO170-SUBMISSION-PORTAL-INTELLIGENCE-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.6.0";
-    const BUILD_ID = "GO160-EXECUTIVE-APPLICATION-ASSEMBLY-20260804-A";
+    const VERSION = "1.7.0";
+    const BUILD_ID = "GO170-SUBMISSION-PORTAL-INTELLIGENCE-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -187,6 +187,62 @@
         SUBMISSION_CHECKLIST: "submission-checklist"
     });
 
+    const SUBMISSION_PORTAL_TYPES = Object.freeze({
+        GRANTS_GOV: "grants-gov",
+        SUBMITTABLE: "submittable",
+        FOUNDANT: "foundant",
+        SMARTSIMPLE: "smartsimple",
+        FLUXX: "fluxx",
+        BLACKBAUD: "blackbaud",
+        GOOGLE_FORMS: "google-forms",
+        MICROSOFT_FORMS: "microsoft-forms",
+        PDF_PACKAGE: "pdf-package",
+        DOCX_PACKAGE: "docx-package",
+        GENERIC_WEB_PORTAL: "generic-web-portal",
+        UNKNOWN: "unknown"
+    });
+
+    const SUBMISSION_PORTAL_STEP_TYPES = Object.freeze({
+        AUTHENTICATION: "authentication",
+        ELIGIBILITY: "eligibility",
+        PROFILE: "organization-profile",
+        APPLICATION: "application",
+        ATTACHMENTS: "attachments",
+        CERTIFICATIONS: "certifications",
+        SIGNATURE: "signature",
+        REVIEW: "review",
+        SUBMIT: "submit",
+        CONFIRMATION: "confirmation"
+    });
+
+    const SUBMISSION_FIELD_TYPES = Object.freeze({
+        TEXT: "text",
+        TEXTAREA: "textarea",
+        NUMBER: "number",
+        CURRENCY: "currency",
+        DATE: "date",
+        SELECT: "select",
+        MULTISELECT: "multiselect",
+        CHECKBOX: "checkbox",
+        RADIO: "radio",
+        FILE: "file",
+        SIGNATURE: "signature",
+        CERTIFICATION: "certification",
+        UNKNOWN: "unknown"
+    });
+
+    const SUBMISSION_PORTAL_STATES = Object.freeze({
+        NOT_ANALYZED: "not-analyzed",
+        ANALYZED: "analyzed",
+        MAPPED: "mapped",
+        EXECUTIVE_REVIEW_REQUIRED: "executive-review-required",
+        AUTHORIZED: "authorized",
+        READY_TO_POPULATE: "ready-to-populate",
+        READY_TO_SUBMIT: "ready-to-submit",
+        SUBMITTED: "submitted"
+    });
+
+
 
 
     const RECOMMENDATIONS = Object.freeze({
@@ -272,7 +328,13 @@
             applicationPackageItemsCreated: 0,
             executiveActionChecklistsCreated: 0,
             signatureReadinessBlocksTriggered: 0,
+            portalAnalysesCompleted: 0,
+            portalFieldsNormalized: 0,
+            portalWorkflowStepsMapped: 0,
+            portalSubmissionPackagesCreated: 0,
+            portalAuthorizationBlocksTriggered: 0,
             submissionBlocksTriggered: 0,
+            lastPortalIntelligenceAt: null,
             lastApplicationAssemblyAt: null,
             lastApplicationIntelligenceAt: null,
             lastAlignmentStrategyAt: null,
@@ -549,6 +611,14 @@
                 executiveApplicationPackage:
                     input.executiveApplicationPackage
                         ? this.clone(input.executiveApplicationPackage)
+                        : null,
+                submissionPortalIntelligence:
+                    input.submissionPortalIntelligence
+                        ? this.clone(input.submissionPortalIntelligence)
+                        : null,
+                portalSubmissionPackage:
+                    input.portalSubmissionPackage
+                        ? this.clone(input.portalSubmissionPackage)
                         : null,
                 evaluation: null,
                 tracking: {
@@ -8437,6 +8507,1942 @@
             };
         },
 
+        detectSubmissionPortalType(input = {}) {
+            const value =
+                this.normalizeText([
+                    input.portalType,
+                    input.name,
+                    input.title,
+                    input.url,
+                    input.host,
+                    input.description,
+                    input.sourceType
+                ].join(" "));
+
+            const rules = [
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.GRANTS_GOV,
+                    signals: [
+                        "grants gov",
+                        "grants.gov",
+                        "workspace"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.SUBMITTABLE,
+                    signals: [
+                        "submittable"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.FOUNDANT,
+                    signals: [
+                        "foundant",
+                        "grant lifecycle manager",
+                        "glms"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.SMARTSIMPLE,
+                    signals: [
+                        "smartsimple"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.FLUXX,
+                    signals: [
+                        "fluxx"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.BLACKBAUD,
+                    signals: [
+                        "blackbaud",
+                        "yourcause"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.GOOGLE_FORMS,
+                    signals: [
+                        "google forms",
+                        "docs.google.com/forms"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.MICROSOFT_FORMS,
+                    signals: [
+                        "microsoft forms",
+                        "forms.office.com"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.PDF_PACKAGE,
+                    signals: [
+                        "pdf application",
+                        ".pdf"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.DOCX_PACKAGE,
+                    signals: [
+                        "docx application",
+                        ".docx",
+                        "word application"
+                    ]
+                }
+            ];
+
+            const match =
+                rules.find(rule =>
+                    rule.signals.some(signal =>
+                        value.includes(
+                            this.normalizeText(
+                                signal
+                            )
+                        )
+                    )
+                );
+
+            if (match) {
+                return {
+                    type:
+                        match.type,
+                    confidence:
+                        0.98,
+                    basis:
+                        "recognized-provider-signal"
+                };
+            }
+
+            if (
+                value.includes("http") ||
+                value.includes("portal") ||
+                value.includes("online application")
+            ) {
+                return {
+                    type:
+                        SUBMISSION_PORTAL_TYPES.GENERIC_WEB_PORTAL,
+                    confidence:
+                        0.7,
+                    basis:
+                        "generic-web-workflow"
+                };
+            }
+
+            return {
+                type:
+                    SUBMISSION_PORTAL_TYPES.UNKNOWN,
+                confidence:
+                    0.2,
+                basis:
+                    "insufficient-evidence"
+            };
+        },
+
+        normalizeSubmissionField(
+            field,
+            defaults = {}
+        ) {
+            const raw =
+                typeof field === "string"
+                    ? {
+                        label:
+                            field
+                    }
+                    : {
+                        ...(field || {})
+                    };
+
+            const label =
+                String(
+                    raw.label ||
+                    raw.name ||
+                    raw.title ||
+                    raw.question ||
+                    defaults.label ||
+                    "Unnamed Field"
+                ).trim();
+
+            const instructions =
+                String(
+                    raw.instructions ||
+                    raw.helpText ||
+                    raw.guidance ||
+                    ""
+                ).trim();
+
+            const type =
+                raw.type ||
+                this.inferSubmissionFieldType(
+                    `${label} ${instructions}`,
+                    raw
+                );
+
+            const limits =
+                this.extractApplicationLimits(
+                    `${label} ${instructions}`,
+                    raw
+                );
+
+            const required =
+                raw.required !== false;
+
+            const executiveApprovalRequired =
+                raw.executiveApprovalRequired === true ||
+                [
+                    SUBMISSION_FIELD_TYPES.SIGNATURE,
+                    SUBMISSION_FIELD_TYPES.CERTIFICATION,
+                    SUBMISSION_FIELD_TYPES.CURRENCY
+                ].includes(type) ||
+                this.requiresExecutiveInput(
+                    label,
+                    this.classifyApplicationQuestion(
+                        `${label} ${instructions}`
+                    )
+                );
+
+            return {
+                id:
+                    raw.id ||
+                    defaults.id ||
+                    this.createId(
+                        "portal-field"
+                    ),
+                stepId:
+                    raw.stepId ||
+                    defaults.stepId ||
+                    "portal-step-application",
+                label,
+                instructions,
+                type,
+                required,
+                limits,
+                options:
+                    Array.isArray(
+                        raw.options
+                    )
+                        ? this.clone(
+                            raw.options
+                        )
+                        : [],
+                sourceQuestionId:
+                    raw.sourceQuestionId ||
+                    raw.questionId ||
+                    null,
+                sourceDocumentId:
+                    raw.sourceDocumentId ||
+                    raw.documentId ||
+                    null,
+                value:
+                    raw.value ?? null,
+                completed:
+                    raw.completed === true ||
+                    (
+                        raw.value !== undefined &&
+                        raw.value !== null &&
+                        String(raw.value).trim() !== ""
+                    ),
+                executiveApprovalRequired,
+                approved:
+                    raw.approved === true,
+                validationRules:
+                    this.normalizePortalValidationRules(
+                        raw.validationRules ||
+                        raw.rules ||
+                        []
+                    ),
+                issues:
+                    this.uniqueStrings(
+                        raw.issues || []
+                    )
+            };
+        },
+
+        inferSubmissionFieldType(
+            value,
+            raw = {}
+        ) {
+            const text =
+                this.normalizeText(value);
+
+            if (
+                raw.accept ||
+                raw.fileTypes ||
+                text.includes("upload") ||
+                text.includes("attach")
+            ) {
+                return SUBMISSION_FIELD_TYPES.FILE;
+            }
+
+            if (
+                text.includes("signature") ||
+                text.includes("authorized signer")
+            ) {
+                return SUBMISSION_FIELD_TYPES.SIGNATURE;
+            }
+
+            if (
+                text.includes("certify") ||
+                text.includes("certification") ||
+                text.includes("assurance")
+            ) {
+                return SUBMISSION_FIELD_TYPES.CERTIFICATION;
+            }
+
+            if (
+                text.includes("amount") ||
+                text.includes("budget") ||
+                text.includes("currency") ||
+                text.includes("dollar")
+            ) {
+                return SUBMISSION_FIELD_TYPES.CURRENCY;
+            }
+
+            if (
+                text.includes("date") ||
+                raw.inputType === "date"
+            ) {
+                return SUBMISSION_FIELD_TYPES.DATE;
+            }
+
+            if (
+                Array.isArray(raw.options) &&
+                raw.options.length > 0
+            ) {
+                if (
+                    raw.multiple === true
+                ) {
+                    return SUBMISSION_FIELD_TYPES.MULTISELECT;
+                }
+
+                return SUBMISSION_FIELD_TYPES.SELECT;
+            }
+
+            if (
+                raw.inputType === "checkbox"
+            ) {
+                return SUBMISSION_FIELD_TYPES.CHECKBOX;
+            }
+
+            if (
+                raw.inputType === "radio"
+            ) {
+                return SUBMISSION_FIELD_TYPES.RADIO;
+            }
+
+            if (
+                raw.inputType === "number"
+            ) {
+                return SUBMISSION_FIELD_TYPES.NUMBER;
+            }
+
+            if (
+                raw.multiline === true ||
+                text.includes("describe") ||
+                text.includes("explain") ||
+                text.includes("narrative")
+            ) {
+                return SUBMISSION_FIELD_TYPES.TEXTAREA;
+            }
+
+            return SUBMISSION_FIELD_TYPES.TEXT;
+        },
+
+        normalizePortalValidationRules(
+            rules = []
+        ) {
+            if (!Array.isArray(rules)) {
+                return [];
+            }
+
+            return rules
+                .filter(Boolean)
+                .map((rule, index) => {
+                    if (
+                        typeof rule === "string"
+                    ) {
+                        return {
+                            id:
+                                `validation-${index + 1}`,
+                            type:
+                                "custom",
+                            message:
+                                rule
+                        };
+                    }
+
+                    return {
+                        id:
+                            rule.id ||
+                            `validation-${index + 1}`,
+                        type:
+                            rule.type ||
+                            "custom",
+                        value:
+                            rule.value ?? null,
+                        message:
+                            String(
+                                rule.message ||
+                                rule.description ||
+                                ""
+                            )
+                    };
+                });
+        },
+
+        normalizePortalWorkflowStep(
+            step,
+            defaults = {}
+        ) {
+            const raw =
+                typeof step === "string"
+                    ? {
+                        title:
+                            step
+                    }
+                    : {
+                        ...(step || {})
+                    };
+
+            const title =
+                String(
+                    raw.title ||
+                    raw.name ||
+                    defaults.title ||
+                    "Portal Step"
+                ).trim();
+
+            const type =
+                raw.type ||
+                this.inferPortalWorkflowStepType(
+                    title,
+                    raw
+                );
+
+            return {
+                id:
+                    raw.id ||
+                    defaults.id ||
+                    this.createId(
+                        "portal-step"
+                    ),
+                title,
+                type,
+                order:
+                    Number(
+                        raw.order ??
+                        defaults.order ??
+                        1
+                    ),
+                required:
+                    raw.required !== false,
+                completed:
+                    raw.completed === true,
+                fields:
+                    (
+                        Array.isArray(
+                            raw.fields
+                        )
+                            ? raw.fields
+                            : []
+                    ).map(
+                        (field, index) =>
+                            this.normalizeSubmissionField(
+                                field,
+                                {
+                                    stepId:
+                                        raw.id ||
+                                        defaults.id ||
+                                        `portal-step-${defaults.order || 1}`,
+                                    id:
+                                        field?.id ||
+                                        `portal-field-${defaults.order || 1}-${index + 1}`
+                                }
+                            )
+                    ),
+                instructions:
+                    String(
+                        raw.instructions ||
+                        raw.description ||
+                        ""
+                    ),
+                issues:
+                    this.uniqueStrings(
+                        raw.issues || []
+                    )
+            };
+        },
+
+        inferPortalWorkflowStepType(
+            value,
+            raw = {}
+        ) {
+            const text =
+                this.normalizeText(value);
+
+            const mapping = [
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.AUTHENTICATION,
+                    signals: [
+                        "login",
+                        "sign in",
+                        "account",
+                        "authentication"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.ELIGIBILITY,
+                    signals: [
+                        "eligibility",
+                        "screening",
+                        "prequalification"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.PROFILE,
+                    signals: [
+                        "organization profile",
+                        "applicant profile",
+                        "organization information"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.ATTACHMENTS,
+                    signals: [
+                        "attachment",
+                        "upload",
+                        "documents"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.CERTIFICATIONS,
+                    signals: [
+                        "certification",
+                        "assurance"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.SIGNATURE,
+                    signals: [
+                        "signature",
+                        "authorized official"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.REVIEW,
+                    signals: [
+                        "review",
+                        "validation",
+                        "summary"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.SUBMIT,
+                    signals: [
+                        "submit",
+                        "final submission"
+                    ]
+                },
+                {
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.CONFIRMATION,
+                    signals: [
+                        "confirmation",
+                        "receipt"
+                    ]
+                }
+            ];
+
+            const match =
+                mapping.find(item =>
+                    item.signals.some(signal =>
+                        text.includes(
+                            signal
+                        )
+                    )
+                );
+
+            return (
+                match?.type ||
+                raw.type ||
+                SUBMISSION_PORTAL_STEP_TYPES.APPLICATION
+            );
+        },
+
+        buildDefaultPortalWorkflow(
+            portalType
+        ) {
+            const common = [
+                {
+                    id:
+                        "portal-step-authentication",
+                    title:
+                        "Authentication",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.AUTHENTICATION,
+                    order:
+                        1,
+                    required:
+                        portalType !==
+                            SUBMISSION_PORTAL_TYPES.PDF_PACKAGE &&
+                        portalType !==
+                            SUBMISSION_PORTAL_TYPES.DOCX_PACKAGE
+                },
+                {
+                    id:
+                        "portal-step-eligibility",
+                    title:
+                        "Eligibility",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.ELIGIBILITY,
+                    order:
+                        2,
+                    required:
+                        true
+                },
+                {
+                    id:
+                        "portal-step-profile",
+                    title:
+                        "Organization Profile",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.PROFILE,
+                    order:
+                        3,
+                    required:
+                        true
+                },
+                {
+                    id:
+                        "portal-step-application",
+                    title:
+                        "Application",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.APPLICATION,
+                    order:
+                        4,
+                    required:
+                        true
+                },
+                {
+                    id:
+                        "portal-step-attachments",
+                    title:
+                        "Attachments",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.ATTACHMENTS,
+                    order:
+                        5,
+                    required:
+                        true
+                },
+                {
+                    id:
+                        "portal-step-certifications",
+                    title:
+                        "Certifications",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.CERTIFICATIONS,
+                    order:
+                        6,
+                    required:
+                        true
+                },
+                {
+                    id:
+                        "portal-step-signature",
+                    title:
+                        "Signature",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.SIGNATURE,
+                    order:
+                        7,
+                    required:
+                        true
+                },
+                {
+                    id:
+                        "portal-step-review",
+                    title:
+                        "Review",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.REVIEW,
+                    order:
+                        8,
+                    required:
+                        true
+                },
+                {
+                    id:
+                        "portal-step-submit",
+                    title:
+                        "Submit",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.SUBMIT,
+                    order:
+                        9,
+                    required:
+                        true
+                },
+                {
+                    id:
+                        "portal-step-confirmation",
+                    title:
+                        "Confirmation",
+                    type:
+                        SUBMISSION_PORTAL_STEP_TYPES.CONFIRMATION,
+                    order:
+                        10,
+                    required:
+                        true
+                }
+            ];
+
+            return common;
+        },
+
+        analyzeSubmissionPortal(
+            opportunityId,
+            input = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const applicationPackage =
+                opportunity
+                    ?.executiveApplicationPackage;
+
+            if (!opportunity || !applicationPackage) {
+                return {
+                    success: false,
+                    error:
+                        "Executive Application Assembly must be completed before portal analysis.",
+                    code:
+                        "GRANT_APPLICATION_PACKAGE_REQUIRED"
+                };
+            }
+
+            const detection =
+                this.detectSubmissionPortalType(
+                    input
+                );
+
+            const suppliedSteps =
+                Array.isArray(
+                    input.workflowSteps
+                )
+                    ? input.workflowSteps
+                    : [];
+
+            const workflowSteps =
+                (
+                    suppliedSteps.length > 0
+                        ? suppliedSteps
+                        : this.buildDefaultPortalWorkflow(
+                            detection.type
+                        )
+                ).map(
+                    (step, index) =>
+                        this.normalizePortalWorkflowStep(
+                            step,
+                            {
+                                order:
+                                    step.order ??
+                                    index + 1
+                            }
+                        )
+                );
+
+            const applicationStep =
+                workflowSteps.find(
+                    step =>
+                        step.type ===
+                        SUBMISSION_PORTAL_STEP_TYPES.APPLICATION
+                );
+
+            if (applicationStep) {
+                const existingIds =
+                    new Set(
+                        applicationStep
+                            .fields
+                            .map(
+                                field =>
+                                    field.id
+                            )
+                    );
+
+                applicationPackage
+                    .narrativeSections
+                    .flatMap(
+                        section =>
+                            section.responses
+                    )
+                    .forEach(
+                        response => {
+                            const fieldId =
+                                `portal-question-${response.questionId}`;
+
+                            if (
+                                existingIds.has(
+                                    fieldId
+                                )
+                            ) {
+                                return;
+                            }
+
+                            applicationStep
+                                .fields
+                                .push(
+                                    this.normalizeSubmissionField(
+                                        {
+                                            id:
+                                                fieldId,
+                                            label:
+                                                response.question,
+                                            type:
+                                                SUBMISSION_FIELD_TYPES.TEXTAREA,
+                                            required:
+                                                true,
+                                            value:
+                                                response.response,
+                                            completed:
+                                                Boolean(
+                                                    response.response
+                                                ),
+                                            approved:
+                                                response.state ===
+                                                APPLICATION_ITEM_STATES.APPROVED,
+                                            sourceQuestionId:
+                                                response.questionId,
+                                            executiveApprovalRequired:
+                                                false,
+                                            characterLimit:
+                                                response
+                                                    .limitCheck
+                                                    ?.limits
+                                                    ?.characters ||
+                                                null,
+                                            wordLimit:
+                                                response
+                                                    .limitCheck
+                                                    ?.limits
+                                                    ?.words ||
+                                                null
+                                        },
+                                        {
+                                            stepId:
+                                                applicationStep.id
+                                        }
+                                    )
+                                );
+                        }
+                    );
+            }
+
+            const attachmentStep =
+                workflowSteps.find(
+                    step =>
+                        step.type ===
+                        SUBMISSION_PORTAL_STEP_TYPES.ATTACHMENTS
+                );
+
+            if (attachmentStep) {
+                applicationPackage
+                    .attachmentIndex
+                    .forEach(item => {
+                        attachmentStep.fields.push(
+                            this.normalizeSubmissionField(
+                                {
+                                    id:
+                                        `portal-attachment-${item.id}`,
+                                    label:
+                                        item.name,
+                                    type:
+                                        SUBMISSION_FIELD_TYPES.FILE,
+                                    required:
+                                        item.required,
+                                    sourceDocumentId:
+                                        item.documentId ||
+                                        item.id,
+                                    completed:
+                                        item.attached === true,
+                                    approved:
+                                        item.verified === true &&
+                                        item.current === true
+                                },
+                                {
+                                    stepId:
+                                        attachmentStep.id
+                                }
+                            )
+                        );
+                    });
+            }
+
+            const certificationStep =
+                workflowSteps.find(
+                    step =>
+                        step.type ===
+                        SUBMISSION_PORTAL_STEP_TYPES.CERTIFICATIONS
+                );
+
+            if (certificationStep) {
+                applicationPackage
+                    .certificationPacket
+                    .forEach(item => {
+                        certificationStep.fields.push(
+                            this.normalizeSubmissionField(
+                                {
+                                    id:
+                                        `portal-certification-${item.id}`,
+                                    label:
+                                        item.name,
+                                    type:
+                                        SUBMISSION_FIELD_TYPES.CERTIFICATION,
+                                    required:
+                                        item.required,
+                                    completed:
+                                        item.status ===
+                                        "approved",
+                                    approved:
+                                        item.status ===
+                                        "approved",
+                                    executiveApprovalRequired:
+                                        true
+                                },
+                                {
+                                    stepId:
+                                        certificationStep.id
+                                }
+                            )
+                        );
+                    });
+            }
+
+            const signatureStep =
+                workflowSteps.find(
+                    step =>
+                        step.type ===
+                        SUBMISSION_PORTAL_STEP_TYPES.SIGNATURE
+                );
+
+            if (signatureStep) {
+                applicationPackage
+                    .signaturePacket
+                    .forEach(item => {
+                        signatureStep.fields.push(
+                            this.normalizeSubmissionField(
+                                {
+                                    id:
+                                        `portal-signature-${item.id}`,
+                                    label:
+                                        item.name,
+                                    type:
+                                        SUBMISSION_FIELD_TYPES.SIGNATURE,
+                                    required:
+                                        item.required,
+                                    completed:
+                                        item.status ===
+                                        "signed",
+                                    approved:
+                                        item.status ===
+                                        "signed",
+                                    executiveApprovalRequired:
+                                        true
+                                },
+                                {
+                                    stepId:
+                                        signatureStep.id
+                                }
+                            )
+                        );
+                    });
+            }
+
+            const fields =
+                workflowSteps.flatMap(
+                    step =>
+                        step.fields
+                );
+
+            const portalIntelligence = {
+                schema:
+                    "meos.grant-office.submission-portal-intelligence.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                id:
+                    input.id ||
+                    this.createId(
+                        "submission-portal-intelligence"
+                    ),
+                opportunityId:
+                    opportunity.id,
+                applicationPackageId:
+                    applicationPackage.id,
+                portal: {
+                    type:
+                        detection.type,
+                    confidence:
+                        detection.confidence,
+                    detectionBasis:
+                        detection.basis,
+                    name:
+                        input.name ||
+                        input.title ||
+                        detection.type,
+                    url:
+                        input.url ||
+                        "",
+                    loginRequired:
+                        input.loginRequired ??
+                        workflowSteps.some(
+                            step =>
+                                step.type ===
+                                SUBMISSION_PORTAL_STEP_TYPES.AUTHENTICATION &&
+                                step.required
+                        ),
+                    accountStatus:
+                        input.accountStatus ||
+                        "unknown"
+                },
+                state:
+                    SUBMISSION_PORTAL_STATES.MAPPED,
+                analyzedAt:
+                    this.now(),
+                workflowSteps,
+                fields,
+                validationSummary:
+                    this.validatePortalMapping(
+                        workflowSteps
+                    ),
+                authorization: {
+                    required:
+                        true,
+                    authorized:
+                        false,
+                    authorizedBy:
+                        null,
+                    authorizedAt:
+                        null,
+                    scope:
+                        "populate-and-submit"
+                },
+                submissionControl: {
+                    finalSubmitBlocked:
+                        true,
+                    reason:
+                        "Explicit executive submission authorization has not been recorded."
+                }
+            };
+
+            opportunity
+                .submissionPortalIntelligence =
+                portalIntelligence;
+            opportunity.updatedAt =
+                this.now();
+
+            this.analytics
+                .portalAnalysesCompleted += 1;
+            this.analytics
+                .portalFieldsNormalized +=
+                fields.length;
+            this.analytics
+                .portalWorkflowStepsMapped +=
+                workflowSteps.length;
+            this.analytics
+                .lastPortalIntelligenceAt =
+                portalIntelligence.analyzedAt;
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                portalIntelligence:
+                    this.clone(
+                        portalIntelligence
+                    )
+            };
+        },
+
+        validatePortalMapping(
+            workflowSteps
+        ) {
+            const fields =
+                workflowSteps.flatMap(
+                    step =>
+                        step.fields || []
+                );
+
+            const requiredFields =
+                fields.filter(
+                    field =>
+                        field.required
+                );
+
+            const incompleteFields =
+                requiredFields.filter(
+                    field =>
+                        !field.completed
+                );
+
+            const unapprovedFields =
+                requiredFields.filter(
+                    field =>
+                        field.executiveApprovalRequired &&
+                        !field.approved
+                );
+
+            const validationIssues =
+                fields.flatMap(
+                    field =>
+                        (
+                            field.validationRules || []
+                        )
+                            .filter(
+                                rule =>
+                                    rule.type === "error"
+                            )
+                            .map(
+                                rule => ({
+                                    fieldId:
+                                        field.id,
+                                    message:
+                                        rule.message
+                                })
+                            )
+                );
+
+            return {
+                mappedStepCount:
+                    workflowSteps.length,
+                mappedFieldCount:
+                    fields.length,
+                requiredFieldCount:
+                    requiredFields.length,
+                incompleteFieldIds:
+                    incompleteFields.map(
+                        field =>
+                            field.id
+                    ),
+                unapprovedFieldIds:
+                    unapprovedFields.map(
+                        field =>
+                            field.id
+                    ),
+                validationIssues,
+                valid:
+                    incompleteFields.length === 0 &&
+                    unapprovedFields.length === 0 &&
+                    validationIssues.length === 0
+            };
+        },
+
+        createPortalSubmissionPackage(
+            opportunityId
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const applicationPackage =
+                opportunity
+                    ?.executiveApplicationPackage;
+            const portalIntelligence =
+                opportunity
+                    ?.submissionPortalIntelligence;
+
+            if (
+                !applicationPackage ||
+                !portalIntelligence
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Application package and portal intelligence are required."
+                };
+            }
+
+            portalIntelligence
+                .validationSummary =
+                this.validatePortalMapping(
+                    portalIntelligence
+                        .workflowSteps
+                );
+
+            const portalPackage = {
+                schema:
+                    "meos.grant-office.portal-submission-package.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                id:
+                    this.createId(
+                        "portal-submission-package"
+                    ),
+                opportunityId:
+                    opportunity.id,
+                applicationPackageId:
+                    applicationPackage.id,
+                portalIntelligenceId:
+                    portalIntelligence.id,
+                createdAt:
+                    this.now(),
+                portal:
+                    this.clone(
+                        portalIntelligence.portal
+                    ),
+                workflow:
+                    this.clone(
+                        portalIntelligence.workflowSteps
+                    ),
+                fieldMap:
+                    portalIntelligence
+                        .fields
+                        .map(field => ({
+                            portalFieldId:
+                                field.id,
+                            sourceQuestionId:
+                                field.sourceQuestionId,
+                            sourceDocumentId:
+                                field.sourceDocumentId,
+                            type:
+                                field.type,
+                            required:
+                                field.required,
+                            completed:
+                                field.completed,
+                            approved:
+                                field.approved,
+                            value:
+                                field.value,
+                            limits:
+                                this.clone(
+                                    field.limits
+                                )
+                        })),
+                validation:
+                    this.clone(
+                        portalIntelligence
+                            .validationSummary
+                    ),
+                executiveAuthorization:
+                    this.clone(
+                        portalIntelligence
+                            .authorization
+                    ),
+                submissionState:
+                    portalIntelligence
+                        .authorization
+                        .authorized === true &&
+                    portalIntelligence
+                        .validationSummary
+                        .valid === true &&
+                    applicationPackage
+                        .readiness
+                        .readyForSubmission === true
+                        ? SUBMISSION_PORTAL_STATES.READY_TO_SUBMIT
+                        : SUBMISSION_PORTAL_STATES.EXECUTIVE_REVIEW_REQUIRED,
+                finalSubmitBlocked:
+                    true,
+                finalSubmitBlockReason:
+                    "Final submission remains blocked until explicit executive authorization is recorded at the time of submission."
+            };
+
+            opportunity
+                .portalSubmissionPackage =
+                portalPackage;
+            opportunity.updatedAt =
+                this.now();
+
+            this.analytics
+                .portalSubmissionPackagesCreated += 1;
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                portalSubmissionPackage:
+                    this.clone(
+                        portalPackage
+                    )
+            };
+        },
+
+        authorizePortalSubmission(
+            opportunityId,
+            authorization = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const portalIntelligence =
+                opportunity
+                    ?.submissionPortalIntelligence;
+            const applicationPackage =
+                opportunity
+                    ?.executiveApplicationPackage;
+
+            if (
+                !portalIntelligence ||
+                !applicationPackage
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Portal intelligence and application package are required."
+                };
+            }
+
+            const authorizedBy =
+                String(
+                    authorization.authorizedBy ||
+                    ""
+                ).trim();
+
+            if (!authorizedBy) {
+                return {
+                    success: false,
+                    error:
+                        "Portal submission authorization requires authorizedBy."
+                };
+            }
+
+            portalIntelligence
+                .validationSummary =
+                this.validatePortalMapping(
+                    portalIntelligence
+                        .workflowSteps
+                );
+
+            if (
+                applicationPackage
+                    .readiness
+                    .readyForSubmission !== true ||
+                portalIntelligence
+                    .validationSummary
+                    .valid !== true
+            ) {
+                this.analytics
+                    .portalAuthorizationBlocksTriggered += 1;
+
+                return {
+                    success: false,
+                    error:
+                        "Portal submission authorization is blocked until the application package and portal mapping are complete.",
+                    code:
+                        "GRANT_PORTAL_AUTHORIZATION_BLOCKED",
+                    packageReadiness:
+                        this.clone(
+                            applicationPackage
+                                .readiness
+                        ),
+                    portalValidation:
+                        this.clone(
+                            portalIntelligence
+                                .validationSummary
+                        )
+                };
+            }
+
+            portalIntelligence.authorization = {
+                required:
+                    true,
+                authorized:
+                    true,
+                authorizedBy,
+                authorizedAt:
+                    authorization.authorizedAt ||
+                    this.now(),
+                scope:
+                    authorization.scope ||
+                    "populate-and-submit"
+            };
+            portalIntelligence.state =
+                SUBMISSION_PORTAL_STATES.AUTHORIZED;
+            portalIntelligence
+                .submissionControl = {
+                    finalSubmitBlocked:
+                        true,
+                    reason:
+                        "Execution still requires a separate final submit command from the authorized executive."
+                };
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                portalIntelligence:
+                    this.clone(
+                        portalIntelligence
+                    )
+            };
+        },
+
+        markPortalFieldComplete(
+            opportunityId,
+            fieldId,
+            update = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const portalIntelligence =
+                opportunity
+                    ?.submissionPortalIntelligence;
+
+            if (!portalIntelligence) {
+                return {
+                    success: false,
+                    error:
+                        "Submission portal intelligence has not been created."
+                };
+            }
+
+            const field =
+                portalIntelligence
+                    .fields
+                    .find(
+                        item =>
+                            item.id === fieldId
+                    );
+
+            if (!field) {
+                return {
+                    success: false,
+                    error:
+                        "Portal field not found."
+                };
+            }
+
+            if (
+                field.executiveApprovalRequired &&
+                update.approved !== true &&
+                field.approved !== true
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "This portal field requires executive approval.",
+                    code:
+                        "GRANT_PORTAL_FIELD_APPROVAL_REQUIRED"
+                };
+            }
+
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    update,
+                    "value"
+                )
+            ) {
+                field.value =
+                    update.value;
+            }
+
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    update,
+                    "approved"
+                )
+            ) {
+                field.approved =
+                    update.approved === true;
+            }
+
+            field.completed =
+                update.completed !== false &&
+                (
+                    field.type ===
+                        SUBMISSION_FIELD_TYPES.FILE ||
+                    field.type ===
+                        SUBMISSION_FIELD_TYPES.SIGNATURE ||
+                    field.type ===
+                        SUBMISSION_FIELD_TYPES.CERTIFICATION
+                        ? update.completed === true ||
+                          field.approved === true
+                        : field.value !== null &&
+                          String(field.value).trim() !== ""
+                );
+
+            portalIntelligence
+                .validationSummary =
+                this.validatePortalMapping(
+                    portalIntelligence
+                        .workflowSteps
+                );
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                field:
+                    this.clone(
+                        field
+                    ),
+                validationSummary:
+                    this.clone(
+                        portalIntelligence
+                            .validationSummary
+                    )
+            };
+        },
+
+        requestFinalPortalSubmission(
+            opportunityId,
+            command = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const portalIntelligence =
+                opportunity
+                    ?.submissionPortalIntelligence;
+            const portalPackage =
+                opportunity
+                    ?.portalSubmissionPackage;
+
+            if (
+                !portalIntelligence ||
+                !portalPackage
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Portal submission package has not been created."
+                };
+            }
+
+            if (
+                portalIntelligence
+                    .authorization
+                    .authorized !== true
+            ) {
+                this.analytics
+                    .portalAuthorizationBlocksTriggered += 1;
+
+                return {
+                    success: false,
+                    error:
+                        "Final portal submission is blocked without explicit executive authorization.",
+                    code:
+                        "GRANT_PORTAL_FINAL_SUBMISSION_BLOCKED"
+                };
+            }
+
+            const confirmedBy =
+                String(
+                    command.confirmedBy ||
+                    ""
+                ).trim();
+
+            if (
+                confirmedBy !==
+                portalIntelligence
+                    .authorization
+                    .authorizedBy
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Final submission confirmation must come from the authorized executive.",
+                    code:
+                        "GRANT_PORTAL_FINAL_CONFIRMATION_REQUIRED"
+                };
+            }
+
+            portalPackage
+                .finalSubmitBlocked =
+                false;
+            portalPackage
+                .finalSubmitBlockReason =
+                null;
+            portalPackage
+                .submissionState =
+                SUBMISSION_PORTAL_STATES.READY_TO_SUBMIT;
+            portalPackage
+                .finalSubmitAuthorization = {
+                    confirmedBy,
+                    confirmedAt:
+                        command.confirmedAt ||
+                        this.now(),
+                    command:
+                        "authorized-final-submit"
+                };
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                readyForExecution:
+                    true,
+                portalSubmissionPackage:
+                    this.clone(
+                        portalPackage
+                    )
+            };
+        },
+
+        runSubmissionPortalIntelligenceAcceptanceTest() {
+            const originalPersistence =
+                this.configuration
+                    .automaticPersistence;
+            const testId =
+                this.createId(
+                    "portal-intelligence-test"
+                );
+
+            this.configuration
+                .automaticPersistence =
+                false;
+
+            try {
+                this.addOpportunity({
+                    id:
+                        testId,
+                    title:
+                        "Portal Intelligence Acceptance Test",
+                    provider:
+                        "Acceptance Test Foundation",
+                    verified:
+                        true,
+                    sourceUrl:
+                        "https://apply.submittable.com/test"
+                });
+
+                const opportunity =
+                    this.getOpportunityById(
+                        testId
+                    );
+
+                opportunity
+                    .executiveApplicationPackage = {
+                        id:
+                            "application-package-test",
+                        title:
+                            "Portal Intelligence Application",
+                        readiness: {
+                            readyForSubmission:
+                                true
+                        },
+                        narrativeSections: [
+                            {
+                                id:
+                                    "narrative-1",
+                                title:
+                                    "Narrative",
+                                complete:
+                                    true,
+                                responses: [
+                                    {
+                                        questionId:
+                                            "q-1",
+                                        question:
+                                            "Describe the project in 500 characters.",
+                                        response:
+                                            "The project connects river corridor outreach and trash removal to improved watershed conditions.",
+                                        state:
+                                            APPLICATION_ITEM_STATES.APPROVED,
+                                        limitCheck: {
+                                            limits: {
+                                                characters:
+                                                    500,
+                                                words:
+                                                    null
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        attachmentIndex: [
+                            {
+                                id:
+                                    "irs-letter",
+                                name:
+                                    "IRS determination letter",
+                                required:
+                                    true,
+                                documentId:
+                                    "document-irs-001",
+                                attached:
+                                    true,
+                                verified:
+                                    true,
+                                current:
+                                    true
+                            }
+                        ],
+                        certificationPacket: [
+                            {
+                                id:
+                                    "org-cert",
+                                name:
+                                    "Authorized organizational certification",
+                                required:
+                                    true,
+                                status:
+                                    "approved"
+                            }
+                        ],
+                        signaturePacket: [
+                            {
+                                id:
+                                    "authorized-signature",
+                                name:
+                                    "Authorized official signature",
+                                required:
+                                    true,
+                                status:
+                                    "signed"
+                            }
+                        ]
+                    };
+
+                const analysis =
+                    this.analyzeSubmissionPortal(
+                        testId,
+                        {
+                            name:
+                                "Submittable",
+                            url:
+                                "https://apply.submittable.com/test",
+                            loginRequired:
+                                true
+                        }
+                    );
+
+                const portal =
+                    this.getOpportunityById(
+                        testId
+                    )
+                        .submissionPortalIntelligence;
+
+                const mappedQuestion =
+                    portal.fields.find(
+                        field =>
+                            field.sourceQuestionId ===
+                            "q-1"
+                    );
+
+                const mappedAttachment =
+                    portal.fields.find(
+                        field =>
+                            field.sourceDocumentId ===
+                            "document-irs-001"
+                    );
+
+                const mappedCertification =
+                    portal.fields.find(
+                        field =>
+                            field.type ===
+                            SUBMISSION_FIELD_TYPES.CERTIFICATION
+                    );
+
+                const mappedSignature =
+                    portal.fields.find(
+                        field =>
+                            field.type ===
+                            SUBMISSION_FIELD_TYPES.SIGNATURE
+                    );
+
+                const packageResult =
+                    this.createPortalSubmissionPackage(
+                        testId
+                    );
+
+                const blockedFinal =
+                    this.requestFinalPortalSubmission(
+                        testId,
+                        {
+                            confirmedBy:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const authorized =
+                    this.authorizePortalSubmission(
+                        testId,
+                        {
+                            authorizedBy:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const finalRequest =
+                    this.requestFinalPortalSubmission(
+                        testId,
+                        {
+                            confirmedBy:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const portalPackage =
+                    this.getOpportunityById(
+                        testId
+                    )
+                        .portalSubmissionPackage;
+
+                const checks = [
+                    {
+                        name:
+                            "Portal detected",
+                        passed:
+                            analysis.success === true &&
+                            portal.portal.type ===
+                            SUBMISSION_PORTAL_TYPES.SUBMITTABLE
+                    },
+                    {
+                        name:
+                            "Submission workflow mapped",
+                        passed:
+                            portal.workflowSteps.length === 10 &&
+                            portal.workflowSteps.some(
+                                step =>
+                                    step.type ===
+                                    SUBMISSION_PORTAL_STEP_TYPES.SUBMIT
+                            )
+                    },
+                    {
+                        name:
+                            "Fields normalized",
+                        passed:
+                            portal.fields.length >= 4 &&
+                            portal.fields.every(
+                                field =>
+                                    Boolean(
+                                        field.id
+                                    ) &&
+                                    Boolean(
+                                        field.type
+                                    )
+                            )
+                    },
+                    {
+                        name:
+                            "Character limits detected",
+                        passed:
+                            mappedQuestion
+                                ?.limits
+                                ?.characters === 500
+                    },
+                    {
+                        name:
+                            "Attachments mapped",
+                        passed:
+                            mappedAttachment
+                                ?.type ===
+                                SUBMISSION_FIELD_TYPES.FILE &&
+                            mappedAttachment
+                                ?.completed === true
+                    },
+                    {
+                        name:
+                            "Certifications mapped",
+                        passed:
+                            mappedCertification
+                                ?.completed === true &&
+                            mappedCertification
+                                ?.approved === true
+                    },
+                    {
+                        name:
+                            "Signature requirements mapped",
+                        passed:
+                            mappedSignature
+                                ?.completed === true &&
+                            mappedSignature
+                                ?.approved === true
+                    },
+                    {
+                        name:
+                            "Executive approval gate preserved",
+                        passed:
+                            blockedFinal.success === false &&
+                            blockedFinal.code ===
+                            "GRANT_PORTAL_FINAL_SUBMISSION_BLOCKED"
+                    },
+                    {
+                        name:
+                            "Submission authorization recorded",
+                        passed:
+                            authorized.success === true &&
+                            portal.authorization.authorized === true
+                    },
+                    {
+                        name:
+                            "Universal portal package generated",
+                        passed:
+                            packageResult.success === true &&
+                            finalRequest.success === true &&
+                            portalPackage.finalSubmitBlocked === false &&
+                            finalRequest.readyForExecution === true
+                    }
+                ];
+
+                return {
+                    success:
+                        checks.every(
+                            check =>
+                                check.passed
+                        ),
+                    passed:
+                        checks.filter(
+                            check =>
+                                check.passed
+                        ).length,
+                    total:
+                        checks.length,
+                    checks,
+                    portalType:
+                        portal.portal.type,
+                    mappedSteps:
+                        portal.workflowSteps.length,
+                    mappedFields:
+                        portal.fields.length,
+                    blockedFinalCode:
+                        blockedFinal.code,
+                    finalState:
+                        portalPackage.submissionState,
+                    readyForExecution:
+                        finalRequest.readyForExecution
+                };
+            } finally {
+                this.opportunities =
+                    this.opportunities.filter(
+                        opportunity =>
+                            opportunity.id !==
+                            testId
+                    );
+                this.configuration
+                    .automaticPersistence =
+                    originalPersistence;
+            }
+        },
+
         runApplicationAssemblyAcceptanceTest() {
             const originalPersistence =
                 this.configuration
@@ -9677,6 +11683,14 @@
                     this.opportunities.filter(
                         item => item.executiveApplicationPackage
                     ).length,
+                submissionPortalIntelligenceCount:
+                    this.opportunities.filter(
+                        item => item.submissionPortalIntelligence
+                    ).length,
+                portalSubmissionPackageCount:
+                    this.opportunities.filter(
+                        item => item.portalSubmissionPackage
+                    ).length,
                 pipelineCounts:
                     this.getPipelineCounts(),
                 analytics:
@@ -9981,6 +11995,14 @@
         APPLICATION_ASSEMBLY_STATES;
     GrantOffice.APPLICATION_PACKAGE_ITEM_TYPES =
         APPLICATION_PACKAGE_ITEM_TYPES;
+    GrantOffice.SUBMISSION_PORTAL_TYPES =
+        SUBMISSION_PORTAL_TYPES;
+    GrantOffice.SUBMISSION_PORTAL_STEP_TYPES =
+        SUBMISSION_PORTAL_STEP_TYPES;
+    GrantOffice.SUBMISSION_FIELD_TYPES =
+        SUBMISSION_FIELD_TYPES;
+    GrantOffice.SUBMISSION_PORTAL_STATES =
+        SUBMISSION_PORTAL_STATES;
     GrantOffice.RECOMMENDATIONS =
         RECOMMENDATIONS;
     GrantOffice.DISQUALIFIER_TYPES =
