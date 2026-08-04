@@ -1,6 +1,6 @@
 /*
  * MEOS Knowledge Memory
- * Version: 1.1.0
+ * Version: 1.1.1
  *
  * Purpose:
  * Upgrade the completed MEOS Knowledge Engine with document memory,
@@ -26,7 +26,7 @@
 
     const STORAGE_KEY = "meos.knowledge-memory.v1";
     const SCHEMA = "meos-knowledge-memory";
-    const VERSION = "1.1.0";
+    const VERSION = "1.1.1";
     const EXECUTIVE_MEMORY_COLLECTION = "investigation-history";
     const EXECUTIVE_MEMORY_ENDPOINT = "/api/executive-memory";
     const EXECUTIVE_MEMORY_MANIFEST_ID = "knowledge-memory-manifest-v1";
@@ -89,6 +89,8 @@
         lastPersistenceAt: null,
         lastPersistenceError: null,
         restoredFromExecutiveMemory: false,
+        executiveMemoryManifestKnownMissing: false,
+        executiveMemoryManifestBootstrapAt: null,
 
         initialize(options = {}) {
             this.configuration = {
@@ -3399,6 +3401,13 @@
                         .authoritativeStorage,
                 restoredFromExecutiveMemory:
                     this.restoredFromExecutiveMemory,
+                manifestId:
+                    this.configuration
+                        .executiveMemoryManifestId,
+                manifestKnownMissing:
+                    this.executiveMemoryManifestKnownMissing,
+                manifestBootstrapAt:
+                    this.executiveMemoryManifestBootstrapAt,
                 lastPersistenceAt:
                     this.lastPersistenceAt,
                 lastPersistenceError:
@@ -3638,6 +3647,26 @@
             return payload;
         },
 
+        async findExecutiveMemoryRecord(recordId) {
+            const payload =
+                await this.executiveMemoryRequest(
+                    "GET",
+                    null
+                );
+
+            const records =
+                Array.isArray(payload?.records)
+                    ? payload.records
+                    : [];
+
+            return (
+                records.find(
+                    (record) =>
+                        record?.id === recordId
+                ) || null
+            );
+        },
+
         createPersistenceShards(exportData) {
             const targetBytes = Math.max(
                 50000,
@@ -3776,7 +3805,7 @@
             };
         },
 
-        async persist() {
+        async persist(options = {}) {
             if (
                 !this.configuration.persistenceEnabled
             ) {
@@ -3799,27 +3828,18 @@
                         data
                     );
 
-                const previousManifest =
-                    await this.executiveMemoryRequest(
-                        "GET",
-                        this.configuration
-                            .executiveMemoryManifestId
-                    )
-                        .then(
-                            (payload) =>
-                                payload?.record ||
-                                null
-                        )
-                        .catch((error) => {
-                            if (
-                                error?.code ===
-                                "EXECUTIVE_MEMORY_RECORD_NOT_FOUND"
-                            ) {
-                                return null;
-                            }
+                let previousManifest = null;
 
-                            throw error;
-                        });
+                if (
+                    options.skipManifestLookup !== true &&
+                    !this.executiveMemoryManifestKnownMissing
+                ) {
+                    previousManifest =
+                        await this.findExecutiveMemoryRecord(
+                            this.configuration
+                                .executiveMemoryManifestId
+                        );
+                }
 
                 for (const shard of shards) {
                     await this.executiveMemoryRequest(
@@ -3867,6 +3887,17 @@
                     manifest
                 );
 
+                const bootstrapped =
+                    this.executiveMemoryManifestKnownMissing;
+
+                this.executiveMemoryManifestKnownMissing =
+                    false;
+
+                if (bootstrapped) {
+                    this.executiveMemoryManifestBootstrapAt =
+                        new Date().toISOString();
+                }
+
                 const previousShardIds =
                     Array.isArray(
                         previousManifest?.shardIds
@@ -3901,7 +3932,8 @@
                         "executive-memory",
                     manifestId: manifest.id,
                     shardCount: shards.length,
-                    counts: manifest.counts
+                    counts: manifest.counts,
+                    bootstrapped
                 });
 
                 return {
@@ -3911,7 +3943,8 @@
                         "executive-memory",
                     manifestId: manifest.id,
                     shardCount: shards.length,
-                    counts: manifest.counts
+                    counts: manifest.counts,
+                    bootstrapped
                 };
             })()
                 .catch((error) => {
@@ -3951,38 +3984,58 @@
                 };
             }
 
-            let manifest = null;
-
-            try {
-                const payload =
-                    await this.executiveMemoryRequest(
-                        "GET",
-                        this.configuration
-                            .executiveMemoryManifestId
-                    );
-
-                manifest =
-                    payload?.record || null;
-            } catch (error) {
-                if (
-                    error?.code !==
-                    "EXECUTIVE_MEMORY_RECORD_NOT_FOUND"
-                ) {
-                    throw error;
-                }
-            }
+            const manifest =
+                await this.findExecutiveMemoryRecord(
+                    this.configuration
+                        .executiveMemoryManifestId
+                );
 
             if (!manifest) {
+                this.executiveMemoryManifestKnownMissing =
+                    true;
+
                 const migration =
                     await this.migrateLegacyLocalStorage();
 
+                const bootstrap =
+                    await this.persist({
+                        skipManifestLookup: true
+                    });
+
+                if (!bootstrap.success) {
+                    return {
+                        success: false,
+                        restored:
+                            migration.migrated,
+                        migratedLegacyStorage:
+                            migration.migrated,
+                        bootstrappedManifest:
+                            false,
+                        error:
+                            bootstrap.error ||
+                            "Knowledge Memory could not create its initial Executive Memory manifest."
+                    };
+                }
+
                 return {
                     success: true,
-                    restored: migration.migrated,
+                    restored:
+                        migration.migrated,
                     migratedLegacyStorage:
-                        migration.migrated
+                        migration.migrated,
+                    bootstrappedManifest: true,
+                    manifestId:
+                        this.configuration
+                            .executiveMemoryManifestId,
+                    shardCount:
+                        bootstrap.shardCount,
+                    counts:
+                        bootstrap.counts
                 };
             }
+
+            this.executiveMemoryManifestKnownMissing =
+                false;
 
             const restored = {
                 schema: SCHEMA,
