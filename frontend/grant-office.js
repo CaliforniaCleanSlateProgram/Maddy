@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.8.0
- * Build: GO180-EXECUTIVE-SUBMISSION-AWARD-TRACKING-20260804-A
+ * Version: 1.8.1
+ * Build: GO181-DUPLICATE-SUBMISSION-GUARD-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.8.0";
-    const BUILD_ID = "GO180-EXECUTIVE-SUBMISSION-AWARD-TRACKING-20260804-A";
+    const VERSION = "1.8.1";
+    const BUILD_ID = "GO181-DUPLICATE-SUBMISSION-GUARD-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -10175,8 +10175,6 @@
                     "unknown",
                 details.confirmationNumber ||
                     "",
-                details.submittedAt ||
-                    "",
                 details.applicationPackageId ||
                     opportunity
                         .executiveApplicationPackage
@@ -10292,16 +10290,26 @@
                     }
                 );
 
+            const existingSubmissionState =
+                opportunity
+                    .submissionExecution
+                    ?.state;
+
+            const completedSubmissionExists =
+                [
+                    SUBMISSION_EXECUTION_STATES.SUBMITTED,
+                    SUBMISSION_EXECUTION_STATES.RECEIPT_VERIFIED
+                ].includes(
+                    existingSubmissionState
+                );
+
             if (
                 opportunity
                     .submissionExecution
                     ?.fingerprint ===
                     fingerprint ||
                 (
-                    opportunity
-                        .submissionExecution
-                        ?.state ===
-                        SUBMISSION_EXECUTION_STATES.SUBMITTED &&
+                    completedSubmissionExists &&
                     details.allowResubmission !== true
                 )
             ) {
