@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.2.0
- * Build: GO120-ONE-AUTHORITY-20260803-A
+ * Version: 1.3.0
+ * Build: GO130-FULL-PURSUIT-PIPELINE-20260803-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.2.0";
-    const BUILD_ID = "GO120-ONE-AUTHORITY-20260803-A";
+    const VERSION = "1.3.0";
+    const BUILD_ID = "GO130-FULL-PURSUIT-PIPELINE-20260803-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -52,18 +52,77 @@
         OTHER: "other"
     });
 
-    const LIFECYCLE_STATES = Object.freeze({
+    const TIMING_STATUSES = Object.freeze({
         SIGNAL: "pre-announcement",
         EXPECTED: "expected",
         OPEN: "open",
-        PREPARING: "preparing",
         CLOSING_SOON: "closing-soon",
         CLOSED: "closed",
+        UNKNOWN: "unknown"
+    });
+
+    /*
+     * Backward-compatible timing alias.
+     *
+     * Existing MEOS code may still read opportunity.lifecycle or
+     * GrantOffice.LIFECYCLE_STATES. In v1.3.0 lifecycle remains a timing-only
+     * field. Pursuit work is represented exclusively by pipelineStage.
+     */
+    const LIFECYCLE_STATES = TIMING_STATUSES;
+
+    const PIPELINE_STAGES = Object.freeze({
+        DISCOVERED: "discovered",
+        SCREENED: "screened",
+        ON_DESK: "on-desk",
+        PREPARING: "preparing",
         SUBMITTED: "submitted",
         AWARD_PENDING: "award-pending",
         AWARDED: "awarded",
         DECLINED: "declined",
+        WITHDRAWN: "withdrawn",
         ARCHIVED: "archived"
+    });
+
+    const PIPELINE_STAGE_TRANSITIONS = Object.freeze({
+        [PIPELINE_STAGES.DISCOVERED]: Object.freeze([
+            PIPELINE_STAGES.SCREENED,
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.SCREENED]: Object.freeze([
+            PIPELINE_STAGES.ON_DESK,
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.ON_DESK]: Object.freeze([
+            PIPELINE_STAGES.PREPARING,
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.PREPARING]: Object.freeze([
+            PIPELINE_STAGES.SUBMITTED,
+            PIPELINE_STAGES.WITHDRAWN,
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.SUBMITTED]: Object.freeze([
+            PIPELINE_STAGES.AWARD_PENDING,
+            PIPELINE_STAGES.DECLINED,
+            PIPELINE_STAGES.WITHDRAWN,
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.AWARD_PENDING]: Object.freeze([
+            PIPELINE_STAGES.AWARDED,
+            PIPELINE_STAGES.DECLINED,
+            PIPELINE_STAGES.WITHDRAWN,
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.AWARDED]: Object.freeze([
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.DECLINED]: Object.freeze([
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.WITHDRAWN]: Object.freeze([
+            PIPELINE_STAGES.ARCHIVED
+        ]),
+        [PIPELINE_STAGES.ARCHIVED]: Object.freeze([])
     });
 
     const RECOMMENDATIONS = Object.freeze({
@@ -133,6 +192,12 @@
             executiveHoursProtectedEstimate: 0,
             currentPipelineValue: 0,
             futurePipelineValue: 0,
+            activePreparations: 0,
+            submittedApplications: 0,
+            awardPendingApplications: 0,
+            awardedApplications: 0,
+            declinedApplications: 0,
+            lastPipelineTransitionAt: null,
             lastEvaluationAt: null
         },
 
@@ -143,6 +208,13 @@
             };
 
             this.restore();
+            this.opportunities.forEach(
+                (opportunity) =>
+                    this.ensurePipelineRecord(
+                        opportunity
+                    )
+            );
+            this.recalculatePipelineAnalytics();
             this.status = "online";
 
             console.info(
@@ -315,7 +387,12 @@
                     input.projectEndDate || "",
                 renewalCycle:
                     input.renewalCycle || "",
+                timingStatus:
+                    input.timingStatus ||
+                    input.lifecycle ||
+                    this.determineLifecycle(input),
                 lifecycle:
+                    input.timingStatus ||
                     input.lifecycle ||
                     this.determineLifecycle(input),
                 requiredDocuments:
@@ -346,6 +423,34 @@
                 status:
                     input.status ||
                     "discovered",
+                pipelineStage:
+                    this.normalizePipelineStage(
+                        input.pipelineStage ||
+                        PIPELINE_STAGES.DISCOVERED
+                    ),
+                pipelineHistory:
+                    this.normalizePipelineHistory(
+                        input.pipelineHistory,
+                        input.pipelineStage ||
+                        PIPELINE_STAGES.DISCOVERED,
+                        input.discoveredAt || this.now()
+                    ),
+                pursuitAuthorization:
+                    input.pursuitAuthorization
+                        ? this.clone(input.pursuitAuthorization)
+                        : null,
+                preparation:
+                    input.preparation
+                        ? this.clone(input.preparation)
+                        : null,
+                submission:
+                    input.submission
+                        ? this.clone(input.submission)
+                        : null,
+                outcome:
+                    input.outcome
+                        ? this.clone(input.outcome)
+                        : null,
                 evaluation: null,
                 tracking: {
                     enabled:
@@ -580,6 +685,11 @@
                 );
             opportunity.updatedAt = this.now();
 
+            this.synchronizeEvaluationPipeline(
+                opportunity,
+                recommendation
+            );
+
             if (mission) {
                 mission.updatedAt = this.now();
                 mission.findings.push({
@@ -605,7 +715,7 @@
                     [
                         LIFECYCLE_STATES.SIGNAL,
                         LIFECYCLE_STATES.EXPECTED
-                    ].includes(opportunity.lifecycle)
+                    ].includes(opportunity.timingStatus || opportunity.lifecycle)
                         ? "future"
                         : "current",
                 statedPurpose:
@@ -1569,8 +1679,10 @@
 
             return {
                 score,
+                timingStatus:
+                    opportunity.timingStatus || opportunity.lifecycle,
                 lifecycle:
-                    opportunity.lifecycle,
+                    opportunity.timingStatus || opportunity.lifecycle,
                 openDate:
                     opportunity.openDate || null,
                 deadline:
@@ -2302,6 +2414,18 @@
                 }
             );
 
+            if (
+                Object.prototype.hasOwnProperty.call(update, "openDate") ||
+                Object.prototype.hasOwnProperty.call(update, "deadline") ||
+                Object.prototype.hasOwnProperty.call(update, "futureSignal") ||
+                Object.prototype.hasOwnProperty.call(update, "preAnnouncement")
+            ) {
+                opportunity.timingStatus =
+                    this.determineLifecycle(opportunity);
+                opportunity.lifecycle =
+                    opportunity.timingStatus;
+            }
+
             const current = {
                 lifecycle:
                     opportunity.lifecycle,
@@ -2654,6 +2778,1494 @@
             return map[decision] || "review";
         },
 
+        normalizePipelineStage(value) {
+            const stage = String(value || "").trim();
+
+            return Object.values(PIPELINE_STAGES).includes(stage)
+                ? stage
+                : PIPELINE_STAGES.DISCOVERED;
+        },
+
+        normalizePipelineHistory(history, stage, enteredAt) {
+            const normalizedStage =
+                this.normalizePipelineStage(stage);
+
+            if (Array.isArray(history) && history.length > 0) {
+                return history
+                    .filter(
+                        (entry) =>
+                            entry &&
+                            typeof entry === "object" &&
+                            Object.values(PIPELINE_STAGES)
+                                .includes(entry.stage)
+                    )
+                    .map((entry) => ({
+                        stage: entry.stage,
+                        enteredAt:
+                            entry.enteredAt || this.now(),
+                        note:
+                            String(entry.note || ""),
+                        actor:
+                            String(entry.actor || "MEOS"),
+                        authority:
+                            String(
+                                entry.authority ||
+                                "system-record"
+                            )
+                    }));
+            }
+
+            return [{
+                stage: normalizedStage,
+                enteredAt: enteredAt || this.now(),
+                note:
+                    normalizedStage ===
+                    PIPELINE_STAGES.DISCOVERED
+                        ? "Opportunity entered the Grant Office."
+                        : "Pipeline history restored from a legacy record.",
+                actor: "MEOS Grant Office",
+                authority: "system-record"
+            }];
+        },
+
+        ensurePipelineRecord(opportunity) {
+            if (!opportunity) {
+                return null;
+            }
+
+            opportunity.pipelineStage =
+                this.normalizePipelineStage(
+                    opportunity.pipelineStage
+                );
+
+            opportunity.pipelineHistory =
+                this.normalizePipelineHistory(
+                    opportunity.pipelineHistory,
+                    opportunity.pipelineStage,
+                    opportunity.discoveredAt ||
+                    opportunity.createdAt ||
+                    this.now()
+                );
+
+            opportunity.timingStatus =
+                opportunity.timingStatus ||
+                opportunity.lifecycle ||
+                this.determineLifecycle(opportunity);
+
+            opportunity.lifecycle =
+                opportunity.timingStatus;
+
+            return opportunity;
+        },
+
+        getAllowedPipelineTransitions(stage) {
+            const normalized =
+                this.normalizePipelineStage(stage);
+
+            return [
+                ...(PIPELINE_STAGE_TRANSITIONS[normalized] || [])
+            ];
+        },
+
+        appendPipelineHistory(
+            opportunity,
+            stage,
+            details = {}
+        ) {
+            this.ensurePipelineRecord(opportunity);
+
+            const entry = {
+                stage,
+                enteredAt:
+                    details.enteredAt || this.now(),
+                note:
+                    String(details.note || ""),
+                actor:
+                    String(
+                        details.actor ||
+                        details.authorizedBy ||
+                        "MEOS Grant Office"
+                    ),
+                authority:
+                    String(
+                        details.authority ||
+                        "grant-office"
+                    )
+            };
+
+            opportunity.pipelineHistory.push(entry);
+            opportunity.updatedAt = entry.enteredAt;
+            this.analytics.lastPipelineTransitionAt =
+                entry.enteredAt;
+
+            return entry;
+        },
+
+        transitionPipelineStage(
+            opportunityId,
+            nextStage,
+            details = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found.",
+                    code: "GRANT_PIPELINE_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            this.ensurePipelineRecord(opportunity);
+
+            const normalizedNext =
+                this.normalizePipelineStage(nextStage);
+            const currentStage =
+                opportunity.pipelineStage;
+
+            if (normalizedNext === currentStage) {
+                return {
+                    success: true,
+                    changed: false,
+                    opportunity:
+                        this.clone(opportunity),
+                    allowedNextStages:
+                        this.getAllowedPipelineTransitions(
+                            currentStage
+                        )
+                };
+            }
+
+            const allowed =
+                this.getAllowedPipelineTransitions(
+                    currentStage
+                );
+
+            if (!allowed.includes(normalizedNext)) {
+                return {
+                    success: false,
+                    error:
+                        `Cannot move from "${currentStage}" to ` +
+                        `"${normalizedNext}".`,
+                    code: "GRANT_PIPELINE_TRANSITION_INVALID",
+                    currentStage,
+                    requestedStage: normalizedNext,
+                    allowedNextStages: allowed
+                };
+            }
+
+            opportunity.pipelineStage =
+                normalizedNext;
+
+            this.appendPipelineHistory(
+                opportunity,
+                normalizedNext,
+                details
+            );
+
+            this.recalculatePipelineAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                changed: true,
+                previousStage: currentStage,
+                currentStage: normalizedNext,
+                allowedNextStages:
+                    this.getAllowedPipelineTransitions(
+                        normalizedNext
+                    ),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        synchronizeEvaluationPipeline(
+            opportunity,
+            recommendation
+        ) {
+            this.ensurePipelineRecord(opportunity);
+
+            const decision =
+                recommendation?.decision || "";
+            let targetStage =
+                PIPELINE_STAGES.SCREENED;
+            let note =
+                "Executive evaluation completed.";
+
+            if (
+                [
+                    RECOMMENDATIONS.PURSUE_NOW,
+                    RECOMMENDATIONS.PREPARE_FOR_FUTURE,
+                    RECOMMENDATIONS.PURSUE_WITH_PARTNER
+                ].includes(decision)
+            ) {
+                targetStage =
+                    PIPELINE_STAGES.ON_DESK;
+                note =
+                    "Executive evaluation placed the opportunity on the pursuit desk.";
+            } else if (
+                [
+                    RECOMMENDATIONS.SKIP_NOT_ELIGIBLE,
+                    RECOMMENDATIONS.SKIP_LOW_RETURN,
+                    RECOMMENDATIONS.SKIP_MISSION_MISALIGNMENT
+                ].includes(decision)
+            ) {
+                targetStage =
+                    PIPELINE_STAGES.ARCHIVED;
+                note =
+                    "Executive evaluation rejected the opportunity before pursuit.";
+            }
+
+            const current =
+                opportunity.pipelineStage;
+
+            if (
+                current === PIPELINE_STAGES.DISCOVERED &&
+                targetStage !== PIPELINE_STAGES.SCREENED
+            ) {
+                opportunity.pipelineStage =
+                    PIPELINE_STAGES.SCREENED;
+                this.appendPipelineHistory(
+                    opportunity,
+                    PIPELINE_STAGES.SCREENED,
+                    {
+                        note:
+                            "Executive screening completed.",
+                        actor:
+                            "Executive Resource Acquisition Engine",
+                        authority:
+                            "authoritative-evaluation"
+                    }
+                );
+            }
+
+            if (
+                opportunity.pipelineStage !== targetStage &&
+                this.getAllowedPipelineTransitions(
+                    opportunity.pipelineStage
+                ).includes(targetStage)
+            ) {
+                opportunity.pipelineStage =
+                    targetStage;
+                this.appendPipelineHistory(
+                    opportunity,
+                    targetStage,
+                    {
+                        note,
+                        actor:
+                            "Executive Resource Acquisition Engine",
+                        authority:
+                            "authoritative-evaluation"
+                    }
+                );
+            }
+
+            this.recalculatePipelineAnalytics();
+
+            return opportunity.pipelineStage;
+        },
+
+        buildPreparationChecklist(
+            opportunity,
+            overrides = {}
+        ) {
+            const items = [];
+            const seen = new Set();
+
+            const add = (
+                id,
+                label,
+                source,
+                required = true,
+                complete = false
+            ) => {
+                if (!id || seen.has(id)) {
+                    return;
+                }
+
+                seen.add(id);
+                items.push({
+                    id,
+                    label,
+                    source,
+                    required,
+                    complete,
+                    completedAt: complete
+                        ? this.now()
+                        : null,
+                    completedBy: null,
+                    note: ""
+                });
+            };
+
+            add(
+                "executive-authorization",
+                "Executive Director pursuit authorization recorded",
+                "MEOS governance",
+                true,
+                Boolean(
+                    opportunity.pursuitAuthorization
+                        ?.authorizedAt
+                )
+            );
+            add(
+                "official-notice",
+                "Official opportunity notice verified",
+                "official source",
+                true,
+                Boolean(
+                    opportunity.verified &&
+                    opportunity.sourceUrl
+                )
+            );
+            add(
+                "eligibility-confirmed",
+                "Applicant eligibility confirmed",
+                "eligibility review",
+                true,
+                Boolean(
+                    opportunity.evaluation &&
+                    !opportunity.evaluation
+                        ?.eligibility?.disqualified
+                )
+            );
+            add(
+                "application-narrative",
+                "Application narrative completed",
+                "application package"
+            );
+            add(
+                "project-budget",
+                "Project budget completed and approved",
+                "application package"
+            );
+            add(
+                "submission-method",
+                "Submission method and account access verified",
+                "funder portal"
+            );
+
+            opportunity.requiredDocuments.forEach(
+                (documentName, index) => {
+                    add(
+                        `required-document-${index + 1}`,
+                        `Required document: ${documentName}`,
+                        "opportunity requirement"
+                    );
+                }
+            );
+
+            opportunity.partnerRequirements.forEach(
+                (requirement, index) => {
+                    add(
+                        `partner-requirement-${index + 1}`,
+                        `Partner requirement: ${requirement}`,
+                        "partner requirement"
+                    );
+                }
+            );
+
+            opportunity.complianceRequirements.forEach(
+                (requirement, index) => {
+                    add(
+                        `compliance-requirement-${index + 1}`,
+                        `Compliance requirement: ${requirement}`,
+                        "compliance requirement"
+                    );
+                }
+            );
+
+            if (opportunity.matchRequired) {
+                add(
+                    "match-funding",
+                    "Required match or cost share confirmed",
+                    "financial requirement"
+                );
+            }
+
+            const overrideItems =
+                Array.isArray(overrides.items)
+                    ? overrides.items
+                    : [];
+
+            overrideItems.forEach((item) => {
+                const existing =
+                    items.find(
+                        (candidate) =>
+                            candidate.id === item.id
+                    );
+
+                if (existing) {
+                    Object.assign(existing, {
+                        ...item,
+                        id: existing.id
+                    });
+                    return;
+                }
+
+                add(
+                    item.id ||
+                    `custom-${items.length + 1}`,
+                    item.label ||
+                    "Additional preparation requirement",
+                    item.source || "executive",
+                    item.required !== false,
+                    item.complete === true
+                );
+            });
+
+            return items;
+        },
+
+        authorizePursuit(
+            opportunityId,
+            authorization = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found.",
+                    code: "GRANT_PIPELINE_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            this.ensurePipelineRecord(opportunity);
+
+            if (
+                this.configuration.requireExecutiveApproval &&
+                !String(
+                    authorization.authorizedBy || ""
+                ).trim()
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Executive authorization requires authorizedBy.",
+                    code:
+                        "GRANT_PIPELINE_EXECUTIVE_AUTHORIZATION_REQUIRED"
+                };
+            }
+
+            opportunity.pursuitAuthorization = {
+                authorized: true,
+                authorizedBy:
+                    String(
+                        authorization.authorizedBy ||
+                        "Executive Director"
+                    ),
+                authorizedAt:
+                    authorization.authorizedAt ||
+                    this.now(),
+                note:
+                    String(authorization.note || ""),
+                scope:
+                    authorization.scope ||
+                    "prepare-and-submit-with-separate-submission-confirmation"
+            };
+            opportunity.updatedAt = this.now();
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                authorization:
+                    this.clone(
+                        opportunity.pursuitAuthorization
+                    ),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        beginPreparation(
+            opportunityId,
+            options = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found.",
+                    code: "GRANT_PIPELINE_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            this.ensurePipelineRecord(opportunity);
+
+            if (
+                this.configuration.requireExecutiveApproval &&
+                !opportunity.pursuitAuthorization?.authorized
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Executive pursuit authorization is required before preparation begins.",
+                    code:
+                        "GRANT_PIPELINE_EXECUTIVE_AUTHORIZATION_REQUIRED"
+                };
+            }
+
+            const transition =
+                this.transitionPipelineStage(
+                    opportunityId,
+                    PIPELINE_STAGES.PREPARING,
+                    {
+                        note:
+                            options.note ||
+                            "Authorized application preparation began.",
+                        actor:
+                            options.actor ||
+                            opportunity.pursuitAuthorization
+                                ?.authorizedBy ||
+                            "Executive Director",
+                        authority:
+                            "executive-authorization"
+                    }
+                );
+
+            if (!transition.success) {
+                return transition;
+            }
+
+            opportunity.preparation = {
+                schema:
+                    "meos.grant-office.preparation.v1",
+                startedAt:
+                    this.now(),
+                startedBy:
+                    options.actor ||
+                    opportunity.pursuitAuthorization
+                        ?.authorizedBy ||
+                    "Executive Director",
+                planId:
+                    options.planId || null,
+                documentIds:
+                    this.uniqueStrings(
+                        options.documentIds || []
+                    ),
+                checklist:
+                    this.buildPreparationChecklist(
+                        opportunity,
+                        options.checklist || {}
+                    ),
+                readiness: {
+                    ready: false,
+                    required: 0,
+                    complete: 0,
+                    percent: 0,
+                    blockers: []
+                },
+                readyAt: null,
+                lastReviewedAt: null
+            };
+
+            this.refreshPreparationReadiness(
+                opportunity
+            );
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                preparation:
+                    this.clone(opportunity.preparation),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        refreshPreparationReadiness(
+            opportunity
+        ) {
+            if (!opportunity?.preparation) {
+                return {
+                    ready: false,
+                    required: 0,
+                    complete: 0,
+                    percent: 0,
+                    blockers: [
+                        "Preparation workspace does not exist."
+                    ]
+                };
+            }
+
+            const checklist =
+                Array.isArray(
+                    opportunity.preparation.checklist
+                )
+                    ? opportunity.preparation.checklist
+                    : [];
+
+            const requiredItems =
+                checklist.filter(
+                    (item) => item.required !== false
+                );
+            const completeItems =
+                requiredItems.filter(
+                    (item) => item.complete === true
+                );
+            const blockers =
+                requiredItems
+                    .filter(
+                        (item) => item.complete !== true
+                    )
+                    .map((item) => item.label);
+
+            const readiness = {
+                ready:
+                    requiredItems.length > 0 &&
+                    completeItems.length ===
+                        requiredItems.length,
+                required:
+                    requiredItems.length,
+                complete:
+                    completeItems.length,
+                percent:
+                    requiredItems.length > 0
+                        ? Math.round(
+                            (
+                                completeItems.length /
+                                requiredItems.length
+                            ) * 100
+                        )
+                        : 0,
+                blockers
+            };
+
+            opportunity.preparation.readiness =
+                readiness;
+            opportunity.preparation.lastReviewedAt =
+                this.now();
+            opportunity.preparation.readyAt =
+                readiness.ready
+                    ? opportunity.preparation.readyAt ||
+                      this.now()
+                    : null;
+
+            return readiness;
+        },
+
+        updatePreparationItem(
+            opportunityId,
+            itemId,
+            update = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (
+                !opportunity ||
+                opportunity.pipelineStage !==
+                    PIPELINE_STAGES.PREPARING ||
+                !opportunity.preparation
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Opportunity is not in active preparation.",
+                    code:
+                        "GRANT_PIPELINE_PREPARATION_NOT_ACTIVE"
+                };
+            }
+
+            const item =
+                opportunity.preparation.checklist
+                    .find(
+                        (candidate) =>
+                            candidate.id === itemId
+                    );
+
+            if (!item) {
+                return {
+                    success: false,
+                    error:
+                        "Preparation checklist item not found.",
+                    code:
+                        "GRANT_PIPELINE_PREPARATION_ITEM_NOT_FOUND"
+                };
+            }
+
+            Object.assign(item, {
+                complete:
+                    update.complete === true,
+                note:
+                    String(
+                        update.note ?? item.note ?? ""
+                    ),
+                completedAt:
+                    update.complete === true
+                        ? update.completedAt ||
+                          item.completedAt ||
+                          this.now()
+                        : null,
+                completedBy:
+                    update.complete === true
+                        ? String(
+                            update.completedBy ||
+                            item.completedBy ||
+                            "MEOS user"
+                        )
+                        : null
+            });
+
+            opportunity.updatedAt = this.now();
+
+            const readiness =
+                this.refreshPreparationReadiness(
+                    opportunity
+                );
+
+            this.recalculatePipelineAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                item:
+                    this.clone(item),
+                readiness:
+                    this.clone(readiness),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        attachPreparationReferences(
+            opportunityId,
+            references = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity?.preparation) {
+                return {
+                    success: false,
+                    error:
+                        "Preparation workspace does not exist.",
+                    code:
+                        "GRANT_PIPELINE_PREPARATION_NOT_ACTIVE"
+                };
+            }
+
+            if (references.planId !== undefined) {
+                opportunity.preparation.planId =
+                    references.planId || null;
+            }
+
+            opportunity.preparation.documentIds =
+                this.uniqueStrings([
+                    ...(
+                        opportunity.preparation
+                            .documentIds || []
+                    ),
+                    ...(references.documentIds || [])
+                ]);
+
+            opportunity.updatedAt = this.now();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                preparation:
+                    this.clone(opportunity.preparation)
+            };
+        },
+
+        submitOpportunity(
+            opportunityId,
+            submission = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found.",
+                    code: "GRANT_PIPELINE_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            if (
+                opportunity.pipelineStage !==
+                PIPELINE_STAGES.PREPARING ||
+                !opportunity.preparation
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Opportunity must be in preparing before submission.",
+                    code:
+                        "GRANT_PIPELINE_SUBMISSION_STAGE_INVALID"
+                };
+            }
+
+            const readiness =
+                this.refreshPreparationReadiness(
+                    opportunity
+                );
+
+            if (!readiness.ready) {
+                return {
+                    success: false,
+                    error:
+                        "Preparation is not complete.",
+                    code:
+                        "GRANT_PIPELINE_PREPARATION_INCOMPLETE",
+                    readiness:
+                        this.clone(readiness)
+                };
+            }
+
+            if (
+                !String(
+                    submission.submittedBy || ""
+                ).trim()
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Submission requires submittedBy.",
+                    code:
+                        "GRANT_PIPELINE_SUBMISSION_ACTOR_REQUIRED"
+                };
+            }
+
+            if (
+                !String(
+                    submission.confirmationId ||
+                    submission.confirmationUrl ||
+                    submission.receiptDocumentId ||
+                    ""
+                ).trim()
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Submission requires a confirmation ID, confirmation URL, or receipt document reference.",
+                    code:
+                        "GRANT_PIPELINE_SUBMISSION_EVIDENCE_REQUIRED"
+                };
+            }
+
+            const submittedAt =
+                submission.submittedAt ||
+                this.now();
+
+            const transition =
+                this.transitionPipelineStage(
+                    opportunityId,
+                    PIPELINE_STAGES.SUBMITTED,
+                    {
+                        enteredAt: submittedAt,
+                        note:
+                            submission.note ||
+                            "Application submission confirmed.",
+                        actor:
+                            submission.submittedBy,
+                        authority:
+                            "human-confirmed-submission"
+                    }
+                );
+
+            if (!transition.success) {
+                return transition;
+            }
+
+            opportunity.submission = {
+                schema:
+                    "meos.grant-office.submission.v1",
+                submittedAt,
+                submittedBy:
+                    String(submission.submittedBy),
+                method:
+                    String(
+                        submission.method || "unknown"
+                    ),
+                confirmationId:
+                    String(
+                        submission.confirmationId || ""
+                    ),
+                confirmationUrl:
+                    String(
+                        submission.confirmationUrl || ""
+                    ),
+                receiptDocumentId:
+                    String(
+                        submission.receiptDocumentId || ""
+                    ),
+                amountRequested:
+                    this.numberOrNull(
+                        submission.amountRequested
+                    ),
+                note:
+                    String(submission.note || "")
+            };
+
+            opportunity.updatedAt = this.now();
+            this.recalculatePipelineAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                submission:
+                    this.clone(opportunity.submission),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        markAwardPending(
+            opportunityId,
+            details = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found.",
+                    code: "GRANT_PIPELINE_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            const transition =
+                this.transitionPipelineStage(
+                    opportunityId,
+                    PIPELINE_STAGES.AWARD_PENDING,
+                    {
+                        note:
+                            details.note ||
+                            "Application is awaiting the funder's decision.",
+                        actor:
+                            details.actor ||
+                            "MEOS Grant Office",
+                        authority:
+                            "submission-monitoring"
+                    }
+                );
+
+            if (!transition.success) {
+                return transition;
+            }
+
+            opportunity.awardPending = {
+                enteredAt:
+                    this.now(),
+                expectedDecisionAt:
+                    details.expectedDecisionAt ||
+                    opportunity.awardDate ||
+                    null,
+                followUpAt:
+                    details.followUpAt || null,
+                contact:
+                    details.contact || null,
+                note:
+                    String(details.note || "")
+            };
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                awardPending:
+                    this.clone(
+                        opportunity.awardPending
+                    ),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        recordOutcome(
+            opportunityId,
+            outcome,
+            details = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found.",
+                    code: "GRANT_PIPELINE_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            const normalizedOutcome =
+                String(outcome || "")
+                    .trim()
+                    .toLowerCase();
+
+            if (
+                ![
+                    PIPELINE_STAGES.AWARDED,
+                    PIPELINE_STAGES.DECLINED
+                ].includes(normalizedOutcome)
+            ) {
+                return {
+                    success: false,
+                    error:
+                        'Outcome must be "awarded" or "declined".',
+                    code:
+                        "GRANT_PIPELINE_OUTCOME_INVALID"
+                };
+            }
+
+            const transition =
+                this.transitionPipelineStage(
+                    opportunityId,
+                    normalizedOutcome,
+                    {
+                        note:
+                            details.note ||
+                            `Funder outcome recorded: ${normalizedOutcome}.`,
+                        actor:
+                            details.recordedBy ||
+                            "MEOS user",
+                        authority:
+                            "human-confirmed-outcome"
+                    }
+                );
+
+            if (!transition.success) {
+                return transition;
+            }
+
+            opportunity.outcome = {
+                schema:
+                    "meos.grant-office.outcome.v1",
+                decision:
+                    normalizedOutcome,
+                decidedAt:
+                    details.decidedAt ||
+                    this.now(),
+                recordedAt:
+                    this.now(),
+                recordedBy:
+                    String(
+                        details.recordedBy ||
+                        "MEOS user"
+                    ),
+                awardedAmount:
+                    normalizedOutcome ===
+                    PIPELINE_STAGES.AWARDED
+                        ? this.numberOrNull(
+                            details.awardedAmount
+                        )
+                        : null,
+                restrictions:
+                    this.uniqueStrings(
+                        details.restrictions || []
+                    ),
+                reportingRequirements:
+                    this.uniqueStrings(
+                        details.reportingRequirements ||
+                        []
+                    ),
+                note:
+                    String(details.note || "")
+            };
+
+            this.recalculatePipelineAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                outcome:
+                    this.clone(opportunity.outcome),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        withdrawOpportunity(
+            opportunityId,
+            details = {}
+        ) {
+            return this.transitionPipelineStage(
+                opportunityId,
+                PIPELINE_STAGES.WITHDRAWN,
+                {
+                    note:
+                        details.note ||
+                        "Opportunity pursuit withdrawn.",
+                    actor:
+                        details.actor ||
+                        "Executive Director",
+                    authority:
+                        "executive-decision"
+                }
+            );
+        },
+
+        archiveOpportunity(
+            opportunityId,
+            details = {}
+        ) {
+            return this.transitionPipelineStage(
+                opportunityId,
+                PIPELINE_STAGES.ARCHIVED,
+                {
+                    note:
+                        details.note ||
+                        "Opportunity archived.",
+                    actor:
+                        details.actor ||
+                        "MEOS Grant Office",
+                    authority:
+                        details.authority ||
+                        "records-management"
+                }
+            );
+        },
+
+        getPipeline(options = {}) {
+            const stages =
+                Array.isArray(options.stages)
+                    ? new Set(
+                        options.stages.map(
+                            (stage) =>
+                                this.normalizePipelineStage(
+                                    stage
+                                )
+                        )
+                    )
+                    : null;
+
+            const records =
+                this.opportunities
+                    .map((opportunity) => {
+                        this.ensurePipelineRecord(
+                            opportunity
+                        );
+                        return opportunity;
+                    })
+                    .filter(
+                        (opportunity) =>
+                            !stages ||
+                            stages.has(
+                                opportunity.pipelineStage
+                            )
+                    )
+                    .sort((left, right) => {
+                        const leftUpdated =
+                            Date.parse(
+                                left.updatedAt || ""
+                            ) || 0;
+                        const rightUpdated =
+                            Date.parse(
+                                right.updatedAt || ""
+                            ) || 0;
+
+                        return rightUpdated - leftUpdated;
+                    });
+
+            const limit =
+                Math.max(
+                    1,
+                    Math.min(
+                        500,
+                        Number(options.limit || 100)
+                    )
+                );
+
+            return {
+                success: true,
+                schema:
+                    "meos.grant-office.pipeline.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                total:
+                    records.length,
+                counts:
+                    this.getPipelineCounts(),
+                records:
+                    records
+                        .slice(0, limit)
+                        .map((opportunity) =>
+                            this.clone(opportunity)
+                        )
+            };
+        },
+
+        getPipelineCounts() {
+            const counts =
+                Object.fromEntries(
+                    Object.values(PIPELINE_STAGES)
+                        .map((stage) => [stage, 0])
+                );
+
+            this.opportunities.forEach(
+                (opportunity) => {
+                    this.ensurePipelineRecord(
+                        opportunity
+                    );
+                    counts[
+                        opportunity.pipelineStage
+                    ] += 1;
+                }
+            );
+
+            return counts;
+        },
+
+        recalculatePipelineAnalytics() {
+            const counts =
+                this.getPipelineCounts();
+
+            this.analytics.activePreparations =
+                counts[PIPELINE_STAGES.PREPARING];
+            this.analytics.submittedApplications =
+                counts[PIPELINE_STAGES.SUBMITTED];
+            this.analytics.awardPendingApplications =
+                counts[PIPELINE_STAGES.AWARD_PENDING];
+            this.analytics.awardedApplications =
+                counts[PIPELINE_STAGES.AWARDED];
+            this.analytics.declinedApplications =
+                counts[PIPELINE_STAGES.DECLINED];
+
+            return counts;
+        },
+
+        runPipelineAcceptanceTest() {
+            const originalPersistence =
+                this.configuration.automaticPersistence;
+            const testId =
+                this.createId(
+                    "pipeline-acceptance-test"
+                );
+
+            this.configuration.automaticPersistence =
+                false;
+
+            try {
+                const opportunity =
+                    this.addOpportunity({
+                        id: testId,
+                        title:
+                            "MEOS Grant Pipeline Acceptance Test",
+                        provider:
+                            "MEOS Test Funder",
+                        sourceUrl:
+                            "https://example.org/test",
+                        verified: true,
+                        deadline:
+                            new Date(
+                                Date.now() +
+                                30 * 86400000
+                            ).toISOString(),
+                        eligibleApplicants: [
+                            "501(c)(3) nonprofits"
+                        ],
+                        requiredDocuments: [
+                            "IRS determination letter"
+                        ]
+                    });
+
+                const stored =
+                    this.getOpportunityById(
+                        opportunity.id
+                    );
+
+                stored.pipelineStage =
+                    PIPELINE_STAGES.ON_DESK;
+                stored.pipelineHistory =
+                    this.normalizePipelineHistory(
+                        null,
+                        PIPELINE_STAGES.ON_DESK,
+                        this.now()
+                    );
+
+                const authorized =
+                    this.authorizePursuit(
+                        opportunity.id,
+                        {
+                            authorizedBy:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const preparing =
+                    this.beginPreparation(
+                        opportunity.id,
+                        {
+                            actor:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const checklist =
+                    this.getOpportunityById(
+                        opportunity.id
+                    ).preparation.checklist;
+
+                checklist.forEach((item) => {
+                    this.updatePreparationItem(
+                        opportunity.id,
+                        item.id,
+                        {
+                            complete: true,
+                            completedBy:
+                                "Acceptance Test"
+                        }
+                    );
+                });
+
+                const submitted =
+                    this.submitOpportunity(
+                        opportunity.id,
+                        {
+                            submittedBy:
+                                "Acceptance Test Executive",
+                            confirmationId:
+                                "MEOS-TEST-CONFIRMATION"
+                        }
+                    );
+
+                const pending =
+                    this.markAwardPending(
+                        opportunity.id
+                    );
+
+                const awarded =
+                    this.recordOutcome(
+                        opportunity.id,
+                        PIPELINE_STAGES.AWARDED,
+                        {
+                            recordedBy:
+                                "Acceptance Test Executive",
+                            awardedAmount:
+                                100000
+                        }
+                    );
+
+                const finalRecord =
+                    this.getOpportunityById(
+                        opportunity.id
+                    );
+
+                const checks = [
+                    {
+                        name:
+                            "Executive pursuit authorization required and recorded",
+                        passed:
+                            authorized.success === true &&
+                            Boolean(
+                                finalRecord
+                                    .pursuitAuthorization
+                                    ?.authorizedAt
+                            )
+                    },
+                    {
+                        name:
+                            "Preparing workspace created from real requirements",
+                        passed:
+                            preparing.success === true &&
+                            finalRecord
+                                .preparation
+                                ?.checklist
+                                ?.length >= 7
+                    },
+                    {
+                        name:
+                            "Submission gated by completed readiness checklist",
+                        passed:
+                            submitted.success === true &&
+                            Boolean(
+                                finalRecord
+                                    .submission
+                                    ?.confirmationId
+                            )
+                    },
+                    {
+                        name:
+                            "Award-pending stage is operational",
+                        passed:
+                            pending.success === true &&
+                            finalRecord
+                                .pipelineHistory
+                                .some(
+                                    (entry) =>
+                                        entry.stage ===
+                                        PIPELINE_STAGES
+                                            .AWARD_PENDING
+                                )
+                    },
+                    {
+                        name:
+                            "Award outcome and amount recorded",
+                        passed:
+                            awarded.success === true &&
+                            finalRecord.pipelineStage ===
+                                PIPELINE_STAGES.AWARDED &&
+                            finalRecord.outcome
+                                ?.awardedAmount ===
+                                100000
+                    },
+                    {
+                        name:
+                            "Every transition is preserved in order",
+                        passed:
+                            [
+                                PIPELINE_STAGES.ON_DESK,
+                                PIPELINE_STAGES.PREPARING,
+                                PIPELINE_STAGES.SUBMITTED,
+                                PIPELINE_STAGES.AWARD_PENDING,
+                                PIPELINE_STAGES.AWARDED
+                            ].every(
+                                (stage) =>
+                                    finalRecord
+                                        .pipelineHistory
+                                        .some(
+                                            (entry) =>
+                                                entry.stage ===
+                                                stage
+                                        )
+                            )
+                    }
+                ];
+
+                return {
+                    success:
+                        checks.every(
+                            (check) => check.passed
+                        ),
+                    passed:
+                        checks.filter(
+                            (check) => check.passed
+                        ).length,
+                    total:
+                        checks.length,
+                    checks,
+                    finalStage:
+                        finalRecord.pipelineStage,
+                    history:
+                        this.clone(
+                            finalRecord.pipelineHistory
+                        )
+                };
+            } finally {
+                this.opportunities =
+                    this.opportunities.filter(
+                        (opportunity) =>
+                            opportunity.id !== testId
+                    );
+                this.configuration.automaticPersistence =
+                    originalPersistence;
+                this.recalculatePipelineAnalytics();
+            }
+        },
+
         updateAnalytics(opportunity, evaluation) {
             this.analytics.opportunitiesEvaluated += 1;
             this.analytics.lastEvaluationAt =
@@ -2743,6 +4355,8 @@
                     ).length,
                 executiveDeskCount:
                     this.getExecutiveDesk().deskCount,
+                pipelineCounts:
+                    this.getPipelineCounts(),
                 analytics:
                     this.clone(this.analytics)
             };
@@ -2751,7 +4365,7 @@
         exportState() {
             return {
                 schema:
-                    "meos.grant-office.state.v1",
+                    "meos.grant-office.state.v2",
                 version:
                     this.version,
                 buildId:
@@ -2847,8 +4461,10 @@
                     JSON.parse(stored);
 
                 if (
-                    data.schema !==
-                    "meos.grant-office.state.v1"
+                    ![
+                        "meos.grant-office.state.v1",
+                        "meos.grant-office.state.v2"
+                    ].includes(data.schema)
                 ) {
                     return {
                         success: false,
@@ -2861,13 +4477,21 @@
                 this.activeMissions =
                     data.activeMissions || [];
                 this.opportunities =
-                    data.opportunities || [];
+                    (data.opportunities || [])
+                        .map((opportunity) => {
+                            this.ensurePipelineRecord(
+                                opportunity
+                            );
+                            return opportunity;
+                        });
                 this.executiveReviews =
                     data.executiveReviews || [];
                 this.analytics = {
                     ...this.analytics,
                     ...(data.analytics || {})
                 };
+
+                this.recalculatePipelineAnalytics();
 
                 return {
                     success: true,
@@ -3017,8 +4641,14 @@
 
     GrantOffice.OPPORTUNITY_TYPES =
         OPPORTUNITY_TYPES;
+    GrantOffice.TIMING_STATUSES =
+        TIMING_STATUSES;
     GrantOffice.LIFECYCLE_STATES =
         LIFECYCLE_STATES;
+    GrantOffice.PIPELINE_STAGES =
+        PIPELINE_STAGES;
+    GrantOffice.PIPELINE_STAGE_TRANSITIONS =
+        PIPELINE_STAGE_TRANSITIONS;
     GrantOffice.RECOMMENDATIONS =
         RECOMMENDATIONS;
     GrantOffice.DISQUALIFIER_TYPES =
