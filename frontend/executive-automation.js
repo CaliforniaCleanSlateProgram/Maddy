@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Automation Engine
- * Version: 1.0.0
+ * Version: 1.1.0
  *
  * Mission:
  * Detect qualifying operational conditions, apply approved automation rules,
@@ -52,11 +52,69 @@
         RECORD_KNOWLEDGE: "record-knowledge"
     };
 
+
+    const EXECUTION_TARGET_TYPES = {
+        GRANT_PORTAL: "grant-portal",
+        LINKEDIN: "linkedin",
+        FACEBOOK: "facebook",
+        INSTAGRAM: "instagram",
+        X: "x",
+        EMAIL: "email",
+        CRM: "crm",
+        DOCUMENT_STORAGE: "document-storage",
+        SIGNATURE: "signature",
+        FINANCE: "finance",
+        GENERIC_WEB: "generic-web"
+    };
+
+    const EXECUTION_CAPABILITIES = {
+        LOGIN: "login",
+        LOGOUT: "logout",
+        NAVIGATE: "navigate",
+        FILL_FIELD: "fill-field",
+        CLICK: "click",
+        UPLOAD: "upload",
+        DOWNLOAD: "download",
+        SAVE_DRAFT: "save-draft",
+        RESUME: "resume",
+        POST: "post",
+        REPLY: "reply",
+        COMMENT: "comment",
+        LIKE: "like",
+        SEND: "send",
+        READ: "read",
+        SEARCH: "search",
+        VALIDATE: "validate",
+        SUBMIT: "submit",
+        CAPTURE_EVIDENCE: "capture-evidence"
+    };
+
+    const EXECUTION_JOB_STATUSES = {
+        QUEUED: "queued",
+        AWAITING_APPROVAL: "awaiting-approval",
+        READY: "ready",
+        EXECUTING: "executing",
+        PAUSED: "paused",
+        RETRY_SCHEDULED: "retry-scheduled",
+        COMPLETE: "complete",
+        FAILED: "failed",
+        CANCELLED: "cancelled"
+    };
+
+    const EXECUTION_SESSION_STATUSES = {
+        CREATED: "created",
+        ACTIVE: "active",
+        PAUSED: "paused",
+        COMPLETE: "complete",
+        FAILED: "failed",
+        EXPIRED: "expired"
+    };
+
     const ExecutiveAutomation = {
         name: "MEOS Executive Automation Engine",
-        version: "1.0.0",
+        version: "1.1.0",
         status: "initializing",
-        operatingMode: "controlled-proactive-automation",
+        operatingMode: "controlled-proactive-automation-and-execution",
 
         configuration: {
             persistenceEnabled: true,
@@ -76,13 +134,27 @@
             defaultPriority: 50,
             allowAutomaticInternalRouting: true,
             allowAutomaticInternalNotifications: true,
-            allowAutomaticDraftCreation: true
+            allowAutomaticDraftCreation: true,
+            requireExecutiveApprovalForAllExternalExecution: true,
+            maximumExecutionTargets: 250,
+            maximumExecutionJobs: 5000,
+            maximumExecutionSessions: 1000,
+            maximumExecutionReceipts: 10000,
+            defaultExecutionRetryLimit: 3,
+            defaultExecutionRetryDelayMs: 30000,
+            defaultExecutionTimeoutMs: 120000,
+            preserveExecutionEvidence: true
         },
 
         rules: [],
         runs: [],
         approvals: [],
         notifications: [],
+        executionTargets: [],
+        executionJobs: [],
+        executionSessions: [],
+        executionReceipts: [],
+        executionAdapters: {},
         history: [],
         scannerId: null,
         eventListeners: {},
@@ -95,6 +167,13 @@
             completedRuns: 0,
             failedRuns: 0,
             pendingApprovals: 0,
+            registeredExecutionTargets: 0,
+            queuedExecutionJobs: 0,
+            activeExecutionSessions: 0,
+            completedExecutionJobs: 0,
+            failedExecutionJobs: 0,
+            executionReceipts: 0,
+            lastExecutionAt: null,
             lastScanAt: null,
             lastRunAt: null
         },
@@ -110,6 +189,7 @@
             this.status = "online";
 
             this.registerSystemKnowledge();
+            this.registerDefaultExecutionTargets();
             this.recalculateAnalytics();
 
             if (
@@ -1201,6 +1281,1676 @@
             };
         },
 
+        registerExecutionTarget(input = {}, options = {}) {
+            const name = String(
+                input.name ||
+                input.title ||
+                ""
+            ).trim();
+
+            if (!name) {
+                return {
+                    success: false,
+                    error: "An execution target name is required."
+                };
+            }
+
+            if (
+                this.executionTargets.length >=
+                this.configuration.maximumExecutionTargets
+            ) {
+                return {
+                    success: false,
+                    error: "The execution target limit has been reached."
+                };
+            }
+
+            const type =
+                Object.values(EXECUTION_TARGET_TYPES).includes(
+                    input.type
+                )
+                    ? input.type
+                    : EXECUTION_TARGET_TYPES.GENERIC_WEB;
+
+            const existing =
+                this.executionTargets.find(
+                    (target) =>
+                        target.name === name &&
+                        target.type === type
+                );
+
+            if (existing) {
+                return {
+                    success: true,
+                    duplicate: true,
+                    target: this.clone(existing)
+                };
+            }
+
+            const capabilities =
+                this.uniqueStrings(
+                    input.capabilities
+                ).filter(
+                    (capability) =>
+                        Object.values(
+                            EXECUTION_CAPABILITIES
+                        ).includes(capability)
+                );
+
+            const target = {
+                id:
+                    input.id ||
+                    this.createId("execution-target"),
+                name,
+                type,
+                provider:
+                    input.provider ||
+                    name,
+                adapterId:
+                    input.adapterId ||
+                    null,
+                capabilities,
+                status:
+                    input.status ||
+                    "registered",
+                requiresAuthentication:
+                    input.requiresAuthentication !== false,
+                requiresExecutiveApproval:
+                    input.requiresExecutiveApproval !== false,
+                supportsDrafts:
+                    input.supportsDrafts === true,
+                supportsResume:
+                    input.supportsResume === true,
+                supportsEvidenceCapture:
+                    input.supportsEvidenceCapture !== false,
+                metadata:
+                    input.metadata &&
+                    typeof input.metadata === "object"
+                        ? { ...input.metadata }
+                        : {},
+                registeredAt:
+                    new Date().toISOString(),
+                registeredBy:
+                    options.actor ||
+                    "MEOS Executive Automation",
+                updatedAt:
+                    new Date().toISOString()
+            };
+
+            this.executionTargets.push(target);
+
+            this.logHistory("execution-target.registered", {
+                targetId: target.id,
+                name: target.name,
+                type: target.type,
+                capabilities:
+                    target.capabilities
+            });
+
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+            this.emit(
+                "automation:execution-target-registered",
+                this.clone(target)
+            );
+
+            return {
+                success: true,
+                target: this.clone(target)
+            };
+        },
+
+        registerExecutionAdapter(
+            adapterId,
+            adapter,
+            options = {}
+        ) {
+            const id =
+                String(adapterId || "").trim();
+
+            if (!id) {
+                return {
+                    success: false,
+                    error: "An execution adapter ID is required."
+                };
+            }
+
+            if (
+                !adapter ||
+                typeof adapter !== "object"
+            ) {
+                return {
+                    success: false,
+                    error: "An execution adapter object is required."
+                };
+            }
+
+            if (
+                typeof adapter.execute !== "function"
+            ) {
+                return {
+                    success: false,
+                    error: "Execution adapters must provide execute()."
+                };
+            }
+
+            this.executionAdapters[id] = {
+                id,
+                name:
+                    adapter.name ||
+                    id,
+                version:
+                    adapter.version ||
+                    "1.0.0",
+                capabilities:
+                    this.uniqueStrings(
+                        adapter.capabilities || []
+                    ),
+                execute:
+                    adapter.execute,
+                createSession:
+                    typeof adapter.createSession === "function"
+                        ? adapter.createSession
+                        : null,
+                resumeSession:
+                    typeof adapter.resumeSession === "function"
+                        ? adapter.resumeSession
+                        : null,
+                closeSession:
+                    typeof adapter.closeSession === "function"
+                        ? adapter.closeSession
+                        : null,
+                registeredAt:
+                    new Date().toISOString(),
+                registeredBy:
+                    options.actor ||
+                    "MEOS Executive Automation"
+            };
+
+            this.logHistory("execution-adapter.registered", {
+                adapterId: id,
+                name:
+                    this.executionAdapters[id].name
+            });
+
+            return {
+                success: true,
+                adapter: {
+                    id,
+                    name:
+                        this.executionAdapters[id].name,
+                    version:
+                        this.executionAdapters[id].version,
+                    capabilities:
+                        this.clone(
+                            this.executionAdapters[id]
+                                .capabilities
+                        )
+                }
+            };
+        },
+
+        registerDefaultExecutionTargets() {
+            const defaults = [
+                {
+                    id: "execution-target-linkedin",
+                    name: "LinkedIn",
+                    type: EXECUTION_TARGET_TYPES.LINKEDIN,
+                    provider: "LinkedIn",
+                    capabilities: [
+                        EXECUTION_CAPABILITIES.LOGIN,
+                        EXECUTION_CAPABILITIES.NAVIGATE,
+                        EXECUTION_CAPABILITIES.POST,
+                        EXECUTION_CAPABILITIES.REPLY,
+                        EXECUTION_CAPABILITIES.COMMENT,
+                        EXECUTION_CAPABILITIES.LIKE,
+                        EXECUTION_CAPABILITIES.READ,
+                        EXECUTION_CAPABILITIES.SEARCH,
+                        EXECUTION_CAPABILITIES.UPLOAD,
+                        EXECUTION_CAPABILITIES.CAPTURE_EVIDENCE
+                    ],
+                    requiresAuthentication: true,
+                    requiresExecutiveApproval: true,
+                    supportsDrafts: true,
+                    supportsResume: true
+                },
+                {
+                    id: "execution-target-grant-portal",
+                    name: "Grant Portal",
+                    type: EXECUTION_TARGET_TYPES.GRANT_PORTAL,
+                    provider: "Universal Grant Portal",
+                    capabilities: [
+                        EXECUTION_CAPABILITIES.LOGIN,
+                        EXECUTION_CAPABILITIES.NAVIGATE,
+                        EXECUTION_CAPABILITIES.FILL_FIELD,
+                        EXECUTION_CAPABILITIES.CLICK,
+                        EXECUTION_CAPABILITIES.UPLOAD,
+                        EXECUTION_CAPABILITIES.SAVE_DRAFT,
+                        EXECUTION_CAPABILITIES.RESUME,
+                        EXECUTION_CAPABILITIES.VALIDATE,
+                        EXECUTION_CAPABILITIES.SUBMIT,
+                        EXECUTION_CAPABILITIES.CAPTURE_EVIDENCE
+                    ],
+                    requiresAuthentication: true,
+                    requiresExecutiveApproval: true,
+                    supportsDrafts: true,
+                    supportsResume: true
+                },
+                {
+                    id: "execution-target-facebook",
+                    name: "Facebook",
+                    type: EXECUTION_TARGET_TYPES.FACEBOOK,
+                    provider: "Meta",
+                    capabilities: [
+                        EXECUTION_CAPABILITIES.LOGIN,
+                        EXECUTION_CAPABILITIES.POST,
+                        EXECUTION_CAPABILITIES.REPLY,
+                        EXECUTION_CAPABILITIES.COMMENT,
+                        EXECUTION_CAPABILITIES.READ,
+                        EXECUTION_CAPABILITIES.UPLOAD,
+                        EXECUTION_CAPABILITIES.CAPTURE_EVIDENCE
+                    ],
+                    requiresAuthentication: true,
+                    requiresExecutiveApproval: true,
+                    supportsDrafts: true,
+                    supportsResume: true
+                },
+                {
+                    id: "execution-target-instagram",
+                    name: "Instagram",
+                    type: EXECUTION_TARGET_TYPES.INSTAGRAM,
+                    provider: "Meta",
+                    capabilities: [
+                        EXECUTION_CAPABILITIES.LOGIN,
+                        EXECUTION_CAPABILITIES.POST,
+                        EXECUTION_CAPABILITIES.REPLY,
+                        EXECUTION_CAPABILITIES.COMMENT,
+                        EXECUTION_CAPABILITIES.READ,
+                        EXECUTION_CAPABILITIES.UPLOAD,
+                        EXECUTION_CAPABILITIES.CAPTURE_EVIDENCE
+                    ],
+                    requiresAuthentication: true,
+                    requiresExecutiveApproval: true,
+                    supportsDrafts: true,
+                    supportsResume: true
+                },
+                {
+                    id: "execution-target-x",
+                    name: "X",
+                    type: EXECUTION_TARGET_TYPES.X,
+                    provider: "X",
+                    capabilities: [
+                        EXECUTION_CAPABILITIES.LOGIN,
+                        EXECUTION_CAPABILITIES.POST,
+                        EXECUTION_CAPABILITIES.REPLY,
+                        EXECUTION_CAPABILITIES.READ,
+                        EXECUTION_CAPABILITIES.UPLOAD,
+                        EXECUTION_CAPABILITIES.CAPTURE_EVIDENCE
+                    ],
+                    requiresAuthentication: true,
+                    requiresExecutiveApproval: true,
+                    supportsDrafts: true,
+                    supportsResume: true
+                },
+                {
+                    id: "execution-target-email",
+                    name: "Email",
+                    type: EXECUTION_TARGET_TYPES.EMAIL,
+                    provider: "Universal Email",
+                    capabilities: [
+                        EXECUTION_CAPABILITIES.LOGIN,
+                        EXECUTION_CAPABILITIES.READ,
+                        EXECUTION_CAPABILITIES.SEARCH,
+                        EXECUTION_CAPABILITIES.SEND,
+                        EXECUTION_CAPABILITIES.REPLY,
+                        EXECUTION_CAPABILITIES.CAPTURE_EVIDENCE
+                    ],
+                    requiresAuthentication: true,
+                    requiresExecutiveApproval: true,
+                    supportsDrafts: true,
+                    supportsResume: true
+                }
+            ];
+
+            return {
+                success: true,
+                results:
+                    defaults.map(
+                        (target) =>
+                            this.registerExecutionTarget(
+                                target,
+                                {
+                                    actor:
+                                        "MEOS Core"
+                                }
+                            )
+                    )
+            };
+        },
+
+        createExecutionJob(input = {}, options = {}) {
+            if (
+                this.executionJobs.length >=
+                this.configuration.maximumExecutionJobs
+            ) {
+                return {
+                    success: false,
+                    error: "The execution job limit has been reached."
+                };
+            }
+
+            const target =
+                this.getExecutionTargetById(
+                    input.targetId
+                ) ||
+                this.executionTargets.find(
+                    (candidate) =>
+                        candidate.type ===
+                        input.targetType
+                );
+
+            if (!target) {
+                return {
+                    success: false,
+                    error: "Execution target was not found."
+                };
+            }
+
+            const capability =
+                String(
+                    input.capability ||
+                    ""
+                ).trim();
+
+            if (
+                !target.capabilities.includes(
+                    capability
+                )
+            ) {
+                return {
+                    success: false,
+                    error:
+                        `Execution target does not support capability: ${capability}`
+                };
+            }
+
+            const externalEffect =
+                input.effects?.external !== false;
+
+            const approvalRequired =
+                input.approvalRequired === true ||
+                target.requiresExecutiveApproval === true ||
+                (
+                    externalEffect &&
+                    this.configuration
+                        .requireExecutiveApprovalForAllExternalExecution
+                );
+
+            const timestamp =
+                new Date().toISOString();
+
+            const job = {
+                id:
+                    input.id ||
+                    this.createId("execution-job"),
+                name:
+                    String(
+                        input.name ||
+                        `${target.name}: ${capability}`
+                    ),
+                targetId:
+                    target.id,
+                targetType:
+                    target.type,
+                capability,
+                adapterId:
+                    input.adapterId ||
+                    target.adapterId ||
+                    null,
+                status:
+                    approvalRequired
+                        ? EXECUTION_JOB_STATUSES.AWAITING_APPROVAL
+                        : EXECUTION_JOB_STATUSES.READY,
+                payload:
+                    input.payload &&
+                    typeof input.payload === "object"
+                        ? this.clone(
+                            input.payload
+                        )
+                        : {},
+                effects: {
+                    external: externalEffect,
+                    financial:
+                        input.effects?.financial === true,
+                    policy:
+                        input.effects?.policy === true
+                },
+                approvalRequired,
+                approvalId: null,
+                approvedAt: null,
+                approvedBy: null,
+                retryPolicy: {
+                    maximumAttempts:
+                        Math.max(
+                            1,
+                            Number(
+                                input.retryPolicy
+                                    ?.maximumAttempts
+                            ) ||
+                            this.configuration
+                                .defaultExecutionRetryLimit
+                        ),
+                    delayMs:
+                        Math.max(
+                            0,
+                            Number(
+                                input.retryPolicy
+                                    ?.delayMs
+                            ) ||
+                            this.configuration
+                                .defaultExecutionRetryDelayMs
+                        )
+                },
+                attempts: 0,
+                nextRetryAt: null,
+                timeoutMs:
+                    Math.max(
+                        1000,
+                        Number(input.timeoutMs) ||
+                        this.configuration
+                            .defaultExecutionTimeoutMs
+                    ),
+                sessionId: null,
+                receiptIds: [],
+                requestedBy:
+                    input.requestedBy ||
+                    options.actor ||
+                    "Maddy",
+                requestedAt:
+                    timestamp,
+                updatedAt:
+                    timestamp,
+                startedAt: null,
+                completedAt: null,
+                failedAt: null,
+                pausedAt: null,
+                resumedAt: null,
+                failure: null,
+                metadata:
+                    input.metadata &&
+                    typeof input.metadata === "object"
+                        ? this.clone(
+                            input.metadata
+                        )
+                        : {}
+            };
+
+            if (approvalRequired) {
+                const approval = {
+                    id:
+                        this.createId(
+                            "execution-approval"
+                        ),
+                    runId: null,
+                    ruleId: null,
+                    actionId: null,
+                    executionJobId:
+                        job.id,
+                    title:
+                        input.approvalTitle ||
+                        `Approve ${capability} on ${target.name}`,
+                    status:
+                        "pending",
+                    requestedAt:
+                        timestamp,
+                    requestedBy:
+                        job.requestedBy,
+                    requiredRole:
+                        input.requiredApprovalRole ||
+                        "Authorized Executive",
+                    decidedAt:
+                        null,
+                    decidedBy:
+                        null,
+                    notes:
+                        ""
+                };
+
+                this.approvals.push(
+                    approval
+                );
+                job.approvalId =
+                    approval.id;
+            }
+
+            this.executionJobs.unshift(
+                job
+            );
+
+            this.logHistory("execution-job.created", {
+                jobId: job.id,
+                targetId:
+                    job.targetId,
+                targetType:
+                    job.targetType,
+                capability:
+                    job.capability,
+                approvalRequired:
+                    job.approvalRequired
+            });
+
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+            this.emit(
+                "automation:execution-job-created",
+                this.clone(job)
+            );
+
+            return {
+                success: true,
+                job:
+                    this.clone(job),
+                approval:
+                    job.approvalId
+                        ? this.clone(
+                            this.approvals.find(
+                                (item) =>
+                                    item.id ===
+                                    job.approvalId
+                            )
+                        )
+                        : null
+            };
+        },
+
+        approveExecutionJob(
+            approvalId,
+            options = {}
+        ) {
+            const approval =
+                this.approvals.find(
+                    (item) =>
+                        item.id === approvalId
+                );
+
+            if (
+                !approval ||
+                !approval.executionJobId
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Execution approval was not found."
+                };
+            }
+
+            if (
+                approval.status !== "pending"
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Execution approval is no longer pending."
+                };
+            }
+
+            const job =
+                this.getExecutionJobById(
+                    approval.executionJobId
+                );
+
+            if (!job) {
+                return {
+                    success: false,
+                    error:
+                        "Execution job was not found."
+                };
+            }
+
+            const actor =
+                options.actor ||
+                "Executive";
+
+            approval.status =
+                "approved";
+            approval.decidedAt =
+                new Date().toISOString();
+            approval.decidedBy =
+                actor;
+            approval.notes =
+                options.notes ||
+                "";
+
+            job.status =
+                EXECUTION_JOB_STATUSES.READY;
+            job.approvedAt =
+                approval.decidedAt;
+            job.approvedBy =
+                actor;
+            job.updatedAt =
+                approval.decidedAt;
+
+            this.logHistory("execution-job.approved", {
+                jobId: job.id,
+                approvalId:
+                    approval.id,
+                approvedBy:
+                    actor
+            });
+
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                job:
+                    this.clone(job),
+                approval:
+                    this.clone(approval)
+            };
+        },
+
+        createExecutionSession(
+            job,
+            target,
+            adapter
+        ) {
+            const timestamp =
+                new Date().toISOString();
+
+            const session = {
+                id:
+                    this.createId(
+                        "execution-session"
+                    ),
+                jobId:
+                    job.id,
+                targetId:
+                    target.id,
+                adapterId:
+                    adapter.id,
+                status:
+                    EXECUTION_SESSION_STATUSES.CREATED,
+                externalSessionId:
+                    null,
+                createdAt:
+                    timestamp,
+                startedAt:
+                    null,
+                pausedAt:
+                    null,
+                resumedAt:
+                    null,
+                completedAt:
+                    null,
+                failedAt:
+                    null,
+                updatedAt:
+                    timestamp,
+                checkpoint:
+                    null,
+                evidence:
+                    [],
+                error:
+                    null
+            };
+
+            this.executionSessions.unshift(
+                session
+            );
+
+            return session;
+        },
+
+        executeExecutionJob(
+            jobId,
+            options = {}
+        ) {
+            const job =
+                this.getExecutionJobById(
+                    jobId
+                );
+
+            if (!job) {
+                return {
+                    success: false,
+                    error:
+                        "Execution job was not found."
+                };
+            }
+
+            if (
+                job.status ===
+                EXECUTION_JOB_STATUSES.AWAITING_APPROVAL
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Execution job requires executive approval.",
+                    code:
+                        "EXECUTION_APPROVAL_REQUIRED"
+                };
+            }
+
+            if (
+                ![
+                    EXECUTION_JOB_STATUSES.READY,
+                    EXECUTION_JOB_STATUSES.RETRY_SCHEDULED,
+                    EXECUTION_JOB_STATUSES.PAUSED
+                ].includes(
+                    job.status
+                )
+            ) {
+                return {
+                    success: false,
+                    error:
+                        `Execution job cannot run from status: ${job.status}`
+                };
+            }
+
+            const target =
+                this.getExecutionTargetById(
+                    job.targetId
+                );
+
+            if (!target) {
+                return {
+                    success: false,
+                    error:
+                        "Execution target was not found."
+                };
+            }
+
+            const adapterId =
+                job.adapterId ||
+                target.adapterId;
+
+            const adapter =
+                this.executionAdapters[
+                    adapterId
+                ];
+
+            if (!adapter) {
+                return {
+                    success: false,
+                    error:
+                        "No execution adapter is registered for this target.",
+                    code:
+                        "EXECUTION_ADAPTER_REQUIRED"
+                };
+            }
+
+            let session =
+                job.sessionId
+                    ? this.getExecutionSessionById(
+                        job.sessionId
+                    )
+                    : null;
+
+            if (!session) {
+                session =
+                    this.createExecutionSession(
+                        job,
+                        target,
+                        adapter
+                    );
+                job.sessionId =
+                    session.id;
+            }
+
+            const timestamp =
+                new Date().toISOString();
+
+            job.status =
+                EXECUTION_JOB_STATUSES.EXECUTING;
+            job.startedAt =
+                job.startedAt ||
+                timestamp;
+            job.updatedAt =
+                timestamp;
+            job.attempts += 1;
+
+            session.status =
+                EXECUTION_SESSION_STATUSES.ACTIVE;
+            session.startedAt =
+                session.startedAt ||
+                timestamp;
+            session.updatedAt =
+                timestamp;
+
+            let adapterResult;
+
+            try {
+                adapterResult =
+                    adapter.execute({
+                        job:
+                            this.clone(job),
+                        target:
+                            this.clone(target),
+                        session:
+                            this.clone(session),
+                        options:
+                            this.clone(options)
+                    });
+            } catch (error) {
+                adapterResult = {
+                    success: false,
+                    error:
+                        error.message
+                };
+            }
+
+            if (
+                adapterResult &&
+                typeof adapterResult.then === "function"
+            ) {
+                return adapterResult.then(
+                    (result) =>
+                        this.finalizeExecutionAttempt(
+                            job,
+                            session,
+                            target,
+                            result || {}
+                        )
+                );
+            }
+
+            return this.finalizeExecutionAttempt(
+                job,
+                session,
+                target,
+                adapterResult || {}
+            );
+        },
+
+        finalizeExecutionAttempt(
+            job,
+            session,
+            target,
+            result = {}
+        ) {
+            const timestamp =
+                new Date().toISOString();
+
+            if (
+                result.paused === true
+            ) {
+                job.status =
+                    EXECUTION_JOB_STATUSES.PAUSED;
+                job.pausedAt =
+                    timestamp;
+                job.updatedAt =
+                    timestamp;
+
+                session.status =
+                    EXECUTION_SESSION_STATUSES.PAUSED;
+                session.pausedAt =
+                    timestamp;
+                session.checkpoint =
+                    result.checkpoint ||
+                    null;
+                session.updatedAt =
+                    timestamp;
+
+                const receipt =
+                    this.createExecutionReceipt(
+                        job,
+                        session,
+                        target,
+                        {
+                            success: true,
+                            status: "paused",
+                            evidence:
+                                result.evidence || [],
+                            details:
+                                result.details || {},
+                            checkpoint:
+                                result.checkpoint || null
+                        }
+                    );
+
+                return {
+                    success: true,
+                    paused: true,
+                    job:
+                        this.clone(job),
+                    session:
+                        this.clone(session),
+                    receipt
+                };
+            }
+
+            if (
+                result.success === true
+            ) {
+                job.status =
+                    EXECUTION_JOB_STATUSES.COMPLETE;
+                job.completedAt =
+                    timestamp;
+                job.updatedAt =
+                    timestamp;
+                job.failure =
+                    null;
+
+                session.status =
+                    EXECUTION_SESSION_STATUSES.COMPLETE;
+                session.completedAt =
+                    timestamp;
+                session.updatedAt =
+                    timestamp;
+                session.evidence =
+                    this.clone(
+                        result.evidence || []
+                    );
+
+                const receipt =
+                    this.createExecutionReceipt(
+                        job,
+                        session,
+                        target,
+                        {
+                            success: true,
+                            status: "complete",
+                            evidence:
+                                result.evidence || [],
+                            details:
+                                result.details || {},
+                            externalReference:
+                                result.externalReference ||
+                                null
+                        }
+                    );
+
+                this.analytics.lastExecutionAt =
+                    timestamp;
+                this.recalculateAnalytics();
+                this.persistIfEnabled();
+
+                this.emit(
+                    "automation:execution-complete",
+                    {
+                        job:
+                            this.clone(job),
+                        receipt
+                    }
+                );
+
+                return {
+                    success: true,
+                    job:
+                        this.clone(job),
+                    session:
+                        this.clone(session),
+                    receipt
+                };
+            }
+
+            const canRetry =
+                job.attempts <
+                job.retryPolicy.maximumAttempts;
+
+            if (canRetry) {
+                job.status =
+                    EXECUTION_JOB_STATUSES.RETRY_SCHEDULED;
+                job.nextRetryAt =
+                    new Date(
+                        Date.now() +
+                        job.retryPolicy.delayMs
+                    ).toISOString();
+            } else {
+                job.status =
+                    EXECUTION_JOB_STATUSES.FAILED;
+                job.failedAt =
+                    timestamp;
+            }
+
+            job.updatedAt =
+                timestamp;
+            job.failure = {
+                message:
+                    result.error ||
+                    "Execution failed.",
+                code:
+                    result.code ||
+                    "EXECUTION_FAILED",
+                attempt:
+                    job.attempts
+            };
+
+            session.status =
+                canRetry
+                    ? EXECUTION_SESSION_STATUSES.PAUSED
+                    : EXECUTION_SESSION_STATUSES.FAILED;
+            session.error =
+                job.failure;
+            session.failedAt =
+                canRetry
+                    ? null
+                    : timestamp;
+            session.updatedAt =
+                timestamp;
+
+            const receipt =
+                this.createExecutionReceipt(
+                    job,
+                    session,
+                    target,
+                    {
+                        success: false,
+                        status:
+                            canRetry
+                                ? "retry-scheduled"
+                                : "failed",
+                        evidence:
+                            result.evidence || [],
+                        details:
+                            result.details || {},
+                        error:
+                            job.failure
+                    }
+                );
+
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: false,
+                retryScheduled:
+                    canRetry,
+                job:
+                    this.clone(job),
+                session:
+                    this.clone(session),
+                receipt
+            };
+        },
+
+        resumeExecutionJob(
+            jobId,
+            options = {}
+        ) {
+            const job =
+                this.getExecutionJobById(
+                    jobId
+                );
+
+            if (!job) {
+                return {
+                    success: false,
+                    error:
+                        "Execution job was not found."
+                };
+            }
+
+            if (
+                ![
+                    EXECUTION_JOB_STATUSES.PAUSED,
+                    EXECUTION_JOB_STATUSES.RETRY_SCHEDULED
+                ].includes(
+                    job.status
+                )
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Execution job is not paused or awaiting retry."
+                };
+            }
+
+            job.status =
+                EXECUTION_JOB_STATUSES.READY;
+            job.resumedAt =
+                new Date().toISOString();
+            job.nextRetryAt =
+                null;
+            job.updatedAt =
+                job.resumedAt;
+
+            const session =
+                this.getExecutionSessionById(
+                    job.sessionId
+                );
+
+            if (session) {
+                session.status =
+                    EXECUTION_SESSION_STATUSES.ACTIVE;
+                session.resumedAt =
+                    job.resumedAt;
+                session.updatedAt =
+                    job.resumedAt;
+            }
+
+            this.logHistory("execution-job.resumed", {
+                jobId:
+                    job.id,
+                actor:
+                    options.actor ||
+                    "Maddy"
+            });
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                job:
+                    this.clone(job),
+                session:
+                    session
+                        ? this.clone(session)
+                        : null
+            };
+        },
+
+        cancelExecutionJob(
+            jobId,
+            options = {}
+        ) {
+            const job =
+                this.getExecutionJobById(
+                    jobId
+                );
+
+            if (!job) {
+                return {
+                    success: false,
+                    error:
+                        "Execution job was not found."
+                };
+            }
+
+            if (
+                [
+                    EXECUTION_JOB_STATUSES.COMPLETE,
+                    EXECUTION_JOB_STATUSES.CANCELLED
+                ].includes(job.status)
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Execution job cannot be cancelled from its current status."
+                };
+            }
+
+            job.status =
+                EXECUTION_JOB_STATUSES.CANCELLED;
+            job.updatedAt =
+                new Date().toISOString();
+            job.cancelledBy =
+                options.actor ||
+                "Executive";
+            job.cancelReason =
+                options.reason ||
+                "";
+
+            const session =
+                this.getExecutionSessionById(
+                    job.sessionId
+                );
+
+            if (session) {
+                session.status =
+                    EXECUTION_SESSION_STATUSES.FAILED;
+                session.updatedAt =
+                    job.updatedAt;
+                session.error = {
+                    code:
+                        "EXECUTION_CANCELLED",
+                    message:
+                        job.cancelReason ||
+                        "Execution cancelled."
+                };
+            }
+
+            this.logHistory("execution-job.cancelled", {
+                jobId:
+                    job.id,
+                actor:
+                    job.cancelledBy
+            });
+
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                job:
+                    this.clone(job)
+            };
+        },
+
+        createExecutionReceipt(
+            job,
+            session,
+            target,
+            input = {}
+        ) {
+            const receipt = {
+                id:
+                    this.createId(
+                        "execution-receipt"
+                    ),
+                jobId:
+                    job.id,
+                sessionId:
+                    session.id,
+                targetId:
+                    target.id,
+                targetType:
+                    target.type,
+                capability:
+                    job.capability,
+                success:
+                    input.success === true,
+                status:
+                    input.status ||
+                    (
+                        input.success
+                            ? "complete"
+                            : "failed"
+                    ),
+                createdAt:
+                    new Date().toISOString(),
+                externalReference:
+                    input.externalReference ||
+                    null,
+                checkpoint:
+                    input.checkpoint ||
+                    null,
+                evidence:
+                    this.clone(
+                        input.evidence || []
+                    ),
+                details:
+                    this.clone(
+                        input.details || {}
+                    ),
+                error:
+                    input.error
+                        ? this.clone(
+                            input.error
+                        )
+                        : null
+            };
+
+            this.executionReceipts.unshift(
+                receipt
+            );
+            job.receiptIds.push(
+                receipt.id
+            );
+
+            if (
+                this.executionReceipts.length >
+                this.configuration.maximumExecutionReceipts
+            ) {
+                this.executionReceipts.length =
+                    this.configuration.maximumExecutionReceipts;
+            }
+
+            this.logHistory("execution-receipt.created", {
+                receiptId:
+                    receipt.id,
+                jobId:
+                    job.id,
+                targetType:
+                    target.type,
+                status:
+                    receipt.status
+            });
+
+            return this.clone(
+                receipt
+            );
+        },
+
+        getExecutionTargetById(targetId) {
+            return (
+                this.executionTargets.find(
+                    (target) =>
+                        target.id === targetId
+                ) ||
+                null
+            );
+        },
+
+        getExecutionJobById(jobId) {
+            return (
+                this.executionJobs.find(
+                    (job) =>
+                        job.id === jobId
+                ) ||
+                null
+            );
+        },
+
+        getExecutionSessionById(
+            sessionId
+        ) {
+            return (
+                this.executionSessions.find(
+                    (session) =>
+                        session.id === sessionId
+                ) ||
+                null
+            );
+        },
+
+        getExecutionReceiptById(
+            receiptId
+        ) {
+            return (
+                this.executionReceipts.find(
+                    (receipt) =>
+                        receipt.id === receiptId
+                ) ||
+                null
+            );
+        },
+
+        listExecutionTargets(filters = {}) {
+            return this.executionTargets
+                .filter((target) => {
+                    if (
+                        filters.type &&
+                        target.type !== filters.type
+                    ) {
+                        return false;
+                    }
+
+                    if (
+                        filters.capability &&
+                        !target.capabilities.includes(
+                            filters.capability
+                        )
+                    ) {
+                        return false;
+                    }
+
+                    if (
+                        filters.status &&
+                        target.status !== filters.status
+                    ) {
+                        return false;
+                    }
+
+                    return true;
+                })
+                .map(
+                    (target) =>
+                        this.clone(target)
+                );
+        },
+
+        runUniversalExecutionAcceptanceTest() {
+            const originalPersistence =
+                this.configuration
+                    .automaticPersistence;
+
+            this.configuration
+                .automaticPersistence =
+                false;
+
+            const suffix =
+                this.createId("test");
+
+            try {
+                const linkedinTarget =
+                    this.executionTargets.find(
+                        (target) =>
+                            target.type ===
+                            EXECUTION_TARGET_TYPES.LINKEDIN
+                    ) ||
+                    this.registerExecutionTarget({
+                        id:
+                            `linkedin-${suffix}`,
+                        name:
+                            "LinkedIn",
+                        type:
+                            EXECUTION_TARGET_TYPES.LINKEDIN,
+                        capabilities: [
+                            EXECUTION_CAPABILITIES.POST,
+                            EXECUTION_CAPABILITIES.REPLY,
+                            EXECUTION_CAPABILITIES.CAPTURE_EVIDENCE
+                        ],
+                        requiresExecutiveApproval:
+                            true,
+                        supportsDrafts:
+                            true,
+                        supportsResume:
+                            true
+                    }).target;
+
+                const adapterId =
+                    `acceptance-adapter-${suffix}`;
+
+                const adapterRegistration =
+                    this.registerExecutionAdapter(
+                        adapterId,
+                        {
+                            name:
+                                "Acceptance Test Adapter",
+                            version:
+                                "1.0.0",
+                            capabilities: [
+                                EXECUTION_CAPABILITIES.POST,
+                                EXECUTION_CAPABILITIES.REPLY
+                            ],
+                            execute:
+                                ({ job }) => ({
+                                    success: true,
+                                    externalReference:
+                                        `external-${job.id}`,
+                                    evidence: [
+                                        {
+                                            type:
+                                                "screenshot-placeholder",
+                                            uri:
+                                                `evidence://${job.id}`
+                                        }
+                                    ],
+                                    details: {
+                                        published:
+                                            true,
+                                        targetType:
+                                            job.targetType
+                                    }
+                                })
+                        },
+                        {
+                            actor:
+                                "MEOS Acceptance Test"
+                        }
+                    );
+
+                const liveTarget =
+                    this.getExecutionTargetById(
+                        linkedinTarget.id
+                    );
+
+                liveTarget.adapterId =
+                    adapterId;
+
+                const creation =
+                    this.createExecutionJob(
+                        {
+                            name:
+                                "LinkedIn Post Acceptance Test",
+                            targetId:
+                                liveTarget.id,
+                            capability:
+                                EXECUTION_CAPABILITIES.POST,
+                            payload: {
+                                text:
+                                    "Acceptance test post."
+                            },
+                            effects: {
+                                external:
+                                    true
+                            },
+                            requestedBy:
+                                "Maddy"
+                        }
+                    );
+
+                const blocked =
+                    this.executeExecutionJob(
+                        creation.job.id
+                    );
+
+                const approval =
+                    this.approveExecutionJob(
+                        creation.approval.id,
+                        {
+                            actor:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const execution =
+                    this.executeExecutionJob(
+                        creation.job.id
+                    );
+
+                const receipt =
+                    execution.receipt;
+                const finalJob =
+                    this.getExecutionJobById(
+                        creation.job.id
+                    );
+                const finalSession =
+                    this.getExecutionSessionById(
+                        finalJob.sessionId
+                    );
+
+                const checks = [
+                    {
+                        name:
+                            "LinkedIn registered as first-class execution target",
+                        passed:
+                            liveTarget.type ===
+                            EXECUTION_TARGET_TYPES.LINKEDIN &&
+                            liveTarget.capabilities.includes(
+                                EXECUTION_CAPABILITIES.POST
+                            )
+                    },
+                    {
+                        name:
+                            "Universal execution adapter registered",
+                        passed:
+                            adapterRegistration.success ===
+                            true
+                    },
+                    {
+                        name:
+                            "External execution job created",
+                        passed:
+                            creation.success === true &&
+                            creation.job.targetType ===
+                            EXECUTION_TARGET_TYPES.LINKEDIN
+                    },
+                    {
+                        name:
+                            "Executive approval gate enforced",
+                        passed:
+                            blocked.success === false &&
+                            blocked.code ===
+                            "EXECUTION_APPROVAL_REQUIRED"
+                    },
+                    {
+                        name:
+                            "Executive approval recorded",
+                        passed:
+                            approval.success === true &&
+                            approval.job.status ===
+                            EXECUTION_JOB_STATUSES.READY
+                    },
+                    {
+                        name:
+                            "Execution session created",
+                        passed:
+                            Boolean(
+                                finalSession?.id
+                            )
+                    },
+                    {
+                        name:
+                            "Adapter executed approved action",
+                        passed:
+                            execution.success === true &&
+                            finalJob.status ===
+                            EXECUTION_JOB_STATUSES.COMPLETE
+                    },
+                    {
+                        name:
+                            "Execution evidence preserved",
+                        passed:
+                            Array.isArray(
+                                receipt.evidence
+                            ) &&
+                            receipt.evidence.length ===
+                            1
+                    },
+                    {
+                        name:
+                            "Execution receipt created",
+                        passed:
+                            Boolean(
+                                receipt.id
+                            ) &&
+                            receipt.status ===
+                            "complete"
+                    },
+                    {
+                        name:
+                            "Full audit trail preserved",
+                        passed:
+                            this.history.some(
+                                (entry) =>
+                                    entry.action ===
+                                    "execution-job.created" &&
+                                    entry.details.jobId ===
+                                    finalJob.id
+                            ) &&
+                            this.history.some(
+                                (entry) =>
+                                    entry.action ===
+                                    "execution-receipt.created" &&
+                                    entry.details.jobId ===
+                                    finalJob.id
+                            )
+                    }
+                ];
+
+                return {
+                    success:
+                        checks.every(
+                            (check) =>
+                                check.passed
+                        ),
+                    passed:
+                        checks.filter(
+                            (check) =>
+                                check.passed
+                        ).length,
+                    total:
+                        checks.length,
+                    checks,
+                    targetType:
+                        liveTarget.type,
+                    finalJobStatus:
+                        finalJob.status,
+                    receiptStatus:
+                        receipt.status,
+                    evidenceCount:
+                        receipt.evidence.length
+                };
+            } finally {
+                this.configuration
+                    .automaticPersistence =
+                    originalPersistence;
+            }
+        },
+
         scan(contextProvider = null) {
             const contexts =
                 typeof contextProvider === "function"
@@ -1900,7 +3650,7 @@
                     componentVersion: this.version,
                     organizationNeutralCore: true,
                     brickBoundary:
-                        "Controlled internal automation only; no autonomous approval, spending, policy changes, or external communication."
+                        "Controlled internal automation and approved external execution; no autonomous approval, spending, policy changes, or unapproved external communication."
                 },
                 createdBy: this.name
             });
@@ -1934,6 +3684,38 @@
                     (approval) =>
                         approval.status === "pending"
                 ).length;
+            this.analytics.registeredExecutionTargets =
+                this.executionTargets.length;
+            this.analytics.queuedExecutionJobs =
+                this.executionJobs.filter(
+                    (job) =>
+                        [
+                            EXECUTION_JOB_STATUSES.QUEUED,
+                            EXECUTION_JOB_STATUSES.AWAITING_APPROVAL,
+                            EXECUTION_JOB_STATUSES.READY,
+                            EXECUTION_JOB_STATUSES.RETRY_SCHEDULED
+                        ].includes(job.status)
+                ).length;
+            this.analytics.activeExecutionSessions =
+                this.executionSessions.filter(
+                    (session) =>
+                        session.status ===
+                        EXECUTION_SESSION_STATUSES.ACTIVE
+                ).length;
+            this.analytics.completedExecutionJobs =
+                this.executionJobs.filter(
+                    (job) =>
+                        job.status ===
+                        EXECUTION_JOB_STATUSES.COMPLETE
+                ).length;
+            this.analytics.failedExecutionJobs =
+                this.executionJobs.filter(
+                    (job) =>
+                        job.status ===
+                        EXECUTION_JOB_STATUSES.FAILED
+                ).length;
+            this.analytics.executionReceipts =
+                this.executionReceipts.length;
 
             return this.analytics;
         },
@@ -1981,6 +3763,20 @@
                     this.approvals.length,
                 notificationCount:
                     this.notifications.length,
+                executionTargetCount:
+                    this.executionTargets.length,
+                executionJobCount:
+                    this.executionJobs.length,
+                executionSessionCount:
+                    this.executionSessions.length,
+                executionReceiptCount:
+                    this.executionReceipts.length,
+                linkedInRegistered:
+                    this.executionTargets.some(
+                        (target) =>
+                            target.type ===
+                            EXECUTION_TARGET_TYPES.LINKEDIN
+                    ),
                 analytics:
                     this.clone(this.analytics),
                 initializedAt:
@@ -2008,6 +3804,14 @@
                         this.approvals,
                     notifications:
                         this.notifications,
+                    executionTargets:
+                        this.executionTargets,
+                    executionJobs:
+                        this.executionJobs,
+                    executionSessions:
+                        this.executionSessions,
+                    executionReceipts:
+                        this.executionReceipts,
                     history:
                         options.includeHistory === false
                             ? []
@@ -2064,6 +3868,22 @@
             this.mergeById(
                 this.notifications,
                 data.notifications || []
+            );
+            this.mergeById(
+                this.executionTargets,
+                data.executionTargets || []
+            );
+            this.mergeById(
+                this.executionJobs,
+                data.executionJobs || []
+            );
+            this.mergeById(
+                this.executionSessions,
+                data.executionSessions || []
+            );
+            this.mergeById(
+                this.executionReceipts,
+                data.executionReceipts || []
             );
             this.mergeById(
                 this.history,
@@ -2210,6 +4030,11 @@
             this.runs = [];
             this.approvals = [];
             this.notifications = [];
+            this.executionTargets = [];
+            this.executionJobs = [];
+            this.executionSessions = [];
+            this.executionReceipts = [];
+            this.executionAdapters = {};
             this.history = [];
             this.analytics = {
                 totalRules: 0,
@@ -2218,6 +4043,13 @@
                 completedRuns: 0,
                 failedRuns: 0,
                 pendingApprovals: 0,
+                registeredExecutionTargets: 0,
+                queuedExecutionJobs: 0,
+                activeExecutionSessions: 0,
+                completedExecutionJobs: 0,
+                failedExecutionJobs: 0,
+                executionReceipts: 0,
+                lastExecutionAt: null,
                 lastScanAt: null,
                 lastRunAt: null
             };
@@ -2227,6 +4059,8 @@
                     this.configuration.localStorageKey
                 );
             }
+
+            this.registerDefaultExecutionTargets();
 
             if (this.configuration.scannerEnabled) {
                 this.startScanner();
@@ -2419,6 +4253,14 @@
         RUN_STATUSES;
     ExecutiveAutomation.ACTION_TYPES =
         ACTION_TYPES;
+    ExecutiveAutomation.EXECUTION_TARGET_TYPES =
+        EXECUTION_TARGET_TYPES;
+    ExecutiveAutomation.EXECUTION_CAPABILITIES =
+        EXECUTION_CAPABILITIES;
+    ExecutiveAutomation.EXECUTION_JOB_STATUSES =
+        EXECUTION_JOB_STATUSES;
+    ExecutiveAutomation.EXECUTION_SESSION_STATUSES =
+        EXECUTION_SESSION_STATUSES;
 
     global.ExecutiveAutomation =
         ExecutiveAutomation;
