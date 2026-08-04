@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.4.0
- * Build: GO140-EXECUTIVE-ALIGNMENT-STRATEGY-20260804-A
+ * Version: 1.4.1
+ * Build: GO141-SCHEMA-TOLERANT-ALIGNMENT-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.4.0";
-    const BUILD_ID = "GO140-EXECUTIVE-ALIGNMENT-STRATEGY-20260804-A";
+    const VERSION = "1.4.1";
+    const BUILD_ID = "GO141-SCHEMA-TOLERANT-ALIGNMENT-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -4049,6 +4049,155 @@
             return counts;
         },
 
+        normalizeAlignmentCollection(value) {
+            if (
+                value === null ||
+                value === undefined ||
+                value === ""
+            ) {
+                return [];
+            }
+
+            if (Array.isArray(value)) {
+                return value.flatMap(
+                    item =>
+                        this.normalizeAlignmentCollection(
+                            item
+                        )
+                );
+            }
+
+            if (
+                typeof value === "string" ||
+                typeof value === "number" ||
+                typeof value === "boolean"
+            ) {
+                const normalized =
+                    String(value).trim();
+
+                return normalized
+                    ? [normalized]
+                    : [];
+            }
+
+            if (typeof value !== "object") {
+                return [];
+            }
+
+            const preferredFields = [
+                "title",
+                "name",
+                "label",
+                "programName",
+                "serviceName",
+                "activity",
+                "objective",
+                "outcome",
+                "summary",
+                "description",
+                "purpose",
+                "mission"
+            ];
+
+            const preferredValues =
+                preferredFields.flatMap(
+                    field =>
+                        Object.prototype
+                            .hasOwnProperty.call(
+                                value,
+                                field
+                            )
+                            ? this.normalizeAlignmentCollection(
+                                value[field]
+                            )
+                            : []
+                );
+
+            if (preferredValues.length > 0) {
+                return preferredValues;
+            }
+
+            return Object.values(value)
+                .flatMap(
+                    item =>
+                        this.normalizeAlignmentCollection(
+                            item
+                        )
+                );
+        },
+
+        normalizeAlignmentRecordCollection(value) {
+            if (
+                value === null ||
+                value === undefined
+            ) {
+                return [];
+            }
+
+            if (Array.isArray(value)) {
+                return value.flatMap(
+                    item =>
+                        this.normalizeAlignmentRecordCollection(
+                            item
+                        )
+                );
+            }
+
+            if (typeof value === "object") {
+                const looksLikeRecord = [
+                    "id",
+                    "statement",
+                    "claim",
+                    "summary",
+                    "text",
+                    "sourceType",
+                    "authority",
+                    "verified",
+                    "confidence",
+                    "citation",
+                    "url",
+                    "sourceId"
+                ].some(
+                    field =>
+                        Object.prototype
+                            .hasOwnProperty.call(
+                                value,
+                                field
+                            )
+                );
+
+                if (looksLikeRecord) {
+                    return [value];
+                }
+
+                return Object.values(value)
+                    .flatMap(
+                        item =>
+                            this.normalizeAlignmentRecordCollection(
+                                item
+                            )
+                    );
+            }
+
+            return [value];
+        },
+
+        roundNumber(value, precision = 3) {
+            const number = Number(value);
+
+            if (!Number.isFinite(number)) {
+                return 0;
+            }
+
+            const factor =
+                10 ** Math.max(
+                    0,
+                    Number(precision) || 0
+                );
+
+            return Math.round(number * factor) / factor;
+        },
+
         resolveOrganizationAlignmentContext(input = {}) {
             const profile =
                 input.organizationProfile ||
@@ -4063,37 +4212,53 @@
 
             const explicitActivities =
                 this.uniqueStrings([
-                    ...(input.activities || []),
-                    ...(input.programs || []),
-                    ...(profile.programs || []),
-                    ...(profile.services || []),
-                    ...(profile.activities || []),
-                    ...(strategy.programs || []),
-                    ...(strategy.objectives || [])
+                    ...this.normalizeAlignmentCollection(input.activities),
+                    ...this.normalizeAlignmentCollection(input.programs),
+                    ...this.normalizeAlignmentCollection(profile.programs),
+                    ...this.normalizeAlignmentCollection(profile.services),
+                    ...this.normalizeAlignmentCollection(profile.activities),
+                    ...this.normalizeAlignmentCollection(
+                        profile.organization?.programs
+                    ),
+                    ...this.normalizeAlignmentCollection(
+                        profile.organization?.services
+                    ),
+                    ...this.normalizeAlignmentCollection(strategy.programs),
+                    ...this.normalizeAlignmentCollection(strategy.objectives)
                 ]);
 
             const explicitOutcomes =
                 this.uniqueStrings([
-                    ...(input.outcomes || []),
-                    ...(profile.outcomes || []),
-                    ...(profile.intendedOutcomes || []),
-                    ...(strategy.outcomes || []),
-                    ...(strategy.impactObjectives || [])
+                    ...this.normalizeAlignmentCollection(input.outcomes),
+                    ...this.normalizeAlignmentCollection(profile.outcomes),
+                    ...this.normalizeAlignmentCollection(
+                        profile.intendedOutcomes
+                    ),
+                    ...this.normalizeAlignmentCollection(
+                        profile.organization?.outcomes
+                    ),
+                    ...this.normalizeAlignmentCollection(strategy.outcomes),
+                    ...this.normalizeAlignmentCollection(
+                        strategy.impactObjectives
+                    )
                 ]);
 
             const mission =
-                String(
-                    input.organizationMission ||
-                    profile.mission ||
-                    strategy.mission ||
-                    ""
-                ).trim();
+                this.normalizeAlignmentCollection([
+                    input.organizationMission,
+                    profile.mission,
+                    profile.organization?.mission,
+                    strategy.mission
+                ])[0] || "";
 
             const evidence =
                 this.normalizeAlignmentEvidence([
-                    ...(input.evidence || []),
-                    ...(profile.evidence || []),
-                    ...(strategy.evidence || [])
+                    ...this.normalizeAlignmentRecordCollection(input.evidence),
+                    ...this.normalizeAlignmentRecordCollection(profile.evidence),
+                    ...this.normalizeAlignmentRecordCollection(
+                        profile.organization?.evidence
+                    ),
+                    ...this.normalizeAlignmentRecordCollection(strategy.evidence)
                 ]);
 
             return {
@@ -4101,11 +4266,15 @@
                     input.organizationId ||
                     profile.id ||
                     profile.organizationId ||
+                    profile.organization?.id ||
+                    profile.organization?.organizationId ||
                     "organization",
                 organizationName:
                     input.organizationName ||
                     profile.name ||
                     profile.organizationName ||
+                    profile.organization?.name ||
+                    profile.organization?.organizationName ||
                     "Organization",
                 mission,
                 activities: explicitActivities,
@@ -4115,13 +4284,17 @@
         },
 
         normalizeAlignmentEvidence(evidence = []) {
-            return (Array.isArray(evidence) ? evidence : [])
+            return this.normalizeAlignmentRecordCollection(evidence)
                 .filter(Boolean)
                 .map((item, index) => {
-                    if (typeof item === "string") {
+                    if (
+                        typeof item === "string" ||
+                        typeof item === "number" ||
+                        typeof item === "boolean"
+                    ) {
                         return {
                             id: `evidence-${index + 1}`,
-                            statement: item,
+                            statement: String(item).trim(),
                             sourceType: "provided",
                             authority: "unknown",
                             verified: false,
@@ -4154,7 +4327,7 @@
                             item.authority === "authoritative" ||
                             item.authority === "primary",
                         confidence:
-                            this.clamp01(
+                            this.clamp(
                                 item.confidence ??
                                 (
                                     item.verified === true
@@ -4453,7 +4626,7 @@
                 claim,
                 supported,
                 confidence:
-                    this.round(confidence, 3),
+                    this.roundNumber(confidence, 3),
                 evidenceIds,
                 verifiedEvidenceCount:
                     verifiedEvidence.length,
@@ -4820,12 +4993,18 @@
                                 "Acceptance Test Organization",
                             organizationMission:
                                 "Improve human dignity and watershed health.",
-                            activities: [
-                                "River corridor outreach and encampment trash removal",
-                                "Mobile hygiene and sanitation services near watershed areas"
-                            ],
-                            evidence: [
-                                {
+                            activities: {
+                                riverCorridor: {
+                                    name:
+                                        "River corridor outreach and encampment trash removal",
+                                    description:
+                                        "Land-based cleanup and stabilization work near watershed areas."
+                                },
+                                hygiene:
+                                    "Mobile hygiene and sanitation services near watershed areas"
+                            },
+                            evidence: {
+                                organizational: {
                                     id:
                                         "org-river-work",
                                     statement:
@@ -4835,7 +5014,7 @@
                                     verified: true,
                                     confidence: 0.95
                                 },
-                                {
+                                watershedResearch: {
                                     id:
                                         "watershed-evidence",
                                     statement:
@@ -4845,7 +5024,7 @@
                                     verified: true,
                                     confidence: 0.9
                                 }
-                            ],
+                            },
                             funderObjectives: [
                                 "Protect native salmon habitat by improving watershed water quality and reducing pollution."
                             ]
@@ -4872,6 +5051,20 @@
                     );
 
                 const checks = [
+                    {
+                        name:
+                            "Object-shaped organization profile normalized",
+                        passed:
+                            strategy
+                                ?.organizationActivities
+                                ?.some(
+                                    activity =>
+                                        activity.includes(
+                                            "River corridor outreach"
+                                        )
+                                ) &&
+                            strategy?.claims?.length > 0
+                    },
                     {
                         name:
                             "Funder objective identified",
