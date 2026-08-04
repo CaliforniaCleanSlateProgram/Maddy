@@ -28,13 +28,14 @@ import CaliforniaGrantsPortalAdapter from "./california-grants-portal-adapter.js
 import LocalResourceDiscoveryAdapter from "./local-resource-discovery-adapter.js";
 import LocalCSRDiscoveryAdapter from "./local-csr-discovery-adapter.js";
 import CommunityFoundationDiscoveryAdapter from "./community-foundation-discovery-adapter.js";
+import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adapter.js";
 
-const VERSION = "2.6.8";
+const VERSION = "2.6.9";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
-const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.2.0";
+const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.3.0";
 const RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID =
-  "RDI120-LOCAL-CSR-FOUNDATION-LIVE-20260803-A";
+  "RDI130-FAMILY-FOUNDATION-LIVE-20260803-A";
 
 const resourceDiscoveryIntegrationState = {
   status: "initializing",
@@ -65,6 +66,11 @@ function registerResourceDiscoveryAdapters() {
       ResourceDiscoveryNetwork
     );
 
+  const familyFoundationResult =
+    FamilyFoundationDiscoveryAdapter.register(
+      ResourceDiscoveryNetwork
+    );
+
   resourceDiscoveryIntegrationState.registeredAdapters =
     ResourceDiscoveryNetwork.listAdapters();
 
@@ -77,7 +83,9 @@ function registerResourceDiscoveryAdapters() {
       local: localResult,
       csr: csrResult,
       communityFoundation:
-        communityFoundationResult
+        communityFoundationResult,
+      familyFoundation:
+        familyFoundationResult
     },
     adapters:
       resourceDiscoveryIntegrationState.registeredAdapters
@@ -7346,6 +7354,28 @@ app.get("/api/resource-discovery/status", (request, response) => {
           CommunityFoundationDiscoveryAdapter
             .foundationChannels
       },
+      familyFoundationAdapter: {
+        name: FamilyFoundationDiscoveryAdapter.name,
+        version: FamilyFoundationDiscoveryAdapter.version,
+        buildId: FamilyFoundationDiscoveryAdapter.buildId,
+        registered: adapters.some(
+          adapter =>
+            adapter.id ===
+              FamilyFoundationDiscoveryAdapter.id
+        ),
+        currentOperatingAreas:
+          FamilyFoundationDiscoveryAdapter
+            .defaultGeography.currentOperatingAreas,
+        regionalPriorityAreas:
+          FamilyFoundationDiscoveryAdapter
+            .defaultGeography.regionalPriorityAreas,
+        missionDomains:
+          FamilyFoundationDiscoveryAdapter
+            .missionDomains,
+        foundationChannels:
+          FamilyFoundationDiscoveryAdapter
+            .foundationChannels
+      },
       adapters,
       lastRunAt: resourceDiscoveryIntegrationState.lastRunAt,
       lastResultCount:
@@ -7556,6 +7586,95 @@ app.get(
       response.status(500).json({
         error:
           "community_foundation_discovery_failed",
+        message: error?.message || String(error),
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/resource-discovery/family-foundations",
+  async (request, response) => {
+    try {
+      const includeRegional =
+        String(
+          request.query.includeRegional ?? "true"
+        ).toLowerCase() !== "false";
+
+      const includeFutureExpansion =
+        String(
+          request.query.includeFutureExpansion || ""
+        ).toLowerCase() === "true";
+
+      const run = await ResourceDiscoveryNetwork.discoverAll({
+        adapterIds: [
+          FamilyFoundationDiscoveryAdapter.id
+        ],
+        context: {
+          geographyProfile:
+            FamilyFoundationDiscoveryAdapter
+              .defaultGeography,
+          includeRegional,
+          includeFutureExpansion
+        }
+      });
+
+      resourceDiscoveryIntegrationState.status =
+        run.failedAdapters > 0 ? "degraded" : "online";
+      resourceDiscoveryIntegrationState.lastRunAt =
+        run.completedAt;
+      resourceDiscoveryIntegrationState.lastResultCount =
+        run.total;
+      resourceDiscoveryIntegrationState.lastError =
+        run.failures?.[0]?.message || null;
+
+      response.json({
+        schema:
+          "meos.resource-discovery.family-foundations.v1",
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID,
+        status: resourceDiscoveryIntegrationState.status,
+        source: {
+          id:
+            FamilyFoundationDiscoveryAdapter.id,
+          name:
+            FamilyFoundationDiscoveryAdapter.name,
+          region:
+            FamilyFoundationDiscoveryAdapter.region
+        },
+        geography: {
+          currentOperatingAreas:
+            FamilyFoundationDiscoveryAdapter
+              .defaultGeography.currentOperatingAreas,
+          regionalPriorityAreas:
+            FamilyFoundationDiscoveryAdapter
+              .defaultGeography.regionalPriorityAreas,
+          expansionStrategy:
+            FamilyFoundationDiscoveryAdapter
+              .defaultGeography.expansionStrategy,
+          includeRegional,
+          includeFutureExpansion
+        },
+        missionDomains:
+          FamilyFoundationDiscoveryAdapter
+            .missionDomains,
+        foundationChannels:
+          FamilyFoundationDiscoveryAdapter
+            .foundationChannels,
+        total: run.total,
+        failures: run.failures,
+        records: run.records
+      });
+    } catch (error) {
+      resourceDiscoveryIntegrationState.status = "degraded";
+      resourceDiscoveryIntegrationState.lastError =
+        error?.message || String(error);
+
+      response.status(500).json({
+        error:
+          "family_foundation_discovery_failed",
         message: error?.message || String(error),
         version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
         buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
