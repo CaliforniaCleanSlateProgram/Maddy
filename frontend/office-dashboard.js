@@ -20,8 +20,8 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.2.0";
-  const FUNDING_API_URL = "/api/executive-memory/grant-recommendations?limit=1000";
+  const DASHBOARD_VERSION = "2.3.0";
+  const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const FUNDING_CARD_LIMIT = 3;
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
@@ -1809,13 +1809,96 @@ document
   }
 
   function getResourceDecision(opportunity) {
-    return firstDefined(
+    const existing = firstDefined(
       opportunity?.authoritativeResourceDecision,
       opportunity?.resourceDecision,
       opportunity?.executiveQualification?.authoritativeResourceDecision,
       opportunity?.evaluation?.authoritativeResourceDecision,
       null
     );
+
+    if (existing) {
+      return existing;
+    }
+
+    const resourceDevelopment = opportunity?.resourceDevelopment;
+    const workQueue = resourceDevelopment?.workQueue;
+
+    if (!resourceDevelopment || !workQueue) {
+      return null;
+    }
+
+    const decision = String(
+      resourceDevelopment.executiveDecision ||
+      workQueue.action?.recommendation ||
+      "research"
+    ).toLowerCase();
+
+    return {
+      decision,
+      recommendation: decision,
+      showExecutiveDirector:
+        resourceDevelopment.deskStatus === "active" &&
+        ["pursue", "prepare", "partner"].includes(decision),
+      worthPursuing:
+        ["pursue", "prepare", "partner"].includes(decision),
+      canAcquire:
+        workQueue.acquisition?.canAcquire ?? null,
+      acquisitionPath:
+        workQueue.acquisition?.leadPossible === true
+          ? "direct"
+          : workQueue.acquisition?.partnerPossible === true
+            ? "partner"
+            : "unresolved",
+      strategicTiming:
+        workQueue.timing?.bucket?.bucket ||
+        workQueue.timing?.urgency ||
+        "unresolved",
+      deadline: {
+        label: workQueue.timing?.label || "Deadline not verified",
+        daysRemaining: workQueue.timing?.daysRemaining ?? null,
+        iso: workQueue.timing?.date || null
+      },
+      resourceValue: {
+        amount: workQueue.resource?.estimatedValue ?? null,
+        label:
+          workQueue.resource?.label ||
+          "Resource opportunity"
+      },
+      nextAction:
+        workQueue.action?.nextAction ||
+        resourceDevelopment.nextAction ||
+        "Complete the next authorized executive step.",
+      unknowns:
+        workQueue.executiveSummary?.unknowns || [],
+      executiveBrief: {
+        resource:
+          workQueue.resource?.label ||
+          "Resource opportunity",
+        whyOnDesk:
+          workQueue.executiveSummary?.whyOnDesk ||
+          workQueue.strategicValue?.whyItMatters ||
+          resourceDevelopment.reason ||
+          "This opportunity has a realistic path to organizational value.",
+        reason:
+          workQueue.executiveSummary?.reason ||
+          resourceDevelopment.reason ||
+          "The Executive Resource Development Office completed its analysis.",
+        nextAction:
+          workQueue.action?.nextAction ||
+          resourceDevelopment.nextAction ||
+          "Complete the next authorized executive step.",
+        consequenceOfDelay:
+          workQueue.consequenceOfDelay ||
+          "The consequence of delay has not been verified."
+      },
+      reasoning: {
+        reason:
+          workQueue.executiveSummary?.reason ||
+          resourceDevelopment.reason ||
+          "Executive reasoning is available in the full investigation."
+      }
+    };
   }
 
   function evaluateFundingOpportunity(opportunity) {
@@ -1861,6 +1944,7 @@ document
 
   function getFundingScore(opportunity) {
     const value = Number(firstDefined(
+      opportunity?.resourceDevelopment?.executivePriority?.score,
       opportunity?.qualification?.score,
       opportunity?.evaluation?.score?.total,
       opportunity?.score?.total,
@@ -1879,7 +1963,8 @@ document
       opportunity?.fundingAmount,
       opportunity?.estimatedAward,
       opportunity?.awardCeiling,
-      opportunity?.moneyReality?.maximumAward
+      opportunity?.moneyReality?.maximumAward,
+      opportunity?.resourceDevelopment?.workQueue?.resource?.estimatedValue
     );
 
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -1921,6 +2006,21 @@ document
   }
 
   function sortFundingOpportunities(left, right) {
+    const leftRank = Number(
+      left?.resourceDevelopment?.workQueue?.priorityRank
+    );
+    const rightRank = Number(
+      right?.resourceDevelopment?.workQueue?.priorityRank
+    );
+
+    if (
+      Number.isFinite(leftRank) &&
+      Number.isFinite(rightRank) &&
+      leftRank !== rightRank
+    ) {
+      return leftRank - rightRank;
+    }
+
     const leftDecision = getResourceDecision(left) || {};
     const rightDecision = getResourceDecision(right) || {};
 
@@ -2001,6 +2101,8 @@ document
         opportunity?.agencyName,
         opportunity?.provider,
         opportunity?.sourceName,
+        opportunity?.source?.name,
+        opportunity?.resourceDevelopment?.workQueue?.opportunity?.source,
         "Resource source"
       );
       const resource = firstDefined(
@@ -2039,14 +2141,6 @@ document
     renderFundingIntelligence();
 
     try {
-      const engine = getResourceAcquisitionEngine();
-
-      if (!engine?.decide) {
-        throw new Error(
-          "Executive Resource Acquisition Engine did not load before the dashboard."
-        );
-      }
-
       const response = await fetch(FUNDING_API_URL, {
         method: "GET",
         headers: { Accept: "application/json" },
@@ -2054,43 +2148,71 @@ document
       });
 
       if (!response.ok) {
-        throw new Error(`Funding Intelligence returned HTTP ${response.status}.`);
+        throw new Error(
+          `Executive Resource Development Office returned HTTP ${response.status}.`
+        );
       }
 
       const payload = await response.json();
-      const records = Array.isArray(payload?.records) ? payload.records : [];
+
+      if (
+        payload?.schema !==
+        "meos.executive-resource-development.desk.v1"
+      ) {
+        throw new Error(
+          "Executive Resource Development Office returned an unsupported desk schema."
+        );
+      }
+
+      const records = Array.isArray(payload?.records)
+        ? payload.records
+        : [];
 
       const executiveDesk = records
         .filter(
           (record) =>
-            record?.type === "funding-opportunity" ||
-            !record?.type
+            record?.resourceDevelopment?.deskStatus === "active"
         )
-        .map(evaluateFundingOpportunity)
         .filter(isExecutiveQualified)
         .sort(sortFundingOpportunities);
 
       state.fundingIntelligence.status = "ready";
       state.fundingIntelligence.opportunities = executiveDesk;
-      state.fundingIntelligence.totalQualified = executiveDesk.length;
-      state.fundingIntelligence.lastLoadedAt = new Date().toISOString();
+      state.fundingIntelligence.totalQualified =
+        Number.isFinite(Number(payload?.total))
+          ? Number(payload.total)
+          : executiveDesk.length;
+      state.fundingIntelligence.lastLoadedAt =
+        new Date().toISOString();
       renderFundingIntelligence();
+
+      const firstAuthority =
+        executiveDesk[0]?.resourceDevelopment || {};
 
       dispatchMEOS("meos:resource-acquisition-desk-loaded", {
         authority: {
-          name: engine.name,
-          version: engine.version,
-          buildId: engine.buildId
+          name: "MEOS Executive Resource Development Office",
+          version:
+            payload?.version ||
+            firstAuthority?.version ||
+            null,
+          buildId:
+            firstAuthority?.buildId ||
+            null
         },
+        sourceEndpoint: FUNDING_API_URL,
         totalOnDesk: executiveDesk.length,
-        displayed: Math.min(executiveDesk.length, FUNDING_CARD_LIMIT),
-        loadedAt: state.fundingIntelligence.lastLoadedAt
+        displayed:
+          Math.min(executiveDesk.length, FUNDING_CARD_LIMIT),
+        loadedAt:
+          state.fundingIntelligence.lastLoadedAt
       });
 
       return executiveDesk;
     } catch (error) {
       state.fundingIntelligence.status = "error";
-      state.fundingIntelligence.error = error?.message || String(error);
+      state.fundingIntelligence.error =
+        error?.message || String(error);
       state.fundingIntelligence.opportunities = [];
       state.fundingIntelligence.totalQualified = 0;
       renderFundingIntelligence();
@@ -2403,6 +2525,7 @@ document
       opportunity?.url,
       opportunity?.sourceUrl,
       opportunity?.source?.url,
+      opportunity?.resourceDevelopment?.workQueue?.opportunity?.sourceUrl,
       ""
     );
     const unknowns = Array.isArray(decision?.unknowns)
@@ -2552,7 +2675,15 @@ document
     const normalized = String(query || "").trim().toLowerCase();
     const matches = state.fundingIntelligence.opportunities.filter((opportunity) => {
       if (!normalized) return true;
-      return [opportunity?.title, opportunity?.agencyName, opportunity?.provider, opportunity?.sourceName]
+      return [
+        opportunity?.title,
+        opportunity?.agencyName,
+        opportunity?.provider,
+        opportunity?.sourceName,
+        opportunity?.source?.name,
+        opportunity?.resourceDevelopment?.channel,
+        opportunity?.resourceDevelopment?.workQueue?.opportunity?.source
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(normalized));
     });
