@@ -31,7 +31,7 @@ import CommunityFoundationDiscoveryAdapter from "./community-foundation-discover
 import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adapter.js";
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 
-const VERSION = "2.8.0";
+const VERSION = "2.9.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -5459,8 +5459,8 @@ app.get("/health", async (request, response) => {
  * instead of rejecting them without evidence.
  */
 
-const RESOURCE_DEVELOPMENT_VERSION = "1.0.4";
-const BUILD_ID = "ERDO104-EXECUTIVE-WORK-QUEUE-20260803-A";
+const RESOURCE_DEVELOPMENT_VERSION = "1.1.0";
+const BUILD_ID = "ERDO110-END-TO-END-FUNDING-PIPELINE-20260804-A";
 const JOB_ID = "standing-executive-resource-development-office";
 
 const RESOURCE_CHANNELS = Object.freeze([
@@ -5493,6 +5493,101 @@ const DECISIONS = Object.freeze([
   "won",
   "lost"
 ]);
+
+
+const FUNDING_PIPELINE_STAGES = Object.freeze({
+  DISCOVERED: "discovered",
+  QUALIFIED: "qualified",
+  ON_DESK: "on-desk",
+  PREPARING: "preparing",
+  APPLICATION_INTELLIGENCE: "application-intelligence",
+  PACKAGE_ASSEMBLED: "package-assembled",
+  PORTAL_MAPPED: "portal-mapped",
+  EXECUTIVE_APPROVED: "executive-approved",
+  SUBMITTED: "submitted",
+  AWARD_PENDING: "award-pending",
+  AWARDED: "awarded",
+  DECLINED: "declined",
+  WITHDRAWN: "withdrawn",
+  FUNDS_PARTIALLY_RECEIVED: "funds-partially-received",
+  FUNDS_FULLY_RECEIVED: "funds-fully-received",
+  ARCHIVED: "archived"
+});
+
+const FUNDING_PIPELINE_TRANSITIONS = Object.freeze({
+  [FUNDING_PIPELINE_STAGES.DISCOVERED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.QUALIFIED,
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.QUALIFIED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.ON_DESK,
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.ON_DESK]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.PREPARING,
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.PREPARING]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.APPLICATION_INTELLIGENCE,
+    FUNDING_PIPELINE_STAGES.WITHDRAWN,
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.APPLICATION_INTELLIGENCE]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.PACKAGE_ASSEMBLED,
+    FUNDING_PIPELINE_STAGES.WITHDRAWN
+  ]),
+  [FUNDING_PIPELINE_STAGES.PACKAGE_ASSEMBLED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.PORTAL_MAPPED,
+    FUNDING_PIPELINE_STAGES.WITHDRAWN
+  ]),
+  [FUNDING_PIPELINE_STAGES.PORTAL_MAPPED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.EXECUTIVE_APPROVED,
+    FUNDING_PIPELINE_STAGES.WITHDRAWN
+  ]),
+  [FUNDING_PIPELINE_STAGES.EXECUTIVE_APPROVED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.SUBMITTED,
+    FUNDING_PIPELINE_STAGES.WITHDRAWN
+  ]),
+  [FUNDING_PIPELINE_STAGES.SUBMITTED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.AWARD_PENDING,
+    FUNDING_PIPELINE_STAGES.WITHDRAWN
+  ]),
+  [FUNDING_PIPELINE_STAGES.AWARD_PENDING]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.AWARDED,
+    FUNDING_PIPELINE_STAGES.DECLINED,
+    FUNDING_PIPELINE_STAGES.WITHDRAWN
+  ]),
+  [FUNDING_PIPELINE_STAGES.AWARDED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.FUNDS_PARTIALLY_RECEIVED,
+    FUNDING_PIPELINE_STAGES.FUNDS_FULLY_RECEIVED,
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.FUNDS_PARTIALLY_RECEIVED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.FUNDS_FULLY_RECEIVED,
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.FUNDS_FULLY_RECEIVED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.DECLINED]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.WITHDRAWN]: Object.freeze([
+    FUNDING_PIPELINE_STAGES.ARCHIVED
+  ]),
+  [FUNDING_PIPELINE_STAGES.ARCHIVED]: Object.freeze([])
+});
+
+const FUNDING_PIPELINE_ARTIFACT_TYPES = Object.freeze({
+  APPLICATION_INTELLIGENCE: "application-intelligence",
+  EXECUTIVE_REVIEW_PACKAGE: "executive-review-package",
+  EXECUTIVE_APPLICATION_PACKAGE: "executive-application-package",
+  SUBMISSION_PORTAL_INTELLIGENCE: "submission-portal-intelligence",
+  PORTAL_SUBMISSION_PACKAGE: "portal-submission-package",
+  SUBMISSION_EXECUTION: "submission-execution",
+  AWARD_TRACKING: "award-tracking",
+  FUNDING_RECEIPT: "funding-receipt"
+});
 
 function clamp(value, minimum = 0, maximum = 100) {
   return Math.max(minimum, Math.min(maximum, Number(value) || 0));
@@ -6981,10 +7076,1029 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     summary: {
       total: 0,
       executiveDesk: 0
+    },
+    pipelineSummary: {
+      total: 0,
+      active: 0,
+      submitted: 0,
+      awardPending: 0,
+      awarded: 0,
+      fundsReceived: 0,
+      moneyReceived: 0,
+      submittedValue: 0,
+      awardedValue: 0,
+      stages: {}
     }
   };
 
   let rebuildInFlight = null;
+
+  function normalizeFundingPipelineStage(value) {
+    const stage = String(value || "").trim();
+
+    return Object.values(FUNDING_PIPELINE_STAGES).includes(stage)
+      ? stage
+      : FUNDING_PIPELINE_STAGES.DISCOVERED;
+  }
+
+  function initialFundingPipelineStage(record = {}) {
+    const qualificationStatus =
+      record.executiveQualification?.qualificationStatus ||
+      record.qualificationStatus ||
+      "";
+
+    if (
+      qualificationStatus === "executive-qualified" ||
+      record.resourceDevelopment?.deskStatus === "active"
+    ) {
+      return FUNDING_PIPELINE_STAGES.QUALIFIED;
+    }
+
+    return FUNDING_PIPELINE_STAGES.DISCOVERED;
+  }
+
+  function ensureFundingPipeline(record = {}, timestamp = now()) {
+    const existing =
+      record.fundingPipeline &&
+      typeof record.fundingPipeline === "object"
+        ? record.fundingPipeline
+        : {};
+
+    const stage = normalizeFundingPipelineStage(
+      existing.stage ||
+      initialFundingPipelineStage(record)
+    );
+
+    const history =
+      Array.isArray(existing.history) &&
+      existing.history.length > 0
+        ? existing.history
+            .filter(entry => entry && typeof entry === "object")
+            .map(entry => ({
+              stage: normalizeFundingPipelineStage(entry.stage),
+              enteredAt: entry.enteredAt || timestamp,
+              actor: String(entry.actor || "MEOS"),
+              authority: String(entry.authority || "system-record"),
+              note: String(entry.note || "")
+            }))
+        : [{
+            stage,
+            enteredAt: timestamp,
+            actor: "MEOS Executive Resource Development Office",
+            authority: "pipeline-bootstrap",
+            note: "Durable funding pipeline initialized from the authoritative opportunity record."
+          }];
+
+    const receipts =
+      Array.isArray(existing.fundingReceipts)
+        ? existing.fundingReceipts
+        : [];
+
+    return {
+      schema: "meos.executive-resource-development.pipeline.v1",
+      version: RESOURCE_DEVELOPMENT_VERSION,
+      buildId: BUILD_ID,
+      stage,
+      history,
+      executiveAuthorization:
+        existing.executiveAuthorization || null,
+      applicationIntelligence:
+        existing.applicationIntelligence || null,
+      executiveReviewPackage:
+        existing.executiveReviewPackage || null,
+      executiveApplicationPackage:
+        existing.executiveApplicationPackage || null,
+      submissionPortalIntelligence:
+        existing.submissionPortalIntelligence || null,
+      portalSubmissionPackage:
+        existing.portalSubmissionPackage || null,
+      submissionExecution:
+        existing.submissionExecution || null,
+      awardTracking:
+        existing.awardTracking || null,
+      fundingReceipts: receipts,
+      metrics: calculateFundingPipelineMetrics({
+        ...existing,
+        fundingReceipts: receipts
+      }),
+      updatedAt: existing.updatedAt || timestamp
+    };
+  }
+
+  function calculateFundingPipelineMetrics(pipeline = {}) {
+    const requestedAmount = Number(
+      pipeline.submissionExecution?.requestedAmount ||
+      pipeline.awardTracking?.requestedAmount ||
+      0
+    );
+    const awardedAmount = Number(
+      pipeline.awardTracking?.awardedAmount ||
+      0
+    );
+    const fundingReceipts =
+      Array.isArray(pipeline.fundingReceipts)
+        ? pipeline.fundingReceipts
+        : [];
+    const moneyReceived = fundingReceipts.reduce(
+      (total, receipt) =>
+        total + Number(receipt?.amount || 0),
+      0
+    );
+
+    return {
+      requestedAmount,
+      awardedAmount,
+      moneyReceived,
+      balanceRemaining:
+        awardedAmount > 0
+          ? Math.max(0, awardedAmount - moneyReceived)
+          : null,
+      receiptCount: fundingReceipts.length,
+      success:
+        awardedAmount > 0 &&
+        moneyReceived >= awardedAmount
+    };
+  }
+
+  function requiredArtifactForStage(stage) {
+    const requirements = {
+      [FUNDING_PIPELINE_STAGES.APPLICATION_INTELLIGENCE]:
+        "applicationIntelligence",
+      [FUNDING_PIPELINE_STAGES.PACKAGE_ASSEMBLED]:
+        "executiveApplicationPackage",
+      [FUNDING_PIPELINE_STAGES.PORTAL_MAPPED]:
+        "submissionPortalIntelligence",
+      [FUNDING_PIPELINE_STAGES.EXECUTIVE_APPROVED]:
+        "executiveReviewPackage",
+      [FUNDING_PIPELINE_STAGES.SUBMITTED]:
+        "submissionExecution",
+      [FUNDING_PIPELINE_STAGES.AWARD_PENDING]:
+        "submissionExecution",
+      [FUNDING_PIPELINE_STAGES.AWARDED]:
+        "awardTracking"
+    };
+
+    return requirements[stage] || null;
+  }
+
+  function validateFundingPipelineTransition(
+    record,
+    pipeline,
+    nextStage,
+    input = {}
+  ) {
+    const currentStage =
+      normalizeFundingPipelineStage(pipeline.stage);
+    const targetStage =
+      normalizeFundingPipelineStage(nextStage);
+    const allowed =
+      FUNDING_PIPELINE_TRANSITIONS[currentStage] || [];
+
+    if (!allowed.includes(targetStage)) {
+      const error = new Error(
+        `Cannot move funding pipeline from "${currentStage}" to "${targetStage}".`
+      );
+      error.status = 409;
+      error.code = "FUNDING_PIPELINE_TRANSITION_INVALID";
+      error.details = {
+        currentStage,
+        requestedStage: targetStage,
+        allowedNextStages: [...allowed]
+      };
+      throw error;
+    }
+
+    if (
+      targetStage === FUNDING_PIPELINE_STAGES.PREPARING &&
+      !pipeline.executiveAuthorization
+    ) {
+      const error = new Error(
+        "Executive pursuit authorization is required before preparation begins."
+      );
+      error.status = 409;
+      error.code = "FUNDING_PIPELINE_EXECUTIVE_AUTHORIZATION_REQUIRED";
+      throw error;
+    }
+
+    const requiredArtifact =
+      requiredArtifactForStage(targetStage);
+
+    if (
+      requiredArtifact &&
+      !pipeline[requiredArtifact] &&
+      !input.artifact
+    ) {
+      const error = new Error(
+        `${requiredArtifact} is required before entering ${targetStage}.`
+      );
+      error.status = 409;
+      error.code = "FUNDING_PIPELINE_ARTIFACT_REQUIRED";
+      error.details = {
+        requiredArtifact,
+        targetStage
+      };
+      throw error;
+    }
+
+    if (
+      targetStage === FUNDING_PIPELINE_STAGES.EXECUTIVE_APPROVED &&
+      pipeline.executiveReviewPackage?.approval?.status !== "approved" &&
+      input.executiveApproved !== true
+    ) {
+      const error = new Error(
+        "Executive application approval is required."
+      );
+      error.status = 409;
+      error.code = "FUNDING_PIPELINE_APPLICATION_APPROVAL_REQUIRED";
+      throw error;
+    }
+
+    if (
+      targetStage === FUNDING_PIPELINE_STAGES.AWARDED
+    ) {
+      const awardedAmount = Number(
+        input.artifact?.awardedAmount ??
+        pipeline.awardTracking?.awardedAmount
+      );
+
+      if (!Number.isFinite(awardedAmount) || awardedAmount < 0) {
+        const error = new Error(
+          "A verified awarded amount is required."
+        );
+        error.status = 409;
+        error.code = "FUNDING_PIPELINE_AWARDED_AMOUNT_REQUIRED";
+        throw error;
+      }
+    }
+
+    return {
+      currentStage,
+      targetStage
+    };
+  }
+
+  function artifactPropertyName(type) {
+    const map = {
+      [FUNDING_PIPELINE_ARTIFACT_TYPES.APPLICATION_INTELLIGENCE]:
+        "applicationIntelligence",
+      [FUNDING_PIPELINE_ARTIFACT_TYPES.EXECUTIVE_REVIEW_PACKAGE]:
+        "executiveReviewPackage",
+      [FUNDING_PIPELINE_ARTIFACT_TYPES.EXECUTIVE_APPLICATION_PACKAGE]:
+        "executiveApplicationPackage",
+      [FUNDING_PIPELINE_ARTIFACT_TYPES.SUBMISSION_PORTAL_INTELLIGENCE]:
+        "submissionPortalIntelligence",
+      [FUNDING_PIPELINE_ARTIFACT_TYPES.PORTAL_SUBMISSION_PACKAGE]:
+        "portalSubmissionPackage",
+      [FUNDING_PIPELINE_ARTIFACT_TYPES.SUBMISSION_EXECUTION]:
+        "submissionExecution",
+      [FUNDING_PIPELINE_ARTIFACT_TYPES.AWARD_TRACKING]:
+        "awardTracking"
+    };
+
+    return map[type] || null;
+  }
+
+  async function getFundingRecord(id) {
+    const records = (
+      await readCollection(collection)
+    ).filter(record => record?.type === "funding-opportunity");
+
+    return {
+      records,
+      record: records.find(item => item.id === id) || null
+    };
+  }
+
+  async function persistFundingRecord(record) {
+    await upsertOpportunities([record]);
+    return record;
+  }
+
+  async function transitionFundingPipeline(
+    id,
+    input = {}
+  ) {
+    const { record } = await getFundingRecord(id);
+
+    if (!record) {
+      const error = new Error("Funding opportunity not found.");
+      error.status = 404;
+      error.code = "FUNDING_PIPELINE_RECORD_NOT_FOUND";
+      throw error;
+    }
+
+    const timestamp = now();
+    const pipeline =
+      ensureFundingPipeline(record, timestamp);
+    const nextStage =
+      String(input.stage || "").trim();
+
+    const {
+      currentStage,
+      targetStage
+    } = validateFundingPipelineTransition(
+      record,
+      pipeline,
+      nextStage,
+      input
+    );
+
+    const artifactType =
+      String(input.artifactType || "").trim();
+    const property =
+      artifactPropertyName(artifactType);
+
+    if (property && input.artifact) {
+      pipeline[property] = {
+        ...input.artifact,
+        synchronizedAt: timestamp,
+        synchronizedBy:
+          String(input.actor || "MEOS Grant Office")
+      };
+    } else if (
+      input.artifact &&
+      requiredArtifactForStage(targetStage)
+    ) {
+      pipeline[
+        requiredArtifactForStage(targetStage)
+      ] = {
+        ...input.artifact,
+        synchronizedAt: timestamp,
+        synchronizedBy:
+          String(input.actor || "MEOS Grant Office")
+      };
+    }
+
+    if (
+      targetStage === FUNDING_PIPELINE_STAGES.PREPARING &&
+      !pipeline.executiveAuthorization
+    ) {
+      pipeline.executiveAuthorization = {
+        authorized: true,
+        authorizedBy:
+          String(input.actor || "Executive Director"),
+        authorizedAt: timestamp,
+        decision: "pursue",
+        note: String(input.note || "")
+      };
+    }
+
+    if (
+      targetStage === FUNDING_PIPELINE_STAGES.EXECUTIVE_APPROVED &&
+      input.executiveApproved === true
+    ) {
+      pipeline.executiveReviewPackage = {
+        ...(pipeline.executiveReviewPackage || {}),
+        approval: {
+          status: "approved",
+          approvedBy:
+            String(input.actor || "Executive Director"),
+          approvedAt: timestamp,
+          notes: String(input.note || "")
+        }
+      };
+    }
+
+    pipeline.stage = targetStage;
+    pipeline.updatedAt = timestamp;
+    pipeline.history.push({
+      stage: targetStage,
+      enteredAt: timestamp,
+      actor:
+        String(input.actor || "MEOS Grant Office"),
+      authority:
+        String(input.authority || "authorized-pipeline-transition"),
+      note:
+        String(input.note || "")
+    });
+    pipeline.metrics =
+      calculateFundingPipelineMetrics(pipeline);
+
+    const updated = {
+      ...record,
+      fundingPipeline: pipeline,
+      updatedAt: timestamp
+    };
+
+    await persistFundingRecord(updated);
+    state.pipelineSummary =
+      await calculatePortfolioPipelineSummary();
+
+    return {
+      schema: "meos.executive-resource-development.pipeline-transition.v1",
+      version: RESOURCE_DEVELOPMENT_VERSION,
+      buildId: BUILD_ID,
+      opportunityId: id,
+      previousStage: currentStage,
+      currentStage: targetStage,
+      allowedNextStages: [
+        ...(FUNDING_PIPELINE_TRANSITIONS[targetStage] || [])
+      ],
+      fundingPipeline: pipeline
+    };
+  }
+
+  async function synchronizeFundingPipeline(
+    id,
+    input = {}
+  ) {
+    const { record } = await getFundingRecord(id);
+
+    if (!record) {
+      const error = new Error("Funding opportunity not found.");
+      error.status = 404;
+      error.code = "FUNDING_PIPELINE_RECORD_NOT_FOUND";
+      throw error;
+    }
+
+    const timestamp = now();
+    const pipeline =
+      ensureFundingPipeline(record, timestamp);
+    const artifacts =
+      input.artifacts &&
+      typeof input.artifacts === "object"
+        ? input.artifacts
+        : {};
+
+    for (const [artifactType, artifact] of Object.entries(artifacts)) {
+      const property =
+        artifactPropertyName(artifactType);
+
+      if (!property || !artifact || typeof artifact !== "object") {
+        continue;
+      }
+
+      pipeline[property] = {
+        ...artifact,
+        synchronizedAt: timestamp,
+        synchronizedBy:
+          String(input.actor || "MEOS Grant Office")
+      };
+    }
+
+    if (Array.isArray(input.fundingReceipts)) {
+      pipeline.fundingReceipts =
+        input.fundingReceipts.map(receipt => ({
+          ...receipt,
+          synchronizedAt:
+            receipt.synchronizedAt || timestamp
+        }));
+    }
+
+    if (input.executiveAuthorization) {
+      pipeline.executiveAuthorization = {
+        ...input.executiveAuthorization,
+        synchronizedAt: timestamp
+      };
+    }
+
+    pipeline.updatedAt = timestamp;
+    pipeline.metrics =
+      calculateFundingPipelineMetrics(pipeline);
+
+    const updated = {
+      ...record,
+      fundingPipeline: pipeline,
+      updatedAt: timestamp
+    };
+
+    await persistFundingRecord(updated);
+    state.pipelineSummary =
+      await calculatePortfolioPipelineSummary();
+
+    return {
+      schema: "meos.executive-resource-development.pipeline-sync.v1",
+      version: RESOURCE_DEVELOPMENT_VERSION,
+      buildId: BUILD_ID,
+      opportunityId: id,
+      fundingPipeline: pipeline
+    };
+  }
+
+  async function addFundingReceipt(
+    id,
+    input = {}
+  ) {
+    const { record } = await getFundingRecord(id);
+
+    if (!record) {
+      const error = new Error("Funding opportunity not found.");
+      error.status = 404;
+      error.code = "FUNDING_PIPELINE_RECORD_NOT_FOUND";
+      throw error;
+    }
+
+    const amount = Number(input.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      const error = new Error(
+        "Funding receipt amount must be greater than zero."
+      );
+      error.status = 400;
+      error.code = "FUNDING_PIPELINE_RECEIPT_AMOUNT_INVALID";
+      throw error;
+    }
+
+    const timestamp = now();
+    const pipeline =
+      ensureFundingPipeline(record, timestamp);
+    const awardedAmount = Number(
+      pipeline.awardTracking?.awardedAmount || 0
+    );
+    const currentReceived =
+      calculateFundingPipelineMetrics(pipeline).moneyReceived;
+
+    if (
+      awardedAmount <= 0 ||
+      currentReceived + amount > awardedAmount
+    ) {
+      const error = new Error(
+        "Funding receipt requires a verified award and cannot exceed the awarded amount."
+      );
+      error.status = 409;
+      error.code = "FUNDING_PIPELINE_RECEIPT_EXCEEDS_AWARD";
+      throw error;
+    }
+
+    const receipt = {
+      id:
+        normalizeIdentifier(input.id || "") ||
+        `funding-receipt-${crypto.randomUUID()}`,
+      amount,
+      receivedAt:
+        input.receivedAt || timestamp,
+      receivedBy:
+        String(input.receivedBy || "Organization"),
+      method:
+        String(input.method || "unknown"),
+      reference:
+        input.reference || input.transactionId || null,
+      restricted:
+        input.restricted !== false,
+      conditions:
+        Array.isArray(input.conditions)
+          ? input.conditions.map(String)
+          : [],
+      note:
+        String(input.note || "")
+    };
+
+    pipeline.fundingReceipts.push(receipt);
+    pipeline.metrics =
+      calculateFundingPipelineMetrics(pipeline);
+
+    const fullyReceived =
+      pipeline.metrics.moneyReceived >= awardedAmount;
+    const targetStage =
+      fullyReceived
+        ? FUNDING_PIPELINE_STAGES.FUNDS_FULLY_RECEIVED
+        : FUNDING_PIPELINE_STAGES.FUNDS_PARTIALLY_RECEIVED;
+
+    const allowed =
+      FUNDING_PIPELINE_TRANSITIONS[pipeline.stage] || [];
+
+    if (
+      pipeline.stage !== targetStage &&
+      allowed.includes(targetStage)
+    ) {
+      pipeline.stage = targetStage;
+      pipeline.history.push({
+        stage: targetStage,
+        enteredAt: timestamp,
+        actor:
+          String(input.actor || input.receivedBy || "Organization"),
+        authority: "verified-funding-receipt",
+        note:
+          fullyReceived
+            ? "Award fully received."
+            : "Partial award payment received."
+      });
+    }
+
+    pipeline.updatedAt = timestamp;
+
+    await persistFundingRecord({
+      ...record,
+      fundingPipeline: pipeline,
+      updatedAt: timestamp
+    });
+
+    state.pipelineSummary =
+      await calculatePortfolioPipelineSummary();
+
+    return {
+      schema: "meos.executive-resource-development.funding-receipt.v1",
+      version: RESOURCE_DEVELOPMENT_VERSION,
+      buildId: BUILD_ID,
+      opportunityId: id,
+      receipt,
+      fundingPipeline: pipeline
+    };
+  }
+
+  async function calculatePortfolioPipelineSummary() {
+    const records = (
+      await readCollection(collection)
+    ).filter(record => record?.type === "funding-opportunity");
+
+    const summary = {
+      total: records.length,
+      active: 0,
+      submitted: 0,
+      awardPending: 0,
+      awarded: 0,
+      fundsReceived: 0,
+      moneyReceived: 0,
+      submittedValue: 0,
+      awardedValue: 0,
+      stages: {}
+    };
+
+    for (const record of records) {
+      const pipeline =
+        ensureFundingPipeline(record);
+      const stage = pipeline.stage;
+      const metrics = pipeline.metrics;
+
+      summary.stages[stage] =
+        (summary.stages[stage] || 0) + 1;
+
+      if (
+        ![
+          FUNDING_PIPELINE_STAGES.ARCHIVED,
+          FUNDING_PIPELINE_STAGES.DECLINED,
+          FUNDING_PIPELINE_STAGES.WITHDRAWN
+        ].includes(stage)
+      ) {
+        summary.active += 1;
+      }
+
+      if (
+        [
+          FUNDING_PIPELINE_STAGES.SUBMITTED,
+          FUNDING_PIPELINE_STAGES.AWARD_PENDING,
+          FUNDING_PIPELINE_STAGES.AWARDED,
+          FUNDING_PIPELINE_STAGES.FUNDS_PARTIALLY_RECEIVED,
+          FUNDING_PIPELINE_STAGES.FUNDS_FULLY_RECEIVED
+        ].includes(stage)
+      ) {
+        summary.submitted += 1;
+      }
+
+      if (stage === FUNDING_PIPELINE_STAGES.AWARD_PENDING) {
+        summary.awardPending += 1;
+      }
+
+      if (
+        [
+          FUNDING_PIPELINE_STAGES.AWARDED,
+          FUNDING_PIPELINE_STAGES.FUNDS_PARTIALLY_RECEIVED,
+          FUNDING_PIPELINE_STAGES.FUNDS_FULLY_RECEIVED
+        ].includes(stage)
+      ) {
+        summary.awarded += 1;
+      }
+
+      if (metrics.moneyReceived > 0) {
+        summary.fundsReceived += 1;
+      }
+
+      summary.moneyReceived += metrics.moneyReceived;
+      summary.submittedValue += metrics.requestedAmount;
+      summary.awardedValue += metrics.awardedAmount;
+    }
+
+    return summary;
+  }
+
+  async function readFundingPipeline(id) {
+    const { record } = await getFundingRecord(id);
+
+    if (!record) {
+      const error = new Error("Funding opportunity not found.");
+      error.status = 404;
+      error.code = "FUNDING_PIPELINE_RECORD_NOT_FOUND";
+      throw error;
+    }
+
+    return {
+      schema: "meos.executive-resource-development.pipeline.v1",
+      version: RESOURCE_DEVELOPMENT_VERSION,
+      buildId: BUILD_ID,
+      opportunityId: id,
+      title: record.title,
+      fundingPipeline:
+        ensureFundingPipeline(record),
+      resourceDevelopment:
+        record.resourceDevelopment || null,
+      executiveQualification:
+        record.executiveQualification || null
+    };
+  }
+
+  async function runFundingPipelineAcceptanceTest() {
+    const testId =
+      `funding-pipeline-test-${crypto.randomUUID()}`;
+    const timestamp = now();
+
+    const testRecord = normalizeExecutiveMemoryRecord({
+      id: testId,
+      schema: "meos.funding-intelligence.opportunity.v1",
+      type: "funding-opportunity",
+      office: "Funding Office",
+      title: "End-to-End Funding Pipeline Acceptance Test",
+      provider: "MEOS Acceptance Test Foundation",
+      awardFloor: 100000,
+      awardCeiling: 100000,
+      qualificationStatus: "executive-qualified",
+      executiveQualification: {
+        qualificationStatus: "executive-qualified",
+        recommendation: "pursue",
+        executiveBrief: {
+          confidence: 0.95,
+          reason: "Acceptance test opportunity."
+        }
+      },
+      resourceDevelopment: {
+        executiveDecision: "pursue",
+        deskStatus: "active",
+        pursuitState: "awaiting-authorization"
+      },
+      firstDiscoveredAt: timestamp,
+      lastSeenAt: timestamp
+    });
+
+    await persistFundingRecord(testRecord);
+
+    try {
+      const qualified =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.QUALIFIED,
+          actor: "MEOS Acceptance Test"
+        });
+
+      const onDesk =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.ON_DESK,
+          actor: "MEOS Acceptance Test"
+        });
+
+      const preparing =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.PREPARING,
+          actor: "Acceptance Test Executive",
+          note: "Pursuit authorized."
+        });
+
+      const application =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.APPLICATION_INTELLIGENCE,
+          artifactType:
+            FUNDING_PIPELINE_ARTIFACT_TYPES.APPLICATION_INTELLIGENCE,
+          artifact: {
+            schema:
+              "meos.grant-office.application-intelligence.v1",
+            id: "application-test",
+            questions: [{ id: "q-1", state: "approved" }]
+          },
+          actor: "MEOS Grant Office"
+        });
+
+      const assembled =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.PACKAGE_ASSEMBLED,
+          artifactType:
+            FUNDING_PIPELINE_ARTIFACT_TYPES.EXECUTIVE_APPLICATION_PACKAGE,
+          artifact: {
+            schema:
+              "meos.grant-office.executive-application-package.v1",
+            id: "package-test",
+            readiness: { readyForSubmission: true }
+          },
+          actor: "MEOS Grant Office"
+        });
+
+      const portal =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.PORTAL_MAPPED,
+          artifactType:
+            FUNDING_PIPELINE_ARTIFACT_TYPES.SUBMISSION_PORTAL_INTELLIGENCE,
+          artifact: {
+            schema:
+              "meos.grant-office.submission-portal-intelligence.v1",
+            id: "portal-test",
+            portal: { type: "submittable" }
+          },
+          actor: "MEOS Grant Office"
+        });
+
+      const approved =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.EXECUTIVE_APPROVED,
+          artifactType:
+            FUNDING_PIPELINE_ARTIFACT_TYPES.EXECUTIVE_REVIEW_PACKAGE,
+          artifact: {
+            schema:
+              "meos.grant-office.executive-application-review.v1",
+            id: "review-test",
+            approval: {
+              status: "approved",
+              approvedBy: "Acceptance Test Executive",
+              approvedAt: now()
+            }
+          },
+          executiveApproved: true,
+          actor: "Acceptance Test Executive"
+        });
+
+      const submitted =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.SUBMITTED,
+          artifactType:
+            FUNDING_PIPELINE_ARTIFACT_TYPES.SUBMISSION_EXECUTION,
+          artifact: {
+            schema:
+              "meos.grant-office.submission-execution.v1",
+            id: "submission-test",
+            requestedAmount: 100000,
+            confirmationNumber: "CONF-TEST-001",
+            receiptVerified: true
+          },
+          actor: "Acceptance Test Executive"
+        });
+
+      const pending =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.AWARD_PENDING,
+          actor: "MEOS Grant Office"
+        });
+
+      const awarded =
+        await transitionFundingPipeline(testId, {
+          stage: FUNDING_PIPELINE_STAGES.AWARDED,
+          artifactType:
+            FUNDING_PIPELINE_ARTIFACT_TYPES.AWARD_TRACKING,
+          artifact: {
+            schema:
+              "meos.grant-office.award-tracking.v1",
+            id: "award-test",
+            requestedAmount: 100000,
+            awardedAmount: 80000,
+            decisionState: "awarded"
+          },
+          actor: "MEOS Acceptance Test Foundation"
+        });
+
+      const partial =
+        await addFundingReceipt(testId, {
+          amount: 40000,
+          receivedBy: "MEOS Acceptance Test Organization",
+          reference: "TX-TEST-001"
+        });
+
+      const full =
+        await addFundingReceipt(testId, {
+          amount: 40000,
+          receivedBy: "MEOS Acceptance Test Organization",
+          reference: "TX-TEST-002"
+        });
+
+      const final =
+        await readFundingPipeline(testId);
+
+      const checks = [
+        {
+          name: "Qualification connected to durable pipeline",
+          passed:
+            qualified.currentStage ===
+            FUNDING_PIPELINE_STAGES.QUALIFIED
+        },
+        {
+          name: "Executive desk connected",
+          passed:
+            onDesk.currentStage ===
+            FUNDING_PIPELINE_STAGES.ON_DESK
+        },
+        {
+          name: "Pursuit authorization connected",
+          passed:
+            preparing.currentStage ===
+            FUNDING_PIPELINE_STAGES.PREPARING &&
+            Boolean(
+              preparing.fundingPipeline.executiveAuthorization
+            )
+        },
+        {
+          name: "Application Intelligence connected",
+          passed:
+            application.currentStage ===
+            FUNDING_PIPELINE_STAGES.APPLICATION_INTELLIGENCE &&
+            Boolean(
+              application.fundingPipeline.applicationIntelligence
+            )
+        },
+        {
+          name: "Application Assembly connected",
+          passed:
+            assembled.currentStage ===
+            FUNDING_PIPELINE_STAGES.PACKAGE_ASSEMBLED &&
+            Boolean(
+              assembled.fundingPipeline.executiveApplicationPackage
+            )
+        },
+        {
+          name: "Portal Intelligence connected",
+          passed:
+            portal.currentStage ===
+            FUNDING_PIPELINE_STAGES.PORTAL_MAPPED &&
+            Boolean(
+              portal.fundingPipeline.submissionPortalIntelligence
+            )
+        },
+        {
+          name: "Executive application approval connected",
+          passed:
+            approved.currentStage ===
+            FUNDING_PIPELINE_STAGES.EXECUTIVE_APPROVED
+        },
+        {
+          name: "Submission execution connected",
+          passed:
+            submitted.currentStage ===
+            FUNDING_PIPELINE_STAGES.SUBMITTED &&
+            submitted.fundingPipeline.metrics.requestedAmount ===
+            100000
+        },
+        {
+          name: "Award-pending monitoring connected",
+          passed:
+            pending.currentStage ===
+            FUNDING_PIPELINE_STAGES.AWARD_PENDING
+        },
+        {
+          name: "Award decision connected",
+          passed:
+            awarded.currentStage ===
+            FUNDING_PIPELINE_STAGES.AWARDED &&
+            awarded.fundingPipeline.metrics.awardedAmount ===
+            80000
+        },
+        {
+          name: "Partial funds received connected",
+          passed:
+            partial.fundingPipeline.stage ===
+            FUNDING_PIPELINE_STAGES.FUNDS_PARTIALLY_RECEIVED &&
+            partial.fundingPipeline.metrics.moneyReceived ===
+            40000
+        },
+        {
+          name: "Full funds received connected",
+          passed:
+            full.fundingPipeline.stage ===
+            FUNDING_PIPELINE_STAGES.FUNDS_FULLY_RECEIVED &&
+            full.fundingPipeline.metrics.moneyReceived ===
+            80000 &&
+            full.fundingPipeline.metrics.success === true
+        },
+        {
+          name: "Complete pipeline history preserved",
+          passed:
+            final.fundingPipeline.history.length >= 12
+        }
+      ];
+
+      return {
+        schema:
+          "meos.executive-resource-development.pipeline-acceptance.v1",
+        version: RESOURCE_DEVELOPMENT_VERSION,
+        buildId: BUILD_ID,
+        success:
+          checks.every(check => check.passed),
+        passed:
+          checks.filter(check => check.passed).length,
+        total: checks.length,
+        checks,
+        finalStage:
+          final.fundingPipeline.stage,
+        moneyReceived:
+          final.fundingPipeline.metrics.moneyReceived,
+        historyCount:
+          final.fundingPipeline.history.length
+      };
+    } finally {
+      await withExecutiveMemoryWriteLock(
+        collection,
+        async () => {
+          const records =
+            await readCollection(collection);
+          await writeExecutiveMemoryCollection(
+            collection,
+            records.filter(record => record.id !== testId)
+          );
+        }
+      );
+    }
+  }
 
   async function performPortfolioRebuild(trigger = "manual") {
     state.status = "running";
@@ -6997,15 +8111,27 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
         await readCollection(collection)
       ).filter(record => record?.type === "funding-opportunity");
 
-      const evaluated = records.map(record =>
-        buildResourceDevelopmentRecord(record, now())
-      );
+      const evaluated = records.map(record => {
+        const evaluatedRecord =
+          buildResourceDevelopmentRecord(record, now());
+
+        return {
+          ...evaluatedRecord,
+          fundingPipeline:
+            ensureFundingPipeline(
+              evaluatedRecord,
+              now()
+            )
+        };
+      });
 
       if (evaluated.length > 0) {
         await upsertOpportunities(evaluated);
       }
 
       state.summary = createSummary(evaluated);
+      state.pipelineSummary =
+        await calculatePortfolioPipelineSummary();
       state.status = "online";
       state.rebuildCount += 1;
 
@@ -7177,14 +8303,94 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
       throw error;
     }
 
+    const decisionAt = now();
+    const pipeline =
+      ensureFundingPipeline(record, decisionAt);
+
+    if (decision === "pursue") {
+      pipeline.executiveAuthorization = {
+        authorized: true,
+        authorizedBy:
+          String(input.decidedBy || input.actor || "Executive Director"),
+        authorizedAt: decisionAt,
+        decision: "pursue",
+        note: String(input.reason || "").trim() || null
+      };
+
+      if (
+        [
+          FUNDING_PIPELINE_STAGES.DISCOVERED,
+          FUNDING_PIPELINE_STAGES.QUALIFIED
+        ].includes(pipeline.stage)
+      ) {
+        if (pipeline.stage === FUNDING_PIPELINE_STAGES.DISCOVERED) {
+          pipeline.stage = FUNDING_PIPELINE_STAGES.QUALIFIED;
+          pipeline.history.push({
+            stage: FUNDING_PIPELINE_STAGES.QUALIFIED,
+            enteredAt: decisionAt,
+            actor: "MEOS Executive Resource Development Office",
+            authority: "executive-qualification",
+            note: "Opportunity qualified before pursuit authorization."
+          });
+        }
+
+        pipeline.stage = FUNDING_PIPELINE_STAGES.ON_DESK;
+        pipeline.history.push({
+          stage: FUNDING_PIPELINE_STAGES.ON_DESK,
+          enteredAt: decisionAt,
+          actor:
+            String(input.decidedBy || input.actor || "Executive Director"),
+          authority: "executive-decision",
+          note: "Executive pursuit decision placed the opportunity on desk."
+        });
+      }
+
+      if (pipeline.stage === FUNDING_PIPELINE_STAGES.ON_DESK) {
+        pipeline.stage = FUNDING_PIPELINE_STAGES.PREPARING;
+        pipeline.history.push({
+          stage: FUNDING_PIPELINE_STAGES.PREPARING,
+          enteredAt: decisionAt,
+          actor:
+            String(input.decidedBy || input.actor || "Executive Director"),
+          authority: "executive-pursuit-authorization",
+          note: "Pursuit authorized and preparation opened."
+        });
+      }
+    }
+
+    if (decision === "reject") {
+      pipeline.stage =
+        FUNDING_PIPELINE_STAGES.ARCHIVED;
+      pipeline.history.push({
+        stage: FUNDING_PIPELINE_STAGES.ARCHIVED,
+        enteredAt: decisionAt,
+        actor:
+          String(input.decidedBy || input.actor || "Executive Director"),
+        authority: "executive-decision",
+        note:
+          String(input.reason || "").trim() ||
+          "Opportunity rejected and archived."
+      });
+    }
+
+    pipeline.updatedAt = decisionAt;
+    pipeline.metrics =
+      calculateFundingPipelineMetrics(pipeline);
+
     const updated = {
       ...record,
+      fundingPipeline: pipeline,
       resourceDevelopment: {
         ...(record.resourceDevelopment || {}),
         executiveDecision: decision,
-        pursuitState: decision,
+        pursuitState:
+          decision === "pursue"
+            ? "preparing"
+            : decision,
         humanDecision: {
-          decidedAt: now(),
+          decidedAt: decisionAt,
+          decidedBy:
+            String(input.decidedBy || input.actor || "Executive Director"),
           decision,
           reason: String(input.reason || "").trim() || null
         }
@@ -7192,6 +8398,8 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     };
 
     await upsertOpportunities([updated]);
+    state.pipelineSummary =
+      await calculatePortfolioPipelineSummary();
     return updated;
   }
 
@@ -7219,7 +8427,9 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
           selfHealCount: state.selfHealCount,
           rebuildInProgress: Boolean(rebuildInFlight),
           channels: RESOURCE_CHANNELS,
-          summary: state.summary
+          summary: state.summary,
+          pipelineSummary: state.pipelineSummary,
+          pipelineStages: FUNDING_PIPELINE_STAGES
         });
       } catch (error) {
         response.status(500).json({
@@ -7338,6 +8548,158 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     }
   );
 
+  app.get(
+    "/api/resource-development/pipeline/summary",
+    async (request, response) => {
+      try {
+        state.pipelineSummary =
+          await calculatePortfolioPipelineSummary();
+
+        response.status(200).json({
+          schema:
+            "meos.executive-resource-development.pipeline-summary.v1",
+          version: RESOURCE_DEVELOPMENT_VERSION,
+          buildId: BUILD_ID,
+          generatedAt: now(),
+          ...state.pipelineSummary
+        });
+      } catch (error) {
+        response.status(error.status || 500).json({
+          error:
+            error?.message ||
+            "Funding pipeline summary failed.",
+          code:
+            error?.code ||
+            "FUNDING_PIPELINE_SUMMARY_FAILED"
+        });
+      }
+    }
+  );
+
+  app.get(
+    "/api/resource-development/:id/pipeline",
+    async (request, response) => {
+      try {
+        response.status(200).json(
+          await readFundingPipeline(
+            request.params.id
+          )
+        );
+      } catch (error) {
+        response.status(error.status || 500).json({
+          error:
+            error?.message ||
+            "Funding pipeline read failed.",
+          code:
+            error?.code ||
+            "FUNDING_PIPELINE_READ_FAILED",
+          details:
+            error?.details || null
+        });
+      }
+    }
+  );
+
+  app.post(
+    "/api/resource-development/:id/pipeline/transition",
+    express.json({ limit: "1mb", strict: true }),
+    async (request, response) => {
+      try {
+        response.status(200).json(
+          await transitionFundingPipeline(
+            request.params.id,
+            request.body || {}
+          )
+        );
+      } catch (error) {
+        response.status(error.status || 500).json({
+          error:
+            error?.message ||
+            "Funding pipeline transition failed.",
+          code:
+            error?.code ||
+            "FUNDING_PIPELINE_TRANSITION_FAILED",
+          details:
+            error?.details || null
+        });
+      }
+    }
+  );
+
+  app.post(
+    "/api/resource-development/:id/pipeline/sync",
+    express.json({ limit: "4mb", strict: true }),
+    async (request, response) => {
+      try {
+        response.status(200).json(
+          await synchronizeFundingPipeline(
+            request.params.id,
+            request.body || {}
+          )
+        );
+      } catch (error) {
+        response.status(error.status || 500).json({
+          error:
+            error?.message ||
+            "Funding pipeline synchronization failed.",
+          code:
+            error?.code ||
+            "FUNDING_PIPELINE_SYNC_FAILED"
+        });
+      }
+    }
+  );
+
+  app.post(
+    "/api/resource-development/:id/pipeline/receipts",
+    express.json({ limit: "64kb", strict: true }),
+    async (request, response) => {
+      try {
+        response.status(200).json(
+          await addFundingReceipt(
+            request.params.id,
+            request.body || {}
+          )
+        );
+      } catch (error) {
+        response.status(error.status || 500).json({
+          error:
+            error?.message ||
+            "Funding receipt failed.",
+          code:
+            error?.code ||
+            "FUNDING_PIPELINE_RECEIPT_FAILED"
+        });
+      }
+    }
+  );
+
+  app.post(
+    "/api/resource-development/pipeline/acceptance-test",
+    express.json({ limit: "16kb", strict: true }),
+    async (request, response) => {
+      try {
+        const result =
+          await runFundingPipelineAcceptanceTest();
+
+        response.status(
+          result.success ? 200 : 500
+        ).json(result);
+      } catch (error) {
+        response.status(error.status || 500).json({
+          error:
+            error?.message ||
+            "Funding pipeline acceptance test failed.",
+          code:
+            error?.code ||
+            "FUNDING_PIPELINE_ACCEPTANCE_FAILED",
+          details:
+            error?.details || null
+        });
+      }
+    }
+  );
+
   async function initialize() {
     await upsertContinuousJob({
       id: JOB_ID,
@@ -7364,7 +8726,8 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
       buildId: BUILD_ID,
       status: state.status,
       portfolioTotal: result.total,
-      executiveDeskTotal: result.executiveDesk
+      executiveDeskTotal: result.executiveDesk,
+      pipelineSummary: state.pipelineSummary
     };
   }
 
@@ -7374,7 +8737,13 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     initialize,
     rebuildPortfolio,
     ensurePortfolioReady,
-    readDesk
+    readDesk,
+    readFundingPipeline,
+    transitionFundingPipeline,
+    synchronizeFundingPipeline,
+    addFundingReceipt,
+    calculatePortfolioPipelineSummary,
+    runFundingPipelineAcceptanceTest
   });
 }
 
