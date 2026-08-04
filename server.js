@@ -31,7 +31,7 @@ import CommunityFoundationDiscoveryAdapter from "./community-foundation-discover
 import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adapter.js";
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 
-const VERSION = "2.7.0";
+const VERSION = "2.8.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -4760,6 +4760,12 @@ app.post(
       fundingIntelligenceState.lastQualificationSummary =
         qualificationResult.summary;
 
+      const resourceDevelopment =
+        await executiveResourceDevelopmentOffice
+          .rebuildPortfolio({
+            trigger: "funding-reinvestigation"
+          });
+
       response.status(200).json({
         schema:
           "meos.funding-intelligence.reinvestigation.v1",
@@ -4779,7 +4785,8 @@ app.post(
           ).length,
         qualification:
           qualificationResult.summary,
-        storage: writeResult
+        storage: writeResult,
+        resourceDevelopment
       });
     } catch (error) {
       response.status(500).json({
@@ -6968,15 +6975,21 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     status: "initializing",
     lastRunAt: null,
     lastError: null,
+    lastTrigger: null,
+    rebuildCount: 0,
+    selfHealCount: 0,
     summary: {
       total: 0,
       executiveDesk: 0
     }
   };
 
-  async function rebuildPortfolio() {
+  let rebuildInFlight = null;
+
+  async function performPortfolioRebuild(trigger = "manual") {
     state.status = "running";
     state.lastRunAt = now();
+    state.lastTrigger = trigger;
     state.lastError = null;
 
     try {
@@ -6994,12 +7007,15 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
 
       state.summary = createSummary(evaluated);
       state.status = "online";
+      state.rebuildCount += 1;
 
       return {
         schema: "meos.executive-resource-development.run.v1",
         version: RESOURCE_DEVELOPMENT_VERSION,
         buildId: BUILD_ID,
         completedAt: now(),
+        trigger,
+        rebuildCount: state.rebuildCount,
         ...state.summary
       };
     } catch (error) {
@@ -7009,7 +7025,84 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     }
   }
 
+  async function rebuildPortfolio(options = {}) {
+    const trigger =
+      typeof options === "string"
+        ? options
+        : String(options.trigger || "manual");
+
+    if (rebuildInFlight) {
+      return rebuildInFlight;
+    }
+
+    rebuildInFlight = performPortfolioRebuild(trigger)
+      .finally(() => {
+        rebuildInFlight = null;
+      });
+
+    return rebuildInFlight;
+  }
+
+  async function ensurePortfolioReady(trigger = "desk-self-heal") {
+    const records = (
+      await readCollection(collection)
+    ).filter(record => record?.type === "funding-opportunity");
+
+    if (records.length === 0) {
+      state.summary = {
+        total: 0,
+        executiveDesk: 0,
+        active: 0,
+        research: 0,
+        monitor: 0,
+        offDesk: 0,
+        decisions: {},
+        channels: {},
+        priorities: {}
+      };
+
+      return {
+        rebuilt: false,
+        reason: "no-funding-records",
+        total: 0
+      };
+    }
+
+    const annotatedCount = records.filter(
+      record => record?.resourceDevelopment
+    ).length;
+
+    if (annotatedCount === records.length) {
+      return {
+        rebuilt: false,
+        reason: "portfolio-ready",
+        total: records.length,
+        annotated: annotatedCount
+      };
+    }
+
+    state.selfHealCount += 1;
+    const result = await rebuildPortfolio({
+      trigger
+    });
+
+    return {
+      rebuilt: true,
+      reason:
+        annotatedCount === 0
+          ? "portfolio-missing"
+          : "portfolio-partially-missing",
+      before: {
+        total: records.length,
+        annotated: annotatedCount
+      },
+      result
+    };
+  }
+
   async function readDesk(query = {}) {
+    await ensurePortfolioReady("desk-self-heal");
+
     const records = (
       await readCollection(collection)
     )
@@ -7104,7 +7197,10 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
 
   registerContinuousHandler(
     "executive-resource-development-office",
-    async () => rebuildPortfolio()
+    async () =>
+      rebuildPortfolio({
+        trigger: "continuous-operations"
+      })
   );
 
   app.get(
@@ -7118,6 +7214,10 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
           status: state.status,
           lastRunAt: state.lastRunAt,
           lastError: state.lastError,
+          lastTrigger: state.lastTrigger,
+          rebuildCount: state.rebuildCount,
+          selfHealCount: state.selfHealCount,
+          rebuildInProgress: Boolean(rebuildInFlight),
           channels: RESOURCE_CHANNELS,
           summary: state.summary
         });
@@ -7153,7 +7253,7 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     express.json({ limit: "16kb", strict: true }),
     async (request, response) => {
       try {
-        response.status(200).json(await rebuildPortfolio());
+        response.status(200).json(await rebuildPortfolio({ trigger: "api-manual-rebuild" }));
       } catch (error) {
         response.status(500).json({
           error: error?.message || "Resource Development rebuild failed.",
@@ -7257,7 +7357,7 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
       }
     });
 
-    const result = await rebuildPortfolio();
+    const result = await rebuildPortfolio({ trigger: "server-startup" });
 
     return {
       version: RESOURCE_DEVELOPMENT_VERSION,
@@ -7273,6 +7373,7 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
     buildId: BUILD_ID,
     initialize,
     rebuildPortfolio,
+    ensurePortfolioReady,
     readDesk
   });
 }
@@ -7933,21 +8034,24 @@ app.listen(PORT, () => {
     );
   });
 
-  ensureFundingSourceRegistry()
-    .then(result => {
+  (async () => {
+    try {
+      const fundingRegistry =
+        await ensureFundingSourceRegistry();
+
       fundingIntelligenceState.status = "online";
+
       console.log(
         `[MEOS] Funding Intelligence Network ` +
           `v${FUNDING_INTELLIGENCE_VERSION} registry ready. ` +
-          `sources=${result.total}.`
+          `sources=${fundingRegistry.total}.`
       );
 
       console.log(
         `[MEOS] Autonomous Executive Qualification ` +
           `v${FUNDING_QUALIFICATION_VERSION} ready.`
       );
-    })
-    .catch(error => {
+    } catch (error) {
       fundingIntelligenceState.status = "degraded";
       fundingIntelligenceState.lastError =
         error?.message || String(error);
@@ -7956,33 +8060,37 @@ app.listen(PORT, () => {
         "[MEOS] Funding Intelligence registry failed to initialize:",
         error
       );
-    });
+    }
 
-  executiveResourceDevelopmentOffice
-    .initialize()
-    .then(status => {
+    try {
+      const resourceStatus =
+        await executiveResourceDevelopmentOffice
+          .initialize();
+
       console.log(
         `[MEOS] Executive Resource Development Office ` +
-          `v${status.version} ${status.status}. ` +
-          `portfolio=${status.portfolioTotal}, desk=${status.executiveDeskTotal}.`
+          `v${resourceStatus.version} ${resourceStatus.status}. ` +
+          `portfolio=${resourceStatus.portfolioTotal}, ` +
+          `desk=${resourceStatus.executiveDeskTotal}.`
       );
-    })
-    .catch(error => {
+    } catch (error) {
       console.error(
         "[MEOS] Executive Resource Development Office failed to initialize:",
         error
       );
-    });
+    }
 
-  startContinuousOperationsRuntime()
-    .then(status => {
+    try {
+      const runtimeStatus =
+        await startContinuousOperationsRuntime();
+
       console.log(
         `[MEOS] Continuous Operations Runtime ` +
-          `v${CONTINUOUS_OPERATIONS_VERSION} ${status.status}. ` +
-          `enabled=${status.enabled}, tickMs=${status.tickMs || 0}.`
+          `v${CONTINUOUS_OPERATIONS_VERSION} ${runtimeStatus.status}. ` +
+          `enabled=${runtimeStatus.enabled}, ` +
+          `tickMs=${runtimeStatus.tickMs || 0}.`
       );
-    })
-    .catch(error => {
+    } catch (error) {
       continuousOperationsState.status = "degraded";
       continuousOperationsState.lastError =
         error?.message || String(error);
@@ -7991,5 +8099,6 @@ app.listen(PORT, () => {
         "[MEOS] Continuous Operations Runtime failed to start:",
         error
       );
-    });
+    }
+  })();
 });
