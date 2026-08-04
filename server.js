@@ -31,7 +31,7 @@ import CommunityFoundationDiscoveryAdapter from "./community-foundation-discover
 import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adapter.js";
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 
-const VERSION = "2.9.1";
+const VERSION = "2.9.2";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -5460,7 +5460,7 @@ app.get("/health", async (request, response) => {
  */
 
 const RESOURCE_DEVELOPMENT_VERSION = "1.1.0";
-const BUILD_ID = "ERDO111-ACCEPTANCE-STAGE-TOLERANCE-20260804-A";
+const BUILD_ID = "ERDO112-PURSUIT-AUTHORIZATION-ORDER-20260804-A";
 const JOB_ID = "standing-executive-resource-development-office";
 
 const RESOURCE_CHANNELS = Object.freeze([
@@ -7268,9 +7268,18 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
       throw error;
     }
 
+    const transitionSuppliesPursuitAuthorization =
+      targetStage === FUNDING_PIPELINE_STAGES.PREPARING &&
+      (
+        input.executiveAuthorized === true ||
+        Boolean(input.executiveAuthorization) ||
+        Boolean(String(input.actor || "").trim())
+      );
+
     if (
       targetStage === FUNDING_PIPELINE_STAGES.PREPARING &&
-      !pipeline.executiveAuthorization
+      !pipeline.executiveAuthorization &&
+      !transitionSuppliesPursuitAuthorization
     ) {
       const error = new Error(
         "Executive pursuit authorization is required before preparation begins."
@@ -7433,13 +7442,33 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
       targetStage === FUNDING_PIPELINE_STAGES.PREPARING &&
       !pipeline.executiveAuthorization
     ) {
+      const suppliedAuthorization =
+        input.executiveAuthorization &&
+        typeof input.executiveAuthorization === "object"
+          ? input.executiveAuthorization
+          : {};
+
       pipeline.executiveAuthorization = {
+        ...suppliedAuthorization,
         authorized: true,
         authorizedBy:
-          String(input.actor || "Executive Director"),
-        authorizedAt: timestamp,
-        decision: "pursue",
-        note: String(input.note || "")
+          String(
+            suppliedAuthorization.authorizedBy ||
+            input.actor ||
+            "Executive Director"
+          ),
+        authorizedAt:
+          suppliedAuthorization.authorizedAt ||
+          timestamp,
+        decision:
+          suppliedAuthorization.decision ||
+          "pursue",
+        note:
+          String(
+            suppliedAuthorization.note ||
+            input.note ||
+            ""
+          )
       };
     }
 
@@ -7867,6 +7896,13 @@ function createExecutiveResourceDevelopmentOffice(dependencies) {
         await transitionFundingPipeline(testId, {
           stage: FUNDING_PIPELINE_STAGES.PREPARING,
           actor: "Acceptance Test Executive",
+          executiveAuthorized: true,
+          executiveAuthorization: {
+            authorizedBy:
+              "Acceptance Test Executive",
+            decision: "pursue",
+            note: "Pursuit authorized."
+          },
           note: "Pursuit authorized."
         });
 
