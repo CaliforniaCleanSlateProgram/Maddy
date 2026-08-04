@@ -28,9 +28,9 @@
 import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
 
 const NAME = "MEOS Watershed & Coastal Resource Discovery Adapter";
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 const BUILD_ID =
-  "WCRDA100-HUMAN-RESTORATION-SANCTUARY-PRESERVATION-20260803-A";
+  "WCRDA101-REGIONAL-MONTEREY-BAY-20260803-A";
 const ADAPTER_ID = "watershed-coastal-resource-discovery";
 const REGION = "local";
 
@@ -222,8 +222,7 @@ const DEFAULT_DISCOVERY_CATALOG = Object.freeze([
     sourceType: "coastal-resource-channel",
     geography: [
       "Santa Cruz Harbor",
-      "Monterey Bay National Marine Sanctuary",
-      "Central California coast"
+      "Monterey Bay National Marine Sanctuary"
     ],
     missionDomains: [
       "estuary-protection",
@@ -253,6 +252,83 @@ const DEFAULT_DISCOVERY_CATALOG = Object.freeze([
     ],
     evidence:
       "Resources that support downstream protection of beaches, harbors, coastal waters, wildlife, marine life, and protected marine sanctuaries."
+  },
+  {
+    id: "monterey-bay-watershed-regional-resources",
+    name: "Monterey Bay Watershed Regional Resource Network",
+    sourceType: "regional-watershed-resource-channel",
+    geography: [
+      "Monterey Bay watershed"
+    ],
+    missionDomains: [
+      "watershed-preservation",
+      "watershed-defense",
+      "river-stewardship",
+      "riverbed-stewardship",
+      "creek-stewardship",
+      "stream-stewardship",
+      "urban-waterway-stewardship",
+      "riparian-corridor-protection",
+      "water-quality-protection",
+      "wildlife-protection",
+      "marine-life-protection"
+    ],
+    resourceChannels: [
+      "grant",
+      "contract",
+      "equipment",
+      "technology",
+      "professional-service",
+      "engineering",
+      "environmental-consulting",
+      "gis-support",
+      "volunteer",
+      "university-partnership",
+      "government-partnership",
+      "foundation-partnership",
+      "community-partnership",
+      "in-kind"
+    ],
+    evidence:
+      "Nearby-regional acquisition channel for Monterey Bay watershed programs, partnerships, technical resources, and upstream-to-downstream protection."
+  },
+  {
+    id: "central-coast-sanctuary-regional-resources",
+    name: "Central Coast Marine Sanctuary and Coastal Partnership Network",
+    sourceType: "regional-coastal-resource-channel",
+    geography: [
+      "Central California coast"
+    ],
+    missionDomains: [
+      "estuary-protection",
+      "harbor-protection",
+      "beachfront-stewardship",
+      "coastal-stewardship",
+      "ocean-stewardship",
+      "water-quality-protection",
+      "wildlife-protection",
+      "marine-life-protection",
+      "marine-sanctuary-preservation",
+      "sanctuary-preservation"
+    ],
+    resourceChannels: [
+      "grant",
+      "sponsorship",
+      "donation",
+      "equipment",
+      "technology",
+      "professional-service",
+      "environmental-consulting",
+      "volunteer",
+      "university-partnership",
+      "government-partnership",
+      "foundation-partnership",
+      "corporate-csr",
+      "community-partnership",
+      "in-kind"
+    ],
+    evidence:
+      "Nearby-regional acquisition channel for Central Coast coastal stewardship, marine sanctuary protection, wildlife, marine life, water quality, and cross-sector partnerships."
   }
 ]);
 
@@ -713,6 +789,30 @@ async function runAcceptanceTest() {
       passed:
         regional?.original?.localPriority ===
         "nearby-regional"
+    },
+    {
+      name:
+        "Default catalog includes a nearby-regional watershed channel",
+      passed:
+        records.some(
+          record =>
+            record.title ===
+              "Monterey Bay Watershed Regional Resource Network" &&
+            record.original?.localPriority ===
+              "nearby-regional"
+        )
+    },
+    {
+      name:
+        "Default catalog includes a nearby-regional coastal channel",
+      passed:
+        records.some(
+          record =>
+            record.title ===
+              "Central Coast Marine Sanctuary and Coastal Partnership Network" &&
+            record.original?.localPriority ===
+              "nearby-regional"
+        )
     },
     {
       name:
