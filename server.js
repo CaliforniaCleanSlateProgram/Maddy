@@ -29,13 +29,14 @@ import LocalResourceDiscoveryAdapter from "./local-resource-discovery-adapter.js
 import LocalCSRDiscoveryAdapter from "./local-csr-discovery-adapter.js";
 import CommunityFoundationDiscoveryAdapter from "./community-foundation-discovery-adapter.js";
 import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adapter.js";
+import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 
-const VERSION = "2.6.9";
+const VERSION = "2.7.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
-const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.3.0";
+const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
 const RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID =
-  "RDI130-FAMILY-FOUNDATION-LIVE-20260803-A";
+  "RDI140-WATERSHED-COASTAL-LIVE-20260803-A";
 
 const resourceDiscoveryIntegrationState = {
   status: "initializing",
@@ -71,6 +72,11 @@ function registerResourceDiscoveryAdapters() {
       ResourceDiscoveryNetwork
     );
 
+  const watershedCoastalResult =
+    WatershedCoastalResourceDiscoveryAdapter.register(
+      ResourceDiscoveryNetwork
+    );
+
   resourceDiscoveryIntegrationState.registeredAdapters =
     ResourceDiscoveryNetwork.listAdapters();
 
@@ -85,7 +91,9 @@ function registerResourceDiscoveryAdapters() {
       communityFoundation:
         communityFoundationResult,
       familyFoundation:
-        familyFoundationResult
+        familyFoundationResult,
+      watershedCoastal:
+        watershedCoastalResult
     },
     adapters:
       resourceDiscoveryIntegrationState.registeredAdapters
@@ -7376,6 +7384,34 @@ app.get("/api/resource-discovery/status", (request, response) => {
           FamilyFoundationDiscoveryAdapter
             .foundationChannels
       },
+      watershedCoastalAdapter: {
+        name:
+          WatershedCoastalResourceDiscoveryAdapter.name,
+        version:
+          WatershedCoastalResourceDiscoveryAdapter.version,
+        buildId:
+          WatershedCoastalResourceDiscoveryAdapter.buildId,
+        registered: adapters.some(
+          adapter =>
+            adapter.id ===
+              WatershedCoastalResourceDiscoveryAdapter.id
+        ),
+        governingPrinciple:
+          WatershedCoastalResourceDiscoveryAdapter
+            .governingPrinciple,
+        currentOperatingAreas:
+          WatershedCoastalResourceDiscoveryAdapter
+            .defaultGeography.currentOperatingAreas,
+        regionalPriorityAreas:
+          WatershedCoastalResourceDiscoveryAdapter
+            .defaultGeography.regionalPriorityAreas,
+        missionDomains:
+          WatershedCoastalResourceDiscoveryAdapter
+            .missionDomains,
+        resourceChannels:
+          WatershedCoastalResourceDiscoveryAdapter
+            .resourceChannels
+      },
       adapters,
       lastRunAt: resourceDiscoveryIntegrationState.lastRunAt,
       lastResultCount:
@@ -7675,6 +7711,101 @@ app.get(
       response.status(500).json({
         error:
           "family_foundation_discovery_failed",
+        message: error?.message || String(error),
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/resource-discovery/watershed-coastal",
+  async (request, response) => {
+    try {
+      const includeRegional =
+        String(
+          request.query.includeRegional ?? "true"
+        ).toLowerCase() !== "false";
+
+      const includeFutureExpansion =
+        String(
+          request.query.includeFutureExpansion || ""
+        ).toLowerCase() === "true";
+
+      const run = await ResourceDiscoveryNetwork.discoverAll({
+        adapterIds: [
+          WatershedCoastalResourceDiscoveryAdapter.id
+        ],
+        context: {
+          geographyProfile:
+            WatershedCoastalResourceDiscoveryAdapter
+              .defaultGeography,
+          includeRegional,
+          includeFutureExpansion
+        }
+      });
+
+      resourceDiscoveryIntegrationState.status =
+        run.failedAdapters > 0 ? "degraded" : "online";
+      resourceDiscoveryIntegrationState.lastRunAt =
+        run.completedAt;
+      resourceDiscoveryIntegrationState.lastResultCount =
+        run.total;
+      resourceDiscoveryIntegrationState.lastError =
+        run.failures?.[0]?.message || null;
+
+      response.json({
+        schema:
+          "meos.resource-discovery.watershed-coastal.v1",
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID,
+        status: resourceDiscoveryIntegrationState.status,
+        source: {
+          id:
+            WatershedCoastalResourceDiscoveryAdapter.id,
+          name:
+            WatershedCoastalResourceDiscoveryAdapter.name,
+          region:
+            WatershedCoastalResourceDiscoveryAdapter.region
+        },
+        governingPrinciple:
+          WatershedCoastalResourceDiscoveryAdapter
+            .governingPrinciple,
+        operatingModel:
+          WatershedCoastalResourceDiscoveryAdapter
+            .operatingModel,
+        geography: {
+          currentOperatingAreas:
+            WatershedCoastalResourceDiscoveryAdapter
+              .defaultGeography.currentOperatingAreas,
+          regionalPriorityAreas:
+            WatershedCoastalResourceDiscoveryAdapter
+              .defaultGeography.regionalPriorityAreas,
+          expansionStrategy:
+            WatershedCoastalResourceDiscoveryAdapter
+              .defaultGeography.expansionStrategy,
+          includeRegional,
+          includeFutureExpansion
+        },
+        missionDomains:
+          WatershedCoastalResourceDiscoveryAdapter
+            .missionDomains,
+        resourceChannels:
+          WatershedCoastalResourceDiscoveryAdapter
+            .resourceChannels,
+        total: run.total,
+        failures: run.failures,
+        records: run.records
+      });
+    } catch (error) {
+      resourceDiscoveryIntegrationState.status = "degraded";
+      resourceDiscoveryIntegrationState.lastError =
+        error?.message || String(error);
+
+      response.status(500).json({
+        error:
+          "watershed_coastal_resource_discovery_failed",
         message: error?.message || String(error),
         version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
         buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
