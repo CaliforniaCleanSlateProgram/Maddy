@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.4.1
- * Build: GO141-SCHEMA-TOLERANT-ALIGNMENT-20260804-A
+ * Version: 1.5.0
+ * Build: GO150-FUNDING-APPLICATION-INTELLIGENCE-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.4.1";
-    const BUILD_ID = "GO141-SCHEMA-TOLERANT-ALIGNMENT-20260804-A";
+    const VERSION = "1.5.0";
+    const BUILD_ID = "GO150-FUNDING-APPLICATION-INTELLIGENCE-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -125,6 +125,48 @@
         [PIPELINE_STAGES.ARCHIVED]: Object.freeze([])
     });
 
+    const APPLICATION_QUESTION_CATEGORIES = Object.freeze({
+        ORGANIZATION: "organization",
+        PROGRAM: "program",
+        NEEDS: "needs-statement",
+        ALIGNMENT: "mission-alignment",
+        GOALS: "goals-objectives",
+        METHODS: "methods-work-plan",
+        OUTCOMES: "outcomes-impact",
+        EVALUATION: "evaluation",
+        SUSTAINABILITY: "sustainability",
+        EQUITY: "equity-access",
+        PARTNERSHIPS: "partnerships",
+        BUDGET: "budget",
+        BUDGET_NARRATIVE: "budget-narrative",
+        CAPACITY: "organizational-capacity",
+        COMPLIANCE: "compliance-certification",
+        SIGNATURE: "signature-authorization",
+        ATTACHMENT: "attachment",
+        OTHER: "other"
+    });
+
+    const APPLICATION_REVIEW_STATES = Object.freeze({
+        NOT_STARTED: "not-started",
+        ANALYZING: "analyzing",
+        DRAFTING: "drafting",
+        EXECUTIVE_REVIEW: "executive-review",
+        REVISION_REQUIRED: "revision-required",
+        APPROVED: "approved",
+        READY_TO_SUBMIT: "ready-to-submit",
+        SUBMITTED: "submitted"
+    });
+
+    const APPLICATION_ITEM_STATES = Object.freeze({
+        UNANSWERED: "unanswered",
+        EXECUTIVE_INPUT_REQUIRED: "executive-input-required",
+        DRAFTED: "drafted",
+        NEEDS_EVIDENCE: "needs-evidence",
+        NEEDS_REVISION: "needs-revision",
+        APPROVED: "approved"
+    });
+
+
     const RECOMMENDATIONS = Object.freeze({
         PURSUE_NOW: "pursue-now",
         PREPARE_FOR_FUTURE: "prepare-for-future",
@@ -200,6 +242,12 @@
             alignmentStrategiesBuilt: 0,
             strongAlignmentStrategies: 0,
             unsupportedClaimsBlocked: 0,
+            applicationsAnalyzed: 0,
+            applicationQuestionsExtracted: 0,
+            applicationDraftsCreated: 0,
+            executiveReviewPackagesCreated: 0,
+            submissionBlocksTriggered: 0,
+            lastApplicationIntelligenceAt: null,
             lastAlignmentStrategyAt: null,
             lastPipelineTransitionAt: null,
             lastEvaluationAt: null
@@ -462,6 +510,14 @@
                 grantNarrativeStrategy:
                     input.grantNarrativeStrategy
                         ? this.clone(input.grantNarrativeStrategy)
+                        : null,
+                applicationIntelligence:
+                    input.applicationIntelligence
+                        ? this.clone(input.applicationIntelligence)
+                        : null,
+                executiveReviewPackage:
+                    input.executiveReviewPackage
+                        ? this.clone(input.executiveReviewPackage)
                         : null,
                 evaluation: null,
                 tracking: {
@@ -4958,6 +5014,2278 @@
             };
         },
 
+        normalizeApplicationSections(input = {}) {
+            const suppliedSections =
+                Array.isArray(input.sections)
+                    ? input.sections
+                    : [];
+
+            const suppliedQuestions =
+                Array.isArray(input.questions)
+                    ? input.questions
+                    : [];
+
+            const sections = suppliedSections
+                .map((section, sectionIndex) => ({
+                    id:
+                        section.id ||
+                        `section-${sectionIndex + 1}`,
+                    title:
+                        String(
+                            section.title ||
+                            section.name ||
+                            `Section ${sectionIndex + 1}`
+                        ).trim(),
+                    instructions:
+                        String(
+                            section.instructions ||
+                            section.description ||
+                            ""
+                        ).trim(),
+                    order:
+                        Number(
+                            section.order ??
+                            sectionIndex + 1
+                        ),
+                    questions:
+                        (
+                            Array.isArray(section.questions)
+                                ? section.questions
+                                : []
+                        ).map(
+                            (question, questionIndex) =>
+                                this.normalizeApplicationQuestion(
+                                    question,
+                                    {
+                                        sectionId:
+                                            section.id ||
+                                            `section-${sectionIndex + 1}`,
+                                        sectionTitle:
+                                            section.title ||
+                                            section.name ||
+                                            `Section ${sectionIndex + 1}`,
+                                        order:
+                                            question.order ??
+                                            questionIndex + 1
+                                    }
+                                )
+                        )
+                }))
+                .filter(
+                    section =>
+                        section.title ||
+                        section.questions.length > 0
+                );
+
+            if (suppliedQuestions.length > 0) {
+                const defaultSection = {
+                    id: "section-general",
+                    title: "General Application",
+                    instructions: "",
+                    order: 1,
+                    questions:
+                        suppliedQuestions.map(
+                            (question, index) =>
+                                this.normalizeApplicationQuestion(
+                                    question,
+                                    {
+                                        sectionId:
+                                            "section-general",
+                                        sectionTitle:
+                                            "General Application",
+                                        order:
+                                            question.order ??
+                                            index + 1
+                                    }
+                                )
+                        )
+                };
+
+                sections.push(defaultSection);
+            }
+
+            return sections;
+        },
+
+        normalizeApplicationQuestion(
+            question,
+            defaults = {}
+        ) {
+            const raw =
+                typeof question === "string"
+                    ? {
+                        text: question
+                    }
+                    : {
+                        ...(question || {})
+                    };
+
+            const text =
+                String(
+                    raw.text ||
+                    raw.question ||
+                    raw.prompt ||
+                    raw.label ||
+                    ""
+                ).trim();
+
+            const instructions =
+                String(
+                    raw.instructions ||
+                    raw.helpText ||
+                    raw.guidance ||
+                    ""
+                ).trim();
+
+            const category =
+                raw.category ||
+                this.classifyApplicationQuestion(
+                    `${text} ${instructions}`
+                );
+
+            const limits =
+                this.extractApplicationLimits(
+                    `${text} ${instructions}`,
+                    raw
+                );
+
+            const intent =
+                raw.intent ||
+                this.inferApplicationQuestionIntent(
+                    text,
+                    category
+                );
+
+            const evidenceRequirements =
+                this.determineApplicationEvidenceRequirements(
+                    text,
+                    category
+                );
+
+            const executiveInputRequired =
+                raw.executiveInputRequired === true ||
+                this.requiresExecutiveInput(
+                    text,
+                    category
+                );
+
+            return {
+                id:
+                    raw.id ||
+                    this.createId("application-question"),
+                sectionId:
+                    raw.sectionId ||
+                    defaults.sectionId ||
+                    "section-general",
+                sectionTitle:
+                    raw.sectionTitle ||
+                    defaults.sectionTitle ||
+                    "General Application",
+                order:
+                    Number(
+                        raw.order ??
+                        defaults.order ??
+                        1
+                    ),
+                text,
+                instructions,
+                category,
+                intent,
+                required:
+                    raw.required !== false,
+                limits,
+                scoring:
+                    raw.scoring &&
+                    typeof raw.scoring === "object"
+                        ? this.clone(raw.scoring)
+                        : null,
+                evidenceRequirements,
+                recommendedSources:
+                    this.recommendApplicationSources(
+                        category
+                    ),
+                executiveInputRequired,
+                risk:
+                    this.assessApplicationQuestionRisk(
+                        text,
+                        category,
+                        executiveInputRequired
+                    ),
+                state:
+                    APPLICATION_ITEM_STATES.UNANSWERED,
+                draft:
+                    null,
+                review:
+                    {
+                        status:
+                            APPLICATION_ITEM_STATES.UNANSWERED,
+                        approvedBy: null,
+                        approvedAt: null,
+                        revisionNotes: "",
+                        executiveNotes: ""
+                    }
+            };
+        },
+
+        classifyApplicationQuestion(value) {
+            const text =
+                this.normalizeText(value);
+
+            const rules = [
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.BUDGET_NARRATIVE,
+                    signals: [
+                        "budget narrative",
+                        "justify the budget",
+                        "explain costs",
+                        "cost justification"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.BUDGET,
+                    signals: [
+                        "budget",
+                        "amount requested",
+                        "cost share",
+                        "matching funds",
+                        "indirect cost"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.EVALUATION,
+                    signals: [
+                        "evaluate",
+                        "evaluation",
+                        "measure success",
+                        "performance measure",
+                        "data collection"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.SUSTAINABILITY,
+                    signals: [
+                        "sustainability",
+                        "sustain the project",
+                        "after funding",
+                        "future funding"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.NEEDS,
+                    signals: [
+                        "need",
+                        "problem statement",
+                        "community need",
+                        "why is this needed"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.GOALS,
+                    signals: [
+                        "goal",
+                        "objective",
+                        "smart objective",
+                        "milestone"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.METHODS,
+                    signals: [
+                        "method",
+                        "work plan",
+                        "implementation",
+                        "activities",
+                        "timeline"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.OUTCOMES,
+                    signals: [
+                        "outcome",
+                        "impact",
+                        "result",
+                        "benefit",
+                        "change expected"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.PARTNERSHIPS,
+                    signals: [
+                        "partner",
+                        "collaboration",
+                        "coalition",
+                        "letter of support"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.CAPACITY,
+                    signals: [
+                        "capacity",
+                        "experience",
+                        "track record",
+                        "staff qualifications",
+                        "organizational readiness"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.ALIGNMENT,
+                    signals: [
+                        "align",
+                        "mission fit",
+                        "funding priority",
+                        "funder priority"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.EQUITY,
+                    signals: [
+                        "equity",
+                        "access",
+                        "underserved",
+                        "disparity",
+                        "inclusion"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.COMPLIANCE,
+                    signals: [
+                        "certify",
+                        "certification",
+                        "compliance",
+                        "assurance",
+                        "debarment",
+                        "lobbying"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.SIGNATURE,
+                    signals: [
+                        "signature",
+                        "authorized official",
+                        "signatory"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.ATTACHMENT,
+                    signals: [
+                        "attach",
+                        "upload",
+                        "attachment",
+                        "supporting document"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.ORGANIZATION,
+                    signals: [
+                        "organization",
+                        "mission",
+                        "history",
+                        "legal name",
+                        "ein",
+                        "501 c 3"
+                    ]
+                },
+                {
+                    category:
+                        APPLICATION_QUESTION_CATEGORIES.PROGRAM,
+                    signals: [
+                        "describe the program",
+                        "project description",
+                        "program description",
+                        "proposed project"
+                    ]
+                }
+            ];
+
+            const match = rules.find(rule =>
+                rule.signals.some(signal =>
+                    text.includes(signal)
+                )
+            );
+
+            return (
+                match?.category ||
+                APPLICATION_QUESTION_CATEGORIES.OTHER
+            );
+        },
+
+        inferApplicationQuestionIntent(
+            text,
+            category
+        ) {
+            const intents = {
+                [APPLICATION_QUESTION_CATEGORIES.ORGANIZATION]:
+                    "Establish organizational identity, credibility, legal status, and mission.",
+                [APPLICATION_QUESTION_CATEGORIES.PROGRAM]:
+                    "Understand what the organization proposes to do and for whom.",
+                [APPLICATION_QUESTION_CATEGORIES.NEEDS]:
+                    "Verify that a significant, evidence-supported problem exists.",
+                [APPLICATION_QUESTION_CATEGORIES.ALIGNMENT]:
+                    "Determine whether the proposal advances the funder's stated priorities.",
+                [APPLICATION_QUESTION_CATEGORIES.GOALS]:
+                    "Assess whether the proposal has specific and measurable objectives.",
+                [APPLICATION_QUESTION_CATEGORIES.METHODS]:
+                    "Determine whether the implementation plan is realistic and complete.",
+                [APPLICATION_QUESTION_CATEGORIES.OUTCOMES]:
+                    "Understand the measurable change expected from the funded work.",
+                [APPLICATION_QUESTION_CATEGORIES.EVALUATION]:
+                    "Determine how performance and outcomes will be measured and reported.",
+                [APPLICATION_QUESTION_CATEGORIES.SUSTAINABILITY]:
+                    "Assess whether the work can continue after the grant period.",
+                [APPLICATION_QUESTION_CATEGORIES.EQUITY]:
+                    "Understand who benefits, who may face barriers, and how access is addressed.",
+                [APPLICATION_QUESTION_CATEGORIES.PARTNERSHIPS]:
+                    "Evaluate the strength and necessity of collaborative relationships.",
+                [APPLICATION_QUESTION_CATEGORIES.BUDGET]:
+                    "Determine whether requested costs are allowable, reasonable, and aligned with the work plan.",
+                [APPLICATION_QUESTION_CATEGORIES.BUDGET_NARRATIVE]:
+                    "Understand why each material cost is necessary to achieve the proposed outcomes.",
+                [APPLICATION_QUESTION_CATEGORIES.CAPACITY]:
+                    "Assess whether the organization has the experience, people, systems, and governance to deliver.",
+                [APPLICATION_QUESTION_CATEGORIES.COMPLIANCE]:
+                    "Confirm legal, policy, and funding-rule compliance.",
+                [APPLICATION_QUESTION_CATEGORIES.SIGNATURE]:
+                    "Obtain binding authorization from an approved signatory.",
+                [APPLICATION_QUESTION_CATEGORIES.ATTACHMENT]:
+                    "Collect required documentary evidence.",
+                [APPLICATION_QUESTION_CATEGORIES.OTHER]:
+                    "Determine the factual and strategic response required by the funder."
+            };
+
+            return intents[category] ||
+                `Provide a complete, evidence-supported response to: ${text}`;
+        },
+
+        extractApplicationLimits(text, raw = {}) {
+            const value =
+                String(text || "");
+
+            const wordMatch =
+                value.match(
+                    /(?:maximum|max|limit(?:ed)? to)?\s*(\d{1,6})\s*words?/i
+                );
+            const characterMatch =
+                value.match(
+                    /(?:maximum|max|limit(?:ed)? to)?\s*(\d{1,7})\s*characters?/i
+                );
+            const pageMatch =
+                value.match(
+                    /(?:maximum|max|limit(?:ed)? to)?\s*(\d{1,4})\s*pages?/i
+                );
+
+            return {
+                words:
+                    this.numberOrNull(
+                        raw.wordLimit ||
+                        raw.maxWords ||
+                        wordMatch?.[1]
+                    ),
+                characters:
+                    this.numberOrNull(
+                        raw.characterLimit ||
+                        raw.maxCharacters ||
+                        characterMatch?.[1]
+                    ),
+                pages:
+                    this.numberOrNull(
+                        raw.pageLimit ||
+                        raw.maxPages ||
+                        pageMatch?.[1]
+                    )
+            };
+        },
+
+        determineApplicationEvidenceRequirements(
+            text,
+            category
+        ) {
+            const requirements = [];
+
+            const add = (
+                type,
+                description,
+                required = true
+            ) => {
+                requirements.push({
+                    type,
+                    description,
+                    required
+                });
+            };
+
+            const mapping = {
+                [APPLICATION_QUESTION_CATEGORIES.ORGANIZATION]: [
+                    [
+                        "organizational-profile",
+                        "Verified organization identity, mission, history, and legal status."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.NEEDS]: [
+                    [
+                        "community-data",
+                        "Authoritative data establishing the need or problem."
+                    ],
+                    [
+                        "organizational-observation",
+                        "Documented organizational experience relevant to the need."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.ALIGNMENT]: [
+                    [
+                        "executive-alignment-strategy",
+                        "Evidence-backed mission intersection and funder alignment."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.GOALS]: [
+                    [
+                        "program-plan",
+                        "Approved program goals, objectives, milestones, and timeline."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.METHODS]: [
+                    [
+                        "work-plan",
+                        "Operational plan showing activities, owners, dependencies, and schedule."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.OUTCOMES]: [
+                    [
+                        "outcome-model",
+                        "Defined outputs, outcomes, indicators, and baselines."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.EVALUATION]: [
+                    [
+                        "evaluation-plan",
+                        "Measurement methods, indicators, collection schedule, and responsible parties."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.BUDGET]: [
+                    [
+                        "approved-budget",
+                        "Approved line-item budget and funding assumptions."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.BUDGET_NARRATIVE]: [
+                    [
+                        "approved-budget",
+                        "Approved line-item budget."
+                    ],
+                    [
+                        "cost-basis",
+                        "Source or calculation supporting each material cost."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.CAPACITY]: [
+                    [
+                        "organizational-capacity",
+                        "Verified staff, governance, systems, experience, and delivery capacity."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.PARTNERSHIPS]: [
+                    [
+                        "partner-evidence",
+                        "Verified partner role, commitment, and documentation."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.COMPLIANCE]: [
+                    [
+                        "compliance-record",
+                        "Authoritative legal, policy, certification, or assurance record."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.SIGNATURE]: [
+                    [
+                        "authorized-signatory",
+                        "Verified authorized signer and explicit approval."
+                    ]
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.ATTACHMENT]: [
+                    [
+                        "required-document",
+                        "The specific attachment requested by the funder."
+                    ]
+                ]
+            };
+
+            (mapping[category] || [
+                [
+                    "supporting-evidence",
+                    "Relevant organizational or authoritative evidence."
+                ]
+            ]).forEach(item =>
+                add(item[0], item[1], true)
+            );
+
+            if (
+                this.normalizeText(text).includes(
+                    "data"
+                )
+            ) {
+                add(
+                    "quantitative-data",
+                    "Source-backed quantitative data.",
+                    true
+                );
+            }
+
+            return requirements;
+        },
+
+        recommendApplicationSources(category) {
+            const common = [
+                "CCSP Organizational Profile",
+                "Knowledge Memory",
+                "Executive Evidence Integrity"
+            ];
+
+            const specialized = {
+                [APPLICATION_QUESTION_CATEGORIES.ALIGNMENT]: [
+                    "Executive Alignment Strategy"
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.BUDGET]: [
+                    "Finance Office",
+                    "Approved Budget"
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.BUDGET_NARRATIVE]: [
+                    "Finance Office",
+                    "Approved Budget",
+                    "Cost Documentation"
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.EVALUATION]: [
+                    "Executive Planning",
+                    "Program Measurement Records"
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.METHODS]: [
+                    "Executive Planning",
+                    "Workflow Engine"
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.COMPLIANCE]: [
+                    "Compliance Office",
+                    "Authoritative Documents"
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.ATTACHMENT]: [
+                    "Document Ingestion",
+                    "Google Drive (later)"
+                ],
+                [APPLICATION_QUESTION_CATEGORIES.SIGNATURE]: [
+                    "Executive Authorization"
+                ]
+            };
+
+            return this.uniqueStrings([
+                ...common,
+                ...(specialized[category] || [])
+            ]);
+        },
+
+        requiresExecutiveInput(text, category) {
+            const normalized =
+                this.normalizeText(text);
+
+            if (
+                [
+                    APPLICATION_QUESTION_CATEGORIES.SIGNATURE,
+                    APPLICATION_QUESTION_CATEGORIES.COMPLIANCE,
+                    APPLICATION_QUESTION_CATEGORIES.BUDGET
+                ].includes(category)
+            ) {
+                return true;
+            }
+
+            return [
+                "certify",
+                "authorized official",
+                "board approved",
+                "amount requested",
+                "matching funds",
+                "legal attestation",
+                "signature"
+            ].some(signal =>
+                normalized.includes(signal)
+            );
+        },
+
+        assessApplicationQuestionRisk(
+            text,
+            category,
+            executiveInputRequired
+        ) {
+            if (
+                [
+                    APPLICATION_QUESTION_CATEGORIES.SIGNATURE,
+                    APPLICATION_QUESTION_CATEGORIES.COMPLIANCE
+                ].includes(category)
+            ) {
+                return "critical";
+            }
+
+            if (
+                executiveInputRequired ||
+                [
+                    APPLICATION_QUESTION_CATEGORIES.BUDGET,
+                    APPLICATION_QUESTION_CATEGORIES.BUDGET_NARRATIVE,
+                    APPLICATION_QUESTION_CATEGORIES.EVALUATION
+                ].includes(category)
+            ) {
+                return "high";
+            }
+
+            if (
+                [
+                    APPLICATION_QUESTION_CATEGORIES.NEEDS,
+                    APPLICATION_QUESTION_CATEGORIES.OUTCOMES,
+                    APPLICATION_QUESTION_CATEGORIES.ALIGNMENT
+                ].includes(category)
+            ) {
+                return "medium";
+            }
+
+            return "standard";
+        },
+
+        analyzeFundingApplication(
+            opportunityId,
+            input = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error: "Opportunity not found.",
+                    code:
+                        "GRANT_APPLICATION_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            const sections =
+                this.normalizeApplicationSections(
+                    input
+                );
+
+            const questions =
+                sections.flatMap(
+                    section => section.questions
+                );
+
+            if (questions.length === 0) {
+                return {
+                    success: false,
+                    error:
+                        "Application intelligence requires at least one question.",
+                    code:
+                        "GRANT_APPLICATION_QUESTIONS_REQUIRED"
+                };
+            }
+
+            const attachments =
+                this.normalizeAlignmentCollection(
+                    input.attachments ||
+                    input.requiredAttachments
+                ).map((name, index) => ({
+                    id:
+                        `attachment-${index + 1}`,
+                    name,
+                    required: true,
+                    documentId: null,
+                    status: "missing"
+                }));
+
+            const certifications =
+                this.normalizeAlignmentCollection(
+                    input.certifications
+                ).map((name, index) => ({
+                    id:
+                        `certification-${index + 1}`,
+                    name,
+                    required: true,
+                    status:
+                        "executive-review-required"
+                }));
+
+            const signatures =
+                this.normalizeAlignmentCollection(
+                    input.signatures
+                ).map((name, index) => ({
+                    id:
+                        `signature-${index + 1}`,
+                    name,
+                    required: true,
+                    authorizedBy: null,
+                    signedAt: null,
+                    status:
+                        "executive-approval-required"
+                }));
+
+            const application = {
+                schema:
+                    "meos.grant-office.application-intelligence.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                id:
+                    input.id ||
+                    this.createId(
+                        "funding-application"
+                    ),
+                opportunityId:
+                    opportunity.id,
+                title:
+                    String(
+                        input.title ||
+                        `${opportunity.title} Application`
+                    ),
+                sourceType:
+                    input.sourceType ||
+                    "structured-input",
+                sourceUrl:
+                    input.sourceUrl ||
+                    opportunity.sourceUrl ||
+                    "",
+                acquiredAt:
+                    input.acquiredAt ||
+                    this.now(),
+                analyzedAt:
+                    this.now(),
+                deadline:
+                    input.deadline ||
+                    opportunity.deadline ||
+                    null,
+                submissionMethod:
+                    input.submissionMethod ||
+                    "unknown",
+                instructions:
+                    String(
+                        input.instructions || ""
+                    ),
+                sections,
+                questions,
+                attachments,
+                certifications,
+                signatures,
+                reviewState:
+                    APPLICATION_REVIEW_STATES.ANALYZING,
+                executiveStrategy:
+                    null,
+                readiness: null,
+                history: [
+                    {
+                        state:
+                            APPLICATION_REVIEW_STATES.ANALYZING,
+                        enteredAt:
+                            this.now(),
+                        actor:
+                            "MEOS Grant Office",
+                        note:
+                            "Funding application analyzed and structured."
+                    }
+                ]
+            };
+
+            application.executiveStrategy =
+                this.buildApplicationExecutiveStrategy(
+                    opportunity,
+                    application
+                );
+
+            application.readiness =
+                this.calculateApplicationReadiness(
+                    application
+                );
+
+            opportunity.applicationIntelligence =
+                application;
+            opportunity.updatedAt =
+                this.now();
+
+            this.analytics.applicationsAnalyzed += 1;
+            this.analytics.applicationQuestionsExtracted +=
+                questions.length;
+            this.analytics.lastApplicationIntelligenceAt =
+                application.analyzedAt;
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                application:
+                    this.clone(application),
+                opportunity:
+                    this.clone(opportunity)
+            };
+        },
+
+        buildApplicationExecutiveStrategy(
+            opportunity,
+            application
+        ) {
+            const alignment =
+                opportunity.alignmentStrategy ||
+                null;
+
+            const byCategory =
+                application.questions.reduce(
+                    (counts, question) => {
+                        counts[question.category] =
+                            (
+                                counts[
+                                    question.category
+                                ] || 0
+                            ) + 1;
+                        return counts;
+                    },
+                    {}
+                );
+
+            const executiveInputQuestions =
+                application.questions.filter(
+                    question =>
+                        question.executiveInputRequired
+                );
+
+            const criticalQuestions =
+                application.questions.filter(
+                    question =>
+                        question.risk === "critical"
+                );
+
+            return {
+                schema:
+                    "meos.grant-office.application-executive-strategy.v1",
+                createdAt:
+                    this.now(),
+                opportunityId:
+                    opportunity.id,
+                applicationId:
+                    application.id,
+                questionCount:
+                    application.questions.length,
+                categoryCounts:
+                    byCategory,
+                executiveInputQuestionIds:
+                    executiveInputQuestions.map(
+                        question => question.id
+                    ),
+                criticalQuestionIds:
+                    criticalQuestions.map(
+                        question => question.id
+                    ),
+                alignmentStatus:
+                    alignment?.status ||
+                    "not-built",
+                alignmentScore:
+                    alignment?.overallScore ??
+                    null,
+                writingRules: [
+                    "Answer the actual reviewer intent, not merely the visible wording.",
+                    "Use verified organizational and authoritative evidence for material factual claims.",
+                    "State indirect outcomes as contributions, not guaranteed impacts.",
+                    "Do not invent metrics, partnerships, budgets, approvals, or outcomes.",
+                    "Mark unresolved executive facts as Executive Input Required.",
+                    "Keep every answer within the funder's stated limits."
+                ],
+                recommendation:
+                    alignment?.status === "strong"
+                        ? "Proceed with evidence-backed drafting."
+                        : alignment
+                        ? "Draft only after resolving alignment and evidence gaps."
+                        : "Build Executive Alignment Strategy before final drafting."
+            };
+        },
+
+        resolveApplicationEvidence(
+            question,
+            evidence = []
+        ) {
+            const normalized =
+                this.normalizeAlignmentEvidence(
+                    evidence
+                );
+
+            const relevant =
+                normalized
+                    .map(item => ({
+                        ...item,
+                        relevance:
+                            this.scoreConceptOverlap(
+                                item.statement,
+                                [
+                                    question.text,
+                                    question.intent,
+                                    ...question
+                                        .evidenceRequirements
+                                        .map(
+                                            requirement =>
+                                                requirement
+                                                    .description
+                                        )
+                                ].join(" ")
+                            )
+                    }))
+                    .filter(
+                        item =>
+                            item.relevance > 0
+                    )
+                    .sort(
+                        (left, right) =>
+                            right.relevance -
+                            left.relevance
+                    );
+
+            return relevant;
+        },
+
+        draftApplicationQuestion(
+            opportunityId,
+            questionId,
+            input = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+            const application =
+                opportunity?.applicationIntelligence;
+
+            if (!opportunity || !application) {
+                return {
+                    success: false,
+                    error:
+                        "Application intelligence has not been created.",
+                    code:
+                        "GRANT_APPLICATION_NOT_ANALYZED"
+                };
+            }
+
+            const question =
+                application.questions.find(
+                    item => item.id === questionId
+                );
+
+            if (!question) {
+                return {
+                    success: false,
+                    error:
+                        "Application question not found.",
+                    code:
+                        "GRANT_APPLICATION_QUESTION_NOT_FOUND"
+                };
+            }
+
+            const evidence =
+                this.resolveApplicationEvidence(
+                    question,
+                    [
+                        ...(input.evidence || []),
+                        ...(
+                            opportunity.alignmentStrategy
+                                ?.claims || []
+                        )
+                            .filter(
+                                claim =>
+                                    claim.supported
+                            )
+                            .map(
+                                claim => ({
+                                    id:
+                                        `alignment-${claim.activity}-${claim.objective}`,
+                                    statement:
+                                        claim.claim,
+                                    authority:
+                                        "verified",
+                                    verified: true,
+                                    confidence:
+                                        claim.confidence,
+                                    citation:
+                                        claim.evidenceIds
+                                })
+                            )
+                    ]
+                );
+
+            const verifiedEvidence =
+                evidence.filter(
+                    item => item.verified
+                );
+
+            const suppliedAnswer =
+                String(
+                    input.answer ||
+                    input.draft ||
+                    ""
+                ).trim();
+
+            const needsExecutiveInput =
+                question.executiveInputRequired &&
+                !suppliedAnswer;
+
+            const unsupported =
+                verifiedEvidence.length === 0 &&
+                !suppliedAnswer;
+
+            let status =
+                APPLICATION_ITEM_STATES.DRAFTED;
+            let draftText =
+                suppliedAnswer;
+
+            if (needsExecutiveInput) {
+                status =
+                    APPLICATION_ITEM_STATES.EXECUTIVE_INPUT_REQUIRED;
+                draftText =
+                    "Executive Input Required";
+            } else if (unsupported) {
+                status =
+                    APPLICATION_ITEM_STATES.NEEDS_EVIDENCE;
+                draftText =
+                    "Evidence Required Before Drafting";
+            } else if (!draftText) {
+                const bestEvidence =
+                    verifiedEvidence
+                        .slice(0, 3)
+                        .map(
+                            item => item.statement
+                        );
+
+                draftText = [
+                    this.buildApplicationDraftOpening(
+                        question
+                    ),
+                    ...bestEvidence,
+                    this.buildApplicationDraftClosing(
+                        question
+                    )
+                ]
+                    .filter(Boolean)
+                    .join(" ");
+            }
+
+            const limitCheck =
+                this.checkApplicationDraftLimits(
+                    draftText,
+                    question.limits
+                );
+
+            if (!limitCheck.withinLimits) {
+                status =
+                    APPLICATION_ITEM_STATES.NEEDS_REVISION;
+            }
+
+            question.draft = {
+                schema:
+                    "meos.grant-office.application-draft.v1",
+                createdAt:
+                    this.now(),
+                createdBy:
+                    input.createdBy ||
+                    "MEOS Grant Office",
+                text:
+                    draftText,
+                status,
+                evidenceIds:
+                    evidence.map(
+                        item => item.id
+                    ),
+                verifiedEvidenceIds:
+                    verifiedEvidence.map(
+                        item => item.id
+                    ),
+                confidence:
+                    status ===
+                    APPLICATION_ITEM_STATES.DRAFTED
+                        ? this.roundNumber(
+                            Math.min(
+                                1,
+                                0.55 +
+                                verifiedEvidence.length *
+                                0.12
+                            ),
+                            3
+                        )
+                        : 0,
+                missingInformation:
+                    this.identifyApplicationMissingInformation(
+                        question,
+                        verifiedEvidence,
+                        suppliedAnswer
+                    ),
+                limitCheck,
+                executiveNotes:
+                    String(
+                        input.executiveNotes ||
+                        ""
+                    )
+            };
+
+            question.state =
+                status;
+            question.review.status =
+                status;
+            application.reviewState =
+                APPLICATION_REVIEW_STATES.DRAFTING;
+            application.readiness =
+                this.calculateApplicationReadiness(
+                    application
+                );
+
+            this.analytics.applicationDraftsCreated += 1;
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                question:
+                    this.clone(question),
+                draft:
+                    this.clone(question.draft),
+                readiness:
+                    this.clone(
+                        application.readiness
+                    )
+            };
+        },
+
+        buildApplicationDraftOpening(question) {
+            const openings = {
+                [APPLICATION_QUESTION_CATEGORIES.NEEDS]:
+                    "The proposed work responds to a documented community need.",
+                [APPLICATION_QUESTION_CATEGORIES.ALIGNMENT]:
+                    "The proposed work advances the funder's objective through a verified mission intersection.",
+                [APPLICATION_QUESTION_CATEGORIES.PROGRAM]:
+                    "The organization proposes a focused, evidence-informed program response.",
+                [APPLICATION_QUESTION_CATEGORIES.OUTCOMES]:
+                    "The project is designed to produce measurable outputs and outcomes.",
+                [APPLICATION_QUESTION_CATEGORIES.EVALUATION]:
+                    "Performance will be measured through defined indicators and documented review.",
+                [APPLICATION_QUESTION_CATEGORIES.CAPACITY]:
+                    "The organization will rely on its verified mission, leadership, operational systems, and relevant experience.",
+                [APPLICATION_QUESTION_CATEGORIES.SUSTAINABILITY]:
+                    "The sustainability strategy combines diversified resources, operational integration, and continued partnership development."
+            };
+
+            return (
+                openings[question.category] ||
+                "The organization provides the following evidence-supported response."
+            );
+        },
+
+        buildApplicationDraftClosing(question) {
+            if (
+                question.category ===
+                APPLICATION_QUESTION_CATEGORIES.ALIGNMENT
+            ) {
+                return "The application should avoid claiming direct outcomes beyond the organization's documented work and evidence.";
+            }
+
+            if (
+                question.category ===
+                APPLICATION_QUESTION_CATEGORIES.EVALUATION
+            ) {
+                return "Final measures, baselines, targets, and reporting responsibilities require executive approval before submission.";
+            }
+
+            return "All final facts, figures, commitments, and representations remain subject to executive review and approval.";
+        },
+
+        identifyApplicationMissingInformation(
+            question,
+            evidence,
+            suppliedAnswer
+        ) {
+            const missing = [];
+
+            if (
+                question.executiveInputRequired &&
+                !suppliedAnswer
+            ) {
+                missing.push(
+                    "Executive decision or authorized factual input."
+                );
+            }
+
+            if (evidence.length === 0) {
+                missing.push(
+                    "Verified evidence supporting the response."
+                );
+            }
+
+            question.evidenceRequirements.forEach(
+                requirement => {
+                    const matched =
+                        evidence.some(item =>
+                            this.scoreConceptOverlap(
+                                item.statement,
+                                requirement.description
+                            ) > 0
+                        );
+
+                    if (
+                        requirement.required &&
+                        !matched
+                    ) {
+                        missing.push(
+                            requirement.description
+                        );
+                    }
+                }
+            );
+
+            return this.uniqueStrings(missing);
+        },
+
+        checkApplicationDraftLimits(
+            text,
+            limits = {}
+        ) {
+            const wordCount =
+                String(text || "")
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .length;
+            const characterCount =
+                String(text || "").length;
+
+            const issues = [];
+
+            if (
+                limits.words &&
+                wordCount > limits.words
+            ) {
+                issues.push(
+                    `Draft exceeds the ${limits.words}-word limit.`
+                );
+            }
+
+            if (
+                limits.characters &&
+                characterCount >
+                    limits.characters
+            ) {
+                issues.push(
+                    `Draft exceeds the ${limits.characters}-character limit.`
+                );
+            }
+
+            return {
+                withinLimits:
+                    issues.length === 0,
+                wordCount,
+                characterCount,
+                limits:
+                    this.clone(limits),
+                issues
+            };
+        },
+
+        reviewApplicationQuestion(
+            opportunityId,
+            questionId,
+            review = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+            const application =
+                opportunity?.applicationIntelligence;
+            const question =
+                application?.questions.find(
+                    item => item.id === questionId
+                );
+
+            if (!question) {
+                return {
+                    success: false,
+                    error:
+                        "Application question not found."
+                };
+            }
+
+            const action =
+                String(
+                    review.action || ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+            if (
+                ![
+                    "approve",
+                    "revise",
+                    "reject"
+                ].includes(action)
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Review action must be approve, revise, or reject."
+                };
+            }
+
+            if (
+                action === "approve" &&
+                (
+                    !question.draft ||
+                    question.draft
+                        .missingInformation
+                        .length > 0 ||
+                    question.draft
+                        .limitCheck
+                        .withinLimits !== true
+                )
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Question cannot be approved while evidence, information, or limit issues remain.",
+                    code:
+                        "GRANT_APPLICATION_QUESTION_NOT_READY"
+                };
+            }
+
+            if (action === "approve") {
+                question.state =
+                    APPLICATION_ITEM_STATES.APPROVED;
+                question.review.status =
+                    APPLICATION_ITEM_STATES.APPROVED;
+                question.review.approvedBy =
+                    review.reviewedBy ||
+                    "Executive Director";
+                question.review.approvedAt =
+                    this.now();
+            } else {
+                question.state =
+                    APPLICATION_ITEM_STATES.NEEDS_REVISION;
+                question.review.status =
+                    APPLICATION_ITEM_STATES.NEEDS_REVISION;
+                question.review.revisionNotes =
+                    String(
+                        review.notes || ""
+                    );
+            }
+
+            question.review.executiveNotes =
+                String(
+                    review.executiveNotes ||
+                    question.review
+                        .executiveNotes ||
+                    ""
+                );
+
+            application.readiness =
+                this.calculateApplicationReadiness(
+                    application
+                );
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                question:
+                    this.clone(question),
+                readiness:
+                    this.clone(
+                        application.readiness
+                    )
+            };
+        },
+
+        calculateApplicationReadiness(application) {
+            const questions =
+                application.questions || [];
+            const requiredQuestions =
+                questions.filter(
+                    question =>
+                        question.required !== false
+                );
+            const approvedQuestions =
+                requiredQuestions.filter(
+                    question =>
+                        question.state ===
+                        APPLICATION_ITEM_STATES.APPROVED
+                );
+            const blockedQuestions =
+                requiredQuestions.filter(
+                    question =>
+                        [
+                            APPLICATION_ITEM_STATES.UNANSWERED,
+                            APPLICATION_ITEM_STATES.EXECUTIVE_INPUT_REQUIRED,
+                            APPLICATION_ITEM_STATES.NEEDS_EVIDENCE,
+                            APPLICATION_ITEM_STATES.NEEDS_REVISION
+                        ].includes(
+                            question.state
+                        )
+                );
+            const missingAttachments =
+                (
+                    application.attachments || []
+                ).filter(
+                    item =>
+                        item.required &&
+                        item.status !== "attached"
+                );
+            const unresolvedCertifications =
+                (
+                    application.certifications || []
+                ).filter(
+                    item =>
+                        item.required &&
+                        item.status !== "approved"
+                );
+            const unsigned =
+                (
+                    application.signatures || []
+                ).filter(
+                    item =>
+                        item.required &&
+                        item.status !== "signed"
+                );
+
+            const totalRequired =
+                requiredQuestions.length +
+                (application.attachments || []).filter(
+                    item => item.required
+                ).length +
+                (application.certifications || []).filter(
+                    item => item.required
+                ).length +
+                (application.signatures || []).filter(
+                    item => item.required
+                ).length;
+
+            const complete =
+                approvedQuestions.length +
+                (application.attachments || []).filter(
+                    item =>
+                        item.required &&
+                        item.status === "attached"
+                ).length +
+                (application.certifications || []).filter(
+                    item =>
+                        item.required &&
+                        item.status === "approved"
+                ).length +
+                (application.signatures || []).filter(
+                    item =>
+                        item.required &&
+                        item.status === "signed"
+                ).length;
+
+            return {
+                ready:
+                    totalRequired > 0 &&
+                    complete === totalRequired,
+                percent:
+                    totalRequired > 0
+                        ? Math.round(
+                            complete /
+                            totalRequired *
+                            100
+                        )
+                        : 0,
+                required:
+                    totalRequired,
+                complete,
+                approvedQuestions:
+                    approvedQuestions.length,
+                blockedQuestionIds:
+                    blockedQuestions.map(
+                        question => question.id
+                    ),
+                missingAttachmentIds:
+                    missingAttachments.map(
+                        item => item.id
+                    ),
+                unresolvedCertificationIds:
+                    unresolvedCertifications.map(
+                        item => item.id
+                    ),
+                unsignedSignatureIds:
+                    unsigned.map(
+                        item => item.id
+                    )
+            };
+        },
+
+        createExecutiveApplicationReviewPackage(
+            opportunityId
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+            const application =
+                opportunity?.applicationIntelligence;
+
+            if (!application) {
+                return {
+                    success: false,
+                    error:
+                        "Application intelligence has not been created."
+                };
+            }
+
+            application.readiness =
+                this.calculateApplicationReadiness(
+                    application
+                );
+            application.reviewState =
+                APPLICATION_REVIEW_STATES.EXECUTIVE_REVIEW;
+
+            const packageRecord = {
+                schema:
+                    "meos.grant-office.executive-application-review.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                id:
+                    this.createId(
+                        "executive-application-review"
+                    ),
+                createdAt:
+                    this.now(),
+                opportunityId:
+                    opportunity.id,
+                applicationId:
+                    application.id,
+                title:
+                    application.title,
+                executiveSummary: {
+                    questionCount:
+                        application.questions.length,
+                    drafted:
+                        application.questions.filter(
+                            question =>
+                                Boolean(
+                                    question.draft
+                                )
+                        ).length,
+                    approved:
+                        application.questions.filter(
+                            question =>
+                                question.state ===
+                                APPLICATION_ITEM_STATES.APPROVED
+                        ).length,
+                    executiveInputRequired:
+                        application.questions.filter(
+                            question =>
+                                question.state ===
+                                APPLICATION_ITEM_STATES.EXECUTIVE_INPUT_REQUIRED
+                        ).length,
+                    needsEvidence:
+                        application.questions.filter(
+                            question =>
+                                question.state ===
+                                APPLICATION_ITEM_STATES.NEEDS_EVIDENCE
+                        ).length,
+                    needsRevision:
+                        application.questions.filter(
+                            question =>
+                                question.state ===
+                                APPLICATION_ITEM_STATES.NEEDS_REVISION
+                        ).length,
+                    readiness:
+                        this.clone(
+                            application.readiness
+                        )
+                },
+                sections:
+                    application.sections.map(
+                        section => ({
+                            id:
+                                section.id,
+                            title:
+                                section.title,
+                            questions:
+                                section.questions.map(
+                                    question =>
+                                        this.clone(
+                                            question
+                                        )
+                                )
+                        })
+                    ),
+                outstandingIssues:
+                    this.buildApplicationOutstandingIssues(
+                        application
+                    ),
+                approval: {
+                    status:
+                        "pending-executive-review",
+                    approvedBy: null,
+                    approvedAt: null,
+                    notes: ""
+                }
+            };
+
+            opportunity.executiveReviewPackage =
+                packageRecord;
+            opportunity.updatedAt =
+                this.now();
+
+            this.analytics.executiveReviewPackagesCreated += 1;
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                reviewPackage:
+                    this.clone(packageRecord)
+            };
+        },
+
+        buildApplicationOutstandingIssues(application) {
+            const issues = [];
+
+            application.questions.forEach(
+                question => {
+                    if (
+                        question.state !==
+                        APPLICATION_ITEM_STATES.APPROVED
+                    ) {
+                        issues.push({
+                            type:
+                                "question",
+                            id:
+                                question.id,
+                            severity:
+                                question.risk,
+                            message:
+                                `${question.sectionTitle}: ${question.text}`,
+                            state:
+                                question.state
+                        });
+                    }
+                }
+            );
+
+            application.readiness
+                .missingAttachmentIds
+                .forEach(id =>
+                    issues.push({
+                        type:
+                            "attachment",
+                        id,
+                        severity:
+                            "high",
+                        message:
+                            "Required attachment is missing."
+                    })
+                );
+
+            application.readiness
+                .unresolvedCertificationIds
+                .forEach(id =>
+                    issues.push({
+                        type:
+                            "certification",
+                        id,
+                        severity:
+                            "critical",
+                        message:
+                            "Required certification has not been approved."
+                    })
+                );
+
+            application.readiness
+                .unsignedSignatureIds
+                .forEach(id =>
+                    issues.push({
+                        type:
+                            "signature",
+                        id,
+                        severity:
+                            "critical",
+                        message:
+                            "Required signature is missing."
+                    })
+                );
+
+            return issues;
+        },
+
+        approveExecutiveApplicationReview(
+            opportunityId,
+            approval = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+            const application =
+                opportunity?.applicationIntelligence;
+            const reviewPackage =
+                opportunity?.executiveReviewPackage;
+
+            if (!application || !reviewPackage) {
+                return {
+                    success: false,
+                    error:
+                        "Executive review package does not exist."
+                };
+            }
+
+            application.readiness =
+                this.calculateApplicationReadiness(
+                    application
+                );
+
+            if (!application.readiness.ready) {
+                this.analytics.submissionBlocksTriggered += 1;
+                return {
+                    success: false,
+                    error:
+                        "Application is not ready for executive approval.",
+                    code:
+                        "GRANT_APPLICATION_NOT_READY",
+                    readiness:
+                        this.clone(
+                            application.readiness
+                        ),
+                    outstandingIssues:
+                        this.buildApplicationOutstandingIssues(
+                            application
+                        )
+                };
+            }
+
+            if (
+                !String(
+                    approval.approvedBy || ""
+                ).trim()
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Executive approval requires approvedBy."
+                };
+            }
+
+            reviewPackage.approval = {
+                status:
+                    "approved",
+                approvedBy:
+                    String(
+                        approval.approvedBy
+                    ),
+                approvedAt:
+                    approval.approvedAt ||
+                    this.now(),
+                notes:
+                    String(
+                        approval.notes || ""
+                    )
+            };
+
+            application.reviewState =
+                APPLICATION_REVIEW_STATES.APPROVED;
+
+            application.history.push({
+                state:
+                    APPLICATION_REVIEW_STATES.APPROVED,
+                enteredAt:
+                    reviewPackage.approval.approvedAt,
+                actor:
+                    reviewPackage.approval.approvedBy,
+                note:
+                    "Executive application review approved."
+            });
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                reviewPackage:
+                    this.clone(reviewPackage),
+                application:
+                    this.clone(application)
+            };
+        },
+
+        markApplicationReadyToSubmit(
+            opportunityId,
+            details = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(opportunityId);
+            const application =
+                opportunity?.applicationIntelligence;
+            const reviewPackage =
+                opportunity?.executiveReviewPackage;
+
+            if (!application || !reviewPackage) {
+                return {
+                    success: false,
+                    error:
+                        "Application review has not been completed."
+                };
+            }
+
+            application.readiness =
+                this.calculateApplicationReadiness(
+                    application
+                );
+
+            if (
+                reviewPackage.approval.status !== "approved" ||
+                !application.readiness.ready
+            ) {
+                this.analytics.submissionBlocksTriggered += 1;
+                return {
+                    success: false,
+                    error:
+                        "Submission readiness is blocked until every requirement is complete and executive review is approved.",
+                    code:
+                        "GRANT_APPLICATION_SUBMISSION_BLOCKED",
+                    readiness:
+                        this.clone(
+                            application.readiness
+                        ),
+                    approval:
+                        this.clone(
+                            reviewPackage.approval
+                        )
+                };
+            }
+
+            application.reviewState =
+                APPLICATION_REVIEW_STATES.READY_TO_SUBMIT;
+            application.history.push({
+                state:
+                    APPLICATION_REVIEW_STATES.READY_TO_SUBMIT,
+                enteredAt:
+                    this.now(),
+                actor:
+                    details.actor ||
+                    "MEOS Grant Office",
+                note:
+                    details.note ||
+                    "Application package is ready for authorized submission."
+            });
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                readyToSubmit: true,
+                application:
+                    this.clone(application)
+            };
+        },
+
+        runApplicationIntelligenceAcceptanceTest() {
+            const originalPersistence =
+                this.configuration.automaticPersistence;
+            const testId =
+                this.createId(
+                    "application-intelligence-test"
+                );
+
+            this.configuration.automaticPersistence =
+                false;
+
+            try {
+                this.addOpportunity({
+                    id:
+                        testId,
+                    title:
+                        "Watershed and Native Salmon Protection Grant",
+                    statedPurpose:
+                        "Protect native salmon habitat by reducing pollution and improving watershed conditions.",
+                    verified:
+                        true,
+                    sourceUrl:
+                        "https://example.org/application"
+                });
+
+                const opportunity =
+                    this.getOpportunityById(
+                        testId
+                    );
+
+                opportunity.alignmentStrategy = {
+                    status:
+                        "strong",
+                    overallScore:
+                        88,
+                    claims: [
+                        {
+                            activity:
+                                "River corridor outreach and trash removal",
+                            objective:
+                                "Protect native salmon habitat",
+                            claim:
+                                "River corridor outreach and trash removal can contribute to healthier aquatic habitat through reduced trash and pollutant loading.",
+                            supported:
+                                true,
+                            confidence:
+                                0.88,
+                            evidenceIds: [
+                                "org-river-work",
+                                "watershed-research"
+                            ]
+                        }
+                    ]
+                };
+
+                const analysis =
+                    this.analyzeFundingApplication(
+                        testId,
+                        {
+                            title:
+                                "Watershed and Native Salmon Protection Application",
+                            deadline:
+                                new Date(
+                                    Date.now() +
+                                    30 * 86400000
+                                ).toISOString(),
+                            attachments: [
+                                "IRS determination letter"
+                            ],
+                            certifications: [
+                                "Authorized organizational certification"
+                            ],
+                            signatures: [
+                                "Authorized official signature"
+                            ],
+                            sections: [
+                                {
+                                    title:
+                                        "Program Narrative",
+                                    questions: [
+                                        {
+                                            id:
+                                                "q-need",
+                                            text:
+                                                "Describe the community and watershed need in 150 words."
+                                        },
+                                        {
+                                            id:
+                                                "q-alignment",
+                                            text:
+                                                "Explain how your land-based work contributes to protecting native salmon habitat. Maximum 250 words."
+                                        },
+                                        {
+                                            id:
+                                                "q-budget",
+                                            text:
+                                                "State the amount requested and explain the project budget."
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    );
+
+                const application =
+                    this.getOpportunityById(
+                        testId
+                    ).applicationIntelligence;
+
+                const evidence = [
+                    {
+                        id:
+                            "org-river-work",
+                        statement:
+                            "The organization performs river corridor outreach and removes trash from encampment areas near the watershed.",
+                        authority:
+                            "primary",
+                        verified:
+                            true,
+                        confidence:
+                            0.95
+                    },
+                    {
+                        id:
+                            "watershed-research",
+                        statement:
+                            "Reducing trash and pollutant loading supports cleaner river corridors and healthier aquatic habitat.",
+                        authority:
+                            "authoritative",
+                        verified:
+                            true,
+                        confidence:
+                            0.9
+                    }
+                ];
+
+                const needDraft =
+                    this.draftApplicationQuestion(
+                        testId,
+                        "q-need",
+                        {
+                            evidence
+                        }
+                    );
+
+                const alignmentDraft =
+                    this.draftApplicationQuestion(
+                        testId,
+                        "q-alignment",
+                        {
+                            evidence
+                        }
+                    );
+
+                const budgetDraft =
+                    this.draftApplicationQuestion(
+                        testId,
+                        "q-budget",
+                        {}
+                    );
+
+                const reviewPackage =
+                    this.createExecutiveApplicationReviewPackage(
+                        testId
+                    );
+
+                const blockedApproval =
+                    this.approveExecutiveApplicationReview(
+                        testId,
+                        {
+                            approvedBy:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const blockedSubmission =
+                    this.markApplicationReadyToSubmit(
+                        testId
+                    );
+
+                const checks = [
+                    {
+                        name:
+                            "Application model created",
+                        passed:
+                            analysis.success === true &&
+                            application?.questions?.length === 3
+                    },
+                    {
+                        name:
+                            "Questions classified by intent",
+                        passed:
+                            application.questions.every(
+                                question =>
+                                    Boolean(
+                                        question.category
+                                    ) &&
+                                    Boolean(
+                                        question.intent
+                                    )
+                            )
+                    },
+                    {
+                        name:
+                            "Evidence requirements identified",
+                        passed:
+                            application.questions.every(
+                                question =>
+                                    question
+                                        .evidenceRequirements
+                                        .length > 0
+                            )
+                    },
+                    {
+                        name:
+                            "Executive strategy created",
+                        passed:
+                            Boolean(
+                                application
+                                    .executiveStrategy
+                                    ?.writingRules
+                                    ?.length
+                            )
+                    },
+                    {
+                        name:
+                            "Evidence-backed drafts created",
+                        passed:
+                            needDraft.success === true &&
+                            alignmentDraft.success === true &&
+                            needDraft.draft.status ===
+                                APPLICATION_ITEM_STATES.DRAFTED &&
+                            alignmentDraft.draft.status ===
+                                APPLICATION_ITEM_STATES.DRAFTED
+                    },
+                    {
+                        name:
+                            "Executive input is required instead of guessed",
+                        passed:
+                            budgetDraft.success === true &&
+                            budgetDraft.draft.status ===
+                                APPLICATION_ITEM_STATES.EXECUTIVE_INPUT_REQUIRED &&
+                            budgetDraft.draft.text ===
+                                "Executive Input Required"
+                    },
+                    {
+                        name:
+                            "Executive review package produced",
+                        passed:
+                            reviewPackage.success === true &&
+                            reviewPackage
+                                .reviewPackage
+                                .sections
+                                .length === 1
+                    },
+                    {
+                        name:
+                            "Submission blocked until complete approval",
+                        passed:
+                            blockedApproval.success === false &&
+                            blockedApproval.code ===
+                                "GRANT_APPLICATION_NOT_READY" &&
+                            blockedSubmission.success === false &&
+                            blockedSubmission.code ===
+                                "GRANT_APPLICATION_SUBMISSION_BLOCKED"
+                    }
+                ];
+
+                return {
+                    success:
+                        checks.every(
+                            check => check.passed
+                        ),
+                    passed:
+                        checks.filter(
+                            check => check.passed
+                        ).length,
+                    total:
+                        checks.length,
+                    checks,
+                    questionCount:
+                        application.questions.length,
+                    reviewState:
+                        application.reviewState,
+                    readiness:
+                        this.clone(
+                            application.readiness
+                        ),
+                    blockedApprovalCode:
+                        blockedApproval.code,
+                    blockedSubmissionCode:
+                        blockedSubmission.code
+                };
+            } finally {
+                this.opportunities =
+                    this.opportunities.filter(
+                        opportunity =>
+                            opportunity.id !== testId
+                    );
+                this.configuration.automaticPersistence =
+                    originalPersistence;
+            }
+        },
+
         runAlignmentStrategyAcceptanceTest() {
             const originalPersistence =
                 this.configuration.automaticPersistence;
@@ -5484,6 +7812,14 @@
                     this.opportunities.filter(
                         item => item.alignmentStrategy
                     ).length,
+                applicationIntelligenceCount:
+                    this.opportunities.filter(
+                        item => item.applicationIntelligence
+                    ).length,
+                executiveReviewPackageCount:
+                    this.opportunities.filter(
+                        item => item.executiveReviewPackage
+                    ).length,
                 pipelineCounts:
                     this.getPipelineCounts(),
                 analytics:
@@ -5778,6 +8114,12 @@
         PIPELINE_STAGES;
     GrantOffice.PIPELINE_STAGE_TRANSITIONS =
         PIPELINE_STAGE_TRANSITIONS;
+    GrantOffice.APPLICATION_QUESTION_CATEGORIES =
+        APPLICATION_QUESTION_CATEGORIES;
+    GrantOffice.APPLICATION_REVIEW_STATES =
+        APPLICATION_REVIEW_STATES;
+    GrantOffice.APPLICATION_ITEM_STATES =
+        APPLICATION_ITEM_STATES;
     GrantOffice.RECOMMENDATIONS =
         RECOMMENDATIONS;
     GrantOffice.DISQUALIFIER_TYPES =
