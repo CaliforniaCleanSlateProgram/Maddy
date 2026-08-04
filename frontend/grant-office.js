@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.5.0
- * Build: GO150-FUNDING-APPLICATION-INTELLIGENCE-20260804-A
+ * Version: 1.6.0
+ * Build: GO160-EXECUTIVE-APPLICATION-ASSEMBLY-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.5.0";
-    const BUILD_ID = "GO150-FUNDING-APPLICATION-INTELLIGENCE-20260804-A";
+    const VERSION = "1.6.0";
+    const BUILD_ID = "GO160-EXECUTIVE-APPLICATION-ASSEMBLY-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -166,6 +166,28 @@
         APPROVED: "approved"
     });
 
+    const APPLICATION_ASSEMBLY_STATES = Object.freeze({
+        NOT_ASSEMBLED: "not-assembled",
+        ASSEMBLING: "assembling",
+        EXECUTIVE_ACTION_REQUIRED: "executive-action-required",
+        READY_FOR_EXECUTIVE_REVIEW: "ready-for-executive-review",
+        READY_FOR_SIGNATURE: "ready-for-signature",
+        READY_FOR_SUBMISSION: "ready-for-submission",
+        SUBMITTED: "submitted"
+    });
+
+    const APPLICATION_PACKAGE_ITEM_TYPES = Object.freeze({
+        EXECUTIVE_SUMMARY: "executive-summary",
+        NARRATIVE_SECTION: "narrative-section",
+        BUDGET_NARRATIVE: "budget-narrative",
+        ATTACHMENT: "attachment",
+        CERTIFICATION: "certification",
+        SIGNATURE: "signature",
+        EVIDENCE_INDEX: "evidence-index",
+        SUBMISSION_CHECKLIST: "submission-checklist"
+    });
+
+
 
     const RECOMMENDATIONS = Object.freeze({
         PURSUE_NOW: "pursue-now",
@@ -246,7 +268,12 @@
             applicationQuestionsExtracted: 0,
             applicationDraftsCreated: 0,
             executiveReviewPackagesCreated: 0,
+            applicationPackagesAssembled: 0,
+            applicationPackageItemsCreated: 0,
+            executiveActionChecklistsCreated: 0,
+            signatureReadinessBlocksTriggered: 0,
             submissionBlocksTriggered: 0,
+            lastApplicationAssemblyAt: null,
             lastApplicationIntelligenceAt: null,
             lastAlignmentStrategyAt: null,
             lastPipelineTransitionAt: null,
@@ -518,6 +545,10 @@
                 executiveReviewPackage:
                     input.executiveReviewPackage
                         ? this.clone(input.executiveReviewPackage)
+                        : null,
+                executiveApplicationPackage:
+                    input.executiveApplicationPackage
+                        ? this.clone(input.executiveApplicationPackage)
                         : null,
                 evaluation: null,
                 tracking: {
@@ -6982,6 +7013,1828 @@
             };
         },
 
+        normalizeAssemblyDocumentRecord(
+            document,
+            defaults = {}
+        ) {
+            const raw =
+                typeof document === "string"
+                    ? {
+                        name: document
+                    }
+                    : {
+                        ...(document || {})
+                    };
+
+            const required =
+                raw.required !== false &&
+                defaults.required !== false;
+
+            const status =
+                raw.status ||
+                (
+                    raw.documentId ||
+                    raw.fileId ||
+                    raw.url
+                        ? "available"
+                        : "missing"
+                );
+
+            return {
+                id:
+                    raw.id ||
+                    defaults.id ||
+                    this.createId(
+                        "application-document"
+                    ),
+                type:
+                    raw.type ||
+                    defaults.type ||
+                    APPLICATION_PACKAGE_ITEM_TYPES.ATTACHMENT,
+                name:
+                    String(
+                        raw.name ||
+                        raw.title ||
+                        defaults.name ||
+                        "Unnamed Document"
+                    ).trim(),
+                description:
+                    String(
+                        raw.description ||
+                        defaults.description ||
+                        ""
+                    ).trim(),
+                required,
+                status,
+                documentId:
+                    raw.documentId ||
+                    raw.fileId ||
+                    null,
+                source:
+                    raw.source ||
+                    defaults.source ||
+                    null,
+                version:
+                    raw.version ||
+                    null,
+                verified:
+                    raw.verified === true,
+                current:
+                    raw.current !== false,
+                attached:
+                    raw.attached === true ||
+                    status === "attached",
+                attachedAt:
+                    raw.attachedAt ||
+                    null,
+                attachedBy:
+                    raw.attachedBy ||
+                    null,
+                issues:
+                    this.uniqueStrings(
+                        raw.issues || []
+                    )
+            };
+        },
+
+        buildApplicationNarrativeSections(
+            application
+        ) {
+            return (
+                application.sections || []
+            ).map(section => {
+                const questions =
+                    section.questions || [];
+
+                const responses =
+                    questions.map(question => ({
+                        questionId:
+                            question.id,
+                        question:
+                            question.text,
+                        category:
+                            question.category,
+                        intent:
+                            question.intent,
+                        response:
+                            question.draft?.text ||
+                            "",
+                        state:
+                            question.state,
+                        evidenceIds:
+                            question.draft
+                                ?.evidenceIds || [],
+                        verifiedEvidenceIds:
+                            question.draft
+                                ?.verifiedEvidenceIds || [],
+                        confidence:
+                            question.draft
+                                ?.confidence || 0,
+                        missingInformation:
+                            question.draft
+                                ?.missingInformation || [],
+                        limitCheck:
+                            question.draft
+                                ?.limitCheck || null
+                    }));
+
+                return {
+                    id:
+                        section.id,
+                    title:
+                        section.title,
+                    instructions:
+                        section.instructions || "",
+                    order:
+                        section.order,
+                    responses,
+                    complete:
+                        responses.length > 0 &&
+                        responses.every(
+                            item =>
+                                item.state ===
+                                APPLICATION_ITEM_STATES.APPROVED
+                        ),
+                    unresolvedQuestionIds:
+                        responses
+                            .filter(
+                                item =>
+                                    item.state !==
+                                    APPLICATION_ITEM_STATES.APPROVED
+                            )
+                            .map(
+                                item =>
+                                    item.questionId
+                            )
+                };
+            });
+        },
+
+        buildApplicationEvidenceIndex(
+            application
+        ) {
+            const evidenceMap =
+                new Map();
+
+            (application.questions || [])
+                .forEach(question => {
+                    const draft =
+                        question.draft;
+
+                    if (!draft) {
+                        return;
+                    }
+
+                    (
+                        draft.evidenceIds || []
+                    ).forEach(evidenceId => {
+                        if (
+                            !evidenceMap.has(
+                                evidenceId
+                            )
+                        ) {
+                            evidenceMap.set(
+                                evidenceId,
+                                {
+                                    id:
+                                        evidenceId,
+                                    usedByQuestionIds:
+                                        [],
+                                    verified:
+                                        (
+                                            draft
+                                                .verifiedEvidenceIds ||
+                                            []
+                                        ).includes(
+                                            evidenceId
+                                        )
+                                }
+                            );
+                        }
+
+                        evidenceMap
+                            .get(evidenceId)
+                            .usedByQuestionIds
+                            .push(
+                                question.id
+                            );
+                    });
+                });
+
+            return [
+                ...evidenceMap.values()
+            ].map(item => ({
+                ...item,
+                usedByQuestionIds:
+                    this.uniqueStrings(
+                        item.usedByQuestionIds
+                    )
+            }));
+        },
+
+        buildApplicationSubmissionChecklist(
+            application,
+            documents
+        ) {
+            const items = [];
+
+            const add = (
+                id,
+                label,
+                category,
+                complete,
+                blocking,
+                action
+            ) => {
+                items.push({
+                    id,
+                    label,
+                    category,
+                    complete:
+                        complete === true,
+                    blocking:
+                        blocking === true,
+                    action:
+                        String(action || ""),
+                    completedAt:
+                        complete
+                            ? this.now()
+                            : null
+                });
+            };
+
+            (application.questions || [])
+                .filter(
+                    question =>
+                        question.required !== false
+                )
+                .forEach(question => {
+                    add(
+                        `question-${question.id}`,
+                        `Approve response: ${question.text}`,
+                        "question",
+                        question.state ===
+                            APPLICATION_ITEM_STATES.APPROVED,
+                        true,
+                        question.state ===
+                            APPLICATION_ITEM_STATES.APPROVED
+                            ? ""
+                            : "Resolve evidence, executive input, revision, and approval requirements."
+                    );
+                });
+
+            documents.forEach(document => {
+                let complete = false;
+                let action =
+                    "Verify the current document and attach it to the application package.";
+
+                if (
+                    document.type ===
+                    APPLICATION_PACKAGE_ITEM_TYPES.CERTIFICATION
+                ) {
+                    complete =
+                        !document.required ||
+                        document.status === "approved" ||
+                        document.attached === true;
+                    action =
+                        complete
+                            ? ""
+                            : "An authorized executive must approve this certification.";
+                } else if (
+                    document.type ===
+                    APPLICATION_PACKAGE_ITEM_TYPES.SIGNATURE
+                ) {
+                    complete =
+                        !document.required ||
+                        document.status === "signed" ||
+                        document.attached === true;
+                    action =
+                        complete
+                            ? ""
+                            : "An authorized signature is required before submission.";
+                } else {
+                    complete =
+                        !document.required ||
+                        (
+                            document.verified &&
+                            document.current &&
+                            document.attached
+                        );
+                }
+
+                add(
+                    `document-${document.id}`,
+                    document.name,
+                    document.type,
+                    complete,
+                    document.required,
+                    action
+                );
+            });
+
+            return items;
+        },
+
+        calculateApplicationPackageReadiness(
+            applicationPackage
+        ) {
+            const checklist =
+                applicationPackage
+                    .submissionChecklist || [];
+
+            const required =
+                checklist.filter(
+                    item =>
+                        item.blocking
+                );
+            const complete =
+                required.filter(
+                    item =>
+                        item.complete
+                );
+            const blockers =
+                required.filter(
+                    item =>
+                        !item.complete
+                );
+
+            const signatures =
+                (
+                    applicationPackage
+                        .signaturePacket || []
+                );
+            const requiredSignatures =
+                signatures.filter(
+                    item =>
+                        item.required
+                );
+            const completedSignatures =
+                requiredSignatures.filter(
+                    item =>
+                        item.status === "signed" ||
+                        item.attached === true
+                );
+
+            const narrativeComplete =
+                (
+                    applicationPackage
+                        .narrativeSections || []
+                ).every(
+                    section =>
+                        section.complete
+                );
+
+            const attachmentsComplete =
+                (
+                    applicationPackage
+                        .attachmentIndex || []
+                )
+                    .filter(
+                        item =>
+                            item.required
+                    )
+                    .every(
+                        item =>
+                            item.verified &&
+                            item.current &&
+                            item.attached
+                    );
+
+            const certificationsComplete =
+                (
+                    applicationPackage
+                        .certificationPacket || []
+                )
+                    .filter(
+                        item =>
+                            item.required
+                    )
+                    .every(
+                        item =>
+                            item.status === "approved" ||
+                            item.attached === true
+                    );
+
+            const signatureComplete =
+                requiredSignatures.length === 0 ||
+                completedSignatures.length ===
+                    requiredSignatures.length;
+
+            const percent =
+                required.length > 0
+                    ? Math.round(
+                        complete.length /
+                        required.length *
+                        100
+                    )
+                    : 0;
+
+            const readyForExecutiveReview =
+                narrativeComplete &&
+                blockers.every(
+                    blocker =>
+                        blocker.category ===
+                            APPLICATION_PACKAGE_ITEM_TYPES.SIGNATURE
+                );
+
+            const readyForSignature =
+                narrativeComplete &&
+                attachmentsComplete &&
+                certificationsComplete &&
+                applicationPackage
+                    .executiveReviewApproved === true &&
+                !signatureComplete;
+
+            const readyForSubmission =
+                narrativeComplete &&
+                attachmentsComplete &&
+                certificationsComplete &&
+                signatureComplete &&
+                applicationPackage
+                    .executiveReviewApproved === true &&
+                blockers.length === 0;
+
+            return {
+                percent,
+                required:
+                    required.length,
+                complete:
+                    complete.length,
+                blockerCount:
+                    blockers.length,
+                blockerIds:
+                    blockers.map(
+                        item =>
+                            item.id
+                    ),
+                narrativeComplete,
+                attachmentsComplete,
+                certificationsComplete,
+                signatureComplete,
+                readyForExecutiveReview,
+                readyForSignature,
+                readyForSubmission
+            };
+        },
+
+        buildExecutiveActionChecklist(
+            applicationPackage
+        ) {
+            const actions = [];
+            const add = (
+                id,
+                priority,
+                title,
+                reason,
+                estimatedMinutes = 2
+            ) => {
+                actions.push({
+                    id,
+                    priority,
+                    title,
+                    reason,
+                    estimatedMinutes
+                });
+            };
+
+            (
+                applicationPackage
+                    .narrativeSections || []
+            ).forEach(section => {
+                section.responses
+                    .filter(
+                        response =>
+                            response.state !==
+                            APPLICATION_ITEM_STATES.APPROVED
+                    )
+                    .forEach(response => {
+                        add(
+                            `review-${response.questionId}`,
+                            response
+                                .missingInformation
+                                .length > 0
+                                ? "high"
+                                : "medium",
+                            `Review: ${response.question}`,
+                            response
+                                .missingInformation
+                                .length > 0
+                                ? response
+                                    .missingInformation
+                                    .join(" ")
+                                : "Executive approval is required.",
+                            3
+                        );
+                    });
+            });
+
+            (
+                applicationPackage
+                    .attachmentIndex || []
+            )
+                .filter(
+                    item =>
+                        item.required &&
+                        (
+                            !item.verified ||
+                            !item.current ||
+                            !item.attached
+                        )
+                )
+                .forEach(item => {
+                    add(
+                        `attachment-${item.id}`,
+                        "high",
+                        `Attach ${item.name}`,
+                        !item.verified
+                            ? "The document has not been verified."
+                            : !item.current
+                            ? "The document is not current."
+                            : "The document has not been attached.",
+                        2
+                    );
+                });
+
+            (
+                applicationPackage
+                    .certificationPacket || []
+            )
+                .filter(
+                    item =>
+                        item.required &&
+                        item.status !==
+                            "approved"
+                )
+                .forEach(item => {
+                    add(
+                        `certification-${item.id}`,
+                        "critical",
+                        `Approve certification: ${item.name}`,
+                        "An authorized executive must approve this certification.",
+                        2
+                    );
+                });
+
+            (
+                applicationPackage
+                    .signaturePacket || []
+            )
+                .filter(
+                    item =>
+                        item.required &&
+                        item.status !==
+                            "signed"
+                )
+                .forEach(item => {
+                    add(
+                        `signature-${item.id}`,
+                        "critical",
+                        `Sign: ${item.name}`,
+                        "An authorized signature is required before submission.",
+                        2
+                    );
+                });
+
+            if (
+                applicationPackage
+                    .executiveReviewApproved !== true
+            ) {
+                add(
+                    "approve-application-package",
+                    "critical",
+                    "Approve the complete application package",
+                    "Final executive package approval is required before signature or submission.",
+                    5
+                );
+            }
+
+            const priorityWeight = {
+                critical: 3,
+                high: 2,
+                medium: 1,
+                standard: 0
+            };
+
+            actions.sort(
+                (left, right) =>
+                    (
+                        priorityWeight[
+                            right.priority
+                        ] || 0
+                    ) -
+                    (
+                        priorityWeight[
+                            left.priority
+                        ] || 0
+                    )
+            );
+
+            return {
+                createdAt:
+                    this.now(),
+                count:
+                    actions.length,
+                estimatedMinutes:
+                    actions.reduce(
+                        (total, action) =>
+                            total +
+                            action.estimatedMinutes,
+                        0
+                    ),
+                actions
+            };
+        },
+
+        determineApplicationAssemblyState(
+            applicationPackage
+        ) {
+            const readiness =
+                applicationPackage.readiness;
+
+            if (
+                readiness.readyForSubmission
+            ) {
+                return APPLICATION_ASSEMBLY_STATES.READY_FOR_SUBMISSION;
+            }
+
+            if (
+                readiness.readyForSignature
+            ) {
+                return APPLICATION_ASSEMBLY_STATES.READY_FOR_SIGNATURE;
+            }
+
+            if (
+                readiness.readyForExecutiveReview
+            ) {
+                return APPLICATION_ASSEMBLY_STATES.READY_FOR_EXECUTIVE_REVIEW;
+            }
+
+            return APPLICATION_ASSEMBLY_STATES.EXECUTIVE_ACTION_REQUIRED;
+        },
+
+        assembleExecutiveApplicationPackage(
+            opportunityId,
+            input = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const application =
+                opportunity
+                    ?.applicationIntelligence;
+
+            if (!opportunity || !application) {
+                return {
+                    success: false,
+                    error:
+                        "Funding Application Intelligence must be completed before assembly.",
+                    code:
+                        "GRANT_APPLICATION_INTELLIGENCE_REQUIRED"
+                };
+            }
+
+            const narrativeSections =
+                this.buildApplicationNarrativeSections(
+                    application
+                );
+
+            const applicationAttachments =
+                (
+                    application.attachments || []
+                ).map(item =>
+                    this.normalizeAssemblyDocumentRecord(
+                        item,
+                        {
+                            type:
+                                APPLICATION_PACKAGE_ITEM_TYPES.ATTACHMENT,
+                            source:
+                                "application-intelligence"
+                        }
+                    )
+                );
+
+            const suppliedDocuments =
+                (
+                    Array.isArray(
+                        input.documents
+                    )
+                        ? input.documents
+                        : []
+                ).map(item =>
+                    this.normalizeAssemblyDocumentRecord(
+                        item,
+                        {
+                            type:
+                                APPLICATION_PACKAGE_ITEM_TYPES.ATTACHMENT,
+                            source:
+                                "assembly-input"
+                        }
+                    )
+                );
+
+            const documentMap =
+                new Map();
+
+            [
+                ...applicationAttachments,
+                ...suppliedDocuments
+            ].forEach(item => {
+                const key =
+                    this.normalizeText(
+                        item.name
+                    );
+
+                if (!documentMap.has(key)) {
+                    documentMap.set(
+                        key,
+                        item
+                    );
+                    return;
+                }
+
+                const existing =
+                    documentMap.get(key);
+
+                documentMap.set(
+                    key,
+                    {
+                        ...existing,
+                        ...item,
+                        verified:
+                            existing.verified ||
+                            item.verified,
+                        current:
+                            existing.current &&
+                            item.current,
+                        attached:
+                            existing.attached ||
+                            item.attached,
+                        documentId:
+                            item.documentId ||
+                            existing.documentId,
+                        issues:
+                            this.uniqueStrings([
+                                ...(existing.issues || []),
+                                ...(item.issues || [])
+                            ])
+                    }
+                );
+            });
+
+            const attachmentIndex =
+                [
+                    ...documentMap.values()
+                ];
+
+            const certificationPacket =
+                (
+                    application
+                        .certifications || []
+                ).map(item => ({
+                    ...this.clone(item),
+                    type:
+                        APPLICATION_PACKAGE_ITEM_TYPES.CERTIFICATION
+                }));
+
+            const signaturePacket =
+                (
+                    application
+                        .signatures || []
+                ).map(item => ({
+                    ...this.clone(item),
+                    type:
+                        APPLICATION_PACKAGE_ITEM_TYPES.SIGNATURE
+                }));
+
+            const executiveSummary = {
+                title:
+                    application.title,
+                opportunityId:
+                    opportunity.id,
+                applicationId:
+                    application.id,
+                provider:
+                    opportunity.provider,
+                deadline:
+                    application.deadline,
+                submissionMethod:
+                    application.submissionMethod,
+                alignmentStatus:
+                    opportunity
+                        .alignmentStrategy
+                        ?.status || "not-built",
+                alignmentScore:
+                    opportunity
+                        .alignmentStrategy
+                        ?.overallScore ?? null,
+                questionCount:
+                    application.questions.length,
+                approvedQuestionCount:
+                    application.questions.filter(
+                        question =>
+                            question.state ===
+                            APPLICATION_ITEM_STATES.APPROVED
+                    ).length,
+                estimatedAward:
+                    opportunity.awardAmount ||
+                    opportunity.awardMaximum ||
+                    opportunity.awardMinimum ||
+                    null
+            };
+
+            const applicationPackage = {
+                schema:
+                    "meos.grant-office.executive-application-package.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                id:
+                    input.id ||
+                    this.createId(
+                        "executive-application-package"
+                    ),
+                opportunityId:
+                    opportunity.id,
+                applicationId:
+                    application.id,
+                title:
+                    input.title ||
+                    application.title,
+                createdAt:
+                    this.now(),
+                updatedAt:
+                    this.now(),
+                assemblyState:
+                    APPLICATION_ASSEMBLY_STATES.ASSEMBLING,
+                executiveReviewApproved:
+                    input.executiveReviewApproved === true ||
+                    opportunity
+                        .executiveReviewPackage
+                        ?.approval
+                        ?.status === "approved",
+                executiveSummary,
+                narrativeSections,
+                budgetNarrative:
+                    narrativeSections
+                        .flatMap(
+                            section =>
+                                section.responses
+                        )
+                        .filter(
+                            response =>
+                                [
+                                    APPLICATION_QUESTION_CATEGORIES.BUDGET,
+                                    APPLICATION_QUESTION_CATEGORIES.BUDGET_NARRATIVE
+                                ].includes(
+                                    response.category
+                                )
+                        ),
+                attachmentIndex,
+                certificationPacket,
+                signaturePacket,
+                evidenceIndex:
+                    this.buildApplicationEvidenceIndex(
+                        application
+                    ),
+                submissionChecklist:
+                    [],
+                executiveActionChecklist:
+                    null,
+                readiness:
+                    null,
+                history: [
+                    {
+                        state:
+                            APPLICATION_ASSEMBLY_STATES.ASSEMBLING,
+                        enteredAt:
+                            this.now(),
+                        actor:
+                            input.actor ||
+                            "MEOS Grant Office",
+                        note:
+                            "Executive application package assembly started."
+                    }
+                ]
+            };
+
+            applicationPackage
+                .submissionChecklist =
+                this.buildApplicationSubmissionChecklist(
+                    application,
+                    [
+                        ...attachmentIndex,
+                        ...certificationPacket.map(
+                            item =>
+                                this.normalizeAssemblyDocumentRecord(
+                                    item,
+                                    {
+                                        type:
+                                            APPLICATION_PACKAGE_ITEM_TYPES.CERTIFICATION
+                                    }
+                                )
+                        ),
+                        ...signaturePacket.map(
+                            item =>
+                                this.normalizeAssemblyDocumentRecord(
+                                    item,
+                                    {
+                                        type:
+                                            APPLICATION_PACKAGE_ITEM_TYPES.SIGNATURE
+                                    }
+                                )
+                        )
+                    ]
+                );
+
+            applicationPackage.readiness =
+                this.calculateApplicationPackageReadiness(
+                    applicationPackage
+                );
+
+            applicationPackage
+                .executiveActionChecklist =
+                this.buildExecutiveActionChecklist(
+                    applicationPackage
+                );
+
+            applicationPackage.assemblyState =
+                this.determineApplicationAssemblyState(
+                    applicationPackage
+                );
+
+            applicationPackage.history.push({
+                state:
+                    applicationPackage
+                        .assemblyState,
+                enteredAt:
+                    this.now(),
+                actor:
+                    input.actor ||
+                    "MEOS Grant Office",
+                note:
+                    "Executive application package assembled and readiness evaluated."
+            });
+
+            opportunity
+                .executiveApplicationPackage =
+                applicationPackage;
+            opportunity.updatedAt =
+                this.now();
+
+            this.analytics
+                .applicationPackagesAssembled += 1;
+            this.analytics
+                .applicationPackageItemsCreated +=
+                applicationPackage
+                    .submissionChecklist
+                    .length;
+            this.analytics
+                .executiveActionChecklistsCreated += 1;
+            this.analytics
+                .lastApplicationAssemblyAt =
+                applicationPackage.createdAt;
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                applicationPackage:
+                    this.clone(
+                        applicationPackage
+                    ),
+                opportunity:
+                    this.clone(
+                        opportunity
+                    )
+            };
+        },
+
+        updateApplicationPackageDocument(
+            opportunityId,
+            documentId,
+            update = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const applicationPackage =
+                opportunity
+                    ?.executiveApplicationPackage;
+
+            if (!applicationPackage) {
+                return {
+                    success: false,
+                    error:
+                        "Executive application package has not been assembled."
+                };
+            }
+
+            const document =
+                applicationPackage
+                    .attachmentIndex
+                    .find(
+                        item =>
+                            item.id ===
+                            documentId
+                    );
+
+            if (!document) {
+                return {
+                    success: false,
+                    error:
+                        "Application package document not found."
+                };
+            }
+
+            Object.assign(
+                document,
+                {
+                    ...update
+                }
+            );
+
+            if (update.attached === true) {
+                document.status =
+                    "attached";
+                document.attachedAt =
+                    update.attachedAt ||
+                    this.now();
+            }
+
+            applicationPackage
+                .submissionChecklist =
+                this.buildApplicationSubmissionChecklist(
+                    opportunity
+                        .applicationIntelligence,
+                    [
+                        ...applicationPackage
+                            .attachmentIndex,
+                        ...applicationPackage
+                            .certificationPacket
+                            .map(item =>
+                                this.normalizeAssemblyDocumentRecord(
+                                    item,
+                                    {
+                                        type:
+                                            APPLICATION_PACKAGE_ITEM_TYPES.CERTIFICATION
+                                    }
+                                )
+                            ),
+                        ...applicationPackage
+                            .signaturePacket
+                            .map(item =>
+                                this.normalizeAssemblyDocumentRecord(
+                                    item,
+                                    {
+                                        type:
+                                            APPLICATION_PACKAGE_ITEM_TYPES.SIGNATURE
+                                    }
+                                )
+                            )
+                    ]
+                );
+
+            applicationPackage.readiness =
+                this.calculateApplicationPackageReadiness(
+                    applicationPackage
+                );
+            applicationPackage
+                .executiveActionChecklist =
+                this.buildExecutiveActionChecklist(
+                    applicationPackage
+                );
+            applicationPackage.assemblyState =
+                this.determineApplicationAssemblyState(
+                    applicationPackage
+                );
+            applicationPackage.updatedAt =
+                this.now();
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                document:
+                    this.clone(
+                        document
+                    ),
+                applicationPackage:
+                    this.clone(
+                        applicationPackage
+                    )
+            };
+        },
+
+        approveExecutiveApplicationPackage(
+            opportunityId,
+            approval = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const applicationPackage =
+                opportunity
+                    ?.executiveApplicationPackage;
+
+            if (!applicationPackage) {
+                return {
+                    success: false,
+                    error:
+                        "Executive application package has not been assembled."
+                };
+            }
+
+            const approvedBy =
+                String(
+                    approval.approvedBy ||
+                    ""
+                ).trim();
+
+            if (!approvedBy) {
+                return {
+                    success: false,
+                    error:
+                        "Application package approval requires approvedBy."
+                };
+            }
+
+            const unresolvedNarrative =
+                applicationPackage
+                    .narrativeSections
+                    .some(
+                        section =>
+                            !section.complete
+                    );
+
+            const unresolvedDocuments =
+                applicationPackage
+                    .attachmentIndex
+                    .filter(
+                        item =>
+                            item.required
+                    )
+                    .some(
+                        item =>
+                            !item.verified ||
+                            !item.current ||
+                            !item.attached
+                    );
+
+            const unresolvedCertifications =
+                applicationPackage
+                    .certificationPacket
+                    .filter(
+                        item =>
+                            item.required
+                    )
+                    .some(
+                        item =>
+                            item.status !==
+                                "approved"
+                    );
+
+            if (
+                unresolvedNarrative ||
+                unresolvedDocuments ||
+                unresolvedCertifications
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Application package cannot be approved while narrative, document, or certification requirements remain unresolved.",
+                    code:
+                        "GRANT_APPLICATION_PACKAGE_NOT_READY",
+                    readiness:
+                        this.clone(
+                            initialPackageSnapshot
+                                .readiness
+                        ),
+                    executiveActions:
+                        this.clone(
+                            initialPackageSnapshot
+                                .executiveActionChecklist
+                        )
+                };
+            }
+
+            applicationPackage
+                .executiveReviewApproved =
+                true;
+            applicationPackage
+                .executiveReviewApproval = {
+                    approvedBy,
+                    approvedAt:
+                        approval.approvedAt ||
+                        this.now(),
+                    notes:
+                        String(
+                            approval.notes || ""
+                        )
+                };
+
+            applicationPackage
+                .submissionChecklist =
+                this.buildApplicationSubmissionChecklist(
+                    opportunity
+                        .applicationIntelligence,
+                    [
+                        ...applicationPackage
+                            .attachmentIndex,
+                        ...applicationPackage
+                            .certificationPacket
+                            .map(item =>
+                                this.normalizeAssemblyDocumentRecord(
+                                    item,
+                                    {
+                                        type:
+                                            APPLICATION_PACKAGE_ITEM_TYPES.CERTIFICATION
+                                    }
+                                )
+                            ),
+                        ...applicationPackage
+                            .signaturePacket
+                            .map(item =>
+                                this.normalizeAssemblyDocumentRecord(
+                                    item,
+                                    {
+                                        type:
+                                            APPLICATION_PACKAGE_ITEM_TYPES.SIGNATURE
+                                    }
+                                )
+                            )
+                    ]
+                );
+
+            applicationPackage.readiness =
+                this.calculateApplicationPackageReadiness(
+                    applicationPackage
+                );
+            applicationPackage
+                .executiveActionChecklist =
+                this.buildExecutiveActionChecklist(
+                    applicationPackage
+                );
+            applicationPackage.assemblyState =
+                this.determineApplicationAssemblyState(
+                    applicationPackage
+                );
+            applicationPackage.updatedAt =
+                this.now();
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                applicationPackage:
+                    this.clone(
+                        applicationPackage
+                    )
+            };
+        },
+
+        markApplicationPackageSignature(
+            opportunityId,
+            signatureId,
+            signature = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const applicationPackage =
+                opportunity
+                    ?.executiveApplicationPackage;
+
+            if (!applicationPackage) {
+                return {
+                    success: false,
+                    error:
+                        "Executive application package has not been assembled."
+                };
+            }
+
+            if (
+                applicationPackage
+                    .executiveReviewApproved !== true
+            ) {
+                this.analytics
+                    .signatureReadinessBlocksTriggered += 1;
+
+                return {
+                    success: false,
+                    error:
+                        "Signature is blocked until the complete application package receives executive approval.",
+                    code:
+                        "GRANT_APPLICATION_SIGNATURE_BLOCKED"
+                };
+            }
+
+            const signatureRecord =
+                applicationPackage
+                    .signaturePacket
+                    .find(
+                        item =>
+                            item.id ===
+                            signatureId
+                    );
+
+            if (!signatureRecord) {
+                return {
+                    success: false,
+                    error:
+                        "Signature requirement not found."
+                };
+            }
+
+            const signedBy =
+                String(
+                    signature.signedBy ||
+                    ""
+                ).trim();
+
+            if (!signedBy) {
+                return {
+                    success: false,
+                    error:
+                        "Signature requires signedBy."
+                };
+            }
+
+            signatureRecord.status =
+                "signed";
+            signatureRecord.signedBy =
+                signedBy;
+            signatureRecord.signedAt =
+                signature.signedAt ||
+                this.now();
+            signatureRecord.attached =
+                true;
+
+            applicationPackage
+                .submissionChecklist =
+                this.buildApplicationSubmissionChecklist(
+                    opportunity
+                        .applicationIntelligence,
+                    [
+                        ...applicationPackage
+                            .attachmentIndex,
+                        ...applicationPackage
+                            .certificationPacket
+                            .map(item =>
+                                this.normalizeAssemblyDocumentRecord(
+                                    item,
+                                    {
+                                        type:
+                                            APPLICATION_PACKAGE_ITEM_TYPES.CERTIFICATION
+                                    }
+                                )
+                            ),
+                        ...applicationPackage
+                            .signaturePacket
+                            .map(item =>
+                                this.normalizeAssemblyDocumentRecord(
+                                    item,
+                                    {
+                                        type:
+                                            APPLICATION_PACKAGE_ITEM_TYPES.SIGNATURE
+                                    }
+                                )
+                            )
+                    ]
+                );
+            applicationPackage.readiness =
+                this.calculateApplicationPackageReadiness(
+                    applicationPackage
+                );
+            applicationPackage
+                .executiveActionChecklist =
+                this.buildExecutiveActionChecklist(
+                    applicationPackage
+                );
+            applicationPackage.assemblyState =
+                this.determineApplicationAssemblyState(
+                    applicationPackage
+                );
+            applicationPackage.updatedAt =
+                this.now();
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                signature:
+                    this.clone(
+                        signatureRecord
+                    ),
+                applicationPackage:
+                    this.clone(
+                        applicationPackage
+                    )
+            };
+        },
+
+        runApplicationAssemblyAcceptanceTest() {
+            const originalPersistence =
+                this.configuration
+                    .automaticPersistence;
+            const testId =
+                this.createId(
+                    "application-assembly-test"
+                );
+
+            this.configuration
+                .automaticPersistence =
+                false;
+
+            try {
+                this.addOpportunity({
+                    id:
+                        testId,
+                    title:
+                        "Watershed Protection Application Assembly Test",
+                    provider:
+                        "Acceptance Test Foundation",
+                    awardAmount:
+                        75000,
+                    verified:
+                        true,
+                    sourceUrl:
+                        "https://example.org/application"
+                });
+
+                const opportunity =
+                    this.getOpportunityById(
+                        testId
+                    );
+
+                opportunity
+                    .applicationIntelligence = {
+                        id:
+                            "application-test",
+                        title:
+                            "Watershed Protection Application",
+                        deadline:
+                            new Date(
+                                Date.now() +
+                                30 * 86400000
+                            ).toISOString(),
+                        submissionMethod:
+                            "online portal",
+                        questions: [
+                            {
+                                id:
+                                    "q-1",
+                                text:
+                                    "Describe the project.",
+                                required:
+                                    true,
+                                state:
+                                    APPLICATION_ITEM_STATES.APPROVED,
+                                draft: {
+                                    text:
+                                        "The project connects river corridor outreach and trash removal to improved watershed conditions.",
+                                    evidenceIds: [
+                                        "org-river-work",
+                                        "watershed-research"
+                                    ],
+                                    verifiedEvidenceIds: [
+                                        "org-river-work",
+                                        "watershed-research"
+                                    ],
+                                    confidence:
+                                        0.91,
+                                    missingInformation:
+                                        [],
+                                    limitCheck: {
+                                        withinLimits:
+                                            true
+                                    }
+                                }
+                            },
+                            {
+                                id:
+                                    "q-2",
+                                text:
+                                    "Explain the project budget.",
+                                required:
+                                    true,
+                                state:
+                                    APPLICATION_ITEM_STATES.APPROVED,
+                                draft: {
+                                    text:
+                                        "The approved budget supports direct project activities and required administration.",
+                                    evidenceIds: [
+                                        "approved-budget"
+                                    ],
+                                    verifiedEvidenceIds: [
+                                        "approved-budget"
+                                    ],
+                                    confidence:
+                                        0.9,
+                                    missingInformation:
+                                        [],
+                                    limitCheck: {
+                                        withinLimits:
+                                            true
+                                    }
+                                }
+                            }
+                        ],
+                        sections: [
+                            {
+                                id:
+                                    "section-1",
+                                title:
+                                    "Narrative",
+                                instructions:
+                                    "",
+                                order:
+                                    1,
+                                questions: []
+                            }
+                        ],
+                        attachments: [
+                            {
+                                id:
+                                    "irs-letter",
+                                name:
+                                    "IRS determination letter",
+                                required:
+                                    true,
+                                status:
+                                    "missing"
+                            }
+                        ],
+                        certifications: [
+                            {
+                                id:
+                                    "org-cert",
+                                name:
+                                    "Authorized organizational certification",
+                                required:
+                                    true,
+                                status:
+                                    "approved"
+                            }
+                        ],
+                        signatures: [
+                            {
+                                id:
+                                    "authorized-signature",
+                                name:
+                                    "Authorized official signature",
+                                required:
+                                    true,
+                                status:
+                                    "executive-approval-required"
+                            }
+                        ]
+                    };
+
+                opportunity
+                    .applicationIntelligence
+                    .sections[0]
+                    .questions =
+                    opportunity
+                        .applicationIntelligence
+                        .questions;
+
+                const assembled =
+                    this.assembleExecutiveApplicationPackage(
+                        testId,
+                        {
+                            documents: [
+                                {
+                                    id:
+                                        "irs-letter",
+                                    name:
+                                        "IRS determination letter",
+                                    documentId:
+                                        "document-irs-001",
+                                    verified:
+                                        true,
+                                    current:
+                                        true,
+                                    attached:
+                                        true
+                                }
+                            ]
+                        }
+                    );
+
+                const applicationPackage =
+                    this.getOpportunityById(
+                        testId
+                    )
+                        .executiveApplicationPackage;
+
+                const initialPackageSnapshot =
+                    this.clone(
+                        applicationPackage
+                    );
+
+                const blockedSignature =
+                    this.markApplicationPackageSignature(
+                        testId,
+                        "authorized-signature",
+                        {
+                            signedBy:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const approvedPackage =
+                    this.approveExecutiveApplicationPackage(
+                        testId,
+                        {
+                            approvedBy:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const signed =
+                    this.markApplicationPackageSignature(
+                        testId,
+                        "authorized-signature",
+                        {
+                            signedBy:
+                                "Acceptance Test Executive"
+                        }
+                    );
+
+                const finalPackage =
+                    this.getOpportunityById(
+                        testId
+                    )
+                        .executiveApplicationPackage;
+
+                const checks = [
+                    {
+                        name:
+                            "Executive application package created",
+                        passed:
+                            assembled.success === true &&
+                            Boolean(
+                                applicationPackage
+                                    ?.id
+                            )
+                    },
+                    {
+                        name:
+                            "Narrative sections assembled",
+                        passed:
+                            initialPackageSnapshot
+                                .narrativeSections
+                                .length === 1 &&
+                            applicationPackage
+                                .narrativeSections[0]
+                                .responses
+                                .length === 2
+                    },
+                    {
+                        name:
+                            "Attachment inventory created",
+                        passed:
+                            initialPackageSnapshot
+                                .attachmentIndex
+                                .some(
+                                    item =>
+                                        item.name ===
+                                            "IRS determination letter" &&
+                                        item.verified &&
+                                        item.current &&
+                                        item.attached
+                                )
+                    },
+                    {
+                        name:
+                            "Required documents tracked",
+                        passed:
+                            initialPackageSnapshot
+                                .submissionChecklist
+                                .some(
+                                    item =>
+                                        item.category ===
+                                            APPLICATION_PACKAGE_ITEM_TYPES.ATTACHMENT &&
+                                        item.complete === true
+                                )
+                    },
+                    {
+                        name:
+                            "Readiness score calculated",
+                        passed:
+                            Number.isFinite(
+                                initialPackageSnapshot
+                                    .readiness
+                                    .percent
+                            ) &&
+                            initialPackageSnapshot
+                                .readiness
+                                .percent > 0
+                    },
+                    {
+                        name:
+                            "Outstanding executive actions generated",
+                        passed:
+                            initialPackageSnapshot
+                                .executiveActionChecklist
+                                .actions
+                                .some(
+                                    action =>
+                                        action.id ===
+                                            "approve-application-package"
+                                ) &&
+                            initialPackageSnapshot
+                                .executiveActionChecklist
+                                .actions
+                                .some(
+                                    action =>
+                                        action.id ===
+                                            "signature-authorized-signature"
+                                )
+                    },
+                    {
+                        name:
+                            "Signature blocked before package approval",
+                        passed:
+                            blockedSignature
+                                .success === false &&
+                            blockedSignature
+                                .code ===
+                                "GRANT_APPLICATION_SIGNATURE_BLOCKED"
+                    },
+                    {
+                        name:
+                            "Package approval enables signature readiness",
+                        passed:
+                            approvedPackage
+                                .success === true &&
+                            approvedPackage
+                                .applicationPackage
+                                .assemblyState ===
+                                APPLICATION_ASSEMBLY_STATES.READY_FOR_SIGNATURE
+                    },
+                    {
+                        name:
+                            "Completed signature produces submission readiness",
+                        passed:
+                            signed.success === true &&
+                            finalPackage
+                                .assemblyState ===
+                                APPLICATION_ASSEMBLY_STATES.READY_FOR_SUBMISSION &&
+                            finalPackage
+                                .readiness
+                                .readyForSubmission === true
+                    }
+                ];
+
+                return {
+                    success:
+                        checks.every(
+                            check =>
+                                check.passed
+                        ),
+                    passed:
+                        checks.filter(
+                            check =>
+                                check.passed
+                        ).length,
+                    total:
+                        checks.length,
+                    checks,
+                    assemblyState:
+                        finalPackage
+                            .assemblyState,
+                    readiness:
+                        this.clone(
+                            finalPackage
+                                .readiness
+                        ),
+                    executiveActions:
+                        this.clone(
+                            finalPackage
+                                .executiveActionChecklist
+                        ),
+                    blockedSignatureCode:
+                        blockedSignature.code
+                };
+            } finally {
+                this.opportunities =
+                    this.opportunities.filter(
+                        opportunity =>
+                            opportunity.id !==
+                            testId
+                    );
+                this.configuration
+                    .automaticPersistence =
+                    originalPersistence;
+            }
+        },
+
         runApplicationIntelligenceAcceptanceTest() {
             const originalPersistence =
                 this.configuration.automaticPersistence;
@@ -7820,6 +9673,10 @@
                     this.opportunities.filter(
                         item => item.executiveReviewPackage
                     ).length,
+                executiveApplicationPackageCount:
+                    this.opportunities.filter(
+                        item => item.executiveApplicationPackage
+                    ).length,
                 pipelineCounts:
                     this.getPipelineCounts(),
                 analytics:
@@ -8120,6 +9977,10 @@
         APPLICATION_REVIEW_STATES;
     GrantOffice.APPLICATION_ITEM_STATES =
         APPLICATION_ITEM_STATES;
+    GrantOffice.APPLICATION_ASSEMBLY_STATES =
+        APPLICATION_ASSEMBLY_STATES;
+    GrantOffice.APPLICATION_PACKAGE_ITEM_TYPES =
+        APPLICATION_PACKAGE_ITEM_TYPES;
     GrantOffice.RECOMMENDATIONS =
         RECOMMENDATIONS;
     GrantOffice.DISQUALIFIER_TYPES =
