@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.2.2";
+  const DASHBOARD_VERSION = "4.3.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -92,6 +92,18 @@
       connected: false,
       lastSnapshot: null,
       lastEventAt: null,
+      listenersInstalled: false
+    },
+    maddyDigitalActor: {
+      available: false,
+      initialized: false,
+      mounted: false,
+      connected: false,
+      mediaReady: false,
+      fallbackActive: true,
+      activePerformance: null,
+      lastEventAt: null,
+      lastError: null,
       listenersInstalled: false
     },
     fundingIntelligence: {
@@ -1961,6 +1973,93 @@
         }
       }
 
+
+      /* MEOS 4.3.0 — Digital Executive Telepresence viewport */
+      .meos-digital-actor-mount{
+        position:absolute;
+        z-index:6;
+        inset:-1% 2% -2%;
+        display:block;
+        overflow:visible;
+        pointer-events:none;
+        opacity:0;
+        transition:opacity .55s ease;
+      }
+
+      .meos-digital-actor-mount[data-actor-mounted="true"]{
+        opacity:1;
+      }
+
+      .meos-digital-actor-mount .meos-digital-actor{
+        width:100%;
+        height:100%;
+        min-height:0;
+        overflow:visible;
+      }
+
+      .meos-digital-actor-mount .meos-digital-actor-stage{
+        overflow:visible;
+      }
+
+      .meos-digital-actor-mount .meos-digital-actor-layer,
+      .meos-digital-actor-mount .meos-digital-actor-fallback{
+        width:90%;
+        height:102%;
+        left:5%;
+        right:auto;
+        top:0;
+        bottom:auto;
+        object-fit:contain;
+        object-position:center bottom;
+        scale:.92;
+        translate:0 16px;
+        mix-blend-mode:screen;
+        filter:
+          brightness(1.08)
+          contrast(1.12)
+          saturate(1.02)
+          drop-shadow(0 0 24px rgba(89,219,255,.52));
+        -webkit-mask-image:
+          radial-gradient(ellipse 64% 62% at 50% 42%,#000 0 62%,rgba(0,0,0,.94) 74%,transparent 100%),
+          linear-gradient(to bottom,transparent 0,#000 7%,#000 80%,transparent 100%);
+        -webkit-mask-composite:source-in;
+        mask-image:
+          radial-gradient(ellipse 64% 62% at 50% 42%,#000 0 62%,rgba(0,0,0,.94) 74%,transparent 100%),
+          linear-gradient(to bottom,transparent 0,#000 7%,#000 80%,transparent 100%);
+        mask-composite:intersect;
+      }
+
+      .meos-digital-actor-mount .meos-digital-actor-status{
+        display:none;
+      }
+
+      .meos-living-presence[data-digital-actor-mounted="true"] #meosCanonicalMaddy{
+        opacity:0!important;
+        visibility:hidden!important;
+        pointer-events:none!important;
+      }
+
+      .meos-living-presence[data-digital-actor-mounted="false"] #meosCanonicalMaddy{
+        visibility:visible;
+      }
+
+      .meos-living-presence[data-digital-actor-media="ready"] .meos-presence-circuit{
+        opacity:.72!important;
+      }
+
+      .meos-living-presence[data-digital-actor-performance="listening"] .meos-hq-core-ring.r2,
+      .meos-living-presence[data-digital-actor-performance="speaking"] .meos-hq-core-ring.r2{
+        animation-duration:4.2s;
+      }
+
+      .meos-living-presence[data-digital-actor-performance="thinking"] .meos-hq-core-ring.r3{
+        animation-duration:7.4s;
+      }
+
+      .meos-living-presence[data-digital-actor-performance="celebrating"] .meos-presence-human-glow{
+        opacity:.7!important;
+      }
+
     `;
 
     document.head.appendChild(style);
@@ -3102,7 +3201,8 @@ document
               <div class="meos-presence-stage">
                 <span class="meos-presence-circuit" aria-hidden="true"></span>
                 <img class="meos-presence-logo" src="maddy-executive-insignia.png" alt="MEOS Maddy command insignia beginning the startup transformation" onerror="this.style.visibility='hidden';" />
-                <img class="meos-presence-human" id="meosCanonicalMaddy" src="maddy-holographic-presence-v1.png" alt="Maddy's canonical holographic executive presence" onerror="this.style.visibility='hidden';" />
+                <img class="meos-presence-human" id="meosCanonicalMaddy" src="maddy-holographic-presence-v1.png" alt="Maddy's canonical holographic executive presence fallback" onerror="this.style.visibility='hidden';" />
+                <div class="meos-digital-actor-mount" id="meosDigitalActorMount" aria-label="Maddy digital executive telepresence performance viewport"></div>
                 <span class="meos-presence-human-glow" aria-hidden="true"></span>
                 <span class="meos-presence-scan" aria-hidden="true"></span>
                 <span class="meos-presence-eye-light" aria-hidden="true"></span>
@@ -4329,6 +4429,8 @@ document
       ["Maddy presence capsule border has been removed", getComputedStyle(document.querySelector(".meos-presence-stage")).borderTopWidth === "0px"],
       ["Holographic Maddy uses a feathered cinematic mask instead of a visible image rectangle", getComputedStyle(document.getElementById("meosCanonicalMaddy")).webkitMaskImage !== "none"],
       ["Holographic Maddy uses the enforced v4.2.2 independent scale and vertical offset", getComputedStyle(document.getElementById("meosCanonicalMaddy")).scale !== "none" && getComputedStyle(document.getElementById("meosCanonicalMaddy")).translate !== "none"],
+      ["Digital Actor viewport is mounted inside Living Headquarters", document.getElementById("meosLivingPresence")?.dataset.digitalActorMounted === "true"],
+      ["Digital Actor viewport preserves the canonical holographic fallback until real performances are available", document.getElementById("meosLivingPresence")?.dataset.digitalActorMedia === "fallback"],
       ["Maddy Presence Engine is connected to Living Headquarters", document.getElementById("meosLivingPresence")?.dataset.presenceConnected === "true"],
       ["Living Headquarters state is driven by Maddy Presence Engine", document.getElementById("meosLivingPresence")?.dataset.presenceState === getMaddyPresenceEngine()?.getStatus?.()?.state],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
@@ -4920,6 +5022,242 @@ document
   }
 
 
+  function getMaddyDigitalActorRenderer() {
+    return window.MaddyDigitalActorRenderer ||
+      window.MEOSMaddyDigitalActorRenderer ||
+      null;
+  }
+
+  function updateDigitalActorDashboardState(snapshot = null) {
+    const renderer = getMaddyDigitalActorRenderer();
+    const resolved = snapshot || renderer?.getSnapshot?.() || null;
+    const root = document.getElementById("meosLivingPresence");
+    const mount = document.getElementById("meosDigitalActorMount");
+
+    if (!root || !mount || !resolved) {
+      return false;
+    }
+
+    const mounted = resolved.mounted === true;
+    const connected = resolved.connected === true;
+    const activePerformance = resolved.activePerformance || null;
+    const fallbackActive = mount.querySelector(".meos-digital-actor")?.dataset?.fallback !== "false";
+    const mediaReady = Boolean(activePerformance && fallbackActive === false);
+
+    root.dataset.digitalActorAvailable = "true";
+    root.dataset.digitalActorMounted = mounted ? "true" : "false";
+    root.dataset.digitalActorConnected = connected ? "true" : "false";
+    root.dataset.digitalActorMedia = mediaReady ? "ready" : "fallback";
+
+    if (activePerformance) {
+      root.dataset.digitalActorPerformance = activePerformance;
+    } else {
+      delete root.dataset.digitalActorPerformance;
+    }
+
+    mount.dataset.actorMounted = mounted ? "true" : "false";
+
+    state.maddyDigitalActor.available = true;
+    state.maddyDigitalActor.initialized = resolved.initialized === true;
+    state.maddyDigitalActor.mounted = mounted;
+    state.maddyDigitalActor.connected = connected;
+    state.maddyDigitalActor.mediaReady = mediaReady;
+    state.maddyDigitalActor.fallbackActive = !mediaReady;
+    state.maddyDigitalActor.activePerformance = activePerformance;
+    state.maddyDigitalActor.lastEventAt = new Date().toISOString();
+    state.maddyDigitalActor.lastError = resolved.lastError || null;
+
+    return true;
+  }
+
+  function handleDigitalActorEvent(event) {
+    const renderer = getMaddyDigitalActorRenderer();
+    const snapshot = renderer?.getSnapshot?.();
+
+    if (snapshot) {
+      updateDigitalActorDashboardState(snapshot);
+    }
+
+    const eventName = event?.detail?.name || "";
+
+    if (eventName.endsWith(":performance-changed")) {
+      const performance = event?.detail?.detail?.performance || null;
+      const root = document.getElementById("meosLivingPresence");
+
+      if (root && performance) {
+        root.dataset.digitalActorPerformance = performance;
+        root.dataset.digitalActorMedia = "ready";
+      }
+    }
+
+    if (
+      eventName.endsWith(":performance-failed") ||
+      eventName.endsWith(":performance-missing") ||
+      eventName.endsWith(":playback-prevented")
+    ) {
+      const root = document.getElementById("meosLivingPresence");
+      if (root) {
+        root.dataset.digitalActorMedia = "fallback";
+      }
+    }
+  }
+
+  function installDigitalActorListeners() {
+    if (state.maddyDigitalActor.listenersInstalled) {
+      return true;
+    }
+
+    [
+      "meos:maddy-digital-actor",
+      "meos:maddy-digital-actor:initialized",
+      "meos:maddy-digital-actor:mounted",
+      "meos:maddy-digital-actor:presence-connected",
+      "meos:maddy-digital-actor:performance-changed",
+      "meos:maddy-digital-actor:performance-failed",
+      "meos:maddy-digital-actor:performance-missing",
+      "meos:maddy-digital-actor:playback-prevented",
+      "meos:maddy-digital-actor:shutdown"
+    ].forEach((eventName) => {
+      document.addEventListener(eventName, handleDigitalActorEvent);
+    });
+
+    state.maddyDigitalActor.listenersInstalled = true;
+    return true;
+  }
+
+  async function initializeDigitalActorRenderer(options = {}) {
+    installDigitalActorListeners();
+
+    const renderer = getMaddyDigitalActorRenderer();
+    const mount = document.getElementById("meosDigitalActorMount");
+    const root = document.getElementById("meosLivingPresence");
+
+    if (!renderer || !mount || !root) {
+      if (root) {
+        root.dataset.digitalActorAvailable = "false";
+        root.dataset.digitalActorMounted = "false";
+        root.dataset.digitalActorMedia = "fallback";
+      }
+
+      state.maddyDigitalActor.available = Boolean(renderer);
+      state.maddyDigitalActor.lastError = {
+        name: "DigitalActorUnavailable",
+        message: !renderer
+          ? "Maddy Digital Actor Renderer is not loaded."
+          : "Digital Actor mount point is unavailable."
+      };
+
+      return {
+        success: false,
+        reason: !renderer ? "renderer-unavailable" : "mount-unavailable"
+      };
+    }
+
+    root.dataset.digitalActorAvailable = "true";
+    root.dataset.digitalActorMounted = "false";
+    root.dataset.digitalActorMedia = "fallback";
+
+    try {
+      const snapshot = await renderer.initialize({
+        target: "#meosDigitalActorMount",
+        config: {
+          poster: "maddy-holographic-presence-v1.png",
+          autoplay: options.autoplay === true,
+          preloadOnInitialize: options.preloadOnInitialize === true,
+          showStatus: false,
+          crossfadeMs: 520,
+          preloadTimeoutMs: 8000
+        }
+      });
+
+      updateDigitalActorDashboardState(snapshot);
+
+      document.dispatchEvent(new CustomEvent("meos:dashboard:digital-actor-mounted", {
+        detail: {
+          schema: "meos.dashboard.digital-actor-mounted.v1",
+          mountedAt: new Date().toISOString(),
+          rendererVersion: renderer.version,
+          fallbackActive: true,
+          mediaActivationDeferred: options.autoplay !== true
+        }
+      }));
+
+      return {
+        success: true,
+        snapshot
+      };
+    } catch (error) {
+      state.maddyDigitalActor.lastError = {
+        name: error?.name || "DigitalActorInitializationError",
+        message: error?.message || String(error)
+      };
+
+      root.dataset.digitalActorMounted = "false";
+      root.dataset.digitalActorMedia = "fallback";
+
+      console.error("MEOS Dashboard could not initialize Maddy Digital Actor Renderer.", error);
+
+      return {
+        success: false,
+        reason: "initialization-error",
+        error: state.maddyDigitalActor.lastError
+      };
+    }
+  }
+
+  async function activateDigitalActorMedia() {
+    const renderer = getMaddyDigitalActorRenderer();
+
+    if (!renderer) {
+      return {
+        success: false,
+        reason: "renderer-unavailable"
+      };
+    }
+
+    const result = await renderer.syncFromPresence();
+    updateDigitalActorDashboardState(renderer.getSnapshot?.());
+
+    return result;
+  }
+
+  function runDigitalActorIntegrationAcceptanceTest() {
+    const renderer = getMaddyDigitalActorRenderer();
+    const snapshot = renderer?.getSnapshot?.() || {};
+    const root = document.getElementById("meosLivingPresence");
+    const mount = document.getElementById("meosDigitalActorMount");
+    const fallback = mount?.querySelector(".meos-digital-actor-fallback");
+
+    const checks = [
+      ["Maddy Digital Actor Renderer is available", Boolean(renderer)],
+      ["Digital Actor Renderer version 1.0.0 or later is loaded", Boolean(renderer?.version && renderer.version >= "1.0.0")],
+      ["Digital Actor mount point exists in Living Headquarters", Boolean(mount)],
+      ["Digital Actor Renderer is initialized", snapshot.initialized === true],
+      ["Digital Actor Renderer is mounted", snapshot.mounted === true],
+      ["Digital Actor Renderer is connected to the Presence Engine", snapshot.connected === true],
+      ["Living Headquarters reports Digital Actor availability", root?.dataset.digitalActorAvailable === "true"],
+      ["Living Headquarters reports Digital Actor mounted state", root?.dataset.digitalActorMounted === "true"],
+      ["Current holographic Maddy remains available as honest fallback", fallback?.getAttribute("src") === "maddy-holographic-presence-v1.png"],
+      ["Static dashboard portrait is hidden after the actor viewport mounts", getComputedStyle(document.getElementById("meosCanonicalMaddy")).visibility === "hidden"],
+      ["Digital Actor event listeners are installed once", state.maddyDigitalActor.listenersInstalled === true],
+      ["Digital Actor media activation remains deferred until real performance clips exist", root?.dataset.digitalActorMedia === "fallback"]
+    ].map(([name, passed]) => ({
+      name,
+      passed: Boolean(passed)
+    }));
+
+    return {
+      success: checks.every((check) => check.passed),
+      schema: "meos.dashboard.digital-actor-integration.acceptance.v1",
+      version: DASHBOARD_VERSION,
+      rendererVersion: renderer?.version || null,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks
+    };
+  }
+
+
   function initializeLivingPresenceEvolution() {
     const stage = document.querySelector("#meosLivingPresence .meos-presence-stage");
     const steps = Array.from(document.querySelectorAll("#meosPresenceEvolution [data-stage-step]"));
@@ -4971,6 +5309,10 @@ document
   function initialize() {
     createDashboardShell();
     connectPresenceEngine();
+    void initializeDigitalActorRenderer({
+      autoplay: false,
+      preloadOnInitialize: false
+    });
     initializeLivingPresenceEvolution();
     installLegacyVoicePanelRetirement();
     void loadFundingIntelligence().finally(renderLiveHeadquarters);
@@ -5024,6 +5366,22 @@ document
           : null
       }),
       runAcceptanceTest: runPresenceIntegrationAcceptanceTest
+    }),
+    digitalActor: Object.freeze({
+      initialize: initializeDigitalActorRenderer,
+      activateMedia: activateDigitalActorMedia,
+      sync: async () => {
+        const renderer = getMaddyDigitalActorRenderer();
+        if (!renderer) return false;
+        const result = await renderer.syncFromPresence();
+        updateDigitalActorDashboardState(renderer.getSnapshot?.());
+        return result;
+      },
+      getState: () => ({
+        ...state.maddyDigitalActor,
+        renderer: getMaddyDigitalActorRenderer()?.getSnapshot?.() || null
+      }),
+      runAcceptanceTest: runDigitalActorIntegrationAcceptanceTest
     }),
     cost: Object.freeze({
       setState: setCostState,
