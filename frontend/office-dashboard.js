@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.4.2";
+  const DASHBOARD_VERSION = "2.4.3";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -2738,6 +2738,74 @@ document
     );
   }
 
+  function getFundingOfficialUrl(opportunity = {}) {
+    const candidates = [
+      opportunity?.url,
+      opportunity?.sourceUrl,
+      opportunity?.sourceURL,
+      opportunity?.opportunityUrl,
+      opportunity?.opportunityURL,
+      opportunity?.opportunityLink,
+      opportunity?.detailUrl,
+      opportunity?.detailsUrl,
+      opportunity?.applicationUrl,
+      opportunity?.applicationURL,
+      opportunity?.source?.url,
+      opportunity?.source?.sourceUrl,
+      opportunity?.source?.opportunityUrl,
+      opportunity?.raw?.url,
+      opportunity?.raw?.sourceUrl,
+      opportunity?.raw?.opportunityUrl,
+      opportunity?.resourceDevelopment?.workQueue?.opportunity?.sourceUrl,
+      opportunity?.resourceDevelopment?.workQueue?.opportunity?.url,
+      opportunity?.fundingPipeline?.artifacts?.applicationIntelligence?.sourceUrl
+    ];
+
+    const direct = candidates.find((value) => {
+      if (typeof value !== "string" || !value.trim()) return false;
+      try {
+        const parsed = new URL(value, window.location.href);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch (_) {
+        return false;
+      }
+    });
+
+    if (direct) {
+      return new URL(direct, window.location.href).href;
+    }
+
+    const provider = String(opportunity?.provider || opportunity?.sourceName || "").toLowerCase();
+    const externalId = firstDefined(
+      opportunity?.externalId,
+      opportunity?.opportunityNumber,
+      opportunity?.number,
+      ""
+    );
+
+    if (provider.includes("grants.gov") && externalId) {
+      return `https://www.grants.gov/search-results-detail/${encodeURIComponent(externalId)}`;
+    }
+
+    if (provider.includes("grants.gov")) {
+      return "https://www.grants.gov/search-grants";
+    }
+
+    return "";
+  }
+
+  function openFundingOfficialUrl(url) {
+    if (!url) return false;
+
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      window.location.assign(url);
+    }
+
+    dispatchMEOS("meos:funding-official-source-opened", { url });
+    return true;
+  }
+
   function renderFundingOpportunityDetail(opportunity) {
     const detail = document.getElementById("meosFundingBrowserDetail");
     if (!detail || !opportunity) return;
@@ -2766,13 +2834,7 @@ document
       getFundingDeadline(opportunity)
     );
     const recommendation = getFundingRecommendation(opportunity);
-    const url = firstDefined(
-      opportunity?.url,
-      opportunity?.sourceUrl,
-      opportunity?.source?.url,
-      opportunity?.resourceDevelopment?.workQueue?.opportunity?.sourceUrl,
-      ""
-    );
+    const url = getFundingOfficialUrl(opportunity);
     const unknowns = Array.isArray(decision?.unknowns)
       ? decision.unknowns
       : [];
@@ -2864,10 +2926,14 @@ document
 
       ${
         url
-          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="take-it-button" style="display:inline-block;text-decoration:none;margin-top:12px;">Open Official Evidence</a>`
-          : ""
+          ? `<button id="meosFundingOpenOfficial" type="button" class="take-it-button" style="display:inline-block;margin-top:12px;">Open Official Opportunity</button>`
+          : `<p class="meos-muted" style="margin-top:12px;">No verified official opportunity link is stored for this record.</p>`
       }
     `;
+
+    detail.querySelector("#meosFundingOpenOfficial")?.addEventListener("click", () => {
+      openFundingOfficialUrl(url);
+    });
   }
 
   function openFundingIntelligenceBrowser(selectedOpportunity = null) {
@@ -3878,6 +3944,12 @@ document
     }),
     funding: Object.freeze({
       refresh: loadFundingIntelligence,
+      openOfficial: (opportunityOrUrl) => {
+        const url = typeof opportunityOrUrl === "string"
+          ? opportunityOrUrl
+          : getFundingOfficialUrl(opportunityOrUrl || {});
+        return openFundingOfficialUrl(url);
+      },
       getState: () => ({
         status: state.fundingIntelligence.status,
         totalQualified: state.fundingIntelligence.totalQualified,
