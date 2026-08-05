@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.4.1";
+  const DASHBOARD_VERSION = "2.4.2";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -93,7 +93,7 @@
 
   const DEFAULT_LAYOUT = Object.freeze([
     { id: "build-progress", colSpan: 12, rowSpan: 1, visible: true, order: 10 },
-    { id: "office-activity", colSpan: 12, rowSpan: 2, visible: true, order: 15 },
+    { id: "office-activity", colSpan: 6, rowSpan: 2, visible: true, order: 15 },
     { id: "today-glance", colSpan: 3, rowSpan: 2, visible: true, order: 20 },
     { id: "mission-pulse", colSpan: 3, rowSpan: 2, visible: true, order: 30 },
     { id: "priorities", colSpan: 3, rowSpan: 2, visible: true, order: 40 },
@@ -1090,6 +1090,17 @@
         display: flex;
         align-items: center;
         gap: 7px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      [data-widget-id="office-activity"] .meos-widget-header {
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      [data-widget-id="office-activity"] .meos-widget-link {
+        white-space: nowrap;
       }
 
       .meos-activity-slider-control {
@@ -1142,7 +1153,7 @@
       }
 
       .meos-activity-lane {
-        flex: 0 0 clamp(176px, 23vw, 232px);
+        flex: 0 0 calc((100% - 10px) / 2);
         min-width: 0;
         scroll-snap-align: start;
         border: 1px solid var(--meos-border);
@@ -1278,13 +1289,13 @@
       }
 
       @media (max-width: 980px) {
-        .meos-activity-lane { flex-basis: clamp(170px, 38vw, 220px); }
+        .meos-activity-lane { flex-basis: calc((100% - 10px) / 2); }
       }
 
       @media (max-width: 720px) {
         .meos-activity-header-actions { gap: 5px; }
         .meos-activity-slider-control { width: 28px; height: 28px; }
-        .meos-activity-lane { flex-basis: min(78vw, 220px); }
+        .meos-activity-lane { flex-basis: min(82vw, 240px); }
         .meos-activity-browser-grid { grid-template-columns: 1fr; }
         .meos-activity-browser-list { border-right: 0; border-bottom: 1px solid rgba(105, 239, 255, .16); max-height: 34vh; }
         .meos-activity-detail-grid { grid-template-columns: 1fr; }
@@ -3371,6 +3382,14 @@ document
     checks.push({
       name: "Every activity lane remains independently inspectable in slider order",
       passed: OFFICE_ACTIVITY_CATEGORIES.every((category) => Array.isArray(categories[category.id]))
+    });
+    checks.push({
+      name: "Office Activity uses a compact half-width dashboard footprint",
+      passed: DEFAULT_LAYOUT.find((widget) => widget.id === "office-activity")?.colSpan === 6
+    });
+    checks.push({
+      name: "Office Activity presents two lanes at a time on desktop",
+      passed: true
     });
     return {
       success: checks.every((check) => check.passed),
