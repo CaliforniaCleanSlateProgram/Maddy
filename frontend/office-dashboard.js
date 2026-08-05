@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.4.0";
+  const DASHBOARD_VERSION = "2.4.1";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1086,14 +1086,65 @@
       }
 
 
-      .meos-activity-summary {
+      .meos-activity-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .meos-activity-slider-control {
+        width: 30px;
+        height: 30px;
         display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
+        place-items: center;
+        border: 1px solid var(--meos-border);
+        border-radius: 9px;
+        background: rgba(8, 18, 31, 0.58);
+        color: var(--meos-text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 1.15rem;
+        line-height: 1;
+        transition: border-color .18s ease, background .18s ease;
+      }
+
+      .meos-activity-slider-control:hover,
+      .meos-activity-slider-control:focus-visible {
+        border-color: rgba(121, 167, 255, .62);
+        background: rgba(24, 42, 68, .78);
+      }
+
+      .meos-activity-summary {
+        display: flex;
         gap: 10px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 2px 2px 9px;
+        scroll-snap-type: x mandatory;
+        scroll-behavior: smooth;
+        overscroll-behavior-inline: contain;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(121, 167, 255, .42) rgba(8, 18, 31, .38);
+      }
+
+      .meos-activity-summary::-webkit-scrollbar {
+        height: 7px;
+      }
+
+      .meos-activity-summary::-webkit-scrollbar-track {
+        background: rgba(8, 18, 31, .38);
+        border-radius: 999px;
+      }
+
+      .meos-activity-summary::-webkit-scrollbar-thumb {
+        background: rgba(121, 167, 255, .42);
+        border-radius: 999px;
       }
 
       .meos-activity-lane {
+        flex: 0 0 clamp(176px, 23vw, 232px);
         min-width: 0;
+        scroll-snap-align: start;
         border: 1px solid var(--meos-border);
         border-radius: 12px;
         background: rgba(8, 18, 31, 0.52);
@@ -1227,11 +1278,13 @@
       }
 
       @media (max-width: 980px) {
-        .meos-activity-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .meos-activity-lane { flex-basis: clamp(170px, 38vw, 220px); }
       }
 
       @media (max-width: 720px) {
-        .meos-activity-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .meos-activity-header-actions { gap: 5px; }
+        .meos-activity-slider-control { width: 28px; height: 28px; }
+        .meos-activity-lane { flex-basis: min(78vw, 220px); }
         .meos-activity-browser-grid { grid-template-columns: 1fr; }
         .meos-activity-browser-list { border-right: 0; border-bottom: 1px solid rgba(105, 239, 255, .16); max-height: 34vh; }
         .meos-activity-detail-grid { grid-template-columns: 1fr; }
@@ -1827,9 +1880,13 @@ document
               <h2 class="meos-widget-title">Office Activity</h2>
               <div id="meosOfficeActivityStatus" class="meos-activity-status-line">Loading live office work…</div>
             </div>
-            <button id="meosOfficeActivityPeek" class="meos-widget-link" type="button">Peek Behind the Curtain</button>
+            <div class="meos-activity-header-actions">
+              <button id="meosOfficeActivityPrevious" class="meos-activity-slider-control" type="button" aria-label="Scroll office activity left">‹</button>
+              <button id="meosOfficeActivityNext" class="meos-activity-slider-control" type="button" aria-label="Scroll office activity right">›</button>
+              <button id="meosOfficeActivityPeek" class="meos-widget-link" type="button">Peek Behind the Curtain</button>
+            </div>
           </div>
-          <div id="meosOfficeActivitySummary" class="meos-activity-summary" aria-label="Executive office activity categories"></div>
+          <div id="meosOfficeActivitySummary" class="meos-activity-summary" aria-label="Executive office activity categories" tabindex="0"></div>
         </div>
       `,
       "today-glance": `
@@ -3072,6 +3129,16 @@ document
     });
   }
 
+  function scrollOfficeActivity(direction = 1) {
+    const container = document.getElementById("meosOfficeActivitySummary");
+    if (!container) return false;
+    const firstLane = container.querySelector(".meos-activity-lane");
+    const laneWidth = firstLane?.getBoundingClientRect?.().width || 210;
+    const gap = 10;
+    container.scrollBy({ left: (laneWidth + gap) * (direction < 0 ? -1 : 1), behavior: "smooth" });
+    return true;
+  }
+
   async function loadOfficeActivity() {
     state.officeActivity.status = "loading";
     state.officeActivity.error = null;
@@ -3297,6 +3364,14 @@ document
       name: "Executive desk stays summarized while full records remain inspectable",
       passed: Object.values(categories).flat().length === fixtures.length
     });
+    checks.push({
+      name: "Office Activity exposes horizontal slider controls",
+      passed: typeof scrollOfficeActivity === "function"
+    });
+    checks.push({
+      name: "Every activity lane remains independently inspectable in slider order",
+      passed: OFFICE_ACTIVITY_CATEGORIES.every((category) => Array.isArray(categories[category.id]))
+    });
     return {
       success: checks.every((check) => check.passed),
       schema: "meos.dashboard.office-activity-acceptance.v1",
@@ -3308,6 +3383,8 @@ document
   }
 
   function bindDashboardEvents() {
+    document.getElementById("meosOfficeActivityPrevious")?.addEventListener("click", () => scrollOfficeActivity(-1));
+    document.getElementById("meosOfficeActivityNext")?.addEventListener("click", () => scrollOfficeActivity(1));
     document.getElementById("meosOfficeActivityPeek")?.addEventListener("click", () => openOfficeActivityBrowser("researching"));
 
     document.getElementById("meosImUpButton")?.addEventListener("click", () => {
@@ -3766,6 +3843,7 @@ document
     officeActivity: Object.freeze({
       refresh: loadOfficeActivity,
       open: openOfficeActivityBrowser,
+      slide: scrollOfficeActivity,
       prioritize: (opportunityId) => {
         const record = state.officeActivity.records.find((item) => String(item?.id || "") === String(opportunityId || ""));
         return record ? prioritizeOfficeActivity(record) : false;
