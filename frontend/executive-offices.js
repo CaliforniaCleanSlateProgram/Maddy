@@ -2,7 +2,7 @@
  * Maddy Executive Operations System
  * Executive Office Standard
  *
- * Version: 0.2.0
+ * Version: 0.3.0
  *
  * Establishes:
  * - The Executive Director as final human authority
@@ -18,7 +18,7 @@
 (() => {
     "use strict";
 
-    const SYSTEM_VERSION = "0.2.0";
+    const SYSTEM_VERSION = "0.3.0";
 
     const OFFICE_STATUS = Object.freeze({
         OPERATIONAL: "operational",
@@ -113,6 +113,88 @@
         return JSON.parse(JSON.stringify(value));
     }
 
+
+
+    const OFFICE_IMPLEMENTATION_PROFILES = Object.freeze({
+        archie: Object.freeze({
+            progress: 24,
+            stage: "partial",
+            owns: ["Financial Position", "Grant Budgets", "Cash Visibility"],
+            liveSystems: ["GrantOffice"],
+            nextMilestone: "Connect durable accounting, banking, restricted-fund, and cash-runway records."
+        }),
+        atlas: Object.freeze({
+            progress: 82,
+            stage: "live-partial",
+            owns: ["Research", "Opportunity Discovery", "External Intelligence"],
+            liveSystems: ["MEOSIntelligenceEngine", "MEOSExecutiveSearchEngine", "MEOSWebsiteIntelligence"],
+            nextMilestone: "Expand live local, philanthropic, family-foundation, and corporate prospecting coverage."
+        }),
+        grant: Object.freeze({
+            progress: 94,
+            stage: "live-partial",
+            owns: ["Resource Acquisition Desk", "Applications", "Portal Execution", "Award Tracking"],
+            liveSystems: ["GrantOffice", "ExecutiveResourceAcquisitionEngine", "GrantPortalExecutionAdapter", "SubmittableExecutionAdapter"],
+            nextMilestone: "Verify one real authenticated application from discovery through external submission and receipt."
+        }),
+        justice: Object.freeze({
+            progress: 48,
+            stage: "partial",
+            owns: ["Risk & Alert Center", "Compliance Reviews", "Governance Escalation"],
+            liveSystems: ["MEOSExecutiveEvidenceIntegrity", "MEOSExecutiveDecision"],
+            nextMilestone: "Create durable compliance obligations, deadlines, corrective actions, and evidence records."
+        }),
+        forge: Object.freeze({
+            progress: 72,
+            stage: "live-partial",
+            owns: ["Tasks", "Missions", "Workflows", "Office Activity"],
+            liveSystems: ["MEOSExecutiveWorkflow", "MEOSExecutiveAutomation", "MEOSExecutiveMonitoring", "MEOSMissionDispatcher"],
+            nextMilestone: "Move browser-only workflow state into the durable server and verify unattended execution."
+        }),
+        harmony: Object.freeze({
+            progress: 28,
+            stage: "planned",
+            owns: ["Community Relations", "Partners", "Donors", "Stakeholder Engagement"],
+            liveSystems: [],
+            nextMilestone: "Commission relationship intelligence, contact history, follow-up, and engagement workflows."
+        }),
+        echo: Object.freeze({
+            progress: 22,
+            stage: "planned",
+            owns: ["Communications", "Social Media", "Campaigns", "Public Messaging"],
+            liveSystems: ["MEOSExecutiveAutomation"],
+            nextMilestone: "Connect governed social publishing, comment engagement, campaigns, and performance learning."
+        }),
+        sage: Object.freeze({
+            progress: 16,
+            stage: "planned",
+            owns: ["Human Resources", "Volunteer Onboarding", "Training", "Role Management"],
+            liveSystems: [],
+            nextMilestone: "Commission people records, onboarding, training, role assignments, and volunteer operations."
+        }),
+        ledger: Object.freeze({
+            progress: 88,
+            stage: "live-partial",
+            owns: ["Executive Journal", "Documents", "Institutional Memory", "Decision History"],
+            liveSystems: ["MEOSKnowledgeEngine", "MEOSKnowledgeMemory", "MEOSDocumentIngestion", "MEOSDocumentClassifier", "MEOSExecutiveRecall"],
+            nextMilestone: "Complete durable organization-wide records and cross-office evidence retrieval."
+        }),
+        compass: Object.freeze({
+            progress: 84,
+            stage: "live-partial",
+            owns: ["Mission Pulse", "Executive Priorities", "Completion", "Strategic Reporting"],
+            liveSystems: ["CCSPLongTermStrategy", "MEOSExecutivePlanning", "MEOSExecutiveDecision", "MEOSExecutiveLearning"],
+            nextMilestone: "Connect live KPIs, outcomes, financial impact, and strategic portfolio performance."
+        }),
+        nova: Object.freeze({
+            progress: 86,
+            stage: "live-partial",
+            owns: ["System Health", "Providers", "Integrations", "Technical Reliability"],
+            liveSystems: ["MEOSProviderManager", "MEOSExecutiveBrain", "MEOSExecutiveRouter", "MEOSWebsiteKnowledgeIntegration"],
+            nextMilestone: "Complete authentication, tenant isolation, durable database migration, and production observability."
+        })
+    });
+
     function createExecutiveOffice({
         id,
         name,
@@ -176,6 +258,14 @@
                 received: [],
                 assigned: []
             },
+
+            implementation: OFFICE_IMPLEMENTATION_PROFILES[id] || Object.freeze({
+                progress: 0,
+                stage: "planned",
+                owns: [],
+                liveSystems: [],
+                nextMilestone: "Define and commission this office."
+            }),
 
             performance: {
                 successMetrics: [...successMetrics],
@@ -358,6 +448,8 @@
             ]
         })
     ];
+
+
 
     function getOfficeReference(officeId) {
         return executiveOffices.find(
@@ -731,6 +823,20 @@
         },
 
         getOfficeScorecard,
+
+        getOfficeImplementation(officeId) {
+            const office = requireOffice(officeId);
+            return clone(office.implementation);
+        },
+
+        getImplementationPortfolio() {
+            return clone(executiveOffices.map((office) => ({
+                id: office.id,
+                name: office.name,
+                office: office.office,
+                ...office.implementation
+            })));
+        },
 
         createTask,
 
