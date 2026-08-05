@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.3.0";
+  const DASHBOARD_VERSION = "4.4.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -102,6 +102,18 @@
       mediaReady: false,
       fallbackActive: true,
       activePerformance: null,
+      lastEventAt: null,
+      lastError: null,
+      listenersInstalled: false
+    },
+    maddyTelepresence: {
+      available: false,
+      initialized: false,
+      running: false,
+      currentState: "idle",
+      completedThisPage: false,
+      lastGreetingText: null,
+      lastResolvedName: null,
       lastEventAt: null,
       lastError: null,
       listenersInstalled: false
@@ -4431,6 +4443,8 @@ document
       ["Holographic Maddy uses the enforced v4.2.2 independent scale and vertical offset", getComputedStyle(document.getElementById("meosCanonicalMaddy")).scale !== "none" && getComputedStyle(document.getElementById("meosCanonicalMaddy")).translate !== "none"],
       ["Digital Actor viewport is mounted inside Living Headquarters", document.getElementById("meosLivingPresence")?.dataset.digitalActorMounted === "true"],
       ["Digital Actor viewport preserves the canonical holographic fallback until real performances are available", document.getElementById("meosLivingPresence")?.dataset.digitalActorMedia === "fallback"],
+      ["Telepresence Director is initialized after the Digital Actor viewport mounts", document.getElementById("meosLivingPresence")?.dataset.telepresenceInitialized === "true"],
+      ["Automatic welcome performance remains disabled until genuine actor media exists", getMaddyTelepresenceDirector()?.getSnapshot?.()?.config?.autoRunOncePerPage === false],
       ["Maddy Presence Engine is connected to Living Headquarters", document.getElementById("meosLivingPresence")?.dataset.presenceConnected === "true"],
       ["Living Headquarters state is driven by Maddy Presence Engine", document.getElementById("meosLivingPresence")?.dataset.presenceState === getMaddyPresenceEngine()?.getStatus?.()?.state],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
@@ -5258,6 +5272,328 @@ document
   }
 
 
+  function getMaddyTelepresenceDirector() {
+    return window.MaddyTelepresenceDirector ||
+      window.MEOSMaddyTelepresenceDirector ||
+      null;
+  }
+
+  function updateTelepresenceDashboardState(snapshot = null) {
+    const director = getMaddyTelepresenceDirector();
+    const resolved = snapshot || director?.getSnapshot?.() || null;
+    const root = document.getElementById("meosLivingPresence");
+
+    if (!root || !resolved) {
+      return false;
+    }
+
+    root.dataset.telepresenceAvailable = "true";
+    root.dataset.telepresenceInitialized =
+      resolved.initialized === true ? "true" : "false";
+    root.dataset.telepresenceRunning =
+      resolved.running === true ? "true" : "false";
+    root.dataset.telepresenceState =
+      resolved.currentState || "idle";
+
+    state.maddyTelepresence.available = true;
+    state.maddyTelepresence.initialized =
+      resolved.initialized === true;
+    state.maddyTelepresence.running =
+      resolved.running === true;
+    state.maddyTelepresence.currentState =
+      resolved.currentState || "idle";
+    state.maddyTelepresence.completedThisPage =
+      resolved.completedThisPage === true;
+    state.maddyTelepresence.lastGreetingText =
+      resolved.lastGreetingText || null;
+    state.maddyTelepresence.lastResolvedName =
+      resolved.lastResolvedName || null;
+    state.maddyTelepresence.lastEventAt =
+      new Date().toISOString();
+    state.maddyTelepresence.lastError =
+      resolved.lastError || null;
+
+    return true;
+  }
+
+  function handleTelepresenceEvent(event) {
+    const director = getMaddyTelepresenceDirector();
+    const snapshot = director?.getSnapshot?.();
+
+    if (snapshot) {
+      updateTelepresenceDashboardState(snapshot);
+    }
+
+    const eventName = event?.detail?.eventName || "";
+
+    if (eventName.endsWith(":welcoming-smile")) {
+      const root = document.getElementById("meosLivingPresence");
+      if (root) {
+        root.dataset.telepresenceMoment = "welcoming-smile";
+      }
+    }
+
+    if (
+      eventName.endsWith(":welcome-completed") ||
+      eventName.endsWith(":welcome-interrupted") ||
+      eventName.endsWith(":welcome-error")
+    ) {
+      const root = document.getElementById("meosLivingPresence");
+      if (root) {
+        delete root.dataset.telepresenceMoment;
+      }
+    }
+  }
+
+  function installTelepresenceListeners() {
+    if (state.maddyTelepresence.listenersInstalled) {
+      return true;
+    }
+
+    [
+      "meos:maddy-telepresence",
+      "meos:maddy-telepresence:initialized",
+      "meos:maddy-telepresence:state",
+      "meos:maddy-telepresence:welcome-started",
+      "meos:maddy-telepresence:welcoming-smile",
+      "meos:maddy-telepresence:greeting-delivered",
+      "meos:maddy-telepresence:welcome-completed",
+      "meos:maddy-telepresence:welcome-interrupted",
+      "meos:maddy-telepresence:welcome-error",
+      "meos:maddy-telepresence:reset"
+    ].forEach((eventName) => {
+      document.addEventListener(eventName, handleTelepresenceEvent);
+    });
+
+    state.maddyTelepresence.listenersInstalled = true;
+    return true;
+  }
+
+  function initializeTelepresenceDirector(options = {}) {
+    installTelepresenceListeners();
+
+    const director = getMaddyTelepresenceDirector();
+    const root = document.getElementById("meosLivingPresence");
+
+    if (!director || !root) {
+      if (root) {
+        root.dataset.telepresenceAvailable = "false";
+        root.dataset.telepresenceInitialized = "false";
+        root.dataset.telepresenceRunning = "false";
+        root.dataset.telepresenceState = "idle";
+      }
+
+      state.maddyTelepresence.available = Boolean(director);
+      state.maddyTelepresence.lastError = {
+        name: "TelepresenceDirectorUnavailable",
+        message: !director
+          ? "Maddy Telepresence Director is not loaded."
+          : "Living Headquarters is unavailable."
+      };
+
+      return {
+        success: false,
+        reason: !director
+          ? "director-unavailable"
+          : "headquarters-unavailable"
+      };
+    }
+
+    try {
+      const snapshot = director.initialize({
+        config: {
+          autoRunOncePerPage: false,
+          usePreferredName: true,
+          enabled: true,
+          debug: options.debug === true
+        }
+      });
+
+      updateTelepresenceDashboardState(snapshot);
+
+      document.dispatchEvent(new CustomEvent(
+        "meos:dashboard:telepresence-director-initialized",
+        {
+          detail: {
+            schema:
+              "meos.dashboard.telepresence-director-initialized.v1",
+            initializedAt: new Date().toISOString(),
+            directorVersion: director.version,
+            autoRunEnabled: false,
+            realMediaRequiredBeforeLiveWelcome: true
+          }
+        }
+      ));
+
+      return {
+        success: true,
+        snapshot
+      };
+    } catch (error) {
+      state.maddyTelepresence.lastError = {
+        name:
+          error?.name ||
+          "TelepresenceDirectorInitializationError",
+        message:
+          error?.message ||
+          String(error)
+      };
+
+      root.dataset.telepresenceInitialized = "false";
+
+      console.error(
+        "MEOS Dashboard could not initialize Maddy Telepresence Director.",
+        error
+      );
+
+      return {
+        success: false,
+        reason: "initialization-error",
+        error: state.maddyTelepresence.lastError
+      };
+    }
+  }
+
+  async function runSilentWelcomeBackTest(options = {}) {
+    const director = getMaddyTelepresenceDirector();
+
+    if (!director) {
+      return {
+        success: false,
+        reason: "director-unavailable"
+      };
+    }
+
+    const result = await director.runWelcomeBackSequence({
+      preferredName:
+        options.preferredName ||
+        "Mandel",
+      greeting:
+        options.greeting ||
+        "Welcome back",
+      mode:
+        options.mode ||
+        "professional",
+      silent: true,
+      force: true,
+      materializeDurationMs: 100,
+      preNoticeWorkingDurationMs: 100,
+      recognitionPauseMs: 100,
+      smileHoldMs: 100,
+      postGreetingHoldMs: 100,
+      returnToWorkDelayMs: 100,
+      initialPerformance: "reading",
+      returnPerformance: "working"
+    });
+
+    updateTelepresenceDashboardState(
+      director.getSnapshot?.()
+    );
+
+    return result;
+  }
+
+  function runTelepresenceIntegrationAcceptanceTest() {
+    const director = getMaddyTelepresenceDirector();
+    const snapshot = director?.getSnapshot?.() || {};
+    const root =
+      document.getElementById("meosLivingPresence");
+
+    const anonymousGreeting =
+      director?.buildGreeting?.({
+        preferredName: null,
+        greeting: "Welcome back"
+      });
+
+    const namedGreeting =
+      director?.buildGreeting?.({
+        preferredName: "Mandel",
+        greeting: "Welcome back"
+      });
+
+    const checks = [
+      [
+        "Maddy Telepresence Director is available",
+        Boolean(director)
+      ],
+      [
+        "Telepresence Director version 1.0.0 or later is loaded",
+        Boolean(
+          director?.version &&
+          director.version >= "1.0.0"
+        )
+      ],
+      [
+        "Telepresence Director is initialized",
+        snapshot.initialized === true
+      ],
+      [
+        "Living Headquarters reports Telepresence availability",
+        root?.dataset.telepresenceAvailable === "true"
+      ],
+      [
+        "Living Headquarters reports Telepresence initialized state",
+        root?.dataset.telepresenceInitialized === "true"
+      ],
+      [
+        "Automatic welcome remains disabled until real performance media exists",
+        snapshot.config?.autoRunOncePerPage === false
+      ],
+      [
+        "Preferred-name greeting is enabled",
+        snapshot.config?.usePreferredName === true
+      ],
+      [
+        "Anonymous greeting does not assume a role or title",
+        anonymousGreeting?.text === "Welcome back."
+      ],
+      [
+        "Known preferred name is used naturally",
+        namedGreeting?.text === "Welcome back, Mandel."
+      ],
+      [
+        "Silent welcome test is exposed for safe commissioning",
+        typeof runSilentWelcomeBackTest === "function"
+      ],
+      [
+        "Telepresence event listeners are installed once",
+        state.maddyTelepresence.listenersInstalled === true
+      ],
+      [
+        "Digital Actor Renderer remains mounted beneath Telepresence direction",
+        state.maddyDigitalActor.mounted === true
+      ],
+      [
+        "Presence Engine remains connected beneath Telepresence direction",
+        state.maddyPresence.connected === true
+      ],
+      [
+        "Current holographic fallback remains active until real actor media exists",
+        state.maddyDigitalActor.fallbackActive === true
+      ]
+    ].map(([name, passed]) => ({
+      name,
+      passed: Boolean(passed)
+    }));
+
+    return {
+      success:
+        checks.every((check) => check.passed),
+      schema:
+        "meos.dashboard.telepresence-integration.acceptance.v1",
+      version:
+        DASHBOARD_VERSION,
+      directorVersion:
+        director?.version || null,
+      passed:
+        checks.filter((check) => check.passed).length,
+      total:
+        checks.length,
+      checks
+    };
+  }
+
+
   function initializeLivingPresenceEvolution() {
     const stage = document.querySelector("#meosLivingPresence .meos-presence-stage");
     const steps = Array.from(document.querySelectorAll("#meosPresenceEvolution [data-stage-step]"));
@@ -5309,10 +5645,14 @@ document
   function initialize() {
     createDashboardShell();
     connectPresenceEngine();
+
     void initializeDigitalActorRenderer({
       autoplay: false,
       preloadOnInitialize: false
+    }).then(() => {
+      initializeTelepresenceDirector();
     });
+
     initializeLivingPresenceEvolution();
     installLegacyVoicePanelRetirement();
     void loadFundingIntelligence().finally(renderLiveHeadquarters);
@@ -5382,6 +5722,52 @@ document
         renderer: getMaddyDigitalActorRenderer()?.getSnapshot?.() || null
       }),
       runAcceptanceTest: runDigitalActorIntegrationAcceptanceTest
+    }),
+    telepresence: Object.freeze({
+      initialize: initializeTelepresenceDirector,
+      runSilentWelcomeBackTest,
+      runWelcomeBackSequence: async (options = {}) => {
+        const director = getMaddyTelepresenceDirector();
+        if (!director) {
+          return {
+            success: false,
+            reason: "director-unavailable"
+          };
+        }
+
+        const result =
+          await director.runWelcomeBackSequence(options);
+
+        updateTelepresenceDashboardState(
+          director.getSnapshot?.()
+        );
+
+        return result;
+      },
+      interrupt: (reason) =>
+        getMaddyTelepresenceDirector()?.interrupt?.(reason) ||
+        false,
+      reset: (options = {}) => {
+        const director =
+          getMaddyTelepresenceDirector();
+
+        if (!director) return false;
+
+        const snapshot =
+          director.reset(options);
+
+        updateTelepresenceDashboardState(snapshot);
+
+        return snapshot;
+      },
+      getState: () => ({
+        ...state.maddyTelepresence,
+        director:
+          getMaddyTelepresenceDirector()?.getSnapshot?.() ||
+          null
+      }),
+      runAcceptanceTest:
+        runTelepresenceIntegrationAcceptanceTest
     }),
     cost: Object.freeze({
       setState: setCostState,
