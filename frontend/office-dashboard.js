@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.4.3";
+  const DASHBOARD_VERSION = "2.4.4";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -2741,6 +2741,9 @@ document
   function getFundingOfficialUrl(opportunity = {}) {
     const candidates = [
       opportunity?.url,
+      opportunity?.officialUrl,
+      opportunity?.officialURL,
+      opportunity?.officialLink,
       opportunity?.sourceUrl,
       opportunity?.sourceURL,
       opportunity?.opportunityUrl,
@@ -2751,9 +2754,13 @@ document
       opportunity?.applicationUrl,
       opportunity?.applicationURL,
       opportunity?.source?.url,
+      opportunity?.source?.officialUrl,
+      opportunity?.source?.officialURL,
       opportunity?.source?.sourceUrl,
       opportunity?.source?.opportunityUrl,
       opportunity?.raw?.url,
+      opportunity?.raw?.officialUrl,
+      opportunity?.raw?.officialURL,
       opportunity?.raw?.sourceUrl,
       opportunity?.raw?.opportunityUrl,
       opportunity?.resourceDevelopment?.workQueue?.opportunity?.sourceUrl,
@@ -2775,19 +2782,45 @@ document
       return new URL(direct, window.location.href).href;
     }
 
-    const provider = String(opportunity?.provider || opportunity?.sourceName || "").toLowerCase();
+    const providerEvidence = [
+      opportunity?.provider,
+      opportunity?.sourceName,
+      opportunity?.agencyName,
+      opportunity?.source?.name,
+      opportunity?.source?.provider,
+      opportunity?.raw?.provider,
+      opportunity?.raw?.sourceName,
+      opportunity?.sourceSystem,
+      opportunity?.origin
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
     const externalId = firstDefined(
       opportunity?.externalId,
       opportunity?.opportunityNumber,
+      opportunity?.opportunityId,
+      opportunity?.noticeNumber,
+      opportunity?.fundingOpportunityNumber,
       opportunity?.number,
+      opportunity?.raw?.opportunityNumber,
+      opportunity?.raw?.opportunityId,
       ""
     );
 
-    if (provider.includes("grants.gov") && externalId) {
+    const looksLikeGrantsGov =
+      providerEvidence.includes("grants.gov") ||
+      providerEvidence.includes("grants gov") ||
+      Boolean(opportunity?.opportunityNumber) ||
+      Boolean(opportunity?.fundingOpportunityNumber) ||
+      /grants?\.gov/i.test(String(opportunity?.source || ""));
+
+    if (looksLikeGrantsGov && externalId) {
       return `https://www.grants.gov/search-results-detail/${encodeURIComponent(externalId)}`;
     }
 
-    if (provider.includes("grants.gov")) {
+    if (looksLikeGrantsGov) {
       return "https://www.grants.gov/search-grants";
     }
 
