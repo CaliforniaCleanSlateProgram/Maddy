@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.8.1
- * Build: GO181-DUPLICATE-SUBMISSION-GUARD-20260804-A
+ * Version: 1.9.0
+ * Build: GO190-END-TO-END-EXECUTION-BRIDGE-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.8.1";
-    const BUILD_ID = "GO181-DUPLICATE-SUBMISSION-GUARD-20260804-A";
+    const VERSION = "1.9.0";
+    const BUILD_ID = "GO190-END-TO-END-EXECUTION-BRIDGE-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -10150,6 +10150,700 @@
                         portalPackage
                     )
             };
+        },
+
+        startEndToEndFundingExecution(
+            opportunityId,
+            options = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+
+            if (!opportunity) {
+                return {
+                    success: false,
+                    error:
+                        "Funding opportunity was not found.",
+                    code:
+                        "GRANT_END_TO_END_OPPORTUNITY_NOT_FOUND"
+                };
+            }
+
+            const applicationPackage =
+                opportunity
+                    .executiveApplicationPackage;
+
+            if (!applicationPackage) {
+                return {
+                    success: false,
+                    error:
+                        "Executive Application Package must be assembled before portal execution can begin.",
+                    code:
+                        "GRANT_END_TO_END_APPLICATION_PACKAGE_REQUIRED"
+                };
+            }
+
+            let portalIntelligence =
+                opportunity
+                    .submissionPortalIntelligence;
+
+            if (!portalIntelligence) {
+                const analysis =
+                    this.analyzeSubmissionPortal(
+                        opportunityId,
+                        options.portal || {}
+                    );
+
+                if (!analysis.success) {
+                    return analysis;
+                }
+
+                portalIntelligence =
+                    this.getOpportunityById(
+                        opportunityId
+                    )
+                        .submissionPortalIntelligence;
+            }
+
+            let portalSubmissionPackage =
+                opportunity
+                    .portalSubmissionPackage;
+
+            if (!portalSubmissionPackage) {
+                const packaging =
+                    this.createPortalSubmissionPackage(
+                        opportunityId
+                    );
+
+                if (!packaging.success) {
+                    return packaging;
+                }
+
+                portalSubmissionPackage =
+                    this.getOpportunityById(
+                        opportunityId
+                    )
+                        .portalSubmissionPackage;
+            }
+
+            const adapter =
+                global.GrantPortalExecutionAdapter;
+
+            if (
+                !adapter ||
+                typeof adapter.execute !==
+                    "function"
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Grant Portal Execution Adapter is not online.",
+                    code:
+                        "GRANT_END_TO_END_EXECUTION_ADAPTER_REQUIRED"
+                };
+            }
+
+            const execution =
+                adapter.execute({
+                    opportunityId:
+                        opportunity.id,
+                    applicationPackage:
+                        this.clone(
+                            applicationPackage
+                        ),
+                    portalIntelligence:
+                        this.clone(
+                            portalIntelligence
+                        ),
+                    portalSubmissionPackage:
+                        this.clone(
+                            portalSubmissionPackage
+                        ),
+                    finalSubmissionAuthorized:
+                        portalSubmissionPackage
+                            .finalSubmitBlocked ===
+                        false,
+                    metadata: {
+                        initiatedBy:
+                            options.initiatedBy ||
+                            "Maddy",
+                        initiatedAt:
+                            this.now(),
+                        source:
+                            "MEOS Grant Office end-to-end funding pipeline",
+                        humanApprovalRequired:
+                            true
+                    }
+                });
+
+            if (!execution.success) {
+                return execution;
+            }
+
+            const timestamp =
+                this.now();
+
+            opportunity.endToEndFundingExecution = {
+                schema:
+                    "meos.grant-office.end-to-end-execution.v1",
+                version:
+                    this.version,
+                buildId:
+                    this.buildId,
+                opportunityId:
+                    opportunity.id,
+                applicationPackageId:
+                    applicationPackage.id,
+                portalSubmissionPackageId:
+                    portalSubmissionPackage.id,
+                grantPortalSessionId:
+                    execution.details
+                        ?.grantPortalSessionId ||
+                    null,
+                providerType:
+                    execution.details
+                        ?.providerType ||
+                    portalIntelligence.portal
+                        ?.type ||
+                    "unknown",
+                state:
+                    execution.checkpoint ||
+                    "created",
+                paused:
+                    execution.paused === true,
+                nextAction:
+                    execution.details
+                        ?.nextAction ||
+                    "review",
+                humanApprovalRequired:
+                    true,
+                finalSubmissionAuthorized:
+                    portalSubmissionPackage
+                        .finalSubmitBlocked ===
+                    false,
+                createdAt:
+                    timestamp,
+                updatedAt:
+                    timestamp,
+                history: [
+                    {
+                        state:
+                            execution.checkpoint ||
+                            "created",
+                        enteredAt:
+                            timestamp,
+                        actor:
+                            options.initiatedBy ||
+                            "Maddy",
+                        note:
+                            "Grant Office handed the approved application package to the governed portal execution layer."
+                    }
+                ]
+            };
+
+            opportunity.updatedAt =
+                timestamp;
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                paused:
+                    execution.paused === true,
+                checkpoint:
+                    execution.checkpoint,
+                nextAction:
+                    execution.details
+                        ?.nextAction ||
+                    null,
+                grantPortalSessionId:
+                    execution.details
+                        ?.grantPortalSessionId ||
+                    null,
+                endToEndFundingExecution:
+                    this.clone(
+                        opportunity
+                            .endToEndFundingExecution
+                    )
+            };
+        },
+
+        refreshEndToEndFundingExecution(
+            opportunityId
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const orchestration =
+                opportunity
+                    ?.endToEndFundingExecution;
+            const adapter =
+                global.GrantPortalExecutionAdapter;
+
+            if (
+                !opportunity ||
+                !orchestration ||
+                !adapter ||
+                typeof adapter.getSessionById !==
+                    "function"
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "End-to-end portal execution session is not available.",
+                    code:
+                        "GRANT_END_TO_END_SESSION_NOT_FOUND"
+                };
+            }
+
+            const session =
+                adapter.getSessionById(
+                    orchestration
+                        .grantPortalSessionId
+                );
+
+            if (!session) {
+                return {
+                    success: false,
+                    error:
+                        "Grant portal execution session was not found.",
+                    code:
+                        "GRANT_END_TO_END_PORTAL_SESSION_NOT_FOUND"
+                };
+            }
+
+            const timestamp =
+                this.now();
+            const stateChanged =
+                orchestration.state !==
+                session.status;
+
+            orchestration.state =
+                session.status;
+            orchestration.paused =
+                session.status ===
+                    "paused" ||
+                session.status ===
+                    "authentication-required" ||
+                session.status ===
+                    "ready-for-executive-review" ||
+                session.status ===
+                    "ready-for-submission";
+            orchestration.nextAction =
+                session.status ===
+                    "authentication-required"
+                    ? "authenticate"
+                    : session.status ===
+                        "ready-for-executive-review"
+                        ? "executive-review"
+                        : session.status ===
+                            "ready-for-submission"
+                            ? "final-submit-approval"
+                            : session.status ===
+                                "submitted" ||
+                              session.status ===
+                                "complete"
+                                ? "capture-and-sync-receipt"
+                                : "continue-portal-execution";
+            orchestration
+                .finalSubmissionAuthorized =
+                session
+                    .finalSubmissionAuthorized ===
+                true;
+            orchestration.updatedAt =
+                timestamp;
+
+            if (stateChanged) {
+                orchestration.history.push({
+                    state:
+                        session.status,
+                    enteredAt:
+                        timestamp,
+                    actor:
+                        "MEOS Grant Office",
+                    note:
+                        "Grant Office synchronized the governed portal execution session."
+                });
+            }
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                session:
+                    this.clone(session),
+                endToEndFundingExecution:
+                    this.clone(
+                        orchestration
+                    )
+            };
+        },
+
+        completeEndToEndFundingExecution(
+            opportunityId,
+            details = {}
+        ) {
+            const opportunity =
+                this.getOpportunityById(
+                    opportunityId
+                );
+            const orchestration =
+                opportunity
+                    ?.endToEndFundingExecution;
+            const adapter =
+                global.GrantPortalExecutionAdapter;
+
+            if (
+                !opportunity ||
+                !orchestration ||
+                !adapter
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "End-to-end funding execution has not been started.",
+                    code:
+                        "GRANT_END_TO_END_EXECUTION_NOT_STARTED"
+                };
+            }
+
+            const session =
+                adapter.getSessionById?.(
+                    orchestration
+                        .grantPortalSessionId
+                );
+            const receipt =
+                adapter.receipts?.find(
+                    item =>
+                        item.sessionId ===
+                        orchestration
+                            .grantPortalSessionId
+                ) || null;
+
+            if (
+                !session ||
+                ![
+                    "submitted",
+                    "complete"
+                ].includes(
+                    session.status
+                )
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "The live portal execution has not reached a submitted state.",
+                    code:
+                        "GRANT_END_TO_END_SUBMISSION_NOT_COMPLETE"
+                };
+            }
+
+            const submittedBy =
+                String(
+                    details.submittedBy ||
+                    session
+                        .finalSubmissionAuthorization
+                        ?.authorizedBy ||
+                    ""
+                ).trim();
+
+            if (!submittedBy) {
+                return {
+                    success: false,
+                    error:
+                        "A verified submitting executive is required.",
+                    code:
+                        "GRANT_END_TO_END_SUBMITTER_REQUIRED"
+                };
+            }
+
+            const recorded =
+                this.recordAuthorizedSubmission(
+                    opportunityId,
+                    {
+                        submittedBy,
+                        submittedAt:
+                            receipt?.submittedAt ||
+                            details.submittedAt ||
+                            this.now(),
+                        method:
+                            session.providerType ||
+                            details.method,
+                        confirmationNumber:
+                            receipt
+                                ?.confirmationNumber ||
+                            details
+                                .confirmationNumber ||
+                            "",
+                        receiptDocumentId:
+                            details
+                                .receiptDocumentId ||
+                            null,
+                        receiptVerified:
+                            Boolean(
+                                receipt ||
+                                details
+                                    .receiptVerified
+                            ),
+                        requestedAmount:
+                            details
+                                .requestedAmount,
+                        notes:
+                            details.notes ||
+                            "Submission synchronized from the MEOS Grant Portal Execution Adapter."
+                    }
+                );
+
+            if (!recorded.success) {
+                return recorded;
+            }
+
+            orchestration.state =
+                "complete";
+            orchestration.paused =
+                false;
+            orchestration.nextAction =
+                "monitor-award-and-funding-receipt";
+            orchestration.completedAt =
+                this.now();
+            orchestration.updatedAt =
+                orchestration.completedAt;
+            orchestration.history.push({
+                state:
+                    "complete",
+                enteredAt:
+                    orchestration.completedAt,
+                actor:
+                    "MEOS Grant Office",
+                note:
+                    "Verified portal submission was synchronized into award monitoring."
+            });
+
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                submissionExecution:
+                    recorded
+                        .submissionExecution,
+                awardTracking:
+                    recorded.awardTracking,
+                pipelineStage:
+                    recorded.pipelineStage,
+                endToEndFundingExecution:
+                    this.clone(
+                        orchestration
+                    )
+            };
+        },
+
+        runEndToEndExecutionBridgeAcceptanceTest() {
+            const adapter =
+                global.GrantPortalExecutionAdapter;
+
+            if (
+                !adapter ||
+                typeof adapter.execute !==
+                    "function"
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "Grant Portal Execution Adapter is required for this acceptance test."
+                };
+            }
+
+            const originalPersistence =
+                this.configuration
+                    .automaticPersistence;
+            const testId =
+                this.createId(
+                    "end-to-end-bridge-test"
+                );
+
+            this.configuration
+                .automaticPersistence =
+                false;
+
+            try {
+                this.addOpportunity({
+                    id:
+                        testId,
+                    title:
+                        "Community Foundation End-to-End Bridge Test",
+                    provider:
+                        "Acceptance Test Community Foundation",
+                    type:
+                        OPPORTUNITY_TYPES
+                            .COMMUNITY_FOUNDATION,
+                    verified:
+                        true,
+                    awardAmount:
+                        50000,
+                    sourceUrl:
+                        "https://example.org/apply"
+                });
+
+                const opportunity =
+                    this.getOpportunityById(
+                        testId
+                    );
+
+                opportunity
+                    .executiveApplicationPackage = {
+                        id:
+                            "application-package-test",
+                        opportunityId:
+                            testId,
+                        executiveReviewApproved:
+                            false,
+                        readiness: {
+                            readyForSubmission:
+                                false
+                        },
+                        attachmentIndex:
+                            [],
+                        certificationPacket:
+                            [],
+                        signaturePacket:
+                            []
+                    };
+                opportunity
+                    .submissionPortalIntelligence = {
+                        id:
+                            "portal-intelligence-test",
+                        portal: {
+                            type:
+                                SUBMISSION_PORTAL_TYPES
+                                    .GENERIC_WEB_PORTAL,
+                            name:
+                                "Acceptance Test Portal",
+                            requiresAuthentication:
+                                true
+                        },
+                        workflowSteps:
+                            [],
+                        fields:
+                            [],
+                        validationSummary: {
+                            valid:
+                                false
+                        },
+                        authorization: {
+                            required:
+                                true,
+                            authorized:
+                                false
+                        }
+                    };
+
+                const packageResult =
+                    this.createPortalSubmissionPackage(
+                        testId
+                    );
+                const executionResult =
+                    this.startEndToEndFundingExecution(
+                        testId,
+                        {
+                            initiatedBy:
+                                "Acceptance Test Maddy"
+                        }
+                    );
+                const stored =
+                    this.getOpportunityById(
+                        testId
+                    );
+                const session =
+                    adapter.getSessionById?.(
+                        executionResult
+                            .grantPortalSessionId
+                    );
+
+                const checks = [
+                    {
+                        name:
+                            "Portal submission package created",
+                        passed:
+                            packageResult.success ===
+                            true
+                    },
+                    {
+                        name:
+                            "Grant Office handed package to portal adapter",
+                        passed:
+                            executionResult.success ===
+                                true &&
+                            Boolean(
+                                executionResult
+                                    .grantPortalSessionId
+                            )
+                    },
+                    {
+                        name:
+                            "Execution paused at governed checkpoint",
+                        passed:
+                            executionResult.paused ===
+                                true &&
+                            session
+                                ?.status ===
+                                "authentication-required"
+                    },
+                    {
+                        name:
+                            "Human approval remains required",
+                        passed:
+                            stored
+                                .endToEndFundingExecution
+                                .humanApprovalRequired ===
+                                true &&
+                            session
+                                ?.finalSubmissionAuthorized !==
+                                true
+                    },
+                    {
+                        name:
+                            "Grant Office preserved execution ownership",
+                        passed:
+                            stored
+                                .endToEndFundingExecution
+                                .opportunityId ===
+                                testId
+                    }
+                ];
+
+                return {
+                    success:
+                        checks.every(
+                            check =>
+                                check.passed
+                        ),
+                    schema:
+                        "meos.grant-office.end-to-end-execution-bridge-acceptance.v1",
+                    version:
+                        this.version,
+                    buildId:
+                        this.buildId,
+                    passed:
+                        checks.filter(
+                            check =>
+                                check.passed
+                        ).length,
+                    total:
+                        checks.length,
+                    checks
+                };
+            } finally {
+                this.configuration
+                    .automaticPersistence =
+                    originalPersistence;
+                this.opportunities =
+                    this.opportunities.filter(
+                        item =>
+                            item.id !== testId
+                    );
+            }
         },
 
         calculateRequestedAmount(opportunity) {
