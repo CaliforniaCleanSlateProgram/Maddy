@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 3.0.0
+ * Version: 3.0.1
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,13 +20,13 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "3.0.0";
+  const DASHBOARD_VERSION = "3.0.1";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
-  const STORAGE_KEY = "meos.dashboard.build.v3.0.0";
+  const STORAGE_KEY = "meos.dashboard.build.v3.0.1";
 
   const DEFAULT_BUILD_TASKS = [
     { id: "executive-office-standard", title: "Executive Office Standard and cabinet registry", status: "complete" },
@@ -48,7 +48,7 @@
   ];
 
   const DEFAULT_LAYOUT = Object.freeze([
-    { id: "build-progress", colSpan: 12, rowSpan: 1, visible: true, order: 10 },
+    { id: "build-progress", colSpan: 12, rowSpan: 2, visible: true, order: 10 },
     { id: "office-activity", colSpan: 6, rowSpan: 2, visible: true, order: 15 },
     { id: "today-glance", colSpan: 3, rowSpan: 2, visible: true, order: 20 },
     { id: "mission-pulse", colSpan: 3, rowSpan: 2, visible: true, order: 30 },
@@ -964,6 +964,39 @@
       }
 
 
+
+      /* MEOS 3.0.1 — Maddy at Work holographic circuitry window */
+      .meos-maddy-window{position:relative;min-height:250px;overflow:hidden;border-radius:18px;background:radial-gradient(circle at 50% 46%,rgba(58,196,255,.14),transparent 28%),linear-gradient(135deg,rgba(3,10,24,.98),rgba(7,19,42,.94));border:1px solid rgba(104,220,255,.23);isolation:isolate}
+      .meos-maddy-window::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(91,211,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(91,211,255,.045) 1px,transparent 1px);background-size:28px 28px;mask-image:radial-gradient(circle at center,#000 32%,transparent 82%);animation:meosCircuitDrift 14s linear infinite}
+      .meos-maddy-window::after{content:"";position:absolute;inset:-35%;background:conic-gradient(from 0deg,transparent 0 18%,rgba(83,213,255,.12) 22%,transparent 27% 54%,rgba(146,94,255,.09) 60%,transparent 67%);animation:meosFieldRotate 22s linear infinite;z-index:-1}
+      .meos-maddy-circuit-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+      .meos-circuit-line{position:absolute;height:1px;background:linear-gradient(90deg,transparent,rgba(91,218,255,.78),transparent);filter:drop-shadow(0 0 5px rgba(91,218,255,.85));transform-origin:left center;opacity:.65}
+      .meos-circuit-line::after{content:"";position:absolute;right:8%;top:-2px;width:5px;height:5px;border-radius:50%;background:#a8efff;box-shadow:0 0 10px #74ddff,0 0 18px rgba(98,210,255,.8);animation:meosPacket 3.7s linear infinite}
+      .meos-circuit-line.l1{width:34%;left:2%;top:26%;transform:rotate(8deg);animation:meosCircuitPulse 4.2s ease-in-out infinite}
+      .meos-circuit-line.l2{width:30%;right:0;top:34%;transform:rotate(-11deg);animation:meosCircuitPulse 3.4s ease-in-out infinite .7s}
+      .meos-circuit-line.l3{width:27%;left:5%;bottom:26%;transform:rotate(-7deg);animation:meosCircuitPulse 4.8s ease-in-out infinite 1.2s}
+      .meos-circuit-line.l4{width:33%;right:1%;bottom:22%;transform:rotate(9deg);animation:meosCircuitPulse 3.9s ease-in-out infinite .35s}
+      .meos-maddy-field{position:absolute;left:50%;top:50%;width:min(245px,64vw);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;display:grid;place-items:center}
+      .meos-maddy-halo{position:absolute;inset:0;border:1px solid rgba(98,220,255,.32);border-radius:50%;box-shadow:inset 0 0 30px rgba(64,181,255,.11),0 0 32px rgba(64,181,255,.13);animation:meosHaloBreathe 3.2s ease-in-out infinite}
+      .meos-maddy-halo.h2{inset:9%;border-style:dashed;border-color:rgba(167,109,255,.35);animation:meosFieldRotate 13s linear infinite reverse}
+      .meos-maddy-halo.h3{inset:18%;border-color:rgba(112,230,255,.5);border-left-color:transparent;border-right-color:transparent;animation:meosFieldRotate 8s linear infinite}
+      .meos-maddy-face{position:relative;width:74%;height:74%;object-fit:cover;border-radius:50%;filter:grayscale(.3) contrast(1.12) brightness(.76) saturate(.72) drop-shadow(0 0 18px rgba(94,219,255,.42));mix-blend-mode:screen;animation:meosMaddyAwaken 5.8s ease-in-out infinite;z-index:2}
+      .meos-maddy-scan{position:absolute;left:18%;right:18%;top:26%;height:2px;background:linear-gradient(90deg,transparent,#bdf6ff,transparent);box-shadow:0 0 12px rgba(100,225,255,.9);opacity:.7;animation:meosScanFace 4.6s ease-in-out infinite;z-index:3}
+      .meos-maddy-node{position:absolute;width:7px;height:7px;border-radius:50%;background:#a8efff;box-shadow:0 0 9px #75dcff,0 0 18px rgba(81,202,255,.85);animation:meosNodePulse 2.4s ease-in-out infinite}
+      .meos-maddy-node.n1{left:14%;top:34%}.meos-maddy-node.n2{right:12%;top:29%;animation-delay:.45s}.meos-maddy-node.n3{left:17%;bottom:23%;animation-delay:.9s}.meos-maddy-node.n4{right:15%;bottom:19%;animation-delay:1.25s}
+      .meos-maddy-telemetry{position:absolute;left:18px;right:18px;bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;z-index:4}
+      .meos-maddy-status strong{display:block;font-size:.92rem;color:#dff9ff}.meos-maddy-status span{display:block;margin-top:4px;color:rgba(180,226,242,.7);font-size:.72rem;letter-spacing:.04em}
+      .meos-maddy-completion{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;border:1px solid rgba(112,225,255,.46);background:rgba(8,27,51,.68);box-shadow:inset 0 0 18px rgba(65,189,255,.14),0 0 16px rgba(65,189,255,.12);font-weight:800;color:#dff9ff}
+      @keyframes meosCircuitDrift{to{background-position:28px 28px,28px 28px}}
+      @keyframes meosFieldRotate{to{transform:rotate(360deg)}}
+      @keyframes meosPacket{0%{transform:translateX(-160px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateX(40px);opacity:0}}
+      @keyframes meosCircuitPulse{0%,100%{opacity:.25}50%{opacity:.95}}
+      @keyframes meosHaloBreathe{0%,100%{transform:scale(.98);opacity:.45}50%{transform:scale(1.03);opacity:1}}
+      @keyframes meosMaddyAwaken{0%,100%{opacity:.62;filter:grayscale(.45) contrast(1.08) brightness(.65) saturate(.55) drop-shadow(0 0 10px rgba(94,219,255,.24))}50%{opacity:.92;filter:grayscale(.15) contrast(1.18) brightness(.88) saturate(.9) drop-shadow(0 0 24px rgba(94,219,255,.58))}}
+      @keyframes meosScanFace{0%,12%{transform:translateY(-34px);opacity:0}22%{opacity:.75}72%{opacity:.75}88%,100%{transform:translateY(112px);opacity:0}}
+      @keyframes meosNodePulse{0%,100%{transform:scale(.75);opacity:.35}50%{transform:scale(1.45);opacity:1}}
+      @media (prefers-reduced-motion:reduce){.meos-maddy-window *,.meos-maddy-window::before,.meos-maddy-window::after{animation:none!important}}
+
       /* MEOS Executive Headquarters v2.0 — cinematic intelligence shell */
       #${ROOT_ID} {
         --hud-cyan:#69efff; --hud-blue:#4d91ff; --hud-violet:#a86eff;
@@ -1830,18 +1863,27 @@ document
     const widgets = {
       "build-progress": `
         <div class="meos-widget-inner">
-          <div class="meos-progress-shell">
-            <div class="meos-progress-meta">
-              <span class="meos-widget-title">Executive Headquarters Completion</span>
-              <strong id="meosBuildCount">0 of 0 tasks complete</strong>
-            </div>
+          <div class="meos-widget-header">
             <div>
-              <div class="meos-progress-track" aria-label="MEOS Executive Headquarters completion">
-                <div id="meosBuildProgressFill" class="meos-progress-fill"></div>
-              </div>
-              <div id="meosBuildCurrent" class="meos-progress-current"></div>
+              <span class="meos-widget-title">Maddy at Work</span>
+              <div class="meos-muted" style="margin-top:5px;font-size:.76rem;">A live glimpse into the executive intelligence coordinating the offices.</div>
             </div>
-            <div id="meosBuildPercent" class="meos-progress-percent">0%</div>
+            <span class="meos-priority medium">Live circuitry</span>
+          </div>
+          <div class="meos-maddy-window" aria-label="Animated visualization of Maddy coordinating executive office activity">
+            <div class="meos-maddy-circuit-layer" aria-hidden="true">
+              <span class="meos-circuit-line l1"></span><span class="meos-circuit-line l2"></span><span class="meos-circuit-line l3"></span><span class="meos-circuit-line l4"></span>
+              <span class="meos-maddy-node n1"></span><span class="meos-maddy-node n2"></span><span class="meos-maddy-node n3"></span><span class="meos-maddy-node n4"></span>
+            </div>
+            <div class="meos-maddy-field">
+              <span class="meos-maddy-halo"></span><span class="meos-maddy-halo h2"></span><span class="meos-maddy-halo h3"></span>
+              <img class="meos-maddy-face" src="maddy-executive-insignia.png" alt="Maddy emerging through the MEOS executive circuitry" onerror="this.style.visibility='hidden';" />
+              <span class="meos-maddy-scan" aria-hidden="true"></span>
+            </div>
+            <div class="meos-maddy-telemetry">
+              <div class="meos-maddy-status"><strong id="meosMaddyWorkStatus">Executive offices synchronizing</strong><span id="meosMaddyWorkDetail">Reading live headquarters state…</span></div>
+              <div id="meosMaddyCompletion" class="meos-maddy-completion" aria-label="Headquarters completion">0%</div>
+            </div>
           </div>
         </div>
       `,
@@ -3508,11 +3550,31 @@ document
 
   function renderLiveHeadquarters() {
     const snapshot = collectHeadquartersSnapshot();
-    setText("meosBuildPercent", `${snapshot.completion}%`);
-    const fill = document.getElementById("meosBuildProgressFill");
-    if (fill) fill.style.width = `${snapshot.completion}%`;
-    setText("meosBuildCount", `${snapshot.offices.filter((office) => Number(office.implementation?.progress || 0) >= 90).length} of ${snapshot.offices.length} offices at 90%+`);
-    setText("meosBuildCurrent", `Executive Headquarters v3.0.0 · ${snapshot.active.length} active · ${snapshot.pending.length} queued · ${snapshot.pendingApprovals.length} decisions`);
+    // Keep the original top dashboard gauge as the single authoritative completion display.
+    setText("progressPercent", `${snapshot.completion}%`);
+    const legacyFill = document.getElementById("progressFill");
+    if (legacyFill) legacyFill.style.width = `${snapshot.completion}%`;
+    const legacyTrack = document.querySelector('[role="progressbar"]');
+    if (legacyTrack) legacyTrack.setAttribute("aria-valuenow", String(snapshot.completion));
+
+    // The former duplicate completion widget is now Maddy's live executive-intelligence window.
+    setText("meosMaddyCompletion", `${snapshot.completion}%`);
+    const primaryWork = snapshot.active[0] || snapshot.pending[0] || null;
+    const urgentFunding = snapshot.fundingUrgent[0] || null;
+    const maddyStatus = urgentFunding
+      ? "Funding deadline under active review"
+      : primaryWork
+        ? `Coordinating ${primaryWork.officeName || "executive office"}`
+        : snapshot.fundingRecords.length
+          ? "Monitoring the funding pipeline"
+          : "Executive offices synchronized";
+    const maddyDetail = urgentFunding
+      ? String(urgentFunding.title || "Time-sensitive funding opportunity")
+      : primaryWork
+        ? String(primaryWork.title || "Executive work in progress")
+        : `${snapshot.fundingRecords.length} funding records · ${snapshot.pendingApprovals.length} executive decisions`;
+    setText("meosMaddyWorkStatus", maddyStatus);
+    setText("meosMaddyWorkDetail", maddyDetail);
 
     const today = document.getElementById("meosTodayLiveList");
     if (today) today.innerHTML = [
@@ -3568,6 +3630,9 @@ document
       ["Risk Center derives from blockers and funding deadlines", Array.isArray(snapshot.blocked) && Array.isArray(snapshot.fundingUrgent)],
       ["Office detail exposes implementation progress and next milestone", snapshot.offices.every((office) => Number.isFinite(Number(office.implementation?.progress)))],
       ["Office Activity remains connected", Boolean(window.MEOSDashboard?.officeActivity || state.officeActivity)],
+      ["Legacy top completion gauge receives the authoritative live percentage", document.getElementById("progressPercent")?.textContent === `${snapshot.completion}%`],
+      ["Maddy at Work circuitry window replaced the duplicate completion widget", Boolean(document.querySelector(".meos-maddy-window"))],
+      ["Maddy at Work exposes live status and completion telemetry", Boolean(document.getElementById("meosMaddyWorkStatus") && document.getElementById("meosMaddyCompletion"))],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
     return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v3.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
