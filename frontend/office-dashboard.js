@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.0.1";
+  const DASHBOARD_VERSION = "4.0.2";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1463,6 +1463,92 @@
         .meos-hq-hero{grid-template-columns:1fr;min-height:auto}
         .meos-hq-core.meos-living-presence{min-height:500px}
         .meos-presence-evolution-step{font-size:.46rem;letter-spacing:.045em}
+      }
+
+
+      /* MEOS 4.0.2 — restore hero footprint and remove presence capsule */
+      .meos-hq-hero{
+        grid-template-columns:minmax(260px,.85fr) minmax(420px,1.35fr) minmax(250px,.8fr);
+        min-height:430px;
+        overflow:hidden;
+      }
+      .meos-hq-center{
+        min-width:0;
+        height:auto;
+        display:grid;
+        align-items:center;
+      }
+      .meos-hq-core.meos-living-presence{
+        width:min(420px,100%);
+        min-height:390px;
+        height:390px;
+        margin:auto;
+        filter:drop-shadow(0 0 34px rgba(74,184,255,.24));
+      }
+      .meos-presence-stage{
+        inset:0;
+        border-radius:0;
+        background:
+          radial-gradient(ellipse at 50% 45%,rgba(62,193,255,.17),transparent 56%),
+          linear-gradient(180deg,rgba(1,7,17,.04),rgba(1,7,17,.18));
+        border:0;
+        box-shadow:none;
+        overflow:visible;
+      }
+      .meos-presence-stage::before,
+      .meos-presence-stage::after{
+        border-radius:0;
+      }
+      .meos-presence-human{
+        width:100%;
+        height:100%;
+        object-fit:cover;
+        object-position:center 16%;
+        border-radius:0;
+        mask-image:
+          radial-gradient(ellipse at 50% 42%,#000 0 64%,rgba(0,0,0,.92) 72%,transparent 100%),
+          linear-gradient(#000 0 80%,transparent 100%);
+        mask-composite:intersect;
+        -webkit-mask-image:
+          radial-gradient(ellipse at 50% 42%,#000 0 64%,rgba(0,0,0,.92) 72%,transparent 100%),
+          linear-gradient(#000 0 80%,transparent 100%);
+        -webkit-mask-composite:source-in;
+      }
+      .meos-presence-human-glow{
+        border-radius:0;
+      }
+      .meos-presence-status{
+        bottom:42px;
+      }
+      .meos-presence-evolution{
+        left:2%;
+        right:2%;
+        bottom:0;
+      }
+      .meos-hq-core-caption{
+        bottom:-2px;
+      }
+      @media(max-width:1120px){
+        .meos-hq-hero{
+          grid-template-columns:1fr 1.25fr;
+          min-height:430px;
+        }
+        .meos-hq-core.meos-living-presence{
+          width:min(400px,100%);
+          min-height:370px;
+          height:370px;
+        }
+      }
+      @media(max-width:760px){
+        .meos-hq-hero{
+          grid-template-columns:1fr;
+          min-height:auto;
+        }
+        .meos-hq-core.meos-living-presence{
+          width:min(390px,92vw);
+          min-height:360px;
+          height:360px;
+        }
       }
 
     `;
@@ -3825,6 +3911,8 @@ document
       ["Canonical Maddy fills the Living Headquarters presence field", Boolean(document.querySelector(".meos-presence-human"))],
       ["Six-stage cinematic startup evolution is installed", document.querySelectorAll("#meosPresenceEvolution [data-stage-step]").length === 6],
       ["Artificial cheek-light overlay is disabled", getComputedStyle(document.querySelector(".meos-presence-eye-light")).display === "none"],
+      ["Living Headquarters hero remains within the commissioned footprint", Boolean(document.querySelector(".meos-hq-hero"))],
+      ["Maddy presence capsule border has been removed", getComputedStyle(document.querySelector(".meos-presence-stage")).borderTopWidth === "0px"],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
     return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v4.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
