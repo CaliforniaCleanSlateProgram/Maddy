@@ -20,13 +20,13 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "3.0.1";
+  const DASHBOARD_VERSION = "4.0.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
-  const STORAGE_KEY = "meos.dashboard.build.v3.0.1";
+  const STORAGE_KEY = "meos.dashboard.build.v4.0.0";
 
   const DEFAULT_BUILD_TASKS = [
     { id: "executive-office-standard", title: "Executive Office Standard and cabinet registry", status: "complete" },
@@ -1029,7 +1029,40 @@
       .meos-hq-core{position:relative;width:min(350px,78vw);aspect-ratio:1;margin:auto;display:grid;place-items:center;filter:drop-shadow(0 0 34px rgba(74,184,255,.24))}.meos-hq-core-ring{position:absolute;border-radius:50%;border:1px solid rgba(105,239,255,.31)}.meos-hq-core-ring.r1{inset:1%;border-style:dashed;animation:hudSpin 17s linear infinite}.meos-hq-core-ring.r2{inset:10%;border-color:rgba(168,110,255,.45);border-left-color:transparent;border-bottom-color:transparent;animation:hudSpinR 10s linear infinite}.meos-hq-core-ring.r3{inset:20%;border-width:2px;border-right-color:transparent;animation:hudSpin 7s linear infinite}.meos-hq-core-ring.r4{inset:30%;border-color:rgba(105,239,255,.64);box-shadow:0 0 17px rgba(105,239,255,.27),inset 0 0 18px rgba(105,239,255,.11);animation:hudBreathe 2.8s ease-in-out infinite}
       .meos-hq-core::before,.meos-hq-core::after{content:"";position:absolute;inset:9%;border-radius:50%;background:repeating-conic-gradient(rgba(105,239,255,.18) 0 1deg,transparent 1deg 13deg);mask:radial-gradient(circle,transparent 56%,#000 57%);opacity:.58;animation:hudSpin 32s linear infinite}.meos-hq-core::after{inset:25%;opacity:.3;animation:hudSpinR 18s linear infinite}
       .meos-hq-portrait{width:43%;aspect-ratio:1;object-fit:cover;border-radius:50%;position:relative;z-index:3;filter:contrast(1.12) brightness(1.06) saturate(.88) drop-shadow(0 0 14px rgba(105,239,255,.42));border:1px solid rgba(215,250,255,.75);box-shadow:0 0 0 6px rgba(105,239,255,.05),0 0 48px rgba(105,239,255,.24)}
-      .meos-hq-core-caption{position:absolute;z-index:4;bottom:9%;left:50%;transform:translateX(-50%);white-space:nowrap;padding:5px 12px;color:#effcff;border-top:1px solid rgba(105,239,255,.4);border-bottom:1px solid rgba(105,239,255,.2);background:rgba(4,17,29,.5);backdrop-filter:blur(9px);font-size:.66rem;letter-spacing:.19em;text-transform:uppercase}
+      .meos-hq-core-caption{position:absolute;z-index:8;bottom:4%;left:50%;transform:translateX(-50%);white-space:nowrap;padding:6px 14px;color:#effcff;border-top:1px solid rgba(105,239,255,.4);border-bottom:1px solid rgba(105,239,255,.2);background:rgba(4,17,29,.62);backdrop-filter:blur(9px);font-size:.66rem;letter-spacing:.19em;text-transform:uppercase}
+
+      /* MEOS 4.0.0 — canonical Maddy living headquarters startup evolution */
+      .meos-hq-hero{min-height:520px;grid-template-columns:minmax(245px,.72fr) minmax(470px,1.7fr) minmax(235px,.72fr)}
+      .meos-hq-center{min-width:0;align-self:stretch;display:grid;place-items:center}
+      .meos-hq-core.meos-living-presence{width:min(520px,100%);height:100%;min-height:455px;aspect-ratio:auto;overflow:visible}
+      .meos-living-presence .meos-hq-core-ring.r1{inset:4% 10%;border-radius:48%;opacity:.72}
+      .meos-living-presence .meos-hq-core-ring.r2{inset:10% 17%;border-radius:48%}
+      .meos-living-presence .meos-hq-core-ring.r3{inset:17% 24%;border-radius:48%}
+      .meos-living-presence .meos-hq-core-ring.r4{inset:25% 31%;border-radius:46%;opacity:.56}
+      .meos-presence-stage{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden;isolation:isolate}
+      .meos-presence-stage::before{content:"";position:absolute;inset:7% 6% 3%;z-index:0;background:radial-gradient(ellipse at 50% 42%,rgba(81,218,255,.18),transparent 38%),linear-gradient(90deg,transparent,rgba(103,225,255,.06),transparent);clip-path:polygon(50% 0,88% 15%,100% 58%,82% 100%,18% 100%,0 58%,12% 15%);filter:drop-shadow(0 0 28px rgba(81,218,255,.22));animation:meosPresenceField 5.6s ease-in-out infinite 7.4s}
+      .meos-presence-circuit{position:absolute;inset:4% 2% 3%;z-index:1;opacity:0;background-image:linear-gradient(90deg,transparent 0 8%,rgba(105,239,255,.45) 8.2% 8.45%,transparent 8.7% 91.3%,rgba(105,239,255,.4) 91.55% 91.8%,transparent 92%),repeating-linear-gradient(90deg,transparent 0 38px,rgba(105,239,255,.1) 39px,transparent 40px),repeating-linear-gradient(0deg,transparent 0 31px,rgba(105,239,255,.085) 32px,transparent 33px);mask-image:radial-gradient(ellipse at 50% 48%,#000 20%,rgba(0,0,0,.78) 55%,transparent 82%);animation:meosCircuitConstruct 7.4s ease-out both}
+      .meos-presence-logo{position:absolute;z-index:4;width:42%;max-width:205px;aspect-ratio:1;object-fit:cover;border-radius:50%;filter:brightness(1.16) contrast(1.12) drop-shadow(0 0 24px rgba(105,239,255,.72));animation:meosLogoEvolution 7.4s cubic-bezier(.4,0,.2,1) both}
+      .meos-presence-human{position:absolute;z-index:5;width:min(84%,440px);height:94%;object-fit:cover;object-position:center 16%;border-radius:45% 45% 20% 20% / 36% 36% 18% 18%;opacity:0;transform:translateY(18px) scale(.82);filter:brightness(.55) contrast(1.18) saturate(.62) drop-shadow(0 0 8px rgba(105,239,255,.25));mask-image:linear-gradient(#000 0 76%,transparent 98%);animation:meosHumanMaterialize 7.4s cubic-bezier(.22,.75,.18,1) both,meosHumanIdle 6.8s ease-in-out infinite 7.4s}
+      .meos-presence-human-glow{position:absolute;z-index:6;width:min(76%,395px);height:84%;border-radius:46%;opacity:0;pointer-events:none;background:linear-gradient(180deg,transparent 0 25%,rgba(105,239,255,.12) 51%,transparent 77%),repeating-linear-gradient(180deg,transparent 0 8px,rgba(165,246,255,.08) 9px,transparent 10px);mix-blend-mode:screen;animation:meosHumanGlow 7.4s ease-out both,meosHoloFlicker 4.8s steps(1,end) infinite 7.4s}
+      .meos-presence-scan{position:absolute;z-index:7;left:21%;right:21%;height:2px;top:16%;opacity:0;background:linear-gradient(90deg,transparent,#e9fdff,transparent);box-shadow:0 0 14px var(--hud-cyan);animation:meosPresenceScan 7.4s ease-in-out both,meosPresenceScanIdle 5.8s ease-in-out infinite 7.8s}
+      .meos-presence-eye-light{position:absolute;z-index:8;top:42%;left:50%;width:31%;height:7%;transform:translateX(-50%);opacity:0;background:radial-gradient(circle at 31% 50%,rgba(205,255,191,.95) 0 3%,rgba(126,255,223,.48) 5%,transparent 13%),radial-gradient(circle at 69% 50%,rgba(205,255,191,.95) 0 3%,rgba(126,255,223,.48) 5%,transparent 13%);filter:blur(.2px) drop-shadow(0 0 8px rgba(124,255,225,.7));animation:meosEyesOnline 7.4s ease-out both}
+      .meos-presence-status{position:absolute;z-index:9;left:50%;bottom:10%;transform:translateX(-50%);min-width:210px;text-align:center;color:rgba(222,249,255,.84);font-size:.62rem;letter-spacing:.17em;text-transform:uppercase;opacity:0;animation:meosStatusOnline 7.4s ease-out both}
+      .meos-presence-status::before{content:"";display:inline-block;width:6px;height:6px;margin-right:8px;border-radius:50%;background:#65f1b2;box-shadow:0 0 11px #65f1b2;animation:hudBlink 1.8s ease-in-out infinite 7.4s}
+      @keyframes meosCircuitConstruct{0%{opacity:0;transform:scale(.88)}12%{opacity:.3}38%{opacity:.92;transform:scale(1)}72%,100%{opacity:.38}}
+      @keyframes meosLogoEvolution{0%,16%{opacity:0;transform:scale(.55) rotate(-16deg)}27%{opacity:1;transform:scale(1) rotate(0)}43%{opacity:1;transform:scale(1.08)}60%{opacity:.62;transform:scale(1.3);filter:brightness(1.45) contrast(1.18) blur(.4px) drop-shadow(0 0 38px rgba(105,239,255,.95))}75%,100%{opacity:0;transform:scale(1.75);filter:brightness(1.8) blur(5px)}}
+      @keyframes meosHumanMaterialize{0%,36%{opacity:0;transform:translateY(20px) scale(.78);clip-path:inset(100% 0 0)}48%{opacity:.25;clip-path:inset(72% 0 0)}62%{opacity:.68;clip-path:inset(34% 0 0);filter:brightness(.65) contrast(1.25) saturate(.55) drop-shadow(0 0 18px rgba(105,239,255,.45))}78%{opacity:.96;clip-path:inset(0);transform:translateY(0) scale(1);filter:brightness(.92) contrast(1.1) saturate(.88) drop-shadow(0 0 24px rgba(105,239,255,.48))}100%{opacity:1;clip-path:inset(0);transform:translateY(0) scale(1);filter:brightness(1) contrast(1.08) saturate(.94) drop-shadow(0 0 18px rgba(105,239,255,.38))}}
+      @keyframes meosHumanGlow{0%,45%{opacity:0}58%{opacity:.8}78%,100%{opacity:.34}}
+      @keyframes meosPresenceScan{0%,39%{top:14%;opacity:0}48%{opacity:1}76%{top:80%;opacity:.8}86%,100%{top:88%;opacity:0}}
+      @keyframes meosEyesOnline{0%,76%{opacity:0;transform:translateX(-50%) scaleY(.1)}84%{opacity:1;transform:translateX(-50%) scaleY(1)}89%{opacity:.18;transform:translateX(-50%) scaleY(.12)}94%,100%{opacity:.72;transform:translateX(-50%) scaleY(1)}}
+      @keyframes meosStatusOnline{0%,78%{opacity:0;transform:translateX(-50%) translateY(8px)}100%{opacity:1;transform:translateX(-50%) translateY(0)}}
+      @keyframes meosHumanIdle{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.008)}}
+      @keyframes meosPresenceField{0%,100%{opacity:.38;transform:scale(.985)}50%{opacity:.72;transform:scale(1.015)}}
+      @keyframes meosHoloFlicker{0%,91%,94%,100%{opacity:.34}92%{opacity:.15}93%{opacity:.48}}
+      @keyframes meosPresenceScanIdle{0%,14%{top:22%;opacity:0}24%{opacity:.42}72%{top:73%;opacity:.36}82%,100%{opacity:0}}
+      @media(max-width:1120px){.meos-hq-hero{grid-template-columns:1fr 1.35fr}.meos-hq-center{min-height:470px}.meos-living-presence .meos-presence-human{width:min(78%,410px)}}
+      @media(max-width:760px){.meos-hq-core.meos-living-presence{min-height:430px}.meos-presence-human{width:min(88%,390px)}.meos-presence-logo{width:39%}}
+      @media(prefers-reduced-motion:reduce){.meos-presence-circuit,.meos-presence-logo,.meos-presence-human,.meos-presence-human-glow,.meos-presence-scan,.meos-presence-eye-light,.meos-presence-status{animation:none!important}.meos-presence-logo{display:none}.meos-presence-human{opacity:1;transform:none;clip-path:none}.meos-presence-status{opacity:1;transform:translateX(-50%)}}
       .meos-hq-telemetry{display:grid;gap:18px}.meos-hud-readout{position:relative;padding:11px 0 12px 17px;border-left:1px solid rgba(105,239,255,.35)}.meos-hud-readout::before{content:"";position:absolute;left:-3px;top:0;width:5px;height:5px;background:var(--hud-cyan);box-shadow:0 0 11px var(--hud-cyan)}.meos-hud-readout strong{display:block;margin:4px 0 6px;font-size:clamp(1.35rem,2vw,2.15rem);font-weight:350;color:#effcff}.meos-hud-readout small{color:rgba(194,230,246,.58)}
       .meos-hud-equalizer{height:48px;display:flex;align-items:end;gap:4px;margin-top:8px;overflow:hidden}.meos-hud-equalizer span{width:4px;min-height:8%;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#fff,var(--hud-cyan),rgba(77,145,255,.25));box-shadow:0 0 9px rgba(105,239,255,.55);animation:hudEq 1.1s ease-in-out infinite alternate}.meos-hud-equalizer span:nth-child(2n){animation-duration:.72s}.meos-hud-equalizer span:nth-child(3n){animation-duration:1.42s}.meos-hud-equalizer span:nth-child(5n){animation-duration:.94s}
       .meos-hud-radar{position:relative;width:96px;height:96px;margin-left:auto;border-radius:50%;border:1px solid rgba(105,239,255,.38);background:radial-gradient(circle,transparent 24%,rgba(105,239,255,.15) 25% 26%,transparent 27% 49%,rgba(105,239,255,.1) 50% 51%,transparent 52%),linear-gradient(90deg,transparent 49%,rgba(105,239,255,.17) 50%,transparent 51%),linear-gradient(transparent 49%,rgba(105,239,255,.17) 50%,transparent 51%);box-shadow:inset 0 0 22px rgba(105,239,255,.07);overflow:hidden}.meos-hud-radar::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(105,239,255,.45),transparent 24%);animation:hudSpin 2.7s linear infinite}.meos-hud-radar::after{content:"";position:absolute;left:65%;top:31%;width:5px;height:5px;border-radius:50%;background:#fff;box-shadow:0 0 12px var(--hud-cyan);animation:hudTarget 1.7s ease-in-out infinite}
@@ -2431,9 +2464,17 @@ document
             <div class="meos-hq-status-strip"><span class="meos-hq-status"><i></i>Executive Brain Online</span><span class="meos-hq-status"><i></i>Offices Active</span><span class="meos-hq-status"><i></i>Constitution Intact</span></div>
           </div>
           <div class="meos-hq-center">
-            <div class="meos-hq-core" aria-label="Maddy command core online">
+            <div class="meos-hq-core meos-living-presence" id="meosLivingPresence" aria-label="Maddy materializing from the MEOS command insignia into her canonical human executive presence">
               <span class="meos-hq-core-ring r1"></span><span class="meos-hq-core-ring r2"></span><span class="meos-hq-core-ring r3"></span><span class="meos-hq-core-ring r4"></span>
-              <img class="meos-hq-portrait" src="maddy-executive-insignia.png" alt="Maddy Executive Office insignia" onerror="this.style.visibility='hidden';" />
+              <div class="meos-presence-stage">
+                <span class="meos-presence-circuit" aria-hidden="true"></span>
+                <img class="meos-presence-logo" src="maddy-executive-insignia.png" alt="MEOS Maddy command insignia beginning the startup transformation" onerror="this.style.visibility='hidden';" />
+                <img class="meos-presence-human" id="meosCanonicalMaddy" src="maddy-canonical-v1.png" alt="Maddy's canonical human executive presence" onerror="this.style.visibility='hidden';" />
+                <span class="meos-presence-human-glow" aria-hidden="true"></span>
+                <span class="meos-presence-scan" aria-hidden="true"></span>
+                <span class="meos-presence-eye-light" aria-hidden="true"></span>
+                <span class="meos-presence-status">Maddy online · Coordinating headquarters</span>
+              </div>
               <span class="meos-hq-core-caption">Maddy · Executive Command</span>
             </div>
           </div>
@@ -3633,9 +3674,12 @@ document
       ["Legacy top completion gauge receives the authoritative live percentage", document.getElementById("progressPercent")?.textContent === `${snapshot.completion}%`],
       ["Maddy at Work circuitry window replaced the duplicate completion widget", Boolean(document.querySelector(".meos-maddy-window"))],
       ["Maddy at Work exposes live status and completion telemetry", Boolean(document.getElementById("meosMaddyWorkStatus") && document.getElementById("meosMaddyCompletion"))],
+      ["Living Headquarters uses the protected canonical Maddy asset", document.getElementById("meosCanonicalMaddy")?.getAttribute("src") === "maddy-canonical-v1.png"],
+      ["Logo-to-human startup evolution is installed in the Headquarters hero", Boolean(document.querySelector("#meosLivingPresence .meos-presence-logo") && document.querySelector("#meosLivingPresence .meos-presence-human"))],
+      ["Maddy is the visual feature of the Headquarters center", Boolean(document.querySelector(".meos-hq-core.meos-living-presence"))],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
-    return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v3.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
+    return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v4.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
   }
 
   function updateClockAndGreeting() {
