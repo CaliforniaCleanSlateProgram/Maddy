@@ -20,8 +20,9 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.3.0";
+  const DASHBOARD_VERSION = "2.4.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
+  const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
@@ -92,6 +93,7 @@
 
   const DEFAULT_LAYOUT = Object.freeze([
     { id: "build-progress", colSpan: 12, rowSpan: 1, visible: true, order: 10 },
+    { id: "office-activity", colSpan: 12, rowSpan: 2, visible: true, order: 15 },
     { id: "today-glance", colSpan: 3, rowSpan: 2, visible: true, order: 20 },
     { id: "mission-pulse", colSpan: 3, rowSpan: 2, visible: true, order: 30 },
     { id: "priorities", colSpan: 3, rowSpan: 2, visible: true, order: 40 },
@@ -114,6 +116,16 @@
     conversationStatus: "disconnected",
     tokenActivity: "idle",
     muted: false,
+    officeActivity: {
+      status: "idle",
+      records: [],
+      categories: {},
+      activeCategory: null,
+      selectedId: null,
+      lastLoadedAt: null,
+      error: null,
+      prioritizedIds: new Set()
+    },
     fundingIntelligence: {
       status: "idle",
       opportunities: [],
@@ -1072,6 +1084,158 @@
           grid-column: 1;
         }
       }
+
+
+      .meos-activity-summary {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .meos-activity-lane {
+        min-width: 0;
+        border: 1px solid var(--meos-border);
+        border-radius: 12px;
+        background: rgba(8, 18, 31, 0.52);
+        color: inherit;
+        padding: 12px;
+        text-align: left;
+        cursor: pointer;
+        transition: border-color .18s ease, transform .18s ease, background .18s ease;
+      }
+
+      .meos-activity-lane:hover,
+      .meos-activity-lane:focus-visible {
+        border-color: rgba(121, 167, 255, .62);
+        background: rgba(24, 42, 68, .72);
+        transform: translateY(-1px);
+      }
+
+      .meos-activity-lane strong {
+        display: block;
+        margin-top: 5px;
+        font-size: 1.45rem;
+      }
+
+      .meos-activity-lane small {
+        display: block;
+        color: var(--meos-muted);
+        margin-top: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .meos-activity-status-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--meos-green);
+        font-size: .76rem;
+      }
+
+      .meos-activity-status-line::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 9px currentColor;
+      }
+
+      .meos-activity-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10020;
+        background: rgba(0, 5, 12, .88);
+        backdrop-filter: blur(10px);
+        padding: 24px;
+        overflow: auto;
+      }
+
+      .meos-activity-browser {
+        width: min(1320px, 100%);
+        min-height: 76vh;
+        margin: 0 auto;
+        background: #071523;
+        border: 1px solid rgba(105, 239, 255, .35);
+        box-shadow: 0 0 50px rgba(0, 0, 0, .55);
+      }
+
+      .meos-activity-browser-grid {
+        display: grid;
+        grid-template-columns: minmax(260px, 32%) minmax(0, 68%);
+        min-height: 66vh;
+      }
+
+      .meos-activity-browser-list {
+        border-right: 1px solid rgba(105, 239, 255, .16);
+        padding: 14px;
+        overflow: auto;
+        max-height: 74vh;
+      }
+
+      .meos-activity-browser-detail {
+        padding: 22px;
+        overflow: auto;
+        max-height: 74vh;
+      }
+
+      .meos-activity-item-button {
+        width: 100%;
+        border: 1px solid transparent;
+        border-radius: 9px;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+        padding: 10px;
+      }
+
+      .meos-activity-item-button:hover,
+      .meos-activity-item-button[aria-current="true"] {
+        border-color: rgba(121, 167, 255, .32);
+        background: rgba(31, 51, 79, .66);
+      }
+
+      .meos-activity-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin: 18px 0;
+      }
+
+      .meos-activity-detail-block {
+        border: 1px solid var(--meos-border);
+        border-radius: 10px;
+        background: rgba(12, 25, 42, .58);
+        padding: 12px;
+      }
+
+      .meos-activity-detail-block span {
+        display: block;
+        color: var(--meos-muted);
+        font-size: .72rem;
+        margin-bottom: 5px;
+      }
+
+      .meos-activity-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        margin-top: 18px;
+      }
+
+      @media (max-width: 980px) {
+        .meos-activity-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      }
+
+      @media (max-width: 720px) {
+        .meos-activity-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .meos-activity-browser-grid { grid-template-columns: 1fr; }
+        .meos-activity-browser-list { border-right: 0; border-bottom: 1px solid rgba(105, 239, 255, .16); max-height: 34vh; }
+        .meos-activity-detail-grid { grid-template-columns: 1fr; }
+      }
     `;
 
     document.head.appendChild(style);
@@ -1653,6 +1817,19 @@ document
             </div>
             <div id="meosBuildPercent" class="meos-progress-percent">0%</div>
           </div>
+        </div>
+      `,
+
+      "office-activity": `
+        <div class="meos-widget-inner">
+          <div class="meos-widget-header">
+            <div>
+              <h2 class="meos-widget-title">Office Activity</h2>
+              <div id="meosOfficeActivityStatus" class="meos-activity-status-line">Loading live office work…</div>
+            </div>
+            <button id="meosOfficeActivityPeek" class="meos-widget-link" type="button">Peek Behind the Curtain</button>
+          </div>
+          <div id="meosOfficeActivitySummary" class="meos-activity-summary" aria-label="Executive office activity categories"></div>
         </div>
       `,
       "today-glance": `
@@ -2705,7 +2882,434 @@ document
     });
   }
 
+
+  const OFFICE_ACTIVITY_CATEGORIES = Object.freeze([
+    { id: "researching", label: "Researching", description: "Opportunities Maddy is investigating and qualifying." },
+    { id: "improving", label: "Improving", description: "Applications, strategies, and adaptive-fit cases being strengthened." },
+    { id: "waiting-documents", label: "Waiting for Documents", description: "Work blocked by a specific record, attachment, certification, or executive input." },
+    { id: "monitoring", label: "Monitoring", description: "Submitted, award-pending, recurring, and watch-list opportunities." },
+    { id: "ready-approval", label: "Ready for Approval", description: "Work prepared far enough to request executive authorization." },
+    { id: "executive-decisions", label: "Executive Decisions", description: "Strategic choices that require Executive Director judgment." }
+  ]);
+
+  function getFundingPipelineStage(record = {}) {
+    return String(
+      record?.fundingPipeline?.stage ||
+      record?.resourceDevelopment?.pursuitState ||
+      record?.resourceDevelopment?.workQueue?.pipelineStage ||
+      "discovered"
+    ).toLowerCase();
+  }
+
+  function getActivityDecision(record = {}) {
+    return String(
+      record?.resourceDevelopment?.executiveDecision ||
+      getResourceDecision(record)?.decision ||
+      "research"
+    ).toLowerCase();
+  }
+
+  function uniqueStrings(values = []) {
+    return Array.from(new Set(values
+      .flat(Infinity)
+      .filter((value) => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean)));
+  }
+
+  function collectWaitingDocuments(record = {}) {
+    const pipeline = record?.fundingPipeline || {};
+    const artifacts = pipeline?.artifacts || {};
+    const candidates = uniqueStrings([
+      record?.missingDocuments,
+      record?.requiredDocuments,
+      record?.executiveQualification?.unknowns,
+      record?.resourceDevelopment?.workQueue?.executiveSummary?.unknowns,
+      getResourceDecision(record)?.unknowns,
+      artifacts?.applicationIntelligence?.missingInformation,
+      artifacts?.applicationIntelligence?.missingDocuments,
+      artifacts?.applicationPackage?.missingInformation,
+      artifacts?.applicationPackage?.missingDocuments,
+      artifacts?.portalMapping?.missingFields,
+      artifacts?.portalMapping?.missingAttachments,
+      artifacts?.readiness?.missingItems,
+      pipeline?.readiness?.missingItems
+    ]);
+
+    const documentSignals = /document|attachment|letter|form|statement|budget|signature|certif|resolution|990|ein|insurance|license|upload|evidence|record/i;
+    return candidates.filter((item) => documentSignals.test(item));
+  }
+
+  function hasReadyForApprovalEvidence(record = {}) {
+    const stage = getFundingPipelineStage(record);
+    const pipeline = record?.fundingPipeline || {};
+    const readiness =
+      pipeline?.artifacts?.applicationPackage?.readiness ||
+      pipeline?.artifacts?.readiness ||
+      pipeline?.readiness ||
+      {};
+
+    return (
+      ["package-assembled", "portal-mapped"].includes(stage) &&
+      (readiness?.readyForSubmission === true || collectWaitingDocuments(record).length === 0)
+    );
+  }
+
+  function classifyOfficeActivity(record = {}) {
+    const stage = getFundingPipelineStage(record);
+    const decision = getActivityDecision(record);
+    const deskStatus = String(record?.resourceDevelopment?.deskStatus || "").toLowerCase();
+    const waitingDocuments = collectWaitingDocuments(record);
+
+    if (hasReadyForApprovalEvidence(record)) return "ready-approval";
+    if (waitingDocuments.length > 0 && !["submitted", "award-pending", "awarded", "funds-partially-received", "funds-fully-received"].includes(stage)) {
+      return "waiting-documents";
+    }
+    if (["submitted", "award-pending", "awarded", "funds-partially-received"].includes(stage) || decision === "monitor" || deskStatus === "monitor") {
+      return "monitoring";
+    }
+    if (["preparing", "application-intelligence", "package-assembled", "portal-mapped"].includes(stage)) {
+      return "improving";
+    }
+    if (stage === "on-desk" || (deskStatus === "active" && ["pursue", "prepare", "partner"].includes(decision))) {
+      return "executive-decisions";
+    }
+    return "researching";
+  }
+
+  function buildOfficeActivityCategories(records = []) {
+    const categories = Object.fromEntries(
+      OFFICE_ACTIVITY_CATEGORIES.map((category) => [category.id, []])
+    );
+
+    records.forEach((record) => {
+      const category = classifyOfficeActivity(record);
+      categories[category].push(record);
+    });
+
+    Object.values(categories).forEach((items) => items.sort(sortFundingOpportunities));
+    return categories;
+  }
+
+  function getOfficeActivitySummary(record = {}) {
+    const stage = getFundingPipelineStage(record);
+    const decision = getActivityDecision(record);
+    const nextAction = firstDefined(
+      record?.resourceDevelopment?.workQueue?.action?.nextAction,
+      record?.resourceDevelopment?.nextAction,
+      getResourceDecision(record)?.nextAction,
+      "Continue the next authorized step."
+    );
+
+    const stageLabels = {
+      discovered: "Investigating source and fit",
+      qualified: "Completing executive qualification",
+      "on-desk": "Waiting for executive direction",
+      preparing: "Building application strategy and evidence",
+      "application-intelligence": "Reading requirements and drafting responses",
+      "package-assembled": "Checking package completeness",
+      "portal-mapped": "Preparing governed portal execution",
+      "executive-approved": "Authorized for final execution",
+      submitted: "Tracking submission confirmation",
+      "award-pending": "Monitoring funder decision",
+      awarded: "Preparing award acceptance and stewardship",
+      "funds-partially-received": "Tracking remaining award payment",
+      "funds-fully-received": "Funding received and stewardship active",
+      archived: "Preserved off the active desk"
+    };
+
+    return {
+      stage,
+      decision,
+      currentActivity: stageLabels[stage] || "Executive work in progress",
+      nextAction,
+      waitingDocuments: collectWaitingDocuments(record)
+    };
+  }
+
+  function renderOfficeActivityWidget() {
+    const container = document.getElementById("meosOfficeActivitySummary");
+    const status = document.getElementById("meosOfficeActivityStatus");
+    if (!container || !status) return;
+
+    if (state.officeActivity.status === "loading") {
+      status.textContent = "Loading live office work…";
+      container.innerHTML = OFFICE_ACTIVITY_CATEGORIES.map((category) => `
+        <button class="meos-activity-lane" type="button" disabled>
+          <span>${escapeHtml(category.label)}</span><strong>—</strong><small>Connecting…</small>
+        </button>
+      `).join("");
+      return;
+    }
+
+    if (state.officeActivity.status === "error") {
+      status.textContent = "Office activity is temporarily unavailable.";
+      container.innerHTML = `<button id="meosOfficeActivityRetry" class="meos-activity-lane" type="button"><span>Connection</span><strong>Retry</strong><small>${escapeHtml(state.officeActivity.error || "Unknown error")}</small></button>`;
+      document.getElementById("meosOfficeActivityRetry")?.addEventListener("click", loadOfficeActivity);
+      return;
+    }
+
+    const total = state.officeActivity.records.length;
+    status.textContent = total
+      ? `${total} active and preserved funding records are being managed by the office.`
+      : "The office is online; no funding records are available yet.";
+
+    container.innerHTML = OFFICE_ACTIVITY_CATEGORIES.map((category) => {
+      const records = state.officeActivity.categories[category.id] || [];
+      const first = records[0];
+      const firstTitle = firstDefined(first?.title, category.description);
+      return `
+        <button class="meos-activity-lane" type="button" data-office-activity-category="${escapeHtml(category.id)}">
+          <span>${escapeHtml(category.label)}</span>
+          <strong>${records.length}</strong>
+          <small>${escapeHtml(firstTitle)}</small>
+        </button>
+      `;
+    }).join("");
+
+    container.querySelectorAll("[data-office-activity-category]").forEach((button) => {
+      button.addEventListener("click", () => openOfficeActivityBrowser(button.dataset.officeActivityCategory));
+    });
+  }
+
+  async function loadOfficeActivity() {
+    state.officeActivity.status = "loading";
+    state.officeActivity.error = null;
+    renderOfficeActivityWidget();
+
+    try {
+      const response = await fetch(OFFICE_ACTIVITY_API_URL, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        throw new Error(`Executive Resource Development Office returned HTTP ${response.status}.`);
+      }
+
+      const payload = await response.json();
+      if (payload?.schema !== "meos.executive-resource-development.desk.v1") {
+        throw new Error("Executive Resource Development Office returned an unsupported activity schema.");
+      }
+
+      const records = Array.isArray(payload?.records) ? payload.records : [];
+      state.officeActivity.records = records;
+      state.officeActivity.categories = buildOfficeActivityCategories(records);
+      state.officeActivity.status = "ready";
+      state.officeActivity.lastLoadedAt = new Date().toISOString();
+      renderOfficeActivityWidget();
+
+      dispatchMEOS("meos:office-activity-loaded", {
+        sourceEndpoint: OFFICE_ACTIVITY_API_URL,
+        total: records.length,
+        categoryCounts: Object.fromEntries(
+          OFFICE_ACTIVITY_CATEGORIES.map((category) => [
+            category.id,
+            state.officeActivity.categories[category.id]?.length || 0
+          ])
+        ),
+        loadedAt: state.officeActivity.lastLoadedAt
+      });
+      return records;
+    } catch (error) {
+      state.officeActivity.status = "error";
+      state.officeActivity.error = error?.message || "Office activity failed.";
+      renderOfficeActivityWidget();
+      return [];
+    }
+  }
+
+  function openOfficeActivityBrowser(categoryId = "researching", selectedId = null) {
+    const category = OFFICE_ACTIVITY_CATEGORIES.find((item) => item.id === categoryId) || OFFICE_ACTIVITY_CATEGORIES[0];
+    state.officeActivity.activeCategory = category.id;
+    const records = state.officeActivity.categories[category.id] || [];
+    state.officeActivity.selectedId = selectedId || records[0]?.id || null;
+
+    let overlay = document.getElementById("meosOfficeActivityOverlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "meosOfficeActivityOverlay";
+      overlay.className = "meos-activity-overlay";
+      overlay.innerHTML = `
+        <section class="meos-activity-browser">
+          <header style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid rgba(105,239,255,.2);">
+            <div><div id="meosActivityBrowserTitle" class="meos-widget-title">Office Activity</div><div id="meosActivityBrowserCount" class="meos-muted" style="margin-top:5px;"></div></div>
+            <button id="meosOfficeActivityClose" class="office-dashboard-close" type="button" aria-label="Close">×</button>
+          </header>
+          <div class="meos-activity-browser-grid">
+            <div class="meos-activity-browser-list">
+              <select id="meosActivityCategorySelect" class="meos-mode-select" aria-label="Office activity category" style="margin-bottom:12px;">
+                ${OFFICE_ACTIVITY_CATEGORIES.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}
+              </select>
+              <ul id="meosActivityBrowserList" class="meos-list"></ul>
+            </div>
+            <div id="meosActivityBrowserDetail" class="meos-activity-browser-detail"></div>
+          </div>
+        </section>
+      `;
+      document.body.appendChild(overlay);
+      overlay.querySelector("#meosOfficeActivityClose")?.addEventListener("click", () => overlay.remove());
+      overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
+      overlay.querySelector("#meosActivityCategorySelect")?.addEventListener("change", (event) => {
+        state.officeActivity.activeCategory = event.target.value;
+        const nextRecords = state.officeActivity.categories[event.target.value] || [];
+        state.officeActivity.selectedId = nextRecords[0]?.id || null;
+        renderOfficeActivityBrowser();
+      });
+    }
+
+    renderOfficeActivityBrowser();
+  }
+
+  function renderOfficeActivityBrowser() {
+    const categoryId = state.officeActivity.activeCategory || "researching";
+    const category = OFFICE_ACTIVITY_CATEGORIES.find((item) => item.id === categoryId) || OFFICE_ACTIVITY_CATEGORIES[0];
+    const records = state.officeActivity.categories[category.id] || [];
+    const select = document.getElementById("meosActivityCategorySelect");
+    if (select) select.value = category.id;
+    setText("meosActivityBrowserTitle", category.label);
+    setText("meosActivityBrowserCount", `${records.length} item${records.length === 1 ? "" : "s"} · ${category.description}`);
+
+    const list = document.getElementById("meosActivityBrowserList");
+    if (list) {
+      list.innerHTML = records.map((record) => {
+        const summary = getOfficeActivitySummary(record);
+        const selected = String(record?.id || "") === String(state.officeActivity.selectedId || "");
+        return `<li><button class="meos-activity-item-button" type="button" data-office-activity-id="${escapeHtml(record?.id || "")}" aria-current="${selected}"><strong>${escapeHtml(firstDefined(record?.title, "Untitled opportunity"))}</strong><br><small class="meos-muted">${escapeHtml(summary.currentActivity)} · ${escapeHtml(getFundingAmount(record))}</small></button></li>`;
+      }).join("") || '<li><span></span><span>No items in this category.</span><span></span></li>';
+
+      list.querySelectorAll("[data-office-activity-id]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.officeActivity.selectedId = button.dataset.officeActivityId;
+          renderOfficeActivityBrowser();
+        });
+      });
+    }
+
+    const selected = records.find((record) => String(record?.id || "") === String(state.officeActivity.selectedId || "")) || records[0];
+    if (selected && !state.officeActivity.selectedId) state.officeActivity.selectedId = selected.id;
+    renderOfficeActivityDetail(selected, category);
+  }
+
+  function renderOfficeActivityDetail(record, category) {
+    const detail = document.getElementById("meosActivityBrowserDetail");
+    if (!detail) return;
+    if (!record) {
+      detail.innerHTML = `<p class="meos-muted">Maddy has no work in ${escapeHtml(category.label.toLowerCase())} right now.</p>`;
+      return;
+    }
+
+    const summary = getOfficeActivitySummary(record);
+    const decision = getResourceDecision(record) || {};
+    const provider = firstDefined(record?.agencyName, record?.provider, record?.sourceName, record?.source?.name, "Resource source not verified");
+    const why = firstDefined(
+      decision?.executiveBrief?.whyOnDesk,
+      record?.resourceDevelopment?.workQueue?.strategicValue?.whyItMatters,
+      record?.resourceDevelopment?.reason,
+      "Maddy is preserving and advancing this opportunity because it may produce organizational value."
+    );
+    const waiting = summary.waitingDocuments;
+    const prioritized = state.officeActivity.prioritizedIds.has(String(record.id));
+
+    detail.innerHTML = `
+      <div class="meos-widget-title">${escapeHtml(firstDefined(record?.title, "Untitled opportunity"))}</div>
+      <p class="meos-muted" style="margin:6px 0 0;">${escapeHtml(provider)}</p>
+      <div class="meos-activity-detail-grid">
+        <div class="meos-activity-detail-block"><span>What Maddy is doing</span><strong>${escapeHtml(summary.currentActivity)}</strong></div>
+        <div class="meos-activity-detail-block"><span>Current stage</span><strong>${escapeHtml(formatStatus(summary.stage))}</strong></div>
+        <div class="meos-activity-detail-block"><span>Executive direction</span><strong>${escapeHtml(prioritized ? "Priority assigned" : getFundingRecommendation(record))}</strong></div>
+        <div class="meos-activity-detail-block"><span>Potential resource</span><strong>${escapeHtml(getFundingAmount(record))}</strong></div>
+      </div>
+      <div class="meos-activity-detail-block"><span>Why this matters</span><p style="margin:0;line-height:1.55;">${escapeHtml(why)}</p></div>
+      <div class="meos-activity-detail-block" style="margin-top:12px;"><span>Next action</span><p style="margin:0;line-height:1.55;">${escapeHtml(summary.nextAction)}</p></div>
+      ${waiting.length ? `<div class="meos-activity-detail-block" style="margin-top:12px;"><span>Waiting for</span><ul style="margin:0;padding-left:20px;">${waiting.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>` : ""}
+      <div id="meosActivityActionStatus" class="meos-muted" style="margin-top:14px;"></div>
+      <div class="meos-activity-actions">
+        <button id="meosActivityPrioritize" class="meos-action-button" type="button" ${prioritized ? "disabled" : ""}>${prioritized ? "Priority Assigned" : "Prioritize"}</button>
+        <button id="meosActivityDiscuss" class="meos-action-button" type="button">Discuss with Maddy</button>
+        <button id="meosActivityOpenFull" class="meos-action-button" type="button">Open Full Opportunity</button>
+      </div>
+    `;
+
+    detail.querySelector("#meosActivityPrioritize")?.addEventListener("click", () => prioritizeOfficeActivity(record));
+    detail.querySelector("#meosActivityDiscuss")?.addEventListener("click", () => {
+      dispatchMEOS("meos:maddy-request", {
+        message: `Explain why you are working on ${firstDefined(record?.title, "this opportunity")}, what remains, and the best executive direction.`,
+        source: "office-activity-walkthrough",
+        opportunityId: record?.id || null,
+        communicationMode: state.communicationMode
+      });
+    });
+    detail.querySelector("#meosActivityOpenFull")?.addEventListener("click", () => openFundingIntelligenceBrowser(record));
+  }
+
+  async function prioritizeOfficeActivity(record = {}) {
+    const status = document.getElementById("meosActivityActionStatus");
+    const id = String(record?.id || "");
+    if (!id) return;
+    if (status) status.textContent = "Sending executive direction to Maddy…";
+
+    try {
+      const response = await fetch(`/api/resource-development/${encodeURIComponent(id)}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          decision: "pursue",
+          decidedBy: "Executive Director",
+          reason: "Executive Director prioritized this opportunity from Office Activity Walkthrough."
+        })
+      });
+      if (!response.ok) throw new Error(`Priority update returned HTTP ${response.status}.`);
+      const updated = await response.json();
+      state.officeActivity.prioritizedIds.add(id);
+      const index = state.officeActivity.records.findIndex((item) => String(item?.id || "") === id);
+      if (index >= 0) state.officeActivity.records[index] = updated;
+      state.officeActivity.categories = buildOfficeActivityCategories(state.officeActivity.records);
+      if (status) status.textContent = "Executive priority received. Maddy has moved this opportunity into active pursuit.";
+      renderOfficeActivityWidget();
+      dispatchMEOS("meos:office-activity-prioritized", { opportunityId: id, title: record?.title || null });
+      window.setTimeout(renderOfficeActivityBrowser, 250);
+    } catch (error) {
+      if (status) status.textContent = error?.message || "Priority update failed.";
+    }
+  }
+
+  function runOfficeActivityAcceptanceTest() {
+    const fixtures = [
+      { id: "research", title: "Community Foundation Research", resourceDevelopment: { deskStatus: "research", executiveDecision: "research" }, fundingPipeline: { stage: "qualified" } },
+      { id: "improve", title: "Application Draft", resourceDevelopment: { deskStatus: "active", executiveDecision: "pursue" }, fundingPipeline: { stage: "application-intelligence" } },
+      { id: "docs", title: "Waiting Package", executiveQualification: { unknowns: ["Upload signed board resolution"] }, resourceDevelopment: { deskStatus: "active", executiveDecision: "prepare" }, fundingPipeline: { stage: "preparing" } },
+      { id: "monitor", title: "Submitted Grant", resourceDevelopment: { deskStatus: "monitor", executiveDecision: "monitor" }, fundingPipeline: { stage: "award-pending" } },
+      { id: "approval", title: "Portal Ready", resourceDevelopment: { deskStatus: "active", executiveDecision: "pursue" }, fundingPipeline: { stage: "portal-mapped", readiness: { readyForSubmission: true } } },
+      { id: "decision", title: "Executive Choice", resourceDevelopment: { deskStatus: "active", executiveDecision: "partner" }, fundingPipeline: { stage: "on-desk" } }
+    ];
+    const categories = buildOfficeActivityCategories(fixtures);
+    const checks = OFFICE_ACTIVITY_CATEGORIES.map((category) => ({
+      name: `${category.label} receives its live work item`,
+      passed: categories[category.id]?.length === 1
+    }));
+    checks.push({
+      name: "Waiting document detail is preserved",
+      passed: collectWaitingDocuments(fixtures[2]).includes("Upload signed board resolution")
+    });
+    checks.push({
+      name: "Executive desk stays summarized while full records remain inspectable",
+      passed: Object.values(categories).flat().length === fixtures.length
+    });
+    return {
+      success: checks.every((check) => check.passed),
+      schema: "meos.dashboard.office-activity-acceptance.v1",
+      version: DASHBOARD_VERSION,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks
+    };
+  }
+
   function bindDashboardEvents() {
+    document.getElementById("meosOfficeActivityPeek")?.addEventListener("click", () => openOfficeActivityBrowser("researching"));
+
     document.getElementById("meosImUpButton")?.addEventListener("click", () => {
       document.getElementById("meosMaddyInput")?.focus();
     });
@@ -3125,6 +3729,7 @@ document
     createDashboardShell();
     installLegacyVoicePanelRetirement();
     void loadFundingIntelligence();
+    void loadOfficeActivity();
 
     console.info(
       `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; legacy voice panel retired.`
@@ -3156,6 +3761,22 @@ document
       getState: () => ({
         mode: state.costMode,
         paidSessionActive: state.paidSessionActive
+      })
+    }),
+    officeActivity: Object.freeze({
+      refresh: loadOfficeActivity,
+      open: openOfficeActivityBrowser,
+      prioritize: (opportunityId) => {
+        const record = state.officeActivity.records.find((item) => String(item?.id || "") === String(opportunityId || ""));
+        return record ? prioritizeOfficeActivity(record) : false;
+      },
+      runAcceptanceTest: runOfficeActivityAcceptanceTest,
+      getState: () => ({
+        status: state.officeActivity.status,
+        total: state.officeActivity.records.length,
+        lastLoadedAt: state.officeActivity.lastLoadedAt,
+        error: state.officeActivity.error,
+        categoryCounts: Object.fromEntries(OFFICE_ACTIVITY_CATEGORIES.map((category) => [category.id, state.officeActivity.categories[category.id]?.length || 0]))
       })
     }),
     funding: Object.freeze({
