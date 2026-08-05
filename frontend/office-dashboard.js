@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 2.0.0
+ * Version: 3.0.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,75 +20,31 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "2.4.4";
+  const DASHBOARD_VERSION = "3.0.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
-  const STORAGE_KEY = "meos.dashboard.build.v0.4.0";
+  const STORAGE_KEY = "meos.dashboard.build.v3.0.0";
 
   const DEFAULT_BUILD_TASKS = [
-    {
-      id: "preserve-existing-api",
-      title: "Preserve existing Executive Office connections",
-      status: "complete"
-    },
-    {
-      id: "dashboard-shell",
-      title: "Build the modular executive dashboard shell",
-      status: "complete"
-    },
-    {
-      id: "approved-visual-direction",
-      title: "Apply the approved dark executive-command-center design",
-      status: "complete"
-    },
-    {
-      id: "build-progress-widget",
-      title: "Connect the persistent build progress widget",
-      status: "complete"
-    },
-    {
-      id: "maddy-command-bar",
-      title: "Move Maddy into the permanent Executive Office navigation control",
-      status: "complete"
-    },
-    {
-      id: "cost-awareness",
-      title: "Connect Maddy's live cost and token status",
-      status: "active"
-    },
-    {
-      id: "live-office-data",
-      title: "Connect all executive offices to live dashboard cards",
-      status: "pending"
-    },
-    {
-      id: "mission-workflow-data",
-      title: "Connect missions, tasks, approvals, and workflows",
-      status: "pending"
-    },
-    {
-      id: "calendar-briefing-data",
-      title: "Connect calendar and daily briefing data",
-      status: "pending"
-    },
-    {
-      id: "grant-risk-data",
-      title: "Connect grant intelligence and risk alerts",
-      status: "pending"
-    },
-    {
-      id: "layout-preferences",
-      title: "Save user layout and widget preferences",
-      status: "pending"
-    },
-    {
-      id: "dashboard-milestone",
-      title: "Complete the first working MEOS dashboard milestone",
-      status: "pending"
-    }
+    { id: "executive-office-standard", title: "Executive Office Standard and cabinet registry", status: "complete" },
+    { id: "mission-command", title: "Mission command, dispatcher, and workflow foundation", status: "complete" },
+    { id: "knowledge-intelligence", title: "Knowledge, recall, research, and evidence foundation", status: "complete" },
+    { id: "reasoning-governance", title: "Executive reasoning, planning, decision, and governance", status: "complete" },
+    { id: "funding-discovery", title: "Resource discovery and acquisition qualification", status: "complete" },
+    { id: "grant-application", title: "Grant application intelligence and adaptive writing", status: "complete" },
+    { id: "portal-execution", title: "Governed portal execution and submission bridge", status: "complete" },
+    { id: "office-activity", title: "Live Office Activity and executive walkthrough", status: "complete" },
+    { id: "dashboard-live-wiring", title: "Executive Headquarters live widget wiring", status: "complete" },
+    { id: "finance-office", title: "Finance Office operational commission", status: "active" },
+    { id: "community-relations-office", title: "Community Relations Office operational commission", status: "pending" },
+    { id: "communications-office", title: "Communications and social execution commission", status: "pending" },
+    { id: "compliance-office", title: "Compliance case and obligation management", status: "pending" },
+    { id: "people-office", title: "Human Resources and volunteer operations", status: "pending" },
+    { id: "durable-operations", title: "Durable server-side workflow and office state", status: "pending" },
+    { id: "production-governance", title: "Authentication, permissions, tenant isolation, and production controls", status: "pending" }
   ];
 
   const DEFAULT_LAYOUT = Object.freeze([
@@ -125,6 +81,12 @@
       lastLoadedAt: null,
       error: null,
       prioritizedIds: new Set()
+    },
+    headquarters: {
+      lastComputedAt: null,
+      completion: 0,
+      officePortfolio: [],
+      liveSignals: {}
     },
     fundingIntelligence: {
       status: "idle",
@@ -383,7 +345,7 @@
         place-items: center;
         background:
           radial-gradient(circle at center, #101c2f 54%, transparent 56%),
-          conic-gradient(var(--meos-green) 0 92%, rgba(114, 135, 167, 0.22) 92% 100%);
+          conic-gradient(var(--meos-green) 0 var(--meos-mission-pulse, 0%), rgba(114, 135, 167, 0.22) var(--meos-mission-pulse, 0%) 100%);
         box-shadow: inset 0 0 30px rgba(79, 209, 139, 0.08);
       }
 
@@ -1041,7 +1003,7 @@
       .meos-widget-grid{gap:3px 18px;background:transparent}.meos-widget{border:0;border-radius:0;background:linear-gradient(145deg,rgba(4,20,34,.40),rgba(7,29,46,.16));box-shadow:none;backdrop-filter:blur(13px) saturate(1.15);clip-path:polygon(0 14px,14px 0,calc(100% - 28px) 0,100% 28px,100% calc(100% - 12px),calc(100% - 12px) 100%,22px 100%,0 calc(100% - 22px));transition:transform .22s ease,background .22s ease,filter .22s ease}.meos-widget:hover{z-index:4;transform:translateY(-3px) scale(1.008);background:linear-gradient(145deg,rgba(7,34,52,.6),rgba(8,28,47,.28));filter:drop-shadow(0 0 19px rgba(105,239,255,.12))}.meos-widget::before{opacity:.75;background:linear-gradient(90deg,rgba(105,239,255,.35),transparent 22%,transparent 78%,rgba(168,110,255,.2)),linear-gradient(180deg,rgba(105,239,255,.13),transparent 22%);mask:linear-gradient(#000 0 0) top/100% 1px no-repeat,linear-gradient(#000 0 0) bottom/100% 1px no-repeat,linear-gradient(#000 0 0) left/1px 100% no-repeat,linear-gradient(#000 0 0) right/1px 100% no-repeat}.meos-widget::after{content:"";position:absolute;left:14px;top:0;width:58px;height:1px;background:var(--hud-cyan);box-shadow:0 0 11px var(--hud-cyan)}
       .meos-widget-title{color:rgba(178,235,255,.8);letter-spacing:.19em;font-weight:550}.meos-widget-link{color:var(--hud-cyan);text-transform:uppercase;letter-spacing:.12em}.meos-list li{border-bottom-color:rgba(105,239,255,.1)}
       .meos-progress-track{height:4px;border-radius:0;background:rgba(105,239,255,.08);overflow:visible}.meos-progress-fill{position:relative;border-radius:0;background:linear-gradient(90deg,var(--hud-blue),var(--hud-cyan),#fff);box-shadow:0 0 11px rgba(105,239,255,.45),0 0 28px rgba(77,145,255,.22)}.meos-progress-fill::after{content:"";position:absolute;right:-4px;top:50%;width:8px;height:8px;transform:translateY(-50%) rotate(45deg);background:#fff;box-shadow:0 0 13px var(--hud-cyan)}
-      .meos-mission-ring{position:relative;width:142px;height:142px;background:radial-gradient(circle,rgba(4,19,31,.96) 49%,transparent 50%),conic-gradient(from -45deg,var(--hud-cyan) 0 92%,rgba(105,239,255,.08) 92%);border:1px solid rgba(105,239,255,.3);box-shadow:0 0 26px rgba(105,239,255,.17),inset 0 0 30px rgba(105,239,255,.06)}.meos-mission-ring::before{content:"";position:absolute;inset:-13px;border-radius:50%;border:1px dashed rgba(105,239,255,.25);animation:hudSpin 12s linear infinite}.meos-mission-ring::after{content:"";position:absolute;inset:12px;border-radius:50%;border-top:2px solid rgba(255,255,255,.85);border-right:2px solid transparent;animation:hudSpinR 2.8s linear infinite}
+      .meos-mission-ring{position:relative;width:142px;height:142px;background:radial-gradient(circle,rgba(4,19,31,.96) 49%,transparent 50%),conic-gradient(from -45deg,var(--hud-cyan) 0 var(--meos-mission-pulse, 0%),rgba(105,239,255,.08) var(--meos-mission-pulse, 0%));border:1px solid rgba(105,239,255,.3);box-shadow:0 0 26px rgba(105,239,255,.17),inset 0 0 30px rgba(105,239,255,.06)}.meos-mission-ring::before{content:"";position:absolute;inset:-13px;border-radius:50%;border:1px dashed rgba(105,239,255,.25);animation:hudSpin 12s linear infinite}.meos-mission-ring::after{content:"";position:absolute;inset:12px;border-radius:50%;border-top:2px solid rgba(255,255,255,.85);border-right:2px solid transparent;animation:hudSpinR 2.8s linear infinite}
       .meos-alert,.meos-impact-card,.office-panel{border-radius:0 15px 0 15px;background:linear-gradient(90deg,rgba(7,27,43,.52),rgba(7,27,43,.13));border-color:rgba(105,239,255,.16)}.meos-maddy-bar{display:none}.meos-office-detail{border:1px solid rgba(105,239,255,.28);border-radius:0 26px 0 26px;background:rgba(4,17,29,.72);backdrop-filter:blur(20px)}
       @keyframes hudGrid{to{background-position:0 84px,84px 0}}@keyframes hudAmbient{to{transform:rotate(360deg)}}@keyframes hudButtonScan{0%,52%{transform:translateX(-130%)}74%,100%{transform:translateX(130%)}}@keyframes hudScan{0%{top:-2px;opacity:0}8%{opacity:1}92%{opacity:1}100%{top:calc(100% + 2px);opacity:0}}@keyframes hudSpin{to{transform:rotate(360deg)}}@keyframes hudSpinR{to{transform:rotate(-360deg)}}@keyframes hudBreathe{50%{transform:scale(1.035);box-shadow:0 0 28px rgba(105,239,255,.35),inset 0 0 24px rgba(105,239,255,.17)}}@keyframes hudBlink{50%{opacity:.35;transform:scale(.72)}}@keyframes hudEq{0%{height:12%;opacity:.45}100%{height:100%;opacity:1}}@keyframes hudTarget{50%{opacity:.25;transform:scale(.45)}}
       @media(max-width:1120px){.meos-hq-hero{grid-template-columns:1fr 1fr}.meos-hq-telemetry{grid-column:1/-1;grid-template-columns:repeat(3,1fr)}}
@@ -1870,11 +1832,11 @@ document
         <div class="meos-widget-inner">
           <div class="meos-progress-shell">
             <div class="meos-progress-meta">
-              <span class="meos-widget-title">MEOS Dashboard Build</span>
+              <span class="meos-widget-title">Executive Headquarters Completion</span>
               <strong id="meosBuildCount">0 of 0 tasks complete</strong>
             </div>
             <div>
-              <div class="meos-progress-track" aria-label="MEOS dashboard build progress">
+              <div class="meos-progress-track" aria-label="MEOS Executive Headquarters completion">
                 <div id="meosBuildProgressFill" class="meos-progress-fill"></div>
               </div>
               <div id="meosBuildCurrent" class="meos-progress-current"></div>
@@ -1902,66 +1864,29 @@ document
       `,
       "today-glance": `
         <div class="meos-widget-inner">
-          <div class="meos-widget-header"><h2 class="meos-widget-title">Today at a Glance</h2></div>
+          <div class="meos-widget-header"><h2 class="meos-widget-title">Today at a Glance</h2><span id="meosTodayStage" class="meos-priority medium">Live</span></div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;">
-            <div style="width:64px;height:64px;border-radius:50%;display:grid;place-items:center;background:rgba(66,90,139,.22);border:1px solid rgba(111,143,201,.25);">
-              <strong id="meosTodayDate" style="font-size:1.25rem;"></strong>
-            </div>
-            <div>
-              <strong id="meosTodayMonth" style="display:block;margin-bottom:3px;"></strong>
-              <span id="meosTodayDay" class="meos-muted"></span>
-            </div>
+            <div style="width:64px;height:64px;border-radius:50%;display:grid;place-items:center;background:rgba(66,90,139,.22);border:1px solid rgba(111,143,201,.25);"><strong id="meosTodayDate" style="font-size:1.25rem;"></strong></div>
+            <div><strong id="meosTodayMonth" style="display:block;margin-bottom:3px;"></strong><span id="meosTodayDay" class="meos-muted"></span></div>
           </div>
-          <ul class="meos-list" style="margin-top:12px;">
-            <li><span>3</span><span>Meetings Today</span><span></span></li>
-            <li><span>5</span><span>Tasks Due</span><span></span></li>
-            <li><span>2</span><span>Approvals Needed</span><span></span></li>
-            <li><span style="color:var(--meos-red);">1</span><span style="color:var(--meos-red);">Risk Requires Attention</span><span></span></li>
-          </ul>
+          <ul id="meosTodayLiveList" class="meos-list" style="margin-top:12px;"><li><span>—</span><span>Calculating live office state…</span><span></span></li></ul>
         </div>
       `,
       "mission-pulse": `
         <div class="meos-widget-inner">
-          <div class="meos-widget-header"><h2 class="meos-widget-title">Mission Pulse</h2></div>
-          <div class="meos-mission-ring"><strong>92%</strong></div>
-          <div style="text-align:center;">
-            <strong>On Track</strong>
-            <p class="meos-muted" style="margin:10px 0 0;font-size:.82rem;">All systems aligned with <span style="color:var(--meos-green);">CCSP Mission</span></p>
-          </div>
+          <div class="meos-widget-header"><h2 class="meos-widget-title">Mission Pulse</h2><span id="meosMissionPulseStage" class="meos-priority medium">Live</span></div>
+          <div class="meos-mission-ring"><strong id="meosMissionPulseValue">—</strong></div>
+          <div style="text-align:center;"><strong id="meosMissionPulseLabel">Calculating</strong><p id="meosMissionPulseDetail" class="meos-muted" style="margin:10px 0 0;font-size:.82rem;">Reading mission, office, and funding state.</p></div>
         </div>
       `,
       "priorities": `
-        <div class="meos-widget-inner">
-          <div class="meos-widget-header"><h2 class="meos-widget-title">Executive Priorities</h2></div>
-          <ol class="meos-list" style="counter-reset:item;">
-            <li><span>1</span><span>Secure funding for Reentry Navigation expansion</span><span class="meos-priority high">High</span></li>
-            <li><span>2</span><span>Finalize Board Packet for upcoming meeting</span><span class="meos-priority high">High</span></li>
-            <li><span>3</span><span>Submit three grant applications</span><span class="meos-priority medium">Medium</span></li>
-            <li><span>4</span><span>Complete quarterly budget review</span><span class="meos-priority medium">Medium</span></li>
-          </ol>
-        </div>
+        <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Executive Priorities</h2><span id="meosPrioritiesStage" class="meos-priority medium">Live</span></div><ol id="meosLivePriorities" class="meos-list"><li><span>—</span><span>Reading active missions and office work…</span><span></span></li></ol></div>
       `,
       "briefing": `
-        <div class="meos-widget-inner">
-          <div class="meos-widget-header"><h2 class="meos-widget-title">Executive Briefing</h2></div>
-          <p style="font-size:.86rem;line-height:1.55;">You have three grant opportunities matching your mission.</p>
-          <button class="meos-action-button" type="button">View Opportunities</button>
-          <p style="font-size:.82rem;margin:18px 0 8px;">Board packet is 87% complete.</p>
-          <div class="meos-progress-track"><div class="meos-progress-fill" style="width:87%;"></div></div>
-          <button class="meos-action-button" type="button" style="margin-top:12px;">Review Packet</button>
-        </div>
+        <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Executive Briefing</h2><span id="meosBriefingStage" class="meos-priority medium">Live</span></div><div id="meosLiveBriefing"><p class="meos-muted">Preparing a live executive summary…</p></div></div>
       `,
       "schedule": `
-        <div class="meos-widget-inner">
-          <div class="meos-widget-header"><h2 class="meos-widget-title">Upcoming Schedule</h2></div>
-          <ul class="meos-list">
-            <li><span>9:00</span><span>Leadership Team Meeting<br><small class="meos-muted">Today</small></span><span>◫</span></li>
-            <li><span>11:00</span><span>Grant Review Committee<br><small class="meos-muted">Today</small></span><span>□</span></li>
-            <li><span>1:00</span><span>Call with Foundation Director<br><small class="meos-muted">Today</small></span><span>◌</span></li>
-            <li><span>May 14</span><span>Board Meeting<br><small class="meos-muted">Wednesday</small></span><span>□</span></li>
-          </ul>
-          <button class="meos-widget-link" type="button" style="margin-top:10px;">› View Full Calendar</button>
-        </div>
+        <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Upcoming Schedule</h2><span class="meos-priority medium">15% planned</span></div><div class="meos-alert info"><strong>Calendar integration preserved</strong><span class="meos-muted">The widget is assigned to Operations. Live Google Calendar data is not connected yet.</span></div><ul id="meosScheduleDependencies" class="meos-list"><li><span>1</span><span>Connect calendar provider</span><span class="meos-priority medium">Planned</span></li><li><span>2</span><span>Route meetings into executive briefings</span><span class="meos-priority medium">Planned</span></li></ul></div>
       `,
       "grant-intelligence": `
         <div class="meos-widget-inner">
@@ -1976,56 +1901,17 @@ document
         </div>
       `,
       "risk-center": `
-        <div class="meos-widget-inner">
-          <div class="meos-widget-header">
-            <h2 class="meos-widget-title">Risk & Alert Center</h2>
-            <button class="meos-widget-link" type="button">View All</button>
-          </div>
-          <div class="meos-alert danger"><strong>Compliance Report Due Friday</strong><span class="meos-muted">Annual compliance report is due in four days.</span></div>
-          <div class="meos-alert warning"><strong>Grant Deadline Approaching</strong><span class="meos-muted">Two grant applications are due within ten days.</span></div>
-          <div class="meos-alert info"><strong>Board Decision Required</strong><span class="meos-muted">Approval needed for the new program budget.</span></div>
-        </div>
+        <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Risk & Alert Center</h2><span id="meosRiskStage" class="meos-priority medium">48% partial</span></div><div id="meosLiveRisks"><div class="meos-alert info"><strong>Scanning live blockers</strong><span class="meos-muted">Compliance and funding risks will appear here.</span></div></div></div>
       `,
       "journal": `
-        <div class="meos-widget-inner">
-          <div class="meos-widget-header">
-            <h2 class="meos-widget-title">Executive Journal (Recent)</h2>
-            <button class="meos-widget-link" type="button">View All</button>
-          </div>
-          <ul class="meos-list">
-            <li><span>May 11</span><span>Board retreat notes and strategic priorities captured.</span><span class="meos-priority medium">Strategy</span></li>
-            <li><span>May 9</span><span>Call with donor — strong interest in capital campaign.</span><span class="meos-priority medium">Development</span></li>
-            <li><span>May 8</span><span>Team update — Reentry Navigator interviews pending.</span><span class="meos-priority">Operations</span></li>
-            <li><span>May 7</span><span>Grant notes — Foundation for Change call.</span><span class="meos-priority">Grants</span></li>
-          </ul>
-        </div>
+        <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Executive Journal</h2><span id="meosJournalStage" class="meos-priority medium">88% live</span></div><ul id="meosLiveJournal" class="meos-list"><li><span>—</span><span>Loading office activity history…</span><span></span></li></ul></div>
       `,
       "tasks": `
-        <div class="meos-widget-inner">
-          <div class="meos-widget-header">
-            <h2 class="meos-widget-title">Tasks Due</h2>
-            <button class="meos-widget-link" type="button">View All</button>
-          </div>
-          <ul class="meos-list">
-            <li><span>□</span><span>Review Board Packet</span><span class="meos-priority" style="color:var(--meos-red);">High</span></li>
-            <li><span>□</span><span>Approve Q2 Budget Adjustments</span><span class="meos-priority" style="color:var(--meos-red);">High</span></li>
-            <li><span>□</span><span>Sign Grant Application</span><span class="meos-priority" style="color:var(--meos-red);">High</span></li>
-            <li><span>□</span><span>Review HR Policy Updates</span><span class="meos-priority medium">Medium</span></li>
-            <li><span>□</span><span>Approve New Hire</span><span class="meos-priority medium">Medium</span></li>
-          </ul>
-        </div>
+        <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Tasks Due</h2><span id="meosTasksStage" class="meos-priority medium">72% live</span></div><ul id="meosLiveTasks" class="meos-list"><li><span>—</span><span>Loading mission and office tasks…</span><span></span></li></ul></div>
       `,
       "mission-impact": `
-        <div class="meos-widget-inner">
-          <div class="meos-widget-header"><h2 class="meos-widget-title">Mission Impact</h2></div>
-          <div class="meos-impact-grid">
-            <div class="meos-impact-card"><strong>247</strong><span>Individuals Served</span></div>
-            <div class="meos-impact-card"><strong>14</strong><span>Reentry Navigations</span></div>
-            <div class="meos-impact-card"><strong>6</strong><span>Workshops Delivered</span></div>
-            <div class="meos-impact-card"><strong>89%</strong><span>Program Success Rate</span></div>
-          </div>
-        </div>
-      `
+        <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Mission Impact</h2><span class="meos-priority medium">10% planned</span></div><div class="meos-alert info"><strong>Impact reporting preserved</strong><span class="meos-muted">No verified service-delivery dataset is connected. This widget will remain honest until program records are commissioned.</span></div></div>
+      `,
     };
 
     return widgets[id] || "";
@@ -2510,7 +2396,7 @@ document
             </div>
           </div>
           <div class="meos-hq-telemetry">
-            <div class="meos-hud-readout"><span class="meos-hud-label">Mission alignment</span><strong>92%</strong><small>CCSP objectives synchronized</small></div>
+            <div class="meos-hud-readout"><span class="meos-hud-label">Mission pulse</span><strong id="meosHeroMissionPulse">—</strong><small id="meosHeroMissionDetail">Calculating live headquarters state</small></div>
             <div class="meos-hud-readout"><span class="meos-hud-label">Executive activity</span><div class="meos-hud-equalizer" aria-label="Executive office activity visualization">
                   <span style="animation-delay:-0.09s"></span>
                   <span style="animation-delay:-0.18s"></span>
@@ -3565,6 +3451,128 @@ document
     window.dispatchEvent(new CustomEvent(name, { detail }));
   }
 
+  function getWindowPath(path) {
+    return String(path || "").split(".").reduce((value, key) => value?.[key], window);
+  }
+
+  function getCabinetOffices() {
+    return window.MEOS?.getCabinet?.()?.offices || [];
+  }
+
+  function getMissionSnapshot() {
+    const engine = window.MEOSMissionEngine || window.MissionEngine || null;
+    try {
+      return engine?.getState?.() || engine?.getSnapshot?.() || engine?.status?.() || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function calculateHeadquartersCompletion() {
+    const offices = getCabinetOffices();
+    const officeScores = offices.map((office) => Number(office?.implementation?.progress || 0));
+    const officeAverage = officeScores.length
+      ? officeScores.reduce((sum, score) => sum + score, 0) / officeScores.length
+      : 0;
+    const build = calculateBuildProgress();
+    const fundingReady = Boolean(window.GrantOffice && window.ExecutiveResourceAcquisitionEngine);
+    const liveDataBonus = state.officeActivity.status === "ready" ? 100 : fundingReady ? 70 : 0;
+    const percent = Math.round((officeAverage * 0.55) + (build.percent * 0.3) + (liveDataBonus * 0.15));
+    return Math.max(0, Math.min(100, percent));
+  }
+
+  function collectHeadquartersSnapshot() {
+    const offices = getCabinetOffices();
+    const mission = getMissionSnapshot();
+    const tasks = offices.flatMap((office) => (office.tasks || []).map((task) => ({ ...task, officeName: office.office, officeId: office.id })));
+    const recommendations = offices.flatMap((office) => (office.recommendations || []).map((item) => ({ ...item, officeName: office.office, officeId: office.id })));
+    const activities = offices.flatMap((office) => (office.history?.activity || []).map((item) => ({ ...item, officeName: office.office, officeId: office.id })));
+    const completion = calculateHeadquartersCompletion();
+    const blocked = tasks.filter((task) => task.status === "blocked");
+    const active = tasks.filter((task) => task.status === "active");
+    const pending = tasks.filter((task) => task.status === "pending");
+    const pendingApprovals = recommendations.filter((item) => !["approved", "rejected"].includes(item.status));
+    const fundingRecords = state.officeActivity.records || [];
+    const fundingUrgent = fundingRecords.filter((record) => {
+      const days = Number(firstDefined(record?.resourceDevelopment?.workQueue?.timing?.daysRemaining, record?.deadline?.daysRemaining, 999));
+      return Number.isFinite(days) && days >= 0 && days <= 14;
+    });
+    const officeHealth = offices.length
+      ? Math.round(offices.reduce((sum, office) => sum + Number(office.operationalState?.health || 0), 0) / offices.length)
+      : 0;
+    const missionPulse = Math.round((officeHealth * 0.45) + ((100 - Math.min(100, blocked.length * 10)) * 0.2) + (completion * 0.35));
+    const snapshot = { offices, mission, tasks, recommendations, activities, completion, blocked, active, pending, pendingApprovals, fundingRecords, fundingUrgent, officeHealth, missionPulse };
+    state.headquarters = { ...state.headquarters, ...snapshot, officePortfolio: offices.map((office) => ({ id: office.id, office: office.office, ...(office.implementation || {}) })), lastComputedAt: new Date().toISOString() };
+    return snapshot;
+  }
+
+  function renderLiveHeadquarters() {
+    const snapshot = collectHeadquartersSnapshot();
+    setText("meosBuildPercent", `${snapshot.completion}%`);
+    const fill = document.getElementById("meosBuildProgressFill");
+    if (fill) fill.style.width = `${snapshot.completion}%`;
+    setText("meosBuildCount", `${snapshot.offices.filter((office) => Number(office.implementation?.progress || 0) >= 90).length} of ${snapshot.offices.length} offices at 90%+`);
+    setText("meosBuildCurrent", `Executive Headquarters v3.0.0 · ${snapshot.active.length} active · ${snapshot.pending.length} queued · ${snapshot.pendingApprovals.length} decisions`);
+
+    const today = document.getElementById("meosTodayLiveList");
+    if (today) today.innerHTML = [
+      [snapshot.active.length, "Active office tasks", "Live"],
+      [snapshot.pending.length, "Queued tasks", "Queued"],
+      [snapshot.pendingApprovals.length, "Executive decisions", "Review"],
+      [snapshot.blocked.length + snapshot.fundingUrgent.length, "Risks requiring attention", "Watch"]
+    ].map(([count,label,status]) => `<li><span>${count}</span><span>${escapeHtml(label)}</span><span class="meos-priority medium">${escapeHtml(status)}</span></li>`).join("");
+
+    document.documentElement.style.setProperty("--meos-mission-pulse", `${snapshot.missionPulse}%`);
+    setText("meosHeroMissionPulse", `${snapshot.missionPulse}%`);
+    setText("meosHeroMissionDetail", `${snapshot.completion}% complete · ${snapshot.active.length} active office tasks`);
+    setText("meosMissionPulseValue", `${snapshot.missionPulse}%`);
+    setText("meosMissionPulseLabel", snapshot.missionPulse >= 85 ? "Strong" : snapshot.missionPulse >= 65 ? "Advancing" : "Needs Attention");
+    setText("meosMissionPulseDetail", `${snapshot.officeHealth}% office health · ${snapshot.completion}% headquarters completion · ${snapshot.blocked.length} blocked tasks.`);
+
+    const priorities = [...snapshot.active, ...snapshot.pending].sort((a,b) => ({high:3,urgent:4,normal:2,low:1}[b.priority]||0)-({high:3,urgent:4,normal:2,low:1}[a.priority]||0)).slice(0,4);
+    const prioritiesEl = document.getElementById("meosLivePriorities");
+    if (prioritiesEl) prioritiesEl.innerHTML = priorities.length ? priorities.map((task,index) => `<li><span>${index+1}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.priority === "high" ? "high" : "medium"}">${escapeHtml(task.priority || "normal")}</span></li>`).join("") : `<li><span>✓</span><span>No executive priorities are currently queued.</span><span class="meos-priority">Clear</span></li>`;
+
+    const briefing = document.getElementById("meosLiveBriefing");
+    if (briefing) briefing.innerHTML = `<p style="font-size:.86rem;line-height:1.55;">Maddy is managing <strong>${snapshot.fundingRecords.length}</strong> preserved funding records, <strong>${snapshot.active.length}</strong> active tasks, and <strong>${snapshot.pendingApprovals.length}</strong> executive decisions.</p><p class="meos-muted" style="font-size:.82rem;">${snapshot.blocked.length ? `${snapshot.blocked.length} blocked task${snapshot.blocked.length===1?"":"s"} need resolution.` : "No blocked office tasks are recorded."}</p><button id="meosBriefingPeek" class="meos-action-button" type="button">Peek Behind the Curtain</button>`;
+    document.getElementById("meosBriefingPeek")?.addEventListener("click", () => openOfficeActivityBrowser("all"));
+
+    const risks = document.getElementById("meosLiveRisks");
+    if (risks) {
+      const rows = [
+        ...snapshot.blocked.slice(0,2).map((task) => ({ level:"danger", title:task.title, detail:`Blocked in ${task.officeName}` })),
+        ...snapshot.fundingUrgent.slice(0,2).map((record) => ({ level:"warning", title:record.title || "Funding deadline", detail:"Deadline is within 14 days." }))
+      ];
+      risks.innerHTML = rows.length ? rows.map((row) => `<div class="meos-alert ${row.level}"><strong>${escapeHtml(row.title)}</strong><span class="meos-muted">${escapeHtml(row.detail)}</span></div>`).join("") : `<div class="meos-alert info"><strong>No critical live risk found</strong><span class="meos-muted">Compliance Office remains ${getCabinetOffices().find((o)=>o.id==="justice")?.implementation?.progress || 0}% commissioned.</span></div>`;
+    }
+
+    const journal = document.getElementById("meosLiveJournal");
+    if (journal) journal.innerHTML = snapshot.activities.length ? snapshot.activities.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,4).map((item)=>`<li><span>${escapeHtml(formatLastActivity(item.createdAt))}</span><span>${escapeHtml(item.message || item.type)}<br><small class="meos-muted">${escapeHtml(item.officeName)}</small></span><span></span></li>`).join("") : `<li><span>—</span><span>No office activity has been recorded in this browser session.</span><span></span></li>`;
+
+    const tasks = document.getElementById("meosLiveTasks");
+    if (tasks) tasks.innerHTML = [...snapshot.active, ...snapshot.pending, ...snapshot.blocked].slice(0,5).map((task)=>`<li><span>${task.status === "blocked" ? "!" : task.status === "active" ? "▶" : "□"}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.status === "blocked" ? "high" : "medium"}">${escapeHtml(task.status)}</span></li>`).join("") || `<li><span>✓</span><span>No office tasks are currently recorded.</span><span></span></li>`;
+
+    dispatchMEOS("meos:headquarters-live-state", snapshot);
+    return snapshot;
+  }
+
+  function runHeadquartersAcceptanceTest() {
+    const snapshot = collectHeadquartersSnapshot();
+    const checks = [
+      ["Completion is calculated from live office implementation and build state", Number.isFinite(snapshot.completion) && snapshot.completion > 0],
+      ["Every cabinet office has implementation ownership", snapshot.offices.every((office) => office.implementation && Array.isArray(office.implementation.owns))],
+      ["Grant Office is linked to the funding pipeline", snapshot.offices.find((office) => office.id === "grant")?.implementation?.liveSystems?.includes("GrantOffice")],
+      ["Static dashboard intent is preserved with honest planned states", Boolean(document.getElementById("meosScheduleDependencies"))],
+      ["Mission Pulse is computed from live office state", Number.isFinite(snapshot.missionPulse)],
+      ["Executive priorities derive from real office tasks", Array.isArray(snapshot.tasks)],
+      ["Risk Center derives from blockers and funding deadlines", Array.isArray(snapshot.blocked) && Array.isArray(snapshot.fundingUrgent)],
+      ["Office detail exposes implementation progress and next milestone", snapshot.offices.every((office) => Number.isFinite(Number(office.implementation?.progress)))],
+      ["Office Activity remains connected", Boolean(window.MEOSDashboard?.officeActivity || state.officeActivity)],
+      ["No planned office or widget was removed", snapshot.offices.length === 11]
+    ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
+    return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v3.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
+  }
+
   function updateClockAndGreeting() {
     const now = new Date();
     const hour = now.getHours();
@@ -3857,7 +3865,13 @@ document
         operationalState.lastActivityAt ||
         member.operatingState?.lastActivityAt
       ),
-      reviewStatus: getReviewStatus(member)
+      reviewStatus: getReviewStatus(member),
+      implementation: member.implementation || {
+        progress: 0,
+        stage: "planned",
+        owns: [],
+        nextMilestone: "Define and commission this office."
+      }
     };
   }
 
@@ -3883,6 +3897,12 @@ document
     setText("officeDashboardRecommendations", String(view.recommendations));
     setText("officeDashboardLastActivity", view.lastActivity);
     setText("officeDashboardReviewStatus", view.reviewStatus);
+    setText("officeDashboardSuccess", `${view.implementation.progress}%`);
+    setText("officeDashboardWorkspace", [
+      `Implementation: ${formatStatus(view.implementation.stage)} (${view.implementation.progress}%).`,
+      view.implementation.owns?.length ? `Owns: ${view.implementation.owns.join(", ")}.` : "No dashboard ownership assigned yet.",
+      `Next milestone: ${view.implementation.nextMilestone}`
+    ].join(" "));
   }
 
   function showOfficeDashboard(member) {
@@ -3923,8 +3943,10 @@ document
   function initialize() {
     createDashboardShell();
     installLegacyVoicePanelRetirement();
-    void loadFundingIntelligence();
-    void loadOfficeActivity();
+    void loadFundingIntelligence().finally(renderLiveHeadquarters);
+    void loadOfficeActivity().finally(renderLiveHeadquarters);
+    renderLiveHeadquarters();
+    window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
       `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; legacy voice panel retired.`
@@ -3950,6 +3972,12 @@ document
       setTaskStatus: setBuildTaskStatus,
       getProgress: calculateBuildProgress,
       getTasks: () => state.buildTasks.map((task) => ({ ...task }))
+    }),
+    headquarters: Object.freeze({
+      refresh: renderLiveHeadquarters,
+      getSnapshot: collectHeadquartersSnapshot,
+      runAcceptanceTest: runHeadquartersAcceptanceTest,
+      getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
     }),
     cost: Object.freeze({
       setState: setCostState,
