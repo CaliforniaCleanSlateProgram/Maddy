@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.0.2";
+  const DASHBOARD_VERSION = "4.1.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -87,6 +87,12 @@
       completion: 0,
       officePortfolio: [],
       liveSignals: {}
+    },
+    maddyPresence: {
+      connected: false,
+      lastSnapshot: null,
+      lastEventAt: null,
+      listenersInstalled: false
     },
     fundingIntelligence: {
       status: "idle",
@@ -1551,6 +1557,232 @@
         }
       }
 
+
+      /* MEOS 4.1.0 — Presence Engine driven Living Headquarters */
+      .meos-living-presence{
+        --presence-energy:.58;
+        --presence-motion:1;
+        --presence-focus-x:50%;
+        --presence-focus-y:48%;
+      }
+
+      .meos-living-presence[data-presence-connected="true"]{
+        filter:
+          drop-shadow(0 0 calc(18px + (22px * var(--presence-energy))) rgba(74,184,255,.28));
+      }
+
+      .meos-presence-stage{
+        transform-origin:center 62%;
+        transition:
+          filter .5s ease,
+          opacity .5s ease,
+          transform .65s cubic-bezier(.22,.75,.18,1);
+      }
+
+      .meos-presence-human{
+        transform-origin:center 66%;
+        transition:
+          filter .55s ease,
+          opacity .45s ease,
+          transform .7s cubic-bezier(.22,.75,.18,1),
+          object-position .7s ease;
+      }
+
+      .meos-presence-circuit,
+      .meos-presence-human-glow,
+      .meos-presence-scan,
+      .meos-hq-core-ring{
+        transition:opacity .45s ease,filter .45s ease,animation-duration .45s ease;
+      }
+
+      .meos-living-presence[data-presence-state="working"] .meos-presence-human{
+        transform:translateY(0) scale(1);
+        filter:brightness(1.01) contrast(1.08) saturate(.94) drop-shadow(0 0 18px rgba(105,239,255,.38));
+      }
+
+      .meos-living-presence[data-presence-state="thinking"] .meos-presence-human{
+        transform:translateY(-2px) scale(1.012) rotate(-.35deg);
+        filter:brightness(.94) contrast(1.12) saturate(.82) drop-shadow(0 0 28px rgba(105,239,255,.56));
+      }
+
+      .meos-living-presence[data-presence-state="listening"] .meos-presence-human{
+        transform:translateY(-1px) scale(1.018);
+        filter:brightness(1.07) contrast(1.08) saturate(1) drop-shadow(0 0 30px rgba(105,239,255,.62));
+      }
+
+      .meos-living-presence[data-presence-state="speaking"] .meos-presence-human{
+        animation:
+          meosPresenceSpeechPulse .36s ease-in-out infinite alternate,
+          meosHumanIdle 6.8s ease-in-out infinite;
+        filter:brightness(1.1) contrast(1.08) saturate(1.02) drop-shadow(0 0 34px rgba(105,239,255,.68));
+      }
+
+      .meos-living-presence[data-presence-state="concerned"] .meos-presence-human{
+        transform:translateY(1px) scale(1.006);
+        filter:brightness(.88) contrast(1.16) saturate(.72) drop-shadow(0 0 24px rgba(255,174,95,.38));
+      }
+
+      .meos-living-presence[data-presence-state="celebrating"] .meos-presence-human{
+        transform:translateY(-4px) scale(1.025);
+        filter:brightness(1.13) contrast(1.06) saturate(1.12) drop-shadow(0 0 34px rgba(101,241,178,.62));
+      }
+
+      .meos-living-presence[data-presence-state="waiting"] .meos-presence-human,
+      .meos-living-presence[data-presence-state="resting"] .meos-presence-human{
+        opacity:.9;
+        transform:translateY(2px) scale(.995);
+        filter:brightness(.84) contrast(1.08) saturate(.72) drop-shadow(0 0 14px rgba(105,239,255,.26));
+      }
+
+      .meos-living-presence[data-presence-emotion="interested"] .meos-presence-human,
+      .meos-living-presence[data-presence-emotion="curious"] .meos-presence-human{
+        object-position:52% 16%;
+      }
+
+      .meos-living-presence[data-presence-emotion="excited"] .meos-presence-human,
+      .meos-living-presence[data-presence-emotion="happy"] .meos-presence-human{
+        filter:brightness(1.12) contrast(1.06) saturate(1.08) drop-shadow(0 0 34px rgba(101,241,178,.56));
+      }
+
+      .meos-living-presence[data-presence-emotion="concerned"] .meos-presence-human,
+      .meos-living-presence[data-presence-emotion="serious"] .meos-presence-human{
+        filter:brightness(.9) contrast(1.16) saturate(.76) drop-shadow(0 0 25px rgba(255,174,95,.4));
+      }
+
+      .meos-living-presence[data-presence-attention="grant-office"] .meos-presence-human,
+      .meos-living-presence[data-presence-attention="resource-acquisition"] .meos-presence-human{
+        object-position:56% 16%;
+        transform:translateX(5px) scale(1.012);
+      }
+
+      .meos-living-presence[data-presence-attention="finance"] .meos-presence-human,
+      .meos-living-presence[data-presence-attention="mission"] .meos-presence-human{
+        object-position:47% 16%;
+        transform:translateX(-4px) scale(1.008);
+      }
+
+      .meos-living-presence[data-presence-attention="executive-director"] .meos-presence-human{
+        object-position:50% 14%;
+        transform:translateY(-2px) scale(1.02);
+      }
+
+      .meos-living-presence[data-presence-mode="personal"]{
+        --hud-cyan:#f2c56b;
+        --hud-blue:#db9f55;
+      }
+
+      .meos-living-presence[data-presence-mode="personal"] .meos-presence-stage::before{
+        background:
+          radial-gradient(ellipse at 50% 42%,rgba(242,197,107,.18),transparent 40%),
+          linear-gradient(90deg,transparent,rgba(242,197,107,.05),transparent);
+      }
+
+      .meos-living-presence[data-presence-idle="blink"] .meos-presence-scan{
+        opacity:.15;
+      }
+
+      .meos-living-presence[data-presence-idle="breathe"] .meos-presence-human{
+        animation:meosPresenceBreath 2.6s ease-in-out 1;
+      }
+
+      .meos-living-presence[data-presence-idle="glance-left"] .meos-presence-human,
+      .meos-living-presence[data-presence-idle="glance-mission"] .meos-presence-human,
+      .meos-living-presence[data-presence-idle="glance-finance"] .meos-presence-human{
+        object-position:45% 16%;
+        transform:translateX(-5px) scale(1.008);
+      }
+
+      .meos-living-presence[data-presence-idle="glance-right"] .meos-presence-human,
+      .meos-living-presence[data-presence-idle="glance-grant-office"] .meos-presence-human{
+        object-position:56% 16%;
+        transform:translateX(5px) scale(1.008);
+      }
+
+      .meos-living-presence[data-presence-idle="look-down-read"] .meos-presence-human,
+      .meos-living-presence[data-presence-idle="review-report"] .meos-presence-human{
+        object-position:50% 20%;
+        transform:translateY(3px) scale(1.006);
+      }
+
+      .meos-living-presence[data-presence-idle="look-up-think"] .meos-presence-human{
+        object-position:50% 12%;
+        transform:translateY(-3px) scale(1.01);
+      }
+
+      .meos-living-presence[data-presence-idle="small-smile"] .meos-presence-human{
+        filter:brightness(1.09) contrast(1.06) saturate(1.04) drop-shadow(0 0 28px rgba(101,241,178,.46));
+      }
+
+      .meos-living-presence[data-presence-idle="shift-posture"] .meos-presence-human{
+        transform:translateX(3px) rotate(.3deg) scale(1.008);
+      }
+
+      .meos-living-presence[data-presence-state="speaking"] .meos-presence-human-glow,
+      .meos-living-presence[data-presence-state="thinking"] .meos-presence-human-glow{
+        opacity:.55!important;
+      }
+
+      .meos-living-presence[data-presence-state="speaking"] .meos-presence-circuit,
+      .meos-living-presence[data-presence-state="thinking"] .meos-presence-circuit{
+        opacity:.75!important;
+        filter:brightness(1.25);
+      }
+
+      .meos-living-presence[data-presence-state="listening"] .meos-hq-core-ring.r2,
+      .meos-living-presence[data-presence-state="speaking"] .meos-hq-core-ring.r2{
+        animation-duration:4.5s;
+      }
+
+      .meos-living-presence[data-presence-state="speaking"] .meos-hq-core-ring.r3{
+        animation-duration:2.4s;
+      }
+
+      .meos-presence-runtime{
+        position:absolute;
+        z-index:13;
+        top:10px;
+        right:10px;
+        display:grid;
+        justify-items:end;
+        gap:4px;
+        pointer-events:none;
+      }
+
+      .meos-presence-runtime-state{
+        padding:4px 8px;
+        border:1px solid rgba(105,239,255,.28);
+        background:rgba(2,12,22,.58);
+        color:rgba(222,249,255,.86);
+        font-size:.54rem;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        backdrop-filter:blur(7px);
+      }
+
+      .meos-presence-runtime-attention{
+        color:rgba(181,225,241,.64);
+        font-size:.5rem;
+        letter-spacing:.08em;
+        text-transform:uppercase;
+      }
+
+      @keyframes meosPresenceSpeechPulse{
+        from{transform:translateY(0) scale(1)}
+        to{transform:translateY(-1px) scale(1.008)}
+      }
+
+      @keyframes meosPresenceBreath{
+        0%,100%{transform:translateY(0) scale(1)}
+        50%{transform:translateY(-2px) scale(1.012)}
+      }
+
+      @media(prefers-reduced-motion:reduce){
+        .meos-living-presence[data-presence-state="speaking"] .meos-presence-human,
+        .meos-living-presence[data-presence-idle="breathe"] .meos-presence-human{
+          animation:none!important;
+        }
+      }
+
     `;
 
     document.head.appendChild(style);
@@ -2697,6 +2929,10 @@ document
                 <span class="meos-presence-scan" aria-hidden="true"></span>
                 <span class="meos-presence-eye-light" aria-hidden="true"></span>
                 <span class="meos-presence-status" id="meosPresenceStatus">Maddy online · Coordinating headquarters</span>
+                <div class="meos-presence-runtime" aria-live="polite">
+                  <span class="meos-presence-runtime-state" id="meosPresenceRuntimeState">Presence engine connecting</span>
+                  <span class="meos-presence-runtime-attention" id="meosPresenceRuntimeAttention">Attention · pending</span>
+                </div>
                 <div class="meos-presence-evolution" id="meosPresenceEvolution" aria-label="Maddy startup evolution">
                   <span class="meos-presence-evolution-step" data-stage-step="1">Initializing</span>
                   <span class="meos-presence-evolution-step" data-stage-step="2">Shaping</span>
@@ -3913,6 +4149,8 @@ document
       ["Artificial cheek-light overlay is disabled", getComputedStyle(document.querySelector(".meos-presence-eye-light")).display === "none"],
       ["Living Headquarters hero remains within the commissioned footprint", Boolean(document.querySelector(".meos-hq-hero"))],
       ["Maddy presence capsule border has been removed", getComputedStyle(document.querySelector(".meos-presence-stage")).borderTopWidth === "0px"],
+      ["Maddy Presence Engine is connected to Living Headquarters", document.getElementById("meosLivingPresence")?.dataset.presenceConnected === "true"],
+      ["Living Headquarters state is driven by Maddy Presence Engine", document.getElementById("meosLivingPresence")?.dataset.presenceState === getMaddyPresenceEngine()?.getStatus?.()?.state],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
     return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v4.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
@@ -4286,6 +4524,222 @@ document
   }
 
 
+  function getMaddyPresenceEngine() {
+    return window.MaddyPresence || window.MEOSMaddyPresence || null;
+  }
+
+  function formatPresenceLabel(value) {
+    return String(value || "unknown")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+  }
+
+  function getPresenceStatusMessage(snapshot) {
+    const presence = snapshot?.presence || snapshot || {};
+    const stateName = presence.state || "working";
+    const activity = presence.activity || "monitoring";
+    const attention = presence.attention || "mission";
+
+    const messages = {
+      booting: "Maddy is materializing into Executive Headquarters",
+      online: "Maddy online · Executive presence established",
+      working: `Maddy working · ${formatPresenceLabel(activity)}`,
+      thinking: "Maddy reasoning · Reviewing executive context",
+      listening: "Maddy listening · Executive Director has her attention",
+      speaking: "Maddy briefing · Executive voice active",
+      waiting: "Maddy waiting · Monitoring open dependencies",
+      presenting: "Maddy presenting · Executive briefing in progress",
+      celebrating: "Maddy celebrating · Positive outcome recognized",
+      concerned: "Maddy focused · Risk requires executive attention",
+      resting: "Maddy in calm monitoring mode",
+      offline: "Maddy presence offline",
+      error: "Maddy presence requires review"
+    };
+
+    return messages[stateName] || `Maddy ${formatPresenceLabel(stateName)} · ${formatPresenceLabel(attention)}`;
+  }
+
+  function applyPresenceSnapshot(snapshot, options = {}) {
+    const root = document.getElementById("meosLivingPresence");
+    const stage = root?.querySelector(".meos-presence-stage");
+    const status = document.getElementById("meosPresenceStatus");
+    const runtimeState = document.getElementById("meosPresenceRuntimeState");
+    const runtimeAttention = document.getElementById("meosPresenceRuntimeAttention");
+
+    if (!root || !stage || !snapshot) {
+      return false;
+    }
+
+    const presence = snapshot.presence || snapshot;
+    const stateName = presence.state || "working";
+    const mode = presence.mode || "professional";
+    const emotion = presence.emotion || "focused";
+    const attention = presence.attention || "mission";
+    const activity = presence.activity || "monitoring";
+    const idleBehavior = presence.currentIdleBehavior || null;
+
+    root.dataset.presenceConnected = "true";
+    root.dataset.presenceState = stateName;
+    root.dataset.presenceMode = mode;
+    root.dataset.presenceEmotion = emotion;
+    root.dataset.presenceAttention = attention;
+    root.dataset.presenceActivity = activity;
+
+    if (idleBehavior) {
+      root.dataset.presenceIdle = idleBehavior;
+    } else {
+      delete root.dataset.presenceIdle;
+    }
+
+    if (status) {
+      status.textContent = getPresenceStatusMessage(presence);
+    }
+
+    if (runtimeState) {
+      runtimeState.textContent = `${formatPresenceLabel(stateName)} · ${formatPresenceLabel(activity)}`;
+    }
+
+    if (runtimeAttention) {
+      runtimeAttention.textContent = `Attention · ${formatPresenceLabel(attention)}`;
+    }
+
+    state.maddyPresence.connected = true;
+    state.maddyPresence.lastSnapshot = JSON.parse(JSON.stringify(snapshot));
+    state.maddyPresence.lastEventAt = new Date().toISOString();
+
+    if (options.emit !== false) {
+      document.dispatchEvent(new CustomEvent("meos:dashboard:maddy-presence-rendered", {
+        detail: {
+          schema: "meos.dashboard.maddy-presence-render.v1",
+          renderedAt: state.maddyPresence.lastEventAt,
+          state: stateName,
+          mode,
+          emotion,
+          attention,
+          activity,
+          idleBehavior
+        }
+      }));
+    }
+
+    return true;
+  }
+
+  function clearIdleBehaviorAfterDelay(delayMs = 1300) {
+    window.setTimeout(() => {
+      const root = document.getElementById("meosLivingPresence");
+      if (root) {
+        delete root.dataset.presenceIdle;
+      }
+    }, delayMs);
+  }
+
+  function handlePresenceEvent(event) {
+    const engine = getMaddyPresenceEngine();
+    const snapshot = engine?.getSnapshot?.();
+
+    if (snapshot) {
+      applyPresenceSnapshot(snapshot);
+    }
+
+    const eventName = event?.detail?.eventName || "";
+    if (eventName.endsWith(":idle-behavior")) {
+      clearIdleBehaviorAfterDelay();
+    }
+  }
+
+  function installPresenceEngineListeners() {
+    if (state.maddyPresence.listenersInstalled) {
+      return true;
+    }
+
+    const events = [
+      "meos:maddy-presence",
+      "meos:maddy-presence:initialized",
+      "meos:maddy-presence:boot-started",
+      "meos:maddy-presence:boot-completed",
+      "meos:maddy-presence:state",
+      "meos:maddy-presence:mode",
+      "meos:maddy-presence:emotion",
+      "meos:maddy-presence:attention",
+      "meos:maddy-presence:activity",
+      "meos:maddy-presence:idle-behavior",
+      "meos:maddy-presence:listening-started",
+      "meos:maddy-presence:listening-stopped",
+      "meos:maddy-presence:speaking-started",
+      "meos:maddy-presence:speaking-stopped",
+      "meos:maddy-presence:celebration",
+      "meos:maddy-presence:concern"
+    ];
+
+    events.forEach((eventName) => {
+      document.addEventListener(eventName, handlePresenceEvent);
+    });
+
+    state.maddyPresence.listenersInstalled = true;
+    return true;
+  }
+
+  function connectPresenceEngine() {
+    installPresenceEngineListeners();
+
+    const engine = getMaddyPresenceEngine();
+    const root = document.getElementById("meosLivingPresence");
+
+    if (!engine || !root) {
+      if (root) {
+        root.dataset.presenceConnected = "false";
+      }
+      return false;
+    }
+
+    try {
+      engine.registerRuntimeConnection?.("dashboard", true, {
+        name: "MEOS Executive Headquarters Dashboard",
+        version: DASHBOARD_VERSION
+      });
+    } catch (error) {
+      console.warn("MEOS Dashboard could not register with Maddy Presence Engine.", error);
+    }
+
+    const snapshot = engine.getSnapshot?.() || engine.getStatus?.();
+    if (snapshot) {
+      applyPresenceSnapshot(snapshot, { emit: false });
+    }
+
+    return true;
+  }
+
+  function runPresenceIntegrationAcceptanceTest() {
+    const engine = getMaddyPresenceEngine();
+    const root = document.getElementById("meosLivingPresence");
+    const status = engine?.getStatus?.() || {};
+    const checks = [
+      ["Maddy Presence Engine is available", Boolean(engine)],
+      ["Presence Engine version 1.0.0 or later is loaded", Boolean(engine?.version && engine.version >= "1.0.0")],
+      ["Dashboard registered as Presence Engine runtime connection", Boolean(engine?.getSnapshot?.()?.runtime?.dashboardConnected)],
+      ["Living Headquarters exposes Presence Engine connection state", root?.dataset.presenceConnected === "true"],
+      ["Living Headquarters reflects current presence state", root?.dataset.presenceState === status.state],
+      ["Living Headquarters reflects current presence mode", root?.dataset.presenceMode === status.mode],
+      ["Living Headquarters reflects current emotion", root?.dataset.presenceEmotion === status.emotion],
+      ["Living Headquarters reflects current attention target", root?.dataset.presenceAttention === status.attention],
+      ["Living Headquarters reflects current activity", root?.dataset.presenceActivity === status.activity],
+      ["Presence runtime status is visible", Boolean(document.getElementById("meosPresenceRuntimeState"))],
+      ["Presence attention status is visible", Boolean(document.getElementById("meosPresenceRuntimeAttention"))],
+      ["Presence Engine listeners are installed once", state.maddyPresence.listenersInstalled === true]
+    ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+    return {
+      success: checks.every((check) => check.passed),
+      schema: "meos.dashboard.maddy-presence-integration.acceptance.v1",
+      version: DASHBOARD_VERSION,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks
+    };
+  }
+
+
   function initializeLivingPresenceEvolution() {
     const stage = document.querySelector("#meosLivingPresence .meos-presence-stage");
     const steps = Array.from(document.querySelectorAll("#meosPresenceEvolution [data-stage-step]"));
@@ -4336,6 +4790,7 @@ document
 
   function initialize() {
     createDashboardShell();
+    connectPresenceEngine();
     initializeLivingPresenceEvolution();
     installLegacyVoicePanelRetirement();
     void loadFundingIntelligence().finally(renderLiveHeadquarters);
@@ -4373,6 +4828,22 @@ document
       getSnapshot: collectHeadquartersSnapshot,
       runAcceptanceTest: runHeadquartersAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
+    }),
+    presence: Object.freeze({
+      connect: connectPresenceEngine,
+      refresh: () => {
+        const engine = getMaddyPresenceEngine();
+        const snapshot = engine?.getSnapshot?.() || engine?.getStatus?.();
+        return snapshot ? applyPresenceSnapshot(snapshot) : false;
+      },
+      getState: () => ({
+        connected: state.maddyPresence.connected,
+        lastEventAt: state.maddyPresence.lastEventAt,
+        snapshot: state.maddyPresence.lastSnapshot
+          ? JSON.parse(JSON.stringify(state.maddyPresence.lastSnapshot))
+          : null
+      }),
+      runAcceptanceTest: runPresenceIntegrationAcceptanceTest
     }),
     cost: Object.freeze({
       setState: setCostState,
