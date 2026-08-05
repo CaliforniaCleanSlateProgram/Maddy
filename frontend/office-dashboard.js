@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.2.0";
+  const DASHBOARD_VERSION = "4.2.1";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1808,11 +1808,11 @@
       }
 
       .meos-presence-human{
-        width:min(94%,455px)!important;
-        height:108%!important;
+        width:min(90%,430px)!important;
+        height:102%!important;
         max-width:none!important;
         object-fit:cover!important;
-        object-position:center 29%!important;
+        object-position:center 36%!important;
         border-radius:0!important;
         mix-blend-mode:screen;
         opacity:0;
@@ -4326,6 +4326,7 @@ document
       ["Living Headquarters hero remains within the commissioned footprint", Boolean(document.querySelector(".meos-hq-hero"))],
       ["Maddy presence capsule border has been removed", getComputedStyle(document.querySelector(".meos-presence-stage")).borderTopWidth === "0px"],
       ["Holographic Maddy uses a feathered cinematic mask instead of a visible image rectangle", getComputedStyle(document.getElementById("meosCanonicalMaddy")).webkitMaskImage !== "none"],
+      ["Holographic Maddy uses the refined v4.2.1 scale and vertical framing", getComputedStyle(document.getElementById("meosCanonicalMaddy")).width !== "auto" && getComputedStyle(document.getElementById("meosCanonicalMaddy")).objectPosition.includes("36%")],
       ["Maddy Presence Engine is connected to Living Headquarters", document.getElementById("meosLivingPresence")?.dataset.presenceConnected === "true"],
       ["Living Headquarters state is driven by Maddy Presence Engine", document.getElementById("meosLivingPresence")?.dataset.presenceState === getMaddyPresenceEngine()?.getStatus?.()?.state],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
