@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.1.0";
+  const DASHBOARD_VERSION = "4.2.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1783,6 +1783,182 @@
         }
       }
 
+
+      /* MEOS 4.2.0 — cinematic holographic Maddy, no visible image rectangle */
+      .meos-hq-core.meos-living-presence{
+        width:min(470px,100%);
+        min-height:430px;
+        height:430px;
+        overflow:visible;
+      }
+
+      .meos-presence-stage{
+        inset:-2% -4% -3%;
+        overflow:visible;
+        background:none!important;
+        box-shadow:none!important;
+      }
+
+      .meos-presence-stage::before{
+        inset:4% 2% 1%;
+        background:
+          radial-gradient(ellipse at 50% 48%,rgba(72,210,255,.24),transparent 44%),
+          radial-gradient(ellipse at 50% 88%,rgba(44,180,255,.19),transparent 35%);
+        filter:blur(2px) drop-shadow(0 0 35px rgba(72,210,255,.27));
+      }
+
+      .meos-presence-human{
+        width:min(94%,455px)!important;
+        height:108%!important;
+        max-width:none!important;
+        object-fit:cover!important;
+        object-position:center 29%!important;
+        border-radius:0!important;
+        mix-blend-mode:screen;
+        opacity:0;
+        filter:
+          brightness(1.08)
+          contrast(1.12)
+          saturate(1.02)
+          drop-shadow(0 0 22px rgba(89,219,255,.52))!important;
+        -webkit-mask-image:
+          radial-gradient(ellipse 64% 62% at 50% 42%,#000 0 62%,rgba(0,0,0,.94) 74%,transparent 100%),
+          linear-gradient(to bottom,transparent 0,#000 7%,#000 80%,transparent 100%);
+        -webkit-mask-composite:source-in;
+        mask-image:
+          radial-gradient(ellipse 64% 62% at 50% 42%,#000 0 62%,rgba(0,0,0,.94) 74%,transparent 100%),
+          linear-gradient(to bottom,transparent 0,#000 7%,#000 80%,transparent 100%);
+        mask-composite:intersect;
+        transform-origin:50% 72%;
+        animation:
+          meosHumanMaterialize 9.2s cubic-bezier(.22,.75,.18,1) both,
+          meosCinematicPresenceIdle 7.8s ease-in-out infinite 9.2s!important;
+      }
+
+      .meos-presence-human-glow{
+        width:82%;
+        height:92%;
+        border-radius:48%;
+        background:
+          linear-gradient(180deg,transparent 0 19%,rgba(105,239,255,.11) 47%,transparent 80%),
+          repeating-linear-gradient(180deg,transparent 0 7px,rgba(166,246,255,.07) 8px,transparent 9px);
+        filter:blur(.3px);
+      }
+
+      .meos-presence-scan{
+        left:18%;
+        right:18%;
+      }
+
+      .meos-presence-stage::after{
+        content:"";
+        position:absolute;
+        z-index:8;
+        left:16%;
+        right:16%;
+        bottom:3%;
+        height:18%;
+        border-radius:50%;
+        background:
+          radial-gradient(ellipse at center,rgba(181,248,255,.42),rgba(55,194,255,.14) 38%,transparent 72%);
+        filter:blur(8px);
+        animation:meosProjectionBase 3.4s ease-in-out infinite;
+        pointer-events:none;
+      }
+
+      .meos-living-presence[data-presence-state="thinking"] .meos-presence-human{
+        animation:
+          meosPresenceThinking 3.2s ease-in-out infinite,
+          meosHoloMicroFlicker 5.1s steps(1,end) infinite!important;
+      }
+
+      .meos-living-presence[data-presence-state="listening"] .meos-presence-human{
+        animation:
+          meosPresenceListening 2.8s ease-in-out infinite,
+          meosHoloMicroFlicker 5.1s steps(1,end) infinite!important;
+      }
+
+      .meos-living-presence[data-presence-state="speaking"] .meos-presence-human{
+        animation:
+          meosPresenceSpeaking .42s ease-in-out infinite alternate,
+          meosCinematicPresenceIdle 6.4s ease-in-out infinite!important;
+      }
+
+      .meos-living-presence[data-presence-state="working"] .meos-presence-human{
+        animation:
+          meosCinematicPresenceIdle 7.8s ease-in-out infinite,
+          meosHoloMicroFlicker 5.1s steps(1,end) infinite!important;
+      }
+
+      .meos-living-presence[data-presence-idle="glance-left"] .meos-presence-human,
+      .meos-living-presence[data-presence-idle="glance-mission"] .meos-presence-human,
+      .meos-living-presence[data-presence-idle="glance-finance"] .meos-presence-human{
+        transform:translate3d(-7px,-2px,0) rotate(-.45deg) scale(1.018)!important;
+      }
+
+      .meos-living-presence[data-presence-idle="glance-right"] .meos-presence-human,
+      .meos-living-presence[data-presence-idle="glance-grant-office"] .meos-presence-human{
+        transform:translate3d(7px,-2px,0) rotate(.45deg) scale(1.018)!important;
+      }
+
+      .meos-living-presence[data-presence-idle="look-down-read"] .meos-presence-human,
+      .meos-living-presence[data-presence-idle="review-report"] .meos-presence-human{
+        transform:translate3d(0,5px,0) rotate(.15deg) scale(1.012)!important;
+      }
+
+      .meos-living-presence[data-presence-idle="look-up-think"] .meos-presence-human{
+        transform:translate3d(0,-6px,0) rotate(-.2deg) scale(1.02)!important;
+      }
+
+      @keyframes meosCinematicPresenceIdle{
+        0%,100%{transform:translate3d(0,0,0) rotate(0) scale(1)}
+        24%{transform:translate3d(-2px,-2px,0) rotate(-.18deg) scale(1.006)}
+        52%{transform:translate3d(2px,-4px,0) rotate(.16deg) scale(1.012)}
+        76%{transform:translate3d(1px,-1px,0) rotate(.08deg) scale(1.005)}
+      }
+
+      @keyframes meosPresenceThinking{
+        0%,100%{transform:translate3d(0,-2px,0) rotate(-.25deg) scale(1.012)}
+        50%{transform:translate3d(-4px,-5px,0) rotate(-.55deg) scale(1.022)}
+      }
+
+      @keyframes meosPresenceListening{
+        0%,100%{transform:translate3d(0,-2px,0) rotate(0) scale(1.016)}
+        50%{transform:translate3d(3px,-4px,0) rotate(.35deg) scale(1.024)}
+      }
+
+      @keyframes meosPresenceSpeaking{
+        from{transform:translate3d(0,-1px,0) scale(1.015)}
+        to{transform:translate3d(0,-3px,0) scale(1.025)}
+      }
+
+      @keyframes meosHoloMicroFlicker{
+        0%,90%,93%,100%{opacity:1}
+        91%{opacity:.86}
+        92%{opacity:.97}
+      }
+
+      @keyframes meosProjectionBase{
+        0%,100%{opacity:.42;transform:scaleX(.94)}
+        50%{opacity:.78;transform:scaleX(1.06)}
+      }
+
+      @media(max-width:1120px){
+        .meos-hq-core.meos-living-presence{
+          width:min(430px,100%);
+          height:410px;
+          min-height:410px;
+        }
+      }
+
+      @media(max-width:760px){
+        .meos-hq-core.meos-living-presence{
+          width:min(390px,94vw);
+          height:390px;
+          min-height:390px;
+        }
+      }
+
     `;
 
     document.head.appendChild(style);
@@ -2924,7 +3100,7 @@ document
               <div class="meos-presence-stage">
                 <span class="meos-presence-circuit" aria-hidden="true"></span>
                 <img class="meos-presence-logo" src="maddy-executive-insignia.png" alt="MEOS Maddy command insignia beginning the startup transformation" onerror="this.style.visibility='hidden';" />
-                <img class="meos-presence-human" id="meosCanonicalMaddy" src="maddy-canonical-v1.png" alt="Maddy's canonical human executive presence" onerror="this.style.visibility='hidden';" />
+                <img class="meos-presence-human" id="meosCanonicalMaddy" src="maddy-holographic-presence-v1.png" alt="Maddy's canonical holographic executive presence" onerror="this.style.visibility='hidden';" />
                 <span class="meos-presence-human-glow" aria-hidden="true"></span>
                 <span class="meos-presence-scan" aria-hidden="true"></span>
                 <span class="meos-presence-eye-light" aria-hidden="true"></span>
@@ -4141,7 +4317,7 @@ document
       ["Legacy top completion gauge receives the authoritative live percentage", document.getElementById("progressPercent")?.textContent === `${snapshot.completion}%`],
       ["Maddy at Work circuitry window replaced the duplicate completion widget", Boolean(document.querySelector(".meos-maddy-window"))],
       ["Maddy at Work exposes live status and completion telemetry", Boolean(document.getElementById("meosMaddyWorkStatus") && document.getElementById("meosMaddyCompletion"))],
-      ["Living Headquarters uses the protected canonical Maddy asset", document.getElementById("meosCanonicalMaddy")?.getAttribute("src") === "maddy-canonical-v1.png"],
+      ["Living Headquarters uses the protected canonical Maddy asset", document.getElementById("meosCanonicalMaddy")?.getAttribute("src") === "maddy-holographic-presence-v1.png"],
       ["Logo-to-human startup evolution is installed in the Headquarters hero", Boolean(document.querySelector("#meosLivingPresence .meos-presence-logo") && document.querySelector("#meosLivingPresence .meos-presence-human"))],
       ["Maddy is the visual feature of the Headquarters center", Boolean(document.querySelector(".meos-hq-core.meos-living-presence"))],
       ["Canonical Maddy fills the Living Headquarters presence field", Boolean(document.querySelector(".meos-presence-human"))],
@@ -4149,6 +4325,7 @@ document
       ["Artificial cheek-light overlay is disabled", getComputedStyle(document.querySelector(".meos-presence-eye-light")).display === "none"],
       ["Living Headquarters hero remains within the commissioned footprint", Boolean(document.querySelector(".meos-hq-hero"))],
       ["Maddy presence capsule border has been removed", getComputedStyle(document.querySelector(".meos-presence-stage")).borderTopWidth === "0px"],
+      ["Holographic Maddy uses a feathered cinematic mask instead of a visible image rectangle", getComputedStyle(document.getElementById("meosCanonicalMaddy")).webkitMaskImage !== "none"],
       ["Maddy Presence Engine is connected to Living Headquarters", document.getElementById("meosLivingPresence")?.dataset.presenceConnected === "true"],
       ["Living Headquarters state is driven by Maddy Presence Engine", document.getElementById("meosLivingPresence")?.dataset.presenceState === getMaddyPresenceEngine()?.getStatus?.()?.state],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
