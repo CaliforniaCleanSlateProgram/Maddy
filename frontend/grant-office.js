@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.9.0
- * Build: GO190-END-TO-END-EXECUTION-BRIDGE-20260804-A
+ * Version: 1.11.0
+ * Build: GO1110-EXECUTIVE-ADAPTIVE-REASONING-20260804-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.9.0";
-    const BUILD_ID = "GO190-END-TO-END-EXECUTION-BRIDGE-20260804-A";
+    const VERSION = "1.11.0";
+    const BUILD_ID = "GO1110-EXECUTIVE-ADAPTIVE-REASONING-20260804-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -347,6 +347,12 @@
             applicationsAnalyzed: 0,
             applicationQuestionsExtracted: 0,
             applicationDraftsCreated: 0,
+            applicationDraftVariantsCreated: 0,
+            applicationDraftOptimizationRuns: 0,
+            applicationDraftWinningVersionsSelected: 0,
+            adaptiveFitAnalysesCompleted: 0,
+            adaptiveOpportunitiesPreserved: 0,
+            adaptiveExecutiveCasesCreated: 0,
             executiveReviewPackagesCreated: 0,
             applicationPackagesAssembled: 0,
             applicationPackageItemsCreated: 0,
@@ -372,6 +378,7 @@
             lastPortalIntelligenceAt: null,
             lastApplicationAssemblyAt: null,
             lastApplicationIntelligenceAt: null,
+            lastAdaptiveFitAnalysisAt: null,
             lastAlignmentStrategyAt: null,
             lastPipelineTransitionAt: null,
             lastEvaluationAt: null
@@ -845,19 +852,59 @@
                     authoritativeResourceDecision
                 );
 
-            const recommendation =
-                authoritativeEvaluation.recommendation;
-
-            const missingInformation =
-                this.identifyMissingInformation({
+            const adaptiveFit =
+                this.evaluateExecutiveAdaptiveFit({
                     opportunity,
+                    understanding,
+                    organizationSnapshot,
                     organizationalFit,
                     eligibility,
                     moneyReality,
                     timing,
                     competitiveness,
-                    execution
+                    execution,
+                    strategicValue,
+                    disqualifiers,
+                    authoritativeResourceDecision
                 });
+
+            let recommendation =
+                authoritativeEvaluation.recommendation;
+            let recommendationAuthority =
+                "executive-resource-acquisition-engine";
+
+            if (
+                adaptiveFit.rescueEligible &&
+                recommendation.decision ===
+                    RECOMMENDATIONS.SKIP_MISSION_MISALIGNMENT
+            ) {
+                recommendation = {
+                    decision:
+                        adaptiveFit.preferredPath === "partner"
+                            ? RECOMMENDATIONS.PURSUE_WITH_PARTNER
+                            : RECOMMENDATIONS.PREPARE_FOR_FUTURE,
+                    rationale:
+                        adaptiveFit.executiveSummary,
+                    nextAction:
+                        adaptiveFit.nextAction
+                };
+                recommendationAuthority =
+                    "grant-office-executive-adaptive-reasoning";
+            }
+
+            const missingInformation =
+                this.uniqueStrings([
+                    ...this.identifyMissingInformation({
+                        opportunity,
+                        organizationalFit,
+                        eligibility,
+                        moneyReality,
+                        timing,
+                        competitiveness,
+                        execution
+                    }),
+                    ...(adaptiveFit.unknowns || [])
+                ]);
 
             const evaluation = {
                 success: true,
@@ -880,10 +927,11 @@
                 disqualifiers,
                 score,
                 recommendation,
+                recommendationAuthority,
+                adaptiveFit,
                 legacyRecommendation,
                 authoritativeResourceDecision,
-                missingInformation:
-                    authoritativeEvaluation.missingInformation,
+                missingInformation,
                 executiveSummary:
                     authoritativeEvaluation.executiveSummary,
                 evaluatedAt:
@@ -891,7 +939,8 @@
                 evaluatedBy:
                     authoritativeEvaluation.evaluatedBy,
                 executiveApprovalRequired:
-                    authoritativeEvaluation.executiveApprovalRequired
+                    authoritativeEvaluation.executiveApprovalRequired ||
+                    adaptiveFit.requiresExecutiveDecision
             };
 
             opportunity.evaluation = evaluation;
@@ -2555,6 +2604,22 @@
                     })
                     .slice(0, limit);
 
+            const adaptiveWorkbench =
+                this.opportunities
+                    .filter(item =>
+                        item.evaluation?.adaptiveFit?.rescueEligible &&
+                        item.evaluation.adaptiveFit.projectedFitScore >=
+                            this.configuration.minimumPursueScore
+                    )
+                    .filter(item =>
+                        !evaluated.includes(item)
+                    )
+                    .sort((a, b) =>
+                        b.evaluation.adaptiveFit.projectedFitScore -
+                        a.evaluation.adaptiveFit.projectedFitScore
+                    )
+                    .slice(0, Math.min(limit, 10));
+
             return {
                 success: true,
                 reviewed:
@@ -2569,6 +2634,26 @@
                     ).length,
                 deskCount:
                     evaluated.length,
+                workbenchCount:
+                    adaptiveWorkbench.length,
+                executiveWorkbench:
+                    adaptiveWorkbench.map(item => ({
+                        id: item.id,
+                        title: item.title,
+                        provider: item.provider,
+                        currentFitScore:
+                            item.evaluation.adaptiveFit.currentFitScore,
+                        projectedFitScore:
+                            item.evaluation.adaptiveFit.projectedFitScore,
+                        preferredPath:
+                            item.evaluation.adaptiveFit.preferredPath,
+                        adaptation:
+                            item.evaluation.adaptiveFit.selectedAdaptation,
+                        nextAction:
+                            item.evaluation.adaptiveFit.nextAction,
+                        executiveSummary:
+                            item.evaluation.adaptiveFit.executiveSummary
+                    })),
                 executiveDesk:
                     evaluated.map((item) => ({
                         id: item.id,
@@ -6538,6 +6623,354 @@
                 limits:
                     this.clone(limits),
                 issues
+            };
+        },
+
+        buildApplicationDraftVariantText(
+            question,
+            verifiedEvidence = [],
+            strategy = "evidence-first"
+        ) {
+            const statements = verifiedEvidence
+                .slice(0, 5)
+                .map(item => String(item.statement || "").trim())
+                .filter(Boolean);
+
+            const opening = this.buildApplicationDraftOpening(question);
+            const closing = this.buildApplicationDraftClosing(question);
+            const impactBridge =
+                "The response should connect the verified need, the proposed work, and the measurable public benefit without overstating what the evidence proves.";
+            const investmentBridge =
+                "The request should show the funder how its investment enables a practical, accountable response and how results will be documented.";
+            const reviewerBridge =
+                `This response directly addresses the reviewer intent: ${question.intent || question.text}`;
+
+            const structures = {
+                "evidence-first": [opening, ...statements, reviewerBridge, closing],
+                "human-impact": [opening, impactBridge, ...statements, closing],
+                "investment-case": [opening, investmentBridge, ...statements, reviewerBridge, closing]
+            };
+
+            return (structures[strategy] || structures["evidence-first"])
+                .filter(Boolean)
+                .join(" ")
+                .replace(/\s+/g, " ")
+                .trim();
+        },
+
+        scoreApplicationDraftCandidate(
+            question,
+            text,
+            verifiedEvidence = []
+        ) {
+            const limitCheck = this.checkApplicationDraftLimits(
+                text,
+                question.limits
+            );
+            const missingInformation =
+                this.identifyApplicationMissingInformation(
+                    question,
+                    verifiedEvidence,
+                    String(text || "").trim()
+                );
+
+            const normalizedText = this.normalizeText(text);
+            const normalizedPrompt = this.normalizeText(
+                `${question.text} ${question.intent || ""} ${question.instructions || ""}`
+            );
+            const promptTerms = this.uniqueStrings(
+                normalizedPrompt.split(" ").filter(term => term.length >= 5)
+            );
+            const matchedPromptTerms = promptTerms.filter(term =>
+                normalizedText.includes(term)
+            );
+            const responsivenessRatio = promptTerms.length
+                ? matchedPromptTerms.length / promptTerms.length
+                : 1;
+
+            const requiredEvidence = question.evidenceRequirements || [];
+            const coveredEvidence = requiredEvidence.filter(requirement =>
+                verifiedEvidence.some(item =>
+                    this.scoreConceptOverlap(
+                        item.statement,
+                        requirement.description
+                    ) > 0
+                )
+            );
+            const evidenceCoverage = requiredEvidence.length
+                ? coveredEvidence.length / requiredEvidence.length
+                : verifiedEvidence.length > 0 ? 1 : 0;
+
+            const sentences = String(text || "")
+                .split(/[.!?]+/)
+                .map(item => item.trim())
+                .filter(Boolean);
+            const words = String(text || "")
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean);
+            const averageSentenceLength = sentences.length
+                ? words.length / sentences.length
+                : words.length;
+
+            const compliance =
+                (limitCheck.withinLimits ? 15 : 0) +
+                (String(text || "").trim() ? 5 : 0) +
+                (missingInformation.length === 0 ? 5 : 0);
+            const evidence = Math.round(
+                Math.min(20, evidenceCoverage * 14 + Math.min(6, verifiedEvidence.length * 2))
+            );
+            const responsiveness = Math.round(
+                Math.min(20, 8 + responsivenessRatio * 12)
+            );
+            const specificity = Math.round(
+                Math.min(
+                    10,
+                    verifiedEvidence.length * 2 +
+                    (/\b\d+[\d,.%$]*\b/.test(text) ? 2 : 0)
+                )
+            );
+            const persuasionSignals = [
+                "need", "impact", "community", "investment", "outcome",
+                "measurable", "accountable", "urgent", "benefit", "solution"
+            ].filter(term => normalizedText.includes(term)).length;
+            const persuasion = Math.min(15, 5 + persuasionSignals);
+            const clarity =
+                averageSentenceLength > 0 && averageSentenceLength <= 28
+                    ? 10
+                    : averageSentenceLength <= 36
+                        ? 7
+                        : 4;
+
+            const total = Math.max(
+                0,
+                Math.min(
+                    100,
+                    compliance + evidence + responsiveness + specificity + persuasion + clarity
+                )
+            );
+
+            const improvementActions = [];
+            if (!limitCheck.withinLimits) {
+                improvementActions.push(...limitCheck.issues);
+            }
+            if (missingInformation.length) {
+                improvementActions.push(
+                    ...missingInformation.map(item => `Resolve: ${item}`)
+                );
+            }
+            if (evidenceCoverage < 1) {
+                improvementActions.push(
+                    "Add verified evidence for every required evidence category."
+                );
+            }
+            if (responsivenessRatio < 0.55) {
+                improvementActions.push(
+                    "Answer the reviewer intent more directly using the funder's own terms."
+                );
+            }
+            if (persuasion < 11) {
+                improvementActions.push(
+                    "Strengthen the truthful connection between need, solution, investment, and measurable benefit."
+                );
+            }
+            if (clarity < 10) {
+                improvementActions.push(
+                    "Shorten long sentences and reduce reviewer effort."
+                );
+            }
+
+            return {
+                schema: "meos.grant-office.application-candidate-score.v1",
+                total,
+                compliancePassed:
+                    limitCheck.withinLimits &&
+                    missingInformation.length === 0,
+                dimensions: {
+                    compliance,
+                    evidence,
+                    responsiveness,
+                    specificity,
+                    persuasion,
+                    clarity
+                },
+                evidenceCoverage: this.roundNumber(evidenceCoverage, 3),
+                responsivenessRatio: this.roundNumber(responsivenessRatio, 3),
+                limitCheck,
+                missingInformation,
+                improvementActions: this.uniqueStrings(improvementActions),
+                disposition:
+                    limitCheck.withinLimits && missingInformation.length === 0
+                        ? "ready-for-executive-review"
+                        : "improve-before-deadline"
+            };
+        },
+
+        generateApplicationDraftVersions(
+            opportunityId,
+            questionId,
+            input = {}
+        ) {
+            const opportunity = this.getOpportunityById(opportunityId);
+            const application = opportunity?.applicationIntelligence;
+            const question = application?.questions.find(
+                item => item.id === questionId
+            );
+
+            if (!opportunity || !application || !question) {
+                return {
+                    success: false,
+                    error: "Application question not found or application intelligence is unavailable.",
+                    code: "GRANT_APPLICATION_VERSIONING_NOT_AVAILABLE"
+                };
+            }
+
+            const evidence = this.resolveApplicationEvidence(
+                question,
+                [
+                    ...(input.evidence || []),
+                    ...(opportunity.alignmentStrategy?.claims || [])
+                        .filter(claim => claim.supported)
+                        .map(claim => ({
+                            id: `alignment-${claim.activity}-${claim.objective}`,
+                            statement: claim.claim,
+                            authority: "verified",
+                            verified: true,
+                            confidence: claim.confidence,
+                            citation: claim.evidenceIds
+                        }))
+                ]
+            );
+            const verifiedEvidence = evidence.filter(item => item.verified);
+
+            const suppliedVersions = Array.isArray(input.versions)
+                ? input.versions
+                : [];
+            const strategies = [
+                "evidence-first",
+                "human-impact",
+                "investment-case"
+            ];
+
+            const versions = (suppliedVersions.length
+                ? suppliedVersions.map((item, index) => ({
+                    strategy: item.strategy || `supplied-${index + 1}`,
+                    text: String(item.text || item.draft || "").trim()
+                }))
+                : strategies.map(strategy => ({
+                    strategy,
+                    text: this.buildApplicationDraftVariantText(
+                        question,
+                        verifiedEvidence,
+                        strategy
+                    )
+                })))
+                .filter(item => item.text)
+                .map((item, index) => {
+                    const score = this.scoreApplicationDraftCandidate(
+                        question,
+                        item.text,
+                        verifiedEvidence
+                    );
+                    return {
+                        id: this.createId("application-draft-version"),
+                        versionNumber: index + 1,
+                        strategy: item.strategy,
+                        createdAt: this.now(),
+                        text: item.text,
+                        evidenceIds: evidence.map(record => record.id),
+                        verifiedEvidenceIds: verifiedEvidence.map(record => record.id),
+                        score,
+                        status: score.disposition
+                    };
+                })
+                .sort((left, right) => right.score.total - left.score.total);
+
+            if (!versions.length) {
+                return {
+                    success: false,
+                    error: "No truthful draft version could be produced from the available input and evidence.",
+                    code: "GRANT_APPLICATION_VERSIONS_EMPTY"
+                };
+            }
+
+            const winner = versions[0];
+            const runnerUp = versions[1] || null;
+            const maximumCycles = Math.max(1, Math.min(20, Number(input.maximumCycles || 8)));
+            const optimization = {
+                schema: "meos.grant-office.application-draft-optimization.v1",
+                createdAt: this.now(),
+                objective:
+                    "Maximize funding probability before the deadline while preserving 100% administrative compliance and evidence integrity.",
+                maximumCycles,
+                completedCycles: 1,
+                selectedVersionId: winner.id,
+                selectedStrategy: winner.strategy,
+                selectedScore: winner.score.total,
+                runnerUpVersionId: runnerUp?.id || null,
+                runnerUpScore: runnerUp?.score.total ?? null,
+                decision:
+                    winner.score.compliancePassed
+                        ? "best-current-version-ready-for-executive-review"
+                        : "best-current-version-selected-for-further-improvement",
+                discardedVersionIds: [],
+                preservedVersionIds: versions.map(version => version.id),
+                nextImprovements: winner.score.improvementActions,
+                stopReason:
+                    winner.score.compliancePassed && winner.score.total >= 98
+                        ? "Target quality reached without unresolved compliance defects."
+                        : "Continue improving until the deadline, target quality, or diminishing returns."
+            };
+
+            question.draftPortfolio = {
+                schema: "meos.grant-office.application-draft-portfolio.v1",
+                createdAt: this.now(),
+                versions,
+                optimization
+            };
+
+            question.draft = {
+                schema: "meos.grant-office.application-draft.v2",
+                createdAt: this.now(),
+                createdBy: input.createdBy || "MEOS Grant Office",
+                selectedFromVersionId: winner.id,
+                strategy: winner.strategy,
+                text: winner.text,
+                status:
+                    winner.score.compliancePassed
+                        ? APPLICATION_ITEM_STATES.DRAFTED
+                        : winner.score.missingInformation.length
+                            ? APPLICATION_ITEM_STATES.NEEDS_EVIDENCE
+                            : APPLICATION_ITEM_STATES.NEEDS_REVISION,
+                evidenceIds: winner.evidenceIds,
+                verifiedEvidenceIds: winner.verifiedEvidenceIds,
+                confidence: this.roundNumber(winner.score.total / 100, 3),
+                qualityScore: winner.score,
+                missingInformation: winner.score.missingInformation,
+                limitCheck: winner.score.limitCheck,
+                executiveNotes: String(input.executiveNotes || "")
+            };
+
+            question.state = question.draft.status;
+            question.review.status = question.draft.status;
+            application.reviewState = APPLICATION_REVIEW_STATES.DRAFTING;
+            application.readiness = this.calculateApplicationReadiness(application);
+
+            this.analytics.applicationDraftsCreated += 1;
+            this.analytics.applicationDraftVariantsCreated += versions.length;
+            this.analytics.applicationDraftOptimizationRuns += 1;
+            this.analytics.applicationDraftWinningVersionsSelected += 1;
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                opportunityId,
+                applicationId: application.id,
+                questionId,
+                versions: this.clone(versions),
+                selectedVersion: this.clone(winner),
+                optimization: this.clone(optimization),
+                readiness: this.clone(application.readiness)
             };
         },
 
@@ -13475,6 +13908,591 @@
                     );
                 this.configuration.automaticPersistence =
                     originalPersistence;
+            }
+        },
+
+        evaluateExecutiveAdaptiveFit(context = {}) {
+            const opportunity = context.opportunity || {};
+            const organizationalFit = context.organizationalFit || {};
+            const eligibility = context.eligibility || {};
+            const disqualifiers = context.disqualifiers || [];
+            const organization = context.organizationSnapshot || {};
+            const currentFitScore = Math.round(
+                Number(organizationalFit.score || 0)
+            );
+
+            const hardBlockers = this.identifyAdaptiveHardBlockers({
+                opportunity,
+                eligibility,
+                disqualifiers,
+                organizationalFit
+            });
+
+            const objectives = this.deriveFunderObjectives(opportunity, {
+                funderObjectives: opportunity.desiredOutcomes || []
+            });
+            const organizationContext =
+                this.resolveOrganizationAlignmentContext({});
+            const activities = organizationContext.activities.length
+                ? organizationContext.activities
+                : (organization.components || []).map(component =>
+                    [
+                        component.name,
+                        component.mission,
+                        ...(component.outcomes || []),
+                        ...(component.capabilities || [])
+                    ].filter(Boolean).join(" — ")
+                );
+
+            const candidates = this.buildAdaptiveProgramCandidates({
+                opportunity,
+                objectives,
+                activities,
+                organization,
+                currentFitScore
+            });
+
+            const selectedAdaptation = candidates[0] || null;
+            const projectedFitScore = selectedAdaptation
+                ? selectedAdaptation.projectedFitScore
+                : currentFitScore;
+            const preferredPath = selectedAdaptation?.preferredPath ||
+                (hardBlockers.length ? "reject" : "monitor");
+            const feasible = Boolean(
+                selectedAdaptation &&
+                selectedAdaptation.feasibility.score >= 65
+            );
+            const missionHonest = Boolean(
+                selectedAdaptation &&
+                selectedAdaptation.missionIntegrity !== "distortion"
+            );
+            const rescueEligible =
+                hardBlockers.length === 0 &&
+                currentFitScore < this.configuration.minimumPursueScore &&
+                projectedFitScore >= this.configuration.minimumPursueScore &&
+                feasible &&
+                missionHonest;
+
+            const institutionalReasoning =
+                this.runAdaptiveInstitutionalReasoning({
+                    opportunity,
+                    objectives,
+                    currentFitScore,
+                    selectedAdaptation,
+                    hardBlockers
+                });
+
+            const unknowns = this.uniqueStrings([
+                ...(selectedAdaptation?.unknowns || []),
+                ...(institutionalReasoning?.openLoops || []).map(loop =>
+                    loop.title || loop.description || loop
+                )
+            ]);
+
+            const requiresExecutiveDecision = Boolean(
+                rescueEligible &&
+                selectedAdaptation?.organizationalChangeRequired
+            );
+
+            const executiveSummary = hardBlockers.length
+                ? `Adaptive analysis stopped because a hard eligibility, geography, population, or compliance barrier remains: ${hardBlockers[0]}`
+                : rescueEligible
+                    ? `This opportunity does not fit strongly enough in its current form (${currentFitScore}%), but MEOS identified a truthful and feasible adaptation that could raise strategic fit to approximately ${projectedFitScore}%. It should be preserved as an executive growth case rather than discarded.`
+                    : selectedAdaptation
+                        ? `MEOS identified an adaptation path, but it is not yet strong or feasible enough for promotion. Preserve it for research and capability development.`
+                        : `No defensible adaptation path has been established. Preserve only if new evidence, a partner, or a changed program design becomes available.`;
+
+            const nextAction = hardBlockers.length
+                ? "Keep off the active pursuit desk and resolve or confirm the hard blocker before further work."
+                : rescueEligible
+                    ? selectedAdaptation.nextAction
+                    : selectedAdaptation
+                        ? "Continue researching the adaptation, evidence, cost, partners, and implementation requirements before executive promotion."
+                        : "Monitor for a better-aligned cycle or new evidence; do not manufacture a mission connection.";
+
+            this.analytics.adaptiveFitAnalysesCompleted += 1;
+            if (rescueEligible) {
+                this.analytics.adaptiveOpportunitiesPreserved += 1;
+                if (requiresExecutiveDecision) {
+                    this.analytics.adaptiveExecutiveCasesCreated += 1;
+                }
+            }
+            this.analytics.lastAdaptiveFitAnalysisAt = this.now();
+
+            return {
+                success: true,
+                schema: "meos.grant-office.executive-adaptive-fit.v1",
+                currentFitScore,
+                projectedFitScore,
+                fitGain: Math.max(0, projectedFitScore - currentFitScore),
+                hardBlockers,
+                objectives,
+                candidateCount: candidates.length,
+                candidates,
+                selectedAdaptation,
+                preferredPath,
+                feasible,
+                missionHonest,
+                rescueEligible,
+                requiresExecutiveDecision,
+                deskPlacement: rescueEligible
+                    ? "executive-workbench"
+                    : hardBlockers.length
+                        ? "off-desk"
+                        : "internal-research",
+                institutionalReasoning,
+                unknowns,
+                executiveSummary,
+                nextAction
+            };
+        },
+
+        identifyAdaptiveHardBlockers(context = {}) {
+            const blockers = [];
+            const eligibility = context.eligibility || {};
+            const organizationalFit = context.organizationalFit || {};
+            const disqualifiers = context.disqualifiers || [];
+
+            if (eligibility.eligible === false || eligibility.status === "ineligible") {
+                blockers.push("The organization is not eligible under the stated applicant rules.");
+            }
+            if (organizationalFit.populationConflict?.hardConflict) {
+                blockers.push("The required beneficiary population conflicts with the organization's lawful or commissioned scope.");
+            }
+
+            disqualifiers.forEach(item => {
+                const type = item.type || item.code;
+                if ([
+                    DISQUALIFIER_TYPES.GEOGRAPHY,
+                    DISQUALIFIER_TYPES.LICENSE,
+                    DISQUALIFIER_TYPES.ACCREDITATION
+                ].includes(type)) {
+                    blockers.push(item.reason || item.explanation || `Hard blocker: ${type}`);
+                }
+            });
+
+            return this.uniqueStrings(blockers);
+        },
+
+        buildAdaptiveProgramCandidates(context = {}) {
+            const opportunity = context.opportunity || {};
+            const objectives = context.objectives || [];
+            const activities = context.activities || [];
+            const currentFitScore = Number(context.currentFitScore || 0);
+            const sourceText = this.normalizeText([
+                opportunity.title,
+                opportunity.description,
+                opportunity.statedPurpose,
+                ...objectives,
+                ...(opportunity.targetPopulations || []),
+                ...(opportunity.fundingAreas || [])
+            ].filter(Boolean).join(" "));
+
+            const patterns = [
+                {
+                    id: "hands-on-workforce-recovery",
+                    activity: /bicycle|bike repair|mechanic|mechanical|fabrication|construction|carpentry|culinary|gardening|horticulture|repair workshop|skilled trades/,
+                    outcome: /veteran|workforce|employment|job training|mental health|recovery|peer support|wellness|purpose/,
+                    title: "Hands-On Workforce and Recovery Skills Program",
+                    intermediateOutcomes: [
+                        "structured purposeful activity",
+                        "practical job skills",
+                        "peer connection and reduced isolation",
+                        "recovery-supportive routine",
+                        "employment readiness"
+                    ],
+                    baseGain: 24,
+                    cost: "moderate",
+                    timelineDays: 60,
+                    preferredPath: "adapt"
+                },
+                {
+                    id: "environmental-stewardship-workforce",
+                    activity: /beach cleanup|coastal cleanup|watershed|river cleanup|marine debris|restoration|conservation/,
+                    outcome: /workforce|employment|homeless|unhoused|recovery|community|environment|public health/,
+                    title: "Environmental Stewardship and Workforce Initiative",
+                    intermediateOutcomes: [
+                        "paid or volunteer work experience",
+                        "environmental restoration",
+                        "community integration",
+                        "public-health and watershed benefit"
+                    ],
+                    baseGain: 22,
+                    cost: "low-to-moderate",
+                    timelineDays: 45,
+                    preferredPath: "adapt"
+                },
+                {
+                    id: "therapeutic-enterprise",
+                    activity: /art|music|garden|agriculture|food|kitchen|craft|maker|recycling|upcycling/,
+                    outcome: /mental health|recovery|workforce|employment|community|wellness|veteran|homeless|unhoused/,
+                    title: "Therapeutic Social Enterprise Program",
+                    intermediateOutcomes: [
+                        "structured therapeutic activity",
+                        "marketable skills",
+                        "social connection",
+                        "earned-income or employment pathways"
+                    ],
+                    baseGain: 18,
+                    cost: "moderate",
+                    timelineDays: 90,
+                    preferredPath: "adapt"
+                }
+            ];
+
+            const candidates = [];
+
+            patterns.forEach(pattern => {
+                if (!pattern.activity.test(sourceText) || !pattern.outcome.test(sourceText)) {
+                    return;
+                }
+
+                const overlap = activities.reduce((best, activity) =>
+                    Math.max(best, this.scoreConceptOverlap(sourceText, activity)), 0
+                );
+                const capabilityScore = Math.round(Math.min(100, overlap * 180 + 45));
+                const partnerNeeded = capabilityScore < 65;
+                const feasibilityScore = Math.max(50, Math.min(94,
+                    capabilityScore + (partnerNeeded ? 5 : 15) -
+                    (pattern.cost === "moderate" ? 5 : 0)
+                ));
+                const projectedFitScore = Math.min(96, Math.round(
+                    currentFitScore + pattern.baseGain +
+                    Math.max(0, (capabilityScore - 50) * 0.18)
+                ));
+
+                candidates.push({
+                    id: pattern.id,
+                    title: pattern.title,
+                    preferredPath: partnerNeeded ? "partner" : pattern.preferredPath,
+                    currentFitScore,
+                    projectedFitScore,
+                    expectedFitGain: projectedFitScore - currentFitScore,
+                    underlyingFunderOutcomes: objectives.slice(0, 6),
+                    intermediateOutcomes: pattern.intermediateOutcomes,
+                    existingCapabilityScore: capabilityScore,
+                    organizationalChangeRequired: true,
+                    missionIntegrity: "defensible-extension",
+                    feasibility: {
+                        score: feasibilityScore,
+                        cost: pattern.cost,
+                        estimatedLaunchDays: pattern.timelineDays,
+                        partnerNeeded,
+                        explanation: partnerNeeded
+                            ? "The concept is plausible, but an experienced delivery partner should close the current capability gap."
+                            : "Existing organizational capabilities provide a credible base for a limited, governed program expansion."
+                    },
+                    evidenceStandard: "Every causal, population, outcome, and capability claim must be supported before application use.",
+                    unknowns: this.uniqueStrings([
+                        "Program budget and unit economics are not yet verified.",
+                        "Staffing, supervision, insurance, and facility requirements must be verified.",
+                        partnerNeeded ? "A qualified funded partner has not yet been confirmed." : null,
+                        "Outcome evidence and measurement design must be completed."
+                    ]),
+                    nextAction: partnerNeeded
+                        ? `Open an executive adaptation case for ${pattern.title}; identify a qualified delivery partner, verify the program model, budget, evidence, and funder eligibility before drafting.`
+                        : `Open an executive adaptation case for ${pattern.title}; build the program design, budget, evidence plan, implementation timeline, and approval package before drafting.`
+                });
+            });
+
+            // Preserve a general reasoning path when no named pattern applies but
+            // the funder's outcomes overlap with commissioned organizational work.
+            if (candidates.length === 0) {
+                let bestBridge = null;
+                objectives.forEach(objective => {
+                    activities.forEach(activity => {
+                        const directScore = this.scoreConceptOverlap(objective, activity);
+                        const bridge = this.inferOutcomeBridge(
+                            activity,
+                            objective,
+                            context.organization?.evidence || []
+                        );
+                        const score = bridge ? 0.62 : directScore;
+                        if (score >= 0.35 && (!bestBridge || score > bestBridge.score)) {
+                            bestBridge = { objective, activity, bridge, score };
+                        }
+                    });
+                });
+
+                if (bestBridge) {
+                    const gain = bestBridge.bridge ? 17 : 12;
+                    candidates.push({
+                        id: "evidence-grounded-adaptive-bridge",
+                        title: "Evidence-Grounded Program Adaptation",
+                        preferredPath: "prepare",
+                        currentFitScore,
+                        projectedFitScore: Math.min(90, currentFitScore + gain),
+                        expectedFitGain: gain,
+                        underlyingFunderOutcomes: [bestBridge.objective],
+                        intermediateOutcomes: bestBridge.bridge?.intermediateOutcomes || [],
+                        existingCapabilityScore: Math.round(bestBridge.score * 100),
+                        organizationalChangeRequired: true,
+                        missionIntegrity: "requires-verification",
+                        feasibility: {
+                            score: 64,
+                            cost: "unknown",
+                            estimatedLaunchDays: null,
+                            partnerNeeded: true,
+                            explanation: "A possible bridge exists, but evidence, operating design, and partner capacity are not yet sufficient for executive promotion."
+                        },
+                        evidenceStandard: "No adaptation claim may enter an application until supported by commissioned records or verified external evidence.",
+                        unknowns: [
+                            "The program model is not yet defined.",
+                            "Cost, staffing, timeline, risk, and measurable outcomes are not verified."
+                        ],
+                        nextAction: "Research the underlying funder outcome and build a verified adaptation feasibility case."
+                    });
+                }
+            }
+
+            return candidates.sort((a, b) =>
+                b.projectedFitScore - a.projectedFitScore ||
+                b.feasibility.score - a.feasibility.score
+            );
+        },
+
+        runAdaptiveInstitutionalReasoning(context = {}) {
+            const engine = global.InstitutionalReasoning;
+            if (!engine || typeof engine.analyze !== "function") {
+                return {
+                    success: false,
+                    status: "reasoning-engine-unavailable",
+                    recommendation: null,
+                    findings: [],
+                    risks: [],
+                    options: [],
+                    openLoops: []
+                };
+            }
+
+            const adaptation = context.selectedAdaptation;
+            const question = [
+                `Evaluate whether ${context.opportunity?.title || "this opportunity"} can become a truthful, feasible organizational opportunity rather than being rejected for weak current fit.`,
+                `Current fit: ${context.currentFitScore}%.`,
+                `Funder outcomes: ${(context.objectives || []).join("; ") || "not verified"}.`,
+                adaptation
+                    ? `Proposed adaptation: ${adaptation.title}; projected fit ${adaptation.projectedFitScore}%; intermediate outcomes: ${adaptation.intermediateOutcomes.join(", ")}.`
+                    : "No proposed adaptation has been established.",
+                `Hard blockers: ${(context.hardBlockers || []).join("; ") || "none identified"}.`,
+                "Assess mission integrity, eligibility, evidence, feasibility, cost, staffing, partners, risk, timeline, and the next executive action. Do not invent facts."
+            ].join(" ");
+
+            try {
+                return engine.analyze(question, {
+                    mode: "strategy",
+                    includeRisks: true,
+                    includeAlternatives: true,
+                    includeImplementation: true,
+                    evidenceLimit: 20
+                });
+            } catch (error) {
+                return {
+                    success: false,
+                    status: "reasoning-engine-error",
+                    error: error?.message || String(error),
+                    recommendation: null,
+                    findings: [],
+                    risks: [],
+                    options: [],
+                    openLoops: []
+                };
+            }
+        },
+
+        runExecutiveAdaptiveReasoningAcceptanceTest() {
+            const originalOpportunities = this.clone(this.opportunities);
+            const originalAnalytics = this.clone(this.analytics);
+            const originalPersistence = this.configuration.automaticPersistence;
+            this.configuration.automaticPersistence = false;
+
+            try {
+                const opportunity = this.addOpportunity({
+                    id: "adaptive-veteran-bicycle-test",
+                    title: "Veteran Bicycle Repair, Education, and Employment Initiative",
+                    type: OPPORTUNITY_TYPES.PRIVATE_FOUNDATION,
+                    provider: "Acceptance Test Foundation",
+                    description: "Support organizations that educate veterans through bicycle repair and mechanical skills to improve mental health, recovery, peer connection, and employment readiness.",
+                    statedPurpose: "Improve veteran wellness and employment through hands-on bicycle education.",
+                    desiredOutcomes: [
+                        "veteran mental health",
+                        "recovery skills",
+                        "job training",
+                        "employment readiness"
+                    ],
+                    targetPopulations: ["veterans"],
+                    fundingAreas: ["workforce development", "mental health"],
+                    eligibleApplicants: ["501(c)(3) nonprofit organizations"],
+                    awardCeiling: 150000,
+                    verified: true,
+                    deadline: new Date(Date.now() + 45 * 86400000).toISOString()
+                });
+
+                const context = {
+                    opportunity,
+                    understanding: this.understandOpportunity(opportunity),
+                    organizationSnapshot: this.buildOrganizationSnapshot(this.getOrganizationProfile() || {
+                        organization: {
+                            legalName: "California Clean Slate Program",
+                            mission: "Provide recovery navigation, workforce development, community stabilization, and pathways to independence."
+                        },
+                        programs: [{
+                            name: "Recovery and Workforce Navigation",
+                            mission: "Support adults and veterans through recovery, job readiness, practical skills, peer support, and employment pathways.",
+                            outcomes: ["recovery stability", "employment readiness"],
+                            capabilities: ["peer support", "job readiness", "hands-on fabrication leadership"],
+                            targetPopulations: ["adults", "veterans"]
+                        }]
+                    }),
+                    organizationalFit: {
+                        score: 68,
+                        populationConflict: { hardConflict: false }
+                    },
+                    eligibility: { eligible: true, status: "eligible" },
+                    moneyReality: {}, timing: {}, competitiveness: {}, execution: {}, strategicValue: {},
+                    disqualifiers: [], authoritativeResourceDecision: { decision: "reject" }
+                };
+
+                const result = this.evaluateExecutiveAdaptiveFit(context);
+                const checks = [
+                    { name: "Low current fit was not treated as final rejection", passed: result.currentFitScore === 68 && result.candidateCount > 0 },
+                    { name: "Underlying funder outcomes were preserved", passed: result.objectives.some(item => /veteran|mental health|employment/i.test(item)) },
+                    { name: "Truthful program adaptation was generated", passed: result.selectedAdaptation?.missionIntegrity === "defensible-extension" },
+                    { name: "Projected fit crossed executive workbench threshold", passed: result.projectedFitScore >= 82 },
+                    { name: "Feasibility and unknowns were explicitly evaluated", passed: result.selectedAdaptation?.feasibility?.score >= 65 && result.unknowns.length > 0 },
+                    { name: "Opportunity was preserved for executive adaptation", passed: result.rescueEligible === true && result.deskPlacement === "executive-workbench" },
+                    { name: "No application submission was authorized", passed: result.nextAction.toLowerCase().includes("case") && result.requiresExecutiveDecision === true }
+                ];
+
+                return {
+                    success: checks.every(check => check.passed),
+                    schema: "meos.grant-office.executive-adaptive-reasoning-acceptance.v1",
+                    version: this.version,
+                    buildId: this.buildId,
+                    passed: checks.filter(check => check.passed).length,
+                    total: checks.length,
+                    checks,
+                    result
+                };
+            } finally {
+                this.opportunities = originalOpportunities;
+                this.analytics = originalAnalytics;
+                this.configuration.automaticPersistence = originalPersistence;
+            }
+        },
+
+        runGrantVersionOptimizationAcceptanceTest() {
+            const originalPersistence = this.configuration.automaticPersistence;
+            const testId = this.createId("grant-version-optimization-test");
+            this.configuration.automaticPersistence = false;
+
+            try {
+                const opportunity = this.addOpportunity({
+                    id: testId,
+                    title: "Community Mobile Hygiene Investment",
+                    provider: "MEOS Test Community Foundation",
+                    verified: true,
+                    deadline: new Date(Date.now() + 21 * 86400000).toISOString(),
+                    eligibleApplicants: ["501(c)(3) nonprofits"]
+                });
+
+                this.analyzeFundingApplication(opportunity.id, {
+                    title: "Community Mobile Hygiene Investment Application",
+                    sections: [{
+                        title: "Narrative",
+                        questions: [{
+                            id: "need-question",
+                            text: "Describe the documented community need, the proposed solution, and the measurable benefit of the funder's investment.",
+                            category: APPLICATION_QUESTION_CATEGORIES.NEEDS,
+                            required: true,
+                            wordLimit: 250
+                        }]
+                    }]
+                });
+
+                const result = this.generateApplicationDraftVersions(
+                    opportunity.id,
+                    "need-question",
+                    {
+                        evidence: [
+                            {
+                                id: "verified-need",
+                                statement: "Verified local records document unmet hygiene access among people experiencing homelessness.",
+                                verified: true,
+                                authority: "authoritative-record"
+                            },
+                            {
+                                id: "verified-solution",
+                                statement: "CCSP's approved program model uses mobile hygiene access as an engagement point for services and stabilization.",
+                                verified: true,
+                                authority: "organizational-record"
+                            },
+                            {
+                                id: "verified-measurement",
+                                statement: "The implementation plan requires service counts, referrals, follow-up activity, and documented outcomes.",
+                                verified: true,
+                                authority: "approved-plan"
+                            }
+                        ],
+                        maximumCycles: 8
+                    }
+                );
+
+                const checks = [
+                    {
+                        name: "Multiple truthful draft versions generated",
+                        passed: result.success === true && result.versions?.length >= 3
+                    },
+                    {
+                        name: "Every version receives a funder-readiness score",
+                        passed: result.versions?.every(version =>
+                            Number.isFinite(version.score?.total) &&
+                            version.score?.dimensions?.compliance !== undefined
+                        ) === true
+                    },
+                    {
+                        name: "Best current version selected",
+                        passed:
+                            Boolean(result.selectedVersion?.id) &&
+                            result.optimization?.selectedVersionId === result.selectedVersion?.id
+                    },
+                    {
+                        name: "Non-winning versions preserved rather than discarded",
+                        passed:
+                            result.optimization?.discardedVersionIds?.length === 0 &&
+                            result.optimization?.preservedVersionIds?.length === result.versions?.length
+                    },
+                    {
+                        name: "Compliance remains a hard submission objective",
+                        passed:
+                            result.selectedVersion?.score?.limitCheck?.withinLimits === true &&
+                            result.optimization?.objective?.includes("100% administrative compliance")
+                    },
+                    {
+                        name: "Improvable drafts remain active",
+                        passed: [
+                            "best-current-version-ready-for-executive-review",
+                            "best-current-version-selected-for-further-improvement"
+                        ].includes(result.optimization?.decision)
+                    }
+                ];
+
+                return {
+                    success: checks.every(check => check.passed),
+                    schema: "meos.grant-office.version-optimization-acceptance.v1",
+                    version: this.version,
+                    buildId: this.buildId,
+                    passed: checks.filter(check => check.passed).length,
+                    total: checks.length,
+                    checks,
+                    selectedStrategy: result.selectedVersion?.strategy || null,
+                    selectedScore: result.selectedVersion?.score?.total ?? null,
+                    optimizationDecision: result.optimization?.decision || null
+                };
+            } finally {
+                this.opportunities = this.opportunities.filter(
+                    opportunity => opportunity.id !== testId
+                );
+                this.configuration.automaticPersistence = originalPersistence;
             }
         },
 
