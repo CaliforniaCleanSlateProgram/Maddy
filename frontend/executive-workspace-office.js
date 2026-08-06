@@ -1,6 +1,6 @@
 /**
- * MEOS Executive Workspace Office v1.0.0
- * Commission 005.001
+ * MEOS Executive Workspace Office v1.0.1
+ * Commission 005.001A
  *
  * Provider-neutral execution office for ordinary executive workspace work.
  * It discovers connected provider capabilities at runtime, translates human
@@ -11,8 +11,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Workspace Office";
-  const VERSION = "1.0.0";
-  const BUILD_ID = "commission-005.001";
+  const VERSION = "1.0.1";
+  const BUILD_ID = "commission-005.001A";
   const SCHEMA = "meos.executive-workspace-office.v1";
   const OFFICE_ID = "executive-workspace-office";
 
@@ -22,6 +22,7 @@
   ]);
 
   const INTENT_ALIASES = Object.freeze({
+    "list-files": ["workspace.file.list"],
     "find-file": ["workspace.file.search", "workspace.file.read"],
     "read-file": ["workspace.file.read"],
     "organize-files": ["workspace.file.list", "workspace.file.move"],
@@ -136,6 +137,7 @@
       ["draft-email", /\b(draft|write|prepare)\b.*\b(email|mail|message)\b/],
       ["schedule-meeting", /\b(schedule|book|set up|arrange)\b.*\b(meeting|appointment|call)\b/],
       ["check-calendar", /\b(calendar|availability|free time|schedule)\b/],
+      ["list-files", /\b(list|show|display|review)\b.*\b(files|documents|records|folders)\b/],
       ["find-file", /\b(find|locate|search|get)\b.*\b(file|document|record|folder)\b/],
       ["organize-files", /\b(organize|move|file|sort)\b.*\b(files|documents|records|folders)\b/],
       ["create-document", /\b(create|make|write|prepare)\b.*\b(document|doc|report|memo|letter|packet)\b/],
@@ -227,9 +229,17 @@
         office: OFFICE_ID,
         missionId: mission.id,
         intent: mission.intent,
+        capability: mission.requiredCapabilities.length === 1
+          ? mission.requiredCapabilities[0]
+          : null,
+        requiredCapabilities: [...mission.requiredCapabilities],
         instruction: mission.instruction,
         payload: mission.payload
-      }, { ...mission.context, ...(options.context || {}) });
+      }, {
+        ...mission.context,
+        requiredCapabilities: [...mission.requiredCapabilities],
+        ...(options.context || {})
+      });
     } catch (error) {
       result = { success: false, error: error?.message || String(error) };
     }
@@ -282,6 +292,7 @@
     check("runtime capability discovery", typeof discoverCapabilities === "function");
     check("no fixed provider requirement", !JSON.stringify(INTENT_ALIASES).toLowerCase().includes("google"));
     check("human task intent mapping", resolveRequirements({ intent: "schedule-meeting" }).capabilities.includes("workspace.calendar.create"));
+    check("list files maps to workspace.file.list", JSON.stringify(resolveRequirements({ intent: "list files" }).capabilities) === JSON.stringify(["workspace.file.list"]));
     check("review gate exists", WORK_STATES.includes("awaiting-review") && WORK_STATES.includes("authorized"));
     check("Take It execution protocol exists", typeof takeIt === "function");
     check("verified outcome state exists", WORK_STATES.includes("verified-success"));
