@@ -1,8 +1,8 @@
 /**
  * MEOS Google Workspace Provider
  *
- * Provider Version: 1.0.0
- * Build ID: GWP100-READ-ONLY-FOUNDATION-20260806-A
+ * Provider Version: 1.1.0
+ * Build ID: GWP110-DURABLE-ENV-AUTH-20260806-A
  * Status: Commission Candidate
  *
  * Purpose:
@@ -20,6 +20,7 @@
  * - GOOGLE_WORKSPACE_ROOT_FOLDER_ID
  * - GOOGLE_WORKSPACE_HEADQUARTERS_NAME
  * - MEOS_DATA_DIR
+ * - GOOGLE_WORKSPACE_REFRESH_TOKEN (durable free-tier authorization bootstrap)
  */
 
 import crypto from "crypto";
@@ -28,8 +29,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { google } from "googleapis";
 
-const VERSION = "1.0.0";
-const BUILD_ID = "GWP100-READ-ONLY-FOUNDATION-20260806-A";
+const VERSION = "1.1.0";
+const BUILD_ID = "GWP110-DURABLE-ENV-AUTH-20260806-A";
 const PROVIDER_ID = "google-workspace";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -70,6 +71,10 @@ const HEADQUARTERS_NAME = String(
     "CCSP Executive Headquarters"
 ).trim();
 
+const ENV_REFRESH_TOKEN = String(
+  process.env.GOOGLE_WORKSPACE_REFRESH_TOKEN || ""
+).trim();
+
 const GOOGLE_FOLDER_MIME_TYPE =
   "application/vnd.google-apps.folder";
 
@@ -89,6 +94,7 @@ const state = {
   initialized: false,
   connected: false,
   tokenLoaded: false,
+  tokenSource: null,
   lastInitializedAt: null,
   lastAuthorizedAt: null,
   lastVerifiedAt: null,
@@ -435,10 +441,18 @@ async function initialize() {
     createClients();
 
     const storedToken = await readStoredToken();
+    const bootstrapToken =
+      storedToken ||
+      (ENV_REFRESH_TOKEN
+        ? { refresh_token: ENV_REFRESH_TOKEN }
+        : null);
 
-    if (storedToken) {
-      oauthClient.setCredentials(storedToken);
+    if (bootstrapToken) {
+      oauthClient.setCredentials(bootstrapToken);
       state.tokenLoaded = true;
+      state.tokenSource = storedToken
+        ? "file"
+        : "environment";
 
       try {
         await verifyConnection();
@@ -446,6 +460,9 @@ async function initialize() {
         state.connected = false;
         state.lastError = normalizeError(error);
       }
+    } else {
+      state.tokenLoaded = false;
+      state.tokenSource = null;
     }
 
     state.initialized = true;
@@ -522,9 +539,26 @@ async function authorizeFromCallback({
   await writeStoredToken(tokens);
 
   state.tokenLoaded = true;
+  state.tokenSource = "oauth-callback";
   state.lastAuthorizedAt = new Date().toISOString();
 
-  return verifyConnection();
+  const connection = await verifyConnection();
+  const refreshToken = String(tokens?.refresh_token || "").trim();
+
+  return {
+    ...connection,
+    durableAuthorization: {
+      configured: Boolean(ENV_REFRESH_TOKEN),
+      needsBootstrap:
+        !ENV_REFRESH_TOKEN && Boolean(refreshToken),
+      refreshToken:
+        !ENV_REFRESH_TOKEN && refreshToken
+          ? refreshToken
+          : null,
+      environmentVariable:
+        "GOOGLE_WORKSPACE_REFRESH_TOKEN"
+    }
+  };
 }
 
 async function disconnect({
@@ -844,6 +878,9 @@ function getStatus() {
     missingConfiguration: config.missing,
     connected: state.connected,
     tokenLoaded: state.tokenLoaded,
+    tokenSource: state.tokenSource,
+    durableAuthorizationConfigured:
+      Boolean(ENV_REFRESH_TOKEN),
     scopes: [...READ_ONLY_SCOPES],
     redirectUriConfigured:
       Boolean(REDIRECT_URI),
@@ -871,7 +908,9 @@ function getStatus() {
       tokenFile:
         TOKEN_FILE,
       persistentDiskExpected:
-        Boolean(process.env.MEOS_DATA_DIR)
+        Boolean(process.env.MEOS_DATA_DIR),
+      environmentRefreshTokenConfigured:
+        Boolean(ENV_REFRESH_TOKEN)
     },
     capabilities: {
       authorize: true,
