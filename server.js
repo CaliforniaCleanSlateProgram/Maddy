@@ -33,7 +33,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.1";
+const VERSION = "2.10.2";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -103,9 +103,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.1.0";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.2.0";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI110-DURABLE-ENV-AUTH-20260806-A";
+  "GWI120-WORKSPACE-READ-RESEARCH-20260806-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -157,6 +157,342 @@ function googleWorkspaceErrorResponse(error) {
     details:
       error?.details ||
       null
+  };
+}
+
+
+
+/* ========================================================================== */
+/* MEOS Google Workspace Read Research v1.0.0 — Commission 005.004A           */
+/* ========================================================================== */
+
+const GOOGLE_DOC_MIME_TYPE =
+  "application/vnd.google-apps.document";
+const GOOGLE_SHEET_MIME_TYPE =
+  "application/vnd.google-apps.spreadsheet";
+
+const GOOGLE_WORKSPACE_RESEARCH_STOP_WORDS = new Set([
+  "a", "about", "already", "an", "and", "are", "as", "at", "be", "been",
+  "being", "by", "can", "do", "does", "for", "from", "get", "give", "has",
+  "have", "hey", "how", "i", "in", "into", "is", "it", "me", "my", "of",
+  "on", "or", "our", "please", "somebody", "someone", "supporting", "tell",
+  "that", "the", "their", "them", "there", "this", "to", "us", "we", "what",
+  "when", "where", "which", "who", "with", "would", "you", "your"
+]);
+
+function normalizeWorkspaceResearchTerms(value) {
+  const raw = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s_-]+/g, " ")
+    .split(/\s+/)
+    .map(term => term.trim())
+    .filter(Boolean);
+
+  const unique = [];
+  const seen = new Set();
+
+  for (const term of raw) {
+    if (term.length < 3) continue;
+    if (GOOGLE_WORKSPACE_RESEARCH_STOP_WORDS.has(term)) continue;
+    if (seen.has(term)) continue;
+    seen.add(term);
+    unique.push(term);
+  }
+
+  return unique.slice(0, 8);
+}
+
+function escapeGoogleDriveQueryValue(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'");
+}
+
+function buildWorkspaceResearchDriveQuery(terms) {
+  const clauses = [];
+
+  for (const term of terms) {
+    const escaped = escapeGoogleDriveQueryValue(term);
+    clauses.push(`name contains '${escaped}'`);
+    clauses.push(`fullText contains '${escaped}'`);
+  }
+
+  return clauses.length
+    ? `trashed = false and (${clauses.join(" or ")})`
+    : "trashed = false";
+}
+
+function extractGoogleDocumentText(document) {
+  const parts = [];
+
+  function walkStructuralElements(elements) {
+    for (const element of Array.isArray(elements) ? elements : []) {
+      const paragraphElements =
+        element?.paragraph?.elements || [];
+
+      for (const paragraphElement of paragraphElements) {
+        const content =
+          paragraphElement?.textRun?.content;
+
+        if (typeof content === "string") {
+          parts.push(content);
+        }
+      }
+
+      const tableRows =
+        element?.table?.tableRows || [];
+
+      for (const row of tableRows) {
+        for (const cell of row?.tableCells || []) {
+          walkStructuralElements(cell?.content || []);
+        }
+      }
+
+      if (element?.tableOfContents?.content) {
+        walkStructuralElements(
+          element.tableOfContents.content
+        );
+      }
+    }
+  }
+
+  walkStructuralElements(document?.body?.content || []);
+
+  return parts
+    .join("")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function scoreWorkspaceResearchCandidate({
+  file,
+  text = "",
+  terms = []
+} = {}) {
+  const name = String(file?.name || "").toLowerCase();
+  const content = String(text || "").toLowerCase();
+  let score = 0;
+  const matchedTerms = [];
+
+  for (const term of terms) {
+    let matched = false;
+
+    if (name.includes(term)) {
+      score += 8;
+      matched = true;
+    }
+
+    if (content.includes(term)) {
+      score += 3;
+      matched = true;
+    }
+
+    if (matched) matchedTerms.push(term);
+  }
+
+  if (file?.mimeType === GOOGLE_DOC_MIME_TYPE) {
+    score += 2;
+  }
+
+  return {
+    score,
+    matchedTerms: [...new Set(matchedTerms)]
+  };
+}
+
+function buildWorkspaceEvidenceExcerpt(text, terms, maximumLength = 1800) {
+  const source = String(text || "").trim();
+  if (!source) return "";
+
+  const lower = source.toLowerCase();
+  let firstIndex = -1;
+
+  for (const term of terms) {
+    const index = lower.indexOf(term);
+    if (
+      index >= 0 &&
+      (firstIndex < 0 || index < firstIndex)
+    ) {
+      firstIndex = index;
+    }
+  }
+
+  if (firstIndex < 0) {
+    return source.slice(0, maximumLength);
+  }
+
+  const before = Math.floor(maximumLength * 0.3);
+  const start = Math.max(0, firstIndex - before);
+  const end = Math.min(
+    source.length,
+    start + maximumLength
+  );
+
+  return source.slice(start, end).trim();
+}
+
+async function researchGoogleWorkspaceReadOnly({
+  question,
+  limit = 20,
+  readLimit = 8
+} = {}) {
+  const terms =
+    normalizeWorkspaceResearchTerms(question);
+
+  if (!terms.length) {
+    const error = new Error(
+      "A workspace research question with searchable terms is required."
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_RESEARCH_QUERY_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+
+  const driveQuery =
+    buildWorkspaceResearchDriveQuery(terms);
+
+  const search =
+    await GoogleWorkspaceProvider.searchDrive({
+      query: driveQuery,
+      pageSize: Math.max(
+        1,
+        Math.min(100, Number(limit) || 20)
+      ),
+      orderBy: "modifiedTime desc"
+    });
+
+  const files =
+    (search.files || []).filter(
+      file => file && !file.trashed
+    );
+
+  const readable = files
+    .filter(file =>
+      file.mimeType === GOOGLE_DOC_MIME_TYPE ||
+      file.mimeType === GOOGLE_SHEET_MIME_TYPE
+    )
+    .slice(
+      0,
+      Math.max(
+        1,
+        Math.min(20, Number(readLimit) || 8)
+      )
+    );
+
+  const evidence = [];
+
+  for (const file of readable) {
+    try {
+      let text = "";
+      let structured = null;
+
+      if (file.mimeType === GOOGLE_DOC_MIME_TYPE) {
+        structured =
+          await GoogleWorkspaceProvider
+            .readGoogleDocument(file.id);
+
+        text =
+          extractGoogleDocumentText(structured);
+      } else if (
+        file.mimeType === GOOGLE_SHEET_MIME_TYPE
+      ) {
+        structured =
+          await GoogleWorkspaceProvider
+            .readSpreadsheet({
+              spreadsheetId: file.id
+            });
+
+        text = JSON.stringify(
+          structured?.sheets?.map(sheet => ({
+            title:
+              sheet?.properties?.title || "",
+            rowCount:
+              sheet?.properties?.gridProperties
+                ?.rowCount || null,
+            columnCount:
+              sheet?.properties?.gridProperties
+                ?.columnCount || null
+          })) || []
+        );
+      }
+
+      const scoring =
+        scoreWorkspaceResearchCandidate({
+          file,
+          text,
+          terms
+        });
+
+      evidence.push({
+        file: {
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType,
+          webViewLink:
+            file.webViewLink || null,
+          modifiedTime:
+            file.modifiedTime || null,
+          createdTime:
+            file.createdTime || null
+        },
+        score: scoring.score,
+        matchedTerms:
+          scoring.matchedTerms,
+        excerpt:
+          buildWorkspaceEvidenceExcerpt(
+            text,
+            terms
+          ),
+        characterCount: text.length
+      });
+    } catch (error) {
+      evidence.push({
+        file: {
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType,
+          webViewLink:
+            file.webViewLink || null,
+          modifiedTime:
+            file.modifiedTime || null
+        },
+        score: 0,
+        matchedTerms: [],
+        excerpt: "",
+        characterCount: 0,
+        readError: {
+          message:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "GOOGLE_WORKSPACE_DOCUMENT_READ_FAILED"
+        }
+      });
+    }
+  }
+
+  evidence.sort((a, b) =>
+    Number(b.score || 0) -
+    Number(a.score || 0)
+  );
+
+  return {
+    schema:
+      "meos.google-workspace.read-research.v1",
+    readOnly: true,
+    question: String(question || "").trim(),
+    searchTerms: terms,
+    driveQuery,
+    filesFound: files.length,
+    filesRead: readable.length,
+    evidence,
+    bestMatch:
+      evidence.find(item => item.score > 0) ||
+      evidence[0] ||
+      null,
+    searchedAt: new Date().toISOString()
   };
 }
 
@@ -5632,6 +5968,74 @@ app.get(
   </main>
 </body>
 </html>`);
+    }
+  }
+);
+
+
+app.get(
+  "/api/google/workspace/research",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const status =
+        await ensureGoogleWorkspaceInitialized();
+
+      if (!status.connected) {
+        response.status(401).json({
+          schema:
+            "meos.google-workspace.read-research.v1",
+          error:
+            "Google Workspace authorization is required.",
+          code:
+            "GOOGLE_WORKSPACE_NOT_CONNECTED",
+          authorizeUrl:
+            "/auth/google"
+        });
+        return;
+      }
+
+      const question =
+        String(request.query?.q || "").trim();
+
+      const result =
+        await researchGoogleWorkspaceReadOnly({
+          question,
+          limit:
+            Math.max(
+              1,
+              Math.min(
+                100,
+                Number(request.query?.limit || 20)
+              )
+            ),
+          readLimit:
+            Math.max(
+              1,
+              Math.min(
+                20,
+                Number(request.query?.readLimit || 8)
+              )
+            )
+        });
+
+      response.status(200).json({
+        integrationVersion:
+          GOOGLE_WORKSPACE_INTEGRATION_VERSION,
+        integrationBuildId:
+          GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID,
+        connected: true,
+        ...result
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          schema:
+            "meos.google-workspace.read-research.v1",
+          ...googleWorkspaceErrorResponse(error)
+        });
     }
   }
 );
