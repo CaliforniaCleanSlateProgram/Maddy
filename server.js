@@ -33,7 +33,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.0";
+const VERSION = "2.10.1";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -103,9 +103,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.0.0";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.1.0";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI100-READ-ONLY-SERVER-INTEGRATION-20260806-A";
+  "GWI110-DURABLE-ENV-AUTH-20260806-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -5570,6 +5570,22 @@ app.get(
                 : ""
           });
 
+      const durableAuthorization =
+        result?.durableAuthorization || {};
+
+      const bootstrapSection =
+        durableAuthorization.needsBootstrap &&
+        durableAuthorization.refreshToken
+          ? `<section style="margin-top:24px;padding:16px;border:2px solid #b7791f;max-width:760px;">
+    <h2>One-time free-tier durability step</h2>
+    <p>Render Free does not keep local files after a deploy. Copy the secret below into Render as an environment variable named <strong>GOOGLE_WORKSPACE_REFRESH_TOKEN</strong>. After you save it, Render will redeploy and MEOS will restore Google automatically on future restarts.</p>
+    <p><strong>Treat this value like a password. Do not put it in GitHub or share it.</strong></p>
+    <textarea readonly rows="5" style="width:100%;font-family:monospace;">${String(
+      durableAuthorization.refreshToken
+    ).replace(/[<>&]/g, "")}</textarea>
+  </section>`
+          : `<p>Durable Google authorization is configured for server restarts.</p>`;
+
       response.status(200).send(`<!doctype html>
 <html lang="en">
 <head>
@@ -5584,6 +5600,7 @@ app.get(
       result.account?.emailAddress || "the approved Workspace account"
     ).replace(/[<>&'"]/g, "")}.</p>
     <p>No files can be created, changed, moved, or deleted in this release.</p>
+    ${bootstrapSection}
     <p><a href="/api/google/status">View connection status</a></p>
     <p><a href="/">Return to MEOS</a></p>
   </main>
