@@ -33,7 +33,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.2";
+const VERSION = "2.10.3";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -103,9 +103,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.2.0";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.3.0";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI120-WORKSPACE-READ-RESEARCH-20260806-A";
+  "GWI130-WORKSPACE-FILE-RETRIEVAL-20260806-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -334,8 +334,8 @@ function buildWorkspaceEvidenceExcerpt(text, terms, maximumLength = 1800) {
 
 async function researchGoogleWorkspaceReadOnly({
   question,
-  limit = 20,
-  readLimit = 8
+  limit = 50,
+  readLimit = 12
 } = {}) {
   const terms =
     normalizeWorkspaceResearchTerms(question);
@@ -358,7 +358,7 @@ async function researchGoogleWorkspaceReadOnly({
       query: driveQuery,
       pageSize: Math.max(
         1,
-        Math.min(100, Number(limit) || 20)
+        Math.min(100, Number(limit) || 50)
       ),
       orderBy: "modifiedTime desc"
     });
@@ -368,28 +368,67 @@ async function researchGoogleWorkspaceReadOnly({
       file => file && !file.trashed
     );
 
+  /*
+   * Commission 005.005 — File Retrieval
+   *
+   * A Drive search hit is useful even when its binary contents cannot be read
+   * through Docs/Sheets APIs. PDFs, Word files, images, uploaded records, and
+   * other Drive objects must still be eligible to become the best file match.
+   * Readable Google Docs/Sheets receive additional content evidence below.
+   */
+  const evidenceById = new Map();
+
+  for (const file of files) {
+    const scoring =
+      scoreWorkspaceResearchCandidate({
+        file,
+        text: "",
+        terms
+      });
+
+    evidenceById.set(file.id, {
+      file: {
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        webViewLink: file.webViewLink || null,
+        modifiedTime: file.modifiedTime || null,
+        createdTime: file.createdTime || null
+      },
+      score: scoring.score,
+      matchedTerms: scoring.matchedTerms,
+      excerpt: "",
+      characterCount: 0,
+      contentRead: false
+    });
+  }
+
   const readable = files
     .filter(file =>
       file.mimeType === GOOGLE_DOC_MIME_TYPE ||
       file.mimeType === GOOGLE_SHEET_MIME_TYPE
     )
+    .sort((a, b) => {
+      const aScore = evidenceById.get(a.id)?.score || 0;
+      const bScore = evidenceById.get(b.id)?.score || 0;
+      return bScore - aScore;
+    })
     .slice(
       0,
       Math.max(
         1,
-        Math.min(20, Number(readLimit) || 8)
+        Math.min(20, Number(readLimit) || 12)
       )
     );
 
-  const evidence = [];
+  let filesRead = 0;
 
   for (const file of readable) {
     try {
       let text = "";
-      let structured = null;
 
       if (file.mimeType === GOOGLE_DOC_MIME_TYPE) {
-        structured =
+        const structured =
           await GoogleWorkspaceProvider
             .readGoogleDocument(file.id);
 
@@ -398,7 +437,7 @@ async function researchGoogleWorkspaceReadOnly({
       } else if (
         file.mimeType === GOOGLE_SHEET_MIME_TYPE
       ) {
-        structured =
+        const structured =
           await GoogleWorkspaceProvider
             .readSpreadsheet({
               spreadsheetId: file.id
@@ -425,43 +464,32 @@ async function researchGoogleWorkspaceReadOnly({
           terms
         });
 
-      evidence.push({
+      evidenceById.set(file.id, {
         file: {
           id: file.id,
           name: file.name,
           mimeType: file.mimeType,
-          webViewLink:
-            file.webViewLink || null,
-          modifiedTime:
-            file.modifiedTime || null,
-          createdTime:
-            file.createdTime || null
+          webViewLink: file.webViewLink || null,
+          modifiedTime: file.modifiedTime || null,
+          createdTime: file.createdTime || null
         },
         score: scoring.score,
-        matchedTerms:
-          scoring.matchedTerms,
+        matchedTerms: scoring.matchedTerms,
         excerpt:
           buildWorkspaceEvidenceExcerpt(
             text,
             terms
           ),
-        characterCount: text.length
+        characterCount: text.length,
+        contentRead: true
       });
+
+      filesRead += 1;
     } catch (error) {
-      evidence.push({
-        file: {
-          id: file.id,
-          name: file.name,
-          mimeType: file.mimeType,
-          webViewLink:
-            file.webViewLink || null,
-          modifiedTime:
-            file.modifiedTime || null
-        },
-        score: 0,
-        matchedTerms: [],
-        excerpt: "",
-        characterCount: 0,
+      const existing = evidenceById.get(file.id);
+
+      evidenceById.set(file.id, {
+        ...existing,
         readError: {
           message:
             error?.message || String(error),
@@ -473,25 +501,58 @@ async function researchGoogleWorkspaceReadOnly({
     }
   }
 
-  evidence.sort((a, b) =>
-    Number(b.score || 0) -
-    Number(a.score || 0)
-  );
+  const evidence = [...evidenceById.values()];
+
+  evidence.sort((a, b) => {
+    const scoreDifference =
+      Number(b.score || 0) - Number(a.score || 0);
+
+    if (scoreDifference !== 0) {
+      return scoreDifference;
+    }
+
+    return String(a.file?.name || "")
+      .localeCompare(String(b.file?.name || ""));
+  });
+
+  const bestMatch =
+    evidence.find(item => item.score > 0) || null;
+
+  const topScore = Number(bestMatch?.score || 0);
+  const secondScore = Number(evidence[1]?.score || 0);
+  const matchedTermCount =
+    bestMatch?.matchedTerms?.length || 0;
+
+  const confidence = !bestMatch
+    ? "none"
+    : matchedTermCount >= 2 &&
+        (topScore >= 16 || topScore > secondScore)
+      ? "high"
+      : matchedTermCount >= 1
+        ? "possible"
+        : "none";
 
   return {
     schema:
-      "meos.google-workspace.read-research.v1",
+      "meos.google-workspace.read-research.v2",
     readOnly: true,
     question: String(question || "").trim(),
     searchTerms: terms,
     driveQuery,
     filesFound: files.length,
-    filesRead: readable.length,
+    filesRead,
     evidence,
-    bestMatch:
-      evidence.find(item => item.score > 0) ||
-      evidence[0] ||
-      null,
+    bestMatch,
+    retrieval: {
+      success: Boolean(bestMatch),
+      confidence,
+      file: bestMatch?.file || null,
+      message: bestMatch
+        ? confidence === "high"
+          ? `Found the best matching file: ${bestMatch.file.name}`
+          : `Found a possible matching file: ${bestMatch.file.name}`
+        : "I searched the connected workspace but could not identify a matching file."
+    },
     searchedAt: new Date().toISOString()
   };
 }
@@ -5985,7 +6046,7 @@ app.get(
       if (!status.connected) {
         response.status(401).json({
           schema:
-            "meos.google-workspace.read-research.v1",
+            "meos.google-workspace.read-research.v2",
           error:
             "Google Workspace authorization is required.",
           code:
@@ -6007,7 +6068,7 @@ app.get(
               1,
               Math.min(
                 100,
-                Number(request.query?.limit || 20)
+                Number(request.query?.limit || 50)
               )
             ),
           readLimit:
@@ -6015,7 +6076,7 @@ app.get(
               1,
               Math.min(
                 20,
-                Number(request.query?.readLimit || 8)
+                Number(request.query?.readLimit || 12)
               )
             )
         });
@@ -6033,7 +6094,7 @@ app.get(
         .status(error?.status || 500)
         .json({
           schema:
-            "meos.google-workspace.read-research.v1",
+            "meos.google-workspace.read-research.v2",
           ...googleWorkspaceErrorResponse(error)
         });
     }
