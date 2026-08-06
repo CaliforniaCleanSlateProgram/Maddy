@@ -14,6 +14,7 @@
  * - Serve the existing MEOS frontend without changing its structure.
  * - Run durable standing office missions through Continuous Operations.
  * - Operate the autonomous Funding Intelligence Network.
+ * - Provide secure, read-only Google Workspace authorization and access.
  */
 
 import express from "express";
@@ -30,8 +31,9 @@ import LocalCSRDiscoveryAdapter from "./local-csr-discovery-adapter.js";
 import CommunityFoundationDiscoveryAdapter from "./community-foundation-discovery-adapter.js";
 import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adapter.js";
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
+import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.9.2";
+const VERSION = "2.10.0";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -97,6 +99,64 @@ function registerResourceDiscoveryAdapters() {
     },
     adapters:
       resourceDiscoveryIntegrationState.registeredAdapters
+  };
+}
+
+
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.0.0";
+const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
+  "GWI100-READ-ONLY-SERVER-INTEGRATION-20260806-A";
+
+let googleWorkspaceInitializationPromise = null;
+
+async function ensureGoogleWorkspaceInitialized() {
+  let status = GoogleWorkspaceProvider.getStatus();
+
+  if (!status.initialized) {
+    if (!googleWorkspaceInitializationPromise) {
+      googleWorkspaceInitializationPromise =
+        GoogleWorkspaceProvider.initialize()
+          .finally(() => {
+            googleWorkspaceInitializationPromise = null;
+          });
+    }
+
+    await googleWorkspaceInitializationPromise;
+    status = GoogleWorkspaceProvider.getStatus();
+  }
+
+  /*
+   * Provider v1.0.0 can load a stored token before its initialized flag is
+   * committed during a cold start. Verify once more after initialization so
+   * a valid persisted connection is restored without requiring reauthorization.
+   */
+  if (
+    status.initialized &&
+    status.tokenLoaded &&
+    !status.connected
+  ) {
+    try {
+      await GoogleWorkspaceProvider.verifyConnection();
+      status = GoogleWorkspaceProvider.getStatus();
+    } catch {
+      status = GoogleWorkspaceProvider.getStatus();
+    }
+  }
+
+  return status;
+}
+
+function googleWorkspaceErrorResponse(error) {
+  return {
+    error:
+      error?.message ||
+      "Google Workspace request failed.",
+    code:
+      error?.code ||
+      "GOOGLE_WORKSPACE_REQUEST_FAILED",
+    details:
+      error?.details ||
+      null
   };
 }
 
@@ -5380,6 +5440,245 @@ app.get("/api/website-intelligence/fetch", async (request, response) => {
   }
 });
 
+
+/* ========================================================================== */
+/* MEOS Google Workspace Integration v1.0.0 — Read-Only Authorization Layer   */
+/* ========================================================================== */
+
+app.get("/api/google/status", async (request, response) => {
+  response.set("Cache-Control", "no-store");
+
+  try {
+    const status =
+      await ensureGoogleWorkspaceInitialized();
+
+    response
+      .status(status.configured ? 200 : 503)
+      .json({
+        schema:
+          "meos.google-workspace.status.v1",
+        integrationVersion:
+          GOOGLE_WORKSPACE_INTEGRATION_VERSION,
+        integrationBuildId:
+          GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID,
+        ...status
+      });
+  } catch (error) {
+    const status =
+      GoogleWorkspaceProvider.getStatus();
+
+    response
+      .status(error?.status || 500)
+      .json({
+        schema:
+          "meos.google-workspace.status.v1",
+        integrationVersion:
+          GOOGLE_WORKSPACE_INTEGRATION_VERSION,
+        integrationBuildId:
+          GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID,
+        ...status,
+        ...googleWorkspaceErrorResponse(error)
+      });
+  }
+});
+
+app.get("/auth/google", async (request, response) => {
+  response.set("Cache-Control", "no-store");
+
+  try {
+    const status =
+      await ensureGoogleWorkspaceInitialized();
+
+    if (!status.configured) {
+      response.status(503).json({
+        schema:
+          "meos.google-workspace.authorization.v1",
+        ...googleWorkspaceErrorResponse({
+          message:
+            "Google Workspace credentials are not configured.",
+          code:
+            "GOOGLE_WORKSPACE_NOT_CONFIGURED",
+          status: 503,
+          details: {
+            missingConfiguration:
+              status.missingConfiguration
+          }
+        })
+      });
+      return;
+    }
+
+    const authorizationUrl =
+      GoogleWorkspaceProvider.getAuthorizationUrl({
+        forceConsent: true
+      });
+
+    response.redirect(302, authorizationUrl);
+  } catch (error) {
+    response
+      .status(error?.status || 500)
+      .json({
+        schema:
+          "meos.google-workspace.authorization.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+  }
+});
+
+app.get(
+  "/auth/google/callback",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const providerError =
+      typeof request.query?.error === "string"
+        ? request.query.error.trim()
+        : "";
+
+    if (providerError) {
+      response.status(400).send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MEOS Google Workspace Connection</title>
+</head>
+<body>
+  <main>
+    <h1>Google Workspace was not connected.</h1>
+    <p>Google returned: ${providerError.replace(/[<>&'"]/g, "")}</p>
+    <p><a href="/auth/google">Try authorization again</a></p>
+  </main>
+</body>
+</html>`);
+      return;
+    }
+
+    try {
+      await ensureGoogleWorkspaceInitialized();
+
+      const result =
+        await GoogleWorkspaceProvider
+          .authorizeFromCallback({
+            code:
+              typeof request.query?.code === "string"
+                ? request.query.code
+                : "",
+            callbackState:
+              typeof request.query?.state === "string"
+                ? request.query.state
+                : ""
+          });
+
+      response.status(200).send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MEOS Google Workspace Connected</title>
+</head>
+<body>
+  <main>
+    <h1>Google Workspace connected.</h1>
+    <p>MEOS now has read-only access authorized by ${String(
+      result.account?.emailAddress || "the approved Workspace account"
+    ).replace(/[<>&'"]/g, "")}.</p>
+    <p>No files can be created, changed, moved, or deleted in this release.</p>
+    <p><a href="/api/google/status">View connection status</a></p>
+    <p><a href="/">Return to MEOS</a></p>
+  </main>
+</body>
+</html>`);
+    } catch (error) {
+      console.error(
+        "[MEOS] Google Workspace OAuth callback failed:",
+        error
+      );
+
+      response
+        .status(error?.status || 500)
+        .send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MEOS Google Workspace Connection Error</title>
+</head>
+<body>
+  <main>
+    <h1>Google Workspace connection failed.</h1>
+    <p>${String(
+      error?.message ||
+        "The authorization callback could not be completed."
+    ).replace(/[<>&'"]/g, "")}</p>
+    <p><a href="/auth/google">Try authorization again</a></p>
+  </main>
+</body>
+</html>`);
+    }
+  }
+);
+
+app.get(
+  "/api/google/drive/headquarters",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const status =
+        await ensureGoogleWorkspaceInitialized();
+
+      if (!status.connected) {
+        response.status(401).json({
+          schema:
+            "meos.google-workspace.headquarters.v1",
+          error:
+            "Google Workspace authorization is required.",
+          code:
+            "GOOGLE_WORKSPACE_NOT_CONNECTED",
+          authorizeUrl:
+            "/auth/google"
+        });
+        return;
+      }
+
+      const headquarters =
+        await GoogleWorkspaceProvider
+          .listHeadquarters({
+            pageSize:
+              Math.max(
+                1,
+                Math.min(
+                  1000,
+                  Number(request.query?.limit || 1000)
+                )
+              )
+          });
+
+      response.status(200).json({
+        schema:
+          "meos.google-workspace.headquarters.v1",
+        integrationVersion:
+          GOOGLE_WORKSPACE_INTEGRATION_VERSION,
+        integrationBuildId:
+          GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID,
+        connected: true,
+        readOnly: true,
+        ...headquarters
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          schema:
+            "meos.google-workspace.headquarters.v1",
+          ...googleWorkspaceErrorResponse(error)
+        });
+    }
+  }
+);
+
+
 app.get("/health", async (request, response) => {
   pruneTtsCache();
   const executiveMemory = await executiveMemoryStorageStatus();
@@ -5412,7 +5711,15 @@ app.get("/health", async (request, response) => {
       websiteIntelligence:
         WEBSITE_FETCH_ALLOWED_ORIGINS.size > 0
           ? "configured"
-          : "missing-allowlist"
+          : "missing-allowlist",
+      googleWorkspace:
+        GoogleWorkspaceProvider.getStatus().configured
+          ? (
+              GoogleWorkspaceProvider.getStatus().connected
+                ? "connected"
+                : "configured-not-authorized"
+            )
+          : "missing"
     },
     websiteIntelligence: {
       approvedOrigins: [...WEBSITE_FETCH_ALLOWED_ORIGINS],
@@ -5429,6 +5736,13 @@ app.get("/health", async (request, response) => {
     },
     continuousOperations,
     fundingIntelligence,
+    googleWorkspace: {
+      integrationVersion:
+        GOOGLE_WORKSPACE_INTEGRATION_VERSION,
+      integrationBuildId:
+        GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID,
+      ...GoogleWorkspaceProvider.getStatus()
+    },
     ttsDeduplication: {
       activeRequests: inFlightTtsRequests.size,
       cachedResponses: completedTtsCache.size
@@ -9435,6 +9749,24 @@ app.listen(PORT, () => {
   console.log(
     `[MEOS] Voice Engine v${VOICE_ENGINE_VERSION} server authority ready.`
   );
+
+  ensureGoogleWorkspaceInitialized()
+    .then(status => {
+      console.log(
+        `[MEOS] Google Workspace Integration ` +
+          `v${GOOGLE_WORKSPACE_INTEGRATION_VERSION} initialized. ` +
+          `configured=${status.configured}, ` +
+          `connected=${status.connected}, ` +
+          `mode=${status.mode}, ` +
+          `build=${GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID}.`
+      );
+    })
+    .catch(error => {
+      console.error(
+        "[MEOS] Google Workspace Integration failed to initialize:",
+        error
+      );
+    });
 
   try {
     const discovery = registerResourceDiscoveryAdapters();
