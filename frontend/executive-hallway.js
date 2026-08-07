@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.3.0";
-  const BUILD_ID = "EH130-RESOURCE-ROUTING-20260807-A";
+  const VERSION = "1.3.1";
+  const BUILD_ID = "EH131-LOCAL-DISCOVERY-DELIVERY-20260807-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -236,19 +236,91 @@
     return parts.join(" • ") || "Resource Development opportunity returned by MEOS.";
   }
 
+  function resourceRecordTypeText(record = {}) {
+    return JSON.stringify([
+      record.resourceType,
+      record.resourceTypes,
+      record.resourceChannels,
+      record.category,
+      record.type,
+      record.sourceType,
+      record.resourceDevelopment?.channel,
+      record.title,
+      record.description
+    ]).toLowerCase();
+  }
+
+  function resourceRecordGeographyText(record = {}) {
+    return JSON.stringify([
+      record.geography,
+      record.location,
+      record.region,
+      record.serviceArea,
+      record.eligibleGeography,
+      record.resourceDevelopment?.geography,
+      record.executiveBrief?.geography,
+      record.raw?.source?.geography
+    ]).toLowerCase();
+  }
+
+  function resourceRecordMatches(record = {}, { wantsGrant = false, wantsLocal = false, localNeedle = "" } = {}) {
+    if (wantsGrant && !/\bgrant\b/.test(resourceRecordTypeText(record))) return false;
+    if (wantsLocal && localNeedle && !resourceRecordGeographyText(record).includes(localNeedle)) return false;
+    return true;
+  }
+
+  function resourceRecordKey(record = {}) {
+    const stableId = String(record.id || record.opportunityId || "").trim().toLowerCase();
+    if (stableId) return `id:${stableId}`;
+    const url = String(resourceRecordUrl(record) || "").trim().toLowerCase();
+    if (url) return `url:${url}`;
+    return `title:${resourceRecordTitle(record).trim().toLowerCase()}`;
+  }
+
+  function mergeResourceRecords(...groups) {
+    const merged = new Map();
+    groups.flatMap(group => Array.isArray(group) ? group : []).forEach(record => {
+      if (!record || typeof record !== "object") return;
+      const key = resourceRecordKey(record);
+      if (!merged.has(key)) merged.set(key, record);
+    });
+    return [...merged.values()];
+  }
+
   function normalizeResourceDeliverables(work, result = {}) {
     const records = Array.isArray(result.records) ? result.records : [];
     records.slice(0, 10).forEach(record => {
+      const discoveryStatus = record.discoveryStatus || record.resourceDevelopment?.discoveryStatus || null;
+      const summary = resourceRecordSummary(record);
       addDeliverable(work, {
         title: resourceRecordTitle(record),
         kind: "executive-brief",
         openUrl: resourceRecordUrl(record),
-        summary: resourceRecordSummary(record),
+        summary: discoveryStatus === "source-identified"
+          ? `${summary} • Status: source identified; current cycle, eligibility, deadline, and application requirements still require investigation.`
+          : summary,
         provider: "meos-resource-development",
-        source: "executive-resource-development-office",
+        source: record.discoverySource || "executive-resource-development-office",
         data: record
       });
     });
+
+    if (!records.length) {
+      addDeliverable(work, {
+        title: "No matching local grants found",
+        kind: "research-status",
+        summary: `MEOS completed the requested Resource Development search for ${result.geography?.serviceArea || "the organization's local service area"} and returned no matching grant records. No result was fabricated.`,
+        provider: "meos-resource-development",
+        source: "executive-resource-development-office",
+        data: {
+          query: result.query || work.instruction,
+          geography: clone(result.geography || null),
+          resourceTypes: clone(result.resourceTypes || []),
+          searchedAt: result.searchedAt || now(),
+          discovery: clone(result.discovery || null)
+        }
+      });
+    }
     return work.deliverables.length;
   }
 
@@ -265,36 +337,46 @@
     });
     if (!deskResponse.ok) throw new Error(`Resource Development desk returned HTTP ${deskResponse.status}.`);
     const desk = await deskResponse.json();
-    let records = Array.isArray(desk.records) ? desk.records : [];
-
+    const deskRecords = Array.isArray(desk.records) ? desk.records : [];
     const localNeedle = String(serviceArea || "").toLowerCase().split(",")[0].trim();
-    records = records.filter(record => {
-      const typeText = JSON.stringify([
-        record.resourceType, record.resourceTypes, record.category, record.type,
-        record.resourceDevelopment?.channel, record.title, record.description
-      ]).toLowerCase();
-      if (wantsGrant && !/\bgrant\b/.test(typeText)) return false;
-      if (wantsLocal && localNeedle) {
-        const geographyText = JSON.stringify([
-          record.geography, record.location, record.region, record.serviceArea,
-          record.eligibleGeography, record.resourceDevelopment?.geography,
-          record.executiveBrief?.geography
-        ]).toLowerCase();
-        if (!geographyText.includes(localNeedle)) return false;
-      }
-      return true;
-    });
+
+    const matchingDeskRecords = deskRecords.filter(record =>
+      resourceRecordMatches(record, { wantsGrant, wantsLocal, localNeedle })
+    );
 
     let discovery = null;
+    let matchingDiscoveryRecords = [];
     if (wantsLocal) {
       try {
         const localResponse = await fetchImpl("/api/resource-discovery/local", {
           method: "GET",
           headers: { Accept: "application/json" }
         });
-        if (localResponse.ok) discovery = await localResponse.json();
-      } catch (_) { /* Desk results remain authoritative if local source refresh is unavailable. */ }
+        if (localResponse.ok) {
+          discovery = await localResponse.json();
+          const discoveredRecords = Array.isArray(discovery?.records) ? discovery.records : [];
+          matchingDiscoveryRecords = discoveredRecords
+            .filter(record => resourceRecordMatches(record, { wantsGrant, wantsLocal, localNeedle }))
+            .map(record => ({
+              ...record,
+              discoverySource: discovery?.source?.name || discovery?.source?.id || "local-resource-discovery",
+              discoveryRun: {
+                schema: discovery?.schema || null,
+                version: discovery?.version || null,
+                buildId: discovery?.buildId || null,
+                status: discovery?.status || null
+              }
+            }));
+        }
+      } catch (error) {
+        discovery = {
+          success: false,
+          error: error?.message || String(error)
+        };
+      }
     }
+
+    const records = mergeResourceRecords(matchingDeskRecords, matchingDiscoveryRecords);
 
     return {
       success: true,
@@ -303,6 +385,8 @@
       geography: { scope: interpretation?.geography?.scope || "unspecified", serviceArea },
       resourceTypes: [...(interpretation?.resourceTypes || [])],
       total: records.length,
+      deskMatches: matchingDeskRecords.length,
+      discoveryMatches: matchingDiscoveryRecords.length,
       records: records.slice(0, 25),
       discovery,
       searchedAt: now()
@@ -1146,6 +1230,31 @@
       interpretResourceDevelopmentRequest("Find our grant application in Google Drive") === null
     );
     check("Resource Development route exists", typeof routeResourceDevelopmentWork === "function");
+    const discoveryMergeFixture = mergeResourceRecords(
+      [{ id: "desk-1", title: "Desk Grant", resourceType: "grant", geography: "Santa Cruz County, California" }],
+      [
+        { id: "desk-1", title: "Desk Grant duplicate", resourceType: "grant", geography: "Santa Cruz County, California" },
+        {
+          id: "local-source:community-foundation-santa-cruz-county",
+          title: "Community Foundation Santa Cruz County",
+          resourceType: "partnership",
+          resourceChannels: ["grant", "philanthropy"],
+          geography: "Santa Cruz County, California",
+          url: "https://www.cfscc.org/grant-opportunities"
+        }
+      ]
+    );
+    check(
+      "Local discovery records merge into Resource Development results without duplicates",
+      discoveryMergeFixture.length === 2 &&
+        discoveryMergeFixture.some(item => /cfscc\.org\/grant-opportunities/.test(resourceRecordUrl(item) || "")),
+      discoveryMergeFixture
+    );
+    check(
+      "Grant filtering recognizes multi-channel local discovery sources",
+      resourceRecordMatches(discoveryMergeFixture[1], { wantsGrant: true, wantsLocal: true, localNeedle: "santa cruz county" }),
+      discoveryMergeFixture[1] || {}
+    );
     check("Provider-neutral Workspace doorway exists", typeof workspaceOffice === "function");
     check("Executive Router fallback exists", typeof executiveRouter === "function");
     check("Mission Engine mirror exists", typeof registerMissionMirror === "function");
