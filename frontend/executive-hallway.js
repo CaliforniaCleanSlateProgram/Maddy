@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.2.0";
-  const BUILD_ID = "EH120-NOT-THIS-REDISPATCH-20260807-A";
+  const VERSION = "1.3.0";
+  const BUILD_ID = "EH130-RESOURCE-ROUTING-20260807-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -168,6 +168,185 @@
 
   function workspaceOffice() {
     return global.MEOSExecutiveWorkspaceOffice || null;
+  }
+
+  function organizationalProfile() {
+    return global.CCSPOrganizationalProfile?.profile || global.OrganizationalProfile || null;
+  }
+
+  function organizationServiceArea() {
+    const profile = organizationalProfile();
+    const organization = profile?.organization || {};
+    return String(
+      organization.primaryServiceArea ||
+      organization.serviceArea ||
+      profile?.serviceArea ||
+      ""
+    ).trim() || null;
+  }
+
+  function isExplicitWorkspaceFileRequest(instruction = "") {
+    const text = String(instruction || "").toLowerCase();
+    return /\b(my|our)\s+(drive|google drive|workspace|file|files|document|documents|folder|folders)\b/.test(text) ||
+      /\b(in|from|inside)\s+(my|our)?\s*(drive|google drive|workspace|folder|files?)\b/.test(text) ||
+      /\b(open|fetch|get|find|locate|retrieve)\b.{0,35}\b(file|document|pdf|doc|sheet|spreadsheet|folder)\b/.test(text);
+  }
+
+  function interpretResourceDevelopmentRequest(instruction = "") {
+    const text = String(instruction || "").trim();
+    const normalized = text.toLowerCase();
+    if (!normalized || isExplicitWorkspaceFileRequest(normalized)) return null;
+
+    const asksToDiscover = /\b(find|search|discover|look for|locate|identify|show me|get me|research|scan)\b/.test(normalized);
+    const resourceLanguage = /\b(grant|grants|funding|funders?|foundation|foundations|sponsorship|sponsorships|donor|donors|donation|donations|resource|resources|opportunit(?:y|ies)|corporate giving|in-kind|contract|contracts)\b/.test(normalized);
+    if (!asksToDiscover || !resourceLanguage) return null;
+
+    const wantsGrants = /\bgrant|grants\b/.test(normalized);
+    const wantsLocal = /\b(local|locally|nearby|near me|in our area|in my area|around here|our county|my county|here)\b/.test(normalized);
+    const serviceArea = organizationServiceArea();
+
+    return {
+      intent: "discover-resources",
+      requiredCapabilities: ["resource.discovery", "resource.development", "research.public-web"],
+      resourceTypes: wantsGrants ? ["grant"] : [],
+      geography: wantsLocal ? { scope: "local", serviceArea } : { scope: "unspecified", serviceArea },
+      instruction: text
+    };
+  }
+
+  function resourceRecordUrl(record = {}) {
+    return record.url || record.opportunityUrl || record.applicationUrl || record.sourceUrl ||
+      record.webUrl || record.link || record.resourceDevelopment?.sourceUrl ||
+      record.executiveBrief?.sourceUrl || null;
+  }
+
+  function resourceRecordTitle(record = {}) {
+    return record.title || record.name || record.opportunityTitle || record.sourceName || "Resource opportunity";
+  }
+
+  function resourceRecordSummary(record = {}) {
+    const rd = record.resourceDevelopment || {};
+    const brief = rd.executiveBrief || record.executiveBrief || {};
+    const parts = [
+      brief.whyOnDesk || brief.reason || rd.reason || record.description || record.summary || null,
+      record.geography ? `Geography: ${record.geography}` : null,
+      record.deadline?.iso ? `Deadline: ${record.deadline.iso}` : (record.deadline ? `Deadline: ${record.deadline}` : null),
+      rd.executiveDecision ? `Recommendation: ${rd.executiveDecision}` : null
+    ].filter(Boolean);
+    return parts.join(" • ") || "Resource Development opportunity returned by MEOS.";
+  }
+
+  function normalizeResourceDeliverables(work, result = {}) {
+    const records = Array.isArray(result.records) ? result.records : [];
+    records.slice(0, 10).forEach(record => {
+      addDeliverable(work, {
+        title: resourceRecordTitle(record),
+        kind: "executive-brief",
+        openUrl: resourceRecordUrl(record),
+        summary: resourceRecordSummary(record),
+        provider: "meos-resource-development",
+        source: "executive-resource-development-office",
+        data: record
+      });
+    });
+    return work.deliverables.length;
+  }
+
+  async function executeResourceDevelopmentSearch(work, interpretation, options = {}) {
+    const serviceArea = interpretation?.geography?.serviceArea || organizationServiceArea();
+    const wantsLocal = interpretation?.geography?.scope === "local";
+    const wantsGrant = interpretation?.resourceTypes?.includes("grant");
+    const fetchImpl = options.fetch || global.fetch?.bind(global);
+    if (!fetchImpl) throw new Error("Resource Development search requires fetch().");
+
+    const deskResponse = await fetchImpl("/api/resource-development/desk?includeAll=true&limit=200", {
+      method: "GET",
+      headers: { Accept: "application/json" }
+    });
+    if (!deskResponse.ok) throw new Error(`Resource Development desk returned HTTP ${deskResponse.status}.`);
+    const desk = await deskResponse.json();
+    let records = Array.isArray(desk.records) ? desk.records : [];
+
+    const localNeedle = String(serviceArea || "").toLowerCase().split(",")[0].trim();
+    records = records.filter(record => {
+      const typeText = JSON.stringify([
+        record.resourceType, record.resourceTypes, record.category, record.type,
+        record.resourceDevelopment?.channel, record.title, record.description
+      ]).toLowerCase();
+      if (wantsGrant && !/\bgrant\b/.test(typeText)) return false;
+      if (wantsLocal && localNeedle) {
+        const geographyText = JSON.stringify([
+          record.geography, record.location, record.region, record.serviceArea,
+          record.eligibleGeography, record.resourceDevelopment?.geography,
+          record.executiveBrief?.geography
+        ]).toLowerCase();
+        if (!geographyText.includes(localNeedle)) return false;
+      }
+      return true;
+    });
+
+    let discovery = null;
+    if (wantsLocal) {
+      try {
+        const localResponse = await fetchImpl("/api/resource-discovery/local", {
+          method: "GET",
+          headers: { Accept: "application/json" }
+        });
+        if (localResponse.ok) discovery = await localResponse.json();
+      } catch (_) { /* Desk results remain authoritative if local source refresh is unavailable. */ }
+    }
+
+    return {
+      success: true,
+      schema: "meos.executive-hallway.resource-search.v1",
+      query: work.instruction,
+      geography: { scope: interpretation?.geography?.scope || "unspecified", serviceArea },
+      resourceTypes: [...(interpretation?.resourceTypes || [])],
+      total: records.length,
+      records: records.slice(0, 25),
+      discovery,
+      searchedAt: now()
+    };
+  }
+
+  async function routeResourceDevelopmentWork(work, interpretation, options = {}) {
+    work.owner = "executive-resource-development-office";
+    work.route = "resource-development";
+    work.intent = interpretation.intent;
+    work.requiredCapabilities = [...interpretation.requiredCapabilities];
+    work.context = {
+      ...work.context,
+      organizationServiceArea: interpretation?.geography?.serviceArea || organizationServiceArea(),
+      resourceTypes: [...(interpretation.resourceTypes || [])],
+      geographyScope: interpretation?.geography?.scope || "unspecified"
+    };
+    transition(work, "planning");
+    registerMissionMirror(work);
+
+    if (work.authority.reviewRequired && !work.authority.authorized) {
+      work.options = ["take-it", "request-revisions", "cancel"];
+      return transition(work, "awaiting-review", {
+        outcome: {
+          success: false,
+          reason: "review-required",
+          plannedRoute: "resource-development",
+          serviceArea: work.context.organizationServiceArea
+        }
+      });
+    }
+
+    transition(work, "executing");
+    const result = await executeResourceDevelopmentSearch(work, interpretation, options);
+    work.execution = clone(result);
+    work.evidence.push({ type: "resource-development-search", verifiedAt: now(), result: clone(result) });
+    transition(work, "verifying");
+    normalizeResourceDeliverables(work, result);
+    work.options = work.deliverables.length
+      ? ["open-deliverable", "use-in-task", "archive"]
+      : ["broaden-search", "review-sources", "archive"];
+    return transition(work, "done", {
+      outcome: { success: true, verified: true, result: clone(result) }
+    });
   }
 
   function executiveRouter() {
@@ -535,6 +714,11 @@
     const work = createWork(input);
     transition(work, "understanding");
 
+    const resourceInterpretation = interpretResourceDevelopmentRequest(work.instruction);
+    if (resourceInterpretation) {
+      return freeze(await routeResourceDevelopmentWork(work, resourceInterpretation, options));
+    }
+
     const office = workspaceOffice();
     if (office?.interpretRequest) {
       try {
@@ -559,6 +743,29 @@
     work.authority.authorizedAt = now();
     work.authority.authorizationSignal = options.signal || "Take It!";
     transition(work, "authorized");
+
+    if (work.route === "resource-development") {
+      const interpretation = interpretResourceDevelopmentRequest(work.instruction) || {
+        intent: work.intent || "discover-resources",
+        requiredCapabilities: work.requiredCapabilities.length
+          ? [...work.requiredCapabilities]
+          : ["resource.discovery", "resource.development", "research.public-web"],
+        resourceTypes: [...(work.context?.resourceTypes || [])],
+        geography: {
+          scope: work.context?.geographyScope || "unspecified",
+          serviceArea: work.context?.organizationServiceArea || organizationServiceArea()
+        }
+      };
+      try {
+        return freeze(await routeResourceDevelopmentWork(work, interpretation, options));
+      } catch (error) {
+        work.options = ["retry", "reassign", "cancel"];
+        return freeze(transition(work, "failed", {
+          error: error?.message || String(error),
+          outcome: { success: false, reason: "resource-development-search-failed" }
+        }));
+      }
+    }
 
     if (work.route === "workspace") {
       const office = workspaceOffice();
@@ -838,7 +1045,9 @@
         executiveState: Boolean(executiveState()),
         missionEngine: Boolean(missionEngine()),
         executiveRouter: Boolean(executiveRouter()),
-        workspaceOffice: Boolean(workspaceOffice())
+        workspaceOffice: Boolean(workspaceOffice()),
+        organizationProfile: Boolean(organizationalProfile()),
+        organizationServiceArea: organizationServiceArea()
       }
     });
   }
@@ -919,6 +1128,24 @@
       "Not This redispatch reuses the original executive instruction",
       /instruction:\s*work\.instruction/.test(redispatchRejectedWorkspaceWork.toString())
     );
+    const localGrantFixture = interpretResourceDevelopmentRequest("Find me local grants");
+    check(
+      "Local grant language routes to Resource Development before Workspace",
+      localGrantFixture?.intent === "discover-resources" &&
+      localGrantFixture?.geography?.scope === "local" &&
+      localGrantFixture?.resourceTypes?.includes("grant"),
+      localGrantFixture || {}
+    );
+    check(
+      "Local geography resolves from Organization Package",
+      localGrantFixture?.geography?.serviceArea === organizationServiceArea(),
+      { serviceArea: organizationServiceArea() }
+    );
+    check(
+      "Explicit Drive grant-file retrieval remains Workspace work",
+      interpretResourceDevelopmentRequest("Find our grant application in Google Drive") === null
+    );
+    check("Resource Development route exists", typeof routeResourceDevelopmentWork === "function");
     check("Provider-neutral Workspace doorway exists", typeof workspaceOffice === "function");
     check("Executive Router fallback exists", typeof executiveRouter === "function");
     check("Mission Engine mirror exists", typeof registerMissionMirror === "function");
