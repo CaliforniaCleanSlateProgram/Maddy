@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.2";
+  const DASHBOARD_VERSION = "4.4.3";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1067,6 +1067,14 @@
       .meos-maddy-telemetry{position:absolute;left:18px;right:18px;bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;z-index:4}
       .meos-maddy-status strong{display:block;font-size:.92rem;color:#dff9ff}.meos-maddy-status span{display:block;margin-top:4px;color:rgba(180,226,242,.7);font-size:.72rem;letter-spacing:.04em}
       .meos-maddy-completion{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;border:1px solid rgba(112,225,255,.46);background:rgba(8,27,51,.68);box-shadow:inset 0 0 18px rgba(65,189,255,.14),0 0 16px rgba(65,189,255,.12);font-weight:800;color:#dff9ff}
+      .meos-maddy-desk{position:absolute;left:18px;right:92px;top:16px;z-index:5;display:grid;gap:8px;max-width:520px}
+      .meos-maddy-desk-command{display:flex;gap:8px;padding:7px;border:1px solid rgba(105,220,255,.26);border-radius:12px;background:rgba(3,14,30,.78);backdrop-filter:blur(8px);box-shadow:0 0 22px rgba(52,190,255,.08)}
+      .meos-maddy-desk-input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#e6fbff;font:inherit;font-size:.78rem;padding:5px 7px}.meos-maddy-desk-input::placeholder{color:rgba(181,220,236,.52)}
+      .meos-maddy-desk-send,.meos-maddy-desk-action{border:1px solid rgba(105,220,255,.34);border-radius:9px;background:rgba(20,55,91,.62);color:#dff9ff;cursor:pointer;font-size:.7rem;padding:7px 11px}.meos-maddy-desk-send:hover,.meos-maddy-desk-action:hover{border-color:rgba(128,232,255,.7);background:rgba(25,74,119,.72)}
+      .meos-maddy-desk-glance{display:flex;gap:7px;flex-wrap:wrap;align-items:center;font-size:.66rem;color:rgba(193,229,241,.76)}
+      .meos-maddy-desk-chip{padding:5px 8px;border-radius:999px;border:1px solid rgba(110,184,219,.2);background:rgba(5,22,42,.66)}
+      .meos-maddy-desk-actions{display:flex;gap:7px;flex-wrap:wrap}.meos-maddy-desk-actions:empty{display:none}
+      @media(max-width:760px){.meos-maddy-desk{right:18px}.meos-maddy-field{opacity:.46}.meos-maddy-telemetry{bottom:10px}}
       @keyframes meosCircuitDrift{to{background-position:28px 28px,28px 28px}}
       @keyframes meosFieldRotate{to{transform:rotate(360deg)}}
       @keyframes meosPacket{0%{transform:translateX(-160px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateX(40px);opacity:0}}
@@ -2716,6 +2724,18 @@ document
               <span class="meos-maddy-halo"></span><span class="meos-maddy-halo h2"></span><span class="meos-maddy-halo h3"></span>
               <img class="meos-maddy-face" src="maddy-executive-insignia.png" alt="Maddy emerging through the MEOS executive circuitry" onerror="this.style.visibility='hidden';" />
               <span class="meos-maddy-scan" aria-hidden="true"></span>
+            </div>
+            <div class="meos-maddy-desk" aria-label="Maddy Executive Desk">
+              <div class="meos-maddy-desk-command">
+                <input id="meosMaddyDeskInput" class="meos-maddy-desk-input" type="text" placeholder="Ask Maddy or assign executive work…" autocomplete="off" />
+                <button id="meosMaddyDeskSend" class="meos-maddy-desk-send" type="button">Send</button>
+              </div>
+              <div class="meos-maddy-desk-glance">
+                <span id="meosMaddyDeskWork" class="meos-maddy-desk-chip">No active Hallway work</span>
+                <span id="meosMaddyDeskApprovals" class="meos-maddy-desk-chip">0 need you</span>
+                <span id="meosMaddyDeskDeliverables" class="meos-maddy-desk-chip">0 deliverables</span>
+              </div>
+              <div id="meosMaddyDeskActions" class="meos-maddy-desk-actions"></div>
             </div>
             <div class="meos-maddy-telemetry">
               <div class="meos-maddy-status"><strong id="meosMaddyWorkStatus">Executive offices synchronizing</strong><span id="meosMaddyWorkDetail">Reading live headquarters state…</span></div>
@@ -4419,6 +4439,15 @@ document
   }
 
   function bindDashboardEvents() {
+    const submitMaddyDeskCommand = () => {
+      const input = document.getElementById("meosMaddyDeskInput");
+      const message = input?.value.trim();
+      if (!message) { input?.focus(); return; }
+      dispatchMEOS("meos:maddy-request", { message, source: "maddy-executive-desk", costMode: state.costMode, communicationMode: state.communicationMode });
+      input.value = "";
+    };
+    document.getElementById("meosMaddyDeskSend")?.addEventListener("click", submitMaddyDeskCommand);
+    document.getElementById("meosMaddyDeskInput")?.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); submitMaddyDeskCommand(); } });
     document.getElementById("meosOfficeActivityPrevious")?.addEventListener("click", () => scrollOfficeActivity(-1));
     document.getElementById("meosOfficeActivityNext")?.addEventListener("click", () => scrollOfficeActivity(1));
     document.getElementById("meosOfficeActivityPeek")?.addEventListener("click", () => openOfficeActivityBrowser("researching"));
@@ -4597,6 +4626,44 @@ document
     return snapshot;
   }
 
+  function renderMaddyExecutiveDesk(snapshot) {
+    const activeWork = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || null;
+    setText("meosMaddyDeskWork", activeWork ? `${formatHallwayState(activeWork.state)} · ${activeWork.owner || "Maddy"}` : "No active Hallway work");
+    setText("meosMaddyDeskApprovals", `${snapshot.pendingApprovals.length} need you`);
+    setText("meosMaddyDeskDeliverables", `${snapshot.hallwayDeliverables.length} deliverables`);
+
+    const actions = document.getElementById("meosMaddyDeskActions");
+    if (!actions) return;
+    actions.innerHTML = "";
+
+    if (activeWork?.options?.includes?.("take-it")) {
+      const takeIt = document.createElement("button");
+      takeIt.type = "button";
+      takeIt.className = "meos-maddy-desk-action";
+      takeIt.textContent = "Take It";
+      takeIt.addEventListener("click", async () => {
+        const hallway = getExecutiveHallway();
+        if (!hallway?.takeIt || !activeWork.id) return;
+        takeIt.disabled = true;
+        takeIt.textContent = "Executing…";
+        try { await hallway.takeIt(activeWork.id, { signal: "Take It!", source: "maddy-executive-desk" }); }
+        catch (error) { state.hallway.lastError = error?.message || String(error); renderHallwayMini(); }
+      });
+      actions.appendChild(takeIt);
+    }
+
+    const latest = snapshot.hallwayDeliverables[0];
+    const url = latest?.openUrl || latest?.downloadUrl || null;
+    if (url) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "meos-maddy-desk-action";
+      open.textContent = `Open ${latest.title || "Latest Deliverable"}`;
+      open.addEventListener("click", () => window.open(url, "_blank", "noopener,noreferrer"));
+      actions.appendChild(open);
+    }
+  }
+
   function renderLiveHeadquarters() {
     const snapshot = collectHeadquartersSnapshot();
     // Keep the original top dashboard gauge as the single authoritative completion display.
@@ -4629,6 +4696,7 @@ document
           : `${snapshot.fundingRecords.length} funding records · ${snapshot.pendingApprovals.length} executive decisions · ${snapshot.hallwayDeliverables.length} deliverables`;
     setText("meosMaddyWorkStatus", maddyStatus);
     setText("meosMaddyWorkDetail", maddyDetail);
+    renderMaddyExecutiveDesk(snapshot);
 
     const today = document.getElementById("meosTodayLiveList");
     if (today) today.innerHTML = [
@@ -4691,6 +4759,9 @@ document
       ["Legacy top completion gauge receives the authoritative live percentage", document.getElementById("progressPercent")?.textContent === `${snapshot.completion}%`],
       ["Maddy at Work circuitry window replaced the duplicate completion widget", Boolean(document.querySelector(".meos-maddy-window"))],
       ["Maddy at Work exposes live status and completion telemetry", Boolean(document.getElementById("meosMaddyWorkStatus") && document.getElementById("meosMaddyCompletion"))],
+      ["Maddy at Work is the primary Executive Desk command surface", Boolean(document.getElementById("meosMaddyDeskInput") && document.getElementById("meosMaddyDeskSend"))],
+      ["Maddy Executive Desk exposes Hallway work approvals and deliverables at a glance", Boolean(document.getElementById("meosMaddyDeskWork") && document.getElementById("meosMaddyDeskApprovals") && document.getElementById("meosMaddyDeskDeliverables"))],
+      ["Maddy Executive Desk exposes governed Hallway action surface", Boolean(document.getElementById("meosMaddyDeskActions"))],
       ["Living Headquarters uses the protected canonical Maddy asset", document.getElementById("meosCanonicalMaddy")?.getAttribute("src") === "maddy-holographic-presence-v1.png"],
       ["Logo-to-human startup evolution is installed in the Headquarters hero", Boolean(document.querySelector("#meosLivingPresence .meos-presence-logo") && document.querySelector("#meosLivingPresence .meos-presence-human"))],
       ["Maddy is the visual feature of the Headquarters center", Boolean(document.querySelector(".meos-hq-core.meos-living-presence"))],
