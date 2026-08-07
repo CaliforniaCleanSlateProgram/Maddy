@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.7";
+  const DASHBOARD_VERSION = "4.4.8";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -91,6 +91,8 @@
       latestDeliverableId: null,
       latestDeliverableTitle: null,
       latestDeliverableUrl: null,
+      workPackageId: null,
+      selectedDeliverableId: null,
       lastError: null
     },
     headquarters: {
@@ -1116,6 +1118,7 @@
       @keyframes meosDispatchSpin{to{transform:rotate(360deg)}}
       @media (prefers-reduced-motion:reduce){.meos-maddy-desk-chip[data-live="true"]::before,.meos-maddy-window[data-dispatch-active="true"] .meos-maddy-status strong::after{animation:none}}
       .meos-maddy-desk-actions{display:flex;gap:7px;flex-wrap:wrap}.meos-maddy-desk-actions:empty{display:none}
+      .meos-maddy-work-package{display:none;margin-top:8px;max-width:720px;border:1px solid rgba(105,220,255,.24);border-radius:11px;background:rgba(2,16,32,.78);overflow:hidden}.meos-maddy-work-package[data-open="true"]{display:block}.meos-maddy-package-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border-bottom:1px solid rgba(105,220,255,.13)}.meos-maddy-package-label{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:#86dff2}.meos-maddy-package-count{font-size:.64rem;color:#8ca7b8}.meos-maddy-package-body{display:grid;grid-template-columns:36px minmax(0,1fr) 36px;gap:8px;align-items:center;padding:9px 10px}.meos-maddy-package-nav{height:34px;border:1px solid rgba(105,220,255,.24);border-radius:9px;background:rgba(10,35,57,.72);color:#d9f7ff;cursor:pointer}.meos-maddy-package-nav:disabled{opacity:.3;cursor:default}.meos-maddy-package-card{min-width:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:2px 4px}.meos-maddy-package-title{display:block;font-size:.78rem;font-weight:800;color:#f2fbff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meos-maddy-package-meta{display:block;margin-top:3px;font-size:.64rem;color:#8ca7b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meos-maddy-package-position{display:block;margin-top:4px;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:#67dff5}.meos-maddy-package-strip{display:flex;gap:5px;padding:0 10px 9px;overflow-x:auto;scrollbar-width:thin}.meos-maddy-package-pill{flex:0 0 auto;max-width:150px;border:1px solid rgba(105,220,255,.16);border-radius:999px;background:rgba(8,30,49,.68);color:#8ca7b8;padding:5px 9px;font-size:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.meos-maddy-package-pill[data-selected="true"]{border-color:rgba(105,220,255,.58);color:#dffaff;background:rgba(16,67,91,.72)}@media(max-width:760px){.meos-maddy-package-strip{display:none}}
       .meos-maddy-brief{display:none;margin-top:8px;padding:12px 13px;border:1px solid rgba(105,220,255,.25);border-radius:11px;background:rgba(2,16,32,.86);max-width:640px;color:#d9e9f5;box-shadow:0 12px 30px rgba(0,0,0,.22)}
       .meos-maddy-brief[data-open="true"]{display:block}.meos-maddy-brief-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.meos-maddy-brief-kicker{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:#86dff2}.meos-maddy-brief-title{margin:3px 0 0;font-size:.92rem;color:#f2fbff}.meos-maddy-brief-close{border:0;background:transparent;color:#8ca7b8;cursor:pointer;font-size:1rem}.meos-maddy-brief-summary{margin:9px 0 10px;font-size:.76rem;line-height:1.45;color:#c7d9e6}.meos-maddy-brief-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px}.meos-maddy-brief-field{border-top:1px solid rgba(119,193,219,.12);padding-top:6px}.meos-maddy-brief-label{display:block;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:#7398aa}.meos-maddy-brief-value{display:block;margin-top:2px;font-size:.7rem;color:#e0edf4;line-height:1.35}.meos-maddy-brief-source{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:11px}.meos-maddy-brief-link{display:inline-flex;align-items:center;border:1px solid rgba(105,220,255,.4);border-radius:8px;padding:6px 10px;color:#c9f6ff;text-decoration:none;font-size:.68rem;background:rgba(17,63,91,.55)}.meos-maddy-brief-link:hover{border-color:rgba(128,232,255,.8)}.meos-maddy-brief-note{font-size:.62rem;color:#7894a5}@media(max-width:760px){.meos-maddy-brief-grid{grid-template-columns:1fr}}
       @media(max-width:760px){.meos-maddy-desk{right:18px}.meos-maddy-field{opacity:.46}.meos-maddy-telemetry{bottom:10px}}
@@ -2780,6 +2783,7 @@ document
                 <span id="meosMaddyDeskDeliverables" class="meos-maddy-desk-chip">0 deliverables</span>
               </div>
               <div id="meosMaddyDeskActions" class="meos-maddy-desk-actions"></div>
+              <div id="meosMaddyWorkPackage" class="meos-maddy-work-package" data-open="false" aria-live="polite"></div>
               <div id="meosMaddyDeskBrief" class="meos-maddy-brief" data-open="false" aria-live="polite"></div>
             </div>
             <div class="meos-maddy-telemetry">
@@ -4620,6 +4624,12 @@ document
     state.hallway.latestDeliverableTitle = deliverable.title || "MEOS deliverable";
     state.hallway.latestDeliverableUrl = deliverable.openUrl || deliverable.downloadUrl || null;
     state.hallway.currentWorkId = deliverable.workId || state.hallway.currentWorkId;
+    if (deliverable.workId && state.hallway.workPackageId !== deliverable.workId) {
+      state.hallway.workPackageId = deliverable.workId;
+      state.hallway.selectedDeliverableId = deliverable.id || null;
+    } else if (!state.hallway.selectedDeliverableId) {
+      state.hallway.selectedDeliverableId = deliverable.id || null;
+    }
     state.hallway.currentState = "done";
     state.hallway.lastError = null;
     renderHallwayMini();
@@ -4950,6 +4960,78 @@ document
     panel.dataset.open = "true";
   }
 
+  function getMaddyWorkPackage(snapshot) {
+    const deliverables = Array.isArray(snapshot?.hallwayDeliverables) ? snapshot.hallwayDeliverables : [];
+    const work = Array.isArray(snapshot?.hallwayWork) ? snapshot.hallwayWork : [];
+    if (!deliverables.length) return { work: null, items: [], selected: null };
+
+    const packageWork = work.find((item) => deliverables.some((deliverable) => deliverable.workId === item.id)) || null;
+    const packageId = packageWork?.id || deliverables[0]?.workId || null;
+    const items = packageId ? deliverables.filter((deliverable) => deliverable.workId === packageId) : [deliverables[0]];
+
+    if (state.hallway.workPackageId !== packageId) {
+      state.hallway.workPackageId = packageId;
+      state.hallway.selectedDeliverableId = items[0]?.id || null;
+    }
+
+    let selected = items.find((item) => item.id === state.hallway.selectedDeliverableId) || items[0] || null;
+    if (selected && state.hallway.selectedDeliverableId !== selected.id) state.hallway.selectedDeliverableId = selected.id;
+    return { work: packageWork, items, selected };
+  }
+
+  function renderMaddyWorkPackage(snapshot, packageState = getMaddyWorkPackage(snapshot)) {
+    const panel = document.getElementById("meosMaddyWorkPackage");
+    if (!panel) return packageState;
+    const { work, items, selected } = packageState;
+    if (!items.length || !selected) {
+      panel.dataset.open = "false";
+      panel.innerHTML = "";
+      return packageState;
+    }
+
+    const selectedIndex = Math.max(0, items.findIndex((item) => item.id === selected.id));
+    const data = selected.data || {};
+    const executive = data.executiveBrief || data.executiveSummary || data.resourceDevelopment?.executiveBrief || {};
+    const geography = briefText(firstBriefValue(data.geography, data.location, data.serviceArea, data.resourceDevelopment?.geography, executive.geography), "Geography not yet verified");
+    const deadline = briefText(firstBriefValue(data.deadline, data.resourceDevelopment?.deadline, executive.deadline), "Deadline not yet verified");
+
+    panel.innerHTML = "";
+    const head = document.createElement("div"); head.className = "meos-maddy-package-head";
+    const label = document.createElement("span"); label.className = "meos-maddy-package-label"; label.textContent = work?.title || work?.instruction || "Maddy Work Package";
+    const count = document.createElement("span"); count.className = "meos-maddy-package-count"; count.textContent = `${items.length} returned · ${selectedIndex + 1} selected`;
+    head.append(label, count); panel.appendChild(head);
+
+    const body = document.createElement("div"); body.className = "meos-maddy-package-body";
+    const previous = document.createElement("button"); previous.type = "button"; previous.className = "meos-maddy-package-nav"; previous.textContent = "‹"; previous.disabled = items.length < 2; previous.setAttribute("aria-label", "Previous deliverable");
+    const card = document.createElement("button"); card.type = "button"; card.className = "meos-maddy-package-card"; card.title = "Open this Executive Brief";
+    const title = document.createElement("span"); title.className = "meos-maddy-package-title"; title.textContent = selected.title || "MEOS deliverable";
+    const meta = document.createElement("span"); meta.className = "meos-maddy-package-meta"; meta.textContent = `${geography} · ${deadline}`;
+    const position = document.createElement("span"); position.className = "meos-maddy-package-position"; position.textContent = `Opportunity ${selectedIndex + 1} of ${items.length} · click to investigate`;
+    card.append(title, meta, position);
+    const next = document.createElement("button"); next.type = "button"; next.className = "meos-maddy-package-nav"; next.textContent = "›"; next.disabled = items.length < 2; next.setAttribute("aria-label", "Next deliverable");
+
+    const selectAt = (index) => {
+      const normalized = (index + items.length) % items.length;
+      state.hallway.selectedDeliverableId = items[normalized].id;
+      renderLiveHeadquarters();
+      renderMaddyExecutiveBrief(items[normalized]);
+    };
+    previous.addEventListener("click", () => selectAt(selectedIndex - 1));
+    next.addEventListener("click", () => selectAt(selectedIndex + 1));
+    card.addEventListener("click", () => renderMaddyExecutiveBrief(selected));
+    body.append(previous, card, next); panel.appendChild(body);
+
+    if (items.length > 1) {
+      const strip = document.createElement("div"); strip.className = "meos-maddy-package-strip";
+      items.forEach((item, index) => {
+        const pill = document.createElement("button"); pill.type = "button"; pill.className = "meos-maddy-package-pill"; pill.dataset.selected = item.id === selected.id ? "true" : "false"; pill.textContent = item.title || `Result ${index + 1}`; pill.title = item.title || `Result ${index + 1}`; pill.addEventListener("click", () => selectAt(index)); strip.appendChild(pill);
+      });
+      panel.appendChild(strip);
+    }
+    panel.dataset.open = "true";
+    return packageState;
+  }
+
   function renderMaddyExecutiveDesk(snapshot) {
     const activeWork = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || null;
     const latestWork = activeWork || snapshot.hallwayWork[0] || null;
@@ -4966,7 +5048,13 @@ document
       maddyWindow.dataset.dispatchState = dispatch.state;
     }
     setText("meosMaddyDeskApprovals", `${snapshot.pendingApprovals.length} need you`);
-    setText("meosMaddyDeskDeliverables", `${snapshot.hallwayDeliverables.length} deliverables`);
+
+    const packageState = getMaddyWorkPackage(snapshot);
+    const packageCount = packageState.items.length;
+    setText("meosMaddyDeskDeliverables", packageCount
+      ? `${packageCount} in work package`
+      : `${snapshot.hallwayDeliverables.length} deliverables`);
+    renderMaddyWorkPackage(snapshot, packageState);
 
     const actions = document.getElementById("meosMaddyDeskActions");
     if (!actions) return;
@@ -4988,22 +5076,22 @@ document
       actions.appendChild(takeIt);
     }
 
-    const latest = snapshot.hallwayDeliverables[0];
-    if (latest) {
+    const selected = packageState.selected;
+    if (selected) {
       const view = document.createElement("button");
       view.type = "button";
       view.className = "meos-maddy-desk-action";
-      view.textContent = "View Executive Brief";
-      view.title = "Read Maddy's result, evidence status, recommendation, and official source.";
-      view.addEventListener("click", () => renderMaddyExecutiveBrief(latest));
+      view.textContent = packageCount > 1 ? "Investigate Selected" : "View Executive Brief";
+      view.title = "Read Maddy's selected result, evidence status, recommendation, and official source.";
+      view.addEventListener("click", () => renderMaddyExecutiveBrief(selected));
       actions.appendChild(view);
     } else {
       renderMaddyExecutiveBrief(null);
     }
 
-    const completedWork = latest?.workId
-      ? snapshot.hallwayWork.find((item) => item.id === latest.workId && item.state === "done") || null
-      : null;
+    const completedWork = packageState.work?.state === "done" ? packageState.work : (selected?.workId
+      ? snapshot.hallwayWork.find((item) => item.id === selected.workId && item.state === "done") || null
+      : null);
     const existingFeedback = completedWork
       ? snapshot.hallwayFeedback.find((item) => item.workId === completedWork.id) || null
       : null;
@@ -5012,60 +5100,23 @@ document
       const submitExecutiveFeedback = (signal) => {
         const hallway = getExecutiveHallway();
         if (!hallway?.submitFeedback) return;
-
         let reason = null;
         if (signal === "not-this") {
-          reason = window.prompt(
-            "What was wrong with this result? A short reason helps Maddy learn.",
-            "Wrong result"
-          );
+          reason = window.prompt("What was wrong with this work package? A short reason helps Maddy learn.", "Wrong result");
           if (reason === null) return;
         }
-
-        actions.querySelectorAll(".meos-maddy-feedback-action")
-          .forEach((button) => { button.disabled = true; });
-
-        const result = hallway.submitFeedback(completedWork.id, {
-          signal,
-          reason: reason || null,
-          source: "maddy-hud",
-          actor: "executive-director"
-        });
-
+        actions.querySelectorAll(".meos-maddy-feedback-action").forEach((button) => { button.disabled = true; });
+        const result = hallway.submitFeedback(completedWork.id, { signal, reason: reason || null, source: "maddy-hud", actor: "executive-director", selectedDeliverableId: selected?.id || null });
         if (!result?.success) {
           state.hallway.lastError = result?.error || "Executive feedback was not recorded.";
-          renderHallwayMini();
-          renderLiveHeadquarters();
-          return;
+          renderHallwayMini(); renderLiveHeadquarters(); return;
         }
-
         renderLiveHeadquarters();
       };
-
-      const accept = document.createElement("button");
-      accept.type = "button";
-      accept.className = "meos-maddy-desk-action meos-maddy-feedback-action";
-      accept.dataset.signal = "accepted";
-      accept.textContent = "👍 Accept";
-      accept.title = "Confirm that Maddy returned the correct result.";
-      accept.addEventListener("click", () => submitExecutiveFeedback("accepted"));
-      actions.appendChild(accept);
-
-      const notThis = document.createElement("button");
-      notThis.type = "button";
-      notThis.className = "meos-maddy-desk-action meos-maddy-feedback-action";
-      notThis.dataset.signal = "not-this";
-      notThis.textContent = "👎 Not This";
-      notThis.title = "Tell Maddy this result is not correct and record why.";
-      notThis.addEventListener("click", () => submitExecutiveFeedback("not-this"));
-      actions.appendChild(notThis);
+      const accept = document.createElement("button"); accept.type = "button"; accept.className = "meos-maddy-desk-action meos-maddy-feedback-action"; accept.dataset.signal = "accepted"; accept.textContent = "👍 Accept"; accept.title = "Accept this returned work package."; accept.addEventListener("click", () => submitExecutiveFeedback("accepted")); actions.appendChild(accept);
+      const notThis = document.createElement("button"); notThis.type = "button"; notThis.className = "meos-maddy-desk-action meos-maddy-feedback-action"; notThis.dataset.signal = "not-this"; notThis.textContent = "👎 Not This"; notThis.title = "Reject this work package and record why."; notThis.addEventListener("click", () => submitExecutiveFeedback("not-this")); actions.appendChild(notThis);
     } else if (existingFeedback) {
-      const feedbackState = document.createElement("span");
-      feedbackState.className = "meos-maddy-feedback-state";
-      feedbackState.textContent = existingFeedback.signal === "accepted"
-        ? "✓ Accepted — learning recorded"
-        : "↻ Not This — correction recorded";
-      actions.appendChild(feedbackState);
+      const feedbackState = document.createElement("span"); feedbackState.className = "meos-maddy-feedback-state"; feedbackState.textContent = existingFeedback.signal === "accepted" ? "✓ Accepted — learning recorded" : "↻ Not This — correction recorded"; actions.appendChild(feedbackState);
     }
   }
 
@@ -5169,6 +5220,9 @@ document
       ["Maddy Executive Desk exposes Hallway work approvals and deliverables at a glance", Boolean(document.getElementById("meosMaddyDeskWork") && document.getElementById("meosMaddyDeskApprovals") && document.getElementById("meosMaddyDeskDeliverables"))],
       ["Maddy Executive Desk exposes governed Hallway action surface", Boolean(document.getElementById("meosMaddyDeskActions"))],
       ["Maddy Executive Desk has an in-HUD Executive Brief reading surface", Boolean(document.getElementById("meosMaddyDeskBrief"))],
+      ["Maddy Executive Desk has a multi-deliverable Work Package surface", Boolean(document.getElementById("meosMaddyWorkPackage"))],
+      ["Maddy HUD groups deliverables by originating Hallway work", typeof getMaddyWorkPackage === "function"],
+      ["Maddy HUD supports selected-deliverable navigation without leaving Headquarters", typeof renderMaddyWorkPackage === "function"],
       ["Executive Brief renderer preserves official source navigation", typeof renderMaddyExecutiveBrief === "function"],
       ["Maddy HUD has real Hallway dispatch presentation mapping", typeof getMaddyDispatchPresentation === "function"],
       ["Maddy HUD work chip exposes runtime dispatch state", Boolean(document.getElementById("meosMaddyDeskWork")?.dataset.workState)],
@@ -6404,7 +6458,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.011 Executive Opportunity Investigation Experience online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.012 Maddy HUD Work Package Delivery online.`
     );
   }
 
