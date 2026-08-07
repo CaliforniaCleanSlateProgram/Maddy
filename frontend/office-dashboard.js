@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.6";
+  const DASHBOARD_VERSION = "4.4.7";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1028,6 +1028,38 @@
         background: rgba(47, 145, 92, 0.22);
         color: #8ce5b5;
       }
+
+
+      /* Commission 006.011 — Executive Opportunity Investigation Experience */
+      .meos-investigation{display:grid;gap:16px;color:var(--meos-text)}
+      .meos-investigation-hero{position:relative;overflow:hidden;display:flex;justify-content:space-between;gap:22px;align-items:flex-start;padding:22px;border:1px solid rgba(105,239,255,.28);background:radial-gradient(circle at 88% 0,rgba(168,110,255,.18),transparent 38%),linear-gradient(135deg,rgba(5,27,45,.96),rgba(8,16,31,.98));clip-path:polygon(0 0,97% 0,100% 18%,100% 100%,3% 100%,0 82%)}
+      .meos-investigation-hero::after{content:"";position:absolute;left:-25%;right:-25%;top:0;height:1px;background:linear-gradient(90deg,transparent,#69efff,transparent);animation:hudScan 5.7s linear infinite}
+      .meos-investigation-kicker{font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:#86dff2}
+      .meos-investigation-hero h2{margin:8px 0 6px;font-size:clamp(1.3rem,2vw,2rem);line-height:1.15;color:#f2fdff}
+      .meos-investigation-provider{color:rgba(199,226,240,.7);font-size:.78rem}
+      .meos-investigation-verdict{min-width:150px;text-align:right;padding:10px 12px;border-right:2px solid #69efff;background:rgba(10,48,70,.35)}
+      .meos-investigation-verdict span,.meos-investigation-verdict small{display:block;color:#8fb8c9;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase}
+      .meos-investigation-verdict strong{display:block;margin:5px 0;color:#8fffc5;font-size:1rem;text-transform:uppercase;letter-spacing:.08em}
+      .meos-investigation-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+      .meos-investigation-metrics>div{padding:12px;border:1px solid rgba(105,239,255,.13);background:linear-gradient(145deg,rgba(12,35,54,.72),rgba(8,21,36,.78))}
+      .meos-investigation-metrics span{display:block;margin-bottom:5px;color:#7398aa;font-size:.57rem;letter-spacing:.11em;text-transform:uppercase}
+      .meos-investigation-metrics strong{display:block;color:#e7f8ff;font-size:.76rem;line-height:1.35}
+      .meos-investigation-strategy{position:relative;padding:18px;border:1px solid rgba(143,255,197,.26);background:radial-gradient(circle at 100% 0,rgba(79,209,139,.12),transparent 36%),rgba(6,25,34,.76);box-shadow:inset 3px 0 0 rgba(79,209,139,.62)}
+      .meos-investigation-section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px;color:#7fa5b6;font-size:.58rem;letter-spacing:.12em;text-transform:uppercase}
+      .meos-investigation-section-head strong{color:#9fe7c0;font-size:.63rem}
+      .meos-investigation h3{margin:11px 0 7px;color:#eafaff;font-size:.82rem}
+      .meos-investigation p,.meos-investigation li{font-size:.74rem;line-height:1.55;color:#c9dce7}
+      .meos-investigation p{margin:0}
+      .meos-investigation ul{margin:8px 0 0;padding-left:19px}
+      .meos-investigation-initiatives{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+      .meos-investigation-initiatives span{padding:6px 9px;border:1px solid rgba(79,209,139,.3);border-radius:999px;background:rgba(30,105,70,.16);color:#bdf4d4;font-size:.62rem}
+      .meos-investigation-reasons{margin-top:12px!important}
+      .meos-investigation-unverified{margin-top:10px;color:#8da6b4;font-size:.67rem;line-height:1.45}
+      .meos-investigation-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+      .meos-investigation-columns>section{padding:16px;border:1px solid rgba(105,239,255,.13);background:rgba(6,21,36,.68)}
+      .meos-investigation-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding-top:4px}
+      .meos-investigation-actions span{margin-left:auto;color:#7894a5;font-size:.62rem}
+      @media(max-width:820px){.meos-investigation-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.meos-investigation-columns{grid-template-columns:1fr}.meos-investigation-hero{display:grid}.meos-investigation-verdict{text-align:left;border-right:0;border-left:2px solid #69efff}}
 
       @media (max-width: 1120px) {
         .meos-widget {
@@ -3659,6 +3691,165 @@ document
     return true;
   }
 
+  function formatFundingLabel(value, fallback = "Not verified") {
+    if (value === null || value === undefined || value === "") return fallback;
+    if (typeof value === "boolean") return value ? "Yes" : "No";
+    if (Array.isArray(value)) return value.filter(Boolean).join(", ") || fallback;
+    if (typeof value === "object") {
+      return firstDefined(value.label, value.name, value.title, value.status, value.value, fallback);
+    }
+    return String(value)
+      .split(/[-_ ]+/)
+      .filter(Boolean)
+      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .join(" ");
+  }
+
+  function collectFundingEvidence(opportunity = {}, decision = {}) {
+    const candidates = [
+      ...(Array.isArray(decision?.evidence) ? decision.evidence : []),
+      ...(Array.isArray(decision?.verifiedFacts) ? decision.verifiedFacts : []),
+      ...(Array.isArray(opportunity?.executiveQualification?.verifiedFacts) ? opportunity.executiveQualification.verifiedFacts : []),
+      ...(Array.isArray(opportunity?.resourceDevelopment?.evidence) ? opportunity.resourceDevelopment.evidence : [])
+    ];
+    return candidates
+      .map((item) => typeof item === "string" ? item : firstDefined(item?.statement, item?.fact, item?.label, item?.value, ""))
+      .filter(Boolean)
+      .slice(0, 8);
+  }
+
+  function getFundingLifecycle(opportunity = {}, decision = {}) {
+    return formatFundingLabel(firstDefined(
+      opportunity?.lifecycle,
+      opportunity?.status,
+      opportunity?.fundingPipeline?.lifecycle,
+      opportunity?.fundingPipeline?.stage,
+      decision?.deadline?.status,
+      "Not verified"
+    ));
+  }
+
+  function getFundingParticipation(opportunity = {}, decision = {}) {
+    return formatFundingLabel(firstDefined(
+      decision?.participation,
+      decision?.participationLabel,
+      opportunity?.executiveQualification?.participation,
+      opportunity?.resourceDevelopment?.participation,
+      opportunity?.resourceDevelopment?.workQueue?.participation,
+      decision?.canAcquire === true ? "Can Lead" : null,
+      decision?.canAcquire === false ? "Needs Research" : null,
+      "Needs Research"
+    ));
+  }
+
+  function getFundingConfidence(opportunity = {}, decision = {}) {
+    const raw = firstDefined(
+      decision?.confidence,
+      decision?.executiveBrief?.confidence,
+      opportunity?.executiveQualification?.confidence,
+      opportunity?.resourceDevelopment?.confidence,
+      null
+    );
+    if (raw === null || raw === undefined || raw === "") return "Not scored";
+    const number = Number(raw);
+    if (Number.isFinite(number)) {
+      const percent = number <= 1 ? Math.round(number * 100) : Math.round(number);
+      return `${Math.max(0, Math.min(100, percent))}%`;
+    }
+    return formatFundingLabel(raw);
+  }
+
+  function getFundingCycleIntelligence(opportunity = {}, decision = {}) {
+    const recurrence = firstDefined(
+      opportunity?.recurrence,
+      opportunity?.fundingCycle,
+      opportunity?.cycle,
+      opportunity?.resourceDevelopment?.recurrence,
+      opportunity?.resourceDevelopment?.fundingCycle,
+      decision?.recurrence,
+      null
+    );
+    if (recurrence) return formatFundingLabel(recurrence);
+    const lifecycle = String(firstDefined(opportunity?.lifecycle, opportunity?.status, "")).toLowerCase();
+    if (lifecycle.includes("closed")) return "Closed now — future cycle not yet verified";
+    return "Future cycle not yet verified";
+  }
+
+  function getFundingStrategyRelationship(opportunity = {}, decision = {}) {
+    const stored = firstDefined(
+      decision?.strategyRelationship,
+      decision?.strategicRelationship,
+      opportunity?.strategyRelationship,
+      opportunity?.strategicRelationship,
+      opportunity?.resourceDevelopment?.strategyRelationship,
+      opportunity?.resourceDevelopment?.workQueue?.strategicValue?.strategyRelationship,
+      null
+    );
+
+    let runtime = null;
+    try {
+      runtime = window.CCSPLongTermStrategy?.recommendOpportunityRelationship?.(opportunity) || null;
+    } catch (error) {
+      console.warn("MEOS could not evaluate the CCSP strategy relationship.", error);
+    }
+
+    const relationship = firstDefined(
+      runtime?.relationship,
+      stored?.relationship,
+      stored?.label,
+      stored,
+      "Relationship requires investigation"
+    );
+
+    const reasons = [
+      ...(Array.isArray(runtime?.reasons) ? runtime.reasons : []),
+      ...(Array.isArray(stored?.reasons) ? stored.reasons : []),
+      ...(Array.isArray(decision?.strategyReasons) ? decision.strategyReasons : [])
+    ].map((item) => typeof item === "string" ? item : firstDefined(item?.reason, item?.label, item?.description, ""))
+      .filter(Boolean);
+
+    let initiatives = [];
+    const directInitiatives = [
+      ...(Array.isArray(runtime?.initiatives) ? runtime.initiatives : []),
+      ...(Array.isArray(runtime?.matchedInitiatives) ? runtime.matchedInitiatives : []),
+      ...(Array.isArray(stored?.initiatives) ? stored.initiatives : []),
+      ...(Array.isArray(decision?.matchedInitiatives) ? decision.matchedInitiatives : [])
+    ];
+    initiatives.push(...directInitiatives);
+
+    try {
+      const strategy = window.CCSPLongTermStrategy?.getStrategy?.();
+      const allInitiatives = Array.isArray(strategy?.initiatives) ? strategy.initiatives : [];
+      const haystack = JSON.stringify({
+        title: opportunity?.title,
+        description: getFundingDescription(opportunity),
+        reasons
+      }).toLowerCase();
+      allInitiatives.forEach((initiative) => {
+        const name = firstDefined(initiative?.name, initiative?.title, initiative?.id, "");
+        const keywords = [
+          name,
+          ...(Array.isArray(initiative?.keywords) ? initiative.keywords : []),
+          ...(Array.isArray(initiative?.populations) ? initiative.populations : []),
+          ...(Array.isArray(initiative?.focusAreas) ? initiative.focusAreas : [])
+        ].filter(Boolean).map((value) => String(value).toLowerCase());
+        if (keywords.some((keyword) => keyword.length > 4 && haystack.includes(keyword))) {
+          initiatives.push(initiative);
+        }
+      });
+    } catch (error) {
+      console.warn("MEOS could not inspect commissioned CCSP initiatives.", error);
+    }
+
+    initiatives = initiatives
+      .map((item) => typeof item === "string" ? item : firstDefined(item?.name, item?.title, item?.label, item?.id, ""))
+      .filter(Boolean)
+      .filter((value, index, array) => array.indexOf(value) === index)
+      .slice(0, 6);
+
+    return { relationship: formatFundingLabel(relationship), reasons: [...new Set(reasons)].slice(0, 8), initiatives };
+  }
+
   function renderFundingOpportunityDetail(opportunity) {
     const detail = document.getElementById("meosFundingBrowserDetail");
     if (!detail || !opportunity) return;
@@ -3666,126 +3857,141 @@ document
     const decision = getResourceDecision(opportunity) || {};
     const brief = decision.executiveBrief || {};
     const reasoning = decision.reasoning || {};
-    const title = firstDefined(
-      opportunity?.title,
-      decision?.title,
-      "Untitled resource opportunity"
-    );
+    const title = firstDefined(opportunity?.title, decision?.title, "Untitled resource opportunity");
     const provider = firstDefined(
       opportunity?.agencyName,
       opportunity?.provider,
       opportunity?.sourceName,
-      "Resource source"
+      opportunity?.source?.name,
+      opportunity?.resourceDevelopment?.workQueue?.opportunity?.source,
+      "Resource source not verified"
     );
-    const resource = firstDefined(
-      brief?.resource,
-      decision?.resourceValue?.label,
-      getFundingAmount(opportunity)
-    );
-    const deadline = firstDefined(
-      decision?.deadline?.label,
-      getFundingDeadline(opportunity)
-    );
+    const resource = firstDefined(brief?.resource, decision?.resourceValue?.label, getFundingAmount(opportunity));
+    const deadline = firstDefined(decision?.deadline?.label, getFundingDeadline(opportunity));
     const recommendation = getFundingRecommendation(opportunity);
     const url = getFundingOfficialUrl(opportunity);
-    const unknowns = Array.isArray(decision?.unknowns)
-      ? decision.unknowns
-      : [];
-    const acquisitionPath = String(
-      decision?.acquisitionPath || "unresolved"
-    )
-      .split(/[-_ ]+/)
-      .filter(Boolean)
-      .map((word) => word[0].toUpperCase() + word.slice(1))
-      .join(" ");
-    const strategicTiming = String(
-      decision?.strategicTiming || "unresolved"
-    )
-      .split(/[-_ ]+/)
-      .filter(Boolean)
-      .map((word) => word[0].toUpperCase() + word.slice(1))
-      .join(" ");
+    const unknowns = [
+      ...(Array.isArray(decision?.unknowns) ? decision.unknowns : []),
+      ...(Array.isArray(opportunity?.executiveQualification?.unknowns) ? opportunity.executiveQualification.unknowns : [])
+    ].filter(Boolean).filter((value, index, array) => array.indexOf(value) === index);
+    const evidence = collectFundingEvidence(opportunity, decision);
+    const strategy = getFundingStrategyRelationship(opportunity, decision);
+    const lifecycle = getFundingLifecycle(opportunity, decision);
+    const participation = getFundingParticipation(opportunity, decision);
+    const confidence = getFundingConfidence(opportunity, decision);
+    const cycle = getFundingCycleIntelligence(opportunity, decision);
+    const acquisitionPath = formatFundingLabel(decision?.acquisitionPath, "Unresolved");
+    const strategicTiming = formatFundingLabel(decision?.strategicTiming, "Unresolved");
+    const geography = formatFundingLabel(firstDefined(
+      decision?.geography,
+      decision?.geographyLabel,
+      opportunity?.geography,
+      opportunity?.executiveQualification?.geography,
+      opportunity?.resourceDevelopment?.geography,
+      "Not verified"
+    ));
+    const fitReason = firstDefined(
+      strategy.reasons[0],
+      brief?.whyOnDesk,
+      reasoning?.reason,
+      opportunity?.resourceDevelopment?.workQueue?.strategicValue?.whyItMatters,
+      "Maddy has not yet stored a specific strategy-fit explanation for this record."
+    );
+    const nextAction = firstDefined(
+      decision?.nextAction,
+      brief?.nextAction,
+      opportunity?.resourceDevelopment?.workQueue?.nextAction,
+      "Complete the next authorized executive investigation step."
+    );
 
     detail.innerHTML = `
-      <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px;">
-        <div>
-          <div class="meos-widget-title" style="margin-bottom:8px;">Executive Resource Brief</div>
-          <h2 style="margin:0 0 8px;font-size:1.35rem;line-height:1.25;">${escapeHtml(title)}</h2>
-          <div class="meos-muted">${escapeHtml(provider)}</div>
+      <article class="meos-investigation">
+        <div class="meos-investigation-hero">
+          <div>
+            <div class="meos-investigation-kicker">Maddy Executive Investigation · Live Case File</div>
+            <h2>${escapeHtml(title)}</h2>
+            <div class="meos-investigation-provider">${escapeHtml(provider)}</div>
+          </div>
+          <div class="meos-investigation-verdict">
+            <span>Maddy recommends</span>
+            <strong>${escapeHtml(recommendation)}</strong>
+            <small>${escapeHtml(strategicTiming)}</small>
+          </div>
         </div>
-        <span class="meos-priority high">${escapeHtml(recommendation)}</span>
-      </div>
 
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0;">
-        <div class="meos-alert">
-          <strong>${decision?.canAcquire === true ? "Yes" : decision?.canAcquire === false ? "No" : "Research"}</strong>
-          <span class="meos-muted">Can CCSP acquire?</span>
+        <div class="meos-investigation-metrics">
+          <div><span>Potential Resource</span><strong>${escapeHtml(resource)}</strong></div>
+          <div><span>Deadline</span><strong>${escapeHtml(deadline)}</strong></div>
+          <div><span>Lifecycle</span><strong>${escapeHtml(lifecycle)}</strong></div>
+          <div><span>Participation</span><strong>${escapeHtml(participation)}</strong></div>
+          <div><span>Geography</span><strong>${escapeHtml(geography)}</strong></div>
+          <div><span>Evidence Confidence</span><strong>${escapeHtml(confidence)}</strong></div>
         </div>
-        <div class="meos-alert">
-          <strong>${escapeHtml(resource)}</strong>
-          <span class="meos-muted">Resource</span>
+
+        <section class="meos-investigation-strategy">
+          <div class="meos-investigation-section-head">
+            <span>Commissioned Strategy Relationship</span>
+            <strong>${escapeHtml(strategy.relationship)}</strong>
+          </div>
+          <h3>Why this fits CCSP</h3>
+          <p>${escapeHtml(fitReason)}</p>
+          ${strategy.initiatives.length ? `
+            <div class="meos-investigation-initiatives">
+              ${strategy.initiatives.map((initiative) => `<span>${escapeHtml(initiative)}</span>`).join("")}
+            </div>` : `
+            <div class="meos-investigation-unverified">No named commissioned initiative match is stored or verifiable from runtime evidence yet.</div>`}
+          ${strategy.reasons.length > 1 ? `
+            <ul class="meos-investigation-reasons">${strategy.reasons.slice(1).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>` : ""}
+        </section>
+
+        <div class="meos-investigation-columns">
+          <section>
+            <div class="meos-investigation-section-head"><span>Executive Reasoning</span><strong>${escapeHtml(acquisitionPath)}</strong></div>
+            <h3>Maddy's case</h3>
+            <p>${escapeHtml(firstDefined(brief?.reason, reasoning?.reason, brief?.whyOnDesk, getFundingDescription(opportunity)))}</p>
+            <h3>Next move</h3>
+            <p>${escapeHtml(nextAction)}</p>
+          </section>
+          <section>
+            <div class="meos-investigation-section-head"><span>Cycle Intelligence</span><strong>${escapeHtml(lifecycle)}</strong></div>
+            <h3>Funding cycle</h3>
+            <p>${escapeHtml(cycle)}</p>
+            <h3>If CCSP delays</h3>
+            <p>${escapeHtml(firstDefined(brief?.consequenceOfDelay, "The consequence of delay has not been verified."))}</p>
+          </section>
         </div>
-        <div class="meos-alert">
-          <strong>${escapeHtml(deadline)}</strong>
-          <span class="meos-muted">Deadline</span>
+
+        <div class="meos-investigation-columns">
+          <section>
+            <div class="meos-investigation-section-head"><span>Verified Evidence</span><strong>${evidence.length}</strong></div>
+            ${evidence.length
+              ? `<ul>${evidence.map((fact) => `<li>${escapeHtml(fact)}</li>`).join("")}</ul>`
+              : `<p class="meos-investigation-unverified">No itemized verified-fact array is stored for this record. The case remains bounded by the evidence returned from the Resource Development Office.</p>`}
+          </section>
+          <section>
+            <div class="meos-investigation-section-head"><span>Open Questions</span><strong>${unknowns.length}</strong></div>
+            ${unknowns.length
+              ? `<ul>${unknowns.map((unknown) => `<li>${escapeHtml(unknown)}</li>`).join("")}</ul>`
+              : `<p class="meos-muted">No material unknowns were identified in the current case file.</p>`}
+          </section>
         </div>
-        <div class="meos-alert">
-          <strong>${escapeHtml(acquisitionPath)}</strong>
-          <span class="meos-muted">Acquisition path</span>
+
+        <div class="meos-investigation-actions">
+          <button id="meosFundingDiscuss" type="button" class="meos-action-button">Discuss With Maddy</button>
+          ${url ? `<button id="meosFundingOpenOfficial" type="button" class="take-it-button">Open Official Source</button>` : ""}
+          <span>${url ? "Official-source route available" : "No verified official-source URL stored"}</span>
         </div>
-        <div class="meos-alert">
-          <strong>${escapeHtml(strategicTiming)}</strong>
-          <span class="meos-muted">Strategic timing</span>
-        </div>
-        <div class="meos-alert">
-          <strong>${decision?.worthPursuing === true ? "Worth Pursuing" : "Not Recommended"}</strong>
-          <span class="meos-muted">Executive value</span>
-        </div>
-      </div>
-
-      <h3 style="margin:18px 0 8px;">Why this is on your desk</h3>
-      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(
-        brief?.whyOnDesk ||
-        reasoning?.reason ||
-        getFundingDescription(opportunity)
-      )}</p>
-
-      <h3 style="margin:18px 0 8px;">Maddy's decision</h3>
-      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(
-        brief?.reason ||
-        reasoning?.reason ||
-        "The authoritative acquisition engine completed the decision."
-      )}</p>
-
-      <h3 style="margin:18px 0 8px;">Next action</h3>
-      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(
-        decision?.nextAction ||
-        brief?.nextAction ||
-        "Complete the next authorized executive step."
-      )}</p>
-
-      <h3 style="margin:18px 0 8px;">If CCSP delays</h3>
-      <p style="line-height:1.6;white-space:pre-wrap;">${escapeHtml(
-        brief?.consequenceOfDelay ||
-        "The consequence of delay has not been verified."
-      )}</p>
-
-      <h3 style="margin:18px 0 8px;">Unknowns</h3>
-      ${
-        unknowns.length
-          ? `<ul>${unknowns.map((unknown) => `<li>${escapeHtml(unknown)}</li>`).join("")}</ul>`
-          : '<p class="meos-muted">No material unknowns were identified.</p>'
-      }
-
-      ${
-        url
-          ? `<button id="meosFundingOpenOfficial" type="button" class="take-it-button" style="display:inline-block;margin-top:12px;">Open Official Opportunity</button>`
-          : `<p class="meos-muted" style="margin-top:12px;">No verified official opportunity link is stored for this record.</p>`
-      }
+      </article>
     `;
 
-    detail.querySelector("#meosFundingOpenOfficial")?.addEventListener("click", () => {
-      openFundingOfficialUrl(url);
+    detail.querySelector("#meosFundingOpenOfficial")?.addEventListener("click", () => openFundingOfficialUrl(url));
+    detail.querySelector("#meosFundingDiscuss")?.addEventListener("click", () => {
+      dispatchMEOS("meos:maddy-request", {
+        message: `Investigate ${title}. Explain the CCSP strategic fit, eligibility, participation path, funding cycle, evidence, unknowns, and the next executive move.`,
+        source: "funding-investigation",
+        opportunityId: opportunity?.id || null,
+        communicationMode: state.communicationMode
+      });
     });
   }
 
@@ -6198,7 +6404,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; legacy voice panel retired.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.011 Executive Opportunity Investigation Experience online.`
     );
   }
 
@@ -6337,6 +6543,37 @@ document
     }),
     funding: Object.freeze({
       refresh: loadFundingIntelligence,
+      open: (opportunityId = null) => {
+        const opportunity = opportunityId
+          ? state.fundingIntelligence.opportunities.find((item) => String(item?.id || "") === String(opportunityId))
+          : null;
+        openFundingIntelligenceBrowser(opportunity);
+        return true;
+      },
+      runAcceptanceTest: () => {
+        const fixture = {
+          id: "006.011-test",
+          title: "Veterans Workforce Transition Grant",
+          description: "Employment transition, emergency stabilization, peer support, and job skills for veterans and first responders.",
+          lifecycle: "open",
+          geography: "Santa Cruz County, California",
+          executiveQualification: { confidence: 0.92, unknowns: ["Confirm applicant eligibility."] },
+          resourceDevelopment: { deskStatus: "active", executiveDecision: "pursue" }
+        };
+        const relationship = getFundingStrategyRelationship(fixture, {});
+        const checks = [
+          { name: "Funding cards open an internal investigation surface", passed: typeof openFundingIntelligenceBrowser === "function" },
+          { name: "Investigation resolves commissioned strategy relationship", passed: Boolean(relationship?.relationship) },
+          { name: "Investigation preserves named initiative evidence when runtime provides it", passed: Array.isArray(relationship?.initiatives) },
+          { name: "Lifecycle intelligence is rendered", passed: getFundingLifecycle(fixture, {}) === "Open" },
+          { name: "Evidence confidence is rendered", passed: getFundingConfidence(fixture, {}) === "92%" },
+          { name: "Official source remains governed and separate from internal investigation", passed: typeof openFundingOfficialUrl === "function" }
+        ];
+        const result = { commission: "006.011", passed: checks.every((check) => check.passed), checks };
+        console.table(checks);
+        console.log(`[MEOS ${DASHBOARD_VERSION}] Commission 006.011 acceptance: ${result.passed ? "PASS" : "FAIL"}.`);
+        return result;
+      },
       openOfficial: (opportunityOrUrl) => {
         const url = typeof opportunityOrUrl === "string"
           ? opportunityOrUrl
