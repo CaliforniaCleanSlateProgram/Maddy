@@ -34,7 +34,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.6";
+const VERSION = "2.10.7";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -104,9 +104,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.1";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.2";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI151-STRONG-DOCUMENT-IDENTITY-20260806-A";
+  "GWI152-DIRECT-DOCUMENT-PREFERENCE-20260806-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -203,6 +203,25 @@ const GOOGLE_WORKSPACE_INCIDENTAL_DOCUMENT_TYPES = new Set([
   "receipt", "statement", "template", "transaction"
 ]);
 
+/*
+ * Commission 006.005E — Direct Document Preference
+ *
+ * Natural requests often include wrapper nouns ("papers", "document", "copy")
+ * that describe how the human speaks rather than the identity of the record.
+ * Remove those wrappers from identity matching. Also recognize compilation
+ * containers so a binder/packet containing a document does not outrank the
+ * standalone authoritative record when the user asked for the record itself.
+ */
+const GOOGLE_WORKSPACE_DOCUMENT_WRAPPER_WORDS = new Set([
+  "copy", "copies", "document", "documents", "file", "files",
+  "paper", "papers", "record", "records"
+]);
+
+const GOOGLE_WORKSPACE_CONTAINER_DOCUMENT_TYPES = new Set([
+  "archive", "binder", "book", "bundle", "collection", "compilation",
+  "folder", "handbook", "master", "packet", "portfolio", "vault"
+]);
+
 function tokenizeWorkspaceText(value) {
   return String(value || "")
     .toLowerCase()
@@ -251,13 +270,17 @@ function normalizeWorkspaceDocumentIntent(value) {
     targetTokens.pop();
   }
 
-  const significantTokens = targetTokens.filter(
+  const identityTokens = targetTokens.filter(
+    token => !GOOGLE_WORKSPACE_DOCUMENT_WRAPPER_WORDS.has(token)
+  );
+
+  const significantTokens = identityTokens.filter(
     token =>
       token.length >= 3 &&
       !["and", "for", "of", "the"].includes(token)
   );
 
-  const acronymTokens = targetTokens.filter(
+  const acronymTokens = identityTokens.filter(
     token =>
       /^[a-z0-9]+$/.test(token) &&
       !["a", "an", "and", "for", "the"].includes(token)
@@ -271,7 +294,7 @@ function normalizeWorkspaceDocumentIntent(value) {
   return {
     targetTokens,
     significantTokens,
-    targetPhrase: targetTokens.join(" "),
+    targetPhrase: identityTokens.join(" "),
     significantPhrase: significantTokens.join(" "),
     acronym:
       acronym && acronym.length >= 3 && acronym.length <= 8
@@ -400,10 +423,9 @@ function evaluateWorkspaceContentIdentity({
   /*
    * Commission 006.005D — Strong Document-Type Identity
    *
-   * A legal document can legitimately contain generic words such as
-   * "statement", "note", or "receipt" in its body. Those incidental words are
-   * not proof of the document's identity. Treat an alternate document type as
-   * conflicting only when it appears as strong opening/header evidence.
+   * Generic words such as "statement", "note", or "receipt" in body prose are
+   * not proof of document identity. Conflicting types must appear as strong
+   * opening/header evidence.
    */
   const openingLines = source
     .split(/\r?\n/)
@@ -414,10 +436,6 @@ function evaluateWorkspaceContentIdentity({
   const strongIdentityLines = openingLines.filter(
     (line, index) => index < 4 || line.length <= 120
   );
-
-  const strongIdentityText = strongIdentityLines
-    .join(" ")
-    .toLowerCase();
 
   const contentCoverage = significantTokens.length
     ? significantTokens.filter(term =>
@@ -441,18 +459,11 @@ function evaluateWorkspaceContentIdentity({
         return strongIdentityLines.some((line, index) => {
           if (!typePattern.test(line)) return false;
 
-          const normalizedLine = normalizeWorkspaceFilename(line);
-          const lineTokens = tokenizeWorkspaceText(normalizedLine);
-
-          /*
-           * Strong identity means the alternate type is presented in the
-           * document's opening/title area, not merely mentioned in prose.
-           */
-          return (
-            index < 2 ||
-            lineTokens.length <= 8 ||
-            strongIdentityText.startsWith(type)
+          const lineTokens = tokenizeWorkspaceText(
+            normalizeWorkspaceFilename(line)
           );
+
+          return index < 2 || lineTokens.length <= 8;
         });
       });
 
@@ -647,6 +658,30 @@ function scoreWorkspaceResearchCandidate({
     score -= 30;
     signals.push(
       `incidental-document-type:${conflictingTypes.join(",")}`
+    );
+  }
+
+  const requestedContainerTypes = new Set(
+    intent.targetTokens?.filter(token =>
+      GOOGLE_WORKSPACE_CONTAINER_DOCUMENT_TYPES.has(token)
+    ) || []
+  );
+
+  const containerTypes =
+    [...GOOGLE_WORKSPACE_CONTAINER_DOCUMENT_TYPES]
+      .filter(type =>
+        nameTokens.has(type) &&
+        !requestedContainerTypes.has(type)
+      );
+
+  if (
+    containerTypes.length &&
+    !signals.includes("canonical-title-phrase") &&
+    !signals.includes("canonical-acronym-in-title")
+  ) {
+    score -= 45;
+    signals.push(
+      `container-document:${containerTypes.join(",")}`
     );
   }
 
