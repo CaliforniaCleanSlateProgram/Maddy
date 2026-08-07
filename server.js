@@ -10109,6 +10109,306 @@ const executiveResourceDevelopmentOffice =
     now: continuousOperationsNow
   });
 
+
+/* ========================================================================== */
+/* MEOS Resource Development Investigation API v1.0.0                         */
+/* Commission 006.009 — evidence-first, multi-opportunity executive research  */
+/* ========================================================================== */
+
+const RESOURCE_INVESTIGATION_VERSION = "1.0.0";
+const RESOURCE_INVESTIGATION_BUILD_ID =
+  "RDI100-EXECUTIVE-LANDSCAPE-20260807-A";
+
+function resourceInvestigationText(value) {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value).trim();
+  }
+  if (Array.isArray(value)) {
+    return value.map(resourceInvestigationText).filter(Boolean).join(" ");
+  }
+  if (typeof value === "object") {
+    return Object.values(value)
+      .map(resourceInvestigationText)
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
+}
+
+function resourceInvestigationUrl(record = {}) {
+  const candidates = [
+    record.opportunityUrl,
+    record.url,
+    record.sourceUrl,
+    record.applicationUrl,
+    record.organizationUrl,
+    record.homepage,
+    record.raw?.source?.opportunityUrl,
+    record.raw?.source?.organizationUrl
+  ];
+  return candidates.map(value => String(value || "").trim()).find(Boolean) || null;
+}
+
+function resourceInvestigationDeadline(record = {}) {
+  const candidates = [
+    record.deadline,
+    record.closeDate,
+    record.closingDate,
+    record.applicationDeadline,
+    record.dueDate,
+    record.raw?.deadline,
+    record.raw?.closeDate
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (typeof candidate === "object") {
+      const nested =
+        candidate.date || candidate.value || candidate.iso || candidate.endDate;
+      if (nested) return String(nested);
+      continue;
+    }
+    return String(candidate);
+  }
+  return null;
+}
+
+function resourceInvestigationLifecycle(record = {}, timestamp = Date.now()) {
+  const explicit = resourceInvestigationText([
+    record.lifecycleStatus,
+    record.opportunityStatus,
+    record.status,
+    record.raw?.status
+  ]).toLowerCase();
+  const deadline = resourceInvestigationDeadline(record);
+  const deadlineMs = deadline ? Date.parse(deadline) : NaN;
+  const day = 24 * 60 * 60 * 1000;
+
+  if (/rolling|ongoing|continuous|open year[- ]round/.test(explicit)) {
+    return { status: "rolling", deadline, priority: 2 };
+  }
+  if (/opening soon|upcoming|forecast|planned/.test(explicit)) {
+    return { status: "opening-soon", deadline, priority: 1 };
+  }
+  if (/open|posted|active|available/.test(explicit) && !/closed|inactive/.test(explicit)) {
+    return { status: "open-now", deadline, priority: 0 };
+  }
+  if (Number.isFinite(deadlineMs)) {
+    if (deadlineMs >= timestamp) {
+      return { status: "open-now", deadline, priority: 0 };
+    }
+    if (timestamp - deadlineMs <= 120 * day) {
+      return { status: "recently-closed", deadline, priority: 3 };
+    }
+    return { status: "closed-historical", deadline, priority: 5 };
+  }
+  if (record.discoveryStatus === "source-identified") {
+    return { status: "cycle-unknown", deadline: null, priority: 4 };
+  }
+  return { status: "cycle-unknown", deadline, priority: 4 };
+}
+
+function resourceInvestigationIsGrant(record = {}) {
+  const text = resourceInvestigationText([
+    record.resourceType,
+    record.resourceChannels,
+    record.sourceType,
+    record.title,
+    record.name,
+    record.description,
+    record.raw?.source?.resourceTypes
+  ]).toLowerCase();
+  return /grant|foundation|philanthrop|funding|award/.test(text);
+}
+
+function resourceInvestigationLocalFit(record = {}, areas = []) {
+  const text = resourceInvestigationText([
+    record.geography,
+    record.region,
+    record.geographyAnalysis,
+    record.executiveBrief?.geography,
+    record.raw?.source?.geography
+  ]).toLowerCase();
+  if (!text) return record.region === "local" ? 100 : 25;
+
+  for (const area of areas) {
+    const normalized = String(area || "").toLowerCase();
+    const county = normalized.replace(/,?\s*california.*$/, "").trim();
+    if ((normalized && text.includes(normalized)) || (county && text.includes(county))) {
+      return 100;
+    }
+  }
+  if (/santa cruz|local/.test(text)) return 95;
+  if (/california|statewide/.test(text)) return 60;
+  if (/united states|national|usa|federal/.test(text)) return 35;
+  return 10;
+}
+
+function resourceInvestigationKind(record = {}) {
+  if (record.discoveryStatus === "source-identified") return "funding-source";
+  const title = resourceInvestigationText([record.title, record.name]).toLowerCase();
+  if (/funding opportunities|community foundation$|foundation$/.test(title)) {
+    return "funding-source";
+  }
+  return "opportunity";
+}
+
+function normalizeResourceInvestigationRecord(record = {}, areas = []) {
+  const lifecycle = resourceInvestigationLifecycle(record);
+  const kind = resourceInvestigationKind(record);
+  const title =
+    record.title || record.name || record.sourceName || "Unnamed funding lead";
+  const officialUrl = resourceInvestigationUrl(record);
+  const localFit = resourceInvestigationLocalFit(record, areas);
+  const recommendation =
+    record.executiveRecommendation ||
+    record.executiveBrief?.recommendation ||
+    (kind === "funding-source" ? "investigate" : "review");
+  const unknowns = Array.isArray(record.executiveBrief?.unknowns)
+    ? record.executiveBrief.unknowns
+    : Array.isArray(record.unknowns)
+      ? record.unknowns
+      : [];
+
+  return {
+    id: String(record.id || `${kind}:${title}`).trim(),
+    title: String(title).trim(),
+    kind,
+    lifecycleStatus: lifecycle.status,
+    deadline: lifecycle.deadline,
+    officialUrl,
+    provider: record.provider || record.sourceName || record.agency || null,
+    geography: resourceInvestigationText(record.geography) || null,
+    localFit,
+    recommendation,
+    qualificationStatus: record.qualificationStatus || null,
+    participation: record.executiveBrief?.participation || record.participation || null,
+    missionFit: record.executiveBrief?.missionFit || record.missionFit || null,
+    confidence: record.executiveBrief?.confidence || record.confidence || null,
+    amount: record.amount || record.awardCeiling || record.estimatedFunding || null,
+    summary:
+      record.executiveBrief?.whySeeingThis ||
+      record.description ||
+      record.executiveBrief?.reason ||
+      null,
+    nextAction:
+      record.executiveBrief?.nextAction ||
+      record.nextDiscoveryAction ||
+      (kind === "funding-source"
+        ? "Investigate this source for specific current and upcoming programs."
+        : "Verify the official opportunity and application requirements."),
+    unknowns,
+    evidence: {
+      officialUrl,
+      sourceType: record.sourceType || null,
+      eligibilityVerified: record.eligibilityVerified === true,
+      specificOpportunityVerified: kind === "opportunity" && Boolean(officialUrl)
+    },
+    _sort: {
+      lifecycle: lifecycle.priority,
+      localFit: -localFit
+    }
+  };
+}
+
+function dedupeResourceInvestigation(records = []) {
+  const seen = new Map();
+  for (const record of records) {
+    const key = String(record.officialUrl || record.id || record.title).toLowerCase();
+    const existing = seen.get(key);
+    if (!existing || record.localFit > existing.localFit) seen.set(key, record);
+  }
+  return [...seen.values()];
+}
+
+app.get("/api/resource-development/investigate", async (request, response) => {
+  const startedAt = new Date().toISOString();
+  try {
+    const requestedLimit = Math.max(
+      1,
+      Math.min(100, Number.parseInt(request.query.limit || "40", 10) || 40)
+    );
+    const resourceType = String(request.query.resourceType || "grant").toLowerCase();
+    const geographyProfile = LocalResourceDiscoveryAdapter.defaultGeography;
+    const areas = geographyProfile.currentOperatingAreas || [];
+
+    const stored = (
+      await readExecutiveMemoryCollection(FUNDING_OPPORTUNITY_COLLECTION)
+    ).filter(record => record?.type === "funding-opportunity");
+
+    const discoveryRun = await ResourceDiscoveryNetwork.discoverAll({
+      context: { geographyProfile, includeFutureExpansion: false }
+    });
+
+    const discovered = Array.isArray(discoveryRun.records) ? discoveryRun.records : [];
+    const combined = [...stored, ...discovered]
+      .filter(record => resourceType !== "grant" || resourceInvestigationIsGrant(record))
+      .map(record => normalizeResourceInvestigationRecord(record, areas))
+      .filter(record => record.localFit >= 60);
+
+    const ranked = dedupeResourceInvestigation(combined).sort((left, right) =>
+      left._sort.lifecycle - right._sort.lifecycle ||
+      left._sort.localFit - right._sort.localFit ||
+      left.title.localeCompare(right.title)
+    );
+
+    const opportunities = ranked
+      .filter(record => record.kind === "opportunity")
+      .slice(0, requestedLimit)
+      .map(({ _sort, ...record }) => record);
+    const fundingSources = ranked
+      .filter(record => record.kind === "funding-source")
+      .slice(0, requestedLimit)
+      .map(({ _sort, ...record }) => record);
+
+    const lifecycleCounts = {};
+    for (const record of opportunities) {
+      lifecycleCounts[record.lifecycleStatus] =
+        (lifecycleCounts[record.lifecycleStatus] || 0) + 1;
+    }
+
+    response.status(200).json({
+      schema: "meos.resource-development.investigation.v1",
+      version: RESOURCE_INVESTIGATION_VERSION,
+      buildId: RESOURCE_INVESTIGATION_BUILD_ID,
+      status: discoveryRun.failedAdapters > 0 ? "partial" : "complete",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      request: {
+        resourceType,
+        geography: areas,
+        interpretation: "local geography resolved from the active organization operating profile"
+      },
+      researchCoverage: {
+        storedOpportunitiesReviewed: stored.length,
+        discoveryAdaptersQueried: discoveryRun.adapterCount || null,
+        discoveryRecordsReviewed: discovered.length,
+        discoveryFailures: discoveryRun.failures || [],
+        matchingRecordsAfterQualification: ranked.length,
+        specificOpportunities: opportunities.length,
+        fundingSourcesNeedingDeeperInvestigation: fundingSources.length
+      },
+      lifecycleCounts,
+      opportunities,
+      fundingSources,
+      executiveMessage:
+        opportunities.length > 0
+          ? `Investigated the local funding landscape and returned ${opportunities.length} specific opportunity${opportunities.length === 1 ? "" : "ies"}, ranked with open and upcoming cycles first.`
+          : fundingSources.length > 0
+            ? `No specific local grant opportunity is verified yet. ${fundingSources.length} local funding source${fundingSources.length === 1 ? " was" : "s were"} identified for deeper investigation; they are not being misrepresented as open grants.`
+            : "No matching local grant opportunities or funding sources were verified in the current evidence set."
+    });
+  } catch (error) {
+    response.status(500).json({
+      error: "resource_development_investigation_failed",
+      message: error?.message || String(error),
+      version: RESOURCE_INVESTIGATION_VERSION,
+      buildId: RESOURCE_INVESTIGATION_BUILD_ID
+    });
+  }
+});
+
 app.get("/api/resource-discovery/status", (request, response) => {
   try {
     const adapters = ResourceDiscoveryNetwork.listAdapters();
