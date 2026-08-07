@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * CCSP Long-Term Strategy Package
  *
- * Version: 1.0.0
- * Build: CCLTS100-STRATEGIC-NAVIGATION-20260802-A
+ * Version: 1.1.0
+ * Build: CCLTS110-FRONTLINE-FELLOWSHIP-20260807-A
  *
  * Purpose:
  * - Preserve CCSP's long-term strategy as structured, queryable organizational data.
@@ -27,8 +27,8 @@
     "use strict";
 
     const NAME = "CCSP Long-Term Strategy";
-    const VERSION = "1.0.0";
-    const BUILD_ID = "CCLTS100-STRATEGIC-NAVIGATION-20260802-A";
+    const VERSION = "1.1.0";
+    const BUILD_ID = "CCLTS110-FRONTLINE-FELLOWSHIP-20260807-A";
     const SCHEMA = "meos.organization.long-term-strategy.v1";
     const ORGANIZATION_ID = "california-clean-slate-program";
     const STORAGE_KEY = "meos.ccsp.long-term-strategy.v1";
@@ -80,6 +80,51 @@
             { id: "purpose-workforce-development", name: "Workforce and trade-skills development", description: "Build practical work skills, employment pathways, trade training, and productive work opportunities that support stabilization.", weight: 9, futureCapability: true },
             { id: "purpose-environmental-stewardship", name: "Watershed and environmental stewardship", description: "Reduce encampment-related environmental harm and protect local waterways and the Monterey Bay sanctuary.", weight: 8 },
             { id: "purpose-institutional-sustainability", name: "Institutional sustainability", description: "Develop durable funding, earned revenue, partnerships, infrastructure, and organizational capacity.", weight: 9 }
+        ],
+
+        initiatives: [
+            {
+                id: "initiative-frontline-fellowship",
+                name: "Frontline Fellowship",
+                status: "active",
+                geography: ["Santa Cruz County", "California"],
+                populations: ["veterans", "first responders"],
+                purpose: "Interrupt isolation and crisis after service through direct stabilization, peer fellowship, emergency relief, and advancement support.",
+                operatingCode: "Never Leave a Man Behind",
+                activities: [
+                    "emergency hotel extractions and temporary lodging relief",
+                    "peer fellowship and social reconnection",
+                    "outdoor and wilderness decompression activities",
+                    "substance-use and crisis stabilization support",
+                    "trade-school textbooks and job-skill materials",
+                    "resume and civilian workforce transition support",
+                    "direct philanthropic emergency relief and stabilization allocations"
+                ],
+                fundingLenses: [
+                    "veterans",
+                    "first responders",
+                    "suicide prevention",
+                    "crisis intervention",
+                    "behavioral health",
+                    "substance-use recovery",
+                    "emergency shelter",
+                    "temporary lodging",
+                    "peer support",
+                    "social isolation",
+                    "workforce transition",
+                    "trade education",
+                    "employment readiness",
+                    "direct emergency relief"
+                ],
+                relationshipToContinuum: [
+                    "community stabilization and navigation",
+                    "treatment and recovery",
+                    "workforce and trade-skills development",
+                    "employment and earned stability"
+                ],
+                evidenceClass: "public-program-description",
+                source: "CCSP Frontline Fellowship Initiative"
+            }
         ],
 
         continuum: [
@@ -267,10 +312,36 @@
             .filter(match => match.matchedTerms.length > 0)
             .sort((left, right) => right.score - left.score);
 
+        const initiativeMatches = (state.strategy.initiatives || [])
+            .map(initiative => {
+                const terms = normalizeText(
+                    [initiative.name, initiative.purpose, initiative.populations, initiative.activities, initiative.fundingLenses]
+                        .flat(Infinity)
+                        .filter(Boolean)
+                        .join(" ")
+                )
+                    .split(" ")
+                    .filter(term => term.length >= 4);
+
+                const matchedTerms = [...new Set(
+                    terms.filter(term => text.includes(term))
+                )];
+
+                return {
+                    id: initiative.id,
+                    name: initiative.name,
+                    matchedTerms,
+                    score: Math.min(100, matchedTerms.length * 14)
+                };
+            })
+            .filter(match => match.matchedTerms.length > 0)
+            .sort((left, right) => right.score - left.score);
+
         const strategicSignalScore = Math.min(
             100,
             purposeMatches.length * 20 +
-                capabilityMatches.length * 25
+                capabilityMatches.length * 25 +
+                initiativeMatches.length * 30
         );
 
         return {
@@ -279,6 +350,7 @@
             evaluatedAt: now(),
             purposeMatches,
             capabilityMatches,
+            initiativeMatches,
             strategicSignalScore,
             requiresExecutiveReasoning:
                 strategicSignalScore > 0 ||
@@ -389,6 +461,12 @@
             {
                 name: "Purposes available",
                 passed: state.strategy.purposes.length > 0
+            },
+            {
+                name: "Frontline Fellowship available",
+                passed: (state.strategy.initiatives || []).some(
+                    initiative => initiative.id === "initiative-frontline-fellowship"
+                )
             },
             {
                 name: "Continuum available",
