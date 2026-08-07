@@ -3,8 +3,8 @@
  * Executive Hallway
  *
  * Commission: 006.000A
- * Version: 1.0.0
- * Build: EH100-SPINAL-CORD-20260806-A
+ * Version: 1.0.1
+ * Build: EH101-VERIFIED-DELIVERY-20260806-A
  *
  * Purpose:
  * - Formalize the existing MEOS routing, mission, office, provider, workflow, and state pieces
@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.0.0";
-  const BUILD_ID = "EH100-SPINAL-CORD-20260806-A";
+  const VERSION = "1.0.1";
+  const BUILD_ID = "EH101-VERIFIED-DELIVERY-20260806-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -230,6 +230,58 @@
     return found;
   }
 
+
+  function findExplicitWorkspaceRetrievals(value, found = [], seen = new Set()) {
+    if (!value || typeof value !== "object" || seen.has(value) || found.length >= 10) return found;
+    seen.add(value);
+
+    const candidates = [];
+    if (value.retrieval?.file) candidates.push(value.retrieval.file);
+    if (value.bestMatch?.file) candidates.push(value.bestMatch.file);
+
+    candidates.forEach(file => {
+      const name = file?.name || file?.fileName || file?.filename || null;
+      const url = file?.webViewLink || file?.webContentLink || file?.downloadUrl || file?.url || file?.openUrl || null;
+      const mimeType = file?.mimeType || null;
+      const fileId = file?.fileId || file?.id || null;
+      if (name && (url || mimeType || fileId)) {
+        found.push({
+          name: String(name),
+          url: url || null,
+          mimeType: mimeType || null,
+          fileId: fileId || null,
+          raw: clone(file),
+          source: value.retrieval?.file === file ? "retrieval.file" : "bestMatch.file"
+        });
+      }
+    });
+
+    if (Array.isArray(value)) {
+      value.forEach(item => findExplicitWorkspaceRetrievals(item, found, seen));
+    } else {
+      Object.values(value).forEach(item => findExplicitWorkspaceRetrievals(item, found, seen));
+    }
+    return found;
+  }
+
+  function workspaceRetrievalMessage(value, seen = new Set()) {
+    if (!value || typeof value !== "object" || seen.has(value)) return null;
+    seen.add(value);
+    if (value.retrieval && typeof value.retrieval === "object") {
+      return {
+        success: value.retrieval.success === true,
+        confidence: value.retrieval.confidence || null,
+        message: value.retrieval.message || null
+      };
+    }
+    const children = Array.isArray(value) ? value : Object.values(value);
+    for (const child of children) {
+      const found = workspaceRetrievalMessage(child, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+
   function findLikelyFileObjects(value, found = [], seen = new Set()) {
     if (!value || typeof value !== "object" || seen.has(value) || found.length >= 25) return found;
     seen.add(value);
@@ -240,10 +292,11 @@
 
     const name = value.name || value.fileName || value.filename || value.title || null;
     const url = value.webViewLink || value.webContentLink || value.downloadUrl || value.url || value.openUrl || null;
-    const mimeType = value.mimeType || value.type || null;
+    const mimeType = value.mimeType || (typeof value.type === "string" && value.type.includes("/") ? value.type : null);
     const fileId = value.fileId || value.id || null;
 
-    if (name && (url || mimeType || fileId)) {
+    const looksLikeNamedFile = Boolean(fileId && /\.[a-z0-9]{1,10}$/i.test(String(name || "")));
+    if (name && (url || mimeType || looksLikeNamedFile)) {
       found.push({ name: String(name), url: url || null, mimeType: mimeType || null, fileId: fileId || null, raw: clone(value) });
     }
 
@@ -291,7 +344,9 @@
 
   function normalizeExecutionDeliverables(work, execution) {
     const root = execution?.result ?? execution;
-    const fileObjects = findLikelyFileObjects(root);
+    const explicit = findExplicitWorkspaceRetrievals(root);
+    const generic = findLikelyFileObjects(root);
+    const fileObjects = [...explicit, ...generic];
     const seen = new Set();
 
     fileObjects.forEach(file => {
@@ -305,6 +360,7 @@
         fileId: file.fileId,
         openUrl: file.url,
         provider: execution?.providerId || execution?.provider || null,
+        summary: file.source ? `Workspace delivery from ${file.source}.` : null,
         data: file.raw
       });
     });
@@ -320,7 +376,14 @@
       }));
     }
 
-    if (!work.deliverables.length && execution?.success === true) {
+    const retrieval = workspaceRetrievalMessage(root);
+    const isFileRetrieval =
+      work.intent === "find-file" ||
+      work.requiredCapabilities.some(capability =>
+        capability === "workspace.file.search" || capability === "workspace.file.research"
+      );
+
+    if (!work.deliverables.length && execution?.success === true && !isFileRetrieval) {
       addDeliverable(work, {
         title: work.title,
         kind: "result",
@@ -329,6 +392,12 @@
         data: root
       });
     }
+
+    return {
+      count: work.deliverables.length,
+      retrieval,
+      isFileRetrieval
+    };
   }
 
   async function routeWorkspaceWork(work, interpretation, options = {}) {
@@ -380,7 +449,20 @@
     }
 
     transition(work, "verifying");
-    normalizeExecutionDeliverables(work, result.result || result);
+    const delivery = normalizeExecutionDeliverables(work, result.result || result);
+    if (delivery.isFileRetrieval && delivery.count === 0) {
+      work.options = ["retry", "review-evidence", "archive"];
+      return transition(work, "blocked", {
+        error: delivery.retrieval?.message || "Workspace execution completed but no usable file deliverable was returned.",
+        outcome: {
+          success: false,
+          verified: false,
+          reason: "workspace-deliverable-missing",
+          retrieval: clone(delivery.retrieval),
+          result: clone(result)
+        }
+      });
+    }
     work.options = ["open-deliverable", "use-in-task", "archive"];
     return transition(work, "done", {
       outcome: { success: true, verified: true, result: clone(result) }
@@ -459,7 +541,16 @@
       const missionId = work.execution?.workspaceMissionId;
       if (!office?.takeIt || !missionId) throw new Error("Workspace Take It path is unavailable.");
       transition(work, "executing");
-      const result = await office.takeIt(missionId, options);
+      let result;
+      try {
+        result = await office.takeIt(missionId, options);
+      } catch (error) {
+        work.options = ["retry", "reassign", "cancel"];
+        return freeze(transition(work, "failed", {
+          error: error?.message || String(error),
+          outcome: { success: false, reason: error?.code || "workspace-take-it-failed" }
+        }));
+      }
       work.execution = clone(result);
       work.evidence.push({ type: "workspace-execution", verifiedAt: now(), result: clone(result) });
       if (result?.success !== true) {
@@ -469,7 +560,20 @@
         }));
       }
       transition(work, "verifying");
-      normalizeExecutionDeliverables(work, result.result || result);
+      const delivery = normalizeExecutionDeliverables(work, result.result || result);
+      if (delivery.isFileRetrieval && delivery.count === 0) {
+        work.options = ["retry", "review-evidence", "archive"];
+        return freeze(transition(work, "blocked", {
+          error: delivery.retrieval?.message || "Workspace execution completed but no usable file deliverable was returned.",
+          outcome: {
+            success: false,
+            verified: false,
+            reason: "workspace-deliverable-missing",
+            retrieval: clone(delivery.retrieval),
+            result: clone(result)
+          }
+        }));
+      }
       work.options = ["open-deliverable", "use-in-task", "archive"];
       return freeze(transition(work, "done", {
         outcome: { success: true, verified: true, result: clone(result) }
@@ -591,6 +695,44 @@
     check("Mission Engine mirror exists", typeof registerMissionMirror === "function");
     check("Executive State extension registration exists", typeof registerExecutiveStateSource === "function");
     check("Dashboard event bridge exists", typeof handleMaddyRequest === "function");
+
+    const nestedWorkspaceFixture = {
+      success: true,
+      execution: {
+        results: [{
+          provider: { id: "google-workspace", name: "Google Workspace", type: "tool" },
+          output: {
+            retrieval: {
+              success: true,
+              confidence: "high",
+              file: {
+                id: "fixture-aoi",
+                name: "02_Articles_of_Incorporation_30.00.pdf",
+                mimeType: "application/pdf",
+                webViewLink: "https://drive.google.com/file/d/fixture-aoi/view"
+              }
+            }
+          }
+        }]
+      }
+    };
+    const explicitFixtureFiles = findExplicitWorkspaceRetrievals(nestedWorkspaceFixture);
+    const genericFixtureFiles = findLikelyFileObjects(nestedWorkspaceFixture);
+    check(
+      "Nested Provider Manager Workspace retrieval exposes the real file",
+      explicitFixtureFiles.some(item => item.name === "02_Articles_of_Incorporation_30.00.pdf" && item.url?.includes("fixture-aoi")),
+      explicitFixtureFiles
+    );
+    check(
+      "Provider descriptors are not mistaken for file deliverables",
+      !genericFixtureFiles.some(item => item.name === "Google Workspace"),
+      genericFixtureFiles
+    );
+    check(
+      "Workspace retrieval outcome is inspectable",
+      workspaceRetrievalMessage(nestedWorkspaceFixture)?.success === true,
+      workspaceRetrievalMessage(nestedWorkspaceFixture)
+    );
 
     const passed = assertions.filter(item => item.passed).length;
     return freeze({
