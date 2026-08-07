@@ -35,12 +35,12 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.8";
+const VERSION = "2.10.9";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
-const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
+const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.5.0";
 const RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID =
-  "RDI140-WATERSHED-COASTAL-LIVE-20260803-A";
+  "RDI150-EXECUTIVE-OPPORTUNITY-CASE-20260807-A";
 
 const resourceDiscoveryIntegrationState = {
   status: "initializing",
@@ -10777,6 +10777,247 @@ app.get("/api/resource-discovery/status", (request, response) => {
   }
 });
 
+
+function extractExecutiveFundingFacts(text = "") {
+  const cleanText = String(text || "").replace(/\s+/g, " ").trim();
+  const sentences = cleanText
+    .split(/(?<=[.!?])\s+/)
+    .map(value => value.trim())
+    .filter(Boolean);
+
+  const pick = pattern =>
+    sentences.filter(sentence => pattern.test(sentence)).slice(0, 8);
+
+  const moneyMatches = [
+    ...cleanText.matchAll(
+      /\$\s?\d[\d,]*(?:\.\d+)?(?:\s*(?:million|thousand|m|k))?(?:\s*(?:-|–|to)\s*\$?\s?\d[\d,]*(?:\.\d+)?(?:\s*(?:million|thousand|m|k))?)?/gi
+    )
+  ].map(match => match[0].trim());
+
+  const dateMatches = [
+    ...cleanText.matchAll(
+      /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+20\d{2}\b/gi
+    )
+  ].map(match => match[0].trim());
+
+  return {
+    amounts: [...new Set(moneyMatches)].slice(0, 12),
+    dates: [...new Set(dateMatches)].slice(0, 12),
+    eligibilityEvidence: pick(
+      /\b(eligible|eligibility|501\(c\)\(3\)|nonprofit|applicant|qualified organization)\b/i
+    ),
+    fundedActivityEvidence: pick(
+      /\b(fund|support|program|project|service|capital|equipment|operating|housing|homeless|veteran|first responder|workforce|environment|youth|health)\b/i
+    ),
+    restrictionEvidence: pick(
+      /\b(not eligible|ineligible|will not fund|does not fund|prohibited|restriction|match|required match|cost share|reimbursement)\b/i
+    ),
+    deadlineEvidence: pick(
+      /\b(deadline|due date|applications? (?:are )?due|apply by|submission)\b/i
+    ),
+    applicationEvidence: pick(
+      /\b(apply|application|proposal|letter of intent|LOI|request for proposal|RFP)\b/i
+    )
+  };
+}
+
+async function readExecutiveFundingDocument(url) {
+  const result = await fetchPublicFundingResource(url, {
+    method: "GET",
+    accept:
+      "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.4"
+  });
+
+  const contentType = String(result.contentType || "").toLowerCase();
+  let text = "";
+  let documentType = "web-page";
+
+  if (
+    contentType.includes("application/pdf") ||
+    /\.pdf(?:$|\?)/i.test(result.finalUrl)
+  ) {
+    documentType = "pdf";
+    const parsed = await pdfParse(result.body);
+    text = String(parsed?.text || "");
+  } else {
+    text = stripHtml(result.body.toString("utf8"));
+  }
+
+  return {
+    url: result.finalUrl,
+    requestedUrl: url,
+    contentType: result.contentType,
+    documentType,
+    text: text.slice(0, 40_000),
+    byteLength: result.body.length,
+    retrievedAt: continuousOperationsNow()
+  };
+}
+
+function scoreExecutiveOpportunityEvidence(facts = {}, documents = []) {
+  const checks = {
+    officialMaterialRead: documents.length > 0,
+    amountFound: (facts.amounts || []).length > 0,
+    deadlineFound:
+      (facts.dates || []).length > 0 ||
+      (facts.deadlineEvidence || []).length > 0,
+    eligibilityFound: (facts.eligibilityEvidence || []).length > 0,
+    fundedActivitiesFound:
+      (facts.fundedActivityEvidence || []).length > 0,
+    applicationPathFound: (facts.applicationEvidence || []).length > 0
+  };
+
+  const passed = Object.values(checks).filter(Boolean).length;
+  return {
+    checks,
+    passed,
+    total: Object.keys(checks).length,
+    coverage: Math.round((passed / Object.keys(checks).length) * 100)
+  };
+}
+
+async function buildExecutiveOpportunityCase(sourceRecord = {}) {
+  const officialUrl =
+    sourceRecord.url ||
+    sourceRecord.original?.url ||
+    sourceRecord.original?.raw?.source?.opportunityUrl ||
+    sourceRecord.original?.raw?.source?.organizationUrl ||
+    "";
+
+  if (!officialUrl) {
+    return {
+      schema: "meos.executive-opportunity-case.v1",
+      status: "investigation-blocked",
+      source: sourceRecord,
+      promotion: {
+        executiveDeskReady: false,
+        reason:
+          "No authoritative public URL is available for investigation."
+      },
+      unknowns: [
+        "Authoritative opportunity source",
+        "Current funding cycle",
+        "Eligibility",
+        "Award value",
+        "Deadline",
+        "Application requirements"
+      ]
+    };
+  }
+
+  const root = await readExecutiveFundingDocument(officialUrl);
+  const rootFacts = extractExecutiveFundingFacts(root.text);
+  const documents = [root];
+
+  // Follow the most relevant authoritative links instead of making the
+  // Executive Director perform the click-and-read work.
+  if (root.documentType === "web-page") {
+    const rootHtml = (
+      await fetchPublicFundingResource(root.url, {
+        method: "GET",
+        accept: "text/html,application/xhtml+xml"
+      })
+    ).body.toString("utf8");
+
+    const rootOrigin = new URL(root.url).origin;
+    const candidates = extractFundingLinks(rootHtml, root.url)
+      .filter(link => {
+        try {
+          return new URL(link.url).origin === rootOrigin;
+        } catch {
+          return false;
+        }
+      })
+      .filter(link =>
+        /\b(grant|apply|application|guideline|eligib|fund|rfp|proposal|program|award)\b/i.test(
+          `${link.label} ${link.url}`
+        )
+      )
+      .slice(0, 6);
+
+    for (const link of candidates) {
+      if (documents.some(document => document.url === link.url)) continue;
+      try {
+        documents.push(await readExecutiveFundingDocument(link.url));
+      } catch {
+        // A failed child document is evidence of an unknown, not permission
+        // to fabricate a completed investigation.
+      }
+    }
+  }
+
+  const combinedText = documents.map(document => document.text).join(" ");
+  const facts = extractExecutiveFundingFacts(combinedText);
+  const evidenceScore = scoreExecutiveOpportunityEvidence(facts, documents);
+
+  const evidenceLedger = documents.map(document => ({
+    url: document.url,
+    documentType: document.documentType,
+    contentType: document.contentType,
+    retrievedAt: document.retrievedAt,
+    byteLength: document.byteLength
+  }));
+
+  const unknowns = [];
+  if (!evidenceScore.checks.amountFound) unknowns.push("Award amount or range");
+  if (!evidenceScore.checks.deadlineFound) unknowns.push("Current application deadline");
+  if (!evidenceScore.checks.eligibilityFound) unknowns.push("Applicant eligibility");
+  if (!evidenceScore.checks.fundedActivitiesFound) unknowns.push("Allowable funded activities");
+  if (!evidenceScore.checks.applicationPathFound) unknowns.push("Application path or requirements");
+
+  const executiveDeskReady =
+    evidenceScore.checks.officialMaterialRead &&
+    evidenceScore.checks.eligibilityFound &&
+    evidenceScore.checks.fundedActivitiesFound &&
+    evidenceScore.checks.applicationPathFound &&
+    evidenceScore.coverage >= 67;
+
+  return {
+    schema: "meos.executive-opportunity-case.v1",
+    version: "1.0.0",
+    buildId: "EOC100-READ-BEFORE-DESK-20260807-A",
+    investigatedAt: continuousOperationsNow(),
+    status: executiveDeskReady
+      ? "executive-case-built"
+      : "investigation-incomplete",
+    source: {
+      id: sourceRecord.id,
+      title: sourceRecord.title,
+      geography: sourceRecord.geography,
+      resourceType: sourceRecord.resourceType,
+      resourceChannels:
+        sourceRecord.original?.resourceChannels ||
+        sourceRecord.resourceChannels ||
+        [],
+      officialUrl
+    },
+    whatMaddyRead: {
+      documentCount: documents.length,
+      evidenceLedger
+    },
+    extracted: {
+      amounts: facts.amounts,
+      dates: facts.dates,
+      eligibilityEvidence: facts.eligibilityEvidence,
+      fundedActivityEvidence: facts.fundedActivityEvidence,
+      restrictionEvidence: facts.restrictionEvidence,
+      deadlineEvidence: facts.deadlineEvidence,
+      applicationEvidence: facts.applicationEvidence
+    },
+    evidence: evidenceScore,
+    unknowns,
+    promotion: {
+      executiveDeskReady,
+      reason: executiveDeskReady
+        ? "Maddy read authoritative material and extracted enough decision evidence to build an executive opportunity case."
+        : "This remains a funding lead. Maddy has not verified enough authoritative evidence to present it as an executive-qualified opportunity."
+    },
+    nextAction: executiveDeskReady
+      ? "Compare this verified opportunity evidence against the Organization Package, long-term strategy, current assets, dependencies, and execution capacity before recommending pursuit."
+      : "Continue investigation until the missing decision evidence is verified. Do not present a confident pursue recommendation yet."
+  };
+}
+
 app.get(
   "/api/resource-discovery/local",
   async (request, response) => {
@@ -10835,6 +11076,61 @@ app.get(
       response.status(500).json({
         error: "local_resource_discovery_failed",
         message: error?.message || String(error),
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/resource-discovery/local/investigate",
+  async (request, response) => {
+    try {
+      const sourceId = String(request.query.sourceId || "").trim();
+
+      if (!sourceId) {
+        return response.status(400).json({
+          error: "local_resource_source_required",
+          message: "sourceId is required."
+        });
+      }
+
+      const run = await ResourceDiscoveryNetwork.discoverAll({
+        adapterIds: [LocalResourceDiscoveryAdapter.id],
+        context: {
+          geographyProfile:
+            LocalResourceDiscoveryAdapter.defaultGeography,
+          includeFutureExpansion: false
+        }
+      });
+
+      const sourceRecord = (run.records || []).find(
+        record => record.id === sourceId
+      );
+
+      if (!sourceRecord) {
+        return response.status(404).json({
+          error: "local_resource_source_not_found",
+          sourceId
+        });
+      }
+
+      const opportunityCase =
+        await buildExecutiveOpportunityCase(sourceRecord);
+
+      return response.json({
+        schema: "meos.resource-discovery.local-investigation.v1",
+        version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
+        buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID,
+        sourceId,
+        opportunityCase
+      });
+    } catch (error) {
+      return response.status(500).json({
+        error: "local_resource_investigation_failed",
+        message: error?.message || String(error),
+        code: error?.code || null,
         version: RESOURCE_DISCOVERY_INTEGRATION_VERSION,
         buildId: RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID
       });
