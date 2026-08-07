@@ -33,7 +33,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.3";
+const VERSION = "2.10.4";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -103,9 +103,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.3.0";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.4.0";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI130-WORKSPACE-FILE-RETRIEVAL-20260806-A";
+  "GWI140-CANONICAL-DOCUMENT-RANKING-20260806-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -173,21 +173,45 @@ const GOOGLE_SHEET_MIME_TYPE =
 
 const GOOGLE_WORKSPACE_RESEARCH_STOP_WORDS = new Set([
   "a", "about", "already", "an", "and", "are", "as", "at", "be", "been",
-  "being", "by", "can", "do", "does", "for", "from", "get", "give", "has",
+  "being", "bring", "by", "can", "do", "does", "fetch", "find", "for", "from", "get", "give", "grab", "has",
   "have", "hey", "how", "i", "in", "into", "is", "it", "me", "my", "of",
-  "on", "or", "our", "please", "somebody", "someone", "supporting", "tell",
+  "locate", "on", "open", "or", "our", "please", "pull", "retrieve", "show", "somebody", "someone", "supporting", "tell",
   "that", "the", "their", "them", "there", "this", "to", "us", "we", "what",
   "when", "where", "which", "who", "with", "would", "you", "your"
 ]);
 
-function normalizeWorkspaceResearchTerms(value) {
-  const raw = String(value || "")
+/*
+ * Commission 006.005A — Canonical Document Intent Ranking
+ *
+ * Human file requests are not keyword lookups. The user names the document
+ * they mean and MEOS must distinguish that identity from files that merely
+ * mention the same words. These control words are removed from the requested
+ * document identity while connective words such as "of" remain available for
+ * phrase/acronym recognition ("Articles of Incorporation" -> "AOI").
+ */
+const GOOGLE_WORKSPACE_DOCUMENT_REQUEST_WORDS = new Set([
+  "bring", "can", "could", "fetch", "find", "get", "give", "grab", "hey",
+  "locate", "maddy", "me", "my", "open", "our", "please", "pull", "retrieve",
+  "send", "show", "the", "to", "us", "where", "would", "you"
+]);
+
+const GOOGLE_WORKSPACE_INCIDENTAL_DOCUMENT_TYPES = new Set([
+  "checklist", "guide", "invoice", "memo", "minutes", "note", "notes",
+  "receipt", "statement", "template", "transaction"
+]);
+
+function tokenizeWorkspaceText(value) {
+  return String(value || "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s_-]+/g, " ")
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]+/g, " ")
     .split(/\s+/)
     .map(term => term.trim())
     .filter(Boolean);
+}
 
+function normalizeWorkspaceResearchTerms(value) {
+  const raw = tokenizeWorkspaceText(value);
   const unique = [];
   const seen = new Set();
 
@@ -200,6 +224,74 @@ function normalizeWorkspaceResearchTerms(value) {
   }
 
   return unique.slice(0, 8);
+}
+
+function normalizeWorkspaceDocumentIntent(value) {
+  const rawTokens = tokenizeWorkspaceText(value);
+  const targetTokens = rawTokens.filter(
+    token => !GOOGLE_WORKSPACE_DOCUMENT_REQUEST_WORDS.has(token)
+  );
+
+  while (
+    targetTokens.length &&
+    ["a", "an", "copy", "document", "file", "record"].includes(targetTokens[0])
+  ) {
+    targetTokens.shift();
+  }
+
+  while (
+    targetTokens.length &&
+    ["copy", "document", "file", "for", "please"].includes(
+      targetTokens[targetTokens.length - 1]
+    )
+  ) {
+    targetTokens.pop();
+  }
+
+  const significantTokens = targetTokens.filter(
+    token =>
+      token.length >= 3 &&
+      !["and", "for", "of", "the"].includes(token)
+  );
+
+  const acronymTokens = targetTokens.filter(
+    token =>
+      /^[a-z0-9]+$/.test(token) &&
+      !["a", "an", "and", "for", "the"].includes(token)
+  );
+
+  const acronym =
+    acronymTokens.length >= 3
+      ? acronymTokens.map(token => token[0]).join("")
+      : null;
+
+  return {
+    targetTokens,
+    significantTokens,
+    targetPhrase: targetTokens.join(" "),
+    significantPhrase: significantTokens.join(" "),
+    acronym:
+      acronym && acronym.length >= 3 && acronym.length <= 8
+        ? acronym
+        : null
+  };
+}
+
+function buildWorkspaceResearchTerms(question) {
+  const terms = normalizeWorkspaceResearchTerms(question);
+  const intent = normalizeWorkspaceDocumentIntent(question);
+
+  if (
+    intent.acronym &&
+    !terms.includes(intent.acronym)
+  ) {
+    terms.push(intent.acronym);
+  }
+
+  return {
+    terms: [...new Set(terms)].slice(0, 10),
+    intent
+  };
 }
 
 function escapeGoogleDriveQueryValue(value) {
@@ -265,30 +357,136 @@ function extractGoogleDocumentText(document) {
     .trim();
 }
 
+function normalizeWorkspaceFilename(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\.[a-z0-9]{1,10}$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function scoreWorkspaceResearchCandidate({
   file,
   text = "",
-  terms = []
+  terms = [],
+  documentIntent = null
 } = {}) {
-  const name = String(file?.name || "").toLowerCase();
+  const name = normalizeWorkspaceFilename(file?.name);
+  const nameTokens = new Set(tokenizeWorkspaceText(name));
   const content = String(text || "").toLowerCase();
-  let score = 0;
+  const intent =
+    documentIntent ||
+    normalizeWorkspaceDocumentIntent("");
+  const significantTokens =
+    intent.significantTokens?.length
+      ? intent.significantTokens
+      : terms;
   const matchedTerms = [];
+  const signals = [];
+  let score = 0;
 
   for (const term of terms) {
     let matched = false;
 
-    if (name.includes(term)) {
-      score += 8;
+    if (nameTokens.has(term) || name.includes(term)) {
+      score += 10;
       matched = true;
     }
 
     if (content.includes(term)) {
-      score += 3;
+      score += 2;
       matched = true;
     }
 
     if (matched) matchedTerms.push(term);
+  }
+
+  const targetPhrase =
+    String(intent.targetPhrase || "").trim();
+  const significantPhrase =
+    String(intent.significantPhrase || "").trim();
+
+  if (
+    targetPhrase.length >= 4 &&
+    name.includes(targetPhrase)
+  ) {
+    score += 60;
+    signals.push("canonical-title-phrase");
+  }
+
+  if (
+    significantPhrase.length >= 4 &&
+    name.includes(significantPhrase)
+  ) {
+    score += 35;
+    signals.push("significant-title-phrase");
+  }
+
+  const filenameCoverage =
+    significantTokens.length
+      ? significantTokens.filter(term =>
+          nameTokens.has(term) || name.includes(term)
+        ).length / significantTokens.length
+      : 0;
+
+  if (
+    significantTokens.length >= 2 &&
+    filenameCoverage === 1
+  ) {
+    score += 35;
+    signals.push("all-target-terms-in-title");
+  } else if (filenameCoverage >= 0.5) {
+    score += Math.round(filenameCoverage * 15);
+    signals.push("partial-target-title-coverage");
+  }
+
+  if (
+    intent.acronym &&
+    (
+      nameTokens.has(intent.acronym) ||
+      name.replace(/\s+/g, "").includes(intent.acronym)
+    )
+  ) {
+    score += 55;
+    signals.push("canonical-acronym-in-title");
+  }
+
+  if (
+    intent.targetTokens?.length === 1 &&
+    nameTokens.has(intent.targetTokens[0])
+  ) {
+    score += 40;
+    signals.push("direct-target-token-in-title");
+  }
+
+  if (
+    targetPhrase.length >= 4 &&
+    content.includes(targetPhrase)
+  ) {
+    score += 5;
+    signals.push("canonical-phrase-in-content");
+  }
+
+  const requestedTypes =
+    new Set(intent.targetTokens || []);
+  const conflictingTypes =
+    [...GOOGLE_WORKSPACE_INCIDENTAL_DOCUMENT_TYPES]
+      .filter(type =>
+        nameTokens.has(type) &&
+        !requestedTypes.has(type)
+      );
+
+  if (
+    conflictingTypes.length &&
+    !signals.includes("canonical-title-phrase") &&
+    !signals.includes("canonical-acronym-in-title")
+  ) {
+    score -= 30;
+    signals.push(
+      `incidental-document-type:${conflictingTypes.join(",")}`
+    );
   }
 
   if (file?.mimeType === GOOGLE_DOC_MIME_TYPE) {
@@ -296,10 +494,13 @@ function scoreWorkspaceResearchCandidate({
   }
 
   return {
-    score,
-    matchedTerms: [...new Set(matchedTerms)]
+    score: Math.max(0, score),
+    matchedTerms: [...new Set(matchedTerms)],
+    signals,
+    filenameCoverage
   };
 }
+
 
 function buildWorkspaceEvidenceExcerpt(text, terms, maximumLength = 1800) {
   const source = String(text || "").trim();
@@ -337,8 +538,10 @@ async function researchGoogleWorkspaceReadOnly({
   limit = 50,
   readLimit = 12
 } = {}) {
-  const terms =
-    normalizeWorkspaceResearchTerms(question);
+  const researchIntent =
+    buildWorkspaceResearchTerms(question);
+  const terms = researchIntent.terms;
+  const documentIntent = researchIntent.intent;
 
   if (!terms.length) {
     const error = new Error(
@@ -383,7 +586,8 @@ async function researchGoogleWorkspaceReadOnly({
       scoreWorkspaceResearchCandidate({
         file,
         text: "",
-        terms
+        terms,
+        documentIntent
       });
 
     evidenceById.set(file.id, {
@@ -397,6 +601,8 @@ async function researchGoogleWorkspaceReadOnly({
       },
       score: scoring.score,
       matchedTerms: scoring.matchedTerms,
+      rankingSignals: scoring.signals,
+      filenameCoverage: scoring.filenameCoverage,
       excerpt: "",
       characterCount: 0,
       contentRead: false
@@ -461,7 +667,8 @@ async function researchGoogleWorkspaceReadOnly({
         scoreWorkspaceResearchCandidate({
           file,
           text,
-          terms
+          terms,
+          documentIntent
         });
 
       evidenceById.set(file.id, {
@@ -475,6 +682,8 @@ async function researchGoogleWorkspaceReadOnly({
         },
         score: scoring.score,
         matchedTerms: scoring.matchedTerms,
+        rankingSignals: scoring.signals,
+        filenameCoverage: scoring.filenameCoverage,
         excerpt:
           buildWorkspaceEvidenceExcerpt(
             text,
@@ -522,11 +731,21 @@ async function researchGoogleWorkspaceReadOnly({
   const secondScore = Number(evidence[1]?.score || 0);
   const matchedTermCount =
     bestMatch?.matchedTerms?.length || 0;
+  const rankingSignals =
+    bestMatch?.rankingSignals || [];
+  const identityStrong =
+    rankingSignals.includes("canonical-title-phrase") ||
+    rankingSignals.includes("canonical-acronym-in-title") ||
+    rankingSignals.includes("direct-target-token-in-title") ||
+    rankingSignals.includes("all-target-terms-in-title");
 
   const confidence = !bestMatch
     ? "none"
-    : matchedTermCount >= 2 &&
-        (topScore >= 16 || topScore > secondScore)
+    : identityStrong &&
+        (
+          topScore >= 35 ||
+          topScore >= secondScore + 12
+        )
       ? "high"
       : matchedTermCount >= 1
         ? "possible"
@@ -538,6 +757,11 @@ async function researchGoogleWorkspaceReadOnly({
     readOnly: true,
     question: String(question || "").trim(),
     searchTerms: terms,
+    documentIntent: {
+      targetPhrase: documentIntent.targetPhrase,
+      significantTerms: documentIntent.significantTokens,
+      acronym: documentIntent.acronym
+    },
     driveQuery,
     filesFound: files.length,
     filesRead,
