@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.0.1";
-  const BUILD_ID = "EH101-VERIFIED-DELIVERY-20260806-A";
+  const VERSION = "1.0.2";
+  const BUILD_ID = "EH102-PRIMARY-RETRIEVAL-20260806-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -342,11 +342,38 @@
     return item;
   }
 
+  function selectExecutionFileObjects(work, explicit = [], generic = []) {
+    const isFileRetrieval =
+      work.intent === "find-file" ||
+      work.requiredCapabilities.some(capability =>
+        capability === "workspace.file.search" || capability === "workspace.file.research"
+      );
+
+    /*
+     * Commission 006.005 — Primary Retrieval Authority
+     *
+     * Workspace research responses can contain many candidate file objects in
+     * evidence arrays. Those are investigation evidence, not deliverables. For
+     * a find/get/fetch request, the provider's explicit retrieval.file /
+     * bestMatch.file is authoritative. Returning every candidate makes the
+     * dashboard's latest-deliverable action open an unrelated search candidate.
+     */
+    const fileObjects = isFileRetrieval && explicit.length
+      ? [explicit[0]]
+      : explicit.length
+        ? explicit
+        : generic;
+
+    return { fileObjects, isFileRetrieval };
+  }
+
   function normalizeExecutionDeliverables(work, execution) {
     const root = execution?.result ?? execution;
     const explicit = findExplicitWorkspaceRetrievals(root);
     const generic = findLikelyFileObjects(root);
-    const fileObjects = [...explicit, ...generic];
+    const selection = selectExecutionFileObjects(work, explicit, generic);
+    const fileObjects = selection.fileObjects;
+    const isFileRetrieval = selection.isFileRetrieval;
     const seen = new Set();
 
     fileObjects.forEach(file => {
@@ -377,11 +404,6 @@
     }
 
     const retrieval = workspaceRetrievalMessage(root);
-    const isFileRetrieval =
-      work.intent === "find-file" ||
-      work.requiredCapabilities.some(capability =>
-        capability === "workspace.file.search" || capability === "workspace.file.research"
-      );
 
     if (!work.deliverables.length && execution?.success === true && !isFileRetrieval) {
       addDeliverable(work, {
@@ -711,7 +733,16 @@
                 mimeType: "application/pdf",
                 webViewLink: "https://drive.google.com/file/d/fixture-aoi/view"
               }
-            }
+            },
+            evidence: [{
+              file: {
+                id: "fixture-grant-vault",
+                name: "The _Grant Vault_ Checklist - Google Docs.pdf",
+                mimeType: "application/pdf",
+                webViewLink: "https://drive.google.com/file/d/fixture-grant-vault/view"
+              },
+              score: 0
+            }]
           }
         }]
       }
@@ -732,6 +763,18 @@
       "Workspace retrieval outcome is inspectable",
       workspaceRetrievalMessage(nestedWorkspaceFixture)?.success === true,
       workspaceRetrievalMessage(nestedWorkspaceFixture)
+    );
+    const primarySelection = selectExecutionFileObjects(
+      { intent: "find-file", requiredCapabilities: ["workspace.file.search"] },
+      explicitFixtureFiles,
+      genericFixtureFiles
+    );
+    check(
+      "Find-file delivery returns only the provider-selected primary file",
+      primarySelection.fileObjects.length === 1 &&
+        primarySelection.fileObjects[0]?.name === "02_Articles_of_Incorporation_30.00.pdf" &&
+        !primarySelection.fileObjects.some(item => /grant vault/i.test(item.name || "")),
+      primarySelection.fileObjects
     );
 
     const passed = assertions.filter(item => item.passed).length;
