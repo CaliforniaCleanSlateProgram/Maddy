@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.5.1";
+  const DASHBOARD_VERSION = "4.5.2";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1128,7 +1128,7 @@
       .meos-workspace-main{padding:18px 20px;overflow:auto}.meos-workspace-main-kicker{font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:#7bdff3}.meos-workspace-main h2{margin:5px 0 8px;font-size:1.35rem;color:#f5fcff}.meos-workspace-summary{margin:0 0 15px;max-width:850px;font-size:.82rem;line-height:1.55;color:#b9d4df}
       .meos-workspace-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.meos-workspace-field{padding:10px 11px;border:1px solid rgba(105,220,255,.13);border-radius:10px;background:rgba(5,23,40,.62)}.meos-workspace-field span{display:block}.meos-workspace-field-label{font-size:.57rem;letter-spacing:.1em;text-transform:uppercase;color:#7299aa}.meos-workspace-field-value{margin-top:4px;font-size:.74rem;line-height:1.4;color:#e2f4fa}
       .meos-workspace-judgment{margin-top:14px;padding:13px;border:1px solid rgba(105,220,255,.19);border-radius:12px;background:rgba(8,31,51,.64)}.meos-workspace-judgment strong{display:block;font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;color:#78dff4}.meos-workspace-judgment p{margin:6px 0 0;font-size:.78rem;line-height:1.5;color:#d6e9f0}
-      .meos-workspace-presence{position:relative;padding:18px 14px;border-left:1px solid rgba(105,220,255,.14);background:radial-gradient(circle at 50% 28%,rgba(76,202,255,.15),transparent 42%),rgba(3,15,29,.82);overflow:auto;display:flex;flex-direction:column;min-width:0}.meos-workspace-maddy{min-height:330px;flex:1;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;position:relative}.meos-workspace-maddy img{width:min(100%,320px);max-height:430px;object-fit:contain;object-position:center bottom;filter:contrast(1.04) brightness(.9);transform-origin:center bottom}.meos-workspace-presence h3{margin:8px 0 0;text-align:center;font-size:.95rem;color:#f3fcff}.meos-workspace-presence p{margin:7px 0 0;font-size:.7rem;line-height:1.5;color:#9fc0d0;text-align:center}.meos-workspace-presence-state{margin-top:12px;padding:9px 10px;border:1px solid rgba(105,220,255,.15);border-radius:11px;background:rgba(8,31,51,.58);font-size:.66rem;line-height:1.45;color:#b8d9e7}
+      .meos-workspace-presence{position:relative;padding:18px 14px;border-left:1px solid rgba(105,220,255,.14);background:radial-gradient(circle at 50% 28%,rgba(76,202,255,.15),transparent 42%),rgba(3,15,29,.82);overflow:auto;display:flex;flex-direction:column;min-width:0}.meos-workspace-maddy{min-height:330px;flex:1;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;position:relative}.meos-workspace-maddy img{width:min(100%,320px);max-height:430px;object-fit:contain;object-position:center bottom;filter:contrast(1.04) brightness(.9);transform-origin:center bottom;translate:0 18px}.meos-workspace-presence h3{margin:8px 0 0;text-align:center;font-size:.95rem;color:#f3fcff}.meos-workspace-presence p{margin:7px 0 0;font-size:.7rem;line-height:1.5;color:#9fc0d0;text-align:center}.meos-workspace-presence-state{margin-top:12px;padding:9px 10px;border:1px solid rgba(105,220,255,.15);border-radius:11px;background:rgba(8,31,51,.58);font-size:.66rem;line-height:1.45;color:#b8d9e7}
       .meos-workspace-actions{margin-top:12px}.meos-workspace-action{width:100%;margin:0 0 8px;border:1px solid rgba(105,220,255,.28);border-radius:10px;background:rgba(13,48,75,.7);color:#e9fbff;cursor:pointer;padding:10px 11px;text-align:left;font-size:.72rem}.meos-workspace-action:hover{border-color:rgba(105,220,255,.65);background:rgba(20,70,102,.76)}.meos-workspace-action.primary{border-color:rgba(99,226,170,.42);background:rgba(16,79,63,.66);font-weight:800}.meos-workspace-action:disabled{opacity:.42;cursor:default}.meos-workspace-source-note{margin-top:8px;font-size:.6rem;line-height:1.4;color:#7799a8}
       body.meos-workspace-open{overflow:hidden}
       @media(max-width:1050px){.meos-executive-workspace{inset:8px;grid-template-columns:230px 1fr}.meos-workspace-presence{grid-column:1/-1;min-height:190px;border-left:0;border-top:1px solid rgba(105,220,255,.14);display:grid;grid-template-columns:180px 1fr;gap:10px}.meos-workspace-maddy{min-height:170px;grid-row:1/5}.meos-workspace-maddy img{max-height:190px}.meos-workspace-presence h3,.meos-workspace-presence p{text-align:left}}
@@ -1958,7 +1958,7 @@
         object-fit:cover!important;
         object-position:center 36%!important;
         scale:.92!important;
-        translate:0 16px!important;
+        translate:0 6px!important;
         border-radius:0!important;
         mix-blend-mode:screen;
         opacity:0;
@@ -1979,6 +1979,10 @@
         animation:
           meosHumanMaterialize 9.2s cubic-bezier(.22,.75,.18,1) both,
           meosCinematicPresenceIdle 7.8s ease-in-out infinite 9.2s!important;
+      }
+
+      .meos-presence-status{
+        bottom:58px;
       }
 
       .meos-presence-human-glow{
@@ -6672,7 +6676,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.013A Executive Workspace Mission Integrity online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.013C Maddy Presence Positioning online.`
     );
   }
 
