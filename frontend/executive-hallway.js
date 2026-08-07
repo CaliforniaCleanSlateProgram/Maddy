@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.0.2";
-  const BUILD_ID = "EH102-PRIMARY-RETRIEVAL-20260806-A";
+  const VERSION = "1.1.0";
+  const BUILD_ID = "EH110-EXECUTIVE-FEEDBACK-20260806-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -44,6 +44,7 @@
   const state = {
     work: new Map(),
     deliverables: new Map(),
+    feedback: new Map(),
     history: [],
     listeners: new EventTarget(),
     startedAt: new Date().toISOString(),
@@ -141,6 +142,7 @@
       execution: null,
       evidence: [],
       deliverables: [],
+      feedback: null,
       outcome: null,
       error: null,
       createdAt: now(),
@@ -605,6 +607,95 @@
     return freeze(await routeExecutiveWork(work, options));
   }
 
+  function executiveLearning() {
+    return global.ExecutiveLearning || global.MEOSExecutiveLearning || null;
+  }
+
+  function submitFeedback(workId, input = {}) {
+    const work = state.work.get(workId);
+    if (!work) return freeze({ success: false, error: "Hallway work was not found." });
+    if (work.state !== "done") {
+      return freeze({ success: false, error: "Executive feedback is accepted only after work is delivered." });
+    }
+
+    const signal = String(input.signal || input.rating || "").trim().toLowerCase();
+    const accepted = ["accept", "accepted", "positive", "up", "thumbs-up", "good"].includes(signal);
+    const rejected = ["reject", "rejected", "negative", "down", "thumbs-down", "not-this", "wrong"].includes(signal);
+    if (!accepted && !rejected) {
+      return freeze({ success: false, error: "Feedback signal must be Accept or Not This." });
+    }
+
+    const latestDeliverable = work.deliverables.length
+      ? state.deliverables.get(work.deliverables[work.deliverables.length - 1]) || null
+      : null;
+
+    const feedback = {
+      schema: `${SCHEMA}.feedback`,
+      id: id("hallway-feedback"),
+      workId: work.id,
+      deliverableId: latestDeliverable?.id || null,
+      signal: accepted ? "accepted" : "not-this",
+      reason: String(input.reason || "").trim() || null,
+      source: input.source || "maddy-hud",
+      actor: input.actor || "executive-director",
+      route: work.route || null,
+      owner: work.owner || null,
+      instruction: work.instruction,
+      deliverableTitle: latestDeliverable?.title || null,
+      deliverableFileId: latestDeliverable?.fileId || null,
+      createdAt: now(),
+      learning: null
+    };
+
+    const learning = executiveLearning();
+    if (learning?.addFeedback) {
+      try {
+        const learningResult = learning.addFeedback({
+          feedbackType: accepted ? "positive" : "negative",
+          message: accepted
+            ? `Executive accepted the delivered result for: ${work.instruction}`
+            : `Executive marked the delivered result Not This for: ${work.instruction}${feedback.reason ? `. Reason: ${feedback.reason}` : ""}`,
+          subjectType: "executive-hallway-work",
+          subjectId: work.id,
+          office: work.owner || null,
+          confidence: 1,
+          metadata: {
+            hallwayWorkId: work.id,
+            deliverableId: feedback.deliverableId,
+            deliverableTitle: feedback.deliverableTitle,
+            deliverableFileId: feedback.deliverableFileId,
+            route: work.route,
+            signal: feedback.signal
+          }
+        }, { actor: feedback.actor });
+        feedback.learning = clone(learningResult);
+      } catch (error) {
+        feedback.learning = { success: false, error: error?.message || String(error) };
+      }
+    }
+
+    state.feedback.set(feedback.id, feedback);
+    work.feedback = feedback.id;
+    work.updatedAt = now();
+    record(`feedback.${feedback.signal}`, {
+      workId: work.id,
+      feedbackId: feedback.id,
+      deliverableId: feedback.deliverableId,
+      reason: feedback.reason
+    });
+    emit("feedback-recorded", feedback);
+    emit("work-updated", work);
+
+    return freeze({ success: true, feedback });
+  }
+
+  function listFeedback(filter = {}) {
+    let items = [...state.feedback.values()];
+    if (filter.workId) items = items.filter(item => item.workId === filter.workId);
+    if (filter.signal) items = items.filter(item => item.signal === filter.signal);
+    return freeze(items.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))));
+  }
+
   function getWork(workId) {
     return freeze(state.work.get(workId) || null);
   }
@@ -639,6 +730,7 @@
       revision: state.revision,
       work: listWork(),
       deliverables: listDeliverables(),
+      feedback: listFeedback(),
       history: getHistory(100),
       connections: {
         executiveState: Boolean(executiveState()),
@@ -665,6 +757,7 @@
       awaitingReview: work.filter(item => item.state === "awaiting-review").length,
       completed: work.filter(item => item.state === "done").length,
       deliverables: state.deliverables.size,
+      feedback: state.feedback.size,
       connections: getSnapshot().connections
     });
   }
@@ -712,6 +805,8 @@
     check("Maddy intake API exists", typeof submitWork === "function");
     check("Take It API exists", typeof takeIt === "function");
     check("Deliverable API exists", typeof listDeliverables === "function" && typeof getDeliverable === "function");
+    check("Executive feedback API exists", typeof submitFeedback === "function" && typeof listFeedback === "function");
+    check("Executive Learning doorway exists", typeof executiveLearning === "function");
     check("Provider-neutral Workspace doorway exists", typeof workspaceOffice === "function");
     check("Executive Router fallback exists", typeof executiveRouter === "function");
     check("Mission Engine mirror exists", typeof registerMissionMirror === "function");
@@ -797,6 +892,8 @@
     workStates: WORK_STATES,
     submitWork,
     takeIt,
+    submitFeedback,
+    listFeedback,
     getWork,
     listWork,
     getDeliverable,
