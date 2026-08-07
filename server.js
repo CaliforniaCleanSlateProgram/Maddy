@@ -24,6 +24,7 @@ import dns from "dns/promises";
 import net from "net";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
+import pdfParse from "pdf-parse";
 import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
 import CaliforniaGrantsPortalAdapter from "./california-grants-portal-adapter.js";
 import LocalResourceDiscoveryAdapter from "./local-resource-discovery-adapter.js";
@@ -33,7 +34,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.4";
+const VERSION = "2.10.5";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -103,9 +104,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.4.0";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.0";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI140-CANONICAL-DOCUMENT-RANKING-20260806-A";
+  "GWI150-PDF-CONTENT-VERIFICATION-20260806-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -170,6 +171,8 @@ const GOOGLE_DOC_MIME_TYPE =
   "application/vnd.google-apps.document";
 const GOOGLE_SHEET_MIME_TYPE =
   "application/vnd.google-apps.spreadsheet";
+const GOOGLE_PDF_MIME_TYPE = "application/pdf";
+const GOOGLE_WORKSPACE_MAX_PDF_BYTES = 25 * 1024 * 1024;
 
 const GOOGLE_WORKSPACE_RESEARCH_STOP_WORDS = new Set([
   "a", "about", "already", "an", "and", "are", "as", "at", "be", "been",
@@ -367,6 +370,120 @@ function normalizeWorkspaceFilename(value) {
     .trim();
 }
 
+function evaluateWorkspaceContentIdentity({
+  text = "",
+  documentIntent = null
+} = {}) {
+  const source = String(text || "").trim();
+  const intent =
+    documentIntent ||
+    normalizeWorkspaceDocumentIntent("");
+
+  if (!source) {
+    return {
+      status: "unverified",
+      verified: false,
+      mismatch: false,
+      contentCoverage: 0,
+      targetPhraseFound: false,
+      conflictingTypes: [],
+      signals: []
+    };
+  }
+
+  const normalized = normalizeWorkspaceFilename(source);
+  const contentTokens = new Set(tokenizeWorkspaceText(normalized));
+  const significantTokens = intent.significantTokens || [];
+  const targetPhrase = String(intent.targetPhrase || "").trim();
+  const requestedTypes = new Set(intent.targetTokens || []);
+  const openingTokens = new Set(
+    tokenizeWorkspaceText(source.slice(0, 2500))
+  );
+
+  const contentCoverage = significantTokens.length
+    ? significantTokens.filter(term =>
+        contentTokens.has(term) || normalized.includes(term)
+      ).length / significantTokens.length
+    : 0;
+
+  const targetPhraseFound =
+    targetPhrase.length >= 4 && normalized.includes(targetPhrase);
+
+  const conflictingTypes =
+    [...GOOGLE_WORKSPACE_INCIDENTAL_DOCUMENT_TYPES]
+      .filter(type =>
+        openingTokens.has(type) &&
+        !requestedTypes.has(type)
+      );
+
+  const signals = [];
+  if (targetPhraseFound) {
+    signals.push("canonical-phrase-in-content");
+  }
+  if (contentCoverage === 1 && significantTokens.length >= 2) {
+    signals.push("all-target-terms-in-content");
+  } else if (contentCoverage >= 0.5) {
+    signals.push("partial-target-content-coverage");
+  }
+  if (conflictingTypes.length) {
+    signals.push(
+      `conflicting-content-type:${conflictingTypes.join(",")}`
+    );
+  }
+
+  const mismatch = conflictingTypes.length > 0;
+  const verified =
+    !mismatch &&
+    (targetPhraseFound || contentCoverage === 1);
+
+  return {
+    status: mismatch
+      ? "mismatch"
+      : verified
+        ? "verified"
+        : contentCoverage >= 0.5
+          ? "possible"
+          : "unverified",
+    verified,
+    mismatch,
+    contentCoverage,
+    targetPhraseFound,
+    conflictingTypes,
+    signals
+  };
+}
+
+async function readGoogleWorkspacePdfText(fileId) {
+  const clients = GoogleWorkspaceProvider.getClients();
+  const response = await clients.drive.files.get(
+    {
+      fileId,
+      alt: "media",
+      supportsAllDrives: true
+    },
+    {
+      responseType: "arraybuffer"
+    }
+  );
+
+  const buffer = Buffer.from(response.data || []);
+
+  if (buffer.length > GOOGLE_WORKSPACE_MAX_PDF_BYTES) {
+    const error = new Error(
+      `PDF is too large for verification (${buffer.length} bytes).`
+    );
+    error.code = "GOOGLE_WORKSPACE_PDF_TOO_LARGE";
+    throw error;
+  }
+
+  const parsed = await pdfParse(buffer);
+
+  return String(parsed?.text || "")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function scoreWorkspaceResearchCandidate({
   file,
   text = "",
@@ -385,6 +502,10 @@ function scoreWorkspaceResearchCandidate({
       : terms;
   const matchedTerms = [];
   const signals = [];
+  const contentIdentity = evaluateWorkspaceContentIdentity({
+    text,
+    documentIntent: intent
+  });
   let score = 0;
 
   for (const term of terms) {
@@ -489,6 +610,18 @@ function scoreWorkspaceResearchCandidate({
     );
   }
 
+  if (contentIdentity.verified) {
+    score += 45;
+    signals.push(...contentIdentity.signals);
+    signals.push("content-identity-verified");
+  } else if (contentIdentity.mismatch) {
+    score -= 140;
+    signals.push(...contentIdentity.signals);
+    signals.push("content-identity-mismatch");
+  } else if (String(text || "").trim()) {
+    signals.push(...contentIdentity.signals);
+  }
+
   if (file?.mimeType === GOOGLE_DOC_MIME_TYPE) {
     score += 2;
   }
@@ -496,8 +629,9 @@ function scoreWorkspaceResearchCandidate({
   return {
     score: Math.max(0, score),
     matchedTerms: [...new Set(matchedTerms)],
-    signals,
-    filenameCoverage
+    signals: [...new Set(signals)],
+    filenameCoverage,
+    contentVerification: contentIdentity
   };
 }
 
@@ -603,6 +737,7 @@ async function researchGoogleWorkspaceReadOnly({
       matchedTerms: scoring.matchedTerms,
       rankingSignals: scoring.signals,
       filenameCoverage: scoring.filenameCoverage,
+      contentVerification: scoring.contentVerification,
       excerpt: "",
       characterCount: 0,
       contentRead: false
@@ -612,7 +747,8 @@ async function researchGoogleWorkspaceReadOnly({
   const readable = files
     .filter(file =>
       file.mimeType === GOOGLE_DOC_MIME_TYPE ||
-      file.mimeType === GOOGLE_SHEET_MIME_TYPE
+      file.mimeType === GOOGLE_SHEET_MIME_TYPE ||
+      file.mimeType === GOOGLE_PDF_MIME_TYPE
     )
     .sort((a, b) => {
       const aScore = evidenceById.get(a.id)?.score || 0;
@@ -661,6 +797,8 @@ async function researchGoogleWorkspaceReadOnly({
                 ?.columnCount || null
           })) || []
         );
+      } else if (file.mimeType === GOOGLE_PDF_MIME_TYPE) {
+        text = await readGoogleWorkspacePdfText(file.id);
       }
 
       const scoring =
@@ -684,6 +822,7 @@ async function researchGoogleWorkspaceReadOnly({
         matchedTerms: scoring.matchedTerms,
         rankingSignals: scoring.signals,
         filenameCoverage: scoring.filenameCoverage,
+        contentVerification: scoring.contentVerification,
         excerpt:
           buildWorkspaceEvidenceExcerpt(
             text,
@@ -725,7 +864,10 @@ async function researchGoogleWorkspaceReadOnly({
   });
 
   const bestMatch =
-    evidence.find(item => item.score > 0) || null;
+    evidence.find(item =>
+      item.score > 0 &&
+      item.contentVerification?.status !== "mismatch"
+    ) || null;
 
   const topScore = Number(bestMatch?.score || 0);
   const secondScore = Number(evidence[1]?.score || 0);
@@ -738,22 +880,26 @@ async function researchGoogleWorkspaceReadOnly({
     rankingSignals.includes("canonical-acronym-in-title") ||
     rankingSignals.includes("direct-target-token-in-title") ||
     rankingSignals.includes("all-target-terms-in-title");
+  const contentVerified =
+    bestMatch?.contentVerification?.status === "verified";
 
   const confidence = !bestMatch
     ? "none"
-    : identityStrong &&
-        (
-          topScore >= 35 ||
-          topScore >= secondScore + 12
-        )
+    : contentVerified
       ? "high"
-      : matchedTermCount >= 1
+      : identityStrong &&
+          (
+            topScore >= 35 ||
+            topScore >= secondScore + 12
+          )
         ? "possible"
-        : "none";
+        : matchedTermCount >= 1
+          ? "possible"
+          : "none";
 
   return {
     schema:
-      "meos.google-workspace.read-research.v2",
+      "meos.google-workspace.read-research.v3",
     readOnly: true,
     question: String(question || "").trim(),
     searchTerms: terms,
@@ -770,6 +916,10 @@ async function researchGoogleWorkspaceReadOnly({
     retrieval: {
       success: Boolean(bestMatch),
       confidence,
+      verified:
+        bestMatch?.contentVerification?.status === "verified",
+      verification:
+        bestMatch?.contentVerification || null,
       file: bestMatch?.file || null,
       message: bestMatch
         ? confidence === "high"
