@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.3.1";
-  const BUILD_ID = "EH131-LOCAL-DISCOVERY-DELIVERY-20260807-A";
+  const VERSION = "1.3.2";
+  const BUILD_ID = "EH132-NORMALIZED-LOCAL-DISCOVERY-20260807-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -245,6 +245,14 @@
       record.type,
       record.sourceType,
       record.resourceDevelopment?.channel,
+      record.original?.resourceType,
+      record.original?.resourceTypes,
+      record.original?.resourceChannels,
+      record.original?.category,
+      record.original?.type,
+      record.original?.sourceType,
+      record.original?.provider,
+      record.original?.sourceName,
       record.title,
       record.description
     ]).toLowerCase();
@@ -259,13 +267,33 @@
       record.eligibleGeography,
       record.resourceDevelopment?.geography,
       record.executiveBrief?.geography,
-      record.raw?.source?.geography
+      record.raw?.source?.geography,
+      record.original?.geography,
+      record.original?.location,
+      record.original?.region,
+      record.original?.serviceArea,
+      record.original?.eligibleGeography,
+      record.original?.raw?.source?.geography
     ]).toLowerCase();
+  }
+
+  function localGeographyMatches(record = {}, localNeedle = "") {
+    const needle = String(localNeedle || "").trim().toLowerCase();
+    if (!needle) return true;
+    const geography = resourceRecordGeographyText(record);
+    if (geography.includes(needle)) return true;
+
+    // A city named inside the commissioned county service area is still local.
+    // This keeps "City of Santa Cruz" from being discarded when the
+    // Organization Package says "Santa Cruz County, California".
+    const countyBase = needle.replace(/\s+county\b/g, "").trim();
+    if (countyBase && geography.includes(countyBase)) return true;
+    return false;
   }
 
   function resourceRecordMatches(record = {}, { wantsGrant = false, wantsLocal = false, localNeedle = "" } = {}) {
     if (wantsGrant && !/\bgrant\b/.test(resourceRecordTypeText(record))) return false;
-    if (wantsLocal && localNeedle && !resourceRecordGeographyText(record).includes(localNeedle)) return false;
+    if (wantsLocal && localNeedle && !localGeographyMatches(record, localNeedle)) return false;
     return true;
   }
 
@@ -1254,6 +1282,41 @@
       "Grant filtering recognizes multi-channel local discovery sources",
       resourceRecordMatches(discoveryMergeFixture[1], { wantsGrant: true, wantsLocal: true, localNeedle: "santa cruz county" }),
       discoveryMergeFixture[1] || {}
+    );
+    const normalizedLocalDiscoveryFixture = {
+      schema: "meos.resource-opportunity.v1",
+      id: "local-source:county-of-santa-cruz",
+      title: "County of Santa Cruz Funding Opportunities",
+      resourceType: "partnership",
+      geography: "Santa Cruz County, California",
+      original: {
+        resourceType: "partnership",
+        resourceChannels: ["grant", "contract", "partnership"],
+        geography: "Santa Cruz County, California",
+        sourceType: "county-government"
+      }
+    };
+    check(
+      "Grant filtering preserves grant channels after Resource Discovery Network normalization",
+      resourceRecordMatches(normalizedLocalDiscoveryFixture, { wantsGrant: true, wantsLocal: true, localNeedle: "santa cruz county" }),
+      normalizedLocalDiscoveryFixture
+    );
+    const normalizedCityGrantFixture = {
+      schema: "meos.resource-opportunity.v1",
+      id: "local-source:city-of-santa-cruz",
+      title: "City of Santa Cruz Children's Fund",
+      resourceType: "grant",
+      geography: "City of Santa Cruz, California",
+      original: {
+        resourceType: "grant",
+        resourceChannels: ["grant"],
+        geography: "City of Santa Cruz, California"
+      }
+    };
+    check(
+      "City of Santa Cruz grant remains local to the commissioned Santa Cruz County service area",
+      resourceRecordMatches(normalizedCityGrantFixture, { wantsGrant: true, wantsLocal: true, localNeedle: "santa cruz county" }),
+      normalizedCityGrantFixture
     );
     check("Provider-neutral Workspace doorway exists", typeof workspaceOffice === "function");
     check("Executive Router fallback exists", typeof executiveRouter === "function");
