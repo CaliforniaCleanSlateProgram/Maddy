@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.5";
+  const DASHBOARD_VERSION = "4.4.6";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1084,6 +1084,8 @@
       @keyframes meosDispatchSpin{to{transform:rotate(360deg)}}
       @media (prefers-reduced-motion:reduce){.meos-maddy-desk-chip[data-live="true"]::before,.meos-maddy-window[data-dispatch-active="true"] .meos-maddy-status strong::after{animation:none}}
       .meos-maddy-desk-actions{display:flex;gap:7px;flex-wrap:wrap}.meos-maddy-desk-actions:empty{display:none}
+      .meos-maddy-brief{display:none;margin-top:8px;padding:12px 13px;border:1px solid rgba(105,220,255,.25);border-radius:11px;background:rgba(2,16,32,.86);max-width:640px;color:#d9e9f5;box-shadow:0 12px 30px rgba(0,0,0,.22)}
+      .meos-maddy-brief[data-open="true"]{display:block}.meos-maddy-brief-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.meos-maddy-brief-kicker{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:#86dff2}.meos-maddy-brief-title{margin:3px 0 0;font-size:.92rem;color:#f2fbff}.meos-maddy-brief-close{border:0;background:transparent;color:#8ca7b8;cursor:pointer;font-size:1rem}.meos-maddy-brief-summary{margin:9px 0 10px;font-size:.76rem;line-height:1.45;color:#c7d9e6}.meos-maddy-brief-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px}.meos-maddy-brief-field{border-top:1px solid rgba(119,193,219,.12);padding-top:6px}.meos-maddy-brief-label{display:block;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:#7398aa}.meos-maddy-brief-value{display:block;margin-top:2px;font-size:.7rem;color:#e0edf4;line-height:1.35}.meos-maddy-brief-source{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:11px}.meos-maddy-brief-link{display:inline-flex;align-items:center;border:1px solid rgba(105,220,255,.4);border-radius:8px;padding:6px 10px;color:#c9f6ff;text-decoration:none;font-size:.68rem;background:rgba(17,63,91,.55)}.meos-maddy-brief-link:hover{border-color:rgba(128,232,255,.8)}.meos-maddy-brief-note{font-size:.62rem;color:#7894a5}@media(max-width:760px){.meos-maddy-brief-grid{grid-template-columns:1fr}}
       @media(max-width:760px){.meos-maddy-desk{right:18px}.meos-maddy-field{opacity:.46}.meos-maddy-telemetry{bottom:10px}}
       @keyframes meosCircuitDrift{to{background-position:28px 28px,28px 28px}}
       @keyframes meosFieldRotate{to{transform:rotate(360deg)}}
@@ -2746,6 +2748,7 @@ document
                 <span id="meosMaddyDeskDeliverables" class="meos-maddy-desk-chip">0 deliverables</span>
               </div>
               <div id="meosMaddyDeskActions" class="meos-maddy-desk-actions"></div>
+              <div id="meosMaddyDeskBrief" class="meos-maddy-brief" data-open="false" aria-live="polite"></div>
             </div>
             <div class="meos-maddy-telemetry">
               <div class="meos-maddy-status"><strong id="meosMaddyWorkStatus">Executive offices synchronizing</strong><span id="meosMaddyWorkDetail">Reading live headquarters state…</span></div>
@@ -4671,6 +4674,76 @@ document
     };
   }
 
+  function firstBriefValue(...values) {
+    for (const value of values) {
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return null;
+  }
+
+  function briefText(value, fallback = "Not yet verified") {
+    if (value === undefined || value === null || value === "") return fallback;
+    if (Array.isArray(value)) return value.filter(Boolean).join(", ") || fallback;
+    if (typeof value === "object") {
+      return firstBriefValue(value.label, value.name, value.status, value.value, value.summary, value.reason) || fallback;
+    }
+    return String(value);
+  }
+
+  function renderMaddyExecutiveBrief(deliverable) {
+    const panel = document.getElementById("meosMaddyDeskBrief");
+    if (!panel) return;
+    if (!deliverable) {
+      panel.dataset.open = "false";
+      panel.innerHTML = "";
+      return;
+    }
+
+    const data = deliverable.data || {};
+    const executive = data.executiveBrief || data.executiveSummary || {};
+    const development = data.resourceDevelopment || {};
+    const deadline = firstBriefValue(data.deadline, development.deadline, executive.deadline);
+    const amount = firstBriefValue(data.amount, data.awardAmount, data.fundingAmount, data.awardRange, development.amount, executive.amount);
+    const eligibility = firstBriefValue(data.eligibility, data.qualificationStatus, development.eligibility, executive.eligibility, executive.participation);
+    const geography = firstBriefValue(data.geography, data.location, data.serviceArea, development.geography, executive.geography);
+    const fit = firstBriefValue(data.missionFit, development.missionFit, executive.missionFit, executive.whySeeingThis, executive.reason);
+    const confidence = firstBriefValue(data.confidence, development.confidence, executive.confidence);
+    const recommendation = firstBriefValue(data.recommendation, development.recommendation, executive.recommendation);
+    const nextAction = firstBriefValue(data.nextAction, development.nextAction, executive.nextAction);
+    const sourceUrl = deliverable.openUrl || deliverable.downloadUrl || data.url || data.sourceUrl || data.website || null;
+    const sourceName = firstBriefValue(data.funder, data.organization, data.sourceName, deliverable.source, deliverable.provider);
+
+    const fields = [
+      ["Funding / Award", briefText(amount)],
+      ["Deadline", briefText(deadline)],
+      ["Eligibility", briefText(eligibility)],
+      ["Geography", briefText(geography)],
+      ["Mission Fit", briefText(fit)],
+      ["Confidence", briefText(confidence)],
+      ["Recommendation", briefText(recommendation)],
+      ["Next Action", briefText(nextAction)]
+    ];
+
+    panel.innerHTML = "";
+    const head = document.createElement("div"); head.className = "meos-maddy-brief-head";
+    const heading = document.createElement("div");
+    const kicker = document.createElement("div"); kicker.className = "meos-maddy-brief-kicker"; kicker.textContent = deliverable.kind === "research-status" ? "Research Result" : "Executive Brief";
+    const title = document.createElement("h3"); title.className = "meos-maddy-brief-title"; title.textContent = deliverable.title || "Maddy's result";
+    heading.append(kicker, title);
+    const close = document.createElement("button"); close.type = "button"; close.className = "meos-maddy-brief-close"; close.setAttribute("aria-label", "Close executive brief"); close.textContent = "×"; close.addEventListener("click", () => { panel.dataset.open = "false"; });
+    head.append(heading, close); panel.appendChild(head);
+
+    const summary = document.createElement("p"); summary.className = "meos-maddy-brief-summary"; summary.textContent = deliverable.summary || briefText(executive.summary, "Maddy returned this deliverable without a written summary."); panel.appendChild(summary);
+    const grid = document.createElement("div"); grid.className = "meos-maddy-brief-grid";
+    fields.forEach(([label, value]) => { const field=document.createElement("div"); field.className="meos-maddy-brief-field"; const l=document.createElement("span"); l.className="meos-maddy-brief-label"; l.textContent=label; const v=document.createElement("span"); v.className="meos-maddy-brief-value"; v.textContent=value; field.append(l,v); grid.appendChild(field); });
+    panel.appendChild(grid);
+
+    const source = document.createElement("div"); source.className = "meos-maddy-brief-source";
+    if (sourceUrl) { const link=document.createElement("a"); link.className="meos-maddy-brief-link"; link.href=sourceUrl; link.target="_blank"; link.rel="noopener noreferrer"; link.textContent="Open Official Source ↗"; source.appendChild(link); }
+    const note=document.createElement("span"); note.className="meos-maddy-brief-note"; note.textContent=sourceUrl ? `Source: ${briefText(sourceName, "returned evidence")}` : "No source URL was returned; do not treat this result as independently verified."; source.appendChild(note); panel.appendChild(source);
+    panel.dataset.open = "true";
+  }
+
   function renderMaddyExecutiveDesk(snapshot) {
     const activeWork = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || null;
     const latestWork = activeWork || snapshot.hallwayWork[0] || null;
@@ -4710,14 +4783,16 @@ document
     }
 
     const latest = snapshot.hallwayDeliverables[0];
-    const url = latest?.openUrl || latest?.downloadUrl || null;
-    if (url) {
-      const open = document.createElement("button");
-      open.type = "button";
-      open.className = "meos-maddy-desk-action";
-      open.textContent = `Open ${latest.title || "Latest Deliverable"}`;
-      open.addEventListener("click", () => window.open(url, "_blank", "noopener,noreferrer"));
-      actions.appendChild(open);
+    if (latest) {
+      const view = document.createElement("button");
+      view.type = "button";
+      view.className = "meos-maddy-desk-action";
+      view.textContent = "View Executive Brief";
+      view.title = "Read Maddy's result, evidence status, recommendation, and official source.";
+      view.addEventListener("click", () => renderMaddyExecutiveBrief(latest));
+      actions.appendChild(view);
+    } else {
+      renderMaddyExecutiveBrief(null);
     }
 
     const completedWork = latest?.workId
@@ -4887,6 +4962,8 @@ document
       ["Maddy at Work is the primary Executive Desk command surface", Boolean(document.getElementById("meosMaddyDeskInput") && document.getElementById("meosMaddyDeskSend"))],
       ["Maddy Executive Desk exposes Hallway work approvals and deliverables at a glance", Boolean(document.getElementById("meosMaddyDeskWork") && document.getElementById("meosMaddyDeskApprovals") && document.getElementById("meosMaddyDeskDeliverables"))],
       ["Maddy Executive Desk exposes governed Hallway action surface", Boolean(document.getElementById("meosMaddyDeskActions"))],
+      ["Maddy Executive Desk has an in-HUD Executive Brief reading surface", Boolean(document.getElementById("meosMaddyDeskBrief"))],
+      ["Executive Brief renderer preserves official source navigation", typeof renderMaddyExecutiveBrief === "function"],
       ["Maddy HUD has real Hallway dispatch presentation mapping", typeof getMaddyDispatchPresentation === "function"],
       ["Maddy HUD work chip exposes runtime dispatch state", Boolean(document.getElementById("meosMaddyDeskWork")?.dataset.workState)],
       ["Maddy HUD is connected to the Hallway executive feedback API", typeof getExecutiveHallway()?.submitFeedback === "function"],
