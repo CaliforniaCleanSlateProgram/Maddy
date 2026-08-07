@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.1.0";
-  const BUILD_ID = "EH110-EXECUTIVE-FEEDBACK-20260806-A";
+  const VERSION = "1.2.0";
+  const BUILD_ID = "EH120-NOT-THIS-REDISPATCH-20260807-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -607,6 +607,96 @@
     return freeze(await routeExecutiveWork(work, options));
   }
 
+  async function redispatchRejectedWorkspaceWork(work, feedback) {
+    if (
+      !work ||
+      !feedback ||
+      feedback.signal !== "not-this" ||
+      work.route !== "workspace" ||
+      !feedback.deliverableFileId
+    ) {
+      return null;
+    }
+
+    const priorRejectedFileIds = Array.isArray(work.context?.rejectedFileIds)
+      ? work.context.rejectedFileIds
+      : [];
+
+    const rejectedFileIds = [...new Set(
+      [...priorRejectedFileIds, feedback.deliverableFileId]
+        .map(value => String(value || "").trim())
+        .filter(Boolean)
+    )];
+
+    feedback.redispatch = {
+      status: "dispatching",
+      parentWorkId: work.id,
+      childWorkId: null,
+      rejectedFileIds: [...rejectedFileIds],
+      startedAt: now(),
+      completedAt: null,
+      error: null
+    };
+
+    record("feedback.redispatch-started", {
+      workId: work.id,
+      feedbackId: feedback.id,
+      rejectedFileIds
+    });
+    emit("feedback-recorded", feedback);
+
+    try {
+      const child = await submitWork({
+        instruction: work.instruction,
+        title: work.title,
+        source: "maddy-feedback-redispatch",
+        requestedBy: work.requestedBy || "executive-director",
+        reviewRequired: false,
+        authorized: true,
+        authorizationSignal: "Not This — continue assignment",
+        context: {
+          ...clone(work.context || {}),
+          parentWorkId: work.id,
+          parentFeedbackId: feedback.id,
+          correctionReason: feedback.reason || null,
+          rejectedFileIds
+        }
+      }, {
+        payload: {
+          excludedFileIds: rejectedFileIds
+        }
+      });
+
+      feedback.redispatch.status =
+        child?.state === "done" ? "completed" : String(child?.state || "completed");
+      feedback.redispatch.childWorkId = child?.id || null;
+      feedback.redispatch.completedAt = now();
+
+      record("feedback.redispatch-completed", {
+        workId: work.id,
+        feedbackId: feedback.id,
+        childWorkId: feedback.redispatch.childWorkId,
+        state: feedback.redispatch.status,
+        rejectedFileIds
+      });
+      emit("feedback-recorded", feedback);
+      return child;
+    } catch (error) {
+      feedback.redispatch.status = "failed";
+      feedback.redispatch.completedAt = now();
+      feedback.redispatch.error = error?.message || String(error);
+
+      record("feedback.redispatch-failed", {
+        workId: work.id,
+        feedbackId: feedback.id,
+        error: feedback.redispatch.error,
+        rejectedFileIds
+      });
+      emit("feedback-recorded", feedback);
+      return null;
+    }
+  }
+
   function executiveLearning() {
     return global.ExecutiveLearning || global.MEOSExecutiveLearning || null;
   }
@@ -644,7 +734,8 @@
       deliverableTitle: latestDeliverable?.title || null,
       deliverableFileId: latestDeliverable?.fileId || null,
       createdAt: now(),
-      learning: null
+      learning: null,
+      redispatch: null
     };
 
     const learning = executiveLearning();
@@ -686,7 +777,18 @@
     emit("feedback-recorded", feedback);
     emit("work-updated", work);
 
-    return freeze({ success: true, feedback });
+    if (feedback.signal === "not-this") {
+      void redispatchRejectedWorkspaceWork(work, feedback);
+    }
+
+    return freeze({
+      success: true,
+      feedback,
+      redispatchScheduled:
+        feedback.signal === "not-this" &&
+        work.route === "workspace" &&
+        Boolean(feedback.deliverableFileId)
+    });
   }
 
   function listFeedback(filter = {}) {
@@ -807,6 +909,16 @@
     check("Deliverable API exists", typeof listDeliverables === "function" && typeof getDeliverable === "function");
     check("Executive feedback API exists", typeof submitFeedback === "function" && typeof listFeedback === "function");
     check("Executive Learning doorway exists", typeof executiveLearning === "function");
+    check("Not This Workspace redispatch path exists", typeof redispatchRejectedWorkspaceWork === "function");
+    check(
+      "Not This redispatch preserves rejected file identity",
+      /excludedFileIds/.test(redispatchRejectedWorkspaceWork.toString()) &&
+      /rejectedFileIds/.test(redispatchRejectedWorkspaceWork.toString())
+    );
+    check(
+      "Not This redispatch reuses the original executive instruction",
+      /instruction:\s*work\.instruction/.test(redispatchRejectedWorkspaceWork.toString())
+    );
     check("Provider-neutral Workspace doorway exists", typeof workspaceOffice === "function");
     check("Executive Router fallback exists", typeof executiveRouter === "function");
     check("Mission Engine mirror exists", typeof registerMissionMirror === "function");
