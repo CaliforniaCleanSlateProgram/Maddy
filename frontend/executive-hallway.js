@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.3.2";
-  const BUILD_ID = "EH132-NORMALIZED-LOCAL-DISCOVERY-20260807-A";
+  const VERSION = "1.3.3";
+  const BUILD_ID = "EH133-EXPLICIT-LOCAL-GEOGRAPHY-20260807-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -192,6 +192,14 @@
       /\b(open|fetch|get|find|locate|retrieve)\b.{0,35}\b(file|document|pdf|doc|sheet|spreadsheet|folder)\b/.test(text);
   }
 
+  function organizationLocalityAliases(serviceArea = "") {
+    const full = String(serviceArea || "").trim().toLowerCase();
+    if (!full) return [];
+    const primary = full.split(",")[0].trim();
+    const withoutCounty = primary.replace(/\s+county\b/g, "").trim();
+    return [...new Set([full, primary, withoutCounty].filter(value => value.length >= 3))];
+  }
+
   function interpretResourceDevelopmentRequest(instruction = "") {
     const text = String(instruction || "").trim();
     const normalized = text.toLowerCase();
@@ -202,8 +210,11 @@
     if (!asksToDiscover || !resourceLanguage) return null;
 
     const wantsGrants = /\bgrant|grants\b/.test(normalized);
-    const wantsLocal = /\b(local|locally|nearby|near me|in our area|in my area|around here|our county|my county|here)\b/.test(normalized);
     const serviceArea = organizationServiceArea();
+    const localityAliases = organizationLocalityAliases(serviceArea);
+    const explicitlyNamesOperatingArea = localityAliases.some(alias => normalized.includes(alias));
+    const usesLocalLanguage = /\b(local|locally|nearby|near me|in our area|in my area|around here|our county|my county|here)\b/.test(normalized);
+    const wantsLocal = usesLocalLanguage || explicitlyNamesOperatingArea;
 
     return {
       intent: "discover-resources",
@@ -1317,6 +1328,17 @@
       "City of Santa Cruz grant remains local to the commissioned Santa Cruz County service area",
       resourceRecordMatches(normalizedCityGrantFixture, { wantsGrant: true, wantsLocal: true, localNeedle: "santa cruz county" }),
       normalizedCityGrantFixture
+    );
+    const explicitOperatingAreaInterpretation = interpretResourceDevelopmentRequest("Maddy, find me grants in Santa Cruz.");
+    check(
+      "Explicit organization operating-area language resolves to local geography",
+      explicitOperatingAreaInterpretation?.geography?.scope === "local",
+      explicitOperatingAreaInterpretation || {}
+    );
+    check(
+      "Explicit organization operating-area grant request preserves grant resource type",
+      explicitOperatingAreaInterpretation?.resourceTypes?.includes("grant") === true,
+      explicitOperatingAreaInterpretation || {}
     );
     check("Provider-neutral Workspace doorway exists", typeof workspaceOffice === "function");
     check("Executive Router fallback exists", typeof executiveRouter === "function");
