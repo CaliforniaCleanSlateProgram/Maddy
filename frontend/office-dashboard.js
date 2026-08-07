@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.4";
+  const DASHBOARD_VERSION = "4.4.5";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1071,6 +1071,10 @@
       .meos-maddy-desk-command{display:flex;gap:8px;padding:7px;border:1px solid rgba(105,220,255,.26);border-radius:12px;background:rgba(3,14,30,.78);backdrop-filter:blur(8px);box-shadow:0 0 22px rgba(52,190,255,.08)}
       .meos-maddy-desk-input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#e6fbff;font:inherit;font-size:.78rem;padding:5px 7px}.meos-maddy-desk-input::placeholder{color:rgba(181,220,236,.52)}
       .meos-maddy-desk-send,.meos-maddy-desk-action{border:1px solid rgba(105,220,255,.34);border-radius:9px;background:rgba(20,55,91,.62);color:#dff9ff;cursor:pointer;font-size:.7rem;padding:7px 11px}.meos-maddy-desk-send:hover,.meos-maddy-desk-action:hover{border-color:rgba(128,232,255,.7);background:rgba(25,74,119,.72)}
+      .meos-maddy-feedback-action{display:inline-flex;align-items:center;gap:6px}
+      .meos-maddy-feedback-action[data-signal="accepted"]{border-color:rgba(91,214,161,.34)}
+      .meos-maddy-feedback-action[data-signal="not-this"]{border-color:rgba(255,166,142,.34)}
+      .meos-maddy-feedback-state{display:inline-flex;align-items:center;min-height:31px;padding:0 10px;border-radius:9px;border:1px solid rgba(116,184,222,.18);background:rgba(8,27,49,.52);font-size:.72rem;color:#b9d9ea}
       .meos-maddy-desk-glance{display:flex;gap:7px;flex-wrap:wrap;align-items:center;font-size:.66rem;color:rgba(193,229,241,.76)}
       .meos-maddy-desk-chip{padding:5px 8px;border-radius:999px;border:1px solid rgba(110,184,219,.2);background:rgba(5,22,42,.66)}
       .meos-maddy-desk-chip[data-live="true"]{position:relative;padding-left:22px;border-color:rgba(105,220,255,.46);background:rgba(8,39,67,.76)}
@@ -4413,9 +4417,15 @@ document
     renderLiveHeadquarters();
   }
 
+  function handleHallwayFeedbackRecorded() {
+    renderHallwayMini();
+    renderLiveHeadquarters();
+  }
+
   function bindHallwayEvents() {
     window.addEventListener("meos:hallway:work-updated", handleHallwayWorkUpdated);
     window.addEventListener("meos:hallway:deliverable-ready", handleHallwayDeliverableReady);
+    window.addEventListener("meos:hallway:feedback-recorded", handleHallwayFeedbackRecorded);
 
     const hallway = getExecutiveHallway();
     const snapshot = hallway?.getSnapshot?.();
@@ -4433,6 +4443,8 @@ document
       { name: "Hallway work event handler exists", passed: typeof handleHallwayWorkUpdated === "function" },
       { name: "Hallway deliverable handler exists", passed: typeof handleHallwayDeliverableReady === "function" },
       { name: "Hallway Take It dashboard path exists", passed: typeof hallway?.takeIt === "function" },
+      { name: "Hallway executive feedback dashboard path exists", passed: typeof hallway?.submitFeedback === "function" },
+      { name: "Hallway feedback event handler exists", passed: typeof handleHallwayFeedbackRecorded === "function" },
       { name: "Hallway snapshot exposes work and deliverables", passed: typeof hallway?.getSnapshot === "function" },
       { name: "Dashboard has Hallway result surface", passed: Boolean(document.getElementById("meosHallwayMini")) }
     ];
@@ -4589,6 +4601,7 @@ document
     const hallwayWork = Array.isArray(hallway.work) ? hallway.work : [];
     const hallwayTasks = hallwayWork.map(normalizeHallwayTask);
     const hallwayDeliverables = Array.isArray(hallway.deliverables) ? hallway.deliverables : [];
+    const hallwayFeedback = Array.isArray(hallway.feedback) ? hallway.feedback : [];
     const hallwayHistory = Array.isArray(hallway.history) ? hallway.history : [];
     const officeTasks = offices.flatMap((office) => (office.tasks || []).map((task) => ({ ...task, officeName: office.office, officeId: office.id, source: "executive-office" })));
     const tasks = [...hallwayTasks, ...officeTasks];
@@ -4629,7 +4642,7 @@ document
       ? Math.round(offices.reduce((sum, office) => sum + Number(office.operationalState?.health || 0), 0) / offices.length)
       : 0;
     const missionPulse = Math.round((officeHealth * 0.45) + ((100 - Math.min(100, blocked.length * 10)) * 0.2) + (completion * 0.35));
-    const snapshot = { offices, mission, hallway, hallwayWork, hallwayDeliverables, hallwayHistory, tasks, recommendations, activities, completion, blocked, active, pending, pendingApprovals, fundingRecords, fundingUrgent, officeHealth, missionPulse };
+    const snapshot = { offices, mission, hallway, hallwayWork, hallwayDeliverables, hallwayFeedback, hallwayHistory, tasks, recommendations, activities, completion, blocked, active, pending, pendingApprovals, fundingRecords, fundingUrgent, officeHealth, missionPulse };
     state.headquarters = { ...state.headquarters, ...snapshot, officePortfolio: offices.map((office) => ({ id: office.id, office: office.office, ...(office.implementation || {}) })), lastComputedAt: new Date().toISOString() };
     return snapshot;
   }
@@ -4705,6 +4718,73 @@ document
       open.textContent = `Open ${latest.title || "Latest Deliverable"}`;
       open.addEventListener("click", () => window.open(url, "_blank", "noopener,noreferrer"));
       actions.appendChild(open);
+    }
+
+    const completedWork = latest?.workId
+      ? snapshot.hallwayWork.find((item) => item.id === latest.workId && item.state === "done") || null
+      : null;
+    const existingFeedback = completedWork
+      ? snapshot.hallwayFeedback.find((item) => item.workId === completedWork.id) || null
+      : null;
+
+    if (completedWork && !existingFeedback) {
+      const submitExecutiveFeedback = (signal) => {
+        const hallway = getExecutiveHallway();
+        if (!hallway?.submitFeedback) return;
+
+        let reason = null;
+        if (signal === "not-this") {
+          reason = window.prompt(
+            "What was wrong with this result? A short reason helps Maddy learn.",
+            "Wrong result"
+          );
+          if (reason === null) return;
+        }
+
+        actions.querySelectorAll(".meos-maddy-feedback-action")
+          .forEach((button) => { button.disabled = true; });
+
+        const result = hallway.submitFeedback(completedWork.id, {
+          signal,
+          reason: reason || null,
+          source: "maddy-hud",
+          actor: "executive-director"
+        });
+
+        if (!result?.success) {
+          state.hallway.lastError = result?.error || "Executive feedback was not recorded.";
+          renderHallwayMini();
+          renderLiveHeadquarters();
+          return;
+        }
+
+        renderLiveHeadquarters();
+      };
+
+      const accept = document.createElement("button");
+      accept.type = "button";
+      accept.className = "meos-maddy-desk-action meos-maddy-feedback-action";
+      accept.dataset.signal = "accepted";
+      accept.textContent = "👍 Accept";
+      accept.title = "Confirm that Maddy returned the correct result.";
+      accept.addEventListener("click", () => submitExecutiveFeedback("accepted"));
+      actions.appendChild(accept);
+
+      const notThis = document.createElement("button");
+      notThis.type = "button";
+      notThis.className = "meos-maddy-desk-action meos-maddy-feedback-action";
+      notThis.dataset.signal = "not-this";
+      notThis.textContent = "👎 Not This";
+      notThis.title = "Tell Maddy this result is not correct and record why.";
+      notThis.addEventListener("click", () => submitExecutiveFeedback("not-this"));
+      actions.appendChild(notThis);
+    } else if (existingFeedback) {
+      const feedbackState = document.createElement("span");
+      feedbackState.className = "meos-maddy-feedback-state";
+      feedbackState.textContent = existingFeedback.signal === "accepted"
+        ? "✓ Accepted — learning recorded"
+        : "↻ Not This — correction recorded";
+      actions.appendChild(feedbackState);
     }
   }
 
@@ -4809,6 +4889,8 @@ document
       ["Maddy Executive Desk exposes governed Hallway action surface", Boolean(document.getElementById("meosMaddyDeskActions"))],
       ["Maddy HUD has real Hallway dispatch presentation mapping", typeof getMaddyDispatchPresentation === "function"],
       ["Maddy HUD work chip exposes runtime dispatch state", Boolean(document.getElementById("meosMaddyDeskWork")?.dataset.workState)],
+      ["Maddy HUD is connected to the Hallway executive feedback API", typeof getExecutiveHallway()?.submitFeedback === "function"],
+      ["Maddy HUD has a feedback result surface", Boolean(document.getElementById("meosMaddyDeskActions"))],
       ["Living Headquarters uses the protected canonical Maddy asset", document.getElementById("meosCanonicalMaddy")?.getAttribute("src") === "maddy-holographic-presence-v1.png"],
       ["Logo-to-human startup evolution is installed in the Headquarters hero", Boolean(document.querySelector("#meosLivingPresence .meos-presence-logo") && document.querySelector("#meosLivingPresence .meos-presence-human"))],
       ["Maddy is the visual feature of the Headquarters center", Boolean(document.querySelector(".meos-hq-core.meos-living-presence"))],
