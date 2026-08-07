@@ -23,6 +23,7 @@ import crypto from "crypto";
 import dns from "dns/promises";
 import net from "net";
 import fs from "fs/promises";
+import vm from "vm";
 import { fileURLToPath } from "url";
 import pdfParse from "pdf-parse";
 import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
@@ -10115,9 +10116,9 @@ const executiveResourceDevelopmentOffice =
 /* Commission 006.010 — broad resource intelligence, quiet executive desk     */
 /* ========================================================================== */
 
-const RESOURCE_INVESTIGATION_VERSION = "1.2.0";
+const RESOURCE_INVESTIGATION_VERSION = "1.2.1";
 const RESOURCE_INVESTIGATION_BUILD_ID =
-  "RDI120-BROAD-RESOURCE-QUIET-DESK-20260807-A";
+  "RDI121-STRATEGY-EVIDENCE-OPPORTUNITY-CASE-20260807-A";
 
 const RESOURCE_INVESTIGATION_CONTEXT = Object.freeze({
   operatingCountry: "United States",
@@ -10253,57 +10254,197 @@ function resourceInvestigationIdentityFit(record = {}) {
   return { relevant: signals.length > 0, signals, eligibilityVerified: signals.length > 0 && record.eligibilityVerified === true, rule: RESOURCE_INVESTIGATION_CONTEXT.identityEligibilityRule };
 }
 
-function resourceInvestigationCategoryFit(record = {}) {
-  const text = resourceInvestigationText([record.title, record.description, record.eligibility, record.fundingActivityCategories, record.raw]).toLowerCase();
+let resourceInvestigationStrategyCache = null;
+let resourceInvestigationStrategyLoadError = null;
+
+async function loadResourceInvestigationOrganizationStrategy() {
+  if (resourceInvestigationStrategyCache) return resourceInvestigationStrategyCache;
+  const strategyPath = path.join(frontendDirectory, "ccsp-long-term-strategy.js");
+  try {
+    const source = await fs.readFile(strategyPath, "utf8");
+    const strategyWindow = {
+      structuredClone: globalThis.structuredClone,
+      localStorage: null,
+      console: { info() {}, warn() {}, error() {} }
+    };
+    vm.runInNewContext(source, { window: strategyWindow }, { filename: strategyPath, timeout: 1000 });
+    const api = strategyWindow.MEOSOrganizationLongTermStrategy || strategyWindow.CCSPLongTermStrategy;
+    if (!api?.getStrategy) throw new Error("Organization strategy API did not register.");
+    resourceInvestigationStrategyCache = api.getStrategy();
+    resourceInvestigationStrategyLoadError = null;
+    return resourceInvestigationStrategyCache;
+  } catch (error) {
+    resourceInvestigationStrategyLoadError = error?.message || String(error);
+    return null;
+  }
+}
+
+function resourceInvestigationEvidenceText(record = {}) {
+  // Evidence deliberately excludes the entire raw object. Provider metadata,
+  // unrelated boilerplate, and incidental words must not become funded work.
+  return resourceInvestigationText([
+    record.title,
+    record.description,
+    record.summary,
+    record.statedPurpose,
+    record.desiredOutcomes,
+    record.fundingActivityCategories,
+    record.programDescription,
+    record.eligibleActivities,
+    record.scopeOfWork
+  ]).toLowerCase();
+}
+
+const RESOURCE_ACTIVITY_RULES = Object.freeze([
+  ["street outreach", /\bstreet outreach\b|\boutreach services?\b|\bmobile outreach\b/],
+  ["hygiene services", /\bhygiene services?\b|\bmobile hygiene\b|\bshowers?\b|\blaundry services?\b/],
+  ["emergency lodging", /\bemergency (?:hotel|motel|lodging|shelter)\b|\btemporary lodging\b|\bhotel vouchers?\b/],
+  ["housing", /\bpermanent supportive housing\b|\bsober[- ]living\b|\btransitional housing\b|\bhousing navigation\b|\bhousing assistance\b/],
+  ["substance-use treatment/recovery", /\bsubstance[- ]use (?:treatment|recovery|services?)\b|\baddiction treatment\b|\brecovery services?\b|\bsud treatment\b/],
+  ["behavioral-health/crisis stabilization", /\bbehavioral health services?\b|\bcrisis (?:intervention|stabilization|services?)\b|\bsuicide prevention\b/],
+  ["peer support", /\bpeer support\b|\bpeer recovery\b|\bpeer fellowship\b/],
+  ["workforce transition/training", /\bworkforce (?:development|training|transition)\b|\bjob (?:training|skills?|placement)\b|\bemployment (?:training|services?|readiness)\b|\btrade[- ]school\b/],
+  ["encampment/watershed stewardship", /\bencampment (?:cleanup|remediation|waste|trash)\b|\bwatershed (?:cleanup|restoration|stewardship)\b|\bwaterway cleanup\b|\bmarine debris\b/],
+  ["vehicle/mobile-unit acquisition", /\bmobile service units?\b|\bmobile hygiene units?\b|\bvehicle acquisition\b|\bfleet (?:grant|donation|support)\b/],
+  ["facility/property acquisition", /\bfacility acquisition\b|\bproperty acquisition\b|\bland acquisition\b|\bsite control\b|\bcapital facilities?\b/]
+]);
+
+const RESOURCE_POPULATION_RULES = Object.freeze([
+  ["people experiencing homelessness", /\bpeople experiencing homelessness\b|\bpersons? experiencing homelessness\b|\bunhoused (?:people|persons|residents)\b/],
+  ["people with substance-use disorders", /\bsubstance[- ]use disorders?\b|\bpeople (?:with|experiencing) addiction\b/],
+  ["veterans", /\bveterans?\b/],
+  ["first responders", /\bfirst responders?\b|\bfirefighters?\b|\bems personnel\b|\blaw enforcement officers?\b/],
+  ["runaway/homeless youth", /\brunaway (?:and )?homeless youth\b|\bhomeless youth\b|\byouth experiencing homelessness\b/],
+  ["justice-impacted people", /\bjustice[- ]impacted\b|\bformerly incarcerated\b|\breentry population\b/],
+  ["low-income communities", /\blow[- ]income (?:people|families|communities|households)\b|\beconomically disadvantaged\b/]
+]);
+
+function resourceInvestigationEvidenceExtraction(record = {}) {
+  const evidenceText = resourceInvestigationEvidenceText(record);
+  return {
+    fundedActivities: RESOURCE_ACTIVITY_RULES.filter(([, pattern]) => pattern.test(evidenceText)).map(([label]) => label),
+    targetPopulations: RESOURCE_POPULATION_RULES.filter(([, pattern]) => pattern.test(evidenceText)).map(([label]) => label),
+    evidenceTextAvailable: Boolean(evidenceText),
+    sourceFields: ["title", "description", "summary", "statedPurpose", "desiredOutcomes", "fundingActivityCategories", "programDescription", "eligibleActivities", "scopeOfWork"]
+      .filter(field => resourceInvestigationText(record[field]))
+  };
+}
+
+function resourceInvestigationStrategyAlignment(record = {}, strategy = null, extraction = {}) {
+  if (!strategy) return { score: 0, relationship: "strategy-unavailable", reasons: [resourceInvestigationStrategyLoadError || "Organization strategy is unavailable."], initiatives: [], purposes: [], phases: [] };
+  const activities = new Set(extraction.fundedActivities || []);
+  const populations = new Set(extraction.targetPopulations || []);
+  const initiativeMatches = [];
+
+  for (const initiative of strategy.initiatives || []) {
+    const initiativePopulations = (initiative.populations || []).map(value => String(value).toLowerCase());
+    const populationMatches = initiativePopulations.filter(population => [...populations].some(found => found.includes(population) || population.includes(found)));
+    const activityText = (initiative.activities || []).join(" ").toLowerCase();
+    const activityMatches = [...activities].filter(activity => {
+      if (activity === "emergency lodging") return /hotel|lodging|temporary lodging/.test(activityText);
+      if (activity === "peer support") return /peer fellowship|peer support/.test(activityText);
+      if (activity === "workforce transition/training") return /workforce|job-skill|trade-school|resume/.test(activityText);
+      if (activity === "substance-use treatment/recovery") return /substance-use|recovery/.test(activityText);
+      if (activity === "behavioral-health/crisis stabilization") return /crisis|stabilization/.test(activityText);
+      return false;
+    });
+    if (populationMatches.length && activityMatches.length) {
+      initiativeMatches.push({ id: initiative.id, name: initiative.name, populationMatches, activityMatches, relationship: "direct-or-adjacent-program-fit" });
+    }
+  }
+
+  const purposeMatches = [];
+  const purposeRules = [
+    ["purpose-human-dignity", ["street outreach", "hygiene services", "emergency lodging"]],
+    ["purpose-community-stabilization", ["street outreach", "emergency lodging", "behavioral-health/crisis stabilization", "housing"]],
+    ["purpose-recovery-navigation", ["substance-use treatment/recovery", "peer support"]],
+    ["purpose-residential-treatment", ["substance-use treatment/recovery"]],
+    ["purpose-supportive-residential-community", ["housing", "emergency lodging"]],
+    ["purpose-permanent-housing", ["housing"]],
+    ["purpose-workforce-development", ["workforce transition/training"]],
+    ["purpose-environmental-stewardship", ["encampment/watershed stewardship"]],
+    ["purpose-institutional-sustainability", ["vehicle/mobile-unit acquisition", "facility/property acquisition"]]
+  ];
+  for (const [purposeId, requiredActivities] of purposeRules) {
+    const matchedActivities = requiredActivities.filter(activity => activities.has(activity));
+    const purpose = (strategy.purposes || []).find(item => item.id === purposeId);
+    if (purpose && matchedActivities.length) purposeMatches.push({ id: purpose.id, name: purpose.name, matchedActivities, futureCapability: Boolean(purpose.futureCapability) });
+  }
+
+  const phaseMatches = [];
+  if (activities.has("facility/property acquisition")) phaseMatches.push({ id: "phase-1-foundation-and-control", reason: "Funds site/facility control needed by Phase 1." });
+  if (activities.has("vehicle/mobile-unit acquisition")) phaseMatches.push({ id: "phase-2-design-permitting-procurement", reason: "Funds procurement/infrastructure needed for service deployment." });
+  if (activities.has("substance-use treatment/recovery")) phaseMatches.push({ id: "phase-4-licensing-and-contracting", reason: "May advance treatment capacity subject to licensing and program requirements." });
+  if (activities.has("housing") || activities.has("workforce transition/training")) phaseMatches.push({ id: "phase-5-open-and-expand", reason: "May advance housing/workforce expansion in Phase 5." });
+
+  const score = Math.min(100, initiativeMatches.length * 45 + purposeMatches.length * 18 + phaseMatches.length * 8);
+  const relationship = initiativeMatches.length ? "named-initiative-fit" : score >= 45 ? "strategic-fit" : score > 0 ? "adjacent-strategic-fit" : "no-evidenced-strategy-fit";
+  return {
+    score,
+    relationship,
+    reasons: score ? ["Alignment is based on evidenced funded activities/populations mapped to the commissioned Organization Strategy."] : ["No funded activity in the available evidence maps defensibly to the commissioned Organization Strategy."],
+    initiatives: initiativeMatches,
+    purposes: purposeMatches,
+    phases: phaseMatches,
+    strategyId: strategy.id,
+    strategyVersion: strategy.version,
+    strategyBuildId: strategy.buildId
+  };
+}
+
+function resourceInvestigationCategoryFit(record = {}, strategyAlignment = null, extraction = null) {
+  const eligibilityText = resourceInvestigationText([record.eligibility, record.eligibleApplicants]).toLowerCase();
   const hardNonFit = [
     ["tribal-only", /tribal (?:governments?|entities|organizations?) only|federally recognized tribe only/],
     ["charter-school-only", /charter schools? only|eligible applicants?:? charter schools?/],
     ["agriculture-only", /dairy manure|livestock manure|commercial agriculture only/],
     ["specialized-science-only", /quantum computing|quantum information science|particle physics only/]
-  ].find(([, pattern]) => pattern.test(text));
+  ].find(([, pattern]) => pattern.test(eligibilityText));
   if (hardNonFit) return { score: 0, disposition: "reject", reason: `Applicant/program restriction is outside the organization's role: ${hardNonFit[0]}.`, matches: [] };
-  const missionSignals = ["homeless", "housing", "hygiene", "shower", "recovery", "substance use", "behavioral health", "workforce", "employment", "watershed", "water quality", "environment", "community development", "poverty", "public health", "veteran", "reentry", "clean water"];
-  const matches = missionSignals.filter(signal => text.includes(signal));
-  return { score: Math.min(100, matches.length * 18), disposition: matches.length ? "consider" : "needs-evidence", reason: matches.length ? `Mission evidence: ${matches.join(", ")}.` : "No strong mission signal is visible in the discovery record.", matches };
-}
-
-function resourceInvestigationOpportunityCase(record = {}, categoryFit = {}, qualification = null) {
-  const text = resourceInvestigationText([record.title, record.description, record.eligibility, record.eligibleApplicants, record.fundingActivityCategories, record.raw]).toLowerCase();
-  const fundedActivities = [
-    ["housing", /housing|shelter|permanent supportive/], ["hygiene/outreach", /hygiene|shower|outreach|street outreach/],
-    ["recovery/behavioral health", /recovery|substance use|behavioral health|treatment/], ["workforce/employment", /workforce|employment|job training/],
-    ["environment/watershed", /watershed|water quality|clean water|environment/], ["equipment/vehicle", /equipment|vehicle|van|truck|bus/],
-    ["facility/property", /facility|building|property|land|real estate/]
-  ].filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
-  const targetPopulations = [
-    ["people experiencing homelessness", /homeless|unhoused/], ["people in recovery", /recovery|substance use|addiction/],
-    ["veterans", /veteran/], ["justice-impacted/reentry", /reentry|justice[- ]impacted|formerly incarcerated/],
-    ["low-income communities", /low[- ]income|poverty|economically disadvantaged/]
-  ].filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
-  const participation = qualification?.participation || record.executiveBrief?.participation || record.participation || null;
-  const role = participation?.canLead === true ? "lead-applicant" : participation?.canPartner === true ? "funded-partner" : "role-needs-verification";
-  const coreCapability = categoryFit.matches?.length ? "direct-capability-signal" : fundedActivities.length ? "adjacent-capability-signal" : "capability-needs-evidence";
+  const activities = extraction?.fundedActivities || [];
+  const score = Math.max(Number(strategyAlignment?.score || 0), Math.min(100, activities.length * 22));
   return {
-    fundedActivities,
-    targetPopulations,
-    realisticRole: role,
-    coreCapability,
-    executivePeek: coreCapability === "direct-capability-signal"
-      ? "The funded work overlaps a core mission capability; verify the exact deliverables and economics before pursuit."
-      : "Do not promote this lead merely because money exists; verify that the organization can credibly perform the funded work or occupy a paid partner role."
+    score,
+    disposition: score > 0 ? "consider" : "needs-evidence",
+    reason: score > 0 ? `Evidence-grounded activity/strategy fit: ${activities.join(", ") || strategyAlignment?.relationship}.` : "No defensible funded-activity connection to the commissioned organization strategy is established by the available evidence.",
+    matches: activities
   };
 }
 
-function normalizeResourceInvestigationRecord(record = {}, areas = []) {
+function resourceInvestigationOpportunityCase(record = {}, categoryFit = {}, qualification = null, extraction = {}, strategyAlignment = null) {
+  const participation = qualification?.participation || record.executiveBrief?.participation || record.participation || null;
+  const role = participation?.canLead === true ? "lead-applicant-candidate" : participation?.canPartner === true ? "funded-partner-candidate" : "role-needs-verification";
+  const initiativeFit = strategyAlignment?.initiatives?.length > 0;
+  const evidencedCapability = (extraction.fundedActivities || []).length > 0 && Number(strategyAlignment?.score || 0) > 0;
+  const executivePeek = initiativeFit
+    ? `Named initiative alignment: ${strategyAlignment.initiatives.map(item => item.name).join(", ")}. Preserve for executive review while eligibility and deliverables are verified.`
+    : evidencedCapability
+      ? "The actual funded activity maps to the commissioned organization strategy. Preserve it for investigation even when the overall program is adjacent."
+      : "No evidenced funded activity currently maps to the commissioned strategy. Keep off the active desk unless stronger source evidence establishes a credible role.";
+  return {
+    fundedActivities: extraction.fundedActivities || [],
+    targetPopulations: extraction.targetPopulations || [],
+    evidenceSourceFields: extraction.sourceFields || [],
+    realisticRole: role,
+    coreCapability: initiativeFit ? "named-initiative-alignment" : evidencedCapability ? "evidenced-strategic-capability" : "capability-not-established",
+    strategyAlignment,
+    executivePeek
+  };
+}
+
+async function normalizeResourceInvestigationRecord(record = {}, areas = [], strategy = null) {
   const lifecycle = resourceInvestigationLifecycle(record);
   const kind = resourceInvestigationKind(record);
   const title = record.title || record.name || record.sourceName || "Unnamed resource lead";
   const officialUrl = resourceInvestigationUrl(record);
   const geography = resourceInvestigationGeography(record, areas);
   const identityFit = resourceInvestigationIdentityFit(record);
-  const categoryFit = resourceInvestigationCategoryFit(record);
+  const extraction = resourceInvestigationEvidenceExtraction(record);
+  const strategyAlignment = resourceInvestigationStrategyAlignment(record, strategy, extraction);
+  const categoryFit = resourceInvestigationCategoryFit(record, strategyAlignment, extraction);
   const qualification = kind === "opportunity" ? qualifyFundingOpportunity(record) : null;
-  const missionScore = Math.max(categoryFit.score, Number(qualification?.missionFit?.score || 0));
+  // Do not allow legacy keyword mission scores to overrule evidence-grounded strategy fit.
+  const missionScore = categoryFit.score;
   const eligibilityVerified = record.eligibilityVerified === true || qualification?.participation?.confirmed === true;
   const opportunityVerified = kind === "opportunity" && Boolean(officialUrl) && Boolean(lifecycle.verifiedBy);
   const evidenceScore = (officialUrl ? 25 : 0) + (lifecycle.verifiedBy ? 25 : 0) + (eligibilityVerified ? 25 : 0) + (record.investigation?.status === "complete" ? 25 : 0);
@@ -10311,7 +10452,7 @@ function normalizeResourceInvestigationRecord(record = {}, areas = []) {
   const strategicScore = Math.round(geography.score * 0.28 + missionScore * 0.32 + evidenceScore * 0.20 + (identityFit.relevant ? 8 : 0) + (lifecycle.status === "open-now" ? 12 : lifecycle.status === "rolling" ? 10 : lifecycle.status === "opening-soon" ? 8 : lifecycle.status === "recently-closed" ? 5 : 2));
   const disposition = kind === "funding-signal" ? "monitor" : reject ? "decline" : opportunityVerified && eligibilityVerified && missionScore >= 45 ? "pursue" : missionScore >= 30 ? "investigate" : "monitor";
   const unknowns = [...new Set([...(qualification?.unknowns || []), ...(Array.isArray(record.unknowns) ? record.unknowns : []), ...(!officialUrl ? ["Authoritative source URL is not verified."] : []), ...(kind === "opportunity" && !lifecycle.verifiedBy ? ["Current opportunity-cycle status is not verified."] : []), ...(kind === "opportunity" && !eligibilityVerified ? ["Applicant eligibility is not verified from authoritative requirements."] : [])])];
-  const opportunityCase = kind === "opportunity" ? resourceInvestigationOpportunityCase(record, categoryFit, qualification) : null;
+  const opportunityCase = kind === "opportunity" ? resourceInvestigationOpportunityCase(record, categoryFit, qualification, extraction, strategyAlignment) : null;
   const channel = resourceInvestigationChannel(record);
   const score = Math.max(0, Math.min(100, strategicScore));
   const attentionEligible = kind === "opportunity" && !reject && score >= RESOURCE_INVESTIGATION_CONTEXT.executiveAttentionPolicy.activeDeskMinimumScore && ["pursue", "investigate"].includes(disposition) && !["closed-historical", "cycle-unknown"].includes(lifecycle.status);
@@ -10356,9 +10497,10 @@ app.get("/api/resource-development/investigate", async (request, response) => {
     const stored = (await readExecutiveMemoryCollection(FUNDING_OPPORTUNITY_COLLECTION)).filter(record => record?.type === "funding-opportunity");
     const discoveryRun = await ResourceDiscoveryNetwork.discoverAll({ context: { geographyProfile, includeFutureExpansion: true } });
     const discovered = Array.isArray(discoveryRun.records) ? discoveryRun.records : [];
-    const normalized = [...stored, ...discovered]
-      .filter(record => resourceType === "all" || (resourceType === "grant" && resourceInvestigationIsGrant(record)) || resourceInvestigationChannel(record) === resourceType)
-      .map(record => normalizeResourceInvestigationRecord(record, areas));
+    const organizationStrategy = await loadResourceInvestigationOrganizationStrategy();
+    const candidates = [...stored, ...discovered]
+      .filter(record => resourceType === "all" || (resourceType === "grant" && resourceInvestigationIsGrant(record)) || resourceInvestigationChannel(record) === resourceType);
+    const normalized = await Promise.all(candidates.map(record => normalizeResourceInvestigationRecord(record, areas, organizationStrategy)));
     const ranked = dedupeResourceInvestigation(normalized).sort((a, b) => a._sort.attention - b._sort.attention || a._sort.rejected - b._sort.rejected || a._sort.lifecycle - b._sort.lifecycle || a._sort.score - b._sort.score || a.title.localeCompare(b.title));
     const policy = RESOURCE_INVESTIGATION_CONTEXT.executiveAttentionPolicy;
     const activeLimit = Math.min(requestedLimit, policy.activeDeskMaximum);
@@ -10378,6 +10520,7 @@ app.get("/api/resource-development/investigate", async (request, response) => {
     response.status(200).json({
       schema: "meos.resource-development.investigation.v3", version: RESOURCE_INVESTIGATION_VERSION,
       buildId: RESOURCE_INVESTIGATION_BUILD_ID, status: discoveryRun.failedAdapters > 0 ? "partial" : "complete",
+      organizationStrategy: organizationStrategy ? { id: organizationStrategy.id, version: organizationStrategy.version, buildId: organizationStrategy.buildId, initiativeCount: organizationStrategy.initiatives?.length || 0 } : { status: "unavailable", error: resourceInvestigationStrategyLoadError },
       startedAt, completedAt: new Date().toISOString(),
       request: { resourceType, geography: areas, interpretation: "Broad lawful resource research; local-first ranking; evidence-based U.S. expansion; executive-attention gating prevents desk flooding." },
       executivePolicy: RESOURCE_INVESTIGATION_CONTEXT,
