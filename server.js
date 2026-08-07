@@ -35,12 +35,12 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.9";
+const VERSION = "2.10.10";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
-const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.5.0";
+const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.5.1";
 const RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID =
-  "RDI150-EXECUTIVE-OPPORTUNITY-CASE-20260807-A";
+  "RDI151-DECISION-GRADE-EVIDENCE-20260807-A";
 
 const resourceDiscoveryIntegrationState = {
   status: "initializing",
@@ -10778,46 +10778,214 @@ app.get("/api/resource-discovery/status", (request, response) => {
 });
 
 
-function extractExecutiveFundingFacts(text = "") {
-  const cleanText = String(text || "").replace(/\s+/g, " ").trim();
-  const sentences = cleanText
-    .split(/(?<=[.!?])\s+/)
-    .map(value => value.trim())
-    .filter(Boolean);
+function htmlToExecutiveEvidenceText(value = "") {
+  return decodeBasicHtmlEntities(
+    String(value || "")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, " ")
+      .replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, " ")
+      .replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, " ")
+      .replace(
+        /<\/?(?:p|div|section|article|main|h[1-6]|li|ul|ol|br|tr|td|th)\b[^>]*>/gi,
+        "\n"
+      )
+      .replace(/<[^>]+>/g, " ")
+      .split(/\n+/)
+      .map(line => line.replace(/\s+/g, " ").trim())
+      .filter(line => line.length >= 3)
+      .join("\n")
+      .trim()
+  );
+}
 
-  const pick = pattern =>
-    sentences.filter(sentence => pattern.test(sentence)).slice(0, 8);
+function executiveEvidenceUnits(text = "") {
+  const units = [];
+  for (const line of String(text || "").split(/\n+/)) {
+    const normalized = line.replace(/\s+/g, " ").trim();
+    if (!normalized) continue;
 
-  const moneyMatches = [
-    ...cleanText.matchAll(
-      /\$\s?\d[\d,]*(?:\.\d+)?(?:\s*(?:million|thousand|m|k))?(?:\s*(?:-|–|to)\s*\$?\s?\d[\d,]*(?:\.\d+)?(?:\s*(?:million|thousand|m|k))?)?/gi
-    )
-  ].map(match => match[0].trim());
+    const pieces = normalized
+      .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+      .map(value => value.trim())
+      .filter(Boolean);
 
-  const dateMatches = [
-    ...cleanText.matchAll(
-      /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+20\d{2}\b/gi
-    )
-  ].map(match => match[0].trim());
+    for (const piece of pieces) {
+      if (piece.length < 20 || piece.length > 1200) continue;
+      if (
+        /^(?:for donors|for advisors|for nonprofits|our impact|about us|contact us|give today|donor login)\b/i.test(
+          piece
+        )
+      ) {
+        continue;
+      }
+      units.push(piece);
+    }
+  }
+
+  return [...new Set(units)];
+}
+
+function pickExecutiveEvidence(units = [], pattern, limit = 8) {
+  return units
+    .filter(unit => pattern.test(unit))
+    .sort((left, right) => {
+      const score = value =>
+        (/\b(grant|program|cycle|application|eligible|award|funding)\b/i.test(value)
+          ? 3
+          : 0) +
+        (/\b20\d{2}\b/.test(value) ? 2 : 0) +
+        (/\$/.test(value) ? 1 : 0);
+      return score(right) - score(left);
+    })
+    .slice(0, limit);
+}
+
+function moneyEvidenceFromUnits(units = []) {
+  const evidence = [];
+
+  for (const unit of units) {
+    if (
+      !/\$\s?\d/i.test(unit) ||
+      !/\b(grant|award|awarded|fund|funding|program|cycle|support)\b/i.test(unit)
+    ) {
+      continue;
+    }
+
+    // Do not confuse a funder's assets, endowment, or lifetime giving with
+    // the size of the opportunity being investigated.
+    if (
+      /\b(asset|assets under management|endowment|since inception|lifetime giving)\b/i.test(
+        unit
+      )
+    ) {
+      continue;
+    }
+
+    const values = [
+      ...unit.matchAll(
+        /\$\s?\d[\d,]*(?:\.\d+)?(?:\s*(?:million|thousand|m|k))?(?:\s*(?:-|–|to)\s*\$?\s?\d[\d,]*(?:\.\d+)?(?:\s*(?:million|thousand|m|k))?)?/gi
+      )
+    ].map(match => match[0].trim());
+
+    for (const value of values) {
+      evidence.push({ value, context: unit });
+    }
+  }
+
+  return evidence.slice(0, 12);
+}
+
+function dateEvidenceFromUnits(units = []) {
+  const evidence = [];
+
+  for (const unit of units) {
+    if (
+      !/\b(deadline|due|apply|application|cycle|opens?|closes?|invitation|awarded)\b/i.test(
+        unit
+      )
+    ) {
+      continue;
+    }
+
+    const values = [
+      ...unit.matchAll(
+        /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+20\d{2}\b/gi
+      )
+    ].map(match => match[0].trim());
+
+    for (const value of values) {
+      evidence.push({ value, context: unit });
+    }
+  }
+
+  return evidence.slice(0, 12);
+}
+
+function classifyFundingCycle(units = []) {
+  const joined = units.join(" ");
+  const invitationOnly =
+    /\b(invitation only|invite-only|invitations? to participate|this year'?s invitees|invited organizations?)\b/i.test(
+      joined
+    );
+  const awardedCurrentCycle =
+    /\b(?:this|our)\s+(?:year|20\d{2}).{0,80}\bawarded\b/i.test(joined) ||
+    /\bcongratulations to our 20\d{2}.*grant/i.test(joined);
+  const explicitlyOpen =
+    /\b(applications? (?:are )?open|now accepting applications|apply now|currently accepting|open application cycle)\b/i.test(
+      joined
+    );
+  const explicitlyClosed =
+    /\b(applications? (?:are )?closed|cycle (?:is )?closed|deadline has passed)\b/i.test(
+      joined
+    );
+
+  let status = "cycle-unknown";
+  if (explicitlyOpen) status = "open";
+  else if (invitationOnly && awardedCurrentCycle)
+    status = "current-cycle-invitation-only-or-complete";
+  else if (invitationOnly) status = "invitation-only";
+  else if (explicitlyClosed || awardedCurrentCycle) status = "current-cycle-complete";
 
   return {
-    amounts: [...new Set(moneyMatches)].slice(0, 12),
-    dates: [...new Set(dateMatches)].slice(0, 12),
-    eligibilityEvidence: pick(
-      /\b(eligible|eligibility|501\(c\)\(3\)|nonprofit|applicant|qualified organization)\b/i
-    ),
-    fundedActivityEvidence: pick(
-      /\b(fund|support|program|project|service|capital|equipment|operating|housing|homeless|veteran|first responder|workforce|environment|youth|health)\b/i
-    ),
-    restrictionEvidence: pick(
-      /\b(not eligible|ineligible|will not fund|does not fund|prohibited|restriction|match|required match|cost share|reimbursement)\b/i
-    ),
-    deadlineEvidence: pick(
-      /\b(deadline|due date|applications? (?:are )?due|apply by|submission)\b/i
-    ),
-    applicationEvidence: pick(
-      /\b(apply|application|proposal|letter of intent|LOI|request for proposal|RFP)\b/i
+    status,
+    invitationOnly,
+    awardedCurrentCycle,
+    explicitlyOpen,
+    explicitlyClosed
+  };
+}
+
+function extractExecutiveFundingFacts(text = "") {
+  const units = executiveEvidenceUnits(text);
+  const moneyEvidence = moneyEvidenceFromUnits(units);
+  const dateEvidence = dateEvidenceFromUnits(units);
+
+  const eligibilityEvidence = pickExecutiveEvidence(
+    units,
+    /\b(eligible organizations?|eligibility|eligible applicants?|must be (?:a )?501\(c\)\(3\)|501\(c\)\(3\) organizations?|qualified nonprofit|applicants? must)\b/i
+  );
+  const fundedActivityEvidence = pickExecutiveEvidence(
+    units,
+    /\b(general operations?|operating support|human services|homeless|housing|youth|education|environment|health|community development|veteran|first responder|workforce|capital|equipment)\b/i
+  );
+  const restrictionEvidence = pickExecutiveEvidence(
+    units,
+    /\b(invitation only|invite-only|invitations? to participate|not eligible|ineligible|will not fund|does not fund|prohibited|restriction|match|required match|cost share|reimbursement)\b/i
+  );
+  const deadlineEvidence = pickExecutiveEvidence(
+    units,
+    /\b(deadline|due date|applications? (?:are )?due|apply by|submission deadline|cycle closes?)\b/i
+  );
+  const applicationEvidence = pickExecutiveEvidence(
+    units,
+    /\b(applications? (?:are )?open|apply now|submit (?:an )?application|new application|letter of intent|request for proposal|RFP)\b/i
+  );
+  const programEvidence = pickExecutiveEvidence(
+    units,
+    /\b(?:community grants?|small grants?|operating support|grantmaking|grant program|grants? cycle)\b/i,
+    12
+  );
+
+  const cycle = classifyFundingCycle(units);
+
+  const individualAwardEvidence = moneyEvidence.filter(item =>
+    /\b(grants? (?:of|up to|from|range)|awards? (?:of|up to|from|range)|per grant|maximum grant|minimum grant|request up to)\b/i.test(
+      item.context
     )
+  );
+
+  return {
+    moneyEvidence,
+    dateEvidence,
+    eligibilityEvidence,
+    fundedActivityEvidence,
+    restrictionEvidence,
+    deadlineEvidence,
+    applicationEvidence,
+    programEvidence,
+    cycle,
+    individualAwardEvidence
   };
 }
 
@@ -10830,6 +10998,7 @@ async function readExecutiveFundingDocument(url) {
 
   const contentType = String(result.contentType || "").toLowerCase();
   let text = "";
+  let html = null;
   let documentType = "web-page";
 
   if (
@@ -10840,7 +11009,8 @@ async function readExecutiveFundingDocument(url) {
     const parsed = await pdfParse(result.body);
     text = String(parsed?.text || "");
   } else {
-    text = stripHtml(result.body.toString("utf8"));
+    html = result.body.toString("utf8");
+    text = htmlToExecutiveEvidenceText(html);
   }
 
   return {
@@ -10848,23 +11018,27 @@ async function readExecutiveFundingDocument(url) {
     requestedUrl: url,
     contentType: result.contentType,
     documentType,
-    text: text.slice(0, 40_000),
+    text: text.slice(0, 60_000),
+    html,
     byteLength: result.body.length,
     retrievedAt: continuousOperationsNow()
   };
 }
 
 function scoreExecutiveOpportunityEvidence(facts = {}, documents = []) {
+  const currentCycleActionable =
+    facts.cycle?.status === "open" ||
+    facts.deadlineEvidence?.length > 0 ||
+    facts.dateEvidence?.length > 0;
+
   const checks = {
     officialMaterialRead: documents.length > 0,
-    amountFound: (facts.amounts || []).length > 0,
-    deadlineFound:
-      (facts.dates || []).length > 0 ||
-      (facts.deadlineEvidence || []).length > 0,
-    eligibilityFound: (facts.eligibilityEvidence || []).length > 0,
-    fundedActivitiesFound:
-      (facts.fundedActivityEvidence || []).length > 0,
-    applicationPathFound: (facts.applicationEvidence || []).length > 0
+    specificProgramEvidence: (facts.programEvidence || []).length > 0,
+    individualAwardVerified: (facts.individualAwardEvidence || []).length > 0,
+    currentCycleActionable,
+    eligibilityVerified: (facts.eligibilityEvidence || []).length > 0,
+    fundedActivitiesVerified: (facts.fundedActivityEvidence || []).length > 0,
+    applicationPathVerified: (facts.applicationEvidence || []).length > 0
   };
 
   const passed = Object.values(checks).filter(Boolean).length;
@@ -10873,6 +11047,41 @@ function scoreExecutiveOpportunityEvidence(facts = {}, documents = []) {
     passed,
     total: Object.keys(checks).length,
     coverage: Math.round((passed / Object.keys(checks).length) * 100)
+  };
+}
+
+function deriveFundingLeadDisposition(facts = {}, evidenceScore = {}) {
+  if (
+    facts.cycle?.status === "current-cycle-invitation-only-or-complete" ||
+    facts.cycle?.status === "invitation-only"
+  ) {
+    return {
+      disposition: "monitor-and-position",
+      recommendation:
+        "Do not present as an open application. Preserve the funder as a high-value relationship and investigate the next cycle, invitation path, and relationship-building route."
+    };
+  }
+
+  if (facts.cycle?.status === "current-cycle-complete") {
+    return {
+      disposition: "monitor-next-cycle",
+      recommendation:
+        "The current cycle appears complete. Preserve recurrence intelligence, determine the next cycle, and prepare before reopening."
+    };
+  }
+
+  if (!evidenceScore.checks.currentCycleActionable) {
+    return {
+      disposition: "investigate-current-cycle",
+      recommendation:
+        "Maddy has not proven that a current application window is actionable. Continue investigation before placing this on the active pursuit desk."
+    };
+  }
+
+  return {
+    disposition: "candidate-for-qualification",
+    recommendation:
+      "A specific actionable funding cycle is evidenced. Continue organization-specific qualification before recommending pursuit."
   };
 }
 
@@ -10896,9 +11105,10 @@ async function buildExecutiveOpportunityCase(sourceRecord = {}) {
       },
       unknowns: [
         "Authoritative opportunity source",
+        "Specific funding program",
         "Current funding cycle",
-        "Eligibility",
-        "Award value",
+        "Applicant eligibility",
+        "Individual award value",
         "Deadline",
         "Application requirements"
       ]
@@ -10906,21 +11116,11 @@ async function buildExecutiveOpportunityCase(sourceRecord = {}) {
   }
 
   const root = await readExecutiveFundingDocument(officialUrl);
-  const rootFacts = extractExecutiveFundingFacts(root.text);
   const documents = [root];
 
-  // Follow the most relevant authoritative links instead of making the
-  // Executive Director perform the click-and-read work.
-  if (root.documentType === "web-page") {
-    const rootHtml = (
-      await fetchPublicFundingResource(root.url, {
-        method: "GET",
-        accept: "text/html,application/xhtml+xml"
-      })
-    ).body.toString("utf8");
-
+  if (root.documentType === "web-page" && root.html) {
     const rootOrigin = new URL(root.url).origin;
-    const candidates = extractFundingLinks(rootHtml, root.url)
+    const candidates = extractFundingLinks(root.html, root.url)
       .filter(link => {
         try {
           return new URL(link.url).origin === rootOrigin;
@@ -10929,26 +11129,42 @@ async function buildExecutiveOpportunityCase(sourceRecord = {}) {
         }
       })
       .filter(link =>
-        /\b(grant|apply|application|guideline|eligib|fund|rfp|proposal|program|award)\b/i.test(
+        /\b(grant|apply|application|guideline|eligib|fund|rfp|proposal|program|award|report)\b/i.test(
           `${link.label} ${link.url}`
         )
       )
-      .slice(0, 6);
+      .sort((left, right) => {
+        const score = link =>
+          (/\b(apply|application|guideline|eligib|rfp|proposal)\b/i.test(
+            `${link.label} ${link.url}`
+          )
+            ? 4
+            : 0) +
+          (/\b(grant|program|award|fund)\b/i.test(
+            `${link.label} ${link.url}`
+          )
+            ? 2
+            : 0) +
+          (/\.pdf(?:$|\?)/i.test(link.url) ? 2 : 0);
+        return score(right) - score(left);
+      })
+      .slice(0, 8);
 
     for (const link of candidates) {
       if (documents.some(document => document.url === link.url)) continue;
       try {
         documents.push(await readExecutiveFundingDocument(link.url));
       } catch {
-        // A failed child document is evidence of an unknown, not permission
-        // to fabricate a completed investigation.
+        // Preserve the unknown. Never fabricate evidence because a child
+        // document could not be read.
       }
     }
   }
 
-  const combinedText = documents.map(document => document.text).join(" ");
+  const combinedText = documents.map(document => document.text).join("\n");
   const facts = extractExecutiveFundingFacts(combinedText);
   const evidenceScore = scoreExecutiveOpportunityEvidence(facts, documents);
+  const leadDisposition = deriveFundingLeadDisposition(facts, evidenceScore);
 
   const evidenceLedger = documents.map(document => ({
     url: document.url,
@@ -10959,27 +11175,40 @@ async function buildExecutiveOpportunityCase(sourceRecord = {}) {
   }));
 
   const unknowns = [];
-  if (!evidenceScore.checks.amountFound) unknowns.push("Award amount or range");
-  if (!evidenceScore.checks.deadlineFound) unknowns.push("Current application deadline");
-  if (!evidenceScore.checks.eligibilityFound) unknowns.push("Applicant eligibility");
-  if (!evidenceScore.checks.fundedActivitiesFound) unknowns.push("Allowable funded activities");
-  if (!evidenceScore.checks.applicationPathFound) unknowns.push("Application path or requirements");
+  if (!evidenceScore.checks.specificProgramEvidence)
+    unknowns.push("Specific funding program");
+  if (!evidenceScore.checks.individualAwardVerified)
+    unknowns.push("Individual grant award amount or range");
+  if (!evidenceScore.checks.currentCycleActionable)
+    unknowns.push("Current actionable application window or deadline");
+  if (!evidenceScore.checks.eligibilityVerified)
+    unknowns.push("Explicit applicant eligibility");
+  if (!evidenceScore.checks.fundedActivitiesVerified)
+    unknowns.push("Allowable funded activities");
+  if (!evidenceScore.checks.applicationPathVerified)
+    unknowns.push("Verified application path or requirements");
 
+  // A source page is not an executive-qualified opportunity merely because
+  // it mentions grants, nonprofits and money. Promotion requires evidence of
+  // a specific actionable cycle and decision-grade applicant facts.
   const executiveDeskReady =
     evidenceScore.checks.officialMaterialRead &&
-    evidenceScore.checks.eligibilityFound &&
-    evidenceScore.checks.fundedActivitiesFound &&
-    evidenceScore.checks.applicationPathFound &&
-    evidenceScore.coverage >= 67;
+    evidenceScore.checks.specificProgramEvidence &&
+    evidenceScore.checks.currentCycleActionable &&
+    evidenceScore.checks.eligibilityVerified &&
+    evidenceScore.checks.fundedActivitiesVerified &&
+    evidenceScore.checks.applicationPathVerified &&
+    !facts.cycle?.invitationOnly &&
+    facts.cycle?.status !== "current-cycle-complete";
 
   return {
     schema: "meos.executive-opportunity-case.v1",
-    version: "1.0.0",
-    buildId: "EOC100-READ-BEFORE-DESK-20260807-A",
+    version: "1.1.0",
+    buildId: "EOC110-DECISION-GRADE-EVIDENCE-20260807-A",
     investigatedAt: continuousOperationsNow(),
     status: executiveDeskReady
       ? "executive-case-built"
-      : "investigation-incomplete",
+      : "source-intelligence-built",
     source: {
       id: sourceRecord.id,
       title: sourceRecord.title,
@@ -10995,9 +11224,12 @@ async function buildExecutiveOpportunityCase(sourceRecord = {}) {
       documentCount: documents.length,
       evidenceLedger
     },
-    extracted: {
-      amounts: facts.amounts,
-      dates: facts.dates,
+    opportunityIntelligence: {
+      cycle: facts.cycle,
+      programEvidence: facts.programEvidence,
+      individualAwardEvidence: facts.individualAwardEvidence,
+      moneyEvidence: facts.moneyEvidence,
+      dateEvidence: facts.dateEvidence,
       eligibilityEvidence: facts.eligibilityEvidence,
       fundedActivityEvidence: facts.fundedActivityEvidence,
       restrictionEvidence: facts.restrictionEvidence,
@@ -11006,15 +11238,16 @@ async function buildExecutiveOpportunityCase(sourceRecord = {}) {
     },
     evidence: evidenceScore,
     unknowns,
+    disposition: leadDisposition,
     promotion: {
       executiveDeskReady,
       reason: executiveDeskReady
-        ? "Maddy read authoritative material and extracted enough decision evidence to build an executive opportunity case."
-        : "This remains a funding lead. Maddy has not verified enough authoritative evidence to present it as an executive-qualified opportunity."
+        ? "Maddy found a specific actionable cycle and enough authoritative applicant evidence to permit organization-specific executive qualification."
+        : "This is valuable funding-source intelligence, but it has not earned active Executive Desk pursuit status."
     },
     nextAction: executiveDeskReady
-      ? "Compare this verified opportunity evidence against the Organization Package, long-term strategy, current assets, dependencies, and execution capacity before recommending pursuit."
-      : "Continue investigation until the missing decision evidence is verified. Do not present a confident pursue recommendation yet."
+      ? "Compare this decision-grade opportunity evidence against the Organization Package, long-term strategy, current assets, dependencies, execution capacity, and competing opportunities before recommending pursuit."
+      : leadDisposition.recommendation
   };
 }
 
