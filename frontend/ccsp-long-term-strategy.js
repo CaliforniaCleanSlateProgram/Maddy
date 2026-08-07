@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * CCSP Long-Term Strategy Package
  *
- * Version: 1.1.0
- * Build: CCLTS110-FRONTLINE-FELLOWSHIP-20260807-A
+ * Version: 1.1.1
+ * Build: CCLTS111-FRONTLINE-FELLOWSHIP-MIGRATION-20260807-A
  *
  * Purpose:
  * - Preserve CCSP's long-term strategy as structured, queryable organizational data.
@@ -27,8 +27,8 @@
     "use strict";
 
     const NAME = "CCSP Long-Term Strategy";
-    const VERSION = "1.1.0";
-    const BUILD_ID = "CCLTS110-FRONTLINE-FELLOWSHIP-20260807-A";
+    const VERSION = "1.1.1";
+    const BUILD_ID = "CCLTS111-FRONTLINE-FELLOWSHIP-MIGRATION-20260807-A";
     const SCHEMA = "meos.organization.long-term-strategy.v1";
     const ORGANIZATION_ID = "california-clean-slate-program";
     const STORAGE_KEY = "meos.ccsp.long-term-strategy.v1";
@@ -216,6 +216,69 @@
         }
     }
 
+    function migrateRestoredStrategy(parsed) {
+        if (
+            !parsed ||
+            parsed.schema !== SCHEMA ||
+            parsed.organizationId !== ORGANIZATION_ID
+        ) {
+            return null;
+        }
+
+        const canonical = clone(BASE_STRATEGY);
+        const alreadyCurrent =
+            parsed.version === VERSION &&
+            parsed.buildId === BUILD_ID &&
+            Array.isArray(parsed.initiatives) &&
+            parsed.initiatives.some(
+                initiative =>
+                    initiative?.id ===
+                    "initiative-frontline-fellowship"
+            );
+
+        if (alreadyCurrent) {
+            return parsed;
+        }
+
+        const restoredPhasesById = new Map(
+            (Array.isArray(parsed.phases) ? parsed.phases : [])
+                .filter(phase => phase?.id)
+                .map(phase => [phase.id, phase])
+        );
+
+        canonical.phases = canonical.phases.map(phase => {
+            const restored = restoredPhasesById.get(phase.id);
+            const restoredStatus = restored?.status;
+            const validStatus = Object.values(MILESTONE_STATUS)
+                .includes(restoredStatus);
+
+            return {
+                ...phase,
+                status: validStatus
+                    ? restoredStatus
+                    : phase.status
+            };
+        });
+
+        return {
+            ...parsed,
+            ...canonical,
+            phases: canonical.phases,
+            version: VERSION,
+            buildId: BUILD_ID,
+            updatedAt: now(),
+            migration: {
+                migratedAt: now(),
+                fromVersion: parsed.version || null,
+                fromBuildId: parsed.buildId || null,
+                toVersion: VERSION,
+                toBuildId: BUILD_ID,
+                reason:
+                    "Upgrade persisted organization strategy to the commissioned canonical package while preserving valid phase runtime state."
+            }
+        };
+    }
+
     function restore() {
         if (!global.localStorage) return null;
 
@@ -223,7 +286,7 @@
             const raw = global.localStorage.getItem(STORAGE_KEY);
             if (!raw) return null;
             const parsed = JSON.parse(raw);
-            return parsed?.schema === SCHEMA ? parsed : null;
+            return migrateRestoredStrategy(parsed);
         } catch (_error) {
             return null;
         }
@@ -431,6 +494,13 @@
             initializedAt: state.initializedAt,
             strategyId: state.strategy?.id || null,
             purposeCount: state.strategy?.purposes?.length || 0,
+            initiativeCount: state.strategy?.initiatives?.length || 0,
+            frontlineFellowshipLoaded: Boolean(
+                state.strategy?.initiatives?.some(
+                    initiative => initiative?.id === "initiative-frontline-fellowship"
+                )
+            ),
+            migration: state.strategy?.migration || null,
             continuumStageCount: state.strategy?.continuum?.length || 0,
             capabilityCount:
                 state.strategy?.strategicCapabilities?.length || 0,
