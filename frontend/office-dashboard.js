@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.8";
+  const DASHBOARD_VERSION = "4.5.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1119,6 +1119,27 @@
       @media (prefers-reduced-motion:reduce){.meos-maddy-desk-chip[data-live="true"]::before,.meos-maddy-window[data-dispatch-active="true"] .meos-maddy-status strong::after{animation:none}}
       .meos-maddy-desk-actions{display:flex;gap:7px;flex-wrap:wrap}.meos-maddy-desk-actions:empty{display:none}
       .meos-maddy-work-package{display:none;margin-top:8px;max-width:720px;border:1px solid rgba(105,220,255,.24);border-radius:11px;background:rgba(2,16,32,.78);overflow:hidden}.meos-maddy-work-package[data-open="true"]{display:block}.meos-maddy-package-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border-bottom:1px solid rgba(105,220,255,.13)}.meos-maddy-package-label{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:#86dff2}.meos-maddy-package-count{font-size:.64rem;color:#8ca7b8}.meos-maddy-package-body{display:grid;grid-template-columns:36px minmax(0,1fr) 36px;gap:8px;align-items:center;padding:9px 10px}.meos-maddy-package-nav{height:34px;border:1px solid rgba(105,220,255,.24);border-radius:9px;background:rgba(10,35,57,.72);color:#d9f7ff;cursor:pointer}.meos-maddy-package-nav:disabled{opacity:.3;cursor:default}.meos-maddy-package-card{min-width:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:2px 4px}.meos-maddy-package-title{display:block;font-size:.78rem;font-weight:800;color:#f2fbff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meos-maddy-package-meta{display:block;margin-top:3px;font-size:.64rem;color:#8ca7b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meos-maddy-package-position{display:block;margin-top:4px;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:#67dff5}.meos-maddy-package-strip{display:flex;gap:5px;padding:0 10px 9px;overflow-x:auto;scrollbar-width:thin}.meos-maddy-package-pill{flex:0 0 auto;max-width:150px;border:1px solid rgba(105,220,255,.16);border-radius:999px;background:rgba(8,30,49,.68);color:#8ca7b8;padding:5px 9px;font-size:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.meos-maddy-package-pill[data-selected="true"]{border-color:rgba(105,220,255,.58);color:#dffaff;background:rgba(16,67,91,.72)}@media(max-width:760px){.meos-maddy-package-strip{display:none}}
+      /* Commission 006.013 — Expandable Executive Workspace */
+      .meos-executive-workspace{position:fixed;inset:18px;z-index:10040;display:none;grid-template-columns:minmax(190px,260px) minmax(360px,1fr) minmax(230px,310px);grid-template-rows:auto 1fr;gap:0;border:1px solid rgba(105,220,255,.34);border-radius:20px;background:linear-gradient(135deg,rgba(2,10,23,.985),rgba(5,20,38,.985));box-shadow:0 30px 90px rgba(0,0,0,.58),0 0 50px rgba(63,195,255,.1);overflow:hidden;color:#dff7ff}
+      .meos-executive-workspace[data-open="true"]{display:grid}
+      .meos-workspace-top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;border-bottom:1px solid rgba(105,220,255,.18);background:rgba(4,18,34,.92)}
+      .meos-workspace-kicker{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:#78dff4}.meos-workspace-title{margin:2px 0 0;font-size:1rem;color:#f3fcff}.meos-workspace-close{border:1px solid rgba(105,220,255,.25);border-radius:10px;background:rgba(10,35,57,.7);color:#dff7ff;cursor:pointer;padding:7px 11px}
+      .meos-workspace-presence{position:relative;padding:18px 14px;border-right:1px solid rgba(105,220,255,.14);background:radial-gradient(circle at 50% 20%,rgba(76,202,255,.14),transparent 34%),rgba(3,15,29,.78);overflow:auto}
+      .meos-workspace-maddy{width:132px;height:132px;margin:0 auto 12px;display:grid;place-items:center;border-radius:50%;border:1px solid rgba(105,220,255,.34);box-shadow:inset 0 0 28px rgba(70,193,255,.1),0 0 26px rgba(70,193,255,.1)}
+      .meos-workspace-maddy img{width:82%;height:82%;object-fit:cover;border-radius:50%;filter:grayscale(.2) contrast(1.08) brightness(.82) saturate(.8);mix-blend-mode:screen}
+      .meos-workspace-presence h3{margin:0;text-align:center;font-size:.95rem;color:#f3fcff}.meos-workspace-presence p{margin:8px 0 0;font-size:.72rem;line-height:1.5;color:#9fc0d0}
+      .meos-workspace-presence-state{margin-top:14px;padding:10px;border:1px solid rgba(105,220,255,.15);border-radius:11px;background:rgba(8,31,51,.58);font-size:.68rem;line-height:1.45;color:#b8d9e7}
+      .meos-workspace-results{margin-top:14px;display:grid;gap:6px}.meos-workspace-result{width:100%;border:1px solid rgba(105,220,255,.14);border-radius:10px;background:rgba(6,25,43,.64);color:#b9d5e1;text-align:left;cursor:pointer;padding:8px 9px;font-size:.67rem;line-height:1.3}.meos-workspace-result[data-selected="true"]{border-color:rgba(105,220,255,.58);background:rgba(15,60,82,.72);color:#effcff}
+      .meos-workspace-main{padding:18px 20px;overflow:auto}.meos-workspace-main-kicker{font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:#7bdff3}.meos-workspace-main h2{margin:5px 0 8px;font-size:1.35rem;color:#f5fcff}.meos-workspace-summary{margin:0 0 15px;max-width:850px;font-size:.82rem;line-height:1.55;color:#b9d4df}
+      .meos-workspace-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.meos-workspace-field{padding:10px 11px;border:1px solid rgba(105,220,255,.13);border-radius:10px;background:rgba(5,23,40,.62)}.meos-workspace-field span{display:block}.meos-workspace-field-label{font-size:.57rem;letter-spacing:.1em;text-transform:uppercase;color:#7299aa}.meos-workspace-field-value{margin-top:4px;font-size:.74rem;line-height:1.4;color:#e2f4fa}
+      .meos-workspace-judgment{margin-top:14px;padding:13px;border:1px solid rgba(105,220,255,.19);border-radius:12px;background:rgba(8,31,51,.64)}.meos-workspace-judgment strong{display:block;font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;color:#78dff4}.meos-workspace-judgment p{margin:6px 0 0;font-size:.78rem;line-height:1.5;color:#d6e9f0}
+      .meos-workspace-actions{padding:18px 14px;border-left:1px solid rgba(105,220,255,.14);background:rgba(3,15,29,.78);overflow:auto}.meos-workspace-actions h3{margin:0 0 5px;font-size:.9rem;color:#f3fcff}.meos-workspace-actions p{margin:0 0 13px;font-size:.69rem;line-height:1.45;color:#94b6c5}
+      .meos-workspace-action{width:100%;margin:0 0 8px;border:1px solid rgba(105,220,255,.28);border-radius:10px;background:rgba(13,48,75,.7);color:#e9fbff;cursor:pointer;padding:10px 11px;text-align:left;font-size:.72rem}.meos-workspace-action:hover{border-color:rgba(105,220,255,.65);background:rgba(20,70,102,.76)}.meos-workspace-action.primary{border-color:rgba(99,226,170,.42);background:rgba(16,79,63,.66);font-weight:800}.meos-workspace-action:disabled{opacity:.42;cursor:default}
+      .meos-workspace-source-note{margin-top:10px;font-size:.62rem;line-height:1.45;color:#7799a8}
+      body.meos-workspace-open{overflow:hidden}
+      @media(max-width:980px){.meos-executive-workspace{inset:8px;grid-template-columns:190px 1fr;grid-template-rows:auto 1fr auto}.meos-workspace-actions{grid-column:1/-1;border-left:0;border-top:1px solid rgba(105,220,255,.14);display:flex;gap:8px;align-items:center}.meos-workspace-actions h3,.meos-workspace-actions p,.meos-workspace-source-note{display:none}.meos-workspace-action{margin:0}}
+      @media(max-width:700px){.meos-executive-workspace{grid-template-columns:1fr}.meos-workspace-presence{display:none}.meos-workspace-main{grid-column:1}.meos-workspace-grid{grid-template-columns:1fr}}
+
       .meos-maddy-brief{display:none;margin-top:8px;padding:12px 13px;border:1px solid rgba(105,220,255,.25);border-radius:11px;background:rgba(2,16,32,.86);max-width:640px;color:#d9e9f5;box-shadow:0 12px 30px rgba(0,0,0,.22)}
       .meos-maddy-brief[data-open="true"]{display:block}.meos-maddy-brief-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.meos-maddy-brief-kicker{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:#86dff2}.meos-maddy-brief-title{margin:3px 0 0;font-size:.92rem;color:#f2fbff}.meos-maddy-brief-close{border:0;background:transparent;color:#8ca7b8;cursor:pointer;font-size:1rem}.meos-maddy-brief-summary{margin:9px 0 10px;font-size:.76rem;line-height:1.45;color:#c7d9e6}.meos-maddy-brief-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px}.meos-maddy-brief-field{border-top:1px solid rgba(119,193,219,.12);padding-top:6px}.meos-maddy-brief-label{display:block;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:#7398aa}.meos-maddy-brief-value{display:block;margin-top:2px;font-size:.7rem;color:#e0edf4;line-height:1.35}.meos-maddy-brief-source{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:11px}.meos-maddy-brief-link{display:inline-flex;align-items:center;border:1px solid rgba(105,220,255,.4);border-radius:8px;padding:6px 10px;color:#c9f6ff;text-decoration:none;font-size:.68rem;background:rgba(17,63,91,.55)}.meos-maddy-brief-link:hover{border-color:rgba(128,232,255,.8)}.meos-maddy-brief-note{font-size:.62rem;color:#7894a5}@media(max-width:760px){.meos-maddy-brief-grid{grid-template-columns:1fr}}
       @media(max-width:760px){.meos-maddy-desk{right:18px}.meos-maddy-field{opacity:.46}.meos-maddy-telemetry{bottom:10px}}
@@ -5032,6 +5053,165 @@ document
     return packageState;
   }
 
+
+  function closeMaddyExecutiveWorkspace() {
+    const workspace = document.getElementById("meosExecutiveWorkspace");
+    if (workspace) workspace.dataset.open = "false";
+    document.body.classList.remove("meos-workspace-open");
+  }
+
+  function ensureMaddyExecutiveWorkspace() {
+    let workspace = document.getElementById("meosExecutiveWorkspace");
+    if (workspace) return workspace;
+
+    workspace = document.createElement("section");
+    workspace.id = "meosExecutiveWorkspace";
+    workspace.className = "meos-executive-workspace";
+    workspace.dataset.open = "false";
+    workspace.setAttribute("role", "dialog");
+    workspace.setAttribute("aria-modal", "true");
+    workspace.setAttribute("aria-label", "Maddy Executive Workspace");
+    workspace.innerHTML = `
+      <div class="meos-workspace-top">
+        <div><div class="meos-workspace-kicker">Maddy Executive Workspace</div><h2 class="meos-workspace-title" id="meosWorkspacePackageTitle">Work Package</h2></div>
+        <button class="meos-workspace-close" id="meosWorkspaceClose" type="button">Collapse Workspace</button>
+      </div>
+      <aside class="meos-workspace-presence">
+        <div class="meos-workspace-maddy"><img src="maddy-executive-insignia.png" alt="Maddy present in the executive workspace" onerror="this.style.visibility='hidden';" /></div>
+        <h3>Maddy is here with you</h3>
+        <p>The work expands around Maddy. Review the evidence, challenge the recommendation, and authorize the next move when you're ready.</p>
+        <div class="meos-workspace-presence-state" id="meosWorkspacePresenceState">Maddy is holding the current work package in context.</div>
+        <div class="meos-workspace-results" id="meosWorkspaceResults"></div>
+      </aside>
+      <main class="meos-workspace-main" id="meosWorkspaceMain"></main>
+      <aside class="meos-workspace-actions" id="meosWorkspaceActions"></aside>`;
+    document.body.appendChild(workspace);
+    workspace.querySelector("#meosWorkspaceClose")?.addEventListener("click", closeMaddyExecutiveWorkspace);
+    workspace.addEventListener("click", (event) => {
+      if (event.target === workspace) closeMaddyExecutiveWorkspace();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && workspace.dataset.open === "true") closeMaddyExecutiveWorkspace();
+    });
+    return workspace;
+  }
+
+  function renderMaddyExecutiveWorkspace(snapshot = collectHeadquartersSnapshot(), packageState = getMaddyWorkPackage(snapshot)) {
+    const workspace = ensureMaddyExecutiveWorkspace();
+    const items = packageState.items || [];
+    const selected = packageState.selected || items[0] || null;
+    if (!selected) return false;
+
+    const selectedIndex = Math.max(0, items.findIndex((item) => item.id === selected.id));
+    const data = selected.data || {};
+    const executive = data.executiveBrief || data.executiveSummary || data.resourceDevelopment?.executiveBrief || {};
+    const development = data.resourceDevelopment || {};
+    const relationship = getFundingStrategyRelationship(data, executive) || {};
+    const amount = firstBriefValue(data.amount, data.awardAmount, data.fundingAmount, data.awardRange, development.amount, executive.amount);
+    const deadline = firstBriefValue(data.deadline, development.deadline, executive.deadline);
+    const eligibility = firstBriefValue(data.eligibility, data.qualificationStatus, development.eligibility, executive.eligibility, executive.participation);
+    const geography = firstBriefValue(data.geography, data.location, data.serviceArea, development.geography, executive.geography);
+    const fit = firstBriefValue(data.missionFit, development.missionFit, executive.missionFit, executive.whySeeingThis, executive.reason);
+    const confidence = firstBriefValue(data.confidence, development.confidence, executive.confidence);
+    const recommendation = firstBriefValue(data.recommendation, development.recommendation, executive.recommendation, relationship.relationship);
+    const nextAction = firstBriefValue(data.nextAction, development.nextAction, executive.nextAction);
+    const sourceUrl = selected.openUrl || selected.downloadUrl || data.url || data.sourceUrl || data.website || null;
+
+    const packageTitle = workspace.querySelector("#meosWorkspacePackageTitle");
+    if (packageTitle) packageTitle.textContent = packageState.work?.title || packageState.work?.instruction || "Maddy Work Package";
+
+    const presence = workspace.querySelector("#meosWorkspacePresenceState");
+    if (presence) presence.textContent = `${items.length} returned · reviewing ${selectedIndex + 1} of ${items.length}. Maddy keeps this package in context while you decide.`;
+
+    const results = workspace.querySelector("#meosWorkspaceResults");
+    if (results) {
+      results.innerHTML = "";
+      items.forEach((item, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "meos-workspace-result";
+        button.dataset.selected = item.id === selected.id ? "true" : "false";
+        button.textContent = `${index + 1}. ${item.title || "MEOS deliverable"}`;
+        button.addEventListener("click", () => {
+          state.hallway.selectedDeliverableId = item.id;
+          renderLiveHeadquarters();
+          renderMaddyExecutiveWorkspace(collectHeadquartersSnapshot(), getMaddyWorkPackage(collectHeadquartersSnapshot()));
+        });
+        results.appendChild(button);
+      });
+    }
+
+    const main = workspace.querySelector("#meosWorkspaceMain");
+    if (main) {
+      main.innerHTML = "";
+      const kicker = document.createElement("div"); kicker.className = "meos-workspace-main-kicker"; kicker.textContent = `Opportunity ${selectedIndex + 1} of ${items.length}`;
+      const title = document.createElement("h2"); title.textContent = selected.title || "Maddy's result";
+      const summary = document.createElement("p"); summary.className = "meos-workspace-summary"; summary.textContent = selected.summary || briefText(executive.summary, "Maddy returned this result without a written summary.");
+      const grid = document.createElement("div"); grid.className = "meos-workspace-grid";
+      [
+        ["Funding / Award", briefText(amount)],
+        ["Deadline", briefText(deadline)],
+        ["Eligibility", briefText(eligibility)],
+        ["Geography", briefText(geography)],
+        ["Mission / Strategy Fit", briefText(fit)],
+        ["Confidence", briefText(confidence)],
+        ["Recommendation", briefText(recommendation)],
+        ["Next Action", briefText(nextAction)]
+      ].forEach(([label, value]) => {
+        const field = document.createElement("div"); field.className = "meos-workspace-field";
+        const l = document.createElement("span"); l.className = "meos-workspace-field-label"; l.textContent = label;
+        const v = document.createElement("span"); v.className = "meos-workspace-field-value"; v.textContent = value;
+        field.append(l, v); grid.appendChild(field);
+      });
+      const judgment = document.createElement("div"); judgment.className = "meos-workspace-judgment";
+      const judgmentLabel = document.createElement("strong"); judgmentLabel.textContent = "Maddy's Executive Judgment";
+      const judgmentText = document.createElement("p"); judgmentText.textContent = briefText(
+        firstBriefValue(executive.whySeeingThis, executive.reason, relationship.reason, relationship.reasons, fit),
+        "Maddy has surfaced this opportunity, but the evidence is not yet sufficient for a stronger executive recommendation."
+      );
+      judgment.append(judgmentLabel, judgmentText);
+      main.append(kicker, title, summary, grid, judgment);
+    }
+
+    const actions = workspace.querySelector("#meosWorkspaceActions");
+    if (actions) {
+      actions.innerHTML = "";
+      const h = document.createElement("h3"); h.textContent = "Executive Actions";
+      const p = document.createElement("p"); p.textContent = "Maddy keeps the evidence visible while you decide what authority to grant.";
+      actions.append(h, p);
+
+      const investigate = document.createElement("button"); investigate.type = "button"; investigate.className = "meos-workspace-action"; investigate.textContent = "Investigate This Opportunity"; investigate.addEventListener("click", () => renderMaddyExecutiveBrief(selected)); actions.appendChild(investigate);
+
+      const official = document.createElement("button"); official.type = "button"; official.className = "meos-workspace-action"; official.textContent = "Open Official Source ↗"; official.disabled = !sourceUrl; official.addEventListener("click", () => { if (sourceUrl) window.open(sourceUrl, "_blank", "noopener,noreferrer"); }); actions.appendChild(official);
+
+      const take = document.createElement("button"); take.type = "button"; take.className = "meos-workspace-action primary"; take.textContent = "TAKE IT — Move This Forward";
+      const activeWork = packageState.work;
+      take.disabled = !activeWork?.options?.includes?.("take-it");
+      take.title = take.disabled ? "This work package is already authorized or does not currently require Take It." : "Authorize Maddy to move this work forward.";
+      take.addEventListener("click", async () => {
+        const hallway = getExecutiveHallway();
+        if (!hallway?.takeIt || !activeWork?.id) return;
+        take.disabled = true; take.textContent = "AUTHORIZED — Maddy is taking it…";
+        try { await hallway.takeIt(activeWork.id, { signal: "Take It!", source: "maddy-executive-workspace", selectedDeliverableId: selected.id }); }
+        catch (error) { state.hallway.lastError = error?.message || String(error); }
+        renderLiveHeadquarters();
+      });
+      actions.appendChild(take);
+
+      const note = document.createElement("div"); note.className = "meos-workspace-source-note"; note.textContent = sourceUrl ? "Official evidence remains separate from Maddy's judgment and opens directly from this action rail." : "No official source URL was returned. Maddy should not represent this opportunity as independently verified.";
+      actions.appendChild(note);
+    }
+
+    workspace.dataset.open = "true";
+    document.body.classList.add("meos-workspace-open");
+    return true;
+  }
+
+  function openMaddyExecutiveWorkspace() {
+    const snapshot = collectHeadquartersSnapshot();
+    return renderMaddyExecutiveWorkspace(snapshot, getMaddyWorkPackage(snapshot));
+  }
+
   function renderMaddyExecutiveDesk(snapshot) {
     const activeWork = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || null;
     const latestWork = activeWork || snapshot.hallwayWork[0] || null;
@@ -5085,6 +5265,14 @@ document
       view.title = "Read Maddy's selected result, evidence status, recommendation, and official source.";
       view.addEventListener("click", () => renderMaddyExecutiveBrief(selected));
       actions.appendChild(view);
+
+      const expand = document.createElement("button");
+      expand.type = "button";
+      expand.className = "meos-maddy-desk-action";
+      expand.textContent = "Expand Workspace";
+      expand.title = "Spread this work package across Maddy's Executive Workspace.";
+      expand.addEventListener("click", () => openMaddyExecutiveWorkspace());
+      actions.appendChild(expand);
     } else {
       renderMaddyExecutiveBrief(null);
     }
@@ -6458,7 +6646,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.012 Maddy HUD Work Package Delivery online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.013 Expandable Executive Workspace foundation online.`
     );
   }
 
@@ -6594,6 +6782,27 @@ document
       refresh: renderHallwayMini,
       getState: () => ({ ...state.hallway }),
       runAcceptanceTest: runHallwayDashboardAcceptanceTest
+    }),
+    workspace: Object.freeze({
+      open: openMaddyExecutiveWorkspace,
+      close: closeMaddyExecutiveWorkspace,
+      getState: () => ({
+        open: document.getElementById("meosExecutiveWorkspace")?.dataset?.open === "true",
+        selectedDeliverableId: state.hallway.selectedDeliverableId || null
+      }),
+      runAcceptanceTest: () => {
+        const checks = [
+          { name: "Expandable Executive Workspace can be created", passed: Boolean(ensureMaddyExecutiveWorkspace()) },
+          { name: "Maddy remains present inside expanded work", passed: Boolean(document.querySelector("#meosExecutiveWorkspace .meos-workspace-maddy")) },
+          { name: "Workspace has package result navigation", passed: Boolean(document.getElementById("meosWorkspaceResults")) },
+          { name: "Workspace has a dedicated executive action rail", passed: Boolean(document.getElementById("meosWorkspaceActions")) },
+          { name: "Workspace preserves collapse back to HUD", passed: Boolean(document.getElementById("meosWorkspaceClose")) }
+        ];
+        const result = { commission: "006.013", passed: checks.every((check) => check.passed), checks };
+        console.table(checks);
+        console.log(`[MEOS ${DASHBOARD_VERSION}] Commission 006.013 acceptance: ${result.passed ? "PASS" : "FAIL"}.`);
+        return result;
+      }
     }),
     funding: Object.freeze({
       refresh: loadFundingIntelligence,
