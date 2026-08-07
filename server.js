@@ -10111,13 +10111,13 @@ const executiveResourceDevelopmentOffice =
 
 
 /* ========================================================================== */
-/* MEOS Resource Development Investigation API v1.1.0                         */
-/* Commission 006.009 — strategic executive judgment, evidence before claims  */
+/* MEOS Resource Development Investigation API v1.2.0                         */
+/* Commission 006.010 — broad resource intelligence, quiet executive desk     */
 /* ========================================================================== */
 
-const RESOURCE_INVESTIGATION_VERSION = "1.1.0";
+const RESOURCE_INVESTIGATION_VERSION = "1.2.0";
 const RESOURCE_INVESTIGATION_BUILD_ID =
-  "RDI110-STRATEGIC-JUDGMENT-20260807-A";
+  "RDI120-BROAD-RESOURCE-QUIET-DESK-20260807-A";
 
 const RESOURCE_INVESTIGATION_CONTEXT = Object.freeze({
   operatingCountry: "United States",
@@ -10125,7 +10125,15 @@ const RESOURCE_INVESTIGATION_CONTEXT = Object.freeze({
   strategicExpansionAreas: ["California", "Lake Tahoe", "Tahoe", "Nevada"],
   identityFundingSignals: ["Black founder", "Black-led", "African American", "BIPOC", "minority founder", "minority-led"],
   identityEligibilityRule:
-    "Identity can create a research lead, but eligibility must be verified from the funder's actual requirements before Maddy recommends pursuit."
+    "Identity can create a research lead, but eligibility must be verified from the funder's actual requirements before Maddy recommends pursuit.",
+  executiveAttentionPolicy: Object.freeze({
+    principle: "Research broadly, surface narrowly. Do not flood the executive desk with low-value leads, duplicates, generic source pages, or premature funding signals.",
+    activeDeskMinimumScore: 45,
+    activeDeskMaximum: 25,
+    watchlistMaximum: 40,
+    signalMaximum: 40,
+    sourceMaximum: 40
+  })
 });
 
 function resourceInvestigationText(value) {
@@ -10178,16 +10186,46 @@ function resourceInvestigationLifecycle(record = {}, timestamp = Date.now()) {
     if (timestamp - deadlineMs <= 120 * day) return { status: "recently-closed", deadline, openDate: openDate || null, priority: 3, verifiedBy: "deadline" };
     return { status: "closed-historical", deadline, openDate: openDate || null, priority: 5, verifiedBy: "deadline" };
   }
-  if (/\bopen\b|posted|active|available/.test(explicit) && !/source-identified/.test(explicit)) return { status: "open-unverified", deadline: null, openDate: openDate || null, priority: 4, verifiedBy: "status-without-date" };
-  return { status: "cycle-unknown", deadline: null, openDate: openDate || null, priority: 4, verifiedBy: null };
+  if (/\bopen\b|posted|active|available/.test(explicit) && !/source-identified/.test(explicit)) return { status: "open-unverified", deadline: null, openDate: null, priority: 4, verifiedBy: "status-without-date" };
+  return { status: "cycle-unknown", deadline: null, openDate: null, priority: 4, verifiedBy: null };
+}
+
+function resourceInvestigationChannel(record = {}) {
+  const text = resourceInvestigationText([record.resourceType, record.resourceChannels, record.sourceType, record.title, record.name, record.description, record.raw?.source?.resourceTypes]).toLowerCase();
+  const rules = [
+    ["government-contract", /government contract|procurement|contract award|bid solicitation/],
+    ["rfp", /\brfp\b|request for proposals?/],
+    ["corporate-sponsorship", /sponsor|sponsorship/],
+    ["corporate-giving", /corporate giving|corporate grant|corporate foundation/],
+    ["donor-advised-fund", /donor[- ]advised|\bdaf\b/],
+    ["major-donor", /major donor|individual donor|private donor/],
+    ["family-foundation", /family foundation/],
+    ["community-foundation", /community foundation/],
+    ["foundation-grant", /foundation|philanthrop/],
+    ["government-grant", /government grant|federal grant|state grant|county grant|city grant|grants\.gov/],
+    ["vehicle", /vehicle|van|truck|bus|fleet/],
+    ["equipment", /equipment|machinery|computer|technology donation/],
+    ["property", /property|building|facility|land|real estate/],
+    ["in-kind", /in[- ]kind|donated goods|pro bono|professional services/],
+    ["earned-revenue", /earned revenue|fee for service|reimbursement/],
+    ["strategic-partnership", /strategic partnership|funded partner|subaward|subrecipient/]
+  ];
+  return rules.find(([, pattern]) => pattern.test(text))?.[0] || (/grant|award|funding/.test(text) ? "government-grant" : "other-lawful-resource");
 }
 
 function resourceInvestigationIsGrant(record = {}) {
-  const text = resourceInvestigationText([record.resourceType, record.resourceChannels, record.sourceType, record.title, record.name, record.description, record.raw?.source?.resourceTypes]).toLowerCase();
-  return /grant|foundation|philanthrop|funding|award/.test(text);
+  return /grant|foundation|philanthrop|funding|award/.test(resourceInvestigationText([record.resourceType, record.resourceChannels, record.sourceType, record.title, record.name, record.description, record.raw?.source?.resourceTypes]).toLowerCase());
+}
+
+function resourceInvestigationIsFundingSignal(record = {}) {
+  const text = resourceInvestigationText([record.kind, record.resourceType, record.sourceType, record.title, record.name, record.description, record.raw]).toLowerCase();
+  const signal = /appropriation|legislation|legislative|budget proposal|budget allocation|settlement fund|settlement allocation|opioid settlement|notice of intent|planned funding|funding forecast|board agenda|county allocation|city allocation|state budget|federal budget/.test(text);
+  const specificOpportunity = Boolean(resourceInvestigationDeadline(record)) || /notice of funding opportunity|\bnofo\b|request for proposals?|\brfp\b|applications? (?:are )?open|apply now|solicitation/.test(text);
+  return signal && !specificOpportunity;
 }
 
 function resourceInvestigationKind(record = {}) {
+  if (resourceInvestigationIsFundingSignal(record)) return "funding-signal";
   if (record.discoveryStatus === "source-identified") return "funding-source";
   const title = resourceInvestigationText([record.title, record.name]).toLowerCase();
   if (/funding opportunities|community foundation$|foundation$/.test(title)) return "funding-source";
@@ -10198,7 +10236,6 @@ function resourceInvestigationGeography(record = {}, areas = []) {
   const text = resourceInvestigationText([record.title, record.description, record.geography, record.region, record.geographyAnalysis, record.executiveBrief?.geography, record.raw?.source?.geography]).toLowerCase();
   const international = /\b(international|global|outside (?:the )?united states|foreign assistance|overseas)\b/.test(text) && !/united states|u\.s\.|usa/.test(text);
   if (international) return { tier: "outside-usa", score: 0, viable: false, reason: "Required work appears outside the United States." };
-
   for (const area of [...areas, ...RESOURCE_INVESTIGATION_CONTEXT.localPriority]) {
     const token = String(area || "").toLowerCase().replace(/,?\s*california.*$/, "").trim();
     if (token && text.includes(token)) return { tier: "local-regional", score: 100, viable: true, reason: `Matches priority operating geography: ${area}.` };
@@ -10213,12 +10250,7 @@ function resourceInvestigationGeography(record = {}, areas = []) {
 function resourceInvestigationIdentityFit(record = {}) {
   const text = resourceInvestigationText([record.title, record.description, record.eligibility, record.eligibleApplicants, record.raw]).toLowerCase();
   const signals = RESOURCE_INVESTIGATION_CONTEXT.identityFundingSignals.filter(signal => text.includes(signal.toLowerCase()));
-  return {
-    relevant: signals.length > 0,
-    signals,
-    eligibilityVerified: signals.length > 0 && record.eligibilityVerified === true,
-    rule: RESOURCE_INVESTIGATION_CONTEXT.identityEligibilityRule
-  };
+  return { relevant: signals.length > 0, signals, eligibilityVerified: signals.length > 0 && record.eligibilityVerified === true, rule: RESOURCE_INVESTIGATION_CONTEXT.identityEligibilityRule };
 }
 
 function resourceInvestigationCategoryFit(record = {}) {
@@ -10229,17 +10261,43 @@ function resourceInvestigationCategoryFit(record = {}) {
     ["agriculture-only", /dairy manure|livestock manure|commercial agriculture only/],
     ["specialized-science-only", /quantum computing|quantum information science|particle physics only/]
   ].find(([, pattern]) => pattern.test(text));
-  if (hardNonFit) return { score: 0, disposition: "reject", reason: `Applicant/program restriction is outside CCSP's role: ${hardNonFit[0]}.` };
-
+  if (hardNonFit) return { score: 0, disposition: "reject", reason: `Applicant/program restriction is outside the organization's role: ${hardNonFit[0]}.`, matches: [] };
   const missionSignals = ["homeless", "housing", "hygiene", "shower", "recovery", "substance use", "behavioral health", "workforce", "employment", "watershed", "water quality", "environment", "community development", "poverty", "public health", "veteran", "reentry", "clean water"];
   const matches = missionSignals.filter(signal => text.includes(signal));
-  return { score: Math.min(100, matches.length * 18), disposition: matches.length ? "consider" : "needs-evidence", reason: matches.length ? `Mission evidence: ${matches.join(", ")}.` : "No strong mission signal is visible in the discovery record." };
+  return { score: Math.min(100, matches.length * 18), disposition: matches.length ? "consider" : "needs-evidence", reason: matches.length ? `Mission evidence: ${matches.join(", ")}.` : "No strong mission signal is visible in the discovery record.", matches };
+}
+
+function resourceInvestigationOpportunityCase(record = {}, categoryFit = {}, qualification = null) {
+  const text = resourceInvestigationText([record.title, record.description, record.eligibility, record.eligibleApplicants, record.fundingActivityCategories, record.raw]).toLowerCase();
+  const fundedActivities = [
+    ["housing", /housing|shelter|permanent supportive/], ["hygiene/outreach", /hygiene|shower|outreach|street outreach/],
+    ["recovery/behavioral health", /recovery|substance use|behavioral health|treatment/], ["workforce/employment", /workforce|employment|job training/],
+    ["environment/watershed", /watershed|water quality|clean water|environment/], ["equipment/vehicle", /equipment|vehicle|van|truck|bus/],
+    ["facility/property", /facility|building|property|land|real estate/]
+  ].filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
+  const targetPopulations = [
+    ["people experiencing homelessness", /homeless|unhoused/], ["people in recovery", /recovery|substance use|addiction/],
+    ["veterans", /veteran/], ["justice-impacted/reentry", /reentry|justice[- ]impacted|formerly incarcerated/],
+    ["low-income communities", /low[- ]income|poverty|economically disadvantaged/]
+  ].filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
+  const participation = qualification?.participation || record.executiveBrief?.participation || record.participation || null;
+  const role = participation?.canLead === true ? "lead-applicant" : participation?.canPartner === true ? "funded-partner" : "role-needs-verification";
+  const coreCapability = categoryFit.matches?.length ? "direct-capability-signal" : fundedActivities.length ? "adjacent-capability-signal" : "capability-needs-evidence";
+  return {
+    fundedActivities,
+    targetPopulations,
+    realisticRole: role,
+    coreCapability,
+    executivePeek: coreCapability === "direct-capability-signal"
+      ? "The funded work overlaps a core mission capability; verify the exact deliverables and economics before pursuit."
+      : "Do not promote this lead merely because money exists; verify that the organization can credibly perform the funded work or occupy a paid partner role."
+  };
 }
 
 function normalizeResourceInvestigationRecord(record = {}, areas = []) {
   const lifecycle = resourceInvestigationLifecycle(record);
   const kind = resourceInvestigationKind(record);
-  const title = record.title || record.name || record.sourceName || "Unnamed funding lead";
+  const title = record.title || record.name || record.sourceName || "Unnamed resource lead";
   const officialUrl = resourceInvestigationUrl(record);
   const geography = resourceInvestigationGeography(record, areas);
   const identityFit = resourceInvestigationIdentityFit(record);
@@ -10250,33 +10308,31 @@ function normalizeResourceInvestigationRecord(record = {}, areas = []) {
   const opportunityVerified = kind === "opportunity" && Boolean(officialUrl) && Boolean(lifecycle.verifiedBy);
   const evidenceScore = (officialUrl ? 25 : 0) + (lifecycle.verifiedBy ? 25 : 0) + (eligibilityVerified ? 25 : 0) + (record.investigation?.status === "complete" ? 25 : 0);
   const reject = geography.viable === false || categoryFit.disposition === "reject" || qualification?.recommendation === "decline";
-  const strategicScore = Math.round(
-    geography.score * 0.28 +
-    missionScore * 0.32 +
-    evidenceScore * 0.20 +
-    (identityFit.relevant ? 8 : 0) +
-    (lifecycle.status === "open-now" ? 12 : lifecycle.status === "rolling" ? 10 : lifecycle.status === "opening-soon" ? 8 : lifecycle.status === "recently-closed" ? 5 : 2)
-  );
-  const disposition = reject ? "decline" : opportunityVerified && eligibilityVerified && missionScore >= 45 ? "pursue" : missionScore >= 30 ? "investigate" : "monitor";
-  const unknowns = [...new Set([...(qualification?.unknowns || []), ...(Array.isArray(record.unknowns) ? record.unknowns : []), ...(!officialUrl ? ["Official opportunity/application URL is not verified."] : []), ...(!lifecycle.verifiedBy ? ["Current application-cycle status is not verified."] : []), ...(!eligibilityVerified ? ["Applicant eligibility is not verified from authoritative requirements."] : [])])];
+  const strategicScore = Math.round(geography.score * 0.28 + missionScore * 0.32 + evidenceScore * 0.20 + (identityFit.relevant ? 8 : 0) + (lifecycle.status === "open-now" ? 12 : lifecycle.status === "rolling" ? 10 : lifecycle.status === "opening-soon" ? 8 : lifecycle.status === "recently-closed" ? 5 : 2));
+  const disposition = kind === "funding-signal" ? "monitor" : reject ? "decline" : opportunityVerified && eligibilityVerified && missionScore >= 45 ? "pursue" : missionScore >= 30 ? "investigate" : "monitor";
+  const unknowns = [...new Set([...(qualification?.unknowns || []), ...(Array.isArray(record.unknowns) ? record.unknowns : []), ...(!officialUrl ? ["Authoritative source URL is not verified."] : []), ...(kind === "opportunity" && !lifecycle.verifiedBy ? ["Current opportunity-cycle status is not verified."] : []), ...(kind === "opportunity" && !eligibilityVerified ? ["Applicant eligibility is not verified from authoritative requirements."] : [])])];
+  const opportunityCase = kind === "opportunity" ? resourceInvestigationOpportunityCase(record, categoryFit, qualification) : null;
+  const channel = resourceInvestigationChannel(record);
+  const score = Math.max(0, Math.min(100, strategicScore));
+  const attentionEligible = kind === "opportunity" && !reject && score >= RESOURCE_INVESTIGATION_CONTEXT.executiveAttentionPolicy.activeDeskMinimumScore && ["pursue", "investigate"].includes(disposition) && !["closed-historical", "cycle-unknown"].includes(lifecycle.status);
 
   return {
-    id: String(record.id || `${kind}:${title}`).trim(), title: String(title).trim(), kind,
+    id: String(record.id || `${kind}:${title}`).trim(), title: String(title).trim(), kind, resourceChannel: channel,
     lifecycleStatus: lifecycle.status, deadline: lifecycle.deadline, openDate: lifecycle.openDate,
     officialUrl, provider: record.provider || record.sourceName || record.agency || null,
-    geography, identityFunding: identityFit, missionFit: { score: missionScore, evidence: categoryFit.reason },
-    strategicScore: Math.max(0, Math.min(100, strategicScore)), disposition,
+    geography, identityFunding: identityFit, missionFit: { score: missionScore, evidence: categoryFit.reason }, opportunityCase,
+    strategicScore: score, disposition, executiveAttention: attentionEligible ? "active-desk" : kind === "opportunity" && !reject ? "watchlist" : "off-desk",
     recommendation: reject ? "decline" : qualification?.recommendation || disposition,
     qualificationStatus: record.qualificationStatus || (reject ? "executive-rejected" : null),
     participation: qualification?.participation || record.executiveBrief?.participation || record.participation || null,
     confidence: qualification?.confidence || record.executiveBrief?.confidence || record.confidence || null,
     amount: record.amount || record.awardCeiling || record.estimatedFunding || null,
     summary: qualification?.executiveBrief?.whySeeingThis || record.executiveBrief?.whySeeingThis || record.description || null,
-    nextAction: reject ? "Keep off the active executive desk and preserve the rejection reason." : !officialUrl ? "Locate and verify the authoritative opportunity/application page before executive pursuit." : !eligibilityVerified ? "Verify applicant eligibility and restrictions from the official requirements." : lifecycle.status === "recently-closed" ? "Preserve the opportunity, determine recurrence, and prepare for the next cycle if strategic value remains high." : qualification?.executiveBrief?.nextAction || "Complete evidence review and prepare the next authorized action.",
+    nextAction: reject ? "Keep off the active executive desk and preserve the rejection reason." : kind === "funding-signal" ? "Preserve the signal, identify the likely administering entity and future funding vehicle, and promote it only when it becomes actionable." : !officialUrl ? "Locate and verify the authoritative opportunity/application page before executive pursuit." : !eligibilityVerified ? "Verify applicant eligibility and restrictions from the official requirements." : lifecycle.status === "recently-closed" ? "Preserve the opportunity, determine recurrence, and prepare for the next cycle if strategic value remains high." : qualification?.executiveBrief?.nextAction || "Complete evidence review and prepare the next authorized action.",
     unknowns,
     evidence: { officialUrl, lifecycleVerified: Boolean(lifecycle.verifiedBy), lifecycleEvidence: lifecycle.verifiedBy, eligibilityVerified, investigationComplete: record.investigation?.status === "complete", specificOpportunityVerified: opportunityVerified, evidenceScore },
     executiveReason: reject ? (geography.viable === false ? geography.reason : categoryFit.reason) : `${geography.reason} ${categoryFit.reason}`,
-    _sort: { rejected: reject ? 1 : 0, lifecycle: lifecycle.priority, score: -strategicScore }
+    _sort: { attention: attentionEligible ? 0 : 1, rejected: reject ? 1 : 0, lifecycle: lifecycle.priority, score: -score }
   };
 }
 
@@ -10294,39 +10350,43 @@ app.get("/api/resource-development/investigate", async (request, response) => {
   const startedAt = new Date().toISOString();
   try {
     const requestedLimit = Math.max(1, Math.min(100, Number.parseInt(request.query.limit || "40", 10) || 40));
-    const resourceType = String(request.query.resourceType || "grant").toLowerCase();
+    const resourceType = String(request.query.resourceType || "all").toLowerCase();
     const geographyProfile = LocalResourceDiscoveryAdapter.defaultGeography;
     const areas = geographyProfile.currentOperatingAreas || [];
     const stored = (await readExecutiveMemoryCollection(FUNDING_OPPORTUNITY_COLLECTION)).filter(record => record?.type === "funding-opportunity");
     const discoveryRun = await ResourceDiscoveryNetwork.discoverAll({ context: { geographyProfile, includeFutureExpansion: true } });
     const discovered = Array.isArray(discoveryRun.records) ? discoveryRun.records : [];
     const normalized = [...stored, ...discovered]
-      .filter(record => resourceType !== "grant" || resourceInvestigationIsGrant(record))
+      .filter(record => resourceType === "all" || (resourceType === "grant" && resourceInvestigationIsGrant(record)) || resourceInvestigationChannel(record) === resourceType)
       .map(record => normalizeResourceInvestigationRecord(record, areas));
-    const ranked = dedupeResourceInvestigation(normalized).sort((a, b) => a._sort.rejected - b._sort.rejected || a._sort.lifecycle - b._sort.lifecycle || a._sort.score - b._sort.score || a.title.localeCompare(b.title));
-    const active = ranked.filter(record => record.kind === "opportunity" && record.disposition !== "decline").slice(0, requestedLimit).map(({ _sort, ...record }) => record);
+    const ranked = dedupeResourceInvestigation(normalized).sort((a, b) => a._sort.attention - b._sort.attention || a._sort.rejected - b._sort.rejected || a._sort.lifecycle - b._sort.lifecycle || a._sort.score - b._sort.score || a.title.localeCompare(b.title));
+    const policy = RESOURCE_INVESTIGATION_CONTEXT.executiveAttentionPolicy;
+    const activeLimit = Math.min(requestedLimit, policy.activeDeskMaximum);
+    const active = ranked.filter(record => record.kind === "opportunity" && record.executiveAttention === "active-desk").slice(0, activeLimit).map(({ _sort, ...record }) => record);
+    const watchlist = ranked.filter(record => record.kind === "opportunity" && record.executiveAttention === "watchlist").slice(0, Math.min(requestedLimit, policy.watchlistMaximum)).map(({ _sort, ...record }) => record);
     const declined = ranked.filter(record => record.kind === "opportunity" && record.disposition === "decline").slice(0, requestedLimit).map(({ _sort, ...record }) => record);
-    const fundingSources = ranked.filter(record => record.kind === "funding-source").slice(0, requestedLimit).map(({ _sort, ...record }) => record);
+    const fundingSignals = ranked.filter(record => record.kind === "funding-signal").slice(0, Math.min(requestedLimit, policy.signalMaximum)).map(({ _sort, ...record }) => record);
+    const fundingSources = ranked.filter(record => record.kind === "funding-source").slice(0, Math.min(requestedLimit, policy.sourceMaximum)).map(({ _sort, ...record }) => record);
     const lifecycleCounts = {};
     const dispositionCounts = {};
+    const channelCounts = {};
+    for (const record of ranked) channelCounts[record.resourceChannel] = (channelCounts[record.resourceChannel] || 0) + 1;
     for (const record of active) {
       lifecycleCounts[record.lifecycleStatus] = (lifecycleCounts[record.lifecycleStatus] || 0) + 1;
       dispositionCounts[record.disposition] = (dispositionCounts[record.disposition] || 0) + 1;
     }
     response.status(200).json({
-      schema: "meos.resource-development.investigation.v2", version: RESOURCE_INVESTIGATION_VERSION,
+      schema: "meos.resource-development.investigation.v3", version: RESOURCE_INVESTIGATION_VERSION,
       buildId: RESOURCE_INVESTIGATION_BUILD_ID, status: discoveryRun.failedAdapters > 0 ? "partial" : "complete",
       startedAt, completedAt: new Date().toISOString(),
-      request: { resourceType, geography: areas, interpretation: "Local-first executive research with evidence-based U.S. expansion reasoning; non-local does not automatically mean non-viable." },
+      request: { resourceType, geography: areas, interpretation: "Broad lawful resource research; local-first ranking; evidence-based U.S. expansion; executive-attention gating prevents desk flooding." },
       executivePolicy: RESOURCE_INVESTIGATION_CONTEXT,
-      researchCoverage: { storedOpportunitiesReviewed: stored.length, discoveryAdaptersQueried: discoveryRun.adapterCount || null, discoveryRecordsReviewed: discovered.length, discoveryFailures: discoveryRun.failures || [], totalQualifiedAndRanked: ranked.length, activeOpportunitiesReturned: active.length, declinedOpportunitiesPreserved: declined.length, fundingSourcesNeedingDeeperInvestigation: fundingSources.length },
-      lifecycleCounts, dispositionCounts,
-      opportunities: active, declined, fundingSources,
+      researchCoverage: { storedOpportunitiesReviewed: stored.length, discoveryAdaptersQueried: discoveryRun.adapterCount || null, discoveryRecordsReviewed: discovered.length, discoveryFailures: discoveryRun.failures || [], totalQualifiedAndRanked: ranked.length, activeOpportunitiesReturned: active.length, watchlistPreserved: watchlist.length, fundingSignalsPreserved: fundingSignals.length, declinedOpportunitiesPreserved: declined.length, fundingSourcesNeedingDeeperInvestigation: fundingSources.length },
+      lifecycleCounts, dispositionCounts, channelCounts,
+      opportunities: active, watchlist, fundingSignals, declined, fundingSources,
       executiveMessage: active.length
-        ? `Investigated ${ranked.length} qualified funding records and returned ${active.length} opportunities worthy of executive attention. Open and rolling opportunities lead, upcoming and recently closed cycles are preserved, strategic U.S. expansion is considered, and rejected non-fits are kept off the active desk with reasons.`
-        : fundingSources.length
-          ? `No opportunity currently meets the executive-attention threshold. ${fundingSources.length} funding sources remain queued for deeper investigation.`
-          : "No opportunity currently meets the executive-attention threshold."
+        ? `Investigated ${ranked.length} resource records across lawful channels and surfaced only ${active.length} opportunities that cleared the executive-attention gate. ${watchlist.length} lower-readiness opportunities, ${fundingSignals.length} upstream funding signals, and ${fundingSources.length} source leads remain preserved off the active desk for continued work.`
+        : `No opportunity currently clears the executive-attention gate. Research remains active off-desk with ${watchlist.length} watchlist items, ${fundingSignals.length} upstream funding signals, and ${fundingSources.length} source leads preserved for continued investigation.`
     });
   } catch (error) {
     response.status(500).json({ error: "resource_development_investigation_failed", message: error?.message || String(error), version: RESOURCE_INVESTIGATION_VERSION, buildId: RESOURCE_INVESTIGATION_BUILD_ID });
