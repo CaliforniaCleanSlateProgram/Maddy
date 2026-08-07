@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 3.0.1
+ * Version: 4.4.1
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.0";
+  const DASHBOARD_VERSION = "4.4.1";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -81,6 +81,17 @@
       lastLoadedAt: null,
       error: null,
       prioritizedIds: new Set()
+    },
+    hallway: {
+      currentWorkId: null,
+      currentState: "idle",
+      currentTitle: null,
+      currentOwner: null,
+      currentOptions: [],
+      latestDeliverableId: null,
+      latestDeliverableTitle: null,
+      latestDeliverableUrl: null,
+      lastError: null
     },
     headquarters: {
       lastComputedAt: null,
@@ -799,6 +810,45 @@
 .meos-open-hub-button {
   margin-top: 1px;
 }
+
+.meos-hallway-mini {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  margin-top: 7px;
+  padding: 8px;
+  border: 1px solid rgba(126, 154, 201, 0.2);
+  border-radius: 8px;
+  background: rgba(8, 20, 36, 0.62);
+}
+
+.meos-hallway-mini[hidden] { display: none; }
+
+.meos-hallway-mini-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.66rem;
+}
+
+.meos-hallway-mini-status span { color: var(--meos-muted); }
+.meos-hallway-mini-status strong { color: var(--meos-text); text-transform: uppercase; font-size: 0.64rem; }
+.meos-hallway-mini-title { color: var(--meos-text); font-size: 0.7rem; line-height: 1.35; }
+.meos-hallway-mini-result { color: var(--meos-muted); font-size: 0.66rem; line-height: 1.35; }
+.meos-hallway-mini-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.meos-hallway-mini-action {
+  border: 1px solid rgba(90, 168, 255, 0.42);
+  border-radius: 7px;
+  background: rgba(42, 93, 151, 0.22);
+  color: #dcecff;
+  padding: 6px 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.64rem;
+}
+.meos-hallway-mini-action[data-kind="take-it"] { border-color: rgba(126, 235, 173, 0.5); color: #bff5d3; }
+
       .meos-office-voice-actions {
         width: 100%;
         display: grid;
@@ -2213,6 +2263,16 @@
   </div>
 </div>
 
+<div id="meosHallwayMini" class="meos-hallway-mini" hidden aria-live="polite">
+  <div class="meos-hallway-mini-status">
+    <span>Current Work</span>
+    <strong id="meosHallwayMiniState">IDLE</strong>
+  </div>
+  <div id="meosHallwayMiniTitle" class="meos-hallway-mini-title"></div>
+  <div id="meosHallwayMiniResult" class="meos-hallway-mini-result"></div>
+  <div id="meosHallwayMiniActions" class="meos-hallway-mini-actions"></div>
+</div>
+
 <div class="meos-office-voice-actions">
   <button
     id="meosVoiceConnectionButton"
@@ -3309,6 +3369,7 @@ document
       mainContent.appendChild(root);
     }
     bindDashboardEvents();
+    bindHallwayEvents();
     createExecutiveOfficeControl();
     updateClockAndGreeting();
     renderBuildProgress();
@@ -4219,6 +4280,137 @@ document
     return {
       success: checks.every((check) => check.passed),
       schema: "meos.dashboard.office-activity-acceptance.v1",
+      version: DASHBOARD_VERSION,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks
+    };
+  }
+
+  function formatHallwayState(value) {
+    return String(value || "idle")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+  }
+
+  function getExecutiveHallway() {
+    return window.MEOSExecutiveHallway || null;
+  }
+
+  function renderHallwayMini() {
+    const panel = document.getElementById("meosHallwayMini");
+    const stateNode = document.getElementById("meosHallwayMiniState");
+    const titleNode = document.getElementById("meosHallwayMiniTitle");
+    const resultNode = document.getElementById("meosHallwayMiniResult");
+    const actionsNode = document.getElementById("meosHallwayMiniActions");
+    if (!panel || !stateNode || !titleNode || !resultNode || !actionsNode) return;
+
+    if (!state.hallway.currentWorkId && !state.hallway.latestDeliverableId) {
+      panel.hidden = true;
+      return;
+    }
+
+    panel.hidden = false;
+    stateNode.textContent = formatHallwayState(state.hallway.currentState);
+    titleNode.textContent = state.hallway.currentTitle || "Maddy is handling executive work.";
+
+    if (state.hallway.lastError) {
+      resultNode.textContent = state.hallway.lastError;
+    } else if (state.hallway.latestDeliverableTitle) {
+      resultNode.textContent = `Ready: ${state.hallway.latestDeliverableTitle}`;
+    } else if (state.hallway.currentState === "awaiting-review") {
+      resultNode.textContent = "Maddy is ready for your authorization.";
+    } else if (state.hallway.currentState === "done") {
+      resultNode.textContent = "Work completed and verified.";
+    } else {
+      resultNode.textContent = state.hallway.currentOwner
+        ? `Working through ${state.hallway.currentOwner}.`
+        : "Maddy accepted the work and is routing it through MEOS.";
+    }
+
+    actionsNode.innerHTML = "";
+
+    if (state.hallway.currentOptions.includes("take-it")) {
+      const takeIt = document.createElement("button");
+      takeIt.type = "button";
+      takeIt.className = "meos-hallway-mini-action";
+      takeIt.dataset.kind = "take-it";
+      takeIt.textContent = "Take It";
+      takeIt.addEventListener("click", async () => {
+        const hallway = getExecutiveHallway();
+        if (!hallway?.takeIt || !state.hallway.currentWorkId) return;
+        takeIt.disabled = true;
+        takeIt.textContent = "Executing…";
+        try {
+          await hallway.takeIt(state.hallway.currentWorkId, { signal: "Take It!", source: "dashboard" });
+        } catch (error) {
+          state.hallway.lastError = error?.message || String(error);
+          renderHallwayMini();
+        }
+      });
+      actionsNode.appendChild(takeIt);
+    }
+
+    if (state.hallway.latestDeliverableUrl) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "meos-hallway-mini-action";
+      open.textContent = "Open";
+      open.addEventListener("click", () => {
+        window.open(state.hallway.latestDeliverableUrl, "_blank", "noopener,noreferrer");
+      });
+      actionsNode.appendChild(open);
+    }
+  }
+
+  function handleHallwayWorkUpdated(event) {
+    const work = event?.detail || {};
+    state.hallway.currentWorkId = work.id || state.hallway.currentWorkId;
+    state.hallway.currentState = work.state || "received";
+    state.hallway.currentTitle = work.title || work.instruction || state.hallway.currentTitle;
+    state.hallway.currentOwner = work.owner || null;
+    state.hallway.currentOptions = Array.isArray(work.options) ? [...work.options] : [];
+    state.hallway.lastError = work.error ? String(work.error?.message || work.error) : null;
+    renderHallwayMini();
+  }
+
+  function handleHallwayDeliverableReady(event) {
+    const deliverable = event?.detail || {};
+    state.hallway.latestDeliverableId = deliverable.id || null;
+    state.hallway.latestDeliverableTitle = deliverable.title || "MEOS deliverable";
+    state.hallway.latestDeliverableUrl = deliverable.openUrl || deliverable.downloadUrl || null;
+    state.hallway.currentWorkId = deliverable.workId || state.hallway.currentWorkId;
+    state.hallway.currentState = "done";
+    state.hallway.lastError = null;
+    renderHallwayMini();
+  }
+
+  function bindHallwayEvents() {
+    window.addEventListener("meos:hallway:work-updated", handleHallwayWorkUpdated);
+    window.addEventListener("meos:hallway:deliverable-ready", handleHallwayDeliverableReady);
+
+    const hallway = getExecutiveHallway();
+    const snapshot = hallway?.getSnapshot?.();
+    const latestWork = snapshot?.work?.[0] || null;
+    const latestDeliverable = snapshot?.deliverables?.[0] || null;
+    if (latestWork) handleHallwayWorkUpdated({ detail: latestWork });
+    if (latestDeliverable) handleHallwayDeliverableReady({ detail: latestDeliverable });
+  }
+
+  function runHallwayDashboardAcceptanceTest() {
+    const hallway = getExecutiveHallway();
+    const checks = [
+      { name: "Executive Hallway is loaded", passed: Boolean(hallway) },
+      { name: "Maddy dashboard command dispatch remains available", passed: typeof submitMaddyRequest === "function" },
+      { name: "Hallway work event handler exists", passed: typeof handleHallwayWorkUpdated === "function" },
+      { name: "Hallway deliverable handler exists", passed: typeof handleHallwayDeliverableReady === "function" },
+      { name: "Hallway Take It dashboard path exists", passed: typeof hallway?.takeIt === "function" },
+      { name: "Hallway snapshot exposes work and deliverables", passed: typeof hallway?.getSnapshot === "function" },
+      { name: "Dashboard has Hallway result surface", passed: Boolean(document.getElementById("meosHallwayMini")) }
+    ];
+    return {
+      success: checks.every((check) => check.passed),
+      schema: "meos.dashboard.hallway-bridge-acceptance.v1",
       version: DASHBOARD_VERSION,
       passed: checks.filter((check) => check.passed).length,
       total: checks.length,
@@ -5792,6 +5984,11 @@ document
         error: state.officeActivity.error,
         categoryCounts: Object.fromEntries(OFFICE_ACTIVITY_CATEGORIES.map((category) => [category.id, state.officeActivity.categories[category.id]?.length || 0]))
       })
+    }),
+    hallway: Object.freeze({
+      refresh: renderHallwayMini,
+      getState: () => ({ ...state.hallway }),
+      runAcceptanceTest: runHallwayDashboardAcceptanceTest
     }),
     funding: Object.freeze({
       refresh: loadFundingIntelligence,
