@@ -34,7 +34,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.7";
+const VERSION = "2.10.8";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -104,9 +104,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.2";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.3";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI152-DIRECT-DOCUMENT-PREFERENCE-20260806-A";
+  "GWI153-REJECTED-FILE-EXCLUSION-20260807-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -742,15 +742,33 @@ function buildWorkspaceEvidenceExcerpt(text, terms, maximumLength = 1800) {
   return source.slice(start, end).trim();
 }
 
+function normalizeWorkspaceExcludedFileIds(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(",")
+        .map(item => item.trim());
+
+  return [...new Set(
+    raw
+      .map(item => String(item || "").trim())
+      .filter(Boolean)
+      .filter(item => /^[A-Za-z0-9_-]{6,200}$/.test(item))
+  )].slice(0, 50);
+}
+
 async function researchGoogleWorkspaceReadOnly({
   question,
   limit = 50,
-  readLimit = 12
+  readLimit = 12,
+  excludedFileIds = []
 } = {}) {
   const researchIntent =
     buildWorkspaceResearchTerms(question);
   const terms = researchIntent.terms;
   const documentIntent = researchIntent.intent;
+  const excludedIds =
+    new Set(normalizeWorkspaceExcludedFileIds(excludedFileIds));
 
   if (!terms.length) {
     const error = new Error(
@@ -775,10 +793,23 @@ async function researchGoogleWorkspaceReadOnly({
       orderBy: "modifiedTime desc"
     });
 
-  const files =
+  const filesBeforeExclusion =
     (search.files || []).filter(
       file => file && !file.trashed
     );
+
+  const files = filesBeforeExclusion.filter(
+    file => !excludedIds.has(String(file.id || ""))
+  );
+
+  const excludedFiles = filesBeforeExclusion
+    .filter(file => excludedIds.has(String(file.id || "")))
+    .map(file => ({
+      id: file.id,
+      name: file.name,
+      mimeType: file.mimeType,
+      webViewLink: file.webViewLink || null
+    }));
 
   /*
    * Commission 005.005 — File Retrieval
@@ -984,7 +1015,10 @@ async function researchGoogleWorkspaceReadOnly({
       acronym: documentIntent.acronym
     },
     driveQuery,
+    filesFoundBeforeExclusion: filesBeforeExclusion.length,
     filesFound: files.length,
+    excludedFileIds: [...excludedIds],
+    excludedFiles,
     filesRead,
     evidence,
     bestMatch,
@@ -6509,9 +6543,17 @@ app.get(
       const question =
         String(request.query?.q || "").trim();
 
+      const excludedFileIds =
+        normalizeWorkspaceExcludedFileIds(
+          request.query?.excludeFileIds ||
+          request.query?.excludedFileIds ||
+          ""
+        );
+
       const result =
         await researchGoogleWorkspaceReadOnly({
           question,
+          excludedFileIds,
           limit:
             Math.max(
               1,
