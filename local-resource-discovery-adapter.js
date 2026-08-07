@@ -16,8 +16,8 @@
 import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
 
 const NAME = "MEOS Local Resource Discovery Adapter";
-const VERSION = "1.0.0";
-const BUILD_ID = "LRDA100-LOCAL-OUTWARD-20260803-A";
+const VERSION = "1.0.1";
+const BUILD_ID = "LRDA101-COUNTY-CONTAINMENT-20260807-A";
 const ADAPTER_ID = "local-resource-discovery";
 const REGION = "local";
 
@@ -128,14 +128,34 @@ function geographyPriority(source = {}, geographyProfile = {}) {
   const sourceAreas = source.geography || [];
 
   const isCurrent = sourceAreas.some(area =>
-    active.some(activeArea =>
-      clean(area).toLowerCase().includes(
-        clean(activeArea).toLowerCase()
-      ) ||
-      clean(activeArea).toLowerCase().includes(
-        clean(area).toLowerCase()
-      )
-    )
+    active.some(activeArea => {
+      const sourceArea = clean(area).toLowerCase();
+      const operatingArea = clean(activeArea).toLowerCase();
+
+      if (
+        sourceArea.includes(operatingArea) ||
+        operatingArea.includes(sourceArea)
+      ) {
+        return true;
+      }
+
+      // A named city inside the commissioned county service area is local.
+      // Example: "City of Santa Cruz, California" belongs to the active
+      // "Santa Cruz County, California" operating footprint.
+      const countyMatch = operatingArea.match(
+        /^(.+?)\s+county(?:,|$)/
+      );
+      if (countyMatch) {
+        const countyBase = countyMatch[1].trim();
+        const sourceLocality = sourceArea
+          .replace(/^(?:city|town|village)\s+of\s+/, "")
+          .split(",")[0]
+          .trim();
+        if (sourceLocality === countyBase) return true;
+      }
+
+      return false;
+    })
   );
 
   return isCurrent ? "current-local" : "future-expansion";
@@ -282,6 +302,11 @@ async function runAcceptanceTest() {
       "Business and Community Giving"
     )
   );
+  const cityChildrensFund = records.find(record =>
+    record.title.includes(
+      "City of Santa Cruz Children's Fund"
+    )
+  );
 
   const checks = [
     {
@@ -313,6 +338,13 @@ async function runAcceptanceTest() {
       passed:
         Boolean(foundation) &&
         foundation.region === "local"
+    },
+    {
+      name: "City of Santa Cruz is treated as inside the active Santa Cruz County service area",
+      passed:
+        Boolean(cityChildrensFund) &&
+        cityChildrensFund.original?.localPriority ===
+          "current-local"
     },
     {
       name: "Discovery is broader than grants",
