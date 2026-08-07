@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.3";
+  const DASHBOARD_VERSION = "4.4.4";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1073,6 +1073,12 @@
       .meos-maddy-desk-send,.meos-maddy-desk-action{border:1px solid rgba(105,220,255,.34);border-radius:9px;background:rgba(20,55,91,.62);color:#dff9ff;cursor:pointer;font-size:.7rem;padding:7px 11px}.meos-maddy-desk-send:hover,.meos-maddy-desk-action:hover{border-color:rgba(128,232,255,.7);background:rgba(25,74,119,.72)}
       .meos-maddy-desk-glance{display:flex;gap:7px;flex-wrap:wrap;align-items:center;font-size:.66rem;color:rgba(193,229,241,.76)}
       .meos-maddy-desk-chip{padding:5px 8px;border-radius:999px;border:1px solid rgba(110,184,219,.2);background:rgba(5,22,42,.66)}
+      .meos-maddy-desk-chip[data-live="true"]{position:relative;padding-left:22px;border-color:rgba(105,220,255,.46);background:rgba(8,39,67,.76)}
+      .meos-maddy-desk-chip[data-live="true"]::before{content:"";position:absolute;left:8px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;background:currentColor;opacity:.92;animation:meosDispatchPulse 1.05s ease-in-out infinite}
+      .meos-maddy-window[data-dispatch-active="true"] .meos-maddy-status strong::after{content:"";display:inline-block;width:12px;height:12px;margin-left:8px;vertical-align:-2px;border:2px solid rgba(211,247,255,.28);border-top-color:#dff9ff;border-radius:50%;animation:meosDispatchSpin .72s linear infinite}
+      @keyframes meosDispatchPulse{0%,100%{transform:scale(.72);opacity:.45}50%{transform:scale(1.18);opacity:1}}
+      @keyframes meosDispatchSpin{to{transform:rotate(360deg)}}
+      @media (prefers-reduced-motion:reduce){.meos-maddy-desk-chip[data-live="true"]::before,.meos-maddy-window[data-dispatch-active="true"] .meos-maddy-status strong::after{animation:none}}
       .meos-maddy-desk-actions{display:flex;gap:7px;flex-wrap:wrap}.meos-maddy-desk-actions:empty{display:none}
       @media(max-width:760px){.meos-maddy-desk{right:18px}.meos-maddy-field{opacity:.46}.meos-maddy-telemetry{bottom:10px}}
       @keyframes meosCircuitDrift{to{background-position:28px 28px,28px 28px}}
@@ -4392,6 +4398,7 @@ document
     state.hallway.currentOptions = Array.isArray(work.options) ? [...work.options] : [];
     state.hallway.lastError = work.error ? String(work.error?.message || work.error) : null;
     renderHallwayMini();
+    renderLiveHeadquarters();
   }
 
   function handleHallwayDeliverableReady(event) {
@@ -4403,6 +4410,7 @@ document
     state.hallway.currentState = "done";
     state.hallway.lastError = null;
     renderHallwayMini();
+    renderLiveHeadquarters();
   }
 
   function bindHallwayEvents() {
@@ -4626,9 +4634,45 @@ document
     return snapshot;
   }
 
+  function getMaddyDispatchPresentation(work) {
+    const workState = String(work?.state || "idle");
+    const labels = {
+      received: ["Received", "Maddy received your assignment."],
+      understanding: ["Understanding", "Maddy is interpreting the assignment and determining where it needs to go."],
+      planning: ["Dispatching", work?.owner ? `Routing through ${work.owner}.` : "Routing the assignment through MEOS."],
+      "awaiting-review": ["Awaiting Review", "Maddy is ready for your authorization."],
+      authorized: ["Authorized", "Authorization received. Maddy is proceeding."],
+      executing: ["Working", work?.owner ? `Working through ${work.owner}.` : "The assigned MEOS capability is working."],
+      verifying: ["Verifying", "Maddy is checking the result before returning it to you."],
+      done: ["Ready", "Work completed and verified."],
+      blocked: ["Blocked", work?.error ? String(work.error?.message || work.error) : "Maddy needs something before this work can continue."],
+      failed: ["Failed", work?.error ? String(work.error?.message || work.error) : "The assignment did not complete successfully."],
+      cancelled: ["Cancelled", "The assignment was cancelled."]
+    };
+    const [label, detail] = labels[workState] || [formatHallwayState(workState), "Maddy is coordinating the assignment through MEOS."];
+    return {
+      state: workState,
+      label,
+      detail,
+      active: !["idle", "awaiting-review", "done", "blocked", "failed", "cancelled"].includes(workState)
+    };
+  }
+
   function renderMaddyExecutiveDesk(snapshot) {
     const activeWork = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || null;
-    setText("meosMaddyDeskWork", activeWork ? `${formatHallwayState(activeWork.state)} · ${activeWork.owner || "Maddy"}` : "No active Hallway work");
+    const latestWork = activeWork || snapshot.hallwayWork[0] || null;
+    const dispatch = getMaddyDispatchPresentation(latestWork);
+    const workChip = document.getElementById("meosMaddyDeskWork");
+    setText("meosMaddyDeskWork", latestWork ? `${dispatch.label} · ${latestWork.owner || "Maddy"}` : "No active Hallway work");
+    if (workChip) {
+      workChip.dataset.live = dispatch.active ? "true" : "false";
+      workChip.dataset.workState = dispatch.state;
+    }
+    const maddyWindow = document.querySelector(".meos-maddy-window");
+    if (maddyWindow) {
+      maddyWindow.dataset.dispatchActive = dispatch.active ? "true" : "false";
+      maddyWindow.dataset.dispatchState = dispatch.state;
+    }
     setText("meosMaddyDeskApprovals", `${snapshot.pendingApprovals.length} need you`);
     setText("meosMaddyDeskDeliverables", `${snapshot.hallwayDeliverables.length} deliverables`);
 
@@ -4678,8 +4722,9 @@ document
     const liveHallwayWork = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || null;
     const primaryWork = snapshot.active[0] || snapshot.pending[0] || null;
     const urgentFunding = snapshot.fundingUrgent[0] || null;
+    const liveDispatch = getMaddyDispatchPresentation(liveHallwayWork);
     const maddyStatus = liveHallwayWork
-      ? `Maddy · ${formatHallwayState(liveHallwayWork.state)}`
+      ? `Maddy · ${liveDispatch.label}`
       : urgentFunding
         ? "Funding deadline under active review"
         : primaryWork
@@ -4688,7 +4733,7 @@ document
             ? "Monitoring the funding pipeline"
             : "Executive offices synchronized";
     const maddyDetail = liveHallwayWork
-      ? String(liveHallwayWork.title || liveHallwayWork.instruction || "Executive work in progress")
+      ? `${liveDispatch.detail} ${String(liveHallwayWork.title || liveHallwayWork.instruction || "").trim()}`.trim()
       : urgentFunding
         ? String(urgentFunding.title || "Time-sensitive funding opportunity")
         : primaryWork
@@ -4762,6 +4807,8 @@ document
       ["Maddy at Work is the primary Executive Desk command surface", Boolean(document.getElementById("meosMaddyDeskInput") && document.getElementById("meosMaddyDeskSend"))],
       ["Maddy Executive Desk exposes Hallway work approvals and deliverables at a glance", Boolean(document.getElementById("meosMaddyDeskWork") && document.getElementById("meosMaddyDeskApprovals") && document.getElementById("meosMaddyDeskDeliverables"))],
       ["Maddy Executive Desk exposes governed Hallway action surface", Boolean(document.getElementById("meosMaddyDeskActions"))],
+      ["Maddy HUD has real Hallway dispatch presentation mapping", typeof getMaddyDispatchPresentation === "function"],
+      ["Maddy HUD work chip exposes runtime dispatch state", Boolean(document.getElementById("meosMaddyDeskWork")?.dataset.workState)],
       ["Living Headquarters uses the protected canonical Maddy asset", document.getElementById("meosCanonicalMaddy")?.getAttribute("src") === "maddy-holographic-presence-v1.png"],
       ["Logo-to-human startup evolution is installed in the Headquarters hero", Boolean(document.querySelector("#meosLivingPresence .meos-presence-logo") && document.querySelector("#meosLivingPresence .meos-presence-human"))],
       ["Maddy is the visual feature of the Headquarters center", Boolean(document.querySelector(".meos-hq-core.meos-living-presence"))],
