@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.4.1";
+  const DASHBOARD_VERSION = "4.4.2";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -4500,6 +4500,38 @@ document
     }
   }
 
+  function getHallwaySnapshot() {
+    const hallway = getExecutiveHallway();
+    try {
+      return hallway?.getSnapshot?.() || { work: [], deliverables: [], history: [] };
+    } catch (_) {
+      return { work: [], deliverables: [], history: [] };
+    }
+  }
+
+  function normalizeHallwayTask(work = {}) {
+    const hallwayState = String(work.state || "received");
+    const status =
+      ["blocked", "failed"].includes(hallwayState) ? "blocked" :
+      ["done", "cancelled"].includes(hallwayState) ? "completed" :
+      ["received", "understanding", "planning"].includes(hallwayState) ? "pending" :
+      "active";
+
+    return {
+      id: work.id,
+      title: work.title || work.instruction || "Executive work",
+      status,
+      hallwayState,
+      priority: work.priority || "normal",
+      officeName: work.owner || "Maddy / Executive Hallway",
+      officeId: work.owner || "executive-hallway",
+      source: "executive-hallway",
+      options: Array.isArray(work.options) ? [...work.options] : [],
+      updatedAt: work.updatedAt || work.createdAt || null,
+      authority: work.authority || null
+    };
+  }
+
   function calculateHeadquartersCompletion() {
     const offices = getCabinetOffices();
     const officeScores = offices.map((office) => Number(office?.implementation?.progress || 0));
@@ -4516,14 +4548,41 @@ document
   function collectHeadquartersSnapshot() {
     const offices = getCabinetOffices();
     const mission = getMissionSnapshot();
-    const tasks = offices.flatMap((office) => (office.tasks || []).map((task) => ({ ...task, officeName: office.office, officeId: office.id })));
+    const hallway = getHallwaySnapshot();
+    const hallwayWork = Array.isArray(hallway.work) ? hallway.work : [];
+    const hallwayTasks = hallwayWork.map(normalizeHallwayTask);
+    const hallwayDeliverables = Array.isArray(hallway.deliverables) ? hallway.deliverables : [];
+    const hallwayHistory = Array.isArray(hallway.history) ? hallway.history : [];
+    const officeTasks = offices.flatMap((office) => (office.tasks || []).map((task) => ({ ...task, officeName: office.office, officeId: office.id, source: "executive-office" })));
+    const tasks = [...hallwayTasks, ...officeTasks];
     const recommendations = offices.flatMap((office) => (office.recommendations || []).map((item) => ({ ...item, officeName: office.office, officeId: office.id })));
-    const activities = offices.flatMap((office) => (office.history?.activity || []).map((item) => ({ ...item, officeName: office.office, officeId: office.id })));
+    const activities = [
+      ...hallwayHistory.map((item) => ({
+        ...item,
+        createdAt: item.at || item.createdAt || item.updatedAt,
+        message: item.message || `${item.type || "work"}${item.workId ? ` · ${item.workId}` : ""}`,
+        officeName: "Executive Hallway",
+        source: "executive-hallway"
+      })),
+      ...offices.flatMap((office) => (office.history?.activity || []).map((item) => ({ ...item, officeName: office.office, officeId: office.id, source: "executive-office" })))
+    ];
     const completion = calculateHeadquartersCompletion();
     const blocked = tasks.filter((task) => task.status === "blocked");
     const active = tasks.filter((task) => task.status === "active");
     const pending = tasks.filter((task) => task.status === "pending");
-    const pendingApprovals = recommendations.filter((item) => !["approved", "rejected"].includes(item.status));
+    const hallwayApprovals = hallwayWork.filter((item) => item.state === "awaiting-review");
+    const pendingApprovals = [
+      ...hallwayApprovals.map((item) => ({
+        id: item.id,
+        title: item.title || item.instruction || "Executive work",
+        status: "ready-for-director",
+        officeName: item.owner || "Executive Hallway",
+        officeId: item.owner || "executive-hallway",
+        source: "executive-hallway",
+        options: Array.isArray(item.options) ? [...item.options] : []
+      })),
+      ...recommendations.filter((item) => !["approved", "rejected"].includes(item.status))
+    ];
     const fundingRecords = state.officeActivity.records || [];
     const fundingUrgent = fundingRecords.filter((record) => {
       const days = Number(firstDefined(record?.resourceDevelopment?.workQueue?.timing?.daysRemaining, record?.deadline?.daysRemaining, 999));
@@ -4533,7 +4592,7 @@ document
       ? Math.round(offices.reduce((sum, office) => sum + Number(office.operationalState?.health || 0), 0) / offices.length)
       : 0;
     const missionPulse = Math.round((officeHealth * 0.45) + ((100 - Math.min(100, blocked.length * 10)) * 0.2) + (completion * 0.35));
-    const snapshot = { offices, mission, tasks, recommendations, activities, completion, blocked, active, pending, pendingApprovals, fundingRecords, fundingUrgent, officeHealth, missionPulse };
+    const snapshot = { offices, mission, hallway, hallwayWork, hallwayDeliverables, hallwayHistory, tasks, recommendations, activities, completion, blocked, active, pending, pendingApprovals, fundingRecords, fundingUrgent, officeHealth, missionPulse };
     state.headquarters = { ...state.headquarters, ...snapshot, officePortfolio: offices.map((office) => ({ id: office.id, office: office.office, ...(office.implementation || {}) })), lastComputedAt: new Date().toISOString() };
     return snapshot;
   }
@@ -4549,20 +4608,25 @@ document
 
     // The former duplicate completion widget is now Maddy's live executive-intelligence window.
     setText("meosMaddyCompletion", `${snapshot.completion}%`);
+    const liveHallwayWork = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || null;
     const primaryWork = snapshot.active[0] || snapshot.pending[0] || null;
     const urgentFunding = snapshot.fundingUrgent[0] || null;
-    const maddyStatus = urgentFunding
-      ? "Funding deadline under active review"
-      : primaryWork
-        ? `Coordinating ${primaryWork.officeName || "executive office"}`
-        : snapshot.fundingRecords.length
-          ? "Monitoring the funding pipeline"
-          : "Executive offices synchronized";
-    const maddyDetail = urgentFunding
-      ? String(urgentFunding.title || "Time-sensitive funding opportunity")
-      : primaryWork
-        ? String(primaryWork.title || "Executive work in progress")
-        : `${snapshot.fundingRecords.length} funding records · ${snapshot.pendingApprovals.length} executive decisions`;
+    const maddyStatus = liveHallwayWork
+      ? `Maddy · ${formatHallwayState(liveHallwayWork.state)}`
+      : urgentFunding
+        ? "Funding deadline under active review"
+        : primaryWork
+          ? `Coordinating ${primaryWork.officeName || "executive office"}`
+          : snapshot.fundingRecords.length
+            ? "Monitoring the funding pipeline"
+            : "Executive offices synchronized";
+    const maddyDetail = liveHallwayWork
+      ? String(liveHallwayWork.title || liveHallwayWork.instruction || "Executive work in progress")
+      : urgentFunding
+        ? String(urgentFunding.title || "Time-sensitive funding opportunity")
+        : primaryWork
+          ? String(primaryWork.title || "Executive work in progress")
+          : `${snapshot.fundingRecords.length} funding records · ${snapshot.pendingApprovals.length} executive decisions · ${snapshot.hallwayDeliverables.length} deliverables`;
     setText("meosMaddyWorkStatus", maddyStatus);
     setText("meosMaddyWorkDetail", maddyDetail);
 
@@ -4586,7 +4650,7 @@ document
     if (prioritiesEl) prioritiesEl.innerHTML = priorities.length ? priorities.map((task,index) => `<li><span>${index+1}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.priority === "high" ? "high" : "medium"}">${escapeHtml(task.priority || "normal")}</span></li>`).join("") : `<li><span>✓</span><span>No executive priorities are currently queued.</span><span class="meos-priority">Clear</span></li>`;
 
     const briefing = document.getElementById("meosLiveBriefing");
-    if (briefing) briefing.innerHTML = `<p style="font-size:.86rem;line-height:1.55;">Maddy is managing <strong>${snapshot.fundingRecords.length}</strong> preserved funding records, <strong>${snapshot.active.length}</strong> active tasks, and <strong>${snapshot.pendingApprovals.length}</strong> executive decisions.</p><p class="meos-muted" style="font-size:.82rem;">${snapshot.blocked.length ? `${snapshot.blocked.length} blocked task${snapshot.blocked.length===1?"":"s"} need resolution.` : "No blocked office tasks are recorded."}</p><button id="meosBriefingPeek" class="meos-action-button" type="button">Peek Behind the Curtain</button>`;
+    if (briefing) briefing.innerHTML = `<p style="font-size:.86rem;line-height:1.55;">Maddy is managing <strong>${snapshot.fundingRecords.length}</strong> preserved funding records, <strong>${snapshot.active.length}</strong> active tasks, <strong>${snapshot.pendingApprovals.length}</strong> executive decisions, and <strong>${snapshot.hallwayDeliverables.length}</strong> returned deliverables.</p><p class="meos-muted" style="font-size:.82rem;">${snapshot.blocked.length ? `${snapshot.blocked.length} blocked task${snapshot.blocked.length===1?"":"s"} need resolution.` : "No blocked office tasks are recorded."}</p><button id="meosBriefingPeek" class="meos-action-button" type="button">Peek Behind the Curtain</button>`;
     document.getElementById("meosBriefingPeek")?.addEventListener("click", () => openOfficeActivityBrowser("all"));
 
     const risks = document.getElementById("meosLiveRisks");
@@ -4616,7 +4680,11 @@ document
       ["Grant Office is linked to the funding pipeline", snapshot.offices.find((office) => office.id === "grant")?.implementation?.liveSystems?.includes("GrantOffice")],
       ["Static dashboard intent is preserved with honest planned states", Boolean(document.getElementById("meosScheduleDependencies"))],
       ["Mission Pulse is computed from live office state", Number.isFinite(snapshot.missionPulse)],
-      ["Executive priorities derive from real office tasks", Array.isArray(snapshot.tasks)],
+      ["Executive priorities derive from real office and Hallway tasks", Array.isArray(snapshot.tasks) && Array.isArray(snapshot.hallwayWork)],
+      ["Hallway work is projected into dashboard task state", snapshot.hallwayWork.every((item) => snapshot.tasks.some((task) => task.id === item.id))],
+      ["Hallway approvals are projected into executive decisions", snapshot.hallwayWork.filter((item) => item.state === "awaiting-review").every((item) => snapshot.pendingApprovals.some((approval) => approval.id === item.id))],
+      ["Hallway history is projected into the Executive Journal", snapshot.hallwayHistory.every((item) => snapshot.activities.some((activity) => activity.source === "executive-hallway" && (activity.workId === item.workId || !item.workId)))],
+      ["Hallway deliverables are available to Executive Briefing state", Array.isArray(snapshot.hallwayDeliverables)],
       ["Risk Center derives from blockers and funding deadlines", Array.isArray(snapshot.blocked) && Array.isArray(snapshot.fundingUrgent)],
       ["Office detail exposes implementation progress and next milestone", snapshot.offices.every((office) => Number.isFinite(Number(office.implementation?.progress)))],
       ["Office Activity remains connected", Boolean(window.MEOSDashboard?.officeActivity || state.officeActivity)],
