@@ -34,7 +34,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.5";
+const VERSION = "2.10.6";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.4.0";
@@ -104,9 +104,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.0";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.1";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI150-PDF-CONTENT-VERIFICATION-20260806-A";
+  "GWI151-STRONG-DOCUMENT-IDENTITY-20260806-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -396,9 +396,28 @@ function evaluateWorkspaceContentIdentity({
   const significantTokens = intent.significantTokens || [];
   const targetPhrase = String(intent.targetPhrase || "").trim();
   const requestedTypes = new Set(intent.targetTokens || []);
-  const openingTokens = new Set(
-    tokenizeWorkspaceText(source.slice(0, 2500))
+
+  /*
+   * Commission 006.005D — Strong Document-Type Identity
+   *
+   * A legal document can legitimately contain generic words such as
+   * "statement", "note", or "receipt" in its body. Those incidental words are
+   * not proof of the document's identity. Treat an alternate document type as
+   * conflicting only when it appears as strong opening/header evidence.
+   */
+  const openingLines = source
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 10);
+
+  const strongIdentityLines = openingLines.filter(
+    (line, index) => index < 4 || line.length <= 120
   );
+
+  const strongIdentityText = strongIdentityLines
+    .join(" ")
+    .toLowerCase();
 
   const contentCoverage = significantTokens.length
     ? significantTokens.filter(term =>
@@ -411,10 +430,31 @@ function evaluateWorkspaceContentIdentity({
 
   const conflictingTypes =
     [...GOOGLE_WORKSPACE_INCIDENTAL_DOCUMENT_TYPES]
-      .filter(type =>
-        openingTokens.has(type) &&
-        !requestedTypes.has(type)
-      );
+      .filter(type => {
+        if (requestedTypes.has(type)) return false;
+
+        const typePattern = new RegExp(
+          `(^|[^a-z0-9])${type.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}([^a-z0-9]|$)`,
+          "i"
+        );
+
+        return strongIdentityLines.some((line, index) => {
+          if (!typePattern.test(line)) return false;
+
+          const normalizedLine = normalizeWorkspaceFilename(line);
+          const lineTokens = tokenizeWorkspaceText(normalizedLine);
+
+          /*
+           * Strong identity means the alternate type is presented in the
+           * document's opening/title area, not merely mentioned in prose.
+           */
+          return (
+            index < 2 ||
+            lineTokens.length <= 8 ||
+            strongIdentityText.startsWith(type)
+          );
+        });
+      });
 
   const signals = [];
   if (targetPhraseFound) {
