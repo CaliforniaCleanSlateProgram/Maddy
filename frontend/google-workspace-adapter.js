@@ -13,8 +13,8 @@
   "use strict";
 
   const NAME = "MEOS Google Workspace Adapter";
-  const VERSION = "1.1.0";
-  const BUILD_ID = "commission-005.004B";
+  const VERSION = "1.1.1";
+  const BUILD_ID = "commission-006.007C2A";
   const SCHEMA = "meos.google-workspace-adapter.v1";
   const PROVIDER_ID = "google-workspace";
 
@@ -172,10 +172,41 @@
         Math.min(20, Number(payload?.readLimit || 8))
       );
 
-      const url =
-        `${ENDPOINTS.research}?q=${encodeURIComponent(question)}` +
-        `&limit=${encodeURIComponent(limit)}` +
-        `&readLimit=${encodeURIComponent(readLimit)}`;
+      /*
+       * Commission 006.007C2A — Rejected-file exclusion transport.
+       *
+       * The Hallway owns executive feedback and rejected deliverable identity.
+       * This provider adapter only transports those provider-neutral exclusions
+       * to the commissioned Workspace research endpoint. No organization file ID
+       * is hard-coded here.
+       */
+      const excludedFileIds = [...new Set(
+        (
+          Array.isArray(payload?.excludedFileIds)
+            ? payload.excludedFileIds
+            : Array.isArray(payload?.excludeFileIds)
+              ? payload.excludeFileIds
+              : String(
+                  payload?.excludedFileIds ||
+                  payload?.excludeFileIds ||
+                  ""
+                ).split(",")
+        )
+          .map(value => String(value || "").trim())
+          .filter(Boolean)
+      )].slice(0, 50);
+
+      const params = new URLSearchParams({
+        q: question,
+        limit: String(limit),
+        readLimit: String(readLimit)
+      });
+
+      if (excludedFileIds.length) {
+        params.set("excludeFileIds", excludedFileIds.join(","));
+      }
+
+      const url = `${ENDPOINTS.research}?${params.toString()}`;
 
       const result = await fetchJson(url);
 
@@ -380,6 +411,11 @@
       ENDPOINTS.research === "/api/google/workspace/research"
     );
     check("adapter is read-only", getStatus().readOnly === true);
+    check(
+      "Workspace research transport supports rejected-file exclusion",
+      /excludeFileIds/.test(execute.toString()) &&
+      /URLSearchParams/.test(execute.toString())
+    );
 
     const passed = assertions.filter(item => item.passed).length;
     return freeze({
