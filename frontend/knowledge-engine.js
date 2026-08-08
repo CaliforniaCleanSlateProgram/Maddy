@@ -1,6 +1,7 @@
 /*
  * MEOS Knowledge Engine
- * Version: 1.1.0
+ * Version: 1.2.0
+ * Build: KE120-OPPORTUNITY-CASE-INGESTION-20260808-A
  *
  * Purpose:
  * Provide the universal institutional-memory layer for MEOS.
@@ -20,7 +21,8 @@
 
     const KnowledgeEngine = {
         name: "MEOS Knowledge Engine",
-        version: "1.1.0",
+        version: "1.2.0",
+        buildId: "KE120-OPPORTUNITY-CASE-INGESTION-20260808-A",
         status: "online",
         operatingMode: "continuous",
 
@@ -86,7 +88,7 @@
                 restoredRecordCount: this.records.length
             });
 
-            console.info(`[MEOS] ${this.name} v${this.version} online.`);
+            console.info(`[MEOS] ${this.name} v${this.version} online. Build ${this.buildId}.`);
             this.emit("engine:online", this.getStatus());
 
             return this.getStatus();
@@ -733,6 +735,860 @@
                 success: true,
                 source: sourceResult.source,
                 record: recordResult.record
+            };
+        },
+
+
+        /*
+         * Commission 006.016C — Executive Opportunity Case Institutional Ingestion
+         *
+         * Opportunity discovery is not institutional cognition until the evidence
+         * becomes first-class Knowledge Engine material that Executive Recall and
+         * Institutional Reasoning can retrieve later.
+         *
+         * This bridge deliberately stores two distinct records:
+         * 1. an OFFICIAL evidence bundle representing material extracted from the
+         *    authoritative source pages Maddy actually read;
+         * 2. a WORKING executive case containing dispositions, unknowns and other
+         *    derived analysis.
+         *
+         * Keeping those authorities separate prevents Maddy's conclusions from
+         * masquerading as source facts while still making both available to recall.
+         */
+        normalizeOpportunityKnowledgeId(value) {
+            const normalized = String(value || "")
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9._:-]+/g, "-")
+                .replace(/^-+|-+$/g, "");
+
+            return normalized || "unidentified-opportunity";
+        },
+
+        fingerprintOpportunityValue(value) {
+            const serialized = JSON.stringify(
+                this.removeFunctions(value ?? null)
+            );
+
+            let hash = 2166136261;
+
+            for (let index = 0; index < serialized.length; index += 1) {
+                hash ^= serialized.charCodeAt(index);
+                hash = Math.imul(hash, 16777619);
+            }
+
+            return (hash >>> 0).toString(16).padStart(8, "0");
+        },
+
+        buildExecutiveOpportunityKnowledgePackage(opportunityCase = {}) {
+            if (
+                !opportunityCase ||
+                opportunityCase.schema !==
+                    "meos.executive-opportunity-case.v1"
+            ) {
+                return {
+                    success: false,
+                    error:
+                        "A valid meos.executive-opportunity-case.v1 case is required."
+                };
+            }
+
+            const source = opportunityCase.source || {};
+            const sourceIdentity =
+                source.id || source.officialUrl || source.title;
+
+            if (!sourceIdentity || !source.title) {
+                return {
+                    success: false,
+                    error:
+                        "Executive Opportunity Case source identity and title are required."
+                };
+            }
+
+            const stableSourceId =
+                this.normalizeOpportunityKnowledgeId(
+                    sourceIdentity
+                );
+            const caseRecordId =
+                `knowledge-opportunity-case-${stableSourceId}`;
+            const evidenceRecordId =
+                `${caseRecordId}-official-evidence`;
+
+            const ledger = Array.isArray(
+                opportunityCase.whatMaddyRead?.evidenceLedger
+            )
+                ? opportunityCase.whatMaddyRead.evidenceLedger
+                : [];
+
+            const evidenceUrls = this.uniqueStrings([
+                ...ledger.map((item) => item?.url),
+                source.officialUrl
+            ]);
+
+            const registeredSources = evidenceUrls.map((url) => {
+                const ledgerItem =
+                    ledger.find((item) => item?.url === url) || {};
+
+                return {
+                    id:
+                        `source-opportunity-${this.fingerprintOpportunityValue(
+                            url
+                        )}`,
+                    name:
+                        `${source.title} — Official Material`,
+                    sourceType:
+                        ledgerItem.documentType ||
+                        "official-opportunity-material",
+                    authority: "official",
+                    url,
+                    accessedAt:
+                        ledgerItem.retrievedAt ||
+                        opportunityCase.investigatedAt ||
+                        new Date().toISOString(),
+                    description:
+                        "Authoritative material read during Executive Opportunity Case investigation.",
+                    metadata: {
+                        opportunitySourceId: source.id || null,
+                        contentType:
+                            ledgerItem.contentType || null,
+                        byteLength:
+                            ledgerItem.byteLength ?? null,
+                        evidenceClass:
+                            "authoritative-source"
+                    }
+                };
+            });
+
+            const sourceIds =
+                registeredSources.map((item) => item.id);
+
+            const intelligence =
+                opportunityCase.opportunityIntelligence || {};
+            const cycle = intelligence.cycle || {};
+            const evidence = opportunityCase.evidence || {};
+            const disposition =
+                opportunityCase.disposition || {};
+            const unknowns = Array.isArray(
+                opportunityCase.unknowns
+            )
+                ? opportunityCase.unknowns
+                : [];
+
+            const evidenceFacts = [];
+            const addEvidenceFact = (
+                statement,
+                value,
+                metadata = {}
+            ) => {
+                if (
+                    value === undefined ||
+                    value === null ||
+                    value === ""
+                ) {
+                    return;
+                }
+
+                evidenceFacts.push({
+                    statement,
+                    value,
+                    confidence:
+                        Number(metadata.confidence) || 0.9,
+                    sourceIds,
+                    effectiveDate:
+                        opportunityCase.investigatedAt || null,
+                    metadata: {
+                        classification:
+                            metadata.classification ||
+                            "derived-from-official-evidence",
+                        ...metadata
+                    }
+                });
+            };
+
+            addEvidenceFact(
+                "Opportunity source geography",
+                source.geography,
+                {
+                    classification: "source-identity"
+                }
+            );
+            addEvidenceFact(
+                "Opportunity cycle status",
+                cycle.status
+            );
+            addEvidenceFact(
+                "Current cycle explicitly open",
+                cycle.explicitlyOpen
+            );
+            addEvidenceFact(
+                "Current cycle explicitly closed",
+                cycle.explicitlyClosed
+            );
+            addEvidenceFact(
+                "Current cycle awarded",
+                cycle.awardedCurrentCycle
+            );
+            addEvidenceFact(
+                "Invitation only",
+                cycle.invitationOnly
+            );
+            addEvidenceFact(
+                "Official material read",
+                evidence.checks?.officialMaterialRead
+            );
+            addEvidenceFact(
+                "Specific program evidence found",
+                evidence.checks?.specificProgramEvidence
+            );
+            addEvidenceFact(
+                "Current cycle actionable",
+                evidence.checks?.currentCycleActionable
+            );
+            addEvidenceFact(
+                "Applicant eligibility verified",
+                evidence.checks?.eligibilityVerified
+            );
+            addEvidenceFact(
+                "Funded activities verified",
+                evidence.checks?.fundedActivitiesVerified
+            );
+            addEvidenceFact(
+                "Application path verified",
+                evidence.checks?.applicationPathVerified
+            );
+
+            const coverage = Number(evidence.coverage);
+            const officialConfidence =
+                Number.isFinite(coverage)
+                    ? Math.max(
+                          0.55,
+                          Math.min(0.98, coverage / 100)
+                      )
+                    : 0.72;
+
+            const evidenceFingerprint =
+                this.fingerprintOpportunityValue({
+                    source,
+                    whatMaddyRead:
+                        opportunityCase.whatMaddyRead || {},
+                    opportunityIntelligence: intelligence,
+                    evidence
+                });
+
+            const caseFingerprint =
+                this.fingerprintOpportunityValue({
+                    status: opportunityCase.status,
+                    source,
+                    opportunityIntelligence: intelligence,
+                    evidence,
+                    unknowns,
+                    disposition,
+                    promotion:
+                        opportunityCase.promotion || {},
+                    nextAction:
+                        opportunityCase.nextAction || null
+                });
+
+            const commonTopics = this.uniqueStrings([
+                source.title,
+                source.geography,
+                ...(source.resourceChannels || []),
+                ...(intelligence.fundedActivityEvidence || [])
+                    .slice(0, 12)
+                    .map((value) =>
+                        String(value || "").slice(0, 180)
+                    )
+            ]);
+
+            const evidenceRecord = {
+                id: evidenceRecordId,
+                recordType: "opportunity-evidence",
+                title:
+                    `${source.title} — Official Opportunity Evidence`,
+                summary:
+                    `Authoritative opportunity material Maddy read and extracted for ${source.title}.`,
+                content: {
+                    source: this.removeFunctions(source),
+                    whatMaddyRead:
+                        this.removeFunctions(
+                            opportunityCase.whatMaddyRead || {}
+                        ),
+                    opportunityIntelligence:
+                        this.removeFunctions(intelligence),
+                    evidence:
+                        this.removeFunctions(evidence)
+                },
+                facts: evidenceFacts,
+                tags: this.uniqueStrings([
+                    "executive-opportunity",
+                    "opportunity-evidence",
+                    "official-source",
+                    cycle.status,
+                    ...(source.resourceChannels || [])
+                ]),
+                topics: commonTopics,
+                sourceIds,
+                officeAccess: ["all"],
+                sensitivity: "internal",
+                authority: "official",
+                confidence: officialConfidence,
+                status: "active",
+                effectiveDate:
+                    opportunityCase.investigatedAt || null,
+                createdBy: "Executive Opportunity Investigation",
+                metadata: {
+                    opportunitySourceId: source.id || null,
+                    opportunityCaseRecordId: caseRecordId,
+                    sourceLocation:
+                        source.officialUrl || null,
+                    evidenceCoverage:
+                        Number.isFinite(coverage)
+                            ? coverage
+                            : null,
+                    evidencePassed:
+                        evidence.passed ?? null,
+                    evidenceTotal:
+                        evidence.total ?? null,
+                    evidenceFingerprint,
+                    caseVersion:
+                        opportunityCase.version || null,
+                    caseBuildId:
+                        opportunityCase.buildId || null,
+                    evidenceClass:
+                        "official-material-extraction"
+                },
+                timelineEvent: {
+                    title:
+                        `${source.title} opportunity evidence investigated`,
+                    eventType:
+                        "executive-opportunity-investigation",
+                    occurredAt:
+                        opportunityCase.investigatedAt ||
+                        new Date().toISOString(),
+                    description:
+                        `Maddy read authoritative material for ${source.title} and built decision evidence.`
+                }
+            };
+
+            const caseFacts = [
+                {
+                    statement: "Executive opportunity case status",
+                    value: opportunityCase.status || null,
+                    confidence: officialConfidence,
+                    sourceIds: [evidenceRecordId],
+                    metadata: {
+                        classification: "executive-analysis"
+                    }
+                },
+                {
+                    statement: "Executive disposition",
+                    value:
+                        disposition.disposition || null,
+                    confidence: officialConfidence,
+                    sourceIds: [evidenceRecordId],
+                    metadata: {
+                        classification: "executive-analysis"
+                    }
+                },
+                {
+                    statement: "Executive Desk ready",
+                    value:
+                        opportunityCase.promotion
+                            ?.executiveDeskReady === true,
+                    confidence: officialConfidence,
+                    sourceIds: [evidenceRecordId],
+                    metadata: {
+                        classification: "executive-analysis"
+                    }
+                }
+            ].filter(
+                (fact) =>
+                    fact.value !== undefined &&
+                    fact.value !== null &&
+                    fact.value !== ""
+            );
+
+            const caseRecord = {
+                id: caseRecordId,
+                recordType: "executive-opportunity-case",
+                title:
+                    `Executive Opportunity Case — ${source.title}`,
+                summary:
+                    disposition.recommendation ||
+                    opportunityCase.nextAction ||
+                    `Executive Opportunity Case for ${source.title}.`,
+                content:
+                    this.removeFunctions(opportunityCase),
+                facts: caseFacts,
+                tags: this.uniqueStrings([
+                    "executive-opportunity",
+                    "opportunity-case",
+                    cycle.status,
+                    disposition.disposition,
+                    ...(source.resourceChannels || [])
+                ]),
+                topics: commonTopics,
+                sourceIds: [evidenceRecordId],
+                relatedRecordIds: [evidenceRecordId],
+                officeAccess: ["all"],
+                sensitivity: "internal",
+                /*
+                 * The case contains Maddy's derived judgments. It must never
+                 * inherit "official" authority from the source material.
+                 */
+                authority: "working",
+                confidence: officialConfidence,
+                status: "active",
+                effectiveDate:
+                    opportunityCase.investigatedAt || null,
+                createdBy: "MEOS Knowledge Engine",
+                metadata: {
+                    opportunitySourceId: source.id || null,
+                    sourceLocation:
+                        source.officialUrl || null,
+                    evidenceRecordId,
+                    caseFingerprint,
+                    evidenceFingerprint,
+                    cycleStatus: cycle.status || null,
+                    disposition:
+                        disposition.disposition || null,
+                    executiveDeskReady:
+                        opportunityCase.promotion
+                            ?.executiveDeskReady === true,
+                    unknowns: this.removeFunctions(unknowns),
+                    unknownCount: unknowns.length,
+                    nextAction:
+                        opportunityCase.nextAction || null,
+                    caseVersion:
+                        opportunityCase.version || null,
+                    caseBuildId:
+                        opportunityCase.buildId || null,
+                    evidenceClass:
+                        "working-executive-analysis"
+                },
+                timelineEvent: {
+                    title:
+                        `${source.title} Executive Opportunity Case established`,
+                    eventType: "executive-opportunity-case",
+                    occurredAt:
+                        opportunityCase.investigatedAt ||
+                        new Date().toISOString(),
+                    description:
+                        disposition.recommendation ||
+                        opportunityCase.nextAction ||
+                        "Executive Opportunity Case established."
+                }
+            };
+
+            return {
+                success: true,
+                schema:
+                    "meos.knowledge-engine.opportunity-ingestion-package.v1",
+                sourceIdentity: stableSourceId,
+                caseFingerprint,
+                evidenceFingerprint,
+                sources: registeredSources,
+                evidenceRecord,
+                caseRecord,
+                unknowns: this.removeFunctions(unknowns)
+            };
+        },
+
+        upsertExecutiveOpportunityKnowledgeRecord(
+            input,
+            fingerprintKey,
+            fingerprint,
+            actor
+        ) {
+            const existing = this.getRecordById(input.id);
+
+            if (!existing) {
+                const created = this.createRecord(input);
+
+                return {
+                    ...created,
+                    action:
+                        created.success ? "created" : "failed"
+                };
+            }
+
+            if (
+                existing.metadata?.[fingerprintKey] ===
+                fingerprint
+            ) {
+                return {
+                    success: true,
+                    duplicate: true,
+                    unchanged: true,
+                    action: "unchanged",
+                    record: existing
+                };
+            }
+
+            const changes = {
+                recordType: input.recordType,
+                title: input.title,
+                summary: input.summary,
+                content: input.content,
+                facts: input.facts,
+                tags: input.tags,
+                topics: input.topics,
+                sourceIds: input.sourceIds,
+                relatedRecordIds:
+                    input.relatedRecordIds || [],
+                officeAccess: input.officeAccess,
+                sensitivity: input.sensitivity,
+                authority: input.authority,
+                confidence: input.confidence,
+                status: input.status,
+                effectiveDate: input.effectiveDate,
+                expirationDate:
+                    input.expirationDate || null,
+                metadata: input.metadata
+            };
+
+            const updated = this.updateRecord(
+                input.id,
+                changes,
+                actor
+            );
+
+            if (
+                updated.success &&
+                input.timelineEvent
+            ) {
+                this.addTimelineEvent({
+                    ...input.timelineEvent,
+                    recordIds: [
+                        ...(input.timelineEvent.recordIds || []),
+                        input.id
+                    ]
+                });
+            }
+
+            return {
+                ...updated,
+                duplicate: false,
+                unchanged: false,
+                action:
+                    updated.success ? "updated" : "failed"
+            };
+        },
+
+        async ingestExecutiveOpportunityCase(
+            opportunityCase = {},
+            options = {}
+        ) {
+            const packageResult =
+                this.buildExecutiveOpportunityKnowledgePackage(
+                    opportunityCase
+                );
+
+            if (!packageResult.success) {
+                return packageResult;
+            }
+
+            if (options.dryRun === true) {
+                return {
+                    ...packageResult,
+                    dryRun: true,
+                    persisted: false
+                };
+            }
+
+            const sourceResults =
+                packageResult.sources.map((source) =>
+                    this.registerSource(source)
+                );
+
+            const evidenceResult =
+                this.upsertExecutiveOpportunityKnowledgeRecord(
+                    packageResult.evidenceRecord,
+                    "evidenceFingerprint",
+                    packageResult.evidenceFingerprint,
+                    options.actor ||
+                        "Executive Opportunity Investigation"
+                );
+
+            if (!evidenceResult.success) {
+                return {
+                    success: false,
+                    error:
+                        evidenceResult.error ||
+                        "Official opportunity evidence could not be ingested.",
+                    evidenceResult
+                };
+            }
+
+            const caseResult =
+                this.upsertExecutiveOpportunityKnowledgeRecord(
+                    packageResult.caseRecord,
+                    "caseFingerprint",
+                    packageResult.caseFingerprint,
+                    options.actor ||
+                        "Executive Opportunity Investigation"
+                );
+
+            if (!caseResult.success) {
+                return {
+                    success: false,
+                    error:
+                        caseResult.error ||
+                        "Executive Opportunity Case could not be ingested.",
+                    evidenceResult,
+                    caseResult
+                };
+            }
+
+            let persistence = {
+                success: true,
+                skipped: true
+            };
+
+            if (
+                options.persist !== false &&
+                this.configuration.persistenceEnabled
+            ) {
+                if (this.persistenceTimer) {
+                    global.clearTimeout(
+                        this.persistenceTimer
+                    );
+                    this.persistenceTimer = null;
+                }
+
+                persistence = await this.persist();
+            }
+
+            const result = {
+                success:
+                    evidenceResult.success === true &&
+                    caseResult.success === true &&
+                    (
+                        options.persist === false ||
+                        persistence.success === true
+                    ),
+                schema:
+                    "meos.knowledge-engine.opportunity-ingestion-result.v1",
+                sourceIdentity:
+                    packageResult.sourceIdentity,
+                evidenceRecordId:
+                    packageResult.evidenceRecord.id,
+                caseRecordId:
+                    packageResult.caseRecord.id,
+                evidenceAction:
+                    evidenceResult.action,
+                caseAction:
+                    caseResult.action,
+                unknowns:
+                    packageResult.unknowns,
+                sourceCount:
+                    sourceResults.filter(
+                        (item) => item.success
+                    ).length,
+                persistence,
+                recallReady: true,
+                reasoningReady:
+                    Boolean(global.ExecutiveRecall) &&
+                    Boolean(global.InstitutionalReasoning),
+                ingestedAt:
+                    new Date().toISOString()
+            };
+
+            this.logActivity(
+                "opportunity-case.ingested",
+                result
+            );
+            this.emit(
+                "opportunity-case:ingested",
+                result
+            );
+
+            return result;
+        },
+
+        runOpportunityCaseIngestionAcceptanceTest() {
+            const fixture = {
+                schema:
+                    "meos.executive-opportunity-case.v1",
+                version: "1.1.0",
+                buildId:
+                    "EOC110-DECISION-GRADE-EVIDENCE-20260807-A",
+                investigatedAt:
+                    "2026-08-08T00:00:00.000Z",
+                status: "source-intelligence-built",
+                source: {
+                    id:
+                        "local-source:commission-006-016c-fixture",
+                    title:
+                        "Commission 006.016C Opportunity Fixture",
+                    geography:
+                        "Santa Cruz County, California",
+                    resourceType: "grant",
+                    resourceChannels: [
+                        "grant",
+                        "philanthropy"
+                    ],
+                    officialUrl:
+                        "https://example.invalid/opportunity"
+                },
+                whatMaddyRead: {
+                    documentCount: 1,
+                    evidenceLedger: [
+                        {
+                            url:
+                                "https://example.invalid/opportunity",
+                            documentType: "web-page",
+                            retrievedAt:
+                                "2026-08-08T00:00:00.000Z"
+                        }
+                    ]
+                },
+                opportunityIntelligence: {
+                    cycle: {
+                        status:
+                            "current-cycle-complete",
+                        awardedCurrentCycle: true,
+                        explicitlyOpen: false
+                    },
+                    programEvidence: [
+                        "Future cycle information will be published."
+                    ],
+                    moneyEvidence: [],
+                    fundedActivityEvidence: [
+                        "Human services"
+                    ]
+                },
+                evidence: {
+                    checks: {
+                        officialMaterialRead: true,
+                        specificProgramEvidence: true,
+                        currentCycleActionable: false,
+                        eligibilityVerified: false,
+                        fundedActivitiesVerified: true,
+                        applicationPathVerified: true
+                    },
+                    passed: 4,
+                    total: 7,
+                    coverage: 57
+                },
+                unknowns: [
+                    "Next application deadline",
+                    "Explicit applicant eligibility"
+                ],
+                disposition: {
+                    disposition:
+                        "monitor-next-cycle",
+                    recommendation:
+                        "Prepare before the next cycle."
+                },
+                promotion: {
+                    executiveDeskReady: false
+                },
+                nextAction:
+                    "Determine what must become true before reopening."
+            };
+
+            const first =
+                this.buildExecutiveOpportunityKnowledgePackage(
+                    fixture
+                );
+            const second =
+                this.buildExecutiveOpportunityKnowledgePackage(
+                    this.removeFunctions(fixture)
+                );
+            const changedFixture =
+                this.removeFunctions(fixture);
+            changedFixture.disposition.recommendation =
+                "Changed recommendation for fingerprint test.";
+            const changed =
+                this.buildExecutiveOpportunityKnowledgePackage(
+                    changedFixture
+                );
+
+            const checks = [
+                {
+                    name:
+                        "Opportunity Case ingestion package builds",
+                    passed: first.success === true
+                },
+                {
+                    name:
+                        "Stable source identity produces stable record IDs",
+                    passed:
+                        first.caseRecord?.id ===
+                            second.caseRecord?.id &&
+                        first.evidenceRecord?.id ===
+                            second.evidenceRecord?.id
+                },
+                {
+                    name:
+                        "Official evidence is isolated from executive analysis",
+                    passed:
+                        first.evidenceRecord?.authority ===
+                            "official" &&
+                        first.caseRecord?.authority ===
+                            "working"
+                },
+                {
+                    name:
+                        "Authoritative source provenance is preserved",
+                    passed:
+                        first.sources?.length === 1 &&
+                        first.sources?.[0]?.authority ===
+                            "official"
+                },
+                {
+                    name:
+                        "Unknowns remain explicit institutional state",
+                    passed:
+                        first.unknowns?.length === 2 &&
+                        first.caseRecord?.metadata
+                            ?.unknownCount === 2
+                },
+                {
+                    name:
+                        "Future-cycle state remains recallable",
+                    passed:
+                        first.caseRecord?.metadata
+                            ?.cycleStatus ===
+                            "current-cycle-complete" &&
+                        first.caseRecord?.metadata
+                            ?.disposition ===
+                            "monitor-next-cycle"
+                },
+                {
+                    name:
+                        "Case changes produce a new cognition fingerprint",
+                    passed:
+                        first.caseFingerprint !==
+                        changed.caseFingerprint
+                },
+                {
+                    name:
+                        "Ingestion bridge can durably flush through Executive Memory",
+                    passed:
+                        typeof this.persist ===
+                            "function" &&
+                        this.configuration
+                            .authoritativeStorage ===
+                            "executive-memory"
+                }
+            ];
+
+            const passed =
+                checks.every((item) => item.passed);
+
+            console.table(checks);
+            console.info(
+                `[MEOS ${this.version}] Commission 006.016C opportunity ingestion acceptance: ${passed ? "PASS" : "FAIL"}.`
+            );
+
+            return {
+                commission: "006.016C",
+                version: this.version,
+                buildId: this.buildId,
+                passed,
+                checks
             };
         },
 
@@ -2037,6 +2893,7 @@
             return {
                 name: this.name,
                 version: this.version,
+                buildId: this.buildId,
                 status: this.status,
                 operatingMode: this.operatingMode,
                 organizationNeutralCore:
