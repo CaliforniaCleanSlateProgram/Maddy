@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.3.2
- * Build: EB132-BOUNDED-PERSISTENCE-ACCEPTANCE-20260808-A
+ * Version: 1.4.0
+ * Build: EB140-DURABLE-COGNITION-AUTHORITY-FLIP-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,22 +16,28 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.3.2";
-  const BUILD_ID = "EB132-BOUNDED-PERSISTENCE-ACCEPTANCE-20260808-A";
+  const VERSION = "1.4.0";
+  const BUILD_ID = "EB140-DURABLE-COGNITION-AUTHORITY-FLIP-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
   const INDEXED_DB_STORE = "engine-state";
   const INDEXED_DB_RECORD_ID = "executive-brain-state";
   const PERSISTENCE_DEBOUNCE_MS = 150;
+  const DURABLE_STATE_ENDPOINT = "/api/executive-brain-state";
 
   const brainPersistence = {
-    mode: global.indexedDB ? "indexeddb-local-laptop" : "legacy-localstorage-fallback",
-    authoritativeStorage: global.indexedDB ? "indexeddb" : "localstorage",
+    mode: "institutional-durable-authority",
+    authoritativeStorage: "meos-institutional-repository",
+    cacheStorage: global.indexedDB ? "indexeddb" : "localstorage",
     indexedDbAvailable: Boolean(global.indexedDB),
     databaseName: INDEXED_DB_NAME,
     storeName: INDEXED_DB_STORE,
     hydrated: false,
+    durableAvailable: null,
+    degraded: false,
+    durableFingerprint: null,
+    hydrationSource: null,
     migratedLegacySnapshot: false,
     localStorageReleased: false,
     writeScheduled: false,
@@ -4187,88 +4193,128 @@
       }
     },
 
-    async persistIndexedDbNow() {
-      if (!global.indexedDB || brainPersistence.suspended) return false;
-      brainPersistence.writeScheduled = false;
-      brainPersistence.writeInFlight = true;
-      try {
-        await brainIndexedDbPut({ id: INDEXED_DB_RECORD_ID, schema: "meos.executive-brain.local-state.v1", version: this.version, buildId: this.buildId, savedAt: new Date().toISOString(), state: this.buildPersistenceSnapshot() });
-        brainPersistence.mode = "indexeddb-local-laptop";
-        brainPersistence.authoritativeStorage = "indexeddb";
-        brainPersistence.lastPersistedAt = new Date().toISOString();
-        brainPersistence.lastError = null;
-        brainPersistence.suspended = false;
+    async writeContinuityCache(snapshot = this.buildPersistenceSnapshot()) {
+      if (global.indexedDB) {
+        await brainIndexedDbPut({ id: INDEXED_DB_RECORD_ID, schema: "meos.executive-brain.continuity-cache.v1", version: this.version, buildId: this.buildId, savedAt: new Date().toISOString(), state: snapshot });
         this.releaseLegacyLocalStorage();
         return true;
+      }
+      if (!global.localStorage) return false;
+      global.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      return true;
+    },
+
+    async readContinuityCache() {
+      if (global.indexedDB) {
+        const record = await brainIndexedDbGet();
+        return record?.state || null;
+      }
+      const raw = global.localStorage?.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    },
+
+    async fetchDurableCognitionState() {
+      const response = await fetch(DURABLE_STATE_ENDPOINT, { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" });
+      if (response.status === 404) return { found: false, fingerprint: null, state: null };
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || `Executive Brain durable read failed (${response.status}).`);
+      const envelope = payload?.value;
+      const state = envelope?.state || envelope;
+      return { found: true, fingerprint: payload?.record?.fingerprint || null, state };
+    },
+
+    async persistDurableNow() {
+      if (brainPersistence.suspended) return false;
+      brainPersistence.writeScheduled = false;
+      brainPersistence.writeInFlight = true;
+      const snapshot = this.buildPersistenceSnapshot();
+      try {
+        const headers = { "Content-Type": "application/json", Accept: "application/json" };
+        if (brainPersistence.durableFingerprint) headers["If-MEOS-Previous-Fingerprint"] = brainPersistence.durableFingerprint;
+        const response = await fetch(DURABLE_STATE_ENDPOINT, { method: "PUT", headers, body: JSON.stringify({ version: this.version, buildId: this.buildId, state: snapshot }) });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload?.error || `Executive Brain durable write failed (${response.status}).`);
+        brainPersistence.durableFingerprint = payload?.record?.fingerprint || payload?.verification?.fingerprint || null;
+        brainPersistence.durableAvailable = true;
+        brainPersistence.degraded = false;
+        brainPersistence.mode = "institutional-durable-authority";
+        brainPersistence.authoritativeStorage = "meos-institutional-repository";
+        brainPersistence.lastPersistedAt = new Date().toISOString();
+        brainPersistence.lastError = null;
+        await this.writeContinuityCache(snapshot).catch(() => false);
+        return true;
       } catch (error) {
+        brainPersistence.durableAvailable = false;
+        brainPersistence.degraded = true;
         brainPersistence.lastError = error?.message || String(error);
-        brainPersistence.suspended = true;
-        console.error("[MEOS Executive Brain] IndexedDB persistence failed. Cognition continues in runtime.", error);
+        await this.writeContinuityCache(snapshot).catch(() => false);
+        console.error("[MEOS Executive Brain] Durable cognition authority unavailable. Runtime cognition continues with non-authoritative continuity cache.", error);
         return false;
       } finally { brainPersistence.writeInFlight = false; }
     },
 
     persist() {
       if (!this.configuration.persistenceEnabled) return false;
-      if (global.indexedDB) {
-        brainPersistence.writeScheduled = true;
-        if (brainPersistenceTimer) global.clearTimeout(brainPersistenceTimer);
-        brainPersistenceTimer = global.setTimeout(() => {
-          brainPersistenceTimer = null;
-          brainWriteChain = brainWriteChain.catch(() => undefined).then(() => this.persistIndexedDbNow());
-        }, PERSISTENCE_DEBOUNCE_MS);
-        return true;
-      }
-      if (!global.localStorage) return false;
-      return this.safe(() => {
-        global.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.buildPersistenceSnapshot()));
-        brainPersistence.mode = "legacy-localstorage-fallback";
-        brainPersistence.authoritativeStorage = "localstorage";
-        brainPersistence.lastPersistedAt = new Date().toISOString();
-        return true;
-      }, false);
+      brainPersistence.writeScheduled = true;
+      if (brainPersistenceTimer) global.clearTimeout(brainPersistenceTimer);
+      brainPersistenceTimer = global.setTimeout(() => {
+        brainPersistenceTimer = null;
+        brainWriteChain = brainWriteChain.catch(() => undefined).then(() => this.persistDurableNow());
+      }, PERSISTENCE_DEBOUNCE_MS);
+      return true;
     },
 
     restore() {
-      if (!global.localStorage) return false;
-      return this.safe(() => {
-        const raw = global.localStorage.getItem(STORAGE_KEY);
-        return raw ? this.applyPersistenceSnapshot(JSON.parse(raw)) : false;
-      }, false);
+      /* Durable hydration is asynchronous. Synchronous restore is deliberately
+       * non-authoritative; continuity cache is considered only if durable read
+       * cannot be reached. */
+      return false;
     },
 
     async hydrateLaptopPersistence() {
-      if (!global.indexedDB) { brainPersistence.hydrated = true; return { success: true, source: "localstorage-fallback" }; }
       try {
-        const record = await brainIndexedDbGet();
-        if (record?.state && this.applyPersistenceSnapshot(record.state)) {
+        const durable = await this.fetchDurableCognitionState();
+        if (durable.found && durable.state && this.applyPersistenceSnapshot(durable.state)) {
           brainPersistence.hydrated = true;
+          brainPersistence.durableAvailable = true;
+          brainPersistence.degraded = false;
+          brainPersistence.durableFingerprint = durable.fingerprint;
+          brainPersistence.hydrationSource = "meos-institutional-repository";
           brainPersistence.lastRestoredAt = new Date().toISOString();
-          brainPersistence.mode = "indexeddb-local-laptop";
-          brainPersistence.authoritativeStorage = "indexeddb";
-          this.releaseLegacyLocalStorage();
+          await this.writeContinuityCache(durable.state).catch(() => false);
           this.emit("brain:persistence-hydrated", this.getPersistenceStatus());
-          return { success: true, restored: true, source: "indexeddb" };
+          return { success: true, restored: true, source: brainPersistence.hydrationSource, authority: brainPersistence.authoritativeStorage };
         }
-        const saved = await this.persistIndexedDbNow();
+
+        const cache = await this.readContinuityCache().catch(() => null);
+        if (cache && this.applyPersistenceSnapshot(cache)) {
+          brainPersistence.hydrationSource = "local-continuity-cache-bootstrap";
+          brainPersistence.migratedLegacySnapshot = true;
+        } else {
+          brainPersistence.hydrationSource = "new-institutional-cognition";
+        }
+        brainPersistence.durableAvailable = true;
         brainPersistence.hydrated = true;
-        brainPersistence.migratedLegacySnapshot = saved === true;
-        return { success: saved === true, restored: false, source: "legacy-migration" };
+        const saved = await this.persistDurableNow();
+        return { success: saved, restored: Boolean(cache), source: brainPersistence.hydrationSource, authority: brainPersistence.authoritativeStorage };
       } catch (error) {
+        const cache = await this.readContinuityCache().catch(() => null);
+        const restored = Boolean(cache && this.applyPersistenceSnapshot(cache));
         brainPersistence.hydrated = true;
+        brainPersistence.durableAvailable = false;
+        brainPersistence.degraded = true;
+        brainPersistence.hydrationSource = restored ? "local-continuity-cache-degraded" : "runtime-only-degraded";
         brainPersistence.lastError = error?.message || String(error);
-        console.error("[MEOS Executive Brain] IndexedDB hydration failed; keeping runtime cognition.", error);
-        return { success: false, error: brainPersistence.lastError };
+        console.error("[MEOS Executive Brain] Durable cognition hydration failed; institutional authority was not claimed.", error);
+        this.emit("brain:persistence-hydrated", this.getPersistenceStatus());
+        return { success: restored, restored, degraded: true, source: brainPersistence.hydrationSource, authority: brainPersistence.authoritativeStorage, error: brainPersistence.lastError };
       }
     },
 
     async flushPersistence() {
       if (brainPersistenceTimer) { global.clearTimeout(brainPersistenceTimer); brainPersistenceTimer = null; }
-      if (global.indexedDB) {
-        brainWriteChain = brainWriteChain.catch(() => undefined).then(() => this.persistIndexedDbNow());
-        return brainWriteChain;
-      }
-      return this.persist();
+      brainWriteChain = brainWriteChain.catch(() => undefined).then(() => this.persistDurableNow());
+      return brainWriteChain;
     },
 
     getPersistenceStatus() {
@@ -4278,61 +4324,22 @@
     },
 
     async runLaptopPersistenceAcceptanceTest() {
-      const probeId = "executive-brain-acceptance-probe";
-      const checks = [{ name: "IndexedDB is available on this laptop browser", passed: Boolean(global.indexedDB) }];
-      if (global.indexedDB) {
-        try {
-          await brainIndexedDbPut({ id: probeId, schema: "meos.persistence-probe.v1", writtenAt: new Date().toISOString() });
-          checks.push({ name: "Laptop repository accepts writes", passed: Boolean(await brainIndexedDbGet(probeId)) });
-          await brainIndexedDbDelete(probeId);
-          checks.push({ name: "Laptop repository can read and delete records", passed: (await brainIndexedDbGet(probeId)) === null });
-          /*
-           * The persisted Brain snapshot is intentionally bounded. Runtime
-           * history can be larger than the persisted startup window, so the
-           * acceptance gate must compare against the persistence contract,
-           * not against unbounded in-memory lengths.
-           */
-          const expected = {
-            history: Math.min(this.history.length, 100),
-            cognition: Math.min(
-              this.cognitionHistory.length,
-              this.configuration.maximumCognitionHistory
-            ),
-            dispatch: Math.min(
-              this.cognitiveDispatchHistory.length,
-              this.configuration.maximumCognitiveDispatchHistory
-            ),
-            reentry: Math.min(
-              this.cognitiveReentryHistory.length,
-              this.configuration.maximumCognitiveReentryHistory
-            )
-          };
-          const flushed = await this.flushPersistence();
-          const record = await brainIndexedDbGet();
-          checks.push({
-            name: "Executive Brain cognition snapshot flushes to IndexedDB",
-            passed:
-              flushed === true &&
-              record?.state?.schema === "meos.executive-brain.state.v1"
-          });
-          checks.push({
-            name: "Bounded cognitive histories survive the repository snapshot",
-            passed:
-              record?.state?.history?.length === expected.history &&
-              record?.state?.cognitionHistory?.length === expected.cognition &&
-              record?.state?.cognitiveDispatchHistory?.length === expected.dispatch &&
-              record?.state?.cognitiveReentryHistory?.length === expected.reentry
-          });
-          checks.push({ name: "Legacy Executive Brain localStorage payload is released", passed: global.localStorage?.getItem(STORAGE_KEY) === null });
-          checks.push({ name: "IndexedDB is the temporary laptop authority", passed: brainPersistence.authoritativeStorage === "indexeddb" && brainPersistence.mode === "indexeddb-local-laptop" });
-          checks.push({ name: "Continuous cognition remains operational while persistence is asynchronous", passed: this.status === "online" && this.configuration.continuousCognitionEnabled === true && typeof this.scheduleCognitiveReentry === "function" });
-        } catch (error) { checks.push({ name: "Laptop repository test completed without error", passed: false, error: error?.message || String(error) }); }
-      }
+      const checks = [];
+      await this.flushPersistence();
+      const durable = await this.fetchDurableCognitionState().catch(() => null);
+      const expected = this.buildPersistenceSnapshot();
+      checks.push({ name: "Executive Brain declares institutional repository as cognition authority", passed: brainPersistence.authoritativeStorage === "meos-institutional-repository" });
+      checks.push({ name: "Bounded cognition is durably readable through provider-neutral authority", passed: Boolean(durable?.found && durable?.state?.schema === "meos.executive-brain.state.v1") });
+      checks.push({ name: "All four bounded cognition surfaces survive durable round trip", passed: Boolean(durable?.state && ["history","cognitionHistory","cognitiveDispatchHistory","cognitiveReentryHistory"].every(k => Array.isArray(durable.state[k]) && durable.state[k].length === expected[k].length)) });
+      checks.push({ name: "Laptop persistence is continuity cache rather than authority", passed: brainPersistence.cacheStorage === (global.indexedDB ? "indexeddb" : "localstorage") && brainPersistence.authoritativeStorage !== brainPersistence.cacheStorage });
+      checks.push({ name: "Durable authority health is explicit runtime evidence", passed: brainPersistence.durableAvailable === true && brainPersistence.degraded === false });
+      checks.push({ name: "Continuous cognition remains operational across authority flip", passed: this.status === "online" && this.configuration.continuousCognitionEnabled === true && typeof this.scheduleCognitiveReentry === "function" });
       const passed = checks.every(item => item.passed);
       console.table(checks);
-      console.info(`[MEOS ${this.version}] Commission 006.016G2 laptop persistence acceptance: ${passed ? "PASS" : "FAIL"}.`);
-      return { commission: "006.016G2", version: this.version, buildId: this.buildId, passed, checks, persistence: this.getPersistenceStatus() };
+      console.info(`[MEOS ${this.version}] Commission 006.017D4B Executive Brain durable cognition authority flip: ${passed ? "PASS" : "FAIL"}.`);
+      return { commission: "006.017D4B", version: this.version, buildId: this.buildId, passed, checks, persistence: this.getPersistenceStatus() };
     }
+
   };
 
   global.ExecutiveBrain = ExecutiveBrain;
