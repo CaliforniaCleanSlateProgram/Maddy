@@ -1,6 +1,7 @@
 /**
  * MEOS Mission Dispatcher
- * Version: 0.1.0
+ * Version: 0.1.1
+ * Build: MD011-PERSISTENCE-CIRCUIT-BREAKER-20260808-A
  *
  * Purpose:
  * The Mission Dispatcher routes organizational missions to the appropriate
@@ -28,9 +29,12 @@
 (function initializeMissionDispatcher(global) {
     "use strict";
 
-    const VERSION = "0.1.0";
+    const VERSION = "0.1.1";
+    const BUILD_ID = "MD011-PERSISTENCE-CIRCUIT-BREAKER-20260808-A";
     const STORAGE_KEY = "meos_mission_dispatcher_v0_1_0";
     const DEFAULT_SCAN_INTERVAL = 5000;
+    const MAX_PERSISTED_DISPATCH_RECORDS = 100;
+    const MAX_PERSISTED_ACTIVITY = 100;
 
     const OFFICE_KEYS = Object.freeze({
         MADDY: "maddy",
@@ -311,6 +315,13 @@
         dispatchedMissionIds: [],
         dispatchRecords: [],
         activity: [],
+        persistence: {
+            enabled: true,
+            suspended: false,
+            reason: null,
+            failedAt: null,
+            warningIssued: false
+        },
         initializedAt: null,
         updatedAt: null
     };
@@ -370,14 +381,65 @@
     );
 }
 
-    function persist() {
+    function isQuotaExceededError(error) {
+        return Boolean(
+            error &&
+            (
+                error.name === "QuotaExceededError" ||
+                error.code === 22 ||
+                error.code === 1014
+            )
+        );
+    }
+
+    function persistenceStatus() {
+        return clone({
+            ...state.persistence,
+            storageKey: STORAGE_KEY,
+            persistedDispatchRecordLimit:
+                MAX_PERSISTED_DISPATCH_RECORDS,
+            persistedActivityLimit:
+                MAX_PERSISTED_ACTIVITY
+        });
+    }
+
+    function persist(options = {}) {
+        if (!global.localStorage) {
+            state.persistence.enabled = false;
+            state.persistence.suspended = true;
+            state.persistence.reason = "local_storage_unavailable";
+            return {
+                success: false,
+                persisted: false,
+                reason: state.persistence.reason
+            };
+        }
+
+        if (
+            state.persistence.suspended &&
+            options.force !== true
+        ) {
+            return {
+                success: false,
+                persisted: false,
+                suspended: true,
+                reason: state.persistence.reason
+            };
+        }
+
         const saveableState = {
             version: state.version,
             running: state.running,
             scanInterval: state.scanInterval,
             dispatchedMissionIds: state.dispatchedMissionIds,
-            dispatchRecords: state.dispatchRecords,
-            activity: state.activity,
+            dispatchRecords: state.dispatchRecords.slice(
+                0,
+                MAX_PERSISTED_DISPATCH_RECORDS
+            ),
+            activity: state.activity.slice(
+                0,
+                MAX_PERSISTED_ACTIVITY
+            ),
             initializedAt: state.initializedAt,
             updatedAt: state.updatedAt
         };
@@ -387,12 +449,63 @@
                 STORAGE_KEY,
                 JSON.stringify(saveableState)
             );
+
+            state.persistence.enabled = true;
+            state.persistence.suspended = false;
+            state.persistence.reason = null;
+            state.persistence.failedAt = null;
+            state.persistence.warningIssued = false;
+
+            return {
+                success: true,
+                persisted: true,
+                compact: true,
+                dispatchRecordCount:
+                    saveableState.dispatchRecords.length,
+                activityCount: saveableState.activity.length
+            };
         } catch (error) {
+            if (isQuotaExceededError(error)) {
+                state.persistence.suspended = true;
+                state.persistence.reason =
+                    "browser_storage_quota_exceeded";
+                state.persistence.failedAt = now();
+
+                if (!state.persistence.warningIssued) {
+                    state.persistence.warningIssued = true;
+                    console.warn(
+                        "MEOS Mission Dispatcher browser persistence suspended after storage quota exhaustion. Runtime dispatch continues; repeated writes are suppressed until persistence is explicitly retried."
+                    );
+                }
+
+                return {
+                    success: false,
+                    persisted: false,
+                    suspended: true,
+                    reason: state.persistence.reason
+                };
+            }
+
             console.warn(
                 "MEOS Mission Dispatcher could not save its state.",
                 error
             );
+
+            return {
+                success: false,
+                persisted: false,
+                reason: "persistence_error",
+                error: error?.message || String(error)
+            };
         }
+    }
+
+    function retryPersistence() {
+        state.persistence.suspended = false;
+        state.persistence.reason = null;
+        state.persistence.failedAt = null;
+        state.persistence.warningIssued = false;
+        return persist({ force: true });
     }
 
     function restore() {
@@ -1321,6 +1434,56 @@
         return true;
     }
 
+    function runPersistenceAcceptanceTest() {
+        const checks = [
+            {
+                name: "Dispatcher persistence circuit breaker exists",
+                passed:
+                    typeof isQuotaExceededError === "function" &&
+                    typeof retryPersistence === "function"
+            },
+            {
+                name: "Persisted dispatch history is bounded",
+                passed: MAX_PERSISTED_DISPATCH_RECORDS === 100
+            },
+            {
+                name: "Persisted activity history is bounded",
+                passed: MAX_PERSISTED_ACTIVITY === 100
+            },
+            {
+                name: "Quota exhaustion suspends repeated writes",
+                passed:
+                    /state\.persistence\.suspended/.test(
+                        persist.toString()
+                    ) &&
+                    /QuotaExceededError/.test(
+                        isQuotaExceededError.toString()
+                    )
+            },
+            {
+                name: "Runtime dispatch remains independent from persistence",
+                passed:
+                    typeof scanForMissions === "function" &&
+                    typeof dispatchMission === "function"
+            }
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(checks);
+        console.info(
+            `[MEOS ${VERSION}] Commission 006.016B1 persistence acceptance: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+            commission: "006.016B1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            checks,
+            persistence: persistenceStatus()
+        };
+    }
+
     const restored = restore();
 
     if (!restored) {
@@ -1331,6 +1494,7 @@
 
     const MissionDispatcher = Object.freeze({
         version: VERSION,
+        buildId: BUILD_ID,
 
         constants: Object.freeze({
             OFFICE_KEYS,
@@ -1350,6 +1514,9 @@
         getDispatchRecord,
         getDispatchHistory,
         getActivityLog,
+        getPersistenceStatus: persistenceStatus,
+        retryPersistence,
+        runPersistenceAcceptanceTest,
 
         resetDispatchRecord,
         clearDispatcherData
@@ -1358,7 +1525,7 @@
     global.MEOSMissionDispatcher = MissionDispatcher;
 
     console.log(
-        `%cMEOS ${VERSION} Mission Dispatcher initialized.`,
+        `%cMEOS ${VERSION} Mission Dispatcher initialized. Build ${BUILD_ID}.`,
         "font-weight: bold;"
     );
 
