@@ -1,8 +1,8 @@
 /**
  * MEOS Google Workspace Provider
  *
- * Provider Version: 1.2.0
- * Build ID: GWP120-INSTITUTIONAL-STORAGE-RECON-20260808-A
+ * Provider Version: 1.3.0
+ * Build ID: GWP130-INSTITUTIONAL-REPOSITORY-PROTOTYPE-20260808-A
  * Status: Commission Candidate
  *
  * Purpose:
@@ -10,6 +10,7 @@
  * - Keep Google credentials and OAuth tokens off the frontend.
  * - Preserve broad read access while adding narrowly scoped app-managed write authorization.
  * - Recon the connected organization's real Drive capacity and storage capabilities at runtime.
+ * - Provide an app-managed institutional repository primitive over Google Drive.
  * - Keep institutional storage provider-neutral above this Google adapter.
  *
  * Required environment variables:
@@ -30,8 +31,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { google } from "googleapis";
 
-const VERSION = "1.2.0";
-const BUILD_ID = "GWP120-INSTITUTIONAL-STORAGE-RECON-20260808-A";
+const VERSION = "1.3.0";
+const BUILD_ID = "GWP130-INSTITUTIONAL-REPOSITORY-PROTOTYPE-20260808-A";
 const PROVIDER_ID = "google-workspace";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -85,6 +86,18 @@ const GOOGLE_DOC_MIME_TYPE =
 const GOOGLE_SHEET_MIME_TYPE =
   "application/vnd.google-apps.spreadsheet";
 
+const INSTITUTIONAL_REPOSITORY_NAME =
+  "MEOS Institutional Repository";
+
+const INSTITUTIONAL_REPOSITORY_SCHEMA =
+  "meos.institutional-repository.record.v1";
+
+const INSTITUTIONAL_REPOSITORY_FOLDER_APP_PROPERTY =
+  "meosInstitutionalRepository";
+
+const INSTITUTIONAL_REPOSITORY_RECORD_APP_PROPERTY =
+  "meosInstitutionalRecord";
+
 const READ_ONLY_SCOPES = Object.freeze([
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/documents.readonly",
@@ -127,7 +140,8 @@ const state = {
   headquarters: null,
   grantedScopes: [],
   authorizationRecon: null,
-  institutionalStorage: null
+  institutionalStorage: null,
+  institutionalRepository: null
 };
 
 let oauthClient = null;
@@ -930,6 +944,7 @@ async function disconnect({
   state.grantedScopes = [];
   state.authorizationRecon = null;
   state.institutionalStorage = null;
+  state.institutionalRepository = null;
   state.lastError = null;
 
   return getStatus();
@@ -1201,6 +1216,568 @@ async function readSpreadsheet({
   return response.data;
 }
 
+
+function requireControlledWriteAuthorization() {
+  requireConnected();
+
+  if (
+    !state.authorizationRecon
+      ?.controlledWriteAuthorized
+  ) {
+    const error = new Error(
+      "Google Workspace controlled app-managed write authorization is required."
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_CONTROLLED_WRITE_NOT_AUTHORIZED";
+    error.status = 403;
+    throw error;
+  }
+}
+
+function normalizeRepositoryKey(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9._:-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (!normalized) {
+    const error = new Error(
+      "An institutional repository record key is required."
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_KEY_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+
+  return normalized.slice(0, 180);
+}
+
+function repositoryRecordName(key) {
+  return `${normalizeRepositoryKey(key)}.meos.json`;
+}
+
+async function locateInstitutionalRepository({
+  createIfMissing = false,
+  forceRefresh = false
+} = {}) {
+  requireConnected();
+
+  if (
+    state.institutionalRepository?.id &&
+    !forceRefresh
+  ) {
+    return { ...state.institutionalRepository };
+  }
+
+  const escapedMarker = escapeDriveQueryValue(
+    INSTITUTIONAL_REPOSITORY_FOLDER_APP_PROPERTY
+  );
+
+  const result = await searchDrive({
+    query:
+      `appProperties has { key='${escapedMarker}' and value='true' } and ` +
+      `mimeType = '${GOOGLE_FOLDER_MIME_TYPE}' and trashed = false`,
+    pageSize: 100,
+    fields:
+      "nextPageToken,files(id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,trashed,appProperties)"
+  });
+
+  if (result.files.length > 1) {
+    const error = new Error(
+      "Multiple app-managed MEOS institutional repositories were discovered."
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_AMBIGUOUS";
+    error.status = 409;
+    error.details = {
+      matches: result.files.map(file => ({
+        id: file.id,
+        name: file.name,
+        parents: file.parents || []
+      }))
+    };
+    throw error;
+  }
+
+  let folder = result.files[0] || null;
+
+  if (!folder && createIfMissing) {
+    requireControlledWriteAuthorization();
+
+    const createResponse =
+      await driveClient.files.create({
+        requestBody: {
+          name: INSTITUTIONAL_REPOSITORY_NAME,
+          mimeType: GOOGLE_FOLDER_MIME_TYPE,
+          appProperties: {
+            [INSTITUTIONAL_REPOSITORY_FOLDER_APP_PROPERTY]:
+              "true",
+            meosProvider: PROVIDER_ID,
+            meosSchema:
+              "meos.institutional-repository.v1"
+          }
+        },
+        fields:
+          "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,appProperties",
+        supportsAllDrives: true
+      });
+
+    folder = createResponse.data;
+  }
+
+  if (!folder) {
+    state.institutionalRepository = null;
+    return null;
+  }
+
+  state.institutionalRepository = {
+    schema: "meos.institutional-repository.v1",
+    provider: PROVIDER_ID,
+    authority: "app-managed-drive-folder",
+    id: folder.id,
+    name: folder.name,
+    mimeType: folder.mimeType,
+    parents: folder.parents || [],
+    webViewLink: folder.webViewLink || null,
+    createdTime: folder.createdTime || null,
+    modifiedTime: folder.modifiedTime || null,
+    appManaged: true
+  };
+
+  return { ...state.institutionalRepository };
+}
+
+async function writeInstitutionalRecord({
+  key,
+  value,
+  recordType = "state",
+  metadata = {}
+} = {}) {
+  requireControlledWriteAuthorization();
+
+  const normalizedKey = normalizeRepositoryKey(key);
+  const repository =
+    await locateInstitutionalRepository({
+      createIfMissing: true
+    });
+
+  const fileName =
+    repositoryRecordName(normalizedKey);
+  const escapedRepositoryId =
+    escapeDriveQueryValue(repository.id);
+  const escapedFileName =
+    escapeDriveQueryValue(fileName);
+
+  const existing = await searchDrive({
+    query:
+      `'${escapedRepositoryId}' in parents and ` +
+      `name = '${escapedFileName}' and ` +
+      "trashed = false",
+    pageSize: 10,
+    fields:
+      "nextPageToken,files(id,name,mimeType,parents,modifiedTime,createdTime,appProperties)"
+  });
+
+  if (existing.files.length > 1) {
+    const error = new Error(
+      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
+    error.status = 409;
+    throw error;
+  }
+
+  const now = new Date().toISOString();
+  const envelope = {
+    schema: INSTITUTIONAL_REPOSITORY_SCHEMA,
+    key: normalizedKey,
+    recordType:
+      String(recordType || "state").trim() || "state",
+    provider: PROVIDER_ID,
+    writtenAt: now,
+    metadata:
+      metadata && typeof metadata === "object"
+        ? metadata
+        : {},
+    value
+  };
+  const body =
+    `${JSON.stringify(envelope, null, 2)}\n`;
+
+  let response;
+  let operation;
+
+  if (existing.files[0]?.id) {
+    operation = "updated";
+    response = await driveClient.files.update({
+      fileId: existing.files[0].id,
+      media: {
+        mimeType: "application/json",
+        body
+      },
+      fields:
+        "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
+      supportsAllDrives: true
+    });
+  } else {
+    operation = "created";
+    response = await driveClient.files.create({
+      requestBody: {
+        name: fileName,
+        parents: [repository.id],
+        mimeType: "application/json",
+        appProperties: {
+          [INSTITUTIONAL_REPOSITORY_RECORD_APP_PROPERTY]:
+            "true",
+          meosRepositoryKey: normalizedKey,
+          meosRecordType:
+            String(recordType || "state")
+              .trim()
+              .slice(0, 120) || "state"
+        }
+      },
+      media: {
+        mimeType: "application/json",
+        body
+      },
+      fields:
+        "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
+      supportsAllDrives: true
+    });
+  }
+
+  return {
+    schema:
+      "meos.institutional-repository.write-result.v1",
+    success: true,
+    provider: PROVIDER_ID,
+    authority: "app-managed-drive-folder",
+    operation,
+    repository,
+    record: {
+      id: response.data.id || null,
+      key: normalizedKey,
+      name: response.data.name || fileName,
+      recordType: envelope.recordType,
+      modifiedTime:
+        response.data.modifiedTime || now,
+      createdTime:
+        response.data.createdTime || null,
+      size: response.data.size || null,
+      webViewLink:
+        response.data.webViewLink || null
+    },
+    verified: Boolean(response.data.id)
+  };
+}
+
+async function readInstitutionalRecord(key) {
+  requireConnected();
+
+  const normalizedKey = normalizeRepositoryKey(key);
+  const repository =
+    await locateInstitutionalRepository();
+
+  if (!repository) {
+    return {
+      schema:
+        "meos.institutional-repository.read-result.v1",
+      success: false,
+      found: false,
+      provider: PROVIDER_ID,
+      key: normalizedKey,
+      reason: "repository-not-found"
+    };
+  }
+
+  const escapedRepositoryId =
+    escapeDriveQueryValue(repository.id);
+  const escapedFileName =
+    escapeDriveQueryValue(
+      repositoryRecordName(normalizedKey)
+    );
+
+  const result = await searchDrive({
+    query:
+      `'${escapedRepositoryId}' in parents and ` +
+      `name = '${escapedFileName}' and ` +
+      "trashed = false",
+    pageSize: 10,
+    fields:
+      "nextPageToken,files(id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties)"
+  });
+
+  if (result.files.length === 0) {
+    return {
+      schema:
+        "meos.institutional-repository.read-result.v1",
+      success: false,
+      found: false,
+      provider: PROVIDER_ID,
+      key: normalizedKey,
+      reason: "record-not-found"
+    };
+  }
+
+  if (result.files.length > 1) {
+    const error = new Error(
+      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
+    error.status = 409;
+    throw error;
+  }
+
+  const file = result.files[0];
+  const response = await driveClient.files.get({
+    fileId: file.id,
+    alt: "media",
+    supportsAllDrives: true
+  });
+
+  const payload =
+    typeof response.data === "string"
+      ? JSON.parse(response.data)
+      : response.data;
+
+  if (
+    !payload ||
+    payload.schema !==
+      INSTITUTIONAL_REPOSITORY_SCHEMA ||
+    payload.key !== normalizedKey
+  ) {
+    const error = new Error(
+      `Institutional repository record "${normalizedKey}" failed envelope verification.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_INVALID";
+    error.status = 500;
+    throw error;
+  }
+
+  return {
+    schema:
+      "meos.institutional-repository.read-result.v1",
+    success: true,
+    found: true,
+    provider: PROVIDER_ID,
+    authority: "app-managed-drive-folder",
+    repository,
+    record: {
+      id: file.id,
+      key: normalizedKey,
+      name: file.name,
+      recordType: payload.recordType || null,
+      writtenAt: payload.writtenAt || null,
+      metadata: payload.metadata || {},
+      modifiedTime: file.modifiedTime || null,
+      createdTime: file.createdTime || null,
+      size: file.size || null,
+      webViewLink: file.webViewLink || null
+    },
+    value: payload.value
+  };
+}
+
+async function deleteInstitutionalRecord(key) {
+  requireControlledWriteAuthorization();
+
+  const normalizedKey = normalizeRepositoryKey(key);
+  const repository =
+    await locateInstitutionalRepository();
+
+  if (!repository) {
+    return {
+      schema:
+        "meos.institutional-repository.delete-result.v1",
+      success: true,
+      deleted: false,
+      provider: PROVIDER_ID,
+      key: normalizedKey,
+      reason: "repository-not-found"
+    };
+  }
+
+  const escapedRepositoryId =
+    escapeDriveQueryValue(repository.id);
+  const escapedFileName =
+    escapeDriveQueryValue(
+      repositoryRecordName(normalizedKey)
+    );
+
+  const result = await searchDrive({
+    query:
+      `'${escapedRepositoryId}' in parents and ` +
+      `name = '${escapedFileName}' and ` +
+      "trashed = false",
+    pageSize: 10,
+    fields:
+      "nextPageToken,files(id,name)"
+  });
+
+  if (result.files.length > 1) {
+    const error = new Error(
+      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
+    error.status = 409;
+    throw error;
+  }
+
+  if (!result.files[0]?.id) {
+    return {
+      schema:
+        "meos.institutional-repository.delete-result.v1",
+      success: true,
+      deleted: false,
+      provider: PROVIDER_ID,
+      key: normalizedKey,
+      reason: "record-not-found"
+    };
+  }
+
+  await driveClient.files.delete({
+    fileId: result.files[0].id,
+    supportsAllDrives: true
+  });
+
+  return {
+    schema:
+      "meos.institutional-repository.delete-result.v1",
+    success: true,
+    deleted: true,
+    provider: PROVIDER_ID,
+    key: normalizedKey,
+    id: result.files[0].id
+  };
+}
+
+async function runInstitutionalRepositoryAcceptanceTest() {
+  requireControlledWriteAuthorization();
+
+  const testKey =
+    `acceptance-${crypto.randomUUID()}`;
+  const sentinel = {
+    commission: "006.017C",
+    nonce: crypto.randomUUID(),
+    testedAt: new Date().toISOString()
+  };
+
+  const checks = [];
+  let writeResult = null;
+  let readResult = null;
+  let cleanupResult = null;
+
+  try {
+    const repository =
+      await locateInstitutionalRepository({
+        createIfMissing: true,
+        forceRefresh: true
+      });
+
+    checks.push({
+      name:
+        "App-managed institutional repository exists",
+      passed: Boolean(repository?.id)
+    });
+
+    writeResult =
+      await writeInstitutionalRecord({
+        key: testKey,
+        value: sentinel,
+        recordType: "acceptance-test",
+        metadata: {
+          disposable: true,
+          commission: "006.017C"
+        }
+      });
+
+    checks.push({
+      name:
+        "Institutional repository accepts controlled writes",
+      passed:
+        writeResult.success === true &&
+        writeResult.verified === true
+    });
+
+    readResult =
+      await readInstitutionalRecord(testKey);
+
+    checks.push({
+      name:
+        "Institutional repository reads back the written record",
+      passed:
+        readResult.success === true &&
+        readResult.found === true
+    });
+
+    checks.push({
+      name:
+        "Read-after-write preserves the exact institutional payload",
+      passed:
+        JSON.stringify(readResult.value) ===
+        JSON.stringify(sentinel)
+    });
+
+    checks.push({
+      name:
+        "Repository authority remains app-managed rather than full-Drive write",
+      passed:
+        state.authorizationRecon
+          ?.controlledWriteAuthorized === true &&
+        state.authorizationRecon
+          ?.fullDriveWriteAuthorized !== true
+    });
+  } finally {
+    cleanupResult =
+      await deleteInstitutionalRecord(testKey)
+        .catch(error => ({
+          success: false,
+          deleted: false,
+          error: normalizeError(error)
+        }));
+
+    checks.push({
+      name:
+        "Acceptance record is removed after verification",
+      passed:
+        cleanupResult.success === true &&
+        cleanupResult.deleted === true
+    });
+  }
+
+  const passed =
+    checks.every(check => check.passed);
+
+  const result = {
+    commission: "006.017C",
+    schema:
+      "meos.google-workspace.institutional-repository.acceptance.v1",
+    version: VERSION,
+    buildId: BUILD_ID,
+    passed,
+    checks,
+    repository:
+      state.institutionalRepository
+        ? { ...state.institutionalRepository }
+        : null,
+    writeResult,
+    readResult,
+    cleanupResult
+  };
+
+  console.table(checks);
+  console.info(
+    `[MEOS ${VERSION}] Commission 006.017C institutional repository acceptance: ${passed ? "PASS" : "FAIL"}.`
+  );
+
+  return result;
+}
+
 function getClients() {
   requireConnected();
 
@@ -1259,6 +1836,10 @@ function getStatus() {
     headquarters: state.headquarters
       ? { ...state.headquarters }
       : null,
+    institutionalRepository:
+      state.institutionalRepository
+        ? { ...state.institutionalRepository }
+        : null,
     institutionalStorage:
       state.institutionalStorage
         ? JSON.parse(
@@ -1290,6 +1871,10 @@ function getStatus() {
       refreshTokens: true,
       disconnect: true,
       institutionalStorageRecon: true,
+      institutionalRepository: true,
+      institutionalRepositoryRead: true,
+      institutionalRepositoryWrite:
+        controlledWriteAuthorized,
       driveSearch: true,
       driveListFolders: true,
       driveListHeadquarters: true,
@@ -1331,6 +1916,11 @@ const GoogleWorkspaceProvider = Object.freeze({
   authorizeFromCallback,
   verifyConnection,
   discoverInstitutionalStorage,
+  locateInstitutionalRepository,
+  writeInstitutionalRecord,
+  readInstitutionalRecord,
+  deleteInstitutionalRecord,
+  runInstitutionalRepositoryAcceptanceTest,
   disconnect,
   getClients,
   searchDrive,
