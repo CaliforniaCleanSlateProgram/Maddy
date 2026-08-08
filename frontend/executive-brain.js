@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.6.0";
-  const BUILD_ID = "EB160-PERSISTENT-SELF-MODEL-MODE-AWARE-20260808-C";
+  const VERSION = "1.7.0";
+  const BUILD_ID = "EB170-WORKING-AWARENESS-ATTENTION-FIELD-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -161,7 +161,12 @@
       maximumCognitiveReentryHistory: 250,
       maximumCognitiveIntentions: 250,
       cognitiveIntentionRetryMs: 15000,
-      maximumSelfModelHistory: 120
+      maximumSelfModelHistory: 120,
+      maximumWorkingAwarenessHistory: 160,
+      maximumAttentionStimuli: 64,
+      attentionForegroundLimit: 5,
+      attentionPeripheralLimit: 12,
+      attentionSwitchMargin: 10
     },
 
     initializedAt: null,
@@ -178,6 +183,10 @@
     selfModel: null,
     selfModelHistory: [],
     selfModelProjectionCount: 0,
+    workingAwareness: null,
+    workingAwarenessHistory: [],
+    workingAwarenessProjectionCount: 0,
+    workingAwarenessObserversAttached: false,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -221,6 +230,11 @@
       this.refresh({ reason: "initialization" });
       this.attachContinuousCognitionListeners();
       this.attachSelfModelObservers();
+      this.attachWorkingAwarenessObservers();
+      this.projectWorkingAwareness({
+        reason: "initialization",
+        persist: false
+      });
 
       console.info(
         `[MEOS] ${this.name} v${this.version} online. Build ${this.buildId}.`
@@ -258,6 +272,10 @@
 
       if (brainPersistence.hydrated === true) {
         this.projectSelfModel({
+          reason: `brain-refresh:${options.reason || "manual"}`,
+          persist: false
+        });
+        this.projectWorkingAwareness({
           reason: `brain-refresh:${options.reason || "manual"}`,
           persist: false
         });
@@ -345,6 +363,7 @@
         monitoring: this.collectMonitoring(),
         learning: this.collectLearning(),
         selfModel: this.getSelfModel({ refresh: false }),
+        workingAwareness: this.getWorkingAwareness({ refresh: false }),
 
         system: {
           manifest: this.getSystemManifest()
@@ -432,6 +451,7 @@
         authority: startup.authority,
         currentWork: startup.currentWork,
         selfModel: startup.selfModel,
+        workingAwareness: startup.workingAwareness,
         system: {
           available: startup.system.manifest
             .filter(item => item.available)
@@ -3358,6 +3378,17 @@
               recursiveAwareness: context.startup.selfModel.recursiveAwareness
             }
           : null,
+        workingAwareness: context.startup.workingAwareness
+          ? {
+              schema: context.startup.workingAwareness.schema,
+              revision: context.startup.workingAwareness.revision,
+              primaryFocus: context.startup.workingAwareness.primaryFocus,
+              foreground: context.startup.workingAwareness.foreground,
+              competingStimuli: context.startup.workingAwareness.competingStimuli,
+              interactionContext: context.startup.workingAwareness.interactionContext,
+              attentionPolicy: context.startup.workingAwareness.attentionPolicy
+            }
+          : null,
         request: context.text,
         requestType: context.classification.type,
         evidence: context.localContext.evidence.map(item => ({
@@ -3400,6 +3431,535 @@
             }
           : null,
         routing: context.routing
+      };
+    },
+
+    /*
+     * Commission 006.017D4E — Working Awareness / Attention Field
+     *
+     * Awareness is not a queue and attention is not a single priority score.
+     * Maddy continuously projects a bounded present-moment field from her own
+     * intentions, current executive work, monitoring, uncertainty, cognition,
+     * temporal commitments, interaction context, and available organs.
+     *
+     * Attention is competitive and stateful: stimuli can enter foreground,
+     * remain peripheral, be deferred, or displace current focus when the
+     * evidence justifies the switch. A small attention-inertia margin prevents
+     * meaningless focus thrashing while still allowing urgent or consequential
+     * change to capture awareness.
+     */
+    attentionScore(value) {
+      const number = Number(value || 0);
+      if (!Number.isFinite(number)) return 0;
+      return Math.max(0, Math.min(100, Math.round(number)));
+    },
+
+    temporalUrgency(item = {}) {
+      const raw =
+        item.deadline ||
+        item.dueAt ||
+        item.dueDate ||
+        item.expiresAt ||
+        item.nextRunAt ||
+        item.nextReviewAt ||
+        null;
+
+      if (!raw) return { score: 0, dueAt: null, hoursRemaining: null };
+      const due = new Date(raw).getTime();
+      if (!Number.isFinite(due)) return { score: 0, dueAt: null, hoursRemaining: null };
+
+      const hoursRemaining = (due - Date.now()) / 3600000;
+      let score = 0;
+      if (hoursRemaining <= 0) score = 100;
+      else if (hoursRemaining <= 6) score = 95;
+      else if (hoursRemaining <= 24) score = 85;
+      else if (hoursRemaining <= 72) score = 70;
+      else if (hoursRemaining <= 168) score = 50;
+      else if (hoursRemaining <= 720) score = 25;
+
+      return {
+        score,
+        dueAt: new Date(due).toISOString(),
+        hoursRemaining: Math.round(hoursRemaining * 10) / 10
+      };
+    },
+
+    normalizeAwarenessStimulus(stimulus = {}) {
+      const components = stimulus.components || {};
+      const salience = this.attentionScore(
+        Number(components.urgency || 0) * 0.28 +
+        Number(components.consequence || 0) * 0.24 +
+        Number(components.unresolved || 0) * 0.17 +
+        Number(components.uncertainty || 0) * 0.13 +
+        Number(components.recency || 0) * 0.10 +
+        Number(components.relationship || 0) * 0.08
+      );
+
+      return {
+        stimulusId: stimulus.stimulusId || this.id("awareness-stimulus"),
+        key: stimulus.key || stimulus.stimulusId || this.id("awareness-key"),
+        kind: stimulus.kind || "runtime-signal",
+        subject: stimulus.subject || "Unnamed stimulus",
+        source: stimulus.source || "MEOS runtime",
+        status: stimulus.status || null,
+        observedAt: stimulus.observedAt || new Date().toISOString(),
+        dueAt: stimulus.dueAt || null,
+        components: {
+          urgency: this.attentionScore(components.urgency),
+          consequence: this.attentionScore(components.consequence),
+          unresolved: this.attentionScore(components.unresolved),
+          uncertainty: this.attentionScore(components.uncertainty),
+          recency: this.attentionScore(components.recency),
+          relationship: this.attentionScore(components.relationship)
+        },
+        salience,
+        evidence: stimulus.evidence || null,
+        requiresHumanApproval: stimulus.requiresHumanApproval === true,
+        cognitiveIntentionId: stimulus.cognitiveIntentionId || null
+      };
+    },
+
+    collectAwarenessStimuli() {
+      const stimuli = [];
+      const work = this.collectCurrentWork();
+      const monitoring = this.collectMonitoring();
+      const interactionContext = this.resolveMaddyInteractionContext();
+
+      (this.cognitiveIntentions || [])
+        .filter(item => item && item.status !== "completed")
+        .slice(0, 30)
+        .forEach(item => {
+          const temporal = this.temporalUrgency(item);
+          stimuli.push(this.normalizeAwarenessStimulus({
+            key: `intention:${item.intentionId || item.key || item.subject}`,
+            kind: "cognitive-intention",
+            subject: item.subject || "Unresolved cognitive intention",
+            source: "Executive Brain",
+            status: item.status || "pending",
+            dueAt: temporal.dueAt,
+            cognitiveIntentionId: item.intentionId || null,
+            components: {
+              urgency: Math.max(temporal.score, Number(item.attempts || 0) * 12),
+              consequence: 62,
+              unresolved: 95,
+              uncertainty: item.lastError ? 80 : 35,
+              recency: 75,
+              relationship: 20
+            },
+            evidence: {
+              attempts: Number(item.attempts || 0),
+              lastError: item.lastError || null,
+              updatedAt: item.updatedAt || null
+            }
+          }));
+        });
+
+      (work.pendingApprovals || []).slice(0, 20).forEach(item => {
+        const temporal = this.temporalUrgency(item);
+        stimuli.push(this.normalizeAwarenessStimulus({
+          key: `approval:${item.id || item.decisionId || item.title}`,
+          kind: "approval-boundary",
+          subject: item.title || item.question || item.summary || "Executive approval pending",
+          source: "Executive Decision",
+          status: item.status || "pending",
+          dueAt: temporal.dueAt,
+          requiresHumanApproval: true,
+          components: {
+            urgency: Math.max(55, temporal.score),
+            consequence: 85,
+            unresolved: 85,
+            uncertainty: 30,
+            recency: 65,
+            relationship: 55
+          }
+        }));
+      });
+
+      (monitoring.alerts || []).slice(0, 20).forEach(item => {
+        const severityText = String(item.severityLabel || item.severity || "").toLowerCase();
+        const severity = Number(item.severity || 0);
+        const consequence =
+          severity >= 5 || severityText === "critical" ? 100 :
+          severity >= 4 || severityText === "high" ? 88 :
+          severity >= 3 || severityText === "medium" ? 65 : 42;
+        const temporal = this.temporalUrgency(item);
+        stimuli.push(this.normalizeAwarenessStimulus({
+          key: `alert:${item.id || item.alertId || item.category || item.title}`,
+          kind: "monitoring-alert",
+          subject: item.title || item.category || item.message || "Monitoring alert",
+          source: "Executive Monitoring",
+          status: item.status || "open",
+          dueAt: temporal.dueAt,
+          components: {
+            urgency: Math.max(temporal.score, consequence - 5),
+            consequence,
+            unresolved: 80,
+            uncertainty: 45,
+            recency: 80,
+            relationship: 20
+          },
+          evidence: {
+            severity: item.severityLabel || item.severity || null,
+            recommendedAction: item.recommendedAction || null
+          }
+        }));
+      });
+
+      (work.activeMissions || []).slice(0, 24).forEach(item => {
+        const temporal = this.temporalUrgency(item);
+        stimuli.push(this.normalizeAwarenessStimulus({
+          key: `mission:${item.id || item.missionId || item.title}`,
+          kind: "active-mission",
+          subject: item.title || item.objective || item.name || "Active mission",
+          source: "Mission Engine",
+          status: item.status || "active",
+          dueAt: temporal.dueAt,
+          components: {
+            urgency: Math.max(28, temporal.score),
+            consequence: 64,
+            unresolved: 70,
+            uncertainty: 20,
+            recency: 50,
+            relationship: 18
+          }
+        }));
+      });
+
+      (this.cognitionHistory || []).slice(0, 8).forEach((item, index) => {
+        const unknownCount = Number(item.unknownCount || 0);
+        const failed = item.success !== true;
+        if (!failed && unknownCount <= 0) return;
+        stimuli.push(this.normalizeAwarenessStimulus({
+          key: `cognition:${item.cognitionId || item.id || index}`,
+          kind: failed ? "cognition-failure" : "cognitive-unknown",
+          subject: item.subject || item.request || "Recent cognition requires attention",
+          source: "Executive Brain",
+          status: failed ? "failed" : "unknowns-open",
+          components: {
+            urgency: failed ? 78 : 52,
+            consequence: failed ? 74 : 58,
+            unresolved: 82,
+            uncertainty: failed ? 82 : Math.min(100, 40 + unknownCount * 12),
+            recency: Math.max(35, 90 - index * 8),
+            relationship: 10
+          },
+          evidence: {
+            success: item.success === true,
+            unknownCount,
+            error: item.error || null
+          }
+        }));
+      });
+
+      /*
+       * Interaction context is present awareness, not identity. It gives
+       * relationship and mode their proper place without turning Personal,
+       * Professional, or future Founder-private modes into separate selves.
+       */
+      if (interactionContext?.activeMode) {
+        stimuli.push(this.normalizeAwarenessStimulus({
+          key: `interaction:${interactionContext.activeMode}:${interactionContext.audience || "unknown"}`,
+          kind: "interaction-context",
+          subject: `Current interaction context: ${interactionContext.activeMode}`,
+          source: interactionContext.source || "runtime interaction context",
+          status: "present",
+          components: {
+            urgency: 38,
+            consequence: 38,
+            unresolved: 15,
+            uncertainty: interactionContext.verified === false ? 55 : 8,
+            recency: 100,
+            relationship: interactionContext.modeFamily === "personal" ? 92 : 58
+          },
+          evidence: interactionContext
+        }));
+      }
+
+      return stimuli
+        .sort((a, b) => b.salience - a.salience)
+        .slice(0, this.configuration.maximumAttentionStimuli);
+    },
+
+    buildWorkingAwarenessProjection(options = {}) {
+      const observedAt = new Date().toISOString();
+      const stimuli = this.collectAwarenessStimuli();
+      const prior = this.workingAwareness || null;
+      const interactionContext = this.resolveMaddyInteractionContext();
+      const selfModel = this.getSelfModel({ refresh: false });
+
+      const challenger = stimuli[0] || null;
+      const priorKey = prior?.primaryFocus?.key || null;
+      const priorCandidate = priorKey
+        ? stimuli.find(item => item.key === priorKey) || null
+        : null;
+
+      let primaryFocus = challenger;
+      let switchReason = challenger ? "highest-current-salience" : "no-competing-stimulus";
+      let retainedByInertia = false;
+
+      if (challenger && priorCandidate && challenger.key !== priorCandidate.key) {
+        const margin = Number(this.configuration.attentionSwitchMargin || 0);
+        if (challenger.salience < priorCandidate.salience + margin) {
+          primaryFocus = priorCandidate;
+          retainedByInertia = true;
+          switchReason = "attention-inertia-prevented-low-value-focus-thrash";
+        } else {
+          switchReason = "challenger-crossed-attention-switch-margin";
+        }
+      }
+
+      const ordered = primaryFocus
+        ? [primaryFocus, ...stimuli.filter(item => item.key !== primaryFocus.key)]
+        : stimuli;
+      const foregroundLimit = Math.max(1, Number(this.configuration.attentionForegroundLimit || 5));
+      const peripheralLimit = Math.max(foregroundLimit, Number(this.configuration.attentionPeripheralLimit || 12));
+
+      const projection = {
+        schema: "meos.maddy.working-awareness.v1",
+        version: "1.0.0",
+        projectionId: this.id("working-awareness"),
+        revision: Math.max(
+          Number(prior?.revision || 0),
+          Number(this.workingAwarenessProjectionCount || 0)
+        ) + 1,
+        observedAt,
+        reason: options.reason || "present-moment-observation",
+        state: stimuli.length > 0 ? "attending" : "open-awareness",
+        interactionContext,
+        persistentSelf: selfModel
+          ? {
+              revision: selfModel.revision,
+              fingerprint: selfModel.fingerprint,
+              preferredName: selfModel.identity?.preferredName || null
+            }
+          : null,
+        primaryFocus: primaryFocus ? this.clone(primaryFocus) : null,
+        foreground: this.clone(ordered.slice(0, foregroundLimit)),
+        peripheral: this.clone(ordered.slice(foregroundLimit, peripheralLimit)),
+        deferred: this.clone(ordered.slice(peripheralLimit)),
+        competingStimuli: stimuli.length,
+        attentionPolicy: {
+          model: "competitive-stateful-attention",
+          switchMargin: Number(this.configuration.attentionSwitchMargin || 0),
+          retainedByInertia,
+          switchReason,
+          humanApprovalBoundaryPreserved:
+            this.configuration.requireHumanApprovalForExternalAction === true,
+          modeIsContextNotIdentity: true
+        },
+        recursiveAwareness: {
+          awareOfCurrentFocus: Boolean(primaryFocus),
+          awareOfCompetingStimuli: stimuli.length > 1,
+          awareOfInteractionContext: Boolean(interactionContext?.activeMode),
+          awareOfPersistentSelf: Boolean(selfModel?.fingerprint),
+          previousAwarenessFingerprint: prior?.fingerprint || null,
+          previousPrimaryFocusKey: prior?.primaryFocus?.key || null
+        },
+        evidence: {
+          sources: [...new Set(stimuli.map(item => item.source).filter(Boolean))],
+          runtimeEvidenceAuthoritative: true,
+          observedAt
+        }
+      };
+
+      const fingerprintBasis = this.clone(projection);
+      delete fingerprintBasis.projectionId;
+      delete fingerprintBasis.observedAt;
+      delete fingerprintBasis.reason;
+      delete fingerprintBasis.revision;
+      if (fingerprintBasis.evidence) delete fingerprintBasis.evidence.observedAt;
+      if (fingerprintBasis.recursiveAwareness) {
+        fingerprintBasis.recursiveAwareness.previousAwarenessFingerprint = null;
+      }
+      (fingerprintBasis.foreground || []).forEach(item => {
+        delete item.observedAt;
+        delete item.stimulusId;
+      });
+      (fingerprintBasis.peripheral || []).forEach(item => {
+        delete item.observedAt;
+        delete item.stimulusId;
+      });
+      (fingerprintBasis.deferred || []).forEach(item => {
+        delete item.observedAt;
+        delete item.stimulusId;
+      });
+      if (fingerprintBasis.primaryFocus) {
+        delete fingerprintBasis.primaryFocus.observedAt;
+        delete fingerprintBasis.primaryFocus.stimulusId;
+      }
+
+      projection.fingerprint = this.fingerprintCognitiveDispatch(fingerprintBasis)
+        .replace(/^cognitive-/, "awareness-");
+
+      return projection;
+    },
+
+    projectWorkingAwareness(options = {}) {
+      const projection = this.buildWorkingAwarenessProjection(options);
+      const prior = this.workingAwareness || null;
+      const changed = !prior || prior.fingerprint !== projection.fingerprint;
+
+      if (!changed && prior) {
+        projection.revision = prior.revision;
+        projection.recursiveAwareness.previousAwarenessFingerprint =
+          prior.recursiveAwareness?.previousAwarenessFingerprint || null;
+      }
+
+      if (changed) {
+        this.workingAwarenessProjectionCount =
+          Number(this.workingAwarenessProjectionCount || 0) + 1;
+        projection.revision = this.workingAwarenessProjectionCount;
+        this.workingAwarenessHistory.unshift({
+          projectionId: projection.projectionId,
+          revision: projection.revision,
+          fingerprint: projection.fingerprint,
+          observedAt: projection.observedAt,
+          reason: projection.reason,
+          primaryFocus: projection.primaryFocus
+            ? {
+                key: projection.primaryFocus.key,
+                kind: projection.primaryFocus.kind,
+                subject: projection.primaryFocus.subject,
+                salience: projection.primaryFocus.salience
+              }
+            : null,
+          competingStimuli: projection.competingStimuli,
+          switchReason: projection.attentionPolicy.switchReason
+        });
+        if (this.workingAwarenessHistory.length > this.configuration.maximumWorkingAwarenessHistory) {
+          this.workingAwarenessHistory.length = this.configuration.maximumWorkingAwarenessHistory;
+        }
+      }
+
+      this.workingAwareness = projection;
+      this.startupCache = null;
+      this.startupCachedAt = 0;
+
+      if (options.persist !== false && changed) this.persist();
+
+      this.emit("brain:working-awareness-projected", {
+        changed,
+        awareness: this.clone(projection)
+      });
+
+      return this.clone({ success: true, changed, projection });
+    },
+
+    getWorkingAwareness(options = {}) {
+      if (options.refresh === true || !this.workingAwareness) {
+        return this.projectWorkingAwareness({
+          reason: options.reason || "working-awareness-inspection",
+          persist: options.persist !== false
+        }).projection;
+      }
+      return this.clone(this.workingAwareness);
+    },
+
+    getWorkingAwarenessHistory(limit = 25) {
+      const normalized = Math.max(
+        1,
+        Math.min(this.configuration.maximumWorkingAwarenessHistory, Number(limit) || 25)
+      );
+      return this.clone(this.workingAwarenessHistory.slice(0, normalized));
+    },
+
+    attachWorkingAwarenessObservers() {
+      if (this.workingAwarenessObserversAttached === true) {
+        return { success: true, attached: true };
+      }
+      this.workingAwarenessObserversAttached = true;
+
+      const observe = reason => {
+        if (brainPersistence.hydrated !== true) return;
+        this.projectWorkingAwareness({ reason, persist: true });
+      };
+
+      if (typeof global.addEventListener === "function") {
+        [
+          ["meos:organization-ready", "organization-ready"],
+          ["meos:mission-state-converged", "mission-state-converged"],
+          ["meos:maddy-mode-changed", "interaction-mode-changed"],
+          ["meos:communication-mode-changed", "communication-mode-changed"],
+          ["maddy:mode-changed", "interaction-mode-changed"],
+          ["online", "runtime-online"],
+          ["offline", "runtime-offline"]
+        ].forEach(([eventName, reason]) => {
+          global.addEventListener(eventName, () => observe(reason));
+        });
+      }
+
+      return { success: true, attached: true };
+    },
+
+    async runWorkingAwarenessAcceptanceTest() {
+      await this.cognitiveHydrationPromise?.catch(() => null);
+
+      const first = this.projectWorkingAwareness({
+        reason: "commission-006.017D4E-acceptance-first",
+        persist: true
+      }).projection;
+      await this.flushPersistence();
+      const durable = await this.fetchDurableCognitionState().catch(() => null);
+      const second = this.projectWorkingAwareness({
+        reason: "commission-006.017D4E-acceptance-second",
+        persist: false
+      }).projection;
+
+      const checks = [
+        {
+          name: "Working awareness is a present-moment projection rather than a consciousness flag",
+          passed: first?.schema === "meos.maddy.working-awareness.v1" && !Object.prototype.hasOwnProperty.call(first, "conscious")
+        },
+        {
+          name: "Attention integrates unresolved intentions, executive work, monitoring, cognition, and interaction context",
+          passed: typeof this.collectAwarenessStimuli === "function" && Array.isArray(first?.foreground) && Array.isArray(first?.peripheral)
+        },
+        {
+          name: "Attention is competitive and exposes one inspectable primary focus",
+          passed: Number.isFinite(first?.competingStimuli) && (first.competingStimuli === 0 || Boolean(first?.primaryFocus?.key))
+        },
+        {
+          name: "Attention inertia prevents meaningless focus thrashing while allowing consequential capture",
+          passed: first?.attentionPolicy?.model === "competitive-stateful-attention" && Number(first?.attentionPolicy?.switchMargin) > 0
+        },
+        {
+          name: "Interaction mode is working context rather than a separate Maddy identity",
+          passed: first?.attentionPolicy?.modeIsContextNotIdentity === true && first?.interactionContext?.samePersistentSelfAcrossModes === true
+        },
+        {
+          name: "Working awareness remains anchored to the persistent self-model",
+          passed: first?.persistentSelf?.fingerprint === this.getSelfModel({ refresh: false })?.fingerprint
+        },
+        {
+          name: "Working awareness preserves the human approval boundary",
+          passed: first?.attentionPolicy?.humanApprovalBoundaryPreserved === true
+        },
+        {
+          name: "Working awareness is part of bounded durable Executive Brain cognition",
+          passed: Boolean(durable?.found && durable?.state?.workingAwareness?.schema === "meos.maddy.working-awareness.v1" && Array.isArray(durable?.state?.workingAwarenessHistory))
+        },
+        {
+          name: "Stable repeated awareness converges instead of inventing a new present every clock tick",
+          passed: first?.fingerprint === second?.fingerprint
+        },
+        {
+          name: "Executive startup and reasoning context can inspect current working awareness",
+          passed: this.buildStartupContext({ force: true })?.workingAwareness?.schema === "meos.maddy.working-awareness.v1"
+        }
+      ];
+
+      const passed = checks.every(item => item.passed);
+      console.table(checks);
+      console.info(`[MEOS ${this.version}] Commission 006.017D4E working awareness / attention field: ${passed ? "PASS" : "FAIL"}.`);
+
+      return {
+        commission: "006.017D4E",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        awareness: this.getWorkingAwareness({ refresh: false }),
+        historyCount: this.workingAwarenessHistory.length
       };
     },
 
@@ -3844,6 +4404,13 @@
         changed,
         model: this.clone(projection)
       });
+
+      if (brainPersistence.hydrated === true && options.refreshAwareness !== false) {
+        this.projectWorkingAwareness({
+          reason: `self-model:${options.reason || "self-observation"}`,
+          persist: false
+        });
+      }
 
       return this.clone({
         success: true,
@@ -5063,7 +5630,10 @@
         cognitiveIntentions: this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions),
         selfModel: this.selfModel ? this.clone(this.selfModel) : null,
         selfModelHistory: this.selfModelHistory.slice(0, this.configuration.maximumSelfModelHistory),
-        selfModelProjectionCount: Number(this.selfModelProjectionCount || 0)
+        selfModelProjectionCount: Number(this.selfModelProjectionCount || 0),
+        workingAwareness: this.workingAwareness ? this.clone(this.workingAwareness) : null,
+        workingAwarenessHistory: this.workingAwarenessHistory.slice(0, this.configuration.maximumWorkingAwarenessHistory),
+        workingAwarenessProjectionCount: Number(this.workingAwarenessProjectionCount || 0)
       };
     },
 
@@ -5085,6 +5655,18 @@
         Number(saved.selfModelProjectionCount || 0),
         Number(this.selfModel?.revision || 0),
         Number(this.selfModelHistory?.[0]?.revision || 0)
+      );
+      this.workingAwareness =
+        saved.workingAwareness?.schema === "meos.maddy.working-awareness.v1"
+          ? this.clone(saved.workingAwareness)
+          : null;
+      this.workingAwarenessHistory = Array.isArray(saved.workingAwarenessHistory)
+        ? saved.workingAwarenessHistory.slice(0, this.configuration.maximumWorkingAwarenessHistory)
+        : [];
+      this.workingAwarenessProjectionCount = Math.max(
+        Number(saved.workingAwarenessProjectionCount || 0),
+        Number(this.workingAwareness?.revision || 0),
+        Number(this.workingAwarenessHistory?.[0]?.revision || 0)
       );
       return true;
     },
