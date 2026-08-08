@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.8.0
- * Build: EB180-AUTOBIOGRAPHICAL-MEMORY-FORMATION-20260808-A
+ * Version: 1.9.0
+ * Build: EB190-REFLECTION-METACOGNITIVE-LOOP-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.8.0";
-  const BUILD_ID = "EB180-AUTOBIOGRAPHICAL-MEMORY-FORMATION-20260808-A";
+  const VERSION = "1.9.0";
+  const BUILD_ID = "EB190-REFLECTION-METACOGNITIVE-LOOP-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -168,7 +168,9 @@
       attentionPeripheralLimit: 12,
       attentionSwitchMargin: 10,
       maximumAutobiographicalEpisodes: 240,
-      autobiographicalRecallLimit: 12
+      autobiographicalRecallLimit: 12,
+      maximumMetacognitiveReflections: 240,
+      metacognitiveRecallLimit: 12
     },
 
     initializedAt: null,
@@ -191,6 +193,8 @@
     workingAwarenessObserversAttached: false,
     autobiographicalMemory: [],
     autobiographicalEpisodeCount: 0,
+    metacognitiveReflections: [],
+    metacognitiveReflectionCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -369,6 +373,7 @@
         selfModel: this.getSelfModel({ refresh: false }),
         workingAwareness: this.getWorkingAwareness({ refresh: false }),
         autobiographicalMemory: this.getAutobiographicalMemory(8),
+        metacognitiveContext: this.buildMetacognitiveContext({ limit: 6 }),
 
         system: {
           manifest: this.getSystemManifest()
@@ -3595,6 +3600,465 @@
         .map(item => ({ ...item.episode, recallScore: Number(item.recallScore.toFixed(2)) })));
     },
 
+    /*
+     * Commission 006.017D4G — Reflection + Metacognitive Loop
+     *
+     * Reflection is not a claim of consciousness. It is an inspectable,
+     * evidence-derived loop in which Maddy can compare expectation with
+     * outcome, inspect her own cognition, detect recurring patterns, update
+     * confidence, preserve uncertainty, and carry the lesson into future
+     * cognition as part of the same durable Executive Brain state.
+     */
+    metacognitiveExpectationFromEpisode(episode = {}) {
+      const belief = episode.beliefsBefore || {};
+      const intention = episode.intention || {};
+      const expectedSuccess =
+        typeof belief.expectedSuccess === "boolean"
+          ? belief.expectedSuccess
+          : typeof intention.expectedSuccess === "boolean"
+            ? intention.expectedSuccess
+            : null;
+      const expectedConfidence = Number(
+        belief.confidence ??
+        intention.confidence ??
+        0.5
+      );
+      return {
+        expectedSuccess,
+        confidence: Math.max(0, Math.min(1, Number.isFinite(expectedConfidence) ? expectedConfidence : 0.5)),
+        unresolvedBefore: this.clone(
+          belief.unresolvedAtStart ||
+          intention.unknowns ||
+          []
+        )
+      };
+    },
+
+    metacognitiveOutcomeFromEpisode(episode = {}) {
+      const outcome = episode.outcome || {};
+      return {
+        success:
+          typeof outcome.success === "boolean"
+            ? outcome.success
+            : null,
+        changed: outcome.changed === true,
+        failed: Number(outcome.failed || 0),
+        awaitingReview: Number(outcome.awaitingReview || 0),
+        unresolvedAfter: this.clone(
+          episode.learning?.unresolvedAfter ||
+          []
+        )
+      };
+    },
+
+    detectMetacognitivePatterns(episode = {}, options = {}) {
+      const recent = (this.autobiographicalMemory || [])
+        .filter(item => item?.episodeId !== episode?.episodeId)
+        .slice(0, Math.max(1, Number(options.lookback || 40)));
+
+      const subjectTokens = String(episode.subject || "")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(token => token.length > 3);
+
+      const related = recent.filter(item => {
+        if (item.eventType === episode.eventType) return true;
+        const haystack = JSON.stringify({
+          subject: item.subject,
+          intention: item.intention,
+          action: item.action,
+          outcome: item.outcome,
+          learning: item.learning
+        }).toLowerCase();
+        return subjectTokens.some(token => haystack.includes(token));
+      });
+
+      const failures = related.filter(item => item.outcome?.success === false);
+      const successes = related.filter(item => item.outcome?.success === true);
+      const unresolved = related.filter(item =>
+        (item.learning?.unresolvedAfter || []).length > 0 ||
+        item.learning?.unresolved === true
+      );
+
+      return {
+        relatedExperienceCount: related.length,
+        recurringFailureCount: failures.length,
+        recurringSuccessCount: successes.length,
+        recurringUnresolvedCount: unresolved.length,
+        patternDetected:
+          failures.length >= 2 ||
+          successes.length >= 2 ||
+          unresolved.length >= 2,
+        evidenceEpisodeIds: related.slice(0, 12).map(item => item.episodeId)
+      };
+    },
+
+    reflectOnAutobiographicalEpisode(episodeOrId, options = {}) {
+      const episode =
+        typeof episodeOrId === "string"
+          ? (this.autobiographicalMemory || []).find(item => item.episodeId === episodeOrId)
+          : episodeOrId;
+
+      if (!episode?.episodeId) {
+        return {
+          success: false,
+          error: "autobiographical-episode-required"
+        };
+      }
+
+      const existing = (this.metacognitiveReflections || []).find(
+        item => item.sourceEpisodeId === episode.episodeId &&
+          item.sourceExperienceFingerprint === episode.experienceFingerprint
+      );
+      if (existing && options.force !== true) {
+        return {
+          success: true,
+          created: false,
+          duplicate: true,
+          reflection: this.clone(existing)
+        };
+      }
+
+      const expectation = this.metacognitiveExpectationFromEpisode(episode);
+      const observed = this.metacognitiveOutcomeFromEpisode(episode);
+      const patterns = this.detectMetacognitivePatterns(episode, options);
+
+      let predictionError = null;
+      if (
+        typeof expectation.expectedSuccess === "boolean" &&
+        typeof observed.success === "boolean"
+      ) {
+        predictionError =
+          expectation.expectedSuccess === observed.success ? 0 : 1;
+      }
+
+      let confidenceDelta = 0;
+      if (predictionError === 1) {
+        confidenceDelta = -Math.max(0.08, expectation.confidence * 0.25);
+      } else if (predictionError === 0 && observed.success === true) {
+        confidenceDelta = Math.min(0.08, (1 - expectation.confidence) * 0.15);
+      }
+      if (patterns.recurringFailureCount >= 2) confidenceDelta -= 0.08;
+      if (patterns.recurringUnresolvedCount >= 2) confidenceDelta -= 0.04;
+
+      const updatedConfidence = Math.max(
+        0.05,
+        Math.min(0.99, expectation.confidence + confidenceDelta)
+      );
+
+      const learningText =
+        episode.learning?.learned ||
+        episode.learning?.summary ||
+        null;
+
+      const correctionRequired =
+        predictionError === 1 ||
+        observed.success === false ||
+        patterns.recurringFailureCount >= 2;
+
+      this.metacognitiveReflectionCount =
+        Number(this.metacognitiveReflectionCount || 0) + 1;
+
+      const reflection = {
+        schema: "meos.maddy.metacognitive-reflection.v1",
+        version: "1.0.0",
+        reflectionId: this.id("metacognitive-reflection"),
+        revision: this.metacognitiveReflectionCount,
+        reflectedAt: new Date().toISOString(),
+        sourceEpisodeId: episode.episodeId,
+        sourceExperienceFingerprint: episode.experienceFingerprint,
+        selfFingerprint:
+          episode.context?.persistentSelf?.fingerprint ||
+          this.getSelfModel({ refresh: false })?.fingerprint ||
+          null,
+        awarenessFingerprint:
+          episode.context?.workingAwareness?.fingerprint ||
+          this.getWorkingAwareness({ refresh: false })?.fingerprint ||
+          null,
+        interactionMode: episode.context?.interactionMode || null,
+        inspection: {
+          expectation,
+          observedOutcome: observed,
+          predictionError,
+          reasoningWasWrong:
+            predictionError === 1 ||
+            observed.success === false,
+          uncertaintyPreserved:
+            predictionError === null ||
+            observed.success === null ||
+            observed.unresolvedAfter.length > 0
+        },
+        patterns,
+        calibration: {
+          confidenceBefore: expectation.confidence,
+          confidenceDelta: Number(confidenceDelta.toFixed(4)),
+          confidenceAfter: Number(updatedConfidence.toFixed(4)),
+          evidenceBased: true
+        },
+        adaptation: {
+          correctionRequired,
+          lesson: learningText,
+          futureDirective: correctionRequired
+            ? "Reconsider the prior assumption or strategy before repeating materially similar cognition."
+            : "Retain the supported strategy while continuing to test it against future outcomes.",
+          carryForward: true
+        },
+        continuity: {
+          belongsToPersistentMaddy: Boolean(
+            episode.context?.persistentSelf?.fingerprint
+          ),
+          evidenceDerived: true,
+          consciousnessClaim: false
+        }
+      };
+
+      if (existing) {
+        const index = this.metacognitiveReflections.indexOf(existing);
+        this.metacognitiveReflections.splice(index, 1);
+      }
+      this.metacognitiveReflections.unshift(reflection);
+      if (
+        this.metacognitiveReflections.length >
+        this.configuration.maximumMetacognitiveReflections
+      ) {
+        this.metacognitiveReflections.length =
+          this.configuration.maximumMetacognitiveReflections;
+      }
+
+      if (options.persist !== false) this.persist();
+      this.emit("brain:metacognitive-reflection", this.clone(reflection));
+
+      return {
+        success: true,
+        created: true,
+        duplicate: false,
+        reflection: this.clone(reflection)
+      };
+    },
+
+    getMetacognitiveReflections(limit = this.configuration.metacognitiveRecallLimit) {
+      const normalized = Math.max(
+        1,
+        Math.min(
+          this.configuration.maximumMetacognitiveReflections,
+          Number(limit) || 12
+        )
+      );
+      return this.clone(
+        (this.metacognitiveReflections || []).slice(0, normalized)
+      );
+    },
+
+    buildMetacognitiveContext(options = {}) {
+      const limit = Math.max(
+        1,
+        Math.min(12, Number(options.limit) || 6)
+      );
+      const reflections = this.getMetacognitiveReflections(limit);
+      return {
+        schema: "meos.maddy.metacognitive-context.v1",
+        generatedAt: new Date().toISOString(),
+        selfFingerprint:
+          this.getSelfModel({ refresh: false })?.fingerprint || null,
+        workingAwarenessFingerprint:
+          this.getWorkingAwareness({ refresh: false })?.fingerprint || null,
+        recentReflections: reflections,
+        corrections: reflections
+          .filter(item => item.adaptation?.correctionRequired === true)
+          .slice(0, limit),
+        calibration: reflections.slice(0, limit).map(item => ({
+          reflectionId: item.reflectionId,
+          confidenceBefore: item.calibration?.confidenceBefore,
+          confidenceAfter: item.calibration?.confidenceAfter,
+          predictionError: item.inspection?.predictionError
+        })),
+        evidenceDerived: true
+      };
+    },
+
+    runMetacognitiveReflectionAcceptanceTest() {
+      const originalMemory = this.clone(this.autobiographicalMemory || []);
+      const originalEpisodeCount = Number(this.autobiographicalEpisodeCount || 0);
+      const originalReflections = this.clone(this.metacognitiveReflections || []);
+      const originalReflectionCount = Number(this.metacognitiveReflectionCount || 0);
+      const token = this.id("d4g-acceptance");
+
+      try {
+        const first = this.formAutobiographicalEpisode({
+          eventType: "metacognitive-acceptance",
+          subject: `Reflective cognition ${token}`,
+          sourceId: `${token}-1`,
+          beliefsBefore: {
+            expectedSuccess: true,
+            confidence: 0.9,
+            unresolvedAtStart: ["test uncertainty"]
+          },
+          intention: {
+            objective: "test expectation against reality"
+          },
+          action: { type: "reason" },
+          outcome: {
+            success: false,
+            changed: true,
+            failed: 1
+          },
+          learning: {
+            learned: "The prior expectation was contradicted by observed outcome.",
+            unresolvedAfter: ["cause requires further investigation"]
+          }
+        }, { persist: false }).episode;
+
+        const reflection = this.reflectOnAutobiographicalEpisode(first, {
+          persist: false
+        });
+        const duplicate = this.reflectOnAutobiographicalEpisode(first, {
+          persist: false
+        });
+
+        for (let i = 0; i < 2; i += 1) {
+          this.formAutobiographicalEpisode({
+            eventType: "metacognitive-acceptance",
+            subject: `Reflective cognition ${token} recurring pattern ${i}`,
+            sourceId: `${token}-pattern-${i}`,
+            beliefsBefore: {
+              expectedSuccess: true,
+              confidence: 0.8
+            },
+            intention: { objective: "repeat comparable strategy" },
+            action: { type: "reason" },
+            outcome: { success: false, changed: true, failed: 1 },
+            learning: {
+              learned: "Comparable strategy failed again.",
+              unresolvedAfter: ["pattern cause"]
+            }
+          }, { persist: false });
+        }
+
+        const later = this.formAutobiographicalEpisode({
+          eventType: "metacognitive-acceptance",
+          subject: `Reflective cognition ${token} later`,
+          sourceId: `${token}-later`,
+          beliefsBefore: {
+            expectedSuccess: true,
+            confidence: 0.8
+          },
+          intention: { objective: "detect recurring pattern" },
+          action: { type: "reflect" },
+          outcome: { success: false, changed: true, failed: 1 },
+          learning: {
+            learned: "Repeated contradiction should change future reasoning.",
+            unresolvedAfter: ["pattern cause"]
+          }
+        }, { persist: false }).episode;
+        const patterned = this.reflectOnAutobiographicalEpisode(later, {
+          persist: false
+        });
+
+        const snapshot = this.buildPersistenceSnapshot();
+        const context = this.buildMetacognitiveContext({ limit: 8 });
+        const checks = [
+          {
+            name: "Reflection is evidence-derived rather than a consciousness flag",
+            passed:
+              reflection?.reflection?.continuity?.evidenceDerived === true &&
+              reflection?.reflection?.continuity?.consciousnessClaim === false
+          },
+          {
+            name: "Reflection belongs to the same persistent Maddy that experienced the episode",
+            passed:
+              Boolean(reflection?.reflection?.selfFingerprint) &&
+              reflection.reflection.selfFingerprint ===
+                first.context?.persistentSelf?.fingerprint
+          },
+          {
+            name: "Metacognition compares prior expectation with observed outcome",
+            passed:
+              reflection?.reflection?.inspection?.expectation?.expectedSuccess === true &&
+              reflection?.reflection?.inspection?.observedOutcome?.success === false
+          },
+          {
+            name: "Contradicted expectation is explicitly recognized as prediction error",
+            passed:
+              reflection?.reflection?.inspection?.predictionError === 1 &&
+              reflection?.reflection?.inspection?.reasoningWasWrong === true
+          },
+          {
+            name: "Confidence calibration changes from outcome evidence instead of arbitrary drift",
+            passed:
+              reflection?.reflection?.calibration?.evidenceBased === true &&
+              reflection?.reflection?.calibration?.confidenceAfter <
+                reflection?.reflection?.calibration?.confidenceBefore
+          },
+          {
+            name: "Uncertainty survives reflection instead of being manufactured away",
+            passed:
+              reflection?.reflection?.inspection?.uncertaintyPreserved === true
+          },
+          {
+            name: "Repeated self-reflection consolidates instead of inventing duplicate reflections",
+            passed:
+              duplicate?.duplicate === true &&
+              duplicate?.reflection?.reflectionId ===
+                reflection?.reflection?.reflectionId
+          },
+          {
+            name: "Recurring experience can become an inspectable metacognitive pattern",
+            passed:
+              patterned?.reflection?.patterns?.patternDetected === true &&
+              patterned?.reflection?.patterns?.recurringFailureCount >= 2
+          },
+          {
+            name: "Reflection produces a future-facing correction when cognition was wrong",
+            passed:
+              reflection?.reflection?.adaptation?.correctionRequired === true &&
+              reflection?.reflection?.adaptation?.carryForward === true
+          },
+          {
+            name: "Metacognitive reflection is part of bounded durable Executive Brain cognition",
+            passed:
+              Array.isArray(snapshot.metacognitiveReflections) &&
+              snapshot.metacognitiveReflections.some(
+                item => item.reflectionId === patterned?.reflection?.reflectionId
+              )
+          },
+          {
+            name: "Current cognition can inspect prior reflection, correction, and calibration",
+            passed:
+              Array.isArray(context.recentReflections) &&
+              context.recentReflections.length >= 2 &&
+              Array.isArray(context.corrections) &&
+              context.corrections.length >= 1 &&
+              Array.isArray(context.calibration)
+          }
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(
+          checks.map(item => ({
+            name: item.name,
+            passed: item.passed
+          }))
+        );
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D4G reflection + metacognitive loop: ${passed ? "PASS" : "FAIL"}.`
+        );
+        return {
+          commission: "006.017D4G",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          reflection: this.clone(reflection?.reflection || null),
+          metacognitiveContext: this.clone(context)
+        };
+      } finally {
+        this.autobiographicalMemory = originalMemory;
+        this.autobiographicalEpisodeCount = originalEpisodeCount;
+        this.metacognitiveReflections = originalReflections;
+        this.metacognitiveReflectionCount = originalReflectionCount;
+      }
+    },
+
     runAutobiographicalMemoryAcceptanceTest() {
       const originalMemory = this.clone(this.autobiographicalMemory || []);
       const originalCount = Number(this.autobiographicalEpisodeCount || 0);
@@ -5980,7 +6444,9 @@
         workingAwarenessHistory: this.workingAwarenessHistory.slice(0, this.configuration.maximumWorkingAwarenessHistory),
         workingAwarenessProjectionCount: Number(this.workingAwarenessProjectionCount || 0),
         autobiographicalMemory: this.autobiographicalMemory.slice(0, this.configuration.maximumAutobiographicalEpisodes),
-        autobiographicalEpisodeCount: Number(this.autobiographicalEpisodeCount || 0)
+        autobiographicalEpisodeCount: Number(this.autobiographicalEpisodeCount || 0),
+        metacognitiveReflections: this.metacognitiveReflections.slice(0, this.configuration.maximumMetacognitiveReflections),
+        metacognitiveReflectionCount: Number(this.metacognitiveReflectionCount || 0)
       };
     },
 
@@ -6021,6 +6487,13 @@
       this.autobiographicalEpisodeCount = Math.max(
         Number(saved.autobiographicalEpisodeCount || 0),
         Number(this.autobiographicalMemory?.[0]?.revision || 0)
+      );
+      this.metacognitiveReflections = Array.isArray(saved.metacognitiveReflections)
+        ? saved.metacognitiveReflections.slice(0, this.configuration.maximumMetacognitiveReflections)
+        : [];
+      this.metacognitiveReflectionCount = Math.max(
+        Number(saved.metacognitiveReflectionCount || 0),
+        Number(this.metacognitiveReflections?.[0]?.revision || 0)
       );
       return true;
     },
