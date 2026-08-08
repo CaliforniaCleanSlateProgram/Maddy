@@ -35,7 +35,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.12";
+const VERSION = "2.10.13";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.5.1";
@@ -105,9 +105,9 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.3";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.4";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI153-REJECTED-FILE-EXCLUSION-20260807-A";
+  "GWI154-INSTITUTIONAL-REPOSITORY-ACCEPTANCE-BRIDGE-20260808-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -6417,6 +6417,87 @@ app.get("/api/google/status", async (request, response) => {
       });
   }
 });
+
+
+app.post(
+  "/api/google/institutional-repository/acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const status =
+        await ensureGoogleWorkspaceInitialized();
+
+      if (!status.connected) {
+        response.status(401).json({
+          schema:
+            "meos.google-workspace.institutional-repository.acceptance.v1",
+          commission: "006.017C",
+          passed: false,
+          error:
+            "Google Workspace authorization is required.",
+          code:
+            "GOOGLE_WORKSPACE_NOT_CONNECTED",
+          authorizeUrl:
+            "/auth/google"
+        });
+        return;
+      }
+
+      if (
+        typeof GoogleWorkspaceProvider
+          .runInstitutionalRepositoryAcceptanceTest !==
+        "function"
+      ) {
+        response.status(503).json({
+          schema:
+            "meos.google-workspace.institutional-repository.acceptance.v1",
+          commission: "006.017C",
+          passed: false,
+          error:
+            "The deployed Google Workspace Provider does not expose the institutional repository acceptance test.",
+          code:
+            "GOOGLE_WORKSPACE_REPOSITORY_ACCEPTANCE_UNAVAILABLE",
+          providerVersion:
+            GoogleWorkspaceProvider.version || null,
+          providerBuildId:
+            GoogleWorkspaceProvider.buildId || null
+        });
+        return;
+      }
+
+      const result =
+        await GoogleWorkspaceProvider
+          .runInstitutionalRepositoryAcceptanceTest();
+
+      response
+        .status(result?.passed ? 200 : 500)
+        .json({
+          ...result,
+          serverVersion: VERSION,
+          integrationVersion:
+            GOOGLE_WORKSPACE_INTEGRATION_VERSION,
+          integrationBuildId:
+            GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID
+        });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          schema:
+            "meos.google-workspace.institutional-repository.acceptance.v1",
+          commission: "006.017C",
+          passed: false,
+          ...googleWorkspaceErrorResponse(error),
+          serverVersion: VERSION,
+          integrationVersion:
+            GOOGLE_WORKSPACE_INTEGRATION_VERSION,
+          integrationBuildId:
+            GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID
+        });
+    }
+  }
+);
 
 app.get("/auth/google", async (request, response) => {
   response.set("Cache-Control", "no-store");
