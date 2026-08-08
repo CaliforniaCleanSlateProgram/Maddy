@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.0.2
- * Build: EB102-EVIDENCE-INTEGRITY-20260801-A
+ * Version: 1.1.0
+ * Build: EB110-COGNITION-CYCLE-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.0.2";
-  const BUILD_ID = "EB102-EVIDENCE-INTEGRITY-20260801-A";
+  const VERSION = "1.1.0";
+  const BUILD_ID = "EB110-COGNITION-CYCLE-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
 
   const REQUEST_TYPES = Object.freeze({
@@ -69,7 +69,10 @@
       maximumOpenWorkItems: 20,
       requireHumanApprovalForExternalAction: true,
       requireEvidenceIntegrity: true,
-      allowIntegrityFallback: true
+      allowIntegrityFallback: true,
+      cognitionCycleEnabled: true,
+      requireInstitutionalReasoningForCognition: true,
+      maximumCognitionHistory: 200
     },
 
     initializedAt: null,
@@ -78,6 +81,7 @@
     startupCachedAt: 0,
     requestCache: new Map(),
     history: [],
+    cognitionHistory: [],
     listeners: {},
 
     profiles: {
@@ -381,6 +385,583 @@
         researchDepth: prepared.routing.researchDepth,
         approvalRequired: prepared.request.requiresApproval,
         package: prepared
+      };
+    },
+
+
+    runCognitionCycle(input, options = {}) {
+      if (this.configuration.cognitionCycleEnabled !== true) {
+        return {
+          success: false,
+          status: "cognition-disabled",
+          error: "Executive Brain cognition cycle is disabled."
+        };
+      }
+
+      const started = this.now();
+      const prepared = this.prepareRequest(input, {
+        ...options,
+        force: options.force !== false
+      });
+
+      if (!prepared?.success) {
+        return prepared;
+      }
+
+      const reasoning = this.runInstitutionalReasoning(
+        prepared,
+        options
+      );
+
+      const planningReadiness = this.preparePlanningReadiness(
+        prepared,
+        reasoning,
+        options
+      );
+
+      const unknowns = this.collectCognitionUnknowns(
+        prepared,
+        reasoning,
+        planningReadiness
+      );
+
+      const attention = this.assessCognitionAttention(
+        prepared,
+        reasoning,
+        unknowns
+      );
+
+      const result = {
+        success:
+          prepared.success === true &&
+          (
+            reasoning?.success === true ||
+            this.configuration
+              .requireInstitutionalReasoningForCognition !== true
+          ),
+        schema: "meos.executive-brain.cognition-cycle.v1",
+        version: this.version,
+        buildId: this.buildId,
+        cognitionId: this.id("cognition"),
+        generatedAt: new Date().toISOString(),
+
+        request: this.clone(prepared.request),
+        identity: this.clone(prepared.identity),
+        organization: this.clone(prepared.organization),
+        authority: this.clone(prepared.authority),
+
+        perception: {
+          localContext: this.clone(prepared.localContext),
+          evidenceIntegrity: this.clone(prepared.evidenceIntegrity),
+          currentWork: this.clone(prepared.currentWork)
+        },
+
+        reasoning: this.clone(reasoning),
+
+        planning: planningReadiness,
+        unknowns,
+        attention,
+
+        dispatchReadiness: {
+          ready:
+            planningReadiness.ready === true &&
+            unknowns.filter(item => item.blocking === true).length === 0,
+          hallwayRequired:
+            planningReadiness.proposedWork.length > 0,
+          proposedWorkCount:
+            planningReadiness.proposedWork.length,
+          authorityRequired:
+            Boolean(
+              prepared.request.requiresApproval ||
+              reasoning?.approvalRequired ||
+              reasoning?.recommendation
+                ?.executiveApprovalRequired
+            ),
+          note:
+            "006.016A prepares cognition and planning readiness only. Mission creation and Hallway dispatch remain explicitly out of scope until the cognitive dispatch commission."
+        },
+
+        durationMs: Number((this.now() - started).toFixed(2))
+      };
+
+      this.recordCognition(result);
+      this.record("cognition.completed", {
+        cognitionId: result.cognitionId,
+        requestId: prepared.request.id,
+        reasoningSuccess: reasoning?.success === true,
+        attention: attention.level,
+        unknownCount: unknowns.length,
+        proposedWorkCount:
+          planningReadiness.proposedWork.length,
+        durationMs: result.durationMs
+      });
+
+      this.emit("brain:cognition-completed", result);
+      return this.clone(result);
+    },
+
+    runInstitutionalReasoning(prepared, options = {}) {
+      const engine = global.InstitutionalReasoning;
+
+      if (!engine || typeof engine.analyze !== "function") {
+        return {
+          success: false,
+          status: "institutional-reasoning-unavailable",
+          recommendation: null,
+          findings: [],
+          risks: [],
+          options: [],
+          dependencies: [],
+          openLoops: [],
+          conflicts: [],
+          implementationPlan: [],
+          approvalRequired: true,
+          generatedAt: new Date().toISOString()
+        };
+      }
+
+      const mode = this.cognitionReasoningMode(
+        prepared?.request?.type,
+        options.reasoningMode
+      );
+
+      const question = this.buildCognitionQuestion(prepared);
+
+      return this.safe(
+        () =>
+          engine.analyze(question, {
+            mode,
+            includeRisks: true,
+            includeAlternatives: true,
+            includeImplementation: true,
+            evidenceLimit:
+              options.evidenceLimit ||
+              this.configuration.maximumEvidenceItems
+          }),
+        {
+          success: false,
+          status: "institutional-reasoning-error",
+          recommendation: null,
+          findings: [],
+          risks: [],
+          options: [],
+          dependencies: [],
+          openLoops: [],
+          conflicts: [],
+          implementationPlan: [],
+          approvalRequired: true,
+          generatedAt: new Date().toISOString()
+        }
+      );
+    },
+
+    cognitionReasoningMode(requestType, explicitMode = null) {
+      if (explicitMode) {
+        return explicitMode;
+      }
+
+      const mapping = {
+        [REQUEST_TYPES.DECISION]: "decision",
+        [REQUEST_TYPES.MONITORING]: "risk",
+        [REQUEST_TYPES.RESEARCH]: "strategic",
+        [REQUEST_TYPES.ORGANIZATION]: "strategic",
+        [REQUEST_TYPES.CURRENT_WORK]: "operational",
+        [REQUEST_TYPES.LEARNING]: "executive"
+      };
+
+      return mapping[requestType] || "executive";
+    },
+
+    buildCognitionQuestion(prepared) {
+      const request = prepared?.request?.text || "";
+      const organization = prepared?.organization || {};
+      const evidence =
+        prepared?.localContext?.evidence || [];
+
+      const evidenceDigest = evidence
+        .slice(0, 10)
+        .map((item, index) => {
+          const authority =
+            item.authority || item.evidenceClass || "unknown";
+          const summary =
+            item.summary || item.content || item.title || "";
+          return `${index + 1}. [${authority}] ${summary}`;
+        })
+        .filter(Boolean)
+        .join(" ");
+
+      const organizationContext = [
+        organization?.name
+          ? `Organization: ${organization.name}.`
+          : "",
+        organization?.mission
+          ? `Mission: ${organization.mission}.`
+          : "",
+        organization?.operatingPurpose
+          ? `Operating purpose: ${organization.operatingPurpose}.`
+          : "",
+        organization?.longTermPurpose
+          ? `Long-term purpose: ${organization.longTermPurpose}.`
+          : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return [
+        `Executive cognition objective: ${request}`,
+        organizationContext,
+        evidenceDigest
+          ? `Governed evidence available to Executive Brain: ${evidenceDigest}`
+          : "No governed evidence digest is available from Executive Brain.",
+        "Reason across the institutional record. Identify material risks, dependencies, conflicts, alternatives, open loops, and the next executable steps. Separate verified evidence from inference and unknowns. Do not invent facts. Do not execute work or approve external action."
+      ]
+        .filter(Boolean)
+        .join(" ");
+    },
+
+    preparePlanningReadiness(prepared, reasoning, options = {}) {
+      const planning = global.ExecutivePlanning;
+      const available =
+        Boolean(planning) &&
+        typeof planning.createPlan === "function";
+
+      const implementation =
+        Array.isArray(reasoning?.implementationPlan)
+          ? reasoning.implementationPlan
+          : [];
+
+      const dependencies =
+        Array.isArray(reasoning?.dependencies)
+          ? reasoning.dependencies
+          : [];
+
+      const risks =
+        Array.isArray(reasoning?.risks)
+          ? reasoning.risks
+          : [];
+
+      const proposedWork = implementation
+        .map((step, index) => ({
+          order: Number(step?.order) || index + 1,
+          action:
+            step?.action ||
+            step?.title ||
+            step?.description ||
+            "",
+          owner:
+            step?.owner ||
+            step?.office ||
+            "Maddy",
+          status:
+            step?.status || "proposed",
+          requiresAuthority:
+            /approval|authorize|submit|send|sign|purchase|spend|commit|contact/i.test(
+              [
+                step?.action,
+                step?.title,
+                step?.description
+              ]
+                .filter(Boolean)
+                .join(" ")
+            )
+        }))
+        .filter(item => item.action);
+
+      const recommendationState =
+        reasoning?.recommendation?.state || null;
+
+      const reasoningUsable =
+        reasoning?.success === true &&
+        ![
+          "insufficient-evidence"
+        ].includes(recommendationState);
+
+      return {
+        available,
+        ready:
+          available &&
+          reasoningUsable &&
+          proposedWork.length > 0,
+        status:
+          !available
+            ? "planning-engine-unavailable"
+            : !reasoning?.success
+              ? "reasoning-not-ready"
+              : recommendationState === "insufficient-evidence"
+                ? "evidence-not-ready"
+                : proposedWork.length === 0
+                  ? "no-plan-work-derived"
+                  : "ready-for-plan-draft",
+        objective: prepared?.request?.text || "",
+        recommendationState,
+        dependencies: this.clone(dependencies),
+        risks: this.clone(risks),
+        proposedWork,
+        planCreated: false,
+        mutationPerformed: false,
+        note:
+          options.createPlan === true
+            ? "Plan creation is intentionally withheld in 006.016A. This commission establishes cognition and planning readiness without mutating Executive Planning."
+            : "No plan mutation is performed during cognition. Planning remains governed and approval-aware."
+      };
+    },
+
+    collectCognitionUnknowns(prepared, reasoning, planningReadiness) {
+      const unknowns = [];
+
+      const add = (source, value, blocking = false) => {
+        const text = this.textContent(
+          value?.title ||
+          value?.description ||
+          value?.summary ||
+          value?.content ||
+          value
+        ).trim();
+
+        if (!text) return;
+
+        unknowns.push({
+          id: this.id("cognition-unknown"),
+          source,
+          description: text,
+          blocking: Boolean(blocking)
+        });
+      };
+
+      (
+        prepared?.evidenceIntegrity
+          ?.unverifiedInformation || []
+      ).forEach(item =>
+        add("evidence-integrity", item, false)
+      );
+
+      (
+        prepared?.evidenceIntegrity
+          ?.conflicts || []
+      ).forEach(item =>
+        add("evidence-conflict", item, true)
+      );
+
+      (reasoning?.openLoops || []).forEach(item =>
+        add("institutional-reasoning", item, false)
+      );
+
+      if (
+        reasoning?.success !== true &&
+        this.configuration
+          .requireInstitutionalReasoningForCognition
+      ) {
+        add(
+          "executive-brain",
+          "Institutional Reasoning did not complete successfully.",
+          true
+        );
+      }
+
+      if (
+        planningReadiness?.available !== true
+      ) {
+        add(
+          "executive-planning",
+          "Executive Planning is unavailable for cognition handoff.",
+          true
+        );
+      }
+
+      return this.dedupe(
+        unknowns,
+        item =>
+          `${item.source}|${this.normalize(item.description)}`
+      );
+    },
+
+    assessCognitionAttention(prepared, reasoning, unknowns) {
+      const risks =
+        Array.isArray(reasoning?.risks)
+          ? reasoning.risks
+          : [];
+
+      const highRisks = risks.filter(risk =>
+        ["high", "critical"].includes(
+          String(risk?.severity || "").toLowerCase()
+        )
+      );
+
+      const blockingUnknowns = unknowns.filter(
+        item => item.blocking
+      );
+
+      const approvalRequired = Boolean(
+        prepared?.request?.requiresApproval ||
+        reasoning?.approvalRequired ||
+        reasoning?.recommendation
+          ?.executiveApprovalRequired
+      );
+
+      let score = 35;
+      score += Math.min(30, highRisks.length * 12);
+      score += Math.min(
+        20,
+        blockingUnknowns.length * 8
+      );
+      score += approvalRequired ? 10 : 0;
+
+      const state =
+        reasoning?.recommendation?.state;
+
+      if (
+        ["hold", "escalate", "insufficient-evidence"]
+          .includes(state)
+      ) {
+        score += 10;
+      }
+
+      score = Math.min(100, score);
+
+      return {
+        score,
+        level:
+          score >= 85
+            ? "critical"
+            : score >= 70
+              ? "high"
+              : score >= 50
+                ? "elevated"
+                : "normal",
+        highRiskCount: highRisks.length,
+        blockingUnknownCount:
+          blockingUnknowns.length,
+        approvalRequired,
+        recommendationState: state || null
+      };
+    },
+
+    recordCognition(result) {
+      const entry = {
+        cognitionId: result.cognitionId,
+        requestId: result.request?.id || null,
+        objective: result.request?.text || "",
+        requestType: result.request?.type || null,
+        attention: result.attention?.level || null,
+        recommendationState:
+          result.reasoning?.recommendation?.state ||
+          null,
+        unknownCount: result.unknowns?.length || 0,
+        proposedWorkCount:
+          result.planning?.proposedWork?.length || 0,
+        success: result.success === true,
+        generatedAt: result.generatedAt
+      };
+
+      this.cognitionHistory.unshift(entry);
+
+      if (
+        this.cognitionHistory.length >
+        this.configuration.maximumCognitionHistory
+      ) {
+        this.cognitionHistory.length =
+          this.configuration.maximumCognitionHistory;
+      }
+
+      this.persist();
+      return this.clone(entry);
+    },
+
+    getCognitionHistory(limit = 25) {
+      const normalized = Math.max(
+        1,
+        Math.min(
+          this.configuration.maximumCognitionHistory,
+          Number(limit) || 25
+        )
+      );
+
+      return this.clone(
+        this.cognitionHistory.slice(0, normalized)
+      );
+    },
+
+    runCognitionAcceptanceTest() {
+      const checks = [];
+      const check = (name, passed, details = {}) =>
+        checks.push({
+          name,
+          passed: Boolean(passed),
+          details
+        });
+
+      check(
+        "Cognition cycle API exists",
+        typeof this.runCognitionCycle === "function"
+      );
+
+      check(
+        "Evidence Integrity remains inside Executive Brain request preparation",
+        typeof this.prepareEvidenceIntegrity === "function" &&
+          /prepareEvidenceIntegrity/.test(
+            this.prepareRequest.toString()
+          )
+      );
+
+      check(
+        "Institutional Reasoning is a cognition stage",
+        typeof this.runInstitutionalReasoning === "function" &&
+          /InstitutionalReasoning/.test(
+            this.runInstitutionalReasoning.toString()
+          )
+      );
+
+      check(
+        "Planning readiness is prepared without mutating plans",
+        typeof this.preparePlanningReadiness === "function" &&
+          /mutationPerformed:\s*false/.test(
+            this.preparePlanningReadiness.toString()
+          ) &&
+          !/\.createPlan\s*\(/.test(
+            this.preparePlanningReadiness.toString()
+          )
+      );
+
+      check(
+        "Cognition separates unknowns from recommendation",
+        typeof this.collectCognitionUnknowns === "function"
+      );
+
+      check(
+        "Cognition calculates executive attention",
+        typeof this.assessCognitionAttention === "function"
+      );
+
+      check(
+        "Cognition history survives as Executive Brain state",
+        Array.isArray(this.cognitionHistory) &&
+          typeof this.recordCognition === "function"
+      );
+
+      check(
+        "Hallway execution remains outside 006.016A",
+        /Hallway dispatch remain explicitly out of scope/.test(
+          this.runCognitionCycle.toString()
+        )
+      );
+
+      const passed = checks.every(item => item.passed);
+
+      console.table(
+        checks.map(item => ({
+          name: item.name,
+          passed: item.passed
+        }))
+      );
+
+      console.info(
+        `[MEOS ${this.version}] Commission 006.016A cognition acceptance: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.016A",
+        passed,
+        checks
       };
     },
 
@@ -1700,7 +2281,12 @@
             schema: "meos.executive-brain.state.v1",
             version: this.version,
             savedAt: new Date().toISOString(),
-            history: this.history.slice(0, 100)
+            history: this.history.slice(0, 100),
+            cognitionHistory:
+              this.cognitionHistory.slice(
+                0,
+                this.configuration.maximumCognitionHistory
+              )
           })
         );
         return true;
@@ -1726,6 +2312,13 @@
         }
 
         this.history = Array.isArray(saved.history) ? saved.history : [];
+        this.cognitionHistory =
+          Array.isArray(saved.cognitionHistory)
+            ? saved.cognitionHistory.slice(
+                0,
+                this.configuration.maximumCognitionHistory
+              )
+            : [];
         return true;
       }, false);
     }
