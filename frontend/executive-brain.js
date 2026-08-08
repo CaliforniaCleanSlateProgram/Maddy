@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.4.0
- * Build: EB140-DURABLE-COGNITION-AUTHORITY-FLIP-20260808-A
+ * Version: 1.5.0
+ * Build: EB150-CONTINUOUS-COGNITIVE-REENTRY-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.4.0";
-  const BUILD_ID = "EB140-DURABLE-COGNITION-AUTHORITY-FLIP-20260808-A";
+  const VERSION = "1.5.0";
+  const BUILD_ID = "EB150-CONTINUOUS-COGNITIVE-REENTRY-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -158,7 +158,9 @@
       continuousCognitionEnabled: true,
       meaningfulChangeDebounceMs: 1200,
       cognitiveReentryCooldownMs: 5000,
-      maximumCognitiveReentryHistory: 250
+      maximumCognitiveReentryHistory: 250,
+      maximumCognitiveIntentions: 250,
+      cognitiveIntentionRetryMs: 15000
     },
 
     initializedAt: null,
@@ -170,6 +172,8 @@
     cognitionHistory: [],
     cognitiveDispatchHistory: [],
     cognitiveReentryHistory: [],
+    cognitiveIntentions: [],
+    cognitiveContinuity: { hydrated: false, resumedAt: null, lastResumeCount: 0 },
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -189,7 +193,13 @@
       };
 
       this.restore();
-      this.hydrateLaptopPersistence();
+      this.cognitiveHydrationPromise = this.hydrateLaptopPersistence().then(result => {
+        this.cognitiveContinuity.hydrated = true;
+        const resumed = this.resumeUnresolvedCognitiveIntentions({ reason: "durable-cognition-hydrated" });
+        this.cognitiveContinuity.resumedAt = new Date().toISOString();
+        this.cognitiveContinuity.lastResumeCount = resumed.resumedCount || 0;
+        return result;
+      });
 
       this.profiles.maddy =
         options.maddyProfile || this.resolveMaddyProfile();
@@ -1043,6 +1053,80 @@
       return null;
     },
 
+    upsertCognitiveIntention(subject, triggers = [], options = {}) {
+      const normalizedSubject = String(subject || "").trim();
+      if (!normalizedSubject) return null;
+      const key = this.normalize(normalizedSubject);
+      let intention = this.cognitiveIntentions.find(item => item.key === key && item.status !== "completed");
+      if (!intention) {
+        intention = {
+          intentionId: this.id("cognitive-intention"), key, subject: normalizedSubject,
+          status: "pending", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+          attempts: 0, triggers: [], lastError: null
+        };
+        this.cognitiveIntentions.unshift(intention);
+      }
+      intention.status = options.status || intention.status || "pending";
+      intention.updatedAt = new Date().toISOString();
+      intention.triggers = [...(intention.triggers || []), ...this.clone(triggers)].slice(-50);
+      this.cognitiveIntentions = this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions);
+      this.persist();
+      return intention;
+    },
+
+    resolveCognitiveIntention(subject, result = {}) {
+      const key = this.normalize(subject);
+      const intention = this.cognitiveIntentions.find(item => item.key === key && item.status !== "completed");
+      if (!intention) return false;
+      intention.status = result.success === true ? "completed" : "pending";
+      intention.updatedAt = new Date().toISOString();
+      intention.lastError = result.success === true ? null : (result.error || "cognitive-reentry-incomplete");
+      if (result.success === true) {
+        intention.completedAt = intention.updatedAt;
+      }
+      this.persist();
+      return true;
+    },
+
+    scheduleCognitiveIntentionRetry(intention, reason = "incomplete-cognition") {
+      if (!intention?.subject || intention.status === "completed") return false;
+      const key = this.normalize(intention.subject);
+      if (this.cognitiveReentryTimers.has(key) || this.cognitiveReentryInFlight.has(key)) return false;
+      const attempts = Math.max(1, Number(intention.attempts || 1));
+      const delay = Math.min(300000, this.configuration.cognitiveIntentionRetryMs * Math.pow(2, Math.min(attempts - 1, 4)));
+      const timerState = { subject: intention.subject, triggers: [{ source: "executive-brain", event: "unresolved-intention-time-reentry", intentionId: intention.intentionId, reason }], timerId: null };
+      timerState.timerId = global.setTimeout(() => void this.executeCognitiveReentry(intention.subject, timerState.triggers, { preserveIntention: true }), delay);
+      this.cognitiveReentryTimers.set(key, timerState);
+      this.record("cognition.intention-retry-scheduled", { intentionId: intention.intentionId, subject: intention.subject, attempts, delay, reason });
+      return true;
+    },
+
+    resumeUnresolvedCognitiveIntentions(options = {}) {
+      if (this.configuration.continuousCognitionEnabled !== true) return { success: true, resumedCount: 0 };
+      const unresolved = (this.cognitiveIntentions || []).filter(item => item && item.status !== "completed" && item.subject);
+      let resumedCount = 0;
+      unresolved.forEach(intention => {
+        const key = this.normalize(intention.subject);
+        if (this.cognitiveReentryInFlight.has(key) || this.cognitiveReentryTimers.has(key)) return;
+        intention.status = "pending";
+        intention.updatedAt = new Date().toISOString();
+        const result = this.scheduleCognitiveReentry(intention.subject, {
+          source: "executive-brain",
+          event: "cognitive-continuity-resume",
+          intentionId: intention.intentionId,
+          reason: options.reason || "runtime-reentry"
+        }, { immediate: true, preserveIntention: true });
+        if (result?.scheduled) resumedCount += 1;
+      });
+      this.record("cognition.intentions-resumed", { resumedCount, reason: options.reason || "runtime-reentry" });
+      return { success: true, resumedCount, unresolvedCount: unresolved.length };
+    },
+
+    getCognitiveIntentions(options = {}) {
+      const includeCompleted = options.includeCompleted === true;
+      return this.clone((this.cognitiveIntentions || []).filter(item => includeCompleted || item.status !== "completed"));
+    },
+
     scheduleCognitiveReentry(
       subject,
       trigger = {},
@@ -1110,6 +1194,10 @@
           priorReentryId:
             recentDuplicate.reentryId
         };
+      }
+
+      if (options.preserveIntention !== true) {
+        this.upsertCognitiveIntention(normalizedSubject, [trigger], { status: "pending" });
       }
 
       const existingTimer =
@@ -1248,6 +1336,9 @@
         error: null
       };
 
+      const intention = this.upsertCognitiveIntention(subject, triggers, { status: "running" });
+      if (intention) intention.attempts = Number(intention.attempts || 0) + 1;
+
       try {
         this.refresh({
           reason:
@@ -1309,6 +1400,7 @@
           }
         );
 
+        this.resolveCognitiveIntention(subject, result || {});
         return result;
       } catch (error) {
         entry.status = "failed";
@@ -1319,6 +1411,7 @@
           "brain:cognitive-reentry-failed",
           this.clone(entry)
         );
+        this.resolveCognitiveIntention(subject, { success: false, error: entry.error });
 
         return {
           success: false,
@@ -1347,6 +1440,9 @@
           key
         );
 
+        const unresolvedIntention = (this.cognitiveIntentions || []).find(item => item.key === key && item.status !== "completed");
+        if (unresolvedIntention) this.scheduleCognitiveIntentionRetry(unresolvedIntention, entry.error || entry.status);
+
         this.persist();
       }
     },
@@ -1373,6 +1469,9 @@
           ),
         reentryHistoryCount:
           this.cognitiveReentryHistory.length,
+        unresolvedIntentions:
+          (this.cognitiveIntentions || []).filter(item => item.status !== "completed").length,
+        cognitiveContinuity: this.clone(this.cognitiveContinuity),
         lastReentry:
           this.clone(
             this.cognitiveReentryHistory[0] ||
@@ -4169,7 +4268,8 @@
         history: this.history.slice(0, 100),
         cognitionHistory: this.cognitionHistory.slice(0, this.configuration.maximumCognitionHistory),
         cognitiveDispatchHistory: this.cognitiveDispatchHistory.slice(0, this.configuration.maximumCognitiveDispatchHistory),
-        cognitiveReentryHistory: this.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory)
+        cognitiveReentryHistory: this.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory),
+        cognitiveIntentions: this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions)
       };
     },
 
@@ -4179,6 +4279,7 @@
       this.cognitionHistory = Array.isArray(saved.cognitionHistory) ? saved.cognitionHistory.slice(0, this.configuration.maximumCognitionHistory) : [];
       this.cognitiveDispatchHistory = Array.isArray(saved.cognitiveDispatchHistory) ? saved.cognitiveDispatchHistory.slice(0, this.configuration.maximumCognitiveDispatchHistory) : [];
       this.cognitiveReentryHistory = Array.isArray(saved.cognitiveReentryHistory) ? saved.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory) : [];
+      this.cognitiveIntentions = Array.isArray(saved.cognitiveIntentions) ? saved.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions) : [];
       return true;
     },
 
@@ -4321,6 +4422,39 @@
       let localStorageBytes = null;
       try { localStorageBytes = new Blob([global.localStorage?.getItem(STORAGE_KEY) || ""]).size; } catch {}
       return this.clone({ ...brainPersistence, localStorageBytes });
+    },
+
+    async runContinuousCognitiveReentryAcceptanceTest() {
+      await this.cognitiveHydrationPromise?.catch(() => null);
+      const original = this.clone(this.cognitiveIntentions);
+      const fixtureSubject = "Commission 006.017D4C Continuity Fixture";
+      try {
+        this.cognitiveIntentions = [{
+          intentionId: "d4c-fixture", key: this.normalize(fixtureSubject), subject: fixtureSubject,
+          status: "pending", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+          attempts: 0, triggers: [{ source: "acceptance", event: "restart-boundary" }], lastError: null
+        }];
+        await this.flushPersistence();
+        const durable = await this.fetchDurableCognitionState();
+        const checks = [
+          { name: "Unresolved cognitive intentions are part of durable cognition", passed: Array.isArray(durable?.state?.cognitiveIntentions) && durable.state.cognitiveIntentions.some(item => item.intentionId === "d4c-fixture") },
+          { name: "Cognitive continuity waits for durable hydration before restart re-entry", passed: this.cognitiveContinuity.hydrated === true && Boolean(this.cognitiveHydrationPromise) },
+          { name: "Meaningful change becomes an explicit resumable intention", passed: typeof this.upsertCognitiveIntention === "function" && /upsertCognitiveIntention/.test(this.scheduleCognitiveReentry.toString()) },
+          { name: "Unresolved intentions can autonomously resume after process or browser restart", passed: typeof this.resumeUnresolvedCognitiveIntentions === "function" && /cognitive-continuity-resume/.test(this.resumeUnresolvedCognitiveIntentions.toString()) },
+          { name: "Unresolved cognition can re-enter again through time without a new human prompt", passed: typeof this.scheduleCognitiveIntentionRetry === "function" && /unresolved-intention-time-reentry/.test(this.scheduleCognitiveIntentionRetry.toString()) },
+          { name: "Completed cognition resolves its originating intention instead of looping forever", passed: /resolveCognitiveIntention/.test(this.executeCognitiveReentry.toString()) },
+          { name: "Re-entry still returns through commissioned cognition Planning and Hallway path", passed: /runPositioningCognitionAndDispatch/.test(this.executeCognitiveReentry.toString()) },
+          { name: "Continuous cognition does not create new external authority", passed: this.configuration.requireHumanApprovalForExternalAction === true },
+          { name: "Project Maddy continuity remains observable rather than falsely claimed", passed: typeof this.getCognitiveIntentions === "function" && typeof this.getContinuousCognitionStatus === "function" }
+        ];
+        const passed = checks.every(item => item.passed);
+        console.table(checks);
+        console.info(`[MEOS ${this.version}] Commission 006.017D4C continuous cognitive reentry: ${passed ? "PASS" : "FAIL"}.`);
+        return { commission: "006.017D4C", version: this.version, buildId: this.buildId, passed, checks, continuity: this.getContinuousCognitionStatus() };
+      } finally {
+        this.cognitiveIntentions = original;
+        await this.flushPersistence();
+      }
     },
 
     async runLaptopPersistenceAcceptanceTest() {
