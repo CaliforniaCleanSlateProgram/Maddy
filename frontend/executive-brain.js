@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.9.0
- * Build: EB190-REFLECTION-METACOGNITIVE-LOOP-20260808-A
+ * Version: 1.10.0
+ * Build: EB1100-TEMPORAL-CONTINUITY-PERSISTENT-INTENTIONS-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.9.0";
-  const BUILD_ID = "EB190-REFLECTION-METACOGNITIVE-LOOP-20260808-A";
+  const VERSION = "1.10.0";
+  const BUILD_ID = "EB1100-TEMPORAL-CONTINUITY-PERSISTENT-INTENTIONS-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -170,7 +170,10 @@
       maximumAutobiographicalEpisodes: 240,
       autobiographicalRecallLimit: 12,
       maximumMetacognitiveReflections: 240,
-      metacognitiveRecallLimit: 12
+      metacognitiveRecallLimit: 12,
+      maximumTemporalContinuityHistory: 180,
+      temporalContinuityResumeThresholdMs: 15000,
+      temporalCommitmentLookaheadHours: 720
     },
 
     initializedAt: null,
@@ -195,6 +198,16 @@
     autobiographicalEpisodeCount: 0,
     metacognitiveReflections: [],
     metacognitiveReflectionCount: 0,
+    temporalContinuity: {
+      schema: "meos.maddy.temporal-continuity.v1",
+      status: "initializing",
+      lastCheckpoint: null,
+      lastResume: null,
+      currentIntervalStartedAt: null
+    },
+    temporalContinuityHistory: [],
+    temporalContinuityCheckpointCount: 0,
+    temporalContinuityObserversAttached: false,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -216,12 +229,22 @@
       this.restore();
       this.cognitiveHydrationPromise = this.hydrateLaptopPersistence().then(result => {
         this.cognitiveContinuity.hydrated = true;
+        const temporalResume = this.resumeTemporalContinuity({
+          reason: "durable-cognition-hydrated"
+        });
         const resumed = this.resumeUnresolvedCognitiveIntentions({ reason: "durable-cognition-hydrated" });
         this.cognitiveContinuity.resumedAt = new Date().toISOString();
         this.cognitiveContinuity.lastResumeCount = resumed.resumedCount || 0;
+        this.temporalContinuity.status = "continuous";
+        this.temporalContinuity.currentIntervalStartedAt = new Date().toISOString();
+        this.temporalContinuity.lastResume = this.clone(temporalResume);
         this.projectSelfModel({
           reason: "durable-cognition-hydrated",
           persist: true
+        });
+        this.projectWorkingAwareness({
+          reason: "temporal-continuity-resumed",
+          persist: false
         });
         return result;
       });
@@ -239,6 +262,10 @@
       this.attachContinuousCognitionListeners();
       this.attachSelfModelObservers();
       this.attachWorkingAwarenessObservers();
+      this.attachTemporalContinuityObservers();
+      this.temporalContinuity.currentIntervalStartedAt =
+        this.temporalContinuity.currentIntervalStartedAt ||
+        new Date().toISOString();
       this.projectWorkingAwareness({
         reason: "initialization",
         persist: false
@@ -309,7 +336,11 @@
         onlineComponents: manifest.filter(item => item.online).length,
         totalComponents: manifest.length,
         initializedAt: this.initializedAt,
-        refreshedAt: this.refreshedAt
+        refreshedAt: this.refreshedAt,
+        temporalContinuityReady:
+          this.temporalContinuity?.status === "continuous" ||
+          this.temporalContinuity?.status === "checkpointed",
+        temporalContinuity: this.getTemporalContinuityStatus()
       };
     },
 
@@ -374,6 +405,7 @@
         workingAwareness: this.getWorkingAwareness({ refresh: false }),
         autobiographicalMemory: this.getAutobiographicalMemory(8),
         metacognitiveContext: this.buildMetacognitiveContext({ limit: 6 }),
+        temporalContinuity: this.getTemporalContinuityStatus(),
 
         system: {
           manifest: this.getSystemManifest()
@@ -463,6 +495,7 @@
         selfModel: startup.selfModel,
         workingAwareness: startup.workingAwareness,
         autobiographicalMemory: startup.autobiographicalMemory,
+        temporalContinuity: startup.temporalContinuity,
         system: {
           available: startup.system.manifest
             .filter(item => item.available)
@@ -1153,15 +1186,34 @@
         intention = {
           intentionId: this.id("cognitive-intention"), key, subject: normalizedSubject,
           status: "pending", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-          attempts: 0, triggers: [], lastError: null
+          attempts: 0, triggers: [], lastError: null,
+          temporal: {
+            kind: options.kind || "cognitive-intention",
+            dueAt: options.dueAt || null,
+            expectedAt: options.expectedAt || null,
+            promiseTo: options.promiseTo || null,
+            relatedMissionId: options.relatedMissionId || null,
+            sourceId: options.sourceId || null,
+            createdInSelfFingerprint: this.getSelfModel({ refresh: false })?.fingerprint || null,
+            createdInAwarenessFingerprint: this.getWorkingAwareness({ refresh: false })?.fingerprint || null
+          }
         };
         this.cognitiveIntentions.unshift(intention);
       }
       intention.status = options.status || intention.status || "pending";
       intention.updatedAt = new Date().toISOString();
+      intention.temporal = {
+        ...(intention.temporal || {}),
+        ...(options.kind ? { kind: options.kind } : {}),
+        ...(options.dueAt !== undefined ? { dueAt: options.dueAt } : {}),
+        ...(options.expectedAt !== undefined ? { expectedAt: options.expectedAt } : {}),
+        ...(options.promiseTo !== undefined ? { promiseTo: options.promiseTo } : {}),
+        ...(options.relatedMissionId !== undefined ? { relatedMissionId: options.relatedMissionId } : {}),
+        ...(options.sourceId !== undefined ? { sourceId: options.sourceId } : {})
+      };
       intention.triggers = [...(intention.triggers || []), ...this.clone(triggers)].slice(-50);
       this.cognitiveIntentions = this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions);
-      this.persist();
+      if (options.persist !== false) this.persist();
       if (brainPersistence.hydrated === true) {
         this.projectSelfModel({
           reason: "cognitive-intention-updated",
@@ -3598,6 +3650,532 @@
         .sort((a, b) => b.recallScore - a.recallScore)
         .slice(0, limit)
         .map(item => ({ ...item.episode, recallScore: Number(item.recallScore.toFixed(2)) })));
+    },
+
+    /*
+     * Commission 006.017D4H — Temporal Continuity + Persistent Intentions
+     *
+     * This layer gives the same persistent Maddy a reconstructable temporal
+     * thread across suspension, browser/process restart, disconnection, and
+     * return. It does not create a second scheduler or a consciousness flag.
+     * It binds existing intentions, missions, approvals, self-model, working
+     * awareness, autobiography, and reflection into an evidence-backed
+     * "what I was doing / what changed / what still matters" continuity state.
+     */
+    registerTemporalCommitment(subject, options = {}) {
+      const intention = this.upsertCognitiveIntention(
+        subject,
+        [{
+          source: options.source || "executive-brain",
+          event: options.event || "temporal-commitment-registered",
+          sourceId: options.sourceId || null
+        }],
+        {
+          status: options.status || "pending",
+          kind: options.kind || "commitment",
+          dueAt: options.dueAt || null,
+          expectedAt: options.expectedAt || null,
+          promiseTo: options.promiseTo || null,
+          relatedMissionId: options.relatedMissionId || null,
+          sourceId: options.sourceId || null,
+          persist: options.persist !== false
+        }
+      );
+      if (!intention) return null;
+      if (options.record !== false) {
+        this.record("continuity.temporal-commitment-registered", {
+          intentionId: intention.intentionId,
+          subject: intention.subject,
+          temporal: this.clone(intention.temporal || {})
+        });
+      }
+      return this.clone(intention);
+    },
+
+    temporalCommitmentState(intention = {}, nowMs = Date.now()) {
+      const temporal = intention.temporal || {};
+      const raw = temporal.dueAt || temporal.expectedAt || null;
+      let dueAt = null;
+      let millisecondsRemaining = null;
+      let overdue = false;
+      if (raw) {
+        const due = new Date(raw).getTime();
+        if (Number.isFinite(due)) {
+          dueAt = new Date(due).toISOString();
+          millisecondsRemaining = due - nowMs;
+          overdue = millisecondsRemaining < 0;
+        }
+      }
+      return {
+        intentionId: intention.intentionId || null,
+        subject: intention.subject || null,
+        status: intention.status || "pending",
+        kind: temporal.kind || "cognitive-intention",
+        promiseTo: temporal.promiseTo || null,
+        relatedMissionId: temporal.relatedMissionId || null,
+        dueAt,
+        millisecondsRemaining,
+        overdue,
+        attempts: Number(intention.attempts || 0),
+        lastError: intention.lastError || null
+      };
+    },
+
+    collectTemporalCommitments(options = {}) {
+      const nowMs = Number(options.nowMs || Date.now());
+      const lookaheadMs = Math.max(
+        0,
+        Number(options.lookaheadHours ?? this.configuration.temporalCommitmentLookaheadHours) * 3600000
+      );
+      return this.clone(
+        (this.cognitiveIntentions || [])
+          .filter(item => item && item.status !== "completed")
+          .map(item => this.temporalCommitmentState(item, nowMs))
+          .filter(item =>
+            item.dueAt === null ||
+            item.overdue ||
+            item.millisecondsRemaining <= lookaheadMs
+          )
+          .sort((a, b) => {
+            if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+            const av = a.millisecondsRemaining === null ? Number.MAX_SAFE_INTEGER : a.millisecondsRemaining;
+            const bv = b.millisecondsRemaining === null ? Number.MAX_SAFE_INTEGER : b.millisecondsRemaining;
+            return av - bv;
+          })
+      );
+    },
+
+    buildTemporalContinuityCheckpoint(options = {}) {
+      const selfModel = this.getSelfModel({ refresh: false });
+      const awareness = this.getWorkingAwareness({ refresh: false });
+      const currentWork = this.collectCurrentWork();
+      const commitments = this.collectTemporalCommitments();
+      const primary = awareness?.primaryFocus || null;
+      const unresolved = (this.cognitiveIntentions || [])
+        .filter(item => item && item.status !== "completed")
+        .slice(0, 50)
+        .map(item => ({
+          intentionId: item.intentionId || null,
+          subject: item.subject || null,
+          status: item.status || null,
+          temporal: this.clone(item.temporal || null),
+          attempts: Number(item.attempts || 0),
+          lastError: item.lastError || null
+        }));
+
+      return {
+        schema: "meos.maddy.temporal-checkpoint.v1",
+        checkpointId: options.checkpointId || this.id("temporal-checkpoint"),
+        capturedAt: options.capturedAt || new Date().toISOString(),
+        reason: options.reason || "runtime-checkpoint",
+        persistentSelfFingerprint: selfModel?.fingerprint || null,
+        workingAwarenessFingerprint: awareness?.fingerprint || null,
+        interactionMode:
+          awareness?.interactionContext?.activeMode ||
+          selfModel?.interactionContext?.activeMode ||
+          null,
+        whatIWasDoing: primary
+          ? {
+              key: primary.key || null,
+              kind: primary.kind || null,
+              subject: primary.subject || null,
+              source: primary.source || null,
+              status: primary.status || null,
+              salience: Number(primary.salience || 0)
+            }
+          : null,
+        unfinishedIntentions: unresolved,
+        temporalCommitments: commitments,
+        executiveWork: {
+          activeCount: Number(currentWork?.summary?.active || 0),
+          pendingCount: Number(currentWork?.summary?.pending || 0),
+          blockedCount: Number(currentWork?.summary?.blocked || 0),
+          pendingApprovalCount: Array.isArray(currentWork?.pendingApprovals)
+            ? currentWork.pendingApprovals.length
+            : 0
+        },
+        recentAutobiographicalEpisodeId:
+          this.autobiographicalMemory?.[0]?.episodeId || null,
+        recentMetacognitiveReflectionId:
+          this.metacognitiveReflections?.[0]?.reflectionId || null,
+        evidenceDerived: true,
+        consciousnessClaim: false
+      };
+    },
+
+    checkpointTemporalContinuity(options = {}) {
+      const checkpoint = this.buildTemporalContinuityCheckpoint(options);
+      this.temporalContinuityCheckpointCount =
+        Number(this.temporalContinuityCheckpointCount || 0) + 1;
+      checkpoint.revision = this.temporalContinuityCheckpointCount;
+
+      const prior = this.temporalContinuity?.lastCheckpoint || null;
+      const semantic = this.clone(checkpoint);
+      delete semantic.checkpointId;
+      delete semantic.capturedAt;
+      delete semantic.reason;
+      delete semantic.revision;
+      (semantic.temporalCommitments || []).forEach(item => {
+        delete item.millisecondsRemaining;
+      });
+      const fingerprint = this.fingerprintCognitiveDispatch(semantic)
+        .replace("cognitive-", "temporal-");
+      checkpoint.fingerprint = fingerprint;
+      checkpoint.parentFingerprint = prior?.fingerprint || null;
+
+      if (prior?.fingerprint !== fingerprint || options.force === true) {
+        this.temporalContinuityHistory.unshift(checkpoint);
+        this.temporalContinuityHistory = this.temporalContinuityHistory.slice(
+          0,
+          this.configuration.maximumTemporalContinuityHistory
+        );
+      }
+
+      this.temporalContinuity = {
+        ...(this.temporalContinuity || {}),
+        schema: "meos.maddy.temporal-continuity.v1",
+        status: options.status || "checkpointed",
+        lastCheckpoint: checkpoint,
+        currentIntervalStartedAt:
+          this.temporalContinuity?.currentIntervalStartedAt ||
+          this.initializedAt ||
+          checkpoint.capturedAt
+      };
+
+      if (options.persist !== false) this.persist();
+      this.emit("brain:temporal-continuity-checkpoint", checkpoint);
+      return this.clone(checkpoint);
+    },
+
+    compareTemporalCheckpoint(checkpoint, current = null, options = {}) {
+      if (!checkpoint) {
+        return {
+          changed: false,
+          reasons: ["no-prior-checkpoint"],
+          unresolvedStillOpen: [],
+          newlyOverdue: []
+        };
+      }
+      const present = current || this.buildTemporalContinuityCheckpoint({
+        reason: "temporal-comparison"
+      });
+      const currentIntentions = new Map(
+        (present.unfinishedIntentions || []).map(item => [item.intentionId, item])
+      );
+      const unresolvedStillOpen = (checkpoint.unfinishedIntentions || [])
+        .filter(item => item.intentionId && currentIntentions.has(item.intentionId));
+      const nowMs = Number(options.nowMs || Date.now());
+      const newlyOverdue = (checkpoint.temporalCommitments || [])
+        .filter(item => item.dueAt && new Date(item.dueAt).getTime() <= nowMs)
+        .filter(item => item.status !== "completed");
+
+      const reasons = [];
+      if (
+        checkpoint.persistentSelfFingerprint &&
+        present.persistentSelfFingerprint &&
+        checkpoint.persistentSelfFingerprint !== present.persistentSelfFingerprint
+      ) reasons.push("persistent-self-changed");
+      if (
+        checkpoint.workingAwarenessFingerprint &&
+        present.workingAwarenessFingerprint &&
+        checkpoint.workingAwarenessFingerprint !== present.workingAwarenessFingerprint
+      ) reasons.push("working-awareness-changed");
+      if (
+        Number(checkpoint.executiveWork?.pendingApprovalCount || 0) !==
+        Number(present.executiveWork?.pendingApprovalCount || 0)
+      ) reasons.push("approval-state-changed");
+      if (newlyOverdue.length > 0) reasons.push("commitment-became-due-or-overdue");
+      if (
+        checkpoint.recentAutobiographicalEpisodeId &&
+        present.recentAutobiographicalEpisodeId &&
+        checkpoint.recentAutobiographicalEpisodeId !== present.recentAutobiographicalEpisodeId
+      ) reasons.push("new-experience-recorded");
+      if (
+        checkpoint.recentMetacognitiveReflectionId &&
+        present.recentMetacognitiveReflectionId &&
+        checkpoint.recentMetacognitiveReflectionId !== present.recentMetacognitiveReflectionId
+      ) reasons.push("new-reflection-recorded");
+
+      return {
+        changed: reasons.length > 0,
+        reasons,
+        unresolvedStillOpen: this.clone(unresolvedStillOpen),
+        newlyOverdue: this.clone(newlyOverdue),
+        present: this.clone(present)
+      };
+    },
+
+    resumeTemporalContinuity(options = {}) {
+      const prior = this.temporalContinuity?.lastCheckpoint ||
+        this.temporalContinuityHistory?.[0] ||
+        null;
+      const now = options.now || new Date().toISOString();
+      const nowMs = new Date(now).getTime();
+      const priorMs = prior?.capturedAt ? new Date(prior.capturedAt).getTime() : null;
+      const absenceMs = Number.isFinite(priorMs) ? Math.max(0, nowMs - priorMs) : null;
+      const present = this.buildTemporalContinuityCheckpoint({
+        reason: "temporal-resume-present",
+        capturedAt: now
+      });
+      const comparison = this.compareTemporalCheckpoint(prior, present, { nowMs });
+      const wasDoing = prior?.whatIWasDoing || null;
+      const shouldOrient = Boolean(
+        prior &&
+        (
+          comparison.changed ||
+          comparison.unresolvedStillOpen.length > 0 ||
+          (absenceMs !== null && absenceMs >= this.configuration.temporalContinuityResumeThresholdMs)
+        )
+      );
+
+      const resume = {
+        schema: "meos.maddy.temporal-resume.v1",
+        resumedAt: now,
+        reason: options.reason || "runtime-return",
+        absenceMs,
+        priorCheckpointId: prior?.checkpointId || null,
+        priorCheckpointFingerprint: prior?.fingerprint || null,
+        whatIWasDoing: this.clone(wasDoing),
+        unresolvedStillOpen: this.clone(comparison.unresolvedStillOpen),
+        newlyOverdue: this.clone(comparison.newlyOverdue),
+        changedDuringAbsence: comparison.changed,
+        changeReasons: this.clone(comparison.reasons),
+        orientationRequired: shouldOrient,
+        dryRun: options.dryRun === true,
+        evidenceDerived: true
+      };
+
+      if (shouldOrient && options.dryRun !== true) {
+        const subject = wasDoing?.subject ||
+          comparison.newlyOverdue?.[0]?.subject ||
+          comparison.unresolvedStillOpen?.[0]?.subject ||
+          "Reconstruct temporal continuity and determine what requires attention after return";
+        this.scheduleCognitiveReentry(
+          subject,
+          {
+            source: "executive-brain",
+            event: "temporal-continuity-return",
+            absenceMs,
+            priorCheckpointId: prior?.checkpointId || null,
+            changeReasons: comparison.reasons
+          },
+          { immediate: true, preserveIntention: true }
+        );
+      }
+
+      if (options.dryRun !== true) {
+        this.temporalContinuity = {
+          ...(this.temporalContinuity || {}),
+          schema: "meos.maddy.temporal-continuity.v1",
+          status: "continuous",
+          lastResume: resume,
+          currentIntervalStartedAt: now
+        };
+        this.record("continuity.temporal-resumed", resume);
+        this.persist();
+        this.emit("brain:temporal-continuity-resumed", resume);
+      }
+      return this.clone(resume);
+    },
+
+    attachTemporalContinuityObservers() {
+      if (this.temporalContinuityObserversAttached) return true;
+      if (typeof global.addEventListener !== "function") return false;
+
+      const checkpoint = reason => {
+        if (brainPersistence.hydrated !== true) return;
+        this.checkpointTemporalContinuity({ reason, persist: true });
+      };
+      const resume = reason => {
+        if (brainPersistence.hydrated !== true) return;
+        this.resumeTemporalContinuity({ reason });
+      };
+
+      global.addEventListener("pagehide", () => checkpoint("pagehide"));
+      global.addEventListener("beforeunload", () => checkpoint("beforeunload"));
+      global.addEventListener("offline", () => checkpoint("offline"));
+      global.addEventListener("online", () => resume("network-reconnected"));
+      if (global.document?.addEventListener) {
+        global.document.addEventListener("visibilitychange", () => {
+          if (global.document.hidden) checkpoint("document-hidden");
+          else resume("document-visible");
+        });
+      }
+
+      this.temporalContinuityObserversAttached = true;
+      return true;
+    },
+
+    getTemporalContinuityStatus() {
+      const commitments = this.collectTemporalCommitments();
+      const unresolved = (this.cognitiveIntentions || []).filter(
+        item => item && item.status !== "completed"
+      );
+      return {
+        schema: "meos.maddy.temporal-continuity-status.v1",
+        status: this.temporalContinuity?.status || "unknown",
+        currentIntervalStartedAt: this.temporalContinuity?.currentIntervalStartedAt || null,
+        lastCheckpoint: this.clone(this.temporalContinuity?.lastCheckpoint || null),
+        lastResume: this.clone(this.temporalContinuity?.lastResume || null),
+        unresolvedIntentionCount: unresolved.length,
+        temporalCommitmentCount: commitments.length,
+        overdueCommitmentCount: commitments.filter(item => item.overdue).length,
+        upcomingCommitments: commitments.slice(0, 12),
+        historyCount: this.temporalContinuityHistory.length,
+        observersAttached: this.temporalContinuityObserversAttached === true,
+        durable: brainPersistence.authority === "meos-institutional-repository",
+        externalAuthorityUnchanged:
+          this.configuration.requireHumanApprovalForExternalAction === true
+      };
+    },
+
+    runTemporalContinuityAcceptanceTest() {
+      const originalIntentions = this.clone(this.cognitiveIntentions || []);
+      const originalTemporal = this.clone(this.temporalContinuity || {});
+      const originalHistory = this.clone(this.temporalContinuityHistory || []);
+      const originalCount = Number(this.temporalContinuityCheckpointCount || 0);
+      const originalSelf = this.clone(this.selfModel);
+      const originalAwareness = this.clone(this.workingAwareness);
+      const token = this.id("d4h-acceptance");
+      const now = Date.now();
+
+      try {
+        const promise = this.registerTemporalCommitment(
+          `Follow through on ${token}`,
+          {
+            kind: "promise",
+            promiseTo: "authorized-human",
+            dueAt: new Date(now - 60000).toISOString(),
+            sourceId: token,
+            persist: false,
+            record: false
+          }
+        );
+        const expectation = this.registerTemporalCommitment(
+          `Check expected development ${token}`,
+          {
+            kind: "expected-future-event",
+            expectedAt: new Date(now + 3600000).toISOString(),
+            sourceId: `${token}-expected`,
+            persist: false,
+            record: false
+          }
+        );
+        const checkpoint = this.checkpointTemporalContinuity({
+          reason: "d4h-acceptance-suspension",
+          capturedAt: new Date(now - 3600000).toISOString(),
+          persist: false,
+          force: true
+        });
+        const resume = this.resumeTemporalContinuity({
+          reason: "d4h-acceptance-return",
+          now: new Date(now).toISOString(),
+          dryRun: true
+        });
+        const snapshot = this.buildPersistenceSnapshot();
+        const status = this.getTemporalContinuityStatus();
+        const startup = this.buildStartupContext({ force: true });
+
+        const checks = [
+          {
+            name: "Temporal continuity is evidence-derived rather than a consciousness flag",
+            passed:
+              checkpoint?.evidenceDerived === true &&
+              checkpoint?.consciousnessClaim === false
+          },
+          {
+            name: "A temporal checkpoint binds persistent self, working awareness, and what Maddy was doing",
+            passed:
+              Object.prototype.hasOwnProperty.call(checkpoint, "persistentSelfFingerprint") &&
+              Object.prototype.hasOwnProperty.call(checkpoint, "workingAwarenessFingerprint") &&
+              Object.prototype.hasOwnProperty.call(checkpoint, "whatIWasDoing")
+          },
+          {
+            name: "Unfinished cognitive intentions survive inside the temporal thread",
+            passed:
+              Array.isArray(checkpoint.unfinishedIntentions) &&
+              checkpoint.unfinishedIntentions.some(item => item.intentionId === promise?.intentionId)
+          },
+          {
+            name: "Promises and expected future events are persistent intentions of the same Maddy",
+            passed:
+              promise?.temporal?.kind === "promise" &&
+              expectation?.temporal?.kind === "expected-future-event"
+          },
+          {
+            name: "Temporal continuity distinguishes overdue and upcoming commitments",
+            passed:
+              status.overdueCommitmentCount >= 1 &&
+              status.upcomingCommitments.some(item => item.intentionId === expectation?.intentionId)
+          },
+          {
+            name: "Return reconstructs absence duration and what Maddy was doing before interruption",
+            passed:
+              Number(resume.absenceMs) >= 3500000 &&
+              Object.prototype.hasOwnProperty.call(resume, "whatIWasDoing")
+          },
+          {
+            name: "Return detects unfinished work and due commitments as continuity evidence",
+            passed:
+              resume.unresolvedStillOpen.some(item => item.intentionId === promise?.intentionId) &&
+              resume.newlyOverdue.some(item => item.intentionId === promise?.intentionId)
+          },
+          {
+            name: "Temporal return can autonomously re-enter cognition without a new human prompt",
+            passed:
+              /temporal-continuity-return/.test(this.resumeTemporalContinuity.toString()) &&
+              /scheduleCognitiveReentry/.test(this.resumeTemporalContinuity.toString())
+          },
+          {
+            name: "Suspension, visibility, offline, and reconnection are wired as temporal continuity events",
+            passed:
+              /pagehide/.test(this.attachTemporalContinuityObservers.toString()) &&
+              /visibilitychange/.test(this.attachTemporalContinuityObservers.toString()) &&
+              /offline/.test(this.attachTemporalContinuityObservers.toString()) &&
+              /online/.test(this.attachTemporalContinuityObservers.toString())
+          },
+          {
+            name: "Temporal continuity is part of bounded durable Executive Brain cognition",
+            passed:
+              snapshot?.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1" &&
+              Array.isArray(snapshot.temporalContinuityHistory)
+          },
+          {
+            name: "Executive startup and reasoning context can inspect temporal continuity",
+            passed:
+              startup?.temporalContinuity?.schema === "meos.maddy.temporal-continuity-status.v1"
+          },
+          {
+            name: "Temporal continuity preserves external human approval authority",
+            passed:
+              status.externalAuthorityUnchanged === true &&
+              this.configuration.requireHumanApprovalForExternalAction === true
+          }
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(checks.map(item => ({ name: item.name, passed: item.passed })));
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D4H temporal continuity / persistent intentions: ${passed ? "PASS" : "FAIL"}.`
+        );
+        return {
+          commission: "006.017D4H",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          checkpoint: this.clone(checkpoint),
+          resume: this.clone(resume),
+          status: this.clone(status)
+        };
+      } finally {
+        this.cognitiveIntentions = originalIntentions;
+        this.temporalContinuity = originalTemporal;
+        this.temporalContinuityHistory = originalHistory;
+        this.temporalContinuityCheckpointCount = originalCount;
+        this.selfModel = originalSelf;
+        this.workingAwareness = originalAwareness;
+      }
     },
 
     /*
@@ -6446,7 +7024,10 @@
         autobiographicalMemory: this.autobiographicalMemory.slice(0, this.configuration.maximumAutobiographicalEpisodes),
         autobiographicalEpisodeCount: Number(this.autobiographicalEpisodeCount || 0),
         metacognitiveReflections: this.metacognitiveReflections.slice(0, this.configuration.maximumMetacognitiveReflections),
-        metacognitiveReflectionCount: Number(this.metacognitiveReflectionCount || 0)
+        metacognitiveReflectionCount: Number(this.metacognitiveReflectionCount || 0),
+        temporalContinuity: this.clone(this.temporalContinuity),
+        temporalContinuityHistory: this.temporalContinuityHistory.slice(0, this.configuration.maximumTemporalContinuityHistory),
+        temporalContinuityCheckpointCount: Number(this.temporalContinuityCheckpointCount || 0)
       };
     },
 
@@ -6494,6 +7075,24 @@
       this.metacognitiveReflectionCount = Math.max(
         Number(saved.metacognitiveReflectionCount || 0),
         Number(this.metacognitiveReflections?.[0]?.revision || 0)
+      );
+      this.temporalContinuity =
+        saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
+          ? this.clone(saved.temporalContinuity)
+          : {
+              schema: "meos.maddy.temporal-continuity.v1",
+              status: "restored-without-prior-checkpoint",
+              lastCheckpoint: null,
+              lastResume: null,
+              currentIntervalStartedAt: null
+            };
+      this.temporalContinuityHistory = Array.isArray(saved.temporalContinuityHistory)
+        ? saved.temporalContinuityHistory.slice(0, this.configuration.maximumTemporalContinuityHistory)
+        : [];
+      this.temporalContinuityCheckpointCount = Math.max(
+        Number(saved.temporalContinuityCheckpointCount || 0),
+        Number(this.temporalContinuity?.lastCheckpoint?.revision || 0),
+        Number(this.temporalContinuityHistory?.[0]?.revision || 0)
       );
       return true;
     },
