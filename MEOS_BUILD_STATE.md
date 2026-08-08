@@ -15,7 +15,7 @@
 -   Current proving deployment: CCSP organization package.
 -   Current development standard: **Spooky**.
 -   Spooky means exactly: **edge of what's possible---sometimes past
-    what appears possible today; beyond human thought process.**
+    what appears possible today; beyond human thought process---as einstein said spooky stuff.**
 -   QDPA means: **Next-Gen Quantum Digital Physics Agent**.
 -   Do not lower, reinterpret, or substitute the Spooky standard with
     conventional AI, SaaS, agent, search, summarization, or workflow
