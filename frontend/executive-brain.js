@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.2.0
- * Build: EB120-COGNITIVE-HALLWAY-DISPATCH-20260808-A
+ * Version: 1.3.0
+ * Build: EB130-CONTINUOUS-COGNITIVE-REENTRY-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.2.0";
-  const BUILD_ID = "EB120-COGNITIVE-HALLWAY-DISPATCH-20260808-A";
+  const VERSION = "1.3.0";
+  const BUILD_ID = "EB130-CONTINUOUS-COGNITIVE-REENTRY-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
 
   const REQUEST_TYPES = Object.freeze({
@@ -76,7 +76,11 @@
       cognitiveDispatchEnabled: true,
       autoAuthorizeInternalResearch: true,
       autoAuthorizeInternalMonitoring: true,
-      maximumCognitiveDispatchHistory: 200
+      maximumCognitiveDispatchHistory: 200,
+      continuousCognitionEnabled: true,
+      meaningfulChangeDebounceMs: 1200,
+      cognitiveReentryCooldownMs: 5000,
+      maximumCognitiveReentryHistory: 250
     },
 
     initializedAt: null,
@@ -87,6 +91,11 @@
     history: [],
     cognitionHistory: [],
     cognitiveDispatchHistory: [],
+    cognitiveReentryHistory: [],
+    meaningfulChangeSignatures: new Map(),
+    cognitiveReentryTimers: new Map(),
+    cognitiveReentryInFlight: new Set(),
+    continuousCognitionSubscriptions: [],
     listeners: {},
 
     profiles: {
@@ -113,6 +122,7 @@
       this.initializedAt = new Date().toISOString();
       this.status = "online";
       this.refresh({ reason: "initialization" });
+      this.attachContinuousCognitionListeners();
 
       console.info(
         `[MEOS] ${this.name} v${this.version} online. Build ${this.buildId}.`
@@ -505,6 +515,1009 @@
       return this.clone(result);
     },
 
+
+
+    /*
+     * Commission 006.016F — Continuous Cognitive Re-entry
+     *
+     * Maddy must not require another human prompt after the world changes.
+     * This bridge listens to existing institutional organs:
+     *
+     * - Knowledge Engine: a verified Opportunity Case changed;
+     * - Executive Hallway: cognition-generated work reached a meaningful
+     *   outcome state;
+     * - Executive Monitoring: a new alert materially touches cognitive work.
+     *
+     * Meaningful change schedules a debounced re-entry into the same
+     * counterfactual cognition → Planning → Hallway path commissioned in
+     * 006.016E. Re-entry never grants new external authority.
+     */
+    attachContinuousCognitionListeners() {
+      if (
+        this.configuration.continuousCognitionEnabled !==
+        true
+      ) {
+        return {
+          success: true,
+          enabled: false,
+          connectedSources: []
+        };
+      }
+
+      if (
+        Array.isArray(
+          this.continuousCognitionSubscriptions
+        ) &&
+        this.continuousCognitionSubscriptions.length > 0
+      ) {
+        return this.getContinuousCognitionStatus();
+      }
+
+      const connectedSources = [];
+
+      const knowledge =
+        global.MEOSKnowledgeEngine ||
+        global.KnowledgeEngine;
+
+      if (knowledge?.on) {
+        const handler = payload =>
+          this.handleOpportunityKnowledgeChange(
+            payload
+          );
+
+        const result = knowledge.on(
+          "opportunity-case:ingested",
+          handler
+        );
+
+        if (result !== false) {
+          this.continuousCognitionSubscriptions.push({
+            source: "knowledge-engine",
+            event: "opportunity-case:ingested",
+            detach: () =>
+              knowledge.off?.(
+                "opportunity-case:ingested",
+                handler
+              )
+          });
+          connectedSources.push(
+            "knowledge-engine"
+          );
+        }
+      }
+
+      const hallway =
+        global.MEOSExecutiveHallway;
+
+      if (hallway?.addEventListener) {
+        const handler = event =>
+          this.handleHallwayMeaningfulChange(
+            event?.detail || event
+          );
+
+        hallway.addEventListener(
+          "work-updated",
+          handler
+        );
+
+        this.continuousCognitionSubscriptions.push({
+          source: "executive-hallway",
+          event: "work-updated",
+          detach: () =>
+            hallway.removeEventListener?.(
+              "work-updated",
+              handler
+            )
+        });
+
+        connectedSources.push(
+          "executive-hallway"
+        );
+      }
+
+      const monitoring =
+        global.ExecutiveMonitoring;
+
+      if (monitoring?.on) {
+        const handler = alert =>
+          this.handleMonitoringMeaningfulChange(
+            alert
+          );
+
+        const result = monitoring.on(
+          "monitoring:alert-created",
+          handler
+        );
+
+        if (result !== false) {
+          this.continuousCognitionSubscriptions.push({
+            source: "executive-monitoring",
+            event: "monitoring:alert-created",
+            detach: () =>
+              monitoring.off?.(
+                "monitoring:alert-created",
+                handler
+              )
+          });
+
+          connectedSources.push(
+            "executive-monitoring"
+          );
+        }
+      }
+
+      this.record(
+        "continuous-cognition.listeners-attached",
+        {
+          connectedSources
+        }
+      );
+
+      return this.getContinuousCognitionStatus();
+    },
+
+    detachContinuousCognitionListeners() {
+      (
+        this.continuousCognitionSubscriptions || []
+      ).forEach(subscription => {
+        this.safe(() =>
+          subscription.detach?.()
+        );
+      });
+
+      this.continuousCognitionSubscriptions = [];
+
+      return {
+        success: true,
+        connectedSources: []
+      };
+    },
+
+    handleOpportunityKnowledgeChange(payload = {}) {
+      const evidenceAction =
+        String(payload.evidenceAction || "");
+      const caseAction =
+        String(payload.caseAction || "");
+
+      if (
+        evidenceAction === "unchanged" &&
+        caseAction === "unchanged"
+      ) {
+        return {
+          success: true,
+          meaningful: false,
+          reason: "opportunity-case-unchanged"
+        };
+      }
+
+      const knowledge =
+        global.MEOSKnowledgeEngine ||
+        global.KnowledgeEngine;
+      const record =
+        payload.caseRecordId &&
+        knowledge?.getRecordById
+          ? knowledge.getRecordById(
+              payload.caseRecordId
+            )
+          : null;
+
+      const subject =
+        record?.content?.source?.title ||
+        record?.title
+          ?.replace(
+            /^Executive Opportunity Case\s*[—-]\s*/i,
+            ""
+          )
+          .trim() ||
+        payload.sourceIdentity ||
+        null;
+
+      if (!subject) {
+        return {
+          success: false,
+          meaningful: false,
+          reason:
+            "opportunity-subject-unresolved"
+        };
+      }
+
+      return this.scheduleCognitiveReentry(
+        subject,
+        {
+          source: "knowledge-engine",
+          event: "opportunity-case:ingested",
+          caseRecordId:
+            payload.caseRecordId || null,
+          evidenceAction:
+            payload.evidenceAction || null,
+          caseAction:
+            payload.caseAction || null,
+          ingestedAt:
+            payload.ingestedAt || null
+        }
+      );
+    },
+
+    handleHallwayMeaningfulChange(work = {}) {
+      if (
+        work?.context?.cognitiveDispatch !== true
+      ) {
+        return {
+          success: true,
+          meaningful: false,
+          reason: "not-cognitive-work"
+        };
+      }
+
+      const meaningfulStates =
+        new Set([
+          "done",
+          "failed",
+          "blocked"
+        ]);
+
+      if (
+        !meaningfulStates.has(work.state)
+      ) {
+        return {
+          success: true,
+          meaningful: false,
+          reason:
+            "non-terminal-cognitive-transition"
+        };
+      }
+
+      const subject =
+        String(
+          work.context?.cognitionSubject || ""
+        ).trim();
+
+      if (!subject) {
+        return {
+          success: false,
+          meaningful: false,
+          reason:
+            "cognitive-work-subject-missing"
+        };
+      }
+
+      const signature =
+        this.fingerprintCognitiveDispatch({
+          source: "executive-hallway",
+          workId: work.id,
+          state: work.state,
+          verified:
+            work.outcome?.verified ?? null,
+          success:
+            work.outcome?.success ?? null,
+          error: work.error || null
+        });
+
+      if (
+        this.meaningfulChangeSignatures.get(
+          work.id
+        ) === signature
+      ) {
+        return {
+          success: true,
+          meaningful: false,
+          duplicate: true,
+          reason:
+            "hallway-outcome-already-observed"
+        };
+      }
+
+      this.meaningfulChangeSignatures.set(
+        work.id,
+        signature
+      );
+
+      return this.scheduleCognitiveReentry(
+        subject,
+        {
+          source: "executive-hallway",
+          event: "work-updated",
+          workId: work.id,
+          workState: work.state,
+          route: work.route || null,
+          verified:
+            work.outcome?.verified ?? null,
+          success:
+            work.outcome?.success ?? null,
+          error: work.error || null,
+          updatedAt: work.updatedAt || null
+        }
+      );
+    },
+
+    handleMonitoringMeaningfulChange(alert = {}) {
+      const subject =
+        this.resolveCognitionSubjectFromAlert(
+          alert
+        );
+
+      if (!subject) {
+        return {
+          success: true,
+          meaningful: false,
+          reason:
+            "alert-not-linked-to-cognitive-work"
+        };
+      }
+
+      const signature =
+        this.fingerprintCognitiveDispatch({
+          source: "executive-monitoring",
+          alertId: alert.id,
+          key: alert.key,
+          severity: alert.severity,
+          entityType: alert.entityType,
+          entityId: alert.entityId
+        });
+
+      if (
+        this.meaningfulChangeSignatures.get(
+          alert.id
+        ) === signature
+      ) {
+        return {
+          success: true,
+          meaningful: false,
+          duplicate: true,
+          reason:
+            "monitoring-alert-already-observed"
+        };
+      }
+
+      this.meaningfulChangeSignatures.set(
+        alert.id,
+        signature
+      );
+
+      return this.scheduleCognitiveReentry(
+        subject,
+        {
+          source: "executive-monitoring",
+          event: "monitoring:alert-created",
+          alertId: alert.id,
+          category: alert.category || null,
+          severity:
+            alert.severityLabel ||
+            alert.severity ||
+            null,
+          entityType:
+            alert.entityType || null,
+          entityId:
+            alert.entityId || null,
+          recommendation:
+            alert.recommendedAction || null
+        }
+      );
+    },
+
+    resolveCognitionSubjectFromAlert(alert = {}) {
+      const entityId =
+        String(alert.entityId || "").trim();
+
+      if (!entityId) {
+        return null;
+      }
+
+      const hallway =
+        global.MEOSExecutiveHallway;
+
+      const work =
+        hallway?.getWork
+          ? hallway.getWork(entityId)
+          : hallway?.listWork
+            ? hallway
+                .listWork()
+                .find(
+                  item =>
+                    item?.id === entityId ||
+                    item?.mission?.id ===
+                      entityId
+                )
+            : null;
+
+      if (
+        work?.context?.cognitiveDispatch ===
+        true
+      ) {
+        return (
+          work.context.cognitionSubject ||
+          null
+        );
+      }
+
+      const planning =
+        global.ExecutivePlanning;
+      const plan =
+        Array.isArray(planning?.plans)
+          ? planning.plans.find(
+              item => item?.id === entityId
+            )
+          : null;
+
+      if (
+        plan?.metadata?.cognitionType ===
+        "counterfactual-positioning"
+      ) {
+        const historyMatch =
+          this.cognitiveDispatchHistory.find(
+            item =>
+              item.planId === plan.id
+          );
+
+        return (
+          historyMatch?.subject ||
+          String(plan.title || "")
+            .replace(
+              /^Positioning\s*[—-]\s*/i,
+              ""
+            )
+            .trim() ||
+          null
+        );
+      }
+
+      return null;
+    },
+
+    scheduleCognitiveReentry(
+      subject,
+      trigger = {},
+      options = {}
+    ) {
+      const normalizedSubject =
+        String(subject || "").trim();
+
+      if (!normalizedSubject) {
+        return {
+          success: false,
+          scheduled: false,
+          error:
+            "A cognition subject is required."
+        };
+      }
+
+      if (
+        this.configuration.continuousCognitionEnabled !==
+        true
+      ) {
+        return {
+          success: true,
+          scheduled: false,
+          reason:
+            "continuous-cognition-disabled"
+        };
+      }
+
+      const key =
+        this.normalize(
+          normalizedSubject
+        );
+
+      const triggerFingerprint =
+        this.fingerprintCognitiveDispatch({
+          subject: normalizedSubject,
+          trigger
+        });
+
+      const recentDuplicate =
+        this.cognitiveReentryHistory.find(
+          item =>
+            item.triggerFingerprint ===
+              triggerFingerprint &&
+            (
+              Date.now() -
+              Date.parse(
+                item.completedAt ||
+                item.startedAt ||
+                0
+              )
+            ) <
+              this.configuration
+                .cognitiveReentryCooldownMs
+        );
+
+      if (recentDuplicate) {
+        return {
+          success: true,
+          scheduled: false,
+          duplicate: true,
+          reason:
+            "meaningful-change-already-processed",
+          priorReentryId:
+            recentDuplicate.reentryId
+        };
+      }
+
+      const existingTimer =
+        this.cognitiveReentryTimers.get(
+          key
+        );
+
+      if (existingTimer) {
+        global.clearTimeout(
+          existingTimer.timerId
+        );
+
+        existingTimer.triggers.push(
+          this.clone(trigger)
+        );
+
+        existingTimer.timerId =
+          global.setTimeout(
+            () =>
+              void this.executeCognitiveReentry(
+                normalizedSubject,
+                existingTimer.triggers,
+                {
+                  triggerFingerprint,
+                  ...options
+                }
+              ),
+            this.configuration
+              .meaningfulChangeDebounceMs
+          );
+
+        this.cognitiveReentryTimers.set(
+          key,
+          existingTimer
+        );
+
+        return {
+          success: true,
+          scheduled: true,
+          debounced: true,
+          subject: normalizedSubject,
+          triggerCount:
+            existingTimer.triggers.length
+        };
+      }
+
+      const timerState = {
+        subject: normalizedSubject,
+        triggers: [this.clone(trigger)],
+        timerId: null
+      };
+
+      timerState.timerId =
+        global.setTimeout(
+          () =>
+            void this.executeCognitiveReentry(
+              normalizedSubject,
+              timerState.triggers,
+              {
+                triggerFingerprint,
+                ...options
+              }
+            ),
+          options.immediate === true
+            ? 0
+            : this.configuration
+                .meaningfulChangeDebounceMs
+        );
+
+      this.cognitiveReentryTimers.set(
+        key,
+        timerState
+      );
+
+      this.record(
+        "cognition.reentry-scheduled",
+        {
+          subject: normalizedSubject,
+          trigger
+        }
+      );
+
+      return {
+        success: true,
+        scheduled: true,
+        subject: normalizedSubject,
+        triggerCount: 1
+      };
+    },
+
+    async executeCognitiveReentry(
+      subject,
+      triggers = [],
+      options = {}
+    ) {
+      const key = this.normalize(subject);
+
+      this.cognitiveReentryTimers.delete(
+        key
+      );
+
+      if (
+        this.cognitiveReentryInFlight.has(
+          key
+        )
+      ) {
+        return {
+          success: true,
+          skipped: true,
+          reason:
+            "cognitive-reentry-already-running"
+        };
+      }
+
+      this.cognitiveReentryInFlight.add(
+        key
+      );
+
+      const entry = {
+        reentryId:
+          this.id("cognitive-reentry"),
+        subject,
+        triggerFingerprint:
+          options.triggerFingerprint ||
+          this.fingerprintCognitiveDispatch({
+            subject,
+            triggers
+          }),
+        triggers:
+          this.clone(triggers),
+        status: "running",
+        startedAt:
+          new Date().toISOString(),
+        completedAt: null,
+        resultSummary: null,
+        error: null
+      };
+
+      try {
+        this.refresh({
+          reason:
+            "meaningful-change-cognitive-reentry"
+        });
+
+        const result =
+          await this
+            .runPositioningCognitionAndDispatch(
+              subject,
+              {
+                reasoningOptions: {
+                  evidenceLimit: 100
+                },
+                autoAuthorizeInternalResearch:
+                  true,
+                autoAuthorizeInternalMonitoring:
+                  true
+              }
+            );
+
+        entry.status =
+          result?.success === true
+            ? "completed"
+            : "completed-with-failure";
+        entry.resultSummary = {
+          success:
+            result?.success === true,
+          positioningFingerprint:
+            result?.positioningFingerprint ||
+            null,
+          planId:
+            result?.plan?.id || null,
+          proposedMoves:
+            result?.summary
+              ?.proposedMoves || 0,
+          dispatched:
+            result?.summary?.dispatched ||
+            0,
+          reusedExistingWork:
+            result?.summary
+              ?.reusedExistingWork || 0,
+          awaitingReview:
+            result?.summary
+              ?.awaitingReview || 0,
+          failed:
+            result?.summary?.failed || 0
+        };
+
+        this.emit(
+          "brain:cognitive-reentry-completed",
+          {
+            reentryId: entry.reentryId,
+            subject,
+            triggers:
+              this.clone(triggers),
+            result:
+              this.clone(result)
+          }
+        );
+
+        return result;
+      } catch (error) {
+        entry.status = "failed";
+        entry.error =
+          error?.message || String(error);
+
+        this.emit(
+          "brain:cognitive-reentry-failed",
+          this.clone(entry)
+        );
+
+        return {
+          success: false,
+          error: entry.error,
+          reentryId: entry.reentryId
+        };
+      } finally {
+        entry.completedAt =
+          new Date().toISOString();
+
+        this.cognitiveReentryHistory.unshift(
+          entry
+        );
+
+        if (
+          this.cognitiveReentryHistory.length >
+          this.configuration
+            .maximumCognitiveReentryHistory
+        ) {
+          this.cognitiveReentryHistory.length =
+            this.configuration
+              .maximumCognitiveReentryHistory;
+        }
+
+        this.cognitiveReentryInFlight.delete(
+          key
+        );
+
+        this.persist();
+      }
+    },
+
+    getContinuousCognitionStatus() {
+      return {
+        success: true,
+        enabled:
+          this.configuration
+            .continuousCognitionEnabled ===
+          true,
+        connectedSources:
+          (
+            this.continuousCognitionSubscriptions ||
+            []
+          ).map(item => item.source),
+        activeSubjects:
+          Array.from(
+            this.cognitiveReentryInFlight
+          ),
+        scheduledSubjects:
+          Array.from(
+            this.cognitiveReentryTimers.keys()
+          ),
+        reentryHistoryCount:
+          this.cognitiveReentryHistory.length,
+        lastReentry:
+          this.clone(
+            this.cognitiveReentryHistory[0] ||
+            null
+          )
+      };
+    },
+
+    getCognitiveReentryHistory(
+      limit = 25
+    ) {
+      const normalized = Math.max(
+        1,
+        Math.min(
+          this.configuration
+            .maximumCognitiveReentryHistory,
+          Number(limit) || 25
+        )
+      );
+
+      return this.clone(
+        this.cognitiveReentryHistory.slice(
+          0,
+          normalized
+        )
+      );
+    },
+
+    runContinuousCognitionAcceptanceTest() {
+      const cognitiveWorkFixture = {
+        id:
+          "hallway-work-006016f-fixture",
+        state: "done",
+        route: "executive-router",
+        context: {
+          cognitiveDispatch: true,
+          cognitionSubject:
+            "Commission 006.016F Fixture"
+        },
+        outcome: {
+          success: true,
+          verified: true
+        }
+      };
+
+      const unrelatedWorkFixture = {
+        id:
+          "hallway-work-unrelated",
+        state: "done",
+        context: {
+          cognitiveDispatch: false
+        }
+      };
+
+      const priorEnabled =
+        this.configuration
+          .continuousCognitionEnabled;
+      const priorDebounce =
+        this.configuration
+          .meaningfulChangeDebounceMs;
+
+      this.configuration
+        .continuousCognitionEnabled =
+        false;
+
+      const meaningfulClassification =
+        this.handleHallwayMeaningfulChange(
+          cognitiveWorkFixture
+        );
+
+      const unrelatedClassification =
+        this.handleHallwayMeaningfulChange(
+          unrelatedWorkFixture
+        );
+
+      this.configuration
+        .continuousCognitionEnabled =
+        priorEnabled;
+      this.configuration
+        .meaningfulChangeDebounceMs =
+        priorDebounce;
+
+      const checks = [
+        {
+          name:
+            "Continuous cognition listener bridge exists",
+          passed:
+            typeof this
+              .attachContinuousCognitionListeners ===
+            "function"
+        },
+        {
+          name:
+            "Opportunity Case ingestion can trigger cognition re-entry",
+          passed:
+            /opportunity-case:ingested/.test(
+              this.attachContinuousCognitionListeners
+                .toString()
+            )
+        },
+        {
+          name:
+            "Hallway work outcomes can trigger cognition re-entry",
+          passed:
+            /work-updated/.test(
+              this.attachContinuousCognitionListeners
+                .toString()
+            ) &&
+            typeof this
+              .handleHallwayMeaningfulChange ===
+              "function"
+        },
+        {
+          name:
+            "Executive Monitoring alerts can trigger cognition re-entry",
+          passed:
+            /monitoring:alert-created/.test(
+              this.attachContinuousCognitionListeners
+                .toString()
+            )
+        },
+        {
+          name:
+            "Only cognition-linked Hallway work is considered",
+          passed:
+            meaningfulClassification.reason !==
+              "not-cognitive-work" &&
+            unrelatedClassification.reason ===
+              "not-cognitive-work"
+        },
+        {
+          name:
+            "Re-entry is debounced rather than recursively immediate",
+          passed:
+            typeof this
+              .scheduleCognitiveReentry ===
+              "function" &&
+            /setTimeout/.test(
+              this.scheduleCognitiveReentry
+                .toString()
+            )
+        },
+        {
+          name:
+            "Concurrent re-entry for the same subject is suppressed",
+          passed:
+            this.cognitiveReentryInFlight instanceof
+              Set &&
+            /cognitiveReentryInFlight/.test(
+              this.executeCognitiveReentry
+                .toString()
+            )
+        },
+        {
+          name:
+            "Re-entry returns through the commissioned positioning dispatch path",
+          passed:
+            /runPositioningCognitionAndDispatch/.test(
+              this.executeCognitiveReentry
+                .toString()
+            )
+        },
+        {
+          name:
+            "Re-entry refreshes executive context before reasoning again",
+          passed:
+            /meaningful-change-cognitive-reentry/.test(
+              this.executeCognitiveReentry
+                .toString()
+            )
+        },
+        {
+          name:
+            "Continuous cognition history remains inspectable and bounded",
+          passed:
+            Array.isArray(
+              this.cognitiveReentryHistory
+            ) &&
+            typeof this
+              .getCognitiveReentryHistory ===
+              "function" &&
+            this.configuration
+              .maximumCognitiveReentryHistory >
+              0
+        },
+        {
+          name:
+            "Continuous cognition does not grant new external authority",
+          passed:
+            this.configuration
+              .requireHumanApprovalForExternalAction ===
+              true &&
+            /classifyCognitiveMoveAuthority/.test(
+              this.runPositioningCognitionAndDispatch
+                .toString()
+            )
+        }
+      ];
+
+      const passed = checks.every(
+        item => item.passed
+      );
+
+      console.table(
+        checks.map(item => ({
+          name: item.name,
+          passed: item.passed
+        }))
+      );
+
+      console.info(
+        `[MEOS ${this.version}] Commission 006.016F continuous cognition acceptance: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.016F",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        status:
+          this.getContinuousCognitionStatus()
+      };
+    },
 
     /*
      * Commission 006.016E — Cognitive Hallway Dispatch
@@ -3094,6 +4107,11 @@
               this.cognitiveDispatchHistory.slice(
                 0,
                 this.configuration.maximumCognitiveDispatchHistory
+              ),
+            cognitiveReentryHistory:
+              this.cognitiveReentryHistory.slice(
+                0,
+                this.configuration.maximumCognitiveReentryHistory
               )
           })
         );
@@ -3132,6 +4150,13 @@
             ? saved.cognitiveDispatchHistory.slice(
                 0,
                 this.configuration.maximumCognitiveDispatchHistory
+              )
+            : [];
+        this.cognitiveReentryHistory =
+          Array.isArray(saved.cognitiveReentryHistory)
+            ? saved.cognitiveReentryHistory.slice(
+                0,
+                this.configuration.maximumCognitiveReentryHistory
               )
             : [];
         return true;
