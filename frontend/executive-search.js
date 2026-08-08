@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Search Engine
- * Version: 1.0.0
+ * Version: 1.0.1
  *
  * Mission:
  * Search across MEOS knowledge, memory, ingested documents, classifications,
@@ -30,7 +30,7 @@
 
     const ExecutiveSearch = {
         name: "MEOS Executive Search Engine",
-        version: "1.0.0",
+        version: "1.0.1",
         status: "initializing",
         operatingMode: "cross-engine-retrieval",
 
@@ -70,6 +70,13 @@
         },
         eventListeners: {},
         initializedAt: null,
+
+        persistenceRuntime: {
+            suspended: false,
+            reason: null,
+            suspendedAt: null,
+            warningEmitted: false
+        },
 
         initialize(options = {}) {
             this.configuration = {
@@ -1290,6 +1297,14 @@
                 savedSearchCount:
                     this.savedSearches.length,
                 analytics: this.clone(this.analytics),
+                persistence: {
+                    configured:
+                        this.configuration.persistenceEnabled &&
+                        this.configuration.automaticPersistence,
+                    suspended: this.persistenceRuntime.suspended,
+                    reason: this.persistenceRuntime.reason,
+                    suspendedAt: this.persistenceRuntime.suspendedAt
+                },
                 initializedAt: this.initializedAt
             };
         },
@@ -1434,6 +1449,15 @@
         },
 
         persistIfEnabled() {
+            if (this.persistenceRuntime.suspended) {
+                return {
+                    success: true,
+                    persisted: false,
+                    suspended: true,
+                    reason: this.persistenceRuntime.reason
+                };
+            }
+
             if (
                 this.configuration.persistenceEnabled &&
                 this.configuration.automaticPersistence
@@ -1447,7 +1471,72 @@
             };
         },
 
+        isStorageQuotaError(error) {
+            return Boolean(
+                error &&
+                (
+                    error.name === "QuotaExceededError" ||
+                    error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+                    error.code === 22 ||
+                    error.code === 1014 ||
+                    /quota/i.test(String(error.message || ""))
+                )
+            );
+        },
+
+        suspendBrowserPersistence(error) {
+            this.persistenceRuntime.suspended = true;
+            this.persistenceRuntime.reason =
+                "browser-storage-quota-exhausted";
+            this.persistenceRuntime.suspendedAt =
+                new Date().toISOString();
+
+            if (!this.persistenceRuntime.warningEmitted) {
+                this.persistenceRuntime.warningEmitted = true;
+                console.warn(
+                    "[MEOS Executive Search] Browser persistence suspended after storage quota exhaustion. Runtime search continues; repeated writes are suppressed until persistence is explicitly retried."
+                );
+            }
+
+            this.emit("search:persistence-suspended", {
+                reason: this.persistenceRuntime.reason,
+                suspendedAt: this.persistenceRuntime.suspendedAt,
+                error: error?.message || String(error || "")
+            });
+
+            return {
+                success: true,
+                persisted: false,
+                suspended: true,
+                degraded: true,
+                reason: this.persistenceRuntime.reason
+            };
+        },
+
+        retryPersistence() {
+            this.persistenceRuntime.suspended = false;
+            this.persistenceRuntime.reason = null;
+            this.persistenceRuntime.suspendedAt = null;
+            this.persistenceRuntime.warningEmitted = false;
+
+            const result = this.persist();
+
+            return {
+                ...result,
+                retried: true
+            };
+        },
+
         persist() {
+            if (this.persistenceRuntime.suspended) {
+                return {
+                    success: true,
+                    persisted: false,
+                    suspended: true,
+                    reason: this.persistenceRuntime.reason
+                };
+            }
+
             if (
                 !this.configuration.persistenceEnabled
             ) {
@@ -1481,6 +1570,10 @@
                     persisted: true
                 };
             } catch (error) {
+                if (this.isStorageQuotaError(error)) {
+                    return this.suspendBrowserPersistence(error);
+                }
+
                 console.error(
                     "[MEOS Executive Search] Persistence failed:",
                     error
