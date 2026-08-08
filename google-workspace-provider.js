@@ -31,8 +31,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { google } from "googleapis";
 
-const VERSION = "1.3.0";
-const BUILD_ID = "GWP130-INSTITUTIONAL-REPOSITORY-PROTOTYPE-20260808-A";
+const VERSION = "1.3.1";
+const BUILD_ID = "GWP131-KEY-CONVERGENCE-20260808-A";
 const PROVIDER_ID = "google-workspace";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -1348,6 +1348,295 @@ async function locateInstitutionalRepository({
   return { ...state.institutionalRepository };
 }
 
+
+const institutionalRepositoryKeyLocks = new Map();
+
+function withInstitutionalRepositoryKeyLock(key, operation) {
+  const normalizedKey = normalizeRepositoryKey(key);
+  const previous =
+    institutionalRepositoryKeyLocks.get(normalizedKey) ||
+    Promise.resolve();
+
+  const current = previous
+    .catch(() => undefined)
+    .then(operation);
+
+  institutionalRepositoryKeyLocks.set(
+    normalizedKey,
+    current
+  );
+
+  return current.finally(() => {
+    if (
+      institutionalRepositoryKeyLocks.get(
+        normalizedKey
+      ) === current
+    ) {
+      institutionalRepositoryKeyLocks.delete(
+        normalizedKey
+      );
+    }
+  });
+}
+
+async function readInstitutionalRepositoryCandidate(file) {
+  const response = await driveClient.files.get({
+    fileId: file.id,
+    alt: "media",
+    supportsAllDrives: true
+  });
+
+  const payload =
+    typeof response.data === "string"
+      ? JSON.parse(response.data)
+      : response.data;
+
+  return {
+    file,
+    payload
+  };
+}
+
+function sameStringArray(left, right) {
+  if (
+    !Array.isArray(left) ||
+    !Array.isArray(right)
+  ) {
+    return false;
+  }
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const a = [...left].map(String).sort();
+  const b = [...right].map(String).sort();
+
+  return a.every(
+    (value, index) => value === b[index]
+  );
+}
+
+function areRepositoryDuplicateCandidatesEquivalent(
+  candidates
+) {
+  if (!Array.isArray(candidates) || candidates.length < 2) {
+    return true;
+  }
+
+  const payloads = candidates.map(
+    candidate => candidate.payload
+  );
+
+  const first = payloads[0];
+
+  if (
+    payloads.every(
+      payload =>
+        JSON.stringify(payload?.value) ===
+        JSON.stringify(first?.value)
+    )
+  ) {
+    return true;
+  }
+
+  /*
+   * Executive Memory collection manifests created concurrently can differ
+   * only by bookkeeping timestamps while expressing the same logical set.
+   * That race is safe to converge. No other divergent durable state is
+   * silently reconciled here.
+   */
+  const authorityValues = payloads.map(
+    payload => payload?.value
+  );
+
+  const allExecutiveMemoryManifests =
+    authorityValues.every(
+      authority =>
+        authority?.schema ===
+          "meos.institutional-repository-authority.record.v1" &&
+        authority?.value?.schema ===
+          "meos.executive-memory.manifest.v1"
+    );
+
+  if (!allExecutiveMemoryManifests) {
+    return false;
+  }
+
+  const reference = authorityValues[0];
+
+  return authorityValues.every(
+    authority =>
+      authority.namespace ===
+        reference.namespace &&
+      authority.key === reference.key &&
+      authority.classification ===
+        reference.classification &&
+      Number(authority.revision || 0) ===
+        Number(reference.revision || 0) &&
+      (authority.previousFingerprint || null) ===
+        (reference.previousFingerprint || null) &&
+      authority.value.collection ===
+        reference.value.collection &&
+      sameStringArray(
+        authority.value.recordIds,
+        reference.value.recordIds
+      )
+  );
+}
+
+function repositoryCandidateSortValue(candidate) {
+  const modified =
+    Date.parse(
+      candidate?.file?.modifiedTime || ""
+    ) || 0;
+  const created =
+    Date.parse(
+      candidate?.file?.createdTime || ""
+    ) || 0;
+
+  return {
+    modified,
+    created,
+    id: String(candidate?.file?.id || "")
+  };
+}
+
+async function resolveInstitutionalRepositoryCandidates(
+  normalizedKey,
+  files,
+  { repairEquivalent = true } = {}
+) {
+  if (!Array.isArray(files) || files.length === 0) {
+    return {
+      file: null,
+      repaired: false,
+      duplicateCount: 0
+    };
+  }
+
+  if (files.length === 1) {
+    return {
+      file: files[0],
+      repaired: false,
+      duplicateCount: 0
+    };
+  }
+
+  const candidates =
+    await Promise.all(
+      files.map(
+        readInstitutionalRepositoryCandidate
+      )
+    );
+
+  const valid = candidates.filter(
+    candidate =>
+      candidate.payload?.schema ===
+        INSTITUTIONAL_REPOSITORY_SCHEMA &&
+      candidate.payload?.key ===
+        normalizedKey
+  );
+
+  if (valid.length !== candidates.length) {
+    const error = new Error(
+      `Institutional repository key "${normalizedKey}" resolves to multiple records and at least one candidate failed envelope verification.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
+    error.status = 409;
+    error.details = {
+      key: normalizedKey,
+      candidateCount: candidates.length,
+      validCandidateCount: valid.length,
+      repairable: false
+    };
+    throw error;
+  }
+
+  if (
+    !repairEquivalent ||
+    !areRepositoryDuplicateCandidatesEquivalent(
+      valid
+    )
+  ) {
+    const error = new Error(
+      `Institutional repository key "${normalizedKey}" resolves to multiple non-equivalent records. Automatic convergence is intentionally blocked.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
+    error.status = 409;
+    error.details = {
+      key: normalizedKey,
+      candidateCount: valid.length,
+      repairable: false
+    };
+    throw error;
+  }
+
+  valid.sort((left, right) => {
+    const a =
+      repositoryCandidateSortValue(left);
+    const b =
+      repositoryCandidateSortValue(right);
+
+    return (
+      b.modified - a.modified ||
+      b.created - a.created ||
+      b.id.localeCompare(a.id)
+    );
+  });
+
+  const canonical = valid[0];
+  const redundant = valid.slice(1);
+
+  for (const candidate of redundant) {
+    await driveClient.files.delete({
+      fileId: candidate.file.id,
+      supportsAllDrives: true
+    });
+  }
+
+  console.warn(
+    `[MEOS Google Workspace] Converged ${valid.length} equivalent durable records for repository key "${normalizedKey}" to canonical file ${canonical.file.id}.`
+  );
+
+  return {
+    file: canonical.file,
+    repaired: true,
+    duplicateCount: redundant.length
+  };
+}
+
+async function findInstitutionalRepositoryRecord(
+  repository,
+  normalizedKey,
+  options = {}
+) {
+  const escapedRepositoryId =
+    escapeDriveQueryValue(repository.id);
+  const escapedFileName =
+    escapeDriveQueryValue(
+      repositoryRecordName(normalizedKey)
+    );
+
+  const result = await searchDrive({
+    query:
+      `'${escapedRepositoryId}' in parents and ` +
+      `name = '${escapedFileName}' and ` +
+      "trashed = false",
+    pageSize: 10,
+    fields:
+      "nextPageToken,files(id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties)"
+  });
+
+  return resolveInstitutionalRepositoryCandidates(
+    normalizedKey,
+    result.files,
+    options
+  );
+}
+
 async function writeInstitutionalRecord({
   key,
   value,
@@ -1357,120 +1646,156 @@ async function writeInstitutionalRecord({
   requireControlledWriteAuthorization();
 
   const normalizedKey = normalizeRepositoryKey(key);
-  const repository =
-    await locateInstitutionalRepository({
-      createIfMissing: true
-    });
 
-  const fileName =
-    repositoryRecordName(normalizedKey);
-  const escapedRepositoryId =
-    escapeDriveQueryValue(repository.id);
-  const escapedFileName =
-    escapeDriveQueryValue(fileName);
+  return withInstitutionalRepositoryKeyLock(
+    normalizedKey,
+    async () => {
+      const repository =
+        await locateInstitutionalRepository({
+          createIfMissing: true
+        });
 
-  const existing = await searchDrive({
-    query:
-      `'${escapedRepositoryId}' in parents and ` +
-      `name = '${escapedFileName}' and ` +
-      "trashed = false",
-    pageSize: 10,
-    fields:
-      "nextPageToken,files(id,name,mimeType,parents,modifiedTime,createdTime,appProperties)"
-  });
+      const fileName =
+        repositoryRecordName(normalizedKey);
 
-  if (existing.files.length > 1) {
-    const error = new Error(
-      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
-    );
-    error.code =
-      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
-    error.status = 409;
-    throw error;
-  }
+      const existing =
+        await findInstitutionalRepositoryRecord(
+          repository,
+          normalizedKey,
+          {
+            repairEquivalent: true
+          }
+        );
 
-  const now = new Date().toISOString();
-  const envelope = {
-    schema: INSTITUTIONAL_REPOSITORY_SCHEMA,
-    key: normalizedKey,
-    recordType:
-      String(recordType || "state").trim() || "state",
-    provider: PROVIDER_ID,
-    writtenAt: now,
-    metadata:
-      metadata && typeof metadata === "object"
-        ? metadata
-        : {},
-    value
-  };
-  const body =
-    `${JSON.stringify(envelope, null, 2)}\n`;
+      const now = new Date().toISOString();
+      const envelope = {
+        schema: INSTITUTIONAL_REPOSITORY_SCHEMA,
+        key: normalizedKey,
+        recordType:
+          String(recordType || "state").trim() ||
+          "state",
+        provider: PROVIDER_ID,
+        writtenAt: now,
+        metadata:
+          metadata &&
+          typeof metadata === "object"
+            ? metadata
+            : {},
+        value
+      };
+      const body =
+        `${JSON.stringify(envelope, null, 2)}\n`;
 
-  let response;
-  let operation;
+      let response;
+      let operation;
 
-  if (existing.files[0]?.id) {
-    operation = "updated";
-    response = await driveClient.files.update({
-      fileId: existing.files[0].id,
-      media: {
-        mimeType: "application/json",
-        body
-      },
-      fields:
-        "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
-      supportsAllDrives: true
-    });
-  } else {
-    operation = "created";
-    response = await driveClient.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [repository.id],
-        mimeType: "application/json",
-        appProperties: {
-          [INSTITUTIONAL_REPOSITORY_RECORD_APP_PROPERTY]:
-            "true",
-          meosRepositoryKey: normalizedKey,
-          meosRecordType:
-            String(recordType || "state")
-              .trim()
-              .slice(0, 120) || "state"
+      if (existing.file?.id) {
+        operation =
+          existing.repaired
+            ? "converged-and-updated"
+            : "updated";
+
+        response =
+          await driveClient.files.update({
+            fileId: existing.file.id,
+            media: {
+              mimeType: "application/json",
+              body
+            },
+            fields:
+              "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
+            supportsAllDrives: true
+          });
+      } else {
+        operation = "created";
+
+        response =
+          await driveClient.files.create({
+            requestBody: {
+              name: fileName,
+              parents: [repository.id],
+              mimeType: "application/json",
+              appProperties: {
+                [INSTITUTIONAL_REPOSITORY_RECORD_APP_PROPERTY]:
+                  "true",
+                meosRepositoryKey:
+                  normalizedKey,
+                meosRecordType:
+                  String(recordType || "state")
+                    .trim()
+                    .slice(0, 120) ||
+                  "state"
+              }
+            },
+            media: {
+              mimeType: "application/json",
+              body
+            },
+            fields:
+              "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
+            supportsAllDrives: true
+          });
+
+        /*
+         * Drive permits duplicate filenames. Re-scan after create so any
+         * equivalent race converges immediately instead of becoming latent
+         * institutional ambiguity.
+         */
+        const convergence =
+          await findInstitutionalRepositoryRecord(
+            repository,
+            normalizedKey,
+            {
+              repairEquivalent: true
+            }
+          );
+
+        if (
+          convergence.file?.id &&
+          convergence.file.id !==
+            response.data.id
+        ) {
+          response = {
+            ...response,
+            data: convergence.file
+          };
+          operation =
+            "created-and-converged";
+        } else if (convergence.repaired) {
+          operation =
+            "created-and-converged";
         }
-      },
-      media: {
-        mimeType: "application/json",
-        body
-      },
-      fields:
-        "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
-      supportsAllDrives: true
-    });
-  }
+      }
 
-  return {
-    schema:
-      "meos.institutional-repository.write-result.v1",
-    success: true,
-    provider: PROVIDER_ID,
-    authority: "app-managed-drive-folder",
-    operation,
-    repository,
-    record: {
-      id: response.data.id || null,
-      key: normalizedKey,
-      name: response.data.name || fileName,
-      recordType: envelope.recordType,
-      modifiedTime:
-        response.data.modifiedTime || now,
-      createdTime:
-        response.data.createdTime || null,
-      size: response.data.size || null,
-      webViewLink:
-        response.data.webViewLink || null
-    },
-    verified: Boolean(response.data.id)
-  };
+      return {
+        schema:
+          "meos.institutional-repository.write-result.v1",
+        success: true,
+        provider: PROVIDER_ID,
+        authority:
+          "app-managed-drive-folder",
+        operation,
+        repository,
+        record: {
+          id: response.data.id || null,
+          key: normalizedKey,
+          name:
+            response.data.name || fileName,
+          recordType:
+            envelope.recordType,
+          modifiedTime:
+            response.data.modifiedTime || now,
+          createdTime:
+            response.data.createdTime || null,
+          size:
+            response.data.size || null,
+          webViewLink:
+            response.data.webViewLink || null
+        },
+        verified: Boolean(response.data.id)
+      };
+    }
+  );
 }
 
 async function readInstitutionalRecord(key) {
@@ -1492,24 +1817,16 @@ async function readInstitutionalRecord(key) {
     };
   }
 
-  const escapedRepositoryId =
-    escapeDriveQueryValue(repository.id);
-  const escapedFileName =
-    escapeDriveQueryValue(
-      repositoryRecordName(normalizedKey)
+  const resolved =
+    await findInstitutionalRepositoryRecord(
+      repository,
+      normalizedKey,
+      {
+        repairEquivalent: true
+      }
     );
 
-  const result = await searchDrive({
-    query:
-      `'${escapedRepositoryId}' in parents and ` +
-      `name = '${escapedFileName}' and ` +
-      "trashed = false",
-    pageSize: 10,
-    fields:
-      "nextPageToken,files(id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties)"
-  });
-
-  if (result.files.length === 0) {
+  if (!resolved.file?.id) {
     return {
       schema:
         "meos.institutional-repository.read-result.v1",
@@ -1521,17 +1838,7 @@ async function readInstitutionalRecord(key) {
     };
   }
 
-  if (result.files.length > 1) {
-    const error = new Error(
-      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
-    );
-    error.code =
-      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
-    error.status = 409;
-    throw error;
-  }
-
-  const file = result.files[0];
+  const file = resolved.file;
   const response = await driveClient.files.get({
     fileId: file.id,
     alt: "media",
@@ -1566,17 +1873,26 @@ async function readInstitutionalRecord(key) {
     provider: PROVIDER_ID,
     authority: "app-managed-drive-folder",
     repository,
+    repairedAmbiguity:
+      resolved.repaired === true,
     record: {
       id: file.id,
       key: normalizedKey,
       name: file.name,
-      recordType: payload.recordType || null,
-      writtenAt: payload.writtenAt || null,
-      metadata: payload.metadata || {},
-      modifiedTime: file.modifiedTime || null,
-      createdTime: file.createdTime || null,
-      size: file.size || null,
-      webViewLink: file.webViewLink || null
+      recordType:
+        payload.recordType || null,
+      writtenAt:
+        payload.writtenAt || null,
+      metadata:
+        payload.metadata || {},
+      modifiedTime:
+        file.modifiedTime || null,
+      createdTime:
+        file.createdTime || null,
+      size:
+        file.size || null,
+      webViewLink:
+        file.webViewLink || null
     },
     value: payload.value
   };
@@ -1586,74 +1902,64 @@ async function deleteInstitutionalRecord(key) {
   requireControlledWriteAuthorization();
 
   const normalizedKey = normalizeRepositoryKey(key);
-  const repository =
-    await locateInstitutionalRepository();
 
-  if (!repository) {
-    return {
-      schema:
-        "meos.institutional-repository.delete-result.v1",
-      success: true,
-      deleted: false,
-      provider: PROVIDER_ID,
-      key: normalizedKey,
-      reason: "repository-not-found"
-    };
-  }
+  return withInstitutionalRepositoryKeyLock(
+    normalizedKey,
+    async () => {
+      const repository =
+        await locateInstitutionalRepository();
 
-  const escapedRepositoryId =
-    escapeDriveQueryValue(repository.id);
-  const escapedFileName =
-    escapeDriveQueryValue(
-      repositoryRecordName(normalizedKey)
-    );
+      if (!repository) {
+        return {
+          schema:
+            "meos.institutional-repository.delete-result.v1",
+          success: true,
+          deleted: false,
+          provider: PROVIDER_ID,
+          key: normalizedKey,
+          reason: "repository-not-found"
+        };
+      }
 
-  const result = await searchDrive({
-    query:
-      `'${escapedRepositoryId}' in parents and ` +
-      `name = '${escapedFileName}' and ` +
-      "trashed = false",
-    pageSize: 10,
-    fields:
-      "nextPageToken,files(id,name)"
-  });
+      const resolved =
+        await findInstitutionalRepositoryRecord(
+          repository,
+          normalizedKey,
+          {
+            repairEquivalent: true
+          }
+        );
 
-  if (result.files.length > 1) {
-    const error = new Error(
-      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
-    );
-    error.code =
-      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
-    error.status = 409;
-    throw error;
-  }
+      if (!resolved.file?.id) {
+        return {
+          schema:
+            "meos.institutional-repository.delete-result.v1",
+          success: true,
+          deleted: false,
+          provider: PROVIDER_ID,
+          key: normalizedKey,
+          reason: "record-not-found"
+        };
+      }
 
-  if (!result.files[0]?.id) {
-    return {
-      schema:
-        "meos.institutional-repository.delete-result.v1",
-      success: true,
-      deleted: false,
-      provider: PROVIDER_ID,
-      key: normalizedKey,
-      reason: "record-not-found"
-    };
-  }
+      await driveClient.files.delete({
+        fileId: resolved.file.id,
+        supportsAllDrives: true
+      });
 
-  await driveClient.files.delete({
-    fileId: result.files[0].id,
-    supportsAllDrives: true
-  });
-
-  return {
-    schema:
-      "meos.institutional-repository.delete-result.v1",
-    success: true,
-    deleted: true,
-    provider: PROVIDER_ID,
-    key: normalizedKey,
-    id: result.files[0].id
-  };
+      return {
+        schema:
+          "meos.institutional-repository.delete-result.v1",
+        success: true,
+        deleted: true,
+        provider: PROVIDER_ID,
+        key: normalizedKey,
+        id: resolved.file.id,
+        repairedAmbiguity:
+          resolved.repaired === true
+      };
+    }
+  );
 }
 
 async function runInstitutionalRepositoryAcceptanceTest() {
