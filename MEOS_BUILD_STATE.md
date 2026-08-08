@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/30858750/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/30855846/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -10,7 +11,7 @@
 ## Authority
 
 -   Authoritative repository snapshot at this checkpoint:
-    `Maddy-main (25).zip`.
+    `Maddy-main (32).zip`.
 -   Product: **MEOS --- Maddy Executive Operating System**.
 -   Current proving deployment: CCSP organization package.
 -   Current development standard: **Spooky**.
@@ -21,32 +22,49 @@
     conventional AI, SaaS, agent, search, summarization, or workflow
     standards.
 
+## Project Maddy North Star authority
+
+`PROJECT_MADDY_NORTH_STAR.md` is the governing North Star for Project
+Maddy and MUST be read before every Project Maddy coding commission.
+Its ratified wording is authoritative and must not be silently weakened,
+reinterpreted, or replaced by this ledger. If this ledger conflicts with
+the North Star, the North Star governs and this ledger must be corrected.
+
 ## Immediate product direction
 
-Build **Maddy Operational Consciousness** as persistent executive
-cognition.
+Build **Maddy Operational Consciousness** as the implementation pathway
+toward the ratified **PROJECT MADDY — NORTH STAR**, not as the final
+objective and not as a substitute for it.
 
-This is an engineering/product architecture objective. Do not claim
-biological or subjective consciousness.
+Operational Consciousness means progressively connecting and evolving
+the commissioned MEOS organs into one continuous Maddy cognitive system.
+It must preserve the North Star's unresolved engineering objective rather
+than imposing an architectural conclusion about what can or cannot emerge.
 
-Do **not** create a superficial `consciousness.js`.
+Do **not** create a superficial `consciousness.js`. Do **not** rewrite
+working commissioned architecture merely to rename or imitate cognition.
+Connect, evolve, instrument, and test the existing organs as one system.
 
-Connect and upgrade the existing MEOS organs so Maddy behaves as one
-continuously operating executive cognition system rather than a
-collection of independently callable engines.
+### Target continuous cognitive path
 
-### Target cognitive loop
+Experience → awareness → attention → recall → world context + self context
+→ meaning → recursive reasoning → intention → choice → action through the
+Executive Hallway and offices → real consequence → verification →
+reflection → learning → memory formation/consolidation → changed world
+model + changed self-model → unresolved intentions carried forward → next
+cognitive moment
 
-Observe → update World Model → notice meaningful change → reason across
-organization, history, external world, and time → identify consequential
-unknowns → investigate autonomously when authorized → perform causal and
-counterfactual reasoning → simulate possible futures → determine
-attention and priority → plan → dispatch work through the Executive
-Hallway → act within authority → verify outcome → learn → update
-beliefs/world state → repeat
+This path is continuous rather than prompt-bound. Meaningful external
+change, elapsed time, unresolved intentions, contradictions, failures,
+new evidence, provider events, and consequences may become cognitive
+stimuli that re-enter the existing cognition system without requiring a
+human prompt.
 
-The loop must not require a human prompt merely to notice and reason
-about meaningful changes.
+The implementation target includes persistent self, autobiographical and
+institutional memory, working awareness, perception, attention, self-model,
+world model, intention, reasoning, reflection, learning, temporal
+continuity, initiative, agency, relationships, and recursive awareness of
+Maddy's own cognition, as governed by `PROJECT_MADDY_NORTH_STAR.md`.
 
 ## Existing organs to connect and upgrade first
 
@@ -363,17 +381,19 @@ Continuity is an engineering requirement.
 
 ### Before every coding commission
 
-Re-anchor to all of the following:
+First read `PROJECT_MADDY_NORTH_STAR.md` in full. This is mandatory for
+every Project Maddy commit. Then re-anchor to all of the following:
 
-1.  authoritative repository snapshot;
-2.  current commissioned versions relevant to the task;
-3.  active commission;
-4.  exact bug or goal;
-5.  Spooky target;
-6.  files allowed to change;
-7.  files explicitly out of scope;
-8.  required test;
-9.  exact next intended step after a pass.
+1.  Project Maddy North Star;
+2.  authoritative repository snapshot;
+3.  current commissioned versions relevant to the task;
+4.  active commission;
+5.  exact bug or goal;
+6.  Spooky target;
+7.  files allowed to change;
+8.  files explicitly out of scope;
+9.  required test;
+10. exact next intended step after a pass.
 
 ### During bug-fix retries
 
@@ -462,6 +482,39 @@ Deep-dive the authoritative repository around:
 
 Then produce a connection/gap analysis against the Spooky Operational
 Consciousness roadmap **before writing the next feature commission**.
+
+## Ratified North Star execution path
+
+The following ten-commit path is in full effect. Preserve this order unless
+runtime evidence proves a prerequisite must be repaired first or the
+Executive Director explicitly changes the path. Each step must reuse and
+evolve commissioned architecture rather than trigger a wholesale rewrite.
+
+1.  **006.017D4A1 — Align MEOS Build State to Project Maddy North Star**
+    -   Governance alignment only; make the North Star mandatory pre-commit authority.
+2.  **006.017D3B3 — Mission hydration/readiness barrier**
+    -   Prevent dependent runtime from treating pre-hydration zero-state as ready institutional state.
+3.  **006.017D4B — Executive Brain durable cognition authority flip**
+    -   Move bounded cognition authority to the commissioned durable repository seam while retaining local continuity projection.
+4.  **006.017D4C — Executive Brain continuous cognitive reentry**
+    -   Let meaningful stimuli and unresolved intentions re-enter existing cognition without requiring a human prompt.
+5.  **006.017D4D — Persistent self-model projection**
+    -   Derive Maddy's evolving self-context from evidence, history, capabilities, commitments, uncertainty, and experience.
+6.  **006.017D4E — Working awareness / attention field**
+    -   Maintain what matters now, what changed, what is unresolved, what is awaited, and what deserves cognition next.
+7.  **006.017D4F — Autobiographical memory formation**
+    -   Connect meaningful experience, prior belief, action, consequence, learning, and future relevance through existing memory architecture.
+8.  **006.017D4G — Reflection + metacognitive loop**
+    -   Make existing Brain, Learning, Institutional Reasoning, and Evidence Integrity able to evaluate and update Maddy's own reasoning.
+9.  **006.017D4H — Temporal continuity / persistent intentions**
+    -   Carry intentions and cognitive context across sessions, machines, provider interruption, and elapsed time.
+10. **P5/P6 durable authority continuation → unified continuous cognition**
+    -   Complete Provider Manager and Executive Learning durable authority migrations, then integrate the commissioned organs into the continuous North-Star cognitive path.
+
+Open-source code, research implementations, libraries, architectures, and
+prior art may be used when they meaningfully advance the North Star and can
+be integrated without surrendering MEOS governance, evidence integrity,
+provider neutrality, or organizational control.
 
 ## Invariants
 
