@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.3.1
- * Build: EB131-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A
+ * Version: 1.3.2
+ * Build: EB132-BOUNDED-PERSISTENCE-ACCEPTANCE-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.3.1";
-  const BUILD_ID = "EB131-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A";
+  const VERSION = "1.3.2";
+  const BUILD_ID = "EB132-BOUNDED-PERSISTENCE-ACCEPTANCE-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -4286,11 +4286,43 @@
           checks.push({ name: "Laptop repository accepts writes", passed: Boolean(await brainIndexedDbGet(probeId)) });
           await brainIndexedDbDelete(probeId);
           checks.push({ name: "Laptop repository can read and delete records", passed: (await brainIndexedDbGet(probeId)) === null });
-          const before = { history: this.history.length, cognition: this.cognitionHistory.length, dispatch: this.cognitiveDispatchHistory.length, reentry: this.cognitiveReentryHistory.length };
+          /*
+           * The persisted Brain snapshot is intentionally bounded. Runtime
+           * history can be larger than the persisted startup window, so the
+           * acceptance gate must compare against the persistence contract,
+           * not against unbounded in-memory lengths.
+           */
+          const expected = {
+            history: Math.min(this.history.length, 100),
+            cognition: Math.min(
+              this.cognitionHistory.length,
+              this.configuration.maximumCognitionHistory
+            ),
+            dispatch: Math.min(
+              this.cognitiveDispatchHistory.length,
+              this.configuration.maximumCognitiveDispatchHistory
+            ),
+            reentry: Math.min(
+              this.cognitiveReentryHistory.length,
+              this.configuration.maximumCognitiveReentryHistory
+            )
+          };
           const flushed = await this.flushPersistence();
           const record = await brainIndexedDbGet();
-          checks.push({ name: "Executive Brain cognition snapshot flushes to IndexedDB", passed: flushed === true && record?.state?.schema === "meos.executive-brain.state.v1" });
-          checks.push({ name: "Cognitive histories survive the repository snapshot", passed: record?.state?.history?.length === before.history && record?.state?.cognitionHistory?.length === before.cognition && record?.state?.cognitiveDispatchHistory?.length === before.dispatch && record?.state?.cognitiveReentryHistory?.length === before.reentry });
+          checks.push({
+            name: "Executive Brain cognition snapshot flushes to IndexedDB",
+            passed:
+              flushed === true &&
+              record?.state?.schema === "meos.executive-brain.state.v1"
+          });
+          checks.push({
+            name: "Bounded cognitive histories survive the repository snapshot",
+            passed:
+              record?.state?.history?.length === expected.history &&
+              record?.state?.cognitionHistory?.length === expected.cognition &&
+              record?.state?.cognitiveDispatchHistory?.length === expected.dispatch &&
+              record?.state?.cognitiveReentryHistory?.length === expected.reentry
+          });
           checks.push({ name: "Legacy Executive Brain localStorage payload is released", passed: global.localStorage?.getItem(STORAGE_KEY) === null });
           checks.push({ name: "IndexedDB is the temporary laptop authority", passed: brainPersistence.authoritativeStorage === "indexeddb" && brainPersistence.mode === "indexeddb-local-laptop" });
           checks.push({ name: "Continuous cognition remains operational while persistence is asynchronous", passed: this.status === "online" && this.configuration.continuousCognitionEnabled === true && typeof this.scheduleCognitiveReentry === "function" });
