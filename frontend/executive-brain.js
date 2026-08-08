@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.10.0
- * Build: EB1100-TEMPORAL-CONTINUITY-PERSISTENT-INTENTIONS-20260808-A
+ * Version: 1.10.1
+ * Build: EB1101-COGNITIVE-REENTRY-LINEAGE-GUARD-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.10.0";
-  const BUILD_ID = "EB1100-TEMPORAL-CONTINUITY-PERSISTENT-INTENTIONS-20260808-A";
+  const VERSION = "1.10.1";
+  const BUILD_ID = "EB1101-COGNITIVE-REENTRY-LINEAGE-GUARD-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -211,6 +211,7 @@
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
+    activeCognitiveLineages: new Map(),
     continuousCognitionSubscriptions: [],
     listeners: {},
 
@@ -1025,11 +1026,77 @@
         signature
       );
 
+      const lineageId = String(
+        work.context?.cognitiveReentryLineageId || ""
+      ).trim();
+
+      /*
+       * Commission 006.017D4H1 — Cognitive Reentry Lineage Guard
+       *
+       * A terminal Hallway event produced synchronously by the cognition that
+       * is currently executing is an outcome of that thought, not a new
+       * stimulus. Re-entering on that event creates a closed causal loop:
+       * cognition -> Hallway -> terminal event -> cognition -> Hallway ...
+       *
+       * Preserve the outcome inside the originating durable intention so the
+       * same Maddy can remember what happened, but do not create a child
+       * cognition from its own still-active lineage. A later terminal event
+       * after the lineage has ended (for example after human approval) remains
+       * eligible to become genuinely new evidence and can wake cognition.
+       */
+      if (
+        lineageId &&
+        this.activeCognitiveLineages.has(lineageId)
+      ) {
+        const intention = (this.cognitiveIntentions || []).find(
+          item =>
+            item?.key === this.normalize(subject) &&
+            item?.status !== "completed"
+        );
+
+        if (intention) {
+          intention.triggers = Array.isArray(intention.triggers)
+            ? intention.triggers
+            : [];
+          intention.triggers.push({
+            source: "executive-hallway",
+            event: "cognitive-lineage-outcome",
+            lineageId,
+            workId: work.id,
+            workState: work.state,
+            route: work.route || null,
+            verified: work.outcome?.verified ?? null,
+            success: work.outcome?.success ?? null,
+            error: work.error || null,
+            observedAt: work.updatedAt || new Date().toISOString()
+          });
+          intention.triggers = intention.triggers.slice(-24);
+          intention.updatedAt = new Date().toISOString();
+        }
+
+        this.record("cognition.lineage-outcome-absorbed", {
+          lineageId,
+          subject,
+          workId: work.id,
+          workState: work.state
+        });
+
+        return {
+          success: true,
+          meaningful: true,
+          scheduled: false,
+          absorbed: true,
+          lineageId,
+          reason: "active-cognitive-lineage-outcome"
+        };
+      }
+
       return this.scheduleCognitiveReentry(
         subject,
         {
           source: "executive-hallway",
           event: "work-updated",
+          lineageId: lineageId || null,
           workId: work.id,
           workState: work.state,
           route: work.route || null,
@@ -1496,6 +1563,14 @@
       const intention = this.upsertCognitiveIntention(subject, triggers, { status: "running" });
       if (intention) intention.attempts = Number(intention.attempts || 0) + 1;
 
+      this.activeCognitiveLineages.set(entry.reentryId, {
+        lineageId: entry.reentryId,
+        subject,
+        subjectKey: key,
+        intentionId: intention?.intentionId || null,
+        startedAt: entry.startedAt
+      });
+
       try {
         this.refresh({
           reason:
@@ -1513,7 +1588,9 @@
                 autoAuthorizeInternalResearch:
                   true,
                 autoAuthorizeInternalMonitoring:
-                  true
+                  true,
+                cognitiveReentryLineageId:
+                  entry.reentryId
               }
             );
 
@@ -1620,6 +1697,9 @@
 
         this.cognitiveReentryInFlight.delete(
           key
+        );
+        this.activeCognitiveLineages.delete(
+          entry.reentryId
         );
 
         const unresolvedIntention = (this.cognitiveIntentions || []).find(item => item.key === key && item.status !== "completed");
@@ -2042,7 +2122,9 @@
             readiness:
               this.clone(positioning.readiness),
             cognitiveAuthority:
-              this.clone(authority)
+              this.clone(authority),
+            cognitiveReentryLineageId:
+              options.cognitiveReentryLineageId || null
           }
         });
 
@@ -7236,6 +7318,93 @@
       let localStorageBytes = null;
       try { localStorageBytes = new Blob([global.localStorage?.getItem(STORAGE_KEY) || ""]).size; } catch {}
       return this.clone({ ...brainPersistence, localStorageBytes });
+    },
+
+    async runCognitiveReentryLineageGuardAcceptanceTest() {
+      const lineageId = "d4h1-lineage-fixture";
+      const subject = "Commission 006.017D4H1 Lineage Fixture";
+      const key = this.normalize(subject);
+      const originalIntentions = this.clone(this.cognitiveIntentions);
+      const originalSignatures = this.meaningfulChangeSignatures;
+      const originalLineages = this.activeCognitiveLineages;
+
+      try {
+        this.meaningfulChangeSignatures = new Map();
+        this.activeCognitiveLineages = new Map([[lineageId, {
+          lineageId,
+          subject,
+          subjectKey: key,
+          intentionId: "d4h1-intention-fixture",
+          startedAt: new Date().toISOString()
+        }]]);
+        this.cognitiveIntentions = [{
+          intentionId: "d4h1-intention-fixture",
+          key,
+          subject,
+          status: "running",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          attempts: 1,
+          triggers: []
+        }];
+
+        const absorbed = this.handleHallwayMeaningfulChange({
+          id: "d4h1-work-fixture",
+          state: "done",
+          route: "executive-router",
+          context: {
+            cognitiveDispatch: true,
+            cognitionSubject: subject,
+            cognitiveReentryLineageId: lineageId
+          },
+          outcome: { success: true, verified: true },
+          updatedAt: new Date().toISOString()
+        });
+
+        const intention = this.cognitiveIntentions[0];
+        const checks = [
+          {
+            name: "Active cognitive lineage terminal outcome is absorbed instead of recursively re-entered",
+            passed: absorbed?.absorbed === true && absorbed?.scheduled === false
+          },
+          {
+            name: "Absorbed outcome remains attached to the originating durable intention",
+            passed: intention?.triggers?.some(item => item.lineageId === lineageId && item.workId === "d4h1-work-fixture") === true
+          },
+          {
+            name: "Cognitive dispatch carries explicit reentry lineage through the Hallway",
+            passed: /cognitiveReentryLineageId/.test(this.runPositioningCognitionAndDispatch.toString())
+          },
+          {
+            name: "Cognitive reentry registers and releases active lineage around execution",
+            passed: /activeCognitiveLineages\.set/.test(this.executeCognitiveReentry.toString()) && /activeCognitiveLineages\.delete/.test(this.executeCognitiveReentry.toString())
+          },
+          {
+            name: "Later outcomes remain eligible as new evidence after originating lineage ends",
+            passed: /activeCognitiveLineages\.has/.test(this.handleHallwayMeaningfulChange.toString()) && /scheduleCognitiveReentry/.test(this.handleHallwayMeaningfulChange.toString())
+          },
+          {
+            name: "External human approval authority remains unchanged",
+            passed: this.configuration.requireHumanApprovalForExternalAction === true
+          }
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(checks);
+        console.info(`[MEOS ${this.version}] Commission 006.017D4H1 cognitive reentry lineage guard: ${passed ? "PASS" : "FAIL"}.`);
+        return {
+          commission: "006.017D4H1",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          absorbed
+        };
+      } finally {
+        this.cognitiveIntentions = originalIntentions;
+        this.meaningfulChangeSignatures = originalSignatures;
+        this.activeCognitiveLineages = originalLineages;
+      }
     },
 
     async runContinuousCognitiveReentryAcceptanceTest() {
