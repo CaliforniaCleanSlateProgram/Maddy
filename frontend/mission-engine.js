@@ -1,7 +1,7 @@
 /**
  * MEOS Mission Engine
- * Version: 0.1.4
- * Build: ME014-AUTONOMOUS-INSTITUTIONAL-STATE-CONVERGENCE-20260808-A
+ * Version: 0.1.5
+ * Build: ME015-DURABLE-AUTHORITY-CONCURRENCY-CONVERGENCE-20260808-A
  *
  * Purpose:
  * The Mission Engine is the central work-management system for MEOS.
@@ -22,14 +22,15 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.4";
-    const BUILD_ID = "ME014-AUTONOMOUS-INSTITUTIONAL-STATE-CONVERGENCE-20260808-A";
+    const VERSION = "0.1.5";
+    const BUILD_ID = "ME015-DURABLE-AUTHORITY-CONCURRENCY-CONVERGENCE-20260808-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
     const INDEXED_DB_STORE = "engine-state";
     const INDEXED_DB_RECORD_ID = "mission-engine-state";
     const PERSISTENCE_DEBOUNCE_MS = 150;
+    const MAX_CONCURRENCY_REBASE_ATTEMPTS = 4;
 
     const persistence = {
         mode: "workspace-durable-authority",
@@ -69,6 +70,10 @@
         lastConvergenceReason: null,
         lastConvergenceEvidence: null,
         convergenceConflict: null,
+        concurrencyRebases: 0,
+        concurrencyConflictsExhausted: 0,
+        lastConcurrencyAt: null,
+        lastConcurrencyAction: null,
         lastError: null
     };
 
@@ -512,6 +517,97 @@
         return payload;
     }
 
+    function recordTimestamp(record) {
+        const candidates = [record?.updatedAt, record?.completedAt, record?.archivedAt, record?.createdAt, record?.timestamp];
+        for (const value of candidates) {
+            const parsed = Date.parse(value || "");
+            if (Number.isFinite(parsed)) return parsed;
+        }
+        return 0;
+    }
+
+    function chooseNewestRecord(left, right) {
+        if (!left) return clone(right);
+        if (!right) return clone(left);
+        const leftTime = recordTimestamp(left);
+        const rightTime = recordTimestamp(right);
+        if (rightTime > leftTime) return clone(right);
+        if (leftTime > rightTime) return clone(left);
+        return JSON.stringify(right).length > JSON.stringify(left).length ? clone(right) : clone(left);
+    }
+
+    function missionLifecycleBucket(mission) {
+        if (mission?.status === MISSION_STATUS.ARCHIVED) return "archivedMissions";
+        if (mission?.status === MISSION_STATUS.COMPLETED) return "completedMissions";
+        return "missions";
+    }
+
+    function mergeByIdentity(remoteItems = [], localItems = []) {
+        const merged = new Map();
+        [...remoteItems, ...localItems].forEach(item => {
+            const key = item?.id || JSON.stringify(item);
+            merged.set(key, chooseNewestRecord(merged.get(key), item));
+        });
+        return [...merged.values()];
+    }
+
+    function mergeConcurrentMissionSnapshots(remoteSnapshot, localSnapshot) {
+        const remote = remoteSnapshot || {};
+        const local = localSnapshot || {};
+        const lifecycle = mergeByIdentity(
+            [...(remote.missions || []), ...(remote.completedMissions || []), ...(remote.archivedMissions || [])],
+            [...(local.missions || []), ...(local.completedMissions || []), ...(local.archivedMissions || [])]
+        );
+        const merged = {
+            ...clone(remote), ...clone(local),
+            missions: [], completedMissions: [], archivedMissions: [],
+            approvalQueue: mergeByIdentity(remote.approvalQueue || [], local.approvalQueue || []),
+            activity: mergeByIdentity(remote.activity || [], local.activity || [])
+                .sort((a, b) => recordTimestamp(b) - recordTimestamp(a)).slice(0, 500),
+            initializedAt: remote.initializedAt || local.initializedAt || now(),
+            updatedAt: recordTimestamp(remote) > recordTimestamp(local) ? remote.updatedAt : local.updatedAt
+        };
+        lifecycle.forEach(mission => merged[missionLifecycleBucket(mission)].push(mission));
+        return merged;
+    }
+
+    function isOptimisticConcurrencyConflict(error) {
+        return Number(error?.status) === 409;
+    }
+
+    async function writeDurableMissionStateWithConvergence(snapshot) {
+        let candidate = clone(snapshot);
+        let lastConflict = null;
+        for (let attempt = 0; attempt <= MAX_CONCURRENCY_REBASE_ATTEMPTS; attempt += 1) {
+            try {
+                const result = await writeDurableMissionState(candidate);
+                if (attempt > 0) {
+                    persistence.lastConcurrencyAt = now();
+                    persistence.lastConcurrencyAction = `converged-after-${attempt}-rebase${attempt === 1 ? "" : "s"}`;
+                }
+                return { result, snapshot: candidate, rebases: attempt };
+            } catch (error) {
+                if (!isOptimisticConcurrencyConflict(error)) throw error;
+                lastConflict = error;
+                if (attempt >= MAX_CONCURRENCY_REBASE_ATTEMPTS) break;
+                const latest = await fetchDurableMissionState();
+                const remoteState = extractSnapshotCandidate(latest?.payload?.value);
+                if (!latest?.found || !remoteState) {
+                    throw new Error("Concurrency convergence could not read the durable state that caused the conflict.");
+                }
+                persistence.lastDurableFingerprint = latest?.payload?.record?.payloadFingerprint || null;
+                candidate = mergeConcurrentMissionSnapshots(remoteState, candidate);
+                persistence.concurrencyRebases += 1;
+                persistence.lastConcurrencyAt = now();
+                persistence.lastConcurrencyAction = "rebase-and-retry";
+            }
+        }
+        persistence.concurrencyConflictsExhausted += 1;
+        persistence.lastConcurrencyAt = now();
+        persistence.lastConcurrencyAction = "bounded-rebase-exhausted";
+        throw lastConflict || new Error("Durable Mission State concurrency convergence exhausted.");
+    }
+
     async function persistDurableNow() {
         if (persistence.suspended) {
             return false;
@@ -529,7 +625,10 @@
         await persistIndexedDbCacheNow(snapshot);
 
         try {
-            await writeDurableMissionState(snapshot);
+            const convergedWrite = await writeDurableMissionStateWithConvergence(snapshot);
+            if (convergedWrite.rebases > 0) {
+                applyStateSnapshot(convergedWrite.snapshot);
+            }
             return true;
         } catch (error) {
             persistence.durableAvailable = false;
@@ -2732,7 +2831,8 @@
         },
         recoverLaptopMissionState,
         convergeInstitutionalState,
-        runAutonomousConvergenceAcceptanceTest
+        runAutonomousConvergenceAcceptanceTest,
+        runDurableConcurrencyConvergenceAcceptanceTest
     });
 
     global.MEOSMissionEngine = MissionEngine;
