@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.1.0
- * Build: EB110-COGNITION-CYCLE-20260808-A
+ * Version: 1.2.0
+ * Build: EB120-COGNITIVE-HALLWAY-DISPATCH-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.1.0";
-  const BUILD_ID = "EB110-COGNITION-CYCLE-20260808-A";
+  const VERSION = "1.2.0";
+  const BUILD_ID = "EB120-COGNITIVE-HALLWAY-DISPATCH-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
 
   const REQUEST_TYPES = Object.freeze({
@@ -72,7 +72,11 @@
       allowIntegrityFallback: true,
       cognitionCycleEnabled: true,
       requireInstitutionalReasoningForCognition: true,
-      maximumCognitionHistory: 200
+      maximumCognitionHistory: 200,
+      cognitiveDispatchEnabled: true,
+      autoAuthorizeInternalResearch: true,
+      autoAuthorizeInternalMonitoring: true,
+      maximumCognitiveDispatchHistory: 200
     },
 
     initializedAt: null,
@@ -82,6 +86,7 @@
     requestCache: new Map(),
     history: [],
     cognitionHistory: [],
+    cognitiveDispatchHistory: [],
     listeners: {},
 
     profiles: {
@@ -498,6 +503,804 @@
 
       this.emit("brain:cognition-completed", result);
       return this.clone(result);
+    },
+
+
+    /*
+     * Commission 006.016E — Cognitive Hallway Dispatch
+     *
+     * Cognition becomes executive work here. Counterfactual positioning is
+     * reasoned by Institutional Reasoning, drafted into Executive Planning,
+     * and dispatched through the Executive Hallway. The Brain never executes
+     * an external act directly and never bypasses Hallway governance.
+     */
+    async runPositioningCognitionAndDispatch(subject, options = {}) {
+      if (this.configuration.cognitiveDispatchEnabled !== true) {
+        return {
+          success: false,
+          status: "cognitive-dispatch-disabled",
+          error: "Executive Brain cognitive dispatch is disabled."
+        };
+      }
+
+      const reasoning = global.InstitutionalReasoning;
+      const planning = global.ExecutivePlanning;
+      const hallway = global.MEOSExecutiveHallway;
+
+      if (!reasoning?.analyzePositioning) {
+        return {
+          success: false,
+          status: "positioning-cognition-unavailable",
+          error:
+            "Institutional Reasoning counterfactual positioning is unavailable."
+        };
+      }
+
+      if (!planning?.createPlan) {
+        return {
+          success: false,
+          status: "planning-unavailable",
+          error: "Executive Planning Engine is unavailable."
+        };
+      }
+
+      if (!hallway?.submitWork) {
+        return {
+          success: false,
+          status: "hallway-unavailable",
+          error: "Executive Hallway is unavailable."
+        };
+      }
+
+      const startedAt = new Date().toISOString();
+      const positioning = reasoning.analyzePositioning(
+        subject,
+        options.reasoningOptions || {}
+      );
+
+      if (positioning?.success !== true) {
+        return {
+          success: false,
+          status: "positioning-cognition-failed",
+          positioning: this.clone(positioning)
+        };
+      }
+
+      const moves = Array.isArray(positioning.positioningMoves)
+        ? positioning.positioningMoves.filter(
+            move =>
+              move &&
+              String(move.action || "").trim() &&
+              move.status !== "discarded"
+          )
+        : [];
+
+      const positioningFingerprint =
+        this.fingerprintCognitiveDispatch({
+          subject: positioning.subject,
+          opportunity: positioning.opportunity,
+          whatMustBecomeTrue: positioning.whatMustBecomeTrue,
+          consequentialUnknowns:
+            positioning.consequentialUnknowns,
+          positioningMoves: moves
+        });
+
+      const planResult = this.createOrReusePositioningPlan(
+        positioning,
+        positioningFingerprint,
+        options
+      );
+
+      if (planResult?.success !== true) {
+        return {
+          success: false,
+          status: "positioning-plan-failed",
+          positioning: this.clone(positioning),
+          plan: this.clone(planResult)
+        };
+      }
+
+      const plan = planResult.plan;
+      const dispatches = [];
+
+      for (const move of moves) {
+        const dispatchKey = this.fingerprintCognitiveDispatch({
+          positioningFingerprint,
+          type: move.type,
+          action: move.action
+        });
+
+        const existing = this.findExistingCognitiveWork(
+          dispatchKey
+        );
+
+        if (existing) {
+          dispatches.push({
+            success: true,
+            duplicate: true,
+            dispatchKey,
+            move: this.clone(move),
+            authority:
+              this.clone(
+                existing.context?.cognitiveAuthority ||
+                {}
+              ),
+            work: this.clone(existing)
+          });
+          continue;
+        }
+
+        const authority =
+          this.classifyCognitiveMoveAuthority(
+            move,
+            options
+          );
+
+        const work = await hallway.submitWork({
+          title:
+            move.title ||
+            `Positioning — ${move.type || "work"}`,
+          instruction: String(move.action).trim(),
+          source: "executive-brain-cognition",
+          requestedBy: "maddy",
+          reviewRequired: authority.reviewRequired,
+          authorized: authority.authorized,
+          authorizationSignal:
+            authority.authorized
+              ? "Executive Brain — existing internal authority"
+              : null,
+          context: {
+            cognitiveDispatch: true,
+            cognitiveDispatchKey: dispatchKey,
+            cognitivePositioningFingerprint:
+              positioningFingerprint,
+            cognitionType:
+              "counterfactual-positioning",
+            cognitionSubject: positioning.subject,
+            planId: plan?.id || null,
+            positioningMoveOrder:
+              Number(move.order) || null,
+            positioningMoveType:
+              move.type || null,
+            positioningOwner:
+              move.owner || null,
+            opportunityRecordId:
+              positioning.opportunity?.recordId || null,
+            readiness:
+              this.clone(positioning.readiness),
+            cognitiveAuthority:
+              this.clone(authority)
+          }
+        });
+
+        dispatches.push({
+          success:
+            work?.outcome?.success !== false &&
+            work?.state !== "failed",
+          duplicate: false,
+          dispatchKey,
+          move: this.clone(move),
+          authority,
+          work: this.clone(work)
+        });
+      }
+
+      const result = {
+        success: dispatches.every(
+          item => item.success !== false
+        ),
+        schema:
+          "meos.executive-brain.cognitive-hallway-dispatch.v1",
+        version: this.version,
+        buildId: this.buildId,
+        dispatchId: this.id("cognitive-dispatch"),
+        cognitionType: "counterfactual-positioning",
+        subject: positioning.subject,
+        positioningFingerprint,
+        positioning: this.clone(positioning),
+        plan: {
+          created: planResult.created === true,
+          reused: planResult.reused === true,
+          id: plan?.id || null,
+          status: plan?.status || null,
+          title: plan?.title || null
+        },
+        dispatches,
+        summary: {
+          proposedMoves: moves.length,
+          dispatched:
+            dispatches.filter(
+              item =>
+                item.duplicate !== true &&
+                item.work
+            ).length,
+          reusedExistingWork:
+            dispatches.filter(
+              item => item.duplicate === true
+            ).length,
+          executingWithinAuthority:
+            dispatches.filter(
+              item =>
+                item.authority?.authorized === true
+            ).length,
+          awaitingReview:
+            dispatches.filter(
+              item =>
+                item.authority?.reviewRequired === true &&
+                item.authority?.authorized !== true
+            ).length,
+          failed:
+            dispatches.filter(
+              item => item.success === false
+            ).length
+        },
+        governance: {
+          hallwayOnly: true,
+          directExternalExecution: false,
+          authorityClassifiedPerMove: true,
+          externalActionAlwaysReviewRequired: true
+        },
+        startedAt,
+        completedAt: new Date().toISOString()
+      };
+
+      this.recordCognitiveDispatch(result);
+      this.record("cognition.dispatched", {
+        dispatchId: result.dispatchId,
+        subject: result.subject,
+        planId: result.plan.id,
+        proposedMoves: result.summary.proposedMoves,
+        dispatched: result.summary.dispatched,
+        awaitingReview: result.summary.awaitingReview,
+        failed: result.summary.failed
+      });
+
+      this.emit(
+        "brain:cognition-dispatched",
+        this.clone(result)
+      );
+
+      return this.clone(result);
+    },
+
+    createOrReusePositioningPlan(
+      positioning,
+      fingerprint,
+      options = {}
+    ) {
+      const planning = global.ExecutivePlanning;
+      const existing = Array.isArray(planning?.plans)
+        ? planning.plans.find(
+            plan =>
+              plan?.metadata
+                ?.cognitivePositioningFingerprint ===
+              fingerprint
+          )
+        : null;
+
+      if (existing) {
+        return {
+          success: true,
+          created: false,
+          reused: true,
+          plan: this.clone(existing)
+        };
+      }
+
+      const moves = Array.isArray(
+        positioning?.positioningMoves
+      )
+        ? positioning.positioningMoves
+        : [];
+
+      const phaseGroups = [
+        {
+          title: "Resolve Consequential Unknowns",
+          types: ["investigate"]
+        },
+        {
+          title: "Build Legitimate Positioning",
+          types: ["strategic-positioning"]
+        },
+        {
+          title: "Maintain Opportunity Awareness",
+          types: ["monitor"]
+        }
+      ];
+
+      const phases = phaseGroups
+        .map(group => {
+          const groupMoves = moves.filter(
+            move => group.types.includes(move.type)
+          );
+
+          if (groupMoves.length === 0) {
+            return null;
+          }
+
+          return {
+            title: group.title,
+            objective:
+              group.title ===
+              "Resolve Consequential Unknowns"
+                ? "Resolve evidence gaps early enough to change readiness before the opportunity becomes actionable."
+                : group.title ===
+                    "Build Legitimate Positioning"
+                  ? "Build truthful organizational capability and evidence without fabricating mission alignment."
+                  : "Watch authoritative evidence for material changes while positioning work continues.",
+            durationDays:
+              group.title ===
+              "Maintain Opportunity Awareness"
+                ? 30
+                : 14,
+            tasks: groupMoves.map(move => {
+              const authority =
+                this.classifyCognitiveMoveAuthority(
+                  move,
+                  options
+                );
+
+              return {
+                title: move.action,
+                description:
+                  move.whyNow || "",
+                office:
+                  move.owner || "Maddy",
+                owner:
+                  move.owner || "Maddy",
+                priority:
+                  move.type === "investigate"
+                    ? "high"
+                    : "normal",
+                approvalRequired:
+                  authority.reviewRequired,
+                deliverables: [
+                  move.type === "investigate"
+                    ? "Verified finding with source evidence"
+                    : move.type === "monitor"
+                      ? "Material-change monitoring evidence"
+                      : "Evidence-grounded positioning recommendation"
+                ],
+                notes:
+                  move.guardrail ||
+                  "Preserve evidence integrity and organizational truth.",
+                metadata: {
+                  cognitiveMoveType:
+                    move.type || null,
+                  cognitiveAuthority:
+                    authority
+                }
+              };
+            })
+          };
+        })
+        .filter(Boolean);
+
+      const objective =
+        `Position the organization for "${positioning.subject}" before the next actionable window by resolving verified gaps, building legitimate readiness, and monitoring material changes.`;
+
+      const result = planning.createPlan(
+        {
+          title:
+            `Positioning — ${positioning.subject}`,
+          objective,
+          description:
+            "Executive Brain plan generated from counterfactual positioning cognition. Future opportunity intelligence is converted into governed work now rather than a reminder.",
+          status: "draft",
+          priority:
+            positioning.readiness?.score < 55
+              ? "high"
+              : "normal",
+          strategy:
+            "Resolve consequential unknowns, build only truthful adjacent capability, and preserve readiness until the opportunity becomes actionable.",
+          requestedBy: "Maddy",
+          executiveOwner: "Maddy",
+          phases,
+          dependencies:
+            (positioning.whatMustBecomeTrue || [])
+              .filter(item => item.blocking)
+              .map(item => ({
+                title: item.statement,
+                type: item.category,
+                status: item.state,
+                critical: true,
+                owner: "Maddy"
+              })),
+          risks: [
+            {
+              title:
+                "Late discovery of eligibility or timing requirements",
+              category: "readiness",
+              severity: "high",
+              mitigation:
+                "Resolve unknowns and monitor authoritative source material before the next cycle opens."
+            },
+            {
+              title:
+                "Unsupported strategic alignment",
+              category: "integrity",
+              severity: "critical",
+              mitigation:
+                "Require real organizational activity and evidence before claiming alignment or eligibility."
+            }
+          ],
+          tags: [
+            "counterfactual-positioning",
+            "cognitive-dispatch",
+            "future-opportunity"
+          ],
+          topics: [
+            positioning.subject,
+            "executive-positioning"
+          ],
+          metadata: {
+            cognitivePositioningFingerprint:
+              fingerprint,
+            cognitionType:
+              "counterfactual-positioning",
+            opportunityRecordId:
+              positioning.opportunity?.recordId ||
+              null,
+            readiness:
+              this.clone(positioning.readiness),
+            generatedBy:
+              "MEOS Executive Brain"
+          }
+        },
+        {
+          actor: "MEOS Executive Brain",
+          skipReasoning: true,
+          createMissionDrafts: false
+        }
+      );
+
+      return {
+        ...result,
+        created: result?.success === true,
+        reused: false
+      };
+    },
+
+    classifyCognitiveMoveAuthority(move = {}, options = {}) {
+      const action = String(move.action || "");
+      const declared = String(move.authority || "");
+      const externalAction =
+        /\b(send|submit|publish|purchase|spend|sign|file|apply|contact|email|call|commit|contract|accept|execute payment|transfer)\b/i.test(
+          action
+        );
+
+      if (externalAction) {
+        return {
+          class: "external-action",
+          reviewRequired: true,
+          authorized: false,
+          reason:
+            "External or commitment-producing action requires human authority."
+        };
+      }
+
+      const internalResearch =
+        move.type === "investigate" ||
+        declared ===
+          "within-existing-research-authority";
+
+      const internalMonitoring =
+        move.type === "monitor" ||
+        declared ===
+          "within-existing-monitoring-authority";
+
+      if (
+        internalResearch &&
+        this.configuration
+          .autoAuthorizeInternalResearch === true &&
+        options.autoAuthorizeInternalResearch !== false
+      ) {
+        return {
+          class: "internal-research",
+          reviewRequired: false,
+          authorized: true,
+          reason:
+            "Evidence gathering remains inside existing internal research authority."
+        };
+      }
+
+      if (
+        internalMonitoring &&
+        this.configuration
+          .autoAuthorizeInternalMonitoring === true &&
+        options.autoAuthorizeInternalMonitoring !== false
+      ) {
+        return {
+          class: "internal-monitoring",
+          reviewRequired: false,
+          authorized: true,
+          reason:
+            "Monitoring authoritative evidence remains inside existing internal monitoring authority."
+        };
+      }
+
+      if (
+        move.type === "strategic-positioning" &&
+        options.authorizePreparation === true
+      ) {
+        return {
+          class: "authorized-internal-preparation",
+          reviewRequired: false,
+          authorized: true,
+          reason:
+            "Internal preparation was explicitly authorized for this dispatch."
+        };
+      }
+
+      return {
+        class: "review-required",
+        reviewRequired: true,
+        authorized: false,
+        reason:
+          "Preparation may change organizational commitments or priorities and remains review-first."
+      };
+    },
+
+    findExistingCognitiveWork(dispatchKey) {
+      const hallway = global.MEOSExecutiveHallway;
+
+      if (
+        !dispatchKey ||
+        !hallway?.listWork
+      ) {
+        return null;
+      }
+
+      const work = hallway.listWork();
+
+      if (!Array.isArray(work)) {
+        return null;
+      }
+
+      return (
+        work.find(
+          item =>
+            item?.context
+              ?.cognitiveDispatchKey ===
+            dispatchKey
+        ) || null
+      );
+    },
+
+    fingerprintCognitiveDispatch(value) {
+      const serialized = JSON.stringify(
+        value ?? null
+      );
+
+      let hash = 2166136261;
+
+      for (
+        let index = 0;
+        index < serialized.length;
+        index += 1
+      ) {
+        hash ^= serialized.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+
+      return (
+        "cognitive-" +
+        (hash >>> 0)
+          .toString(16)
+          .padStart(8, "0")
+      );
+    },
+
+    recordCognitiveDispatch(result) {
+      const entry = {
+        dispatchId: result.dispatchId,
+        cognitionType: result.cognitionType,
+        subject: result.subject,
+        positioningFingerprint:
+          result.positioningFingerprint,
+        planId: result.plan?.id || null,
+        proposedMoves:
+          result.summary?.proposedMoves || 0,
+        dispatched:
+          result.summary?.dispatched || 0,
+        reusedExistingWork:
+          result.summary
+            ?.reusedExistingWork || 0,
+        awaitingReview:
+          result.summary?.awaitingReview || 0,
+        failed:
+          result.summary?.failed || 0,
+        completedAt: result.completedAt
+      };
+
+      this.cognitiveDispatchHistory.unshift(
+        entry
+      );
+
+      if (
+        this.cognitiveDispatchHistory.length >
+        this.configuration
+          .maximumCognitiveDispatchHistory
+      ) {
+        this.cognitiveDispatchHistory.length =
+          this.configuration
+            .maximumCognitiveDispatchHistory;
+      }
+
+      this.persist();
+      return this.clone(entry);
+    },
+
+    getCognitiveDispatchHistory(limit = 25) {
+      const normalized = Math.max(
+        1,
+        Math.min(
+          this.configuration
+            .maximumCognitiveDispatchHistory,
+          Number(limit) || 25
+        )
+      );
+
+      return this.clone(
+        this.cognitiveDispatchHistory.slice(
+          0,
+          normalized
+        )
+      );
+    },
+
+    runCognitiveDispatchAcceptanceTest() {
+      const researchAuthority =
+        this.classifyCognitiveMoveAuthority({
+          type: "investigate",
+          action:
+            "Verify applicant eligibility from authoritative source material.",
+          authority:
+            "within-existing-research-authority"
+        });
+
+      const monitorAuthority =
+        this.classifyCognitiveMoveAuthority({
+          type: "monitor",
+          action:
+            "Monitor authoritative source material for the next cycle.",
+          authority:
+            "within-existing-monitoring-authority"
+        });
+
+      const preparationAuthority =
+        this.classifyCognitiveMoveAuthority({
+          type: "strategic-positioning",
+          action:
+            "Test a truthful organizational pathway to the verified funded outcome.",
+          authority:
+            "recommend-and-prepare"
+        });
+
+      const externalAuthority =
+        this.classifyCognitiveMoveAuthority({
+          type: "strategic-positioning",
+          action:
+            "Submit the application to the funder.",
+          authority:
+            "recommend-and-prepare"
+        });
+
+      const checks = [
+        {
+          name:
+            "Counterfactual cognition has an Executive Brain dispatch API",
+          passed:
+            typeof this
+              .runPositioningCognitionAndDispatch ===
+            "function"
+        },
+        {
+          name:
+            "Cognitive work is drafted through Executive Planning",
+          passed:
+            typeof this
+              .createOrReusePositioningPlan ===
+              "function" &&
+            /createPlan/.test(
+              this.createOrReusePositioningPlan
+                .toString()
+            )
+        },
+        {
+          name:
+            "Cognitive work is dispatched through Executive Hallway",
+          passed:
+            /MEOSExecutiveHallway/.test(
+              this.runPositioningCognitionAndDispatch
+                .toString()
+            ) &&
+            /submitWork/.test(
+              this.runPositioningCognitionAndDispatch
+                .toString()
+            )
+        },
+        {
+          name:
+            "Internal investigation can execute within existing authority",
+          passed:
+            researchAuthority.authorized ===
+              true &&
+            researchAuthority.reviewRequired ===
+              false
+        },
+        {
+          name:
+            "Internal monitoring can execute within existing authority",
+          passed:
+            monitorAuthority.authorized === true &&
+            monitorAuthority.reviewRequired ===
+              false
+        },
+        {
+          name:
+            "Strategic preparation remains review-first by default",
+          passed:
+            preparationAuthority.authorized ===
+              false &&
+            preparationAuthority.reviewRequired ===
+              true
+        },
+        {
+          name:
+            "External action can never be auto-authorized by cognitive dispatch",
+          passed:
+            externalAuthority.authorized ===
+              false &&
+            externalAuthority.reviewRequired ===
+              true
+        },
+        {
+          name:
+            "Duplicate cognition is protected by a stable dispatch key",
+          passed:
+            typeof this
+              .fingerprintCognitiveDispatch ===
+              "function" &&
+            typeof this
+              .findExistingCognitiveWork ===
+              "function"
+        },
+        {
+          name:
+            "Cognitive dispatch history remains inspectable",
+          passed:
+            Array.isArray(
+              this.cognitiveDispatchHistory
+            ) &&
+            typeof this
+              .getCognitiveDispatchHistory ===
+              "function"
+        }
+      ];
+
+      const passed = checks.every(
+        item => item.passed
+      );
+
+      console.table(
+        checks.map(item => ({
+          name: item.name,
+          passed: item.passed
+        }))
+      );
+
+      console.info(
+        `[MEOS ${this.version}] Commission 006.016E cognitive dispatch acceptance: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.016E",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks
+      };
     },
 
     runInstitutionalReasoning(prepared, options = {}) {
@@ -2286,6 +3089,11 @@
               this.cognitionHistory.slice(
                 0,
                 this.configuration.maximumCognitionHistory
+              ),
+            cognitiveDispatchHistory:
+              this.cognitiveDispatchHistory.slice(
+                0,
+                this.configuration.maximumCognitiveDispatchHistory
               )
           })
         );
@@ -2317,6 +3125,13 @@
             ? saved.cognitionHistory.slice(
                 0,
                 this.configuration.maximumCognitionHistory
+              )
+            : [];
+        this.cognitiveDispatchHistory =
+          Array.isArray(saved.cognitiveDispatchHistory)
+            ? saved.cognitiveDispatchHistory.slice(
+                0,
+                this.configuration.maximumCognitiveDispatchHistory
               )
             : [];
         return true;
