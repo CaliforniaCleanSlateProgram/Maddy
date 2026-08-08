@@ -34,9 +34,154 @@ import CommunityFoundationDiscoveryAdapter from "./community-foundation-discover
 import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adapter.js";
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
+import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.13";
+const VERSION = "2.10.14";
 const VOICE_ENGINE_VERSION = "2.0.0";
+
+const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
+const INSTITUTIONAL_REPOSITORY_BRIDGE_BUILD_ID =
+  "IRB100-GOOGLE-RUNTIME-AUTHORITY-BRIDGE-20260808-A";
+
+let institutionalRepositoryBridgeRegistered = false;
+
+function registerGoogleInstitutionalRepositoryAuthority() {
+  if (institutionalRepositoryBridgeRegistered) {
+    return {
+      success: true,
+      alreadyRegistered: true,
+      providerId: "google-workspace"
+    };
+  }
+
+  const capability =
+    InstitutionalRepositoryAuthority.capabilities;
+
+  const registration =
+    InstitutionalRepositoryAuthority.registerProvider({
+      id: "google-workspace",
+      name: "Google Workspace Institutional Repository",
+      priority: 100,
+      capabilities: [
+        capability.DURABLE_READ,
+        capability.DURABLE_WRITE,
+        capability.DURABLE_DELETE,
+        capability.READ_AFTER_WRITE,
+        capability.ORGANIZATION_OWNED
+      ],
+      health: async () => {
+        try {
+          const status =
+            await ensureGoogleWorkspaceInitialized();
+
+          const durable =
+            Boolean(
+              status?.connected &&
+              status?.capabilities
+                ?.institutionalRepositoryRead &&
+              status?.capabilities
+                ?.institutionalRepositoryWrite
+            );
+
+          return {
+            available: durable,
+            durable,
+            reason: durable
+              ? null
+              : "Google Workspace institutional repository is not currently authorized for durable read/write authority.",
+            details: {
+              connected: Boolean(status?.connected),
+              mode: status?.mode || null,
+              providerVersion:
+                GoogleWorkspaceProvider.version || null,
+              providerBuildId:
+                GoogleWorkspaceProvider.buildId || null
+            }
+          };
+        } catch (error) {
+          return {
+            available: false,
+            durable: false,
+            reason: error?.message || String(error)
+          };
+        }
+      },
+      read: async providerKey => {
+        const result =
+          await GoogleWorkspaceProvider
+            .readInstitutionalRecord(providerKey);
+
+        return {
+          success: result?.success !== false,
+          found: result?.found === true,
+          value:
+            result?.found === true
+              ? result.value
+              : null,
+          providerResult: result
+        };
+      },
+      write: async (
+        providerKey,
+        authorityEnvelope,
+        options = {}
+      ) => {
+        const result =
+          await GoogleWorkspaceProvider
+            .writeInstitutionalRecord({
+              key: providerKey,
+              value: authorityEnvelope,
+              recordType:
+                "meos-authority-envelope",
+              metadata: {
+                commission:
+                  INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION,
+                bridgeBuildId:
+                  INSTITUTIONAL_REPOSITORY_BRIDGE_BUILD_ID,
+                classification:
+                  options.classification || null,
+                verificationRequired:
+                  options.verificationRequired === true,
+                immutableEvidence:
+                  options.immutableEvidence === true,
+                previousFingerprint:
+                  options.previousFingerprint || null
+              }
+            });
+
+        return {
+          success: result?.success === true,
+          durable: result?.verified === true,
+          providerResult: result
+        };
+      },
+      delete: async providerKey => {
+        const result =
+          await GoogleWorkspaceProvider
+            .deleteInstitutionalRecord(providerKey);
+
+        return {
+          success: result?.success !== false,
+          deleted: result?.deleted === true,
+          providerResult: result
+        };
+      },
+      metadata: {
+        bridgeCommission:
+          INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION,
+        bridgeBuildId:
+          INSTITUTIONAL_REPOSITORY_BRIDGE_BUILD_ID,
+        authority:
+          "provider-neutral-meos-institutional-repository",
+        providerRole:
+          "runtime-durable-storage-provider"
+      }
+    });
+
+  institutionalRepositoryBridgeRegistered = true;
+  return registration;
+}
+
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.5.1";
 const RESOURCE_DISCOVERY_INTEGRATION_BUILD_ID =
@@ -6418,6 +6563,222 @@ app.get("/api/google/status", async (request, response) => {
   }
 });
 
+
+
+app.get(
+  "/api/meos/institutional-repository/status",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      response.status(200).json({
+        commission:
+          INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION,
+        bridgeBuildId:
+          INSTITUTIONAL_REPOSITORY_BRIDGE_BUILD_ID,
+        ...InstitutionalRepositoryAuthority.getStatus()
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          schema:
+            "meos.institutional-repository-authority.status.v1",
+          commission:
+            INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION,
+          bridgeBuildId:
+            INSTITUTIONAL_REPOSITORY_BRIDGE_BUILD_ID,
+          success: false,
+          error: error?.message || String(error),
+          code:
+            error?.code ||
+            "MEOS_INSTITUTIONAL_REPOSITORY_STATUS_FAILED"
+        });
+    }
+  }
+);
+
+app.post(
+  "/api/meos/institutional-repository/acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const namespace =
+      "commission-006.017D1A";
+    const key =
+      `live-provider-chain-${crypto.randomUUID()}`;
+    let write = null;
+    let read = null;
+    let cleanup = null;
+
+    try {
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const googleStatus =
+        await ensureGoogleWorkspaceInitialized();
+
+      if (
+        !googleStatus?.connected ||
+        !googleStatus?.capabilities
+          ?.institutionalRepositoryRead ||
+        !googleStatus?.capabilities
+          ?.institutionalRepositoryWrite
+      ) {
+        const error = new Error(
+          "The live Google Workspace institutional repository is not authorized for durable read/write acceptance."
+        );
+        error.code =
+          "MEOS_DURABLE_REPOSITORY_PROVIDER_NOT_READY";
+        error.status = 503;
+        throw error;
+      }
+
+      const sentinel = {
+        commission:
+          INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION,
+        bridgeBuildId:
+          INSTITUTIONAL_REPOSITORY_BRIDGE_BUILD_ID,
+        nonce: crypto.randomUUID(),
+        assertion:
+          "MEOS Core selected a durable provider by capability and verified institutional state through the provider-neutral authority."
+      };
+
+      write =
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key,
+          classification: "institutional",
+          value: sentinel,
+          metadata: {
+            purpose:
+              "live-provider-neutral-authority-acceptance"
+          }
+        });
+
+      read =
+        await InstitutionalRepositoryAuthority.read({
+          namespace,
+          key,
+          classification: "institutional"
+        });
+
+      const checks = [
+        {
+          name:
+            "Google Workspace is registered as a runtime durable provider rather than hard-coded Core authority",
+          passed:
+            write?.providerId ===
+            "google-workspace"
+        },
+        {
+          name:
+            "Provider-neutral authority performs verified durable write",
+          passed:
+            write?.success === true &&
+            write?.verification?.required === true &&
+            write?.verification?.verified === true
+        },
+        {
+          name:
+            "Provider-neutral authority reads the durable record back through the selected provider",
+          passed:
+            read?.success === true &&
+            read?.found === true &&
+            read?.providerId ===
+              "google-workspace"
+        },
+        {
+          name:
+            "Live round trip preserves semantic institutional state",
+          passed:
+            JSON.stringify(read?.value) ===
+            JSON.stringify(sentinel)
+        },
+        {
+          name:
+            "Authority reports durable institutional repository rather than browser persistence",
+          passed:
+            write?.authority ===
+              "durable-institutional-repository" &&
+            read?.authority ===
+              "durable-institutional-repository"
+        }
+      ];
+
+      cleanup =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key,
+          classification: "institutional"
+        });
+
+      checks.push({
+        name:
+          "Acceptance sentinel is removed through the same provider-neutral authority",
+        passed:
+          cleanup?.success === true &&
+          cleanup?.deleted === true
+      });
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response
+        .status(passed ? 200 : 500)
+        .json({
+          commission:
+            INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION,
+          schema:
+            "meos.institutional-repository-authority.live-acceptance.v1",
+          bridgeBuildId:
+            INSTITUTIONAL_REPOSITORY_BRIDGE_BUILD_ID,
+          passed,
+          checks,
+          providerId:
+            write?.providerId || null,
+          authority:
+            write?.authority || null,
+          authorityStatus:
+            InstitutionalRepositoryAuthority.getStatus(),
+          serverVersion: VERSION
+        });
+    } catch (error) {
+      if (write?.success === true && !cleanup?.deleted) {
+        try {
+          cleanup =
+            await InstitutionalRepositoryAuthority.delete({
+              namespace,
+              key,
+              classification: "institutional"
+            });
+        } catch {
+          // Preserve the original acceptance failure.
+        }
+      }
+
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION,
+          schema:
+            "meos.institutional-repository-authority.live-acceptance.v1",
+          bridgeBuildId:
+            INSTITUTIONAL_REPOSITORY_BRIDGE_BUILD_ID,
+          passed: false,
+          error: error?.message || String(error),
+          code:
+            error?.code ||
+            "MEOS_INSTITUTIONAL_REPOSITORY_LIVE_ACCEPTANCE_FAILED",
+          authorityStatus:
+            InstitutionalRepositoryAuthority.getStatus(),
+          serverVersion: VERSION
+        });
+    }
+  }
+);
 
 app.post(
   "/api/google/institutional-repository/acceptance-test",
