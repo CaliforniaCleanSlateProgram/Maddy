@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.16";
+const VERSION = "2.10.17";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1291,6 +1291,9 @@ const EXECUTIVE_MEMORY_MAX_RECORD_BYTES = Number(
 const executiveMemoryWriteLocks = new Map();
 
 
+const MISSION_STATE_TRANSPORT_FIX_COMMISSION = "006.017D3A1";
+const MISSION_STATE_TRANSPORT_FIX_BUILD_ID =
+  "MSR101-JSON-TRANSPORT-20260808-A";
 const MISSION_STATE_REPOSITORY_COMMISSION = "006.017D3A";
 const MISSION_STATE_REPOSITORY_VERSION = "1.0.0";
 const MISSION_STATE_REPOSITORY_BUILD_ID =
@@ -6735,6 +6738,10 @@ app.get(
 
 app.put(
   "/api/mission-state",
+  express.json({
+    limit: "8mb",
+    strict: true
+  }),
   async (request, response) => {
     response.set("Cache-Control", "no-store");
 
