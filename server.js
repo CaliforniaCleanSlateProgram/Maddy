@@ -35,7 +35,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.10";
+const VERSION = "2.10.11";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.5.1";
@@ -5970,6 +5970,13 @@ app.get("/api/executive-memory", async (request, response) => {
     limits: {
       maximumRecordsPerCollection: EXECUTIVE_MEMORY_MAX_RECORDS,
       maximumRecordBytes: EXECUTIVE_MEMORY_MAX_RECORD_BYTES
+    },
+    continuity: {
+      missingRecordReadSemantics: "200-null",
+      manifestInitializationSupported: true,
+      storageAuthority: "server-executive-memory",
+      persistentDiskExpected:
+        storage.persistentDiskExpected === true
     }
   });
 });
@@ -6037,10 +6044,28 @@ app.get(
       const records = await readExecutiveMemoryCollection(collection);
       const record = records.find(item => item.id === recordId);
 
+      /*
+       * Commission 006.016B3 — Executive Memory Continuity Contract
+       *
+       * A missing record is a valid first-run state for manifest-driven
+       * institutional memory. Returning HTTP 404 made Knowledge Engine /
+       * Knowledge Memory treat an empty durable store like a transport
+       * failure and polluted runtime evidence on every clean deployment.
+       *
+       * GET is therefore read-through and non-exceptional:
+       *   exists=true  -> record contains the stored authority
+       *   exists=false -> record is null and the caller may initialize it
+       *
+       * DELETE intentionally retains 404 semantics for a missing target.
+       */
       if (!record) {
-        response.status(404).json({
-          error: "Executive Memory record was not found.",
-          code: "EXECUTIVE_MEMORY_RECORD_NOT_FOUND"
+        response.status(200).json({
+          schema: "meos.executive-memory.record.v1",
+          collection,
+          recordId,
+          exists: false,
+          record: null,
+          continuityState: "uninitialized"
         });
         return;
       }
@@ -6048,7 +6073,10 @@ app.get(
       response.status(200).json({
         schema: "meos.executive-memory.record.v1",
         collection,
-        record
+        recordId,
+        exists: true,
+        record,
+        continuityState: "restored"
       });
     } catch (error) {
       response.status(error.status || 500).json({
