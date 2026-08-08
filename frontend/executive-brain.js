@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.3.0
- * Build: EB130-CONTINUOUS-COGNITIVE-REENTRY-20260808-A
+ * Version: 1.3.1
+ * Build: EB131-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,9 +16,35 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.3.0";
-  const BUILD_ID = "EB130-CONTINUOUS-COGNITIVE-REENTRY-20260808-A";
+  const VERSION = "1.3.1";
+  const BUILD_ID = "EB131-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
+  const INDEXED_DB_NAME = "meos-local-executive-repository";
+  const INDEXED_DB_VERSION = 1;
+  const INDEXED_DB_STORE = "engine-state";
+  const INDEXED_DB_RECORD_ID = "executive-brain-state";
+  const PERSISTENCE_DEBOUNCE_MS = 150;
+
+  const brainPersistence = {
+    mode: global.indexedDB ? "indexeddb-local-laptop" : "legacy-localstorage-fallback",
+    authoritativeStorage: global.indexedDB ? "indexeddb" : "localstorage",
+    indexedDbAvailable: Boolean(global.indexedDB),
+    databaseName: INDEXED_DB_NAME,
+    storeName: INDEXED_DB_STORE,
+    hydrated: false,
+    migratedLegacySnapshot: false,
+    localStorageReleased: false,
+    writeScheduled: false,
+    writeInFlight: false,
+    suspended: false,
+    lastPersistedAt: null,
+    lastRestoredAt: null,
+    lastError: null
+  };
+
+  let brainPersistenceTimer = null;
+  let brainIndexedDbPromise = null;
+  let brainWriteChain = Promise.resolve();
 
   const REQUEST_TYPES = Object.freeze({
     IDENTITY: "identity",
@@ -52,6 +78,52 @@
     ["OrganizationalProfile", "Organization Package", "Customer-specific identity, mission, leadership, and boundaries."],
     ["FounderProfile", "Founder Package", "Authorized human identity, role, authority, and preferences."]
   ]);
+
+
+  function openBrainIndexedDb() {
+    if (!global.indexedDB) return Promise.reject(new Error("IndexedDB is unavailable in this browser."));
+    if (brainIndexedDbPromise) return brainIndexedDbPromise;
+    brainIndexedDbPromise = new Promise((resolve, reject) => {
+      const request = global.indexedDB.open(INDEXED_DB_NAME, INDEXED_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(INDEXED_DB_STORE)) db.createObjectStore(INDEXED_DB_STORE, { keyPath: "id" });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Executive Brain IndexedDB open failed."));
+      request.onblocked = () => reject(new Error("Executive Brain IndexedDB upgrade was blocked."));
+    });
+    return brainIndexedDbPromise;
+  }
+
+  async function brainIndexedDbGet(id = INDEXED_DB_RECORD_ID) {
+    const db = await openBrainIndexedDb();
+    return new Promise((resolve, reject) => {
+      const request = db.transaction(INDEXED_DB_STORE, "readonly").objectStore(INDEXED_DB_STORE).get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error("Executive Brain IndexedDB read failed."));
+    });
+  }
+
+  async function brainIndexedDbPut(record) {
+    const db = await openBrainIndexedDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(INDEXED_DB_STORE, "readwrite");
+      const request = tx.objectStore(INDEXED_DB_STORE).put(record);
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => reject(request.error || new Error("Executive Brain IndexedDB write failed."));
+      tx.onerror = () => reject(tx.error || new Error("Executive Brain IndexedDB transaction failed."));
+    });
+  }
+
+  async function brainIndexedDbDelete(id) {
+    const db = await openBrainIndexedDb();
+    return new Promise((resolve, reject) => {
+      const request = db.transaction(INDEXED_DB_STORE, "readwrite").objectStore(INDEXED_DB_STORE).delete(id);
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => reject(request.error || new Error("Executive Brain IndexedDB delete failed."));
+    });
+  }
 
   const ExecutiveBrain = {
     name: "MEOS Executive Brain",
@@ -111,6 +183,7 @@
       };
 
       this.restore();
+      this.hydrateLaptopPersistence();
 
       this.profiles.maddy =
         options.maddyProfile || this.resolveMaddyProfile();
@@ -4082,85 +4155,151 @@
       }
     },
 
-    persist() {
-      if (
-        !this.configuration.persistenceEnabled ||
-        !global.localStorage
-      ) {
+    buildPersistenceSnapshot() {
+      return {
+        schema: "meos.executive-brain.state.v1",
+        version: this.version,
+        savedAt: new Date().toISOString(),
+        history: this.history.slice(0, 100),
+        cognitionHistory: this.cognitionHistory.slice(0, this.configuration.maximumCognitionHistory),
+        cognitiveDispatchHistory: this.cognitiveDispatchHistory.slice(0, this.configuration.maximumCognitiveDispatchHistory),
+        cognitiveReentryHistory: this.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory)
+      };
+    },
+
+    applyPersistenceSnapshot(saved) {
+      if (saved?.schema !== "meos.executive-brain.state.v1") return false;
+      this.history = Array.isArray(saved.history) ? saved.history : [];
+      this.cognitionHistory = Array.isArray(saved.cognitionHistory) ? saved.cognitionHistory.slice(0, this.configuration.maximumCognitionHistory) : [];
+      this.cognitiveDispatchHistory = Array.isArray(saved.cognitiveDispatchHistory) ? saved.cognitiveDispatchHistory.slice(0, this.configuration.maximumCognitiveDispatchHistory) : [];
+      this.cognitiveReentryHistory = Array.isArray(saved.cognitiveReentryHistory) ? saved.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory) : [];
+      return true;
+    },
+
+    releaseLegacyLocalStorage() {
+      try {
+        global.localStorage?.removeItem(STORAGE_KEY);
+        brainPersistence.localStorageReleased = true;
+        return true;
+      } catch (error) {
+        brainPersistence.lastError = error?.message || String(error);
         return false;
       }
+    },
 
+    async persistIndexedDbNow() {
+      if (!global.indexedDB || brainPersistence.suspended) return false;
+      brainPersistence.writeScheduled = false;
+      brainPersistence.writeInFlight = true;
+      try {
+        await brainIndexedDbPut({ id: INDEXED_DB_RECORD_ID, schema: "meos.executive-brain.local-state.v1", version: this.version, buildId: this.buildId, savedAt: new Date().toISOString(), state: this.buildPersistenceSnapshot() });
+        brainPersistence.mode = "indexeddb-local-laptop";
+        brainPersistence.authoritativeStorage = "indexeddb";
+        brainPersistence.lastPersistedAt = new Date().toISOString();
+        brainPersistence.lastError = null;
+        brainPersistence.suspended = false;
+        this.releaseLegacyLocalStorage();
+        return true;
+      } catch (error) {
+        brainPersistence.lastError = error?.message || String(error);
+        brainPersistence.suspended = true;
+        console.error("[MEOS Executive Brain] IndexedDB persistence failed. Cognition continues in runtime.", error);
+        return false;
+      } finally { brainPersistence.writeInFlight = false; }
+    },
+
+    persist() {
+      if (!this.configuration.persistenceEnabled) return false;
+      if (global.indexedDB) {
+        brainPersistence.writeScheduled = true;
+        if (brainPersistenceTimer) global.clearTimeout(brainPersistenceTimer);
+        brainPersistenceTimer = global.setTimeout(() => {
+          brainPersistenceTimer = null;
+          brainWriteChain = brainWriteChain.catch(() => undefined).then(() => this.persistIndexedDbNow());
+        }, PERSISTENCE_DEBOUNCE_MS);
+        return true;
+      }
+      if (!global.localStorage) return false;
       return this.safe(() => {
-        global.localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            schema: "meos.executive-brain.state.v1",
-            version: this.version,
-            savedAt: new Date().toISOString(),
-            history: this.history.slice(0, 100),
-            cognitionHistory:
-              this.cognitionHistory.slice(
-                0,
-                this.configuration.maximumCognitionHistory
-              ),
-            cognitiveDispatchHistory:
-              this.cognitiveDispatchHistory.slice(
-                0,
-                this.configuration.maximumCognitiveDispatchHistory
-              ),
-            cognitiveReentryHistory:
-              this.cognitiveReentryHistory.slice(
-                0,
-                this.configuration.maximumCognitiveReentryHistory
-              )
-          })
-        );
+        global.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.buildPersistenceSnapshot()));
+        brainPersistence.mode = "legacy-localstorage-fallback";
+        brainPersistence.authoritativeStorage = "localstorage";
+        brainPersistence.lastPersistedAt = new Date().toISOString();
         return true;
       }, false);
     },
 
     restore() {
-      if (!global.localStorage) {
-        return false;
-      }
-
+      if (!global.localStorage) return false;
       return this.safe(() => {
         const raw = global.localStorage.getItem(STORAGE_KEY);
-
-        if (!raw) {
-          return false;
-        }
-
-        const saved = JSON.parse(raw);
-
-        if (saved?.schema !== "meos.executive-brain.state.v1") {
-          return false;
-        }
-
-        this.history = Array.isArray(saved.history) ? saved.history : [];
-        this.cognitionHistory =
-          Array.isArray(saved.cognitionHistory)
-            ? saved.cognitionHistory.slice(
-                0,
-                this.configuration.maximumCognitionHistory
-              )
-            : [];
-        this.cognitiveDispatchHistory =
-          Array.isArray(saved.cognitiveDispatchHistory)
-            ? saved.cognitiveDispatchHistory.slice(
-                0,
-                this.configuration.maximumCognitiveDispatchHistory
-              )
-            : [];
-        this.cognitiveReentryHistory =
-          Array.isArray(saved.cognitiveReentryHistory)
-            ? saved.cognitiveReentryHistory.slice(
-                0,
-                this.configuration.maximumCognitiveReentryHistory
-              )
-            : [];
-        return true;
+        return raw ? this.applyPersistenceSnapshot(JSON.parse(raw)) : false;
       }, false);
+    },
+
+    async hydrateLaptopPersistence() {
+      if (!global.indexedDB) { brainPersistence.hydrated = true; return { success: true, source: "localstorage-fallback" }; }
+      try {
+        const record = await brainIndexedDbGet();
+        if (record?.state && this.applyPersistenceSnapshot(record.state)) {
+          brainPersistence.hydrated = true;
+          brainPersistence.lastRestoredAt = new Date().toISOString();
+          brainPersistence.mode = "indexeddb-local-laptop";
+          brainPersistence.authoritativeStorage = "indexeddb";
+          this.releaseLegacyLocalStorage();
+          this.emit("brain:persistence-hydrated", this.getPersistenceStatus());
+          return { success: true, restored: true, source: "indexeddb" };
+        }
+        const saved = await this.persistIndexedDbNow();
+        brainPersistence.hydrated = true;
+        brainPersistence.migratedLegacySnapshot = saved === true;
+        return { success: saved === true, restored: false, source: "legacy-migration" };
+      } catch (error) {
+        brainPersistence.hydrated = true;
+        brainPersistence.lastError = error?.message || String(error);
+        console.error("[MEOS Executive Brain] IndexedDB hydration failed; keeping runtime cognition.", error);
+        return { success: false, error: brainPersistence.lastError };
+      }
+    },
+
+    async flushPersistence() {
+      if (brainPersistenceTimer) { global.clearTimeout(brainPersistenceTimer); brainPersistenceTimer = null; }
+      if (global.indexedDB) {
+        brainWriteChain = brainWriteChain.catch(() => undefined).then(() => this.persistIndexedDbNow());
+        return brainWriteChain;
+      }
+      return this.persist();
+    },
+
+    getPersistenceStatus() {
+      let localStorageBytes = null;
+      try { localStorageBytes = new Blob([global.localStorage?.getItem(STORAGE_KEY) || ""]).size; } catch {}
+      return this.clone({ ...brainPersistence, localStorageBytes });
+    },
+
+    async runLaptopPersistenceAcceptanceTest() {
+      const probeId = "executive-brain-acceptance-probe";
+      const checks = [{ name: "IndexedDB is available on this laptop browser", passed: Boolean(global.indexedDB) }];
+      if (global.indexedDB) {
+        try {
+          await brainIndexedDbPut({ id: probeId, schema: "meos.persistence-probe.v1", writtenAt: new Date().toISOString() });
+          checks.push({ name: "Laptop repository accepts writes", passed: Boolean(await brainIndexedDbGet(probeId)) });
+          await brainIndexedDbDelete(probeId);
+          checks.push({ name: "Laptop repository can read and delete records", passed: (await brainIndexedDbGet(probeId)) === null });
+          const before = { history: this.history.length, cognition: this.cognitionHistory.length, dispatch: this.cognitiveDispatchHistory.length, reentry: this.cognitiveReentryHistory.length };
+          const flushed = await this.flushPersistence();
+          const record = await brainIndexedDbGet();
+          checks.push({ name: "Executive Brain cognition snapshot flushes to IndexedDB", passed: flushed === true && record?.state?.schema === "meos.executive-brain.state.v1" });
+          checks.push({ name: "Cognitive histories survive the repository snapshot", passed: record?.state?.history?.length === before.history && record?.state?.cognitionHistory?.length === before.cognition && record?.state?.cognitiveDispatchHistory?.length === before.dispatch && record?.state?.cognitiveReentryHistory?.length === before.reentry });
+          checks.push({ name: "Legacy Executive Brain localStorage payload is released", passed: global.localStorage?.getItem(STORAGE_KEY) === null });
+          checks.push({ name: "IndexedDB is the temporary laptop authority", passed: brainPersistence.authoritativeStorage === "indexeddb" && brainPersistence.mode === "indexeddb-local-laptop" });
+          checks.push({ name: "Continuous cognition remains operational while persistence is asynchronous", passed: this.status === "online" && this.configuration.continuousCognitionEnabled === true && typeof this.scheduleCognitiveReentry === "function" });
+        } catch (error) { checks.push({ name: "Laptop repository test completed without error", passed: false, error: error?.message || String(error) }); }
+      }
+      const passed = checks.every(item => item.passed);
+      console.table(checks);
+      console.info(`[MEOS ${this.version}] Commission 006.016G2 laptop persistence acceptance: ${passed ? "PASS" : "FAIL"}.`);
+      return { commission: "006.016G2", version: this.version, buildId: this.buildId, passed, checks, persistence: this.getPersistenceStatus() };
     }
   };
 
