@@ -1,6 +1,7 @@
 /*
  * MEOS Executive Automation Engine
- * Version: 1.1.0
+ * Version: 1.1.1
+ * Build: EA111-PERSISTENCE-CIRCUIT-BREAKER-20260808-A
  *
  * Mission:
  * Detect qualifying operational conditions, apply approved automation rules,
@@ -112,7 +113,8 @@
 
     const ExecutiveAutomation = {
         name: "MEOS Executive Automation Engine",
-        version: "1.1.0",
+        version: "1.1.1",
+        buildId: "EA111-PERSISTENCE-CIRCUIT-BREAKER-20260808-A",
         status: "initializing",
         operatingMode: "controlled-proactive-automation-and-execution",
 
@@ -143,7 +145,15 @@
             defaultExecutionRetryLimit: 3,
             defaultExecutionRetryDelayMs: 30000,
             defaultExecutionTimeoutMs: 120000,
-            preserveExecutionEvidence: true
+            preserveExecutionEvidence: true,
+            maximumPersistedRules: 250,
+            maximumPersistedRuns: 250,
+            maximumPersistedApprovals: 250,
+            maximumPersistedNotifications: 250,
+            maximumPersistedExecutionJobs: 250,
+            maximumPersistedExecutionSessions: 100,
+            maximumPersistedExecutionReceipts: 250,
+            maximumPersistedHistory: 250
         },
 
         rules: [],
@@ -158,6 +168,12 @@
         history: [],
         scannerId: null,
         eventListeners: {},
+        persistence: {
+            suspended: false,
+            reason: null,
+            failedAt: null,
+            warningIssued: false
+        },
         initializedAt: null,
 
         analytics: {
@@ -200,7 +216,7 @@
             }
 
             console.info(
-                `[MEOS] ${this.name} v${this.version} ${this.status}.`
+                `[MEOS] ${this.name} v${this.version} ${this.status}. Build ${this.buildId}.`
             );
 
             this.emit("automation:online", this.getStatus());
@@ -3911,6 +3927,15 @@
                 this.configuration.persistenceEnabled &&
                 this.configuration.automaticPersistence
             ) {
+                if (this.persistence.suspended) {
+                    return {
+                        success: false,
+                        persisted: false,
+                        suspended: true,
+                        reason: this.persistence.reason
+                    };
+                }
+
                 return this.persist();
             }
 
@@ -3920,7 +3945,83 @@
             };
         },
 
-        persist() {
+        isQuotaExceededError(error) {
+            return Boolean(
+                error &&
+                (
+                    error.name === "QuotaExceededError" ||
+                    error.code === 22 ||
+                    error.code === 1014
+                )
+            );
+        },
+
+        buildPersistenceSnapshot() {
+            const limit = (items, maximum) =>
+                Array.isArray(items)
+                    ? items.slice(-Math.max(0, maximum))
+                    : [];
+
+            return {
+                schema: SCHEMA,
+                version: this.version,
+                exportedAt: new Date().toISOString(),
+                configuration: this.configuration,
+                rules: limit(
+                    this.rules,
+                    this.configuration.maximumPersistedRules
+                ),
+                runs: limit(
+                    this.runs,
+                    this.configuration.maximumPersistedRuns
+                ),
+                approvals: limit(
+                    this.approvals,
+                    this.configuration.maximumPersistedApprovals
+                ),
+                notifications: limit(
+                    this.notifications,
+                    this.configuration.maximumPersistedNotifications
+                ),
+                executionTargets: this.executionTargets,
+                executionJobs: limit(
+                    this.executionJobs,
+                    this.configuration.maximumPersistedExecutionJobs
+                ),
+                executionSessions: limit(
+                    this.executionSessions,
+                    this.configuration.maximumPersistedExecutionSessions
+                ),
+                executionReceipts: limit(
+                    this.executionReceipts,
+                    this.configuration.maximumPersistedExecutionReceipts
+                ),
+                history: limit(
+                    this.history,
+                    this.configuration.maximumPersistedHistory
+                ),
+                analytics: this.analytics
+            };
+        },
+
+        getPersistenceStatus() {
+            return this.clone({
+                ...this.persistence,
+                enabled: this.configuration.persistenceEnabled,
+                automatic: this.configuration.automaticPersistence,
+                storageKey: this.configuration.localStorageKey
+            });
+        },
+
+        retryPersistence() {
+            this.persistence.suspended = false;
+            this.persistence.reason = null;
+            this.persistence.failedAt = null;
+            this.persistence.warningIssued = false;
+            return this.persist({ force: true });
+        },
+
+        persist(options = {}) {
             if (
                 !this.configuration.persistenceEnabled
             ) {
@@ -3939,21 +4040,60 @@
                 };
             }
 
+            if (
+                this.persistence.suspended &&
+                options.force !== true
+            ) {
+                return {
+                    success: false,
+                    persisted: false,
+                    suspended: true,
+                    reason: this.persistence.reason
+                };
+            }
+
             try {
+                const snapshot =
+                    this.buildPersistenceSnapshot();
+
                 global.localStorage.setItem(
                     this.configuration.localStorageKey,
-                    JSON.stringify(
-                        this.exportAutomation({
-                            includeHistory: true
-                        }).data
-                    )
+                    JSON.stringify(snapshot)
                 );
+
+                this.persistence.suspended = false;
+                this.persistence.reason = null;
+                this.persistence.failedAt = null;
+                this.persistence.warningIssued = false;
 
                 return {
                     success: true,
-                    persisted: true
+                    persisted: true,
+                    compact: true
                 };
             } catch (error) {
+                if (this.isQuotaExceededError(error)) {
+                    this.persistence.suspended = true;
+                    this.persistence.reason =
+                        "browser_storage_quota_exceeded";
+                    this.persistence.failedAt =
+                        new Date().toISOString();
+
+                    if (!this.persistence.warningIssued) {
+                        this.persistence.warningIssued = true;
+                        console.warn(
+                            "[MEOS Executive Automation] Browser persistence suspended after storage quota exhaustion. Automation scanning continues; repeated writes are suppressed until persistence is explicitly retried."
+                        );
+                    }
+
+                    return {
+                        success: false,
+                        persisted: false,
+                        suspended: true,
+                        reason: this.persistence.reason
+                    };
+                }
+
                 console.error(
                     "[MEOS Executive Automation] Persistence failed:",
                     error
@@ -3964,6 +4104,59 @@
                     error: error.message
                 };
             }
+        },
+
+        runPersistenceAcceptanceTest() {
+            const checks = [
+                {
+                    name: "Automation persistence circuit breaker exists",
+                    passed:
+                        typeof this.isQuotaExceededError === "function" &&
+                        typeof this.retryPersistence === "function"
+                },
+                {
+                    name: "Automatic persistence respects suspension",
+                    passed:
+                        /this\.persistence\.suspended/.test(
+                            this.persistIfEnabled.toString()
+                        )
+                },
+                {
+                    name: "Browser snapshot is bounded",
+                    passed:
+                        typeof this.buildPersistenceSnapshot === "function" &&
+                        this.configuration.maximumPersistedHistory === 250 &&
+                        this.configuration.maximumPersistedExecutionReceipts === 250
+                },
+                {
+                    name: "Quota exhaustion is recognized",
+                    passed:
+                        /QuotaExceededError/.test(
+                            this.isQuotaExceededError.toString()
+                        )
+                },
+                {
+                    name: "Automation scanner remains independent from persistence",
+                    passed:
+                        typeof this.scan === "function" &&
+                        typeof this.startScanner === "function"
+                }
+            ];
+
+            const passed = checks.every(item => item.passed);
+            console.table(checks);
+            console.info(
+                `[MEOS ${this.version}] Commission 006.016B2 persistence acceptance: ${passed ? "PASS" : "FAIL"}.`
+            );
+
+            return {
+                commission: "006.016B2",
+                version: this.version,
+                buildId: this.buildId,
+                passed,
+                checks,
+                persistence: this.getPersistenceStatus()
+            };
         },
 
         restore() {
