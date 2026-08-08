@@ -22,8 +22,8 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.1";
-    const BUILD_ID = "ME011-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A";
+    const VERSION = "0.1.2";
+    const BUILD_ID = "ME012-WORKSPACE-DURABLE-MISSION-AUTHORITY-20260808-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -32,19 +32,33 @@
     const PERSISTENCE_DEBOUNCE_MS = 150;
 
     const persistence = {
-        mode: global.indexedDB ? "indexeddb-local-laptop" : "legacy-localstorage-fallback",
-        authoritativeStorage: global.indexedDB ? "indexeddb" : "localstorage",
+        mode: "workspace-durable-authority",
+        authoritativeStorage: "meos-institutional-repository",
+        durableEndpoint: "/api/mission-state",
+        durableAuthority: true,
+        durableAvailable: null,
+        activeProviderId: null,
         indexedDbAvailable: Boolean(global.indexedDB),
+        indexedDbRole: "local-cache-offline-continuity",
         databaseName: INDEXED_DB_NAME,
         storeName: INDEXED_DB_STORE,
         hydrated: false,
+        hydrationSource: null,
         migratedLegacySnapshot: false,
+        migratedLaptopSnapshot: false,
         localStorageReleased: false,
         writeScheduled: false,
         writeInFlight: false,
+        localCacheWriteInFlight: false,
         suspended: false,
+        degraded: false,
+        dirtyWhileOffline: false,
         lastPersistedAt: null,
+        lastLocalCacheAt: null,
         lastRestoredAt: null,
+        lastDurableReadAt: null,
+        lastDurableWriteAt: null,
+        lastDurableFingerprint: null,
         lastError: null
     };
 
@@ -368,8 +382,126 @@
         }
     }
 
-    async function persistIndexedDbNow() {
-        if (!global.indexedDB || persistence.suspended) {
+    async function persistIndexedDbCacheNow(snapshot = snapshotState()) {
+        if (!global.indexedDB) {
+            return false;
+        }
+
+        persistence.localCacheWriteInFlight = true;
+
+        try {
+            await indexedDbPut({
+                id: INDEXED_DB_RECORD_ID,
+                schema: "meos.mission-engine.local-cache.v1",
+                version: VERSION,
+                buildId: BUILD_ID,
+                savedAt: now(),
+                authority: "meos-institutional-repository",
+                role: "offline-continuity-cache",
+                state: snapshot
+            });
+
+            persistence.lastLocalCacheAt = now();
+            releaseLegacyLocalStorage();
+            return true;
+        } catch (error) {
+            console.warn(
+                "[MEOS Mission Engine] IndexedDB cache update failed; durable mission authority is unchanged.",
+                error
+            );
+            return false;
+        } finally {
+            persistence.localCacheWriteInFlight = false;
+        }
+    }
+
+    async function fetchDurableMissionState() {
+        const response = await global.fetch("/api/mission-state", {
+            method: "GET",
+            headers: {
+                Accept: "application/json"
+            },
+            cache: "no-store"
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (response.status === 404 || payload?.found === false) {
+            return {
+                found: false,
+                payload
+            };
+        }
+
+        if (!response.ok || payload?.found !== true) {
+            const error = new Error(
+                payload?.error ||
+                    `Durable Mission State read failed with HTTP ${response.status}.`
+            );
+            error.status = response.status;
+            error.code =
+                payload?.code || "MISSION_STATE_DURABLE_READ_FAILED";
+            throw error;
+        }
+
+        return {
+            found: true,
+            payload
+        };
+    }
+
+    async function writeDurableMissionState(snapshot = snapshotState()) {
+        const headers = {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+        };
+
+        if (persistence.lastDurableFingerprint) {
+            headers["If-MEOS-Previous-Fingerprint"] =
+                persistence.lastDurableFingerprint;
+        }
+
+        const response = await global.fetch("/api/mission-state", {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({
+                version: VERSION,
+                buildId: BUILD_ID,
+                state: snapshot
+            })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok || payload?.success !== true) {
+            const error = new Error(
+                payload?.error ||
+                    `Durable Mission State write failed with HTTP ${response.status}.`
+            );
+            error.status = response.status;
+            error.code =
+                payload?.code || "MISSION_STATE_DURABLE_WRITE_FAILED";
+            error.details = payload?.details || null;
+            throw error;
+        }
+
+        persistence.durableAvailable = true;
+        persistence.activeProviderId = payload.providerId || null;
+        persistence.lastDurableWriteAt = now();
+        persistence.lastPersistedAt = persistence.lastDurableWriteAt;
+        persistence.lastDurableFingerprint =
+            payload?.record?.payloadFingerprint ||
+            payload?.verification?.fingerprint ||
+            persistence.lastDurableFingerprint;
+        persistence.lastError = null;
+        persistence.degraded = false;
+        persistence.dirtyWhileOffline = false;
+
+        return payload;
+    }
+
+    async function persistDurableNow() {
+        if (persistence.suspended) {
             return false;
         }
 
@@ -377,37 +509,24 @@
         persistence.writeScheduled = false;
         persistence.writeInFlight = true;
 
+        /*
+         * IndexedDB is written first as a crash/offline continuity cache.
+         * Success is NOT reported from this cache. Institutional success is
+         * earned only after the provider-neutral durable authority verifies.
+         */
+        await persistIndexedDbCacheNow(snapshot);
+
         try {
-            await indexedDbPut({
-                id: INDEXED_DB_RECORD_ID,
-                schema: "meos.mission-engine.local-state.v1",
-                version: VERSION,
-                buildId: BUILD_ID,
-                savedAt: now(),
-                state: snapshot
-            });
-
-            persistence.mode = "indexeddb-local-laptop";
-            persistence.authoritativeStorage = "indexeddb";
-            persistence.lastPersistedAt = now();
-            persistence.lastError = null;
-            persistence.suspended = false;
-
-            /*
-             * Commission 006.016G1:
-             * Once the full Mission Engine snapshot is safely in IndexedDB,
-             * remove the old multi-megabyte localStorage record. This releases
-             * browser quota without deleting mission history.
-             */
-            releaseLegacyLocalStorage();
-
+            await writeDurableMissionState(snapshot);
             return true;
         } catch (error) {
+            persistence.durableAvailable = false;
+            persistence.degraded = true;
+            persistence.dirtyWhileOffline = true;
             persistence.lastError = error?.message || String(error);
-            persistence.suspended = true;
 
             console.error(
-                "[MEOS Mission Engine] IndexedDB persistence failed. Runtime work continues.",
+                "[MEOS Mission Engine] Durable Mission State write failed. Work remains in local continuity cache and is NOT reported as durably persisted.",
                 error
             );
 
@@ -417,8 +536,8 @@
         }
     }
 
-    function scheduleIndexedDbPersistence() {
-        if (!global.indexedDB || persistence.suspended) {
+    function scheduleDurablePersistence() {
+        if (persistence.suspended) {
             return false;
         }
 
@@ -432,40 +551,14 @@
             persistenceTimer = null;
             writeChain = writeChain
                 .catch(() => undefined)
-                .then(() => persistIndexedDbNow());
+                .then(() => persistDurableNow());
         }, PERSISTENCE_DEBOUNCE_MS);
 
         return true;
     }
 
     function persist() {
-        if (global.indexedDB) {
-            scheduleIndexedDbPersistence();
-            return;
-        }
-
-        /*
-         * Legacy fallback only. IndexedDB is the temporary laptop authority
-         * while cloud storage is pending.
-         */
-        try {
-            global.localStorage.setItem(
-                STORAGE_KEY,
-                JSON.stringify(state)
-            );
-            persistence.mode = "legacy-localstorage-fallback";
-            persistence.authoritativeStorage = "localstorage";
-            persistence.lastPersistedAt = now();
-            persistence.lastError = null;
-        } catch (error) {
-            persistence.lastError = error?.message || String(error);
-            persistence.suspended = true;
-
-            console.warn(
-                "MEOS Mission Engine fallback localStorage persistence is full. Runtime work continues.",
-                error
-            );
-        }
+        scheduleDurablePersistence();
     }
 
     function restoreLegacySnapshot() {
@@ -487,31 +580,61 @@
         }
     }
 
-    async function hydrateFromIndexedDb() {
+    async function readIndexedDbCache() {
         if (!global.indexedDB) {
-            persistence.hydrated = true;
-            return {
-                success: true,
-                restored: false,
-                source: "localstorage-fallback"
-            };
+            return null;
         }
 
         try {
-            const record = await indexedDbGet(INDEXED_DB_RECORD_ID);
+            return await indexedDbGet(INDEXED_DB_RECORD_ID);
+        } catch (error) {
+            console.warn(
+                "[MEOS Mission Engine] Local continuity cache could not be read.",
+                error
+            );
+            return null;
+        }
+    }
 
-            if (record?.state && applyStateSnapshot(record.state)) {
+    async function hydrateFromDurableAuthority() {
+        const localCache = await readIndexedDbCache();
+
+        try {
+            const durable = await fetchDurableMissionState();
+
+            if (durable.found) {
+                const durableEnvelope = durable.payload?.value;
+                const durableState =
+                    durableEnvelope?.state || durableEnvelope;
+
+                if (!applyStateSnapshot(durableState)) {
+                    throw new Error(
+                        "Durable Mission State returned an invalid state envelope."
+                    );
+                }
+
                 persistence.hydrated = true;
+                persistence.hydrationSource =
+                    "meos-institutional-repository";
+                persistence.durableAvailable = true;
+                persistence.activeProviderId =
+                    durable.payload?.providerId || null;
                 persistence.lastRestoredAt = now();
-                persistence.mode = "indexeddb-local-laptop";
-                persistence.authoritativeStorage = "indexeddb";
+                persistence.lastDurableReadAt =
+                    persistence.lastRestoredAt;
+                persistence.lastDurableFingerprint =
+                    durable.payload?.record?.payloadFingerprint || null;
                 persistence.lastError = null;
+                persistence.degraded = false;
+
+                await persistIndexedDbCacheNow(snapshotState());
                 releaseLegacyLocalStorage();
 
                 global.dispatchEvent(
                     new CustomEvent("meos:mission-engine-hydrated", {
                         detail: {
-                            source: "indexeddb",
+                            source: "meos-institutional-repository",
+                            authority: "workspace-durable",
                             activeMissions: state.missions.length,
                             restoredAt: persistence.lastRestoredAt
                         }
@@ -521,37 +644,109 @@
                 return {
                     success: true,
                     restored: true,
-                    source: "indexeddb"
+                    source: "meos-institutional-repository",
+                    activeProviderId: persistence.activeProviderId
                 };
             }
 
             /*
-             * First IndexedDB run: the synchronous localStorage snapshot is
-             * treated as migration input only. Save it before releasing it.
+             * First durable run. Existing IndexedDB state is migration input,
+             * never competing authority. If it exists, preserve it exactly and
+             * promote it to institutional storage. Otherwise promote the
+             * synchronous legacy/runtime snapshot.
              */
-            const saved = await persistIndexedDbNow();
+            if (
+                localCache?.state &&
+                applyStateSnapshot(localCache.state)
+            ) {
+                persistence.migratedLaptopSnapshot = true;
+            }
+
+            const promoted = await writeDurableMissionState(
+                snapshotState()
+            );
 
             persistence.hydrated = true;
-            persistence.migratedLegacySnapshot = saved === true;
+            persistence.hydrationSource =
+                localCache?.state
+                    ? "indexeddb-migration"
+                    : "runtime-migration";
+            persistence.lastRestoredAt = now();
+            persistence.migratedLegacySnapshot =
+                !localCache?.state && Boolean(restoredLegacy);
+            releaseLegacyLocalStorage();
+            await persistIndexedDbCacheNow(snapshotState());
+
+            global.dispatchEvent(
+                new CustomEvent("meos:mission-engine-hydrated", {
+                    detail: {
+                        source: persistence.hydrationSource,
+                        authority: "meos-institutional-repository",
+                        migrated: true,
+                        activeMissions: state.missions.length,
+                        restoredAt: persistence.lastRestoredAt
+                    }
+                })
+            );
 
             return {
-                success: saved === true,
-                restored: false,
-                migratedLegacySnapshot: saved === true,
-                source: "legacy-migration"
+                success: true,
+                restored: true,
+                migrated: true,
+                source: persistence.hydrationSource,
+                providerId: promoted?.providerId || null
             };
         } catch (error) {
+            /*
+             * Provider loss must not erase work. We may hydrate from the local
+             * cache for continuity, but runtime status remains DEGRADED and the
+             * cache is never promoted to "authority" in reporting.
+             */
+            if (
+                localCache?.state &&
+                applyStateSnapshot(localCache.state)
+            ) {
+                persistence.hydrated = true;
+                persistence.hydrationSource =
+                    "indexeddb-offline-continuity";
+                persistence.durableAvailable = false;
+                persistence.degraded = true;
+                persistence.dirtyWhileOffline = false;
+                persistence.lastRestoredAt = now();
+                persistence.lastError =
+                    error?.message || String(error);
+
+                console.warn(
+                    "[MEOS Mission Engine] Durable authority unavailable. Restored local continuity cache without claiming durable authority.",
+                    error
+                );
+
+                return {
+                    success: true,
+                    restored: true,
+                    degraded: true,
+                    source: "indexeddb-offline-continuity",
+                    error: persistence.lastError
+                };
+            }
+
             persistence.hydrated = true;
-            persistence.lastError = error?.message || String(error);
+            persistence.hydrationSource = "runtime-only-degraded";
+            persistence.durableAvailable = false;
+            persistence.degraded = true;
+            persistence.lastError =
+                error?.message || String(error);
 
             console.error(
-                "[MEOS Mission Engine] IndexedDB hydration failed; keeping runtime state.",
+                "[MEOS Mission Engine] Durable authority unavailable and no local continuity cache exists.",
                 error
             );
 
             return {
                 success: false,
                 restored: false,
+                degraded: true,
+                source: "runtime-only-degraded",
                 error: persistence.lastError
             };
         }
@@ -563,16 +758,111 @@
             persistenceTimer = null;
         }
 
-        if (global.indexedDB) {
-            writeChain = writeChain
-                .catch(() => undefined)
-                .then(() => persistIndexedDbNow());
+        writeChain = writeChain
+            .catch(() => undefined)
+            .then(() => persistDurableNow());
 
-            return writeChain;
+        return writeChain;
+    }
+
+    async function runDurableMissionAuthorityAcceptanceTest() {
+        const checks = [];
+
+        await whenHydratedInternal();
+
+        const durableBefore = await fetchDurableMissionState();
+        checks.push({
+            name: "Mission Engine hydrates against the provider-neutral durable authority",
+            passed:
+                persistence.authoritativeStorage ===
+                    "meos-institutional-repository" &&
+                persistence.hydrated === true
+        });
+
+        const flushed = await persistIndexedDbCacheNow(snapshotState());
+        checks.push({
+            name: "Current Mission Engine state flushes through durable authority",
+            passed:
+                flushed === true &&
+                persistence.lastDurableWriteAt !== null
+        });
+
+        const durableAfter = await fetchDurableMissionState();
+        const durableState =
+            durableAfter?.payload?.value?.state ||
+            durableAfter?.payload?.value;
+
+        checks.push({
+            name: "Durable mission truth preserves active mission count",
+            passed:
+                durableAfter.found === true &&
+                Array.isArray(durableState?.missions) &&
+                durableState.missions.length === state.missions.length
+        });
+
+        let cacheDeleted = false;
+        if (global.indexedDB) {
+            cacheDeleted =
+                await indexedDbDelete(INDEXED_DB_RECORD_ID);
         }
 
-        persist();
-        return !persistence.suspended;
+        checks.push({
+            name: "Laptop IndexedDB continuity cache can be removed without deleting institutional truth",
+            passed:
+                !global.indexedDB || cacheDeleted === true
+        });
+
+        const remoteRecovery = await fetchDurableMissionState();
+        const recoveryState =
+            remoteRecovery?.payload?.value?.state ||
+            remoteRecovery?.payload?.value;
+        const recovered =
+            remoteRecovery.found === true &&
+            applyStateSnapshot(recoveryState);
+
+        checks.push({
+            name: "Mission Engine recovers mission truth from Workspace-backed authority after laptop cache loss",
+            passed:
+                recovered === true &&
+                state.missions.length ===
+                    (recoveryState?.missions || []).length
+        });
+
+        await persistIndexedDbCacheNow(snapshotState());
+        const rebuiltCache = await readIndexedDbCache();
+
+        checks.push({
+            name: "Recovered durable truth rebuilds IndexedDB only as offline continuity cache",
+            passed:
+                !global.indexedDB ||
+                (
+                    rebuiltCache?.role ===
+                        "offline-continuity-cache" &&
+                    rebuiltCache?.authority ===
+                        "meos-institutional-repository"
+                )
+        });
+
+        const passed = checks.every(check => check.passed);
+
+        console.table(checks);
+        console.log(
+            `[MEOS ${VERSION}] Commission 006.017D3B Mission Engine Workspace authority acceptance: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+            commission: "006.017D3B",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            checks,
+            persistence: getPersistenceStatus(),
+            durableBeforeFound: durableBefore.found
+        };
+    }
+
+    async function whenHydratedInternal() {
+        return hydrationPromise;
     }
 
     function getPersistenceStatus() {
@@ -641,7 +931,7 @@
                 await indexedDbGet(INDEXED_DB_RECORD_ID);
 
             checks.push({
-                name: "Mission Engine snapshot flushes to IndexedDB",
+                name: "Mission Engine snapshot can refresh the IndexedDB continuity cache",
                 passed:
                     flushed === true &&
                     Array.isArray(
@@ -665,7 +955,7 @@
             checks.push({
                 name: "IndexedDB is the temporary laptop authority",
                 passed:
-                    persistence.authoritativeStorage === "indexeddb" &&
+                    persistence.authoritativeStorage === "meos-institutional-repository" &&
                     persistence.mode === "indexeddb-local-laptop"
             });
 
@@ -1831,9 +2121,10 @@
     }
 
     /*
-     * Synchronous bootstrap preserves the current working session on the
-     * first migration load. IndexedDB then becomes the temporary laptop
-     * authority asynchronously.
+     * Synchronous legacy restore is migration input only. Durable Mission
+     * State is the authority. IndexedDB is consulted asynchronously only as
+     * migration/offline continuity input when durable state is absent or the
+     * provider is temporarily unreachable.
      */
     const restoredLegacy = restoreLegacySnapshot();
 
@@ -1845,7 +2136,7 @@
     sortActiveMissions();
     sortApprovalQueue();
 
-    const hydrationPromise = hydrateFromIndexedDb();
+    const hydrationPromise = hydrateFromDurableAuthority();
 
     const MissionEngine = Object.freeze({
         version: VERSION,
@@ -1899,7 +2190,8 @@
         getPersistenceStatus,
         flushPersistence,
         whenHydrated: () => hydrationPromise,
-        runLaptopPersistenceAcceptanceTest
+        runLaptopPersistenceAcceptanceTest,
+        runDurableMissionAuthorityAcceptanceTest
     });
 
     global.MEOSMissionEngine = MissionEngine;
@@ -1914,4 +2206,12 @@
         `Awaiting approval: ${state.approvalQueue.length} | ` +
         `Completed: ${state.completedMissions.length}`
     );
+
+    hydrationPromise.then(result => {
+        console.log(
+            `[MEOS Mission Engine] Durable authority hydration: ${result?.success ? "READY" : "DEGRADED"} | ` +
+            `source=${result?.source || "unknown"} | ` +
+            `authority=meos-institutional-repository`
+        );
+    });
 })(window);
