@@ -1,7 +1,7 @@
 /**
  * MEOS Mission Engine
- * Version: 0.1.5
- * Build: ME015-DURABLE-AUTHORITY-CONCURRENCY-CONVERGENCE-20260808-A
+ * Version: 0.1.6
+ * Build: ME016-DURABLE-AUTHORITY-ACCEPTANCE-REALIGNMENT-20260808-A
  *
  * Purpose:
  * The Mission Engine is the central work-management system for MEOS.
@@ -22,8 +22,8 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.5";
-    const BUILD_ID = "ME015-DURABLE-AUTHORITY-CONCURRENCY-CONVERGENCE-20260808-A";
+    const VERSION = "0.1.6";
+    const BUILD_ID = "ME016-DURABLE-AUTHORITY-ACCEPTANCE-REALIGNMENT-20260808-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -1408,12 +1408,17 @@
                 persistence.hydrated === true
         });
 
-        const flushed = await persistIndexedDbCacheNow(snapshotState());
+        const durableWriteBefore = persistence.lastDurableWriteAt;
+        const flushed = await flushPersistence();
         checks.push({
             name: "Current Mission Engine state flushes through durable authority",
             passed:
                 flushed === true &&
-                persistence.lastDurableWriteAt !== null
+                persistence.lastDurableWriteAt !== null &&
+                (
+                    durableWriteBefore === null ||
+                    persistence.lastDurableWriteAt >= durableWriteBefore
+                )
         });
 
         const durableAfter = await fetchDurableMissionState();
@@ -1582,10 +1587,14 @@
             });
 
             checks.push({
-                name: "IndexedDB is the temporary laptop authority",
+                name: "IndexedDB remains continuity cache while institutional repository is authority",
                 passed:
-                    persistence.authoritativeStorage === "meos-institutional-repository" &&
-                    persistence.mode === "indexeddb-local-laptop"
+                    persistence.authoritativeStorage ===
+                        "meos-institutional-repository" &&
+                    persistence.mode ===
+                        "workspace-durable-authority" &&
+                    persistence.indexedDbRole ===
+                        "local-cache-offline-continuity"
             });
 
             checks.push({
@@ -1611,6 +1620,87 @@
 
         return {
             commission: "006.016G1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            checks,
+            persistence: getPersistenceStatus()
+        };
+    }
+
+    async function runDurableAuthorityAcceptanceRealignmentTest() {
+        await whenHydratedInternal();
+
+        const checks = [
+            {
+                name:
+                    "Institutional repository remains the declared Mission Engine authority",
+                passed:
+                    persistence.authoritativeStorage ===
+                        "meos-institutional-repository" &&
+                    persistence.durableAuthority === true
+            },
+            {
+                name:
+                    "Mission Engine remains in workspace durable-authority mode",
+                passed:
+                    persistence.mode ===
+                    "workspace-durable-authority"
+            },
+            {
+                name:
+                    "IndexedDB remains only offline continuity cache",
+                passed:
+                    persistence.indexedDbRole ===
+                    "local-cache-offline-continuity"
+            },
+            {
+                name:
+                    "Durable authority acceptance uses the real durable flush path",
+                passed:
+                    /flushPersistence\(\)/.test(
+                        runDurableMissionAuthorityAcceptanceTest
+                            .toString()
+                    )
+            },
+            {
+                name:
+                    "Legacy laptop acceptance no longer misclassifies IndexedDB as authority",
+                passed:
+                    !/indexeddb-local-laptop/.test(
+                        runLaptopPersistenceAcceptanceTest
+                            .toString()
+                    )
+            },
+            {
+                name:
+                    "Concurrency convergence remains installed and bounded",
+                passed:
+                    typeof writeDurableMissionStateWithConvergence ===
+                        "function" &&
+                    MAX_CONCURRENCY_REBASE_ATTEMPTS === 4
+            },
+            {
+                name:
+                    "Guarded laptop recovery remains non-authoritative by default",
+                passed:
+                    typeof recoverLaptopMissionState === "function" &&
+                    /options\.confirm !== true/.test(
+                        recoverLaptopMissionState.toString()
+                    )
+            }
+        ];
+
+        const passed =
+            checks.every((check) => check.passed);
+
+        console.table(checks);
+        console.info(
+            `[MEOS ${VERSION}] Commission 006.017D3B5 durable authority acceptance realignment: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+            commission: "006.017D3B5",
             version: VERSION,
             buildId: BUILD_ID,
             passed,
@@ -2931,6 +3021,7 @@
         whenHydrated: () => hydrationPromise,
         runLaptopPersistenceAcceptanceTest,
         runDurableMissionAuthorityAcceptanceTest,
+        runDurableAuthorityAcceptanceRealignmentTest,
         discoverLaptopRecoveryCandidates: async () => {
             const candidates = await discoverLaptopRecoveryCandidates();
             return candidates.map(item => ({
