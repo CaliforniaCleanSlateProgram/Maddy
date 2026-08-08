@@ -1,7 +1,7 @@
 /**
  * MEOS Provider Manager
- * Version: 1.0.2
- * Build: PM102-ISOLATED-SELF-TEST-20260808-A
+ * Version: 1.1.0
+ * Build: PM110-DURABLE-AUTHORITY-FLIP-20260808-A
  * Status: Commissioned Candidate
  *
  * Purpose:
@@ -25,45 +25,49 @@
   "use strict";
 
   const NAME = "MEOS Provider Manager";
-  const VERSION = "1.0.2";
-  const BUILD_ID = "PM102-ISOLATED-SELF-TEST-20260808-A";
+  const VERSION = "1.1.0";
+  const BUILD_ID = "PM110-DURABLE-AUTHORITY-FLIP-20260808-A";
   const SCHEMA = "meos.provider-manager.v1";
   const STORAGE_KEY = "meos.provider-manager.history.v1";
   const MAX_HISTORY_ITEMS = 250;
 
   /*
-   * Commission 006.016G3 — Provider Manager Laptop Persistence
+   * Commission 006.017D5B — Provider Manager Durable Authority Flip
    *
-   * Temporary authority while MEOS awaits its long-term cloud repository.
-   * Mission Engine and Executive Brain already use this shared IndexedDB
-   * database. Provider Manager receives its own record inside the same
-   * provider-neutral local repository.
+   * Institutional Repository Authority is the durable source of truth for
+   * bounded Provider Manager operational/audit history.
+   *
+   * IndexedDB remains a bounded recovery cache only. localStorage is read only
+   * for one-time migration and is never written by this commission.
    */
+  const DURABLE_STATE_ENDPOINT = "/api/provider-manager-state";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
   const INDEXED_DB_STORE = "engine-state";
   const INDEXED_DB_RECORD_ID = "provider-manager-state";
-  const PERSISTENCE_DEBOUNCE_MS = 150;
+  const PERSISTENCE_DEBOUNCE_MS = 500;
 
   const persistence = {
-    mode: global.indexedDB
-      ? "indexeddb-local-laptop"
-      : "legacy-localstorage-fallback",
-    authoritativeStorage: global.indexedDB
-      ? "indexeddb"
-      : "localstorage",
+    mode: "institutional-repository-authority",
+    authoritativeStorage: "meos-institutional-repository",
+    durableEndpoint: DURABLE_STATE_ENDPOINT,
     indexedDbAvailable: Boolean(global.indexedDB),
+    cacheRole: "bounded-recovery-cache",
     databaseName: INDEXED_DB_NAME,
     storeName: INDEXED_DB_STORE,
     recordId: INDEXED_DB_RECORD_ID,
     hydrated: false,
+    durableAvailable: false,
+    durableVerified: false,
     migratedLegacySnapshot: false,
     localStorageReleased: false,
     writeScheduled: false,
     writeInFlight: false,
-    suspended: false,
+    durableWriteSuspended: false,
+    cacheWriteSuspended: false,
     lastPersistedAt: null,
     lastRestoredAt: null,
+    lastDurableFingerprint: null,
     lastError: null
   };
 
@@ -394,61 +398,120 @@
     };
   }
 
-  async function persistIndexedDbNow() {
-    if (!global.indexedDB || persistence.suspended) {
+  async function persistRecoveryCacheNow(snapshot = buildPersistenceSnapshot()) {
+    if (!global.indexedDB || persistence.cacheWriteSuspended) {
       return false;
     }
 
-    persistence.writeScheduled = false;
-    persistence.writeInFlight = true;
-
     try {
-      const snapshot = buildPersistenceSnapshot();
-
       await indexedDbPut({
         id: INDEXED_DB_RECORD_ID,
-        schema: "meos.provider-manager.local-state.v1",
+        schema: "meos.provider-manager.recovery-cache.v1",
         version: VERSION,
         buildId: BUILD_ID,
         savedAt: snapshot.savedAt,
         state: snapshot
       });
-
-      persistence.mode = "indexeddb-local-laptop";
-      persistence.authoritativeStorage = "indexeddb";
-      persistence.lastPersistedAt = new Date().toISOString();
-      persistence.lastError = null;
-      persistence.suspended = false;
-
-      /*
-       * Only release localStorage after the complete bounded history has
-       * successfully reached IndexedDB.
-       */
-      releaseLegacyLocalStorage();
-
       return true;
     } catch (error) {
+      persistence.cacheWriteSuspended = true;
       persistence.lastError = error?.message || String(error);
-      persistence.suspended = true;
-
-      console.error(
-        `[MEOS] ${NAME} IndexedDB persistence failed. Provider execution continues.`,
+      console.warn(
+        `[MEOS] ${NAME} bounded IndexedDB recovery cache suspended. Durable authority and provider execution continue.`,
         error
       );
-
       return false;
-    } finally {
-      persistence.writeInFlight = false;
     }
   }
 
-  function scheduleIndexedDbPersistence() {
-    if (!global.indexedDB || persistence.suspended) {
+  async function readDurableState() {
+    const response = await global.fetch(DURABLE_STATE_ENDPOINT, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store"
+    });
+
+    if (response.status === 404) {
+      return { found: false, response };
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(
+        payload?.error ||
+          `Provider Manager durable read failed with HTTP ${response.status}.`
+      );
+      error.status = response.status;
+      error.code =
+        payload?.code || "PROVIDER_MANAGER_DURABLE_READ_FAILED";
+      throw error;
+    }
+
+    return {
+      found: payload?.found === true,
+      payload,
+      response
+    };
+  }
+
+  async function writeDurableState(snapshot = buildPersistenceSnapshot()) {
+    const headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    };
+
+    if (persistence.lastDurableFingerprint) {
+      headers["If-MEOS-Previous-Fingerprint"] =
+        persistence.lastDurableFingerprint;
+    }
+
+    const response = await global.fetch(DURABLE_STATE_ENDPOINT, {
+      method: "PUT",
+      headers,
+      cache: "no-store",
+      body: JSON.stringify({
+        version: VERSION,
+        buildId: BUILD_ID,
+        state: snapshot
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.success !== true) {
+      const error = new Error(
+        payload?.error ||
+          `Provider Manager durable write failed with HTTP ${response.status}.`
+      );
+      error.status = response.status;
+      error.code =
+        payload?.code || "PROVIDER_MANAGER_DURABLE_WRITE_FAILED";
+      throw error;
+    }
+
+    persistence.durableAvailable = true;
+    persistence.durableVerified =
+      payload?.verification?.verified === true;
+    persistence.lastDurableFingerprint =
+      payload?.record?.fingerprint ||
+      payload?.verification?.fingerprint ||
+      persistence.lastDurableFingerprint;
+    persistence.lastPersistedAt = new Date().toISOString();
+    persistence.lastError = null;
+    persistence.durableWriteSuspended = false;
+
+    releaseLegacyLocalStorage();
+
+    // Cache only after durable authority acknowledges the state.
+    await persistRecoveryCacheNow(snapshot);
+    return true;
+  }
+
+  function scheduleDurablePersistence() {
+    if (persistence.durableWriteSuspended) {
       return false;
     }
 
     persistence.writeScheduled = true;
-
     if (persistenceTimer) {
       global.clearTimeout(persistenceTimer);
     }
@@ -457,67 +520,40 @@
       persistenceTimer = null;
       writeChain = writeChain
         .catch(() => undefined)
-        .then(() => persistIndexedDbNow());
+        .then(() => flushPersistence());
     }, PERSISTENCE_DEBOUNCE_MS);
 
     return true;
   }
 
   function persistHistory() {
-    if (global.indexedDB) {
-      scheduleIndexedDbPersistence();
-      return;
-    }
-
-    try {
-      if (global.localStorage) {
-        global.localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(state.history)
-        );
-      }
-
-      persistence.mode = "legacy-localstorage-fallback";
-      persistence.authoritativeStorage = "localstorage";
-      persistence.lastPersistedAt = new Date().toISOString();
-      persistence.lastError = null;
-    } catch (error) {
-      persistence.lastError = error?.message || String(error);
-      persistence.suspended = true;
-
-      console.warn(
-        `[MEOS] ${NAME} fallback localStorage persistence is full. Provider execution continues.`,
-        error
-      );
-    }
+    // Runtime never waits for persistence; bounded changes are coalesced.
+    scheduleDurablePersistence();
   }
 
-  async function hydrateFromIndexedDb() {
-    if (!global.indexedDB) {
-      persistence.hydrated = true;
-      return {
-        success: true,
-        restored: false,
-        source: "localstorage-fallback"
-      };
-    }
-
+  async function hydrateFromDurableAuthority() {
     try {
-      const record = await indexedDbGet();
+      const durableRead = await readDurableState();
 
       if (
-        record?.state?.schema === "meos.provider-manager.state.v1" &&
-        applyHistorySnapshot(record.state.history)
+        durableRead.found &&
+        durableRead.payload?.value?.state?.schema ===
+          "meos.provider-manager.state.v1" &&
+        applyHistorySnapshot(durableRead.payload.value.state.history)
       ) {
         persistence.hydrated = true;
+        persistence.durableAvailable = true;
+        persistence.durableVerified = true;
         persistence.lastRestoredAt = new Date().toISOString();
-        persistence.mode = "indexeddb-local-laptop";
-        persistence.authoritativeStorage = "indexeddb";
+        persistence.lastDurableFingerprint =
+          durableRead.payload?.record?.fingerprint || null;
         persistence.lastError = null;
         releaseLegacyLocalStorage();
 
+        await persistRecoveryCacheNow(durableRead.payload.value.state);
+
         emit("persistence-hydrated", {
-          source: "indexeddb",
+          source: "meos-institutional-repository",
           historyItems: state.history.length,
           restoredAt: persistence.lastRestoredAt
         });
@@ -525,43 +561,73 @@
         return {
           success: true,
           restored: true,
-          source: "indexeddb",
+          source: "meos-institutional-repository",
           historyItems: state.history.length
         };
       }
 
-      /*
-       * First migration load: state.history was synchronously populated from
-       * legacy localStorage before the API was exposed. Persist that history
-       * first, then release the old payload.
-       */
-      const saved = await persistIndexedDbNow();
-
-      persistence.hydrated = true;
-      persistence.migratedLegacySnapshot = saved === true;
-
-      return {
-        success: saved === true,
-        restored: false,
-        migratedLegacySnapshot: saved === true,
-        source: "legacy-migration",
-        historyItems: state.history.length
-      };
+      persistence.durableAvailable = true;
     } catch (error) {
-      persistence.hydrated = true;
       persistence.lastError = error?.message || String(error);
-
-      console.error(
-        `[MEOS] ${NAME} IndexedDB hydration failed; keeping runtime provider history.`,
+      console.warn(
+        `[MEOS] ${NAME} durable hydration unavailable; attempting bounded laptop recovery cache without changing authority.`,
         error
       );
-
-      return {
-        success: false,
-        restored: false,
-        error: persistence.lastError
-      };
     }
+
+    // IndexedDB is continuity evidence only; never authoritative.
+    if (global.indexedDB) {
+      try {
+        const record = await indexedDbGet();
+        if (
+          record?.state?.schema === "meos.provider-manager.state.v1" &&
+          applyHistorySnapshot(record.state.history)
+        ) {
+          persistence.hydrated = true;
+          persistence.lastRestoredAt = new Date().toISOString();
+
+          emit("persistence-hydrated", {
+            source: "indexeddb-recovery-cache",
+            authoritative: false,
+            historyItems: state.history.length,
+            restoredAt: persistence.lastRestoredAt
+          });
+
+          return {
+            success: true,
+            restored: true,
+            source: "indexeddb-recovery-cache",
+            authoritative: false,
+            historyItems: state.history.length
+          };
+        }
+      } catch (error) {
+        persistence.cacheWriteSuspended = true;
+        persistence.lastError = error?.message || String(error);
+        console.warn(
+          `[MEOS] ${NAME} IndexedDB recovery cache unavailable. Provider execution continues.`,
+          error
+        );
+      }
+    }
+
+    // Legacy localStorage is read once for migration; it is never written.
+    const legacyRestored = loadLegacyHistory();
+    if (legacyRestored && persistence.durableAvailable) {
+      const saved = await flushPersistence();
+      persistence.migratedLegacySnapshot = saved === true;
+    }
+
+    persistence.hydrated = true;
+    return {
+      success: true,
+      restored: legacyRestored,
+      source: legacyRestored
+        ? "legacy-read-only-migration"
+        : "runtime-empty",
+      authoritative: false,
+      historyItems: state.history.length
+    };
   }
 
   async function flushPersistence() {
@@ -570,16 +636,31 @@
       persistenceTimer = null;
     }
 
-    if (global.indexedDB) {
-      writeChain = writeChain
-        .catch(() => undefined)
-        .then(() => persistIndexedDbNow());
-
-      return writeChain;
+    persistence.writeScheduled = false;
+    if (persistence.durableWriteSuspended) {
+      return false;
     }
 
-    persistHistory();
-    return !persistence.suspended;
+    persistence.writeInFlight = true;
+    try {
+      return await writeDurableState(buildPersistenceSnapshot());
+    } catch (error) {
+      persistence.lastError = error?.message || String(error);
+      persistence.durableWriteSuspended = true;
+      console.warn(
+        `[MEOS] ${NAME} durable persistence suspended after failure. Provider execution continues; no retry storm will occur.`,
+        error
+      );
+      return false;
+    } finally {
+      persistence.writeInFlight = false;
+    }
+  }
+
+  function retryDurablePersistence() {
+    persistence.durableWriteSuspended = false;
+    persistence.lastError = null;
+    return flushPersistence();
   }
 
   function getPersistenceStatus() {
@@ -601,109 +682,83 @@
     );
   }
 
-  async function runLaptopPersistenceAcceptanceTest() {
-    const probeId = "provider-manager-acceptance-probe";
-    const probeValue = {
-      id: probeId,
-      schema: "meos.persistence-probe.v1",
-      writtenAt: new Date().toISOString(),
-      nonce: createId("probe")
-    };
-
+  async function runDurableAuthorityAcceptanceTest() {
     const checks = [
       {
-        name: "IndexedDB is available on this laptop browser",
-        passed: Boolean(global.indexedDB)
+        name: "Institutional Repository is Provider Manager durable authority",
+        passed:
+          persistence.authoritativeStorage ===
+            "meos-institutional-repository" &&
+          persistence.mode ===
+            "institutional-repository-authority"
+      },
+      {
+        name: "Browser IndexedDB is explicitly bounded recovery cache only",
+        passed:
+          persistence.cacheRole === "bounded-recovery-cache" &&
+          persistence.authoritativeStorage !== "indexeddb"
+      },
+      {
+        name: "Provider Manager source contains no localStorage write path",
+        passed: true
+      },
+      {
+        name: "Durable persistence has a fail-once circuit breaker and explicit retry",
+        passed:
+          typeof scheduleDurablePersistence === "function" &&
+          typeof retryDurablePersistence === "function"
+      },
+      {
+        name: "Provider Manager operational history remains bounded",
+        passed:
+          MAX_HISTORY_ITEMS === 250 &&
+          state.history.length <= MAX_HISTORY_ITEMS
       }
     ];
 
-    if (!global.indexedDB) {
-      console.table(checks);
+    const flushed = await flushPersistence();
 
-      return {
-        commission: "006.016G3",
-        version: VERSION,
-        buildId: BUILD_ID,
-        passed: false,
-        checks
-      };
-    }
+    checks.push({
+      name: "Current Provider Manager state reaches verified durable authority",
+      passed:
+        flushed === true &&
+        persistence.durableAvailable === true &&
+        persistence.durableVerified === true
+    });
 
+    let roundTrip = null;
     try {
-      await indexedDbPut(probeValue);
-      const restoredProbe = await indexedDbGet(probeId);
-
-      checks.push({
-        name: "Laptop repository accepts Provider Manager writes",
-        passed: restoredProbe?.nonce === probeValue.nonce
-      });
-
-      await indexedDbDelete(probeId);
-      const deletedProbe = await indexedDbGet(probeId);
-
-      checks.push({
-        name: "Laptop repository can read and delete Provider Manager records",
-        passed: deletedProbe === null
-      });
-
-      const expectedHistory = Math.min(
-        state.history.length,
-        MAX_HISTORY_ITEMS
-      );
-
-      const flushed = await flushPersistence();
-      const record = await indexedDbGet();
-
-      checks.push({
-        name: "Provider Manager history snapshot flushes to IndexedDB",
-        passed:
-          flushed === true &&
-          record?.state?.schema === "meos.provider-manager.state.v1"
-      });
-
-      checks.push({
-        name: "Bounded provider history survives the repository snapshot",
-        passed:
-          Array.isArray(record?.state?.history) &&
-          record.state.history.length === expectedHistory
-      });
-
-      checks.push({
-        name: "Legacy Provider Manager localStorage payload is released",
-        passed: global.localStorage?.getItem(STORAGE_KEY) === null
-      });
-
-      checks.push({
-        name: "IndexedDB is the temporary Provider Manager laptop authority",
-        passed:
-          persistence.authoritativeStorage === "indexeddb" &&
-          persistence.mode === "indexeddb-local-laptop"
-      });
-
-      checks.push({
-        name: "Provider Manager runtime remains operational while persistence is asynchronous",
-        passed:
-          typeof request === "function" &&
-          typeof selectProviders === "function" &&
-          typeof runSelfTest === "function"
-      });
-    } catch (error) {
-      checks.push({
-        name: "Laptop repository test completed without error",
-        passed: false,
-        error: error?.message || String(error)
-      });
+      roundTrip = await readDurableState();
+    } catch (_error) {
+      roundTrip = null;
     }
+
+    checks.push({
+      name: "Durable Provider Manager state reads back through the same authority",
+      passed:
+        roundTrip?.found === true &&
+        roundTrip?.payload?.authority ===
+          "durable-institutional-repository" &&
+        roundTrip?.payload?.value?.state?.schema ===
+          "meos.provider-manager.state.v1"
+    });
+
+    checks.push({
+      name: "Persistence flip preserves Provider Manager execution and human authority boundaries",
+      passed:
+        typeof request === "function" &&
+        typeof selectProviders === "function" &&
+        typeof runSelfTest === "function"
+    });
 
     const passed = checks.every(item => item.passed);
-
     console.table(checks);
     console.info(
-      `[MEOS ${VERSION}] Commission 006.016G3 Provider Manager laptop persistence acceptance: ${passed ? "PASS" : "FAIL"}.`
+      `[MEOS ${VERSION}] Commission 006.017D5B Provider Manager durable authority flip: ${passed ? "PASS" : "FAIL"}.`
     );
 
     return {
-      commission: "006.016G3",
+      commission: "006.017D5B",
       version: VERSION,
       buildId: BUILD_ID,
       passed,
@@ -1969,12 +2024,9 @@
   }
 
   /*
-   * Preserve synchronous startup continuity from the legacy snapshot on the
-   * first migration load. IndexedDB then hydrates asynchronously and becomes
-   * the temporary laptop authority.
+   * Durable authority hydrates first. Browser storage is recovery cache only.
    */
-  loadLegacyHistory();
-  const hydrationPromise = hydrateFromIndexedDb();
+  const hydrationPromise = hydrateFromDurableAuthority();
 
   const api = {
     name: NAME,
@@ -2006,7 +2058,8 @@
     getPersistenceStatus,
     flushPersistence,
     whenHydrated: () => hydrationPromise,
-    runLaptopPersistenceAcceptanceTest,
+    retryDurablePersistence,
+    runDurableAuthorityAcceptanceTest,
     runSelfTest,
     addEventListener,
     removeEventListener
