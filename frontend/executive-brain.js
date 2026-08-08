@@ -17,7 +17,7 @@
   "use strict";
 
   const VERSION = "1.6.0";
-  const BUILD_ID = "EB160-PERSISTENT-SELF-MODEL-MODE-AWARE-20260808-B";
+  const BUILD_ID = "EB160-PERSISTENT-SELF-MODEL-MODE-AWARE-20260808-C";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -3748,6 +3748,17 @@
       delete fingerprintBasis.generatedAt;
       delete fingerprintBasis.reason;
       delete fingerprintBasis.revision;
+
+      /*
+       * Fingerprints represent semantic self-state, not observation time.
+       * The evidence timestamp remains available in the projection for
+       * provenance, but cannot participate in identity convergence or every
+       * observation would manufacture a new self-state revision.
+       */
+      if (fingerprintBasis.evidence) {
+        delete fingerprintBasis.evidence.systemManifestGeneratedAt;
+      }
+
       fingerprintBasis.recursiveAwareness.previousProjectionFingerprint = null;
       fingerprintBasis.recursiveAwareness.previousRevision = null;
 
