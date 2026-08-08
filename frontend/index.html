@@ -549,11 +549,34 @@
                 }
             }
 
-            function initializeOrganization() {
+            const ORGANIZATION_READINESS_BUILD =
+                "D3B3-HYDRATION-READINESS-BARRIER-20260808-A";
+
+            const organizationReadiness = {
+                commission: "006.017D3B3",
+                buildId: ORGANIZATION_READINESS_BUILD,
+                phase: "booting",
+                ready: false,
+                degraded: false,
+                startedAt: new Date().toISOString(),
+                readyAt: null,
+                hydration: null,
+                missionSummary: null,
+                dispatcherStatus: null,
+                error: null
+            };
+
+            window.MEOSOrganizationReadiness = organizationReadiness;
+
+            async function initializeOrganization() {
                 const missionEngine = window.MEOSMissionEngine;
                 const missionDispatcher = window.MEOSMissionDispatcher;
 
                 if (!missionEngine) {
+                    organizationReadiness.phase = "blocked";
+                    organizationReadiness.error =
+                        "Mission Engine is unavailable.";
+
                     console.error(
                         "MEOS startup failed: Mission Engine is unavailable."
                     );
@@ -563,6 +586,10 @@
                 }
 
                 if (!missionDispatcher) {
+                    organizationReadiness.phase = "blocked";
+                    organizationReadiness.error =
+                        "Mission Dispatcher is unavailable.";
+
                     console.error(
                         "MEOS startup failed: Mission Dispatcher is unavailable."
                     );
@@ -571,23 +598,106 @@
                     return;
                 }
 
+                if (typeof missionEngine.whenHydrated !== "function") {
+                    organizationReadiness.phase = "blocked";
+                    organizationReadiness.error =
+                        "Mission Engine does not expose a hydration readiness contract.";
+
+                    console.error(
+                        "MEOS startup refused: Mission Engine hydration readiness contract is unavailable."
+                    );
+
+                    updateVisibleStatus("Mission state readiness unavailable");
+                    return;
+                }
+
                 try {
+                    /*
+                     * Commission 006.017D3B3
+                     *
+                     * The organization must never begin executive dispatch against
+                     * the Mission Engine's pre-hydration zero-state projection.
+                     * Mission state is part of Maddy's temporal continuity, so the
+                     * dispatcher is held behind an explicit readiness barrier until
+                     * the Mission Engine has reconstructed the best available state.
+                     */
+                    organizationReadiness.phase = "hydrating-mission-continuity";
+                    updateVisibleStatus("Restoring executive continuity");
+
+                    const hydrationResult =
+                        await missionEngine.whenHydrated();
+
+                    const persistence =
+                        typeof missionEngine.getPersistenceStatus === "function"
+                            ? missionEngine.getPersistenceStatus()
+                            : null;
+
+                    if (!persistence?.hydrated) {
+                        throw new Error(
+                            "Mission Engine returned from hydration without proving a hydrated state."
+                        );
+                    }
+
+                    organizationReadiness.hydration = {
+                        success: hydrationResult?.success === true,
+                        restored: hydrationResult?.restored === true,
+                        source:
+                            hydrationResult?.source ||
+                            persistence.hydrationSource ||
+                            "unknown",
+                        authority:
+                            persistence.authoritativeStorage ||
+                            "unknown",
+                        durableAvailable:
+                            persistence.durableAvailable === true,
+                        degraded:
+                            persistence.degraded === true
+                    };
+
+                    organizationReadiness.degraded =
+                        persistence.degraded === true;
+                    organizationReadiness.phase =
+                        "mission-continuity-ready";
+
+                    const missionSummary =
+                        missionEngine.getMissionSummary();
+
+                    /*
+                     * Only now may autonomous dispatch begin. The first scan sees
+                     * reconstructed mission continuity, never the transient empty
+                     * state that exists while durable authority is still loading.
+                     */
                     const dispatcherResult =
                         missionDispatcher.start({
                             scanInterval: 5000
                         });
 
-                    const missionSummary =
-                        missionEngine.getMissionSummary();
-
                     const dispatcherStatus =
                         missionDispatcher.getStatus();
 
-                    updateVisibleStatus("Executive systems active");
+                    organizationReadiness.missionSummary = missionSummary;
+                    organizationReadiness.dispatcherStatus = dispatcherStatus;
+                    organizationReadiness.ready = true;
+                    organizationReadiness.readyAt = new Date().toISOString();
+                    organizationReadiness.phase =
+                        organizationReadiness.degraded
+                            ? "ready-degraded-continuity"
+                            : "ready-durable-continuity";
+
+                    updateVisibleStatus(
+                        organizationReadiness.degraded
+                            ? "Executive systems active — continuity degraded"
+                            : "Executive systems active"
+                    );
 
                     console.log(
-                        "%cMEOS Organization Online",
+                        "%cMEOS Organization Online — Mission Continuity Proven",
                         "font-weight: bold; font-size: 14px;"
+                    );
+
+                    console.log(
+                        "Organization Readiness:",
+                        { ...organizationReadiness }
                     );
 
                     console.log(
@@ -604,13 +714,35 @@
                         "Dispatcher startup result:",
                         dispatcherResult
                     );
+
+                    window.dispatchEvent(
+                        new CustomEvent("meos:organization-ready", {
+                            detail: {
+                                commission: organizationReadiness.commission,
+                                buildId: organizationReadiness.buildId,
+                                phase: organizationReadiness.phase,
+                                degraded: organizationReadiness.degraded,
+                                hydration: {
+                                    ...organizationReadiness.hydration
+                                },
+                                missionSummary: {
+                                    ...missionSummary
+                                }
+                            }
+                        })
+                    );
                 } catch (error) {
+                    organizationReadiness.phase = "blocked";
+                    organizationReadiness.ready = false;
+                    organizationReadiness.error =
+                        error?.message || String(error);
+
                     console.error(
-                        "MEOS organization could not start.",
+                        "MEOS organization could not cross the mission continuity readiness barrier.",
                         error
                     );
 
-                    updateVisibleStatus("Executive systems need attention");
+                    updateVisibleStatus("Executive continuity needs attention");
                 }
             }
 
