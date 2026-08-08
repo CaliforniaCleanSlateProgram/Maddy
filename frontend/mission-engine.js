@@ -1,6 +1,7 @@
 /**
  * MEOS Mission Engine
- * Version: 0.1.0
+ * Version: 0.1.1
+ * Build: ME011-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A
  *
  * Purpose:
  * The Mission Engine is the central work-management system for MEOS.
@@ -21,8 +22,35 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.0";
+    const VERSION = "0.1.1";
+    const BUILD_ID = "ME011-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
+    const INDEXED_DB_NAME = "meos-local-executive-repository";
+    const INDEXED_DB_VERSION = 1;
+    const INDEXED_DB_STORE = "engine-state";
+    const INDEXED_DB_RECORD_ID = "mission-engine-state";
+    const PERSISTENCE_DEBOUNCE_MS = 150;
+
+    const persistence = {
+        mode: global.indexedDB ? "indexeddb-local-laptop" : "legacy-localstorage-fallback",
+        authoritativeStorage: global.indexedDB ? "indexeddb" : "localstorage",
+        indexedDbAvailable: Boolean(global.indexedDB),
+        databaseName: INDEXED_DB_NAME,
+        storeName: INDEXED_DB_STORE,
+        hydrated: false,
+        migratedLegacySnapshot: false,
+        localStorageReleased: false,
+        writeScheduled: false,
+        writeInFlight: false,
+        suspended: false,
+        lastPersistedAt: null,
+        lastRestoredAt: null,
+        lastError: null
+    };
+
+    let persistenceTimer = null;
+    let indexedDbPromise = null;
+    let writeChain = Promise.resolve();
 
     const MISSION_STATUS = Object.freeze({
         INTAKE: "intake",
@@ -197,18 +225,250 @@
         return entry;
     }
 
-    function persist() {
+    function applyStateSnapshot(parsed) {
+        if (!parsed || !Array.isArray(parsed.missions)) {
+            return false;
+        }
+
+        state.missions = parsed.missions || [];
+        state.approvalQueue = parsed.approvalQueue || [];
+        state.completedMissions = parsed.completedMissions || [];
+        state.archivedMissions = parsed.archivedMissions || [];
+        state.activity = parsed.activity || [];
+        state.initializedAt = parsed.initializedAt || now();
+        state.updatedAt = parsed.updatedAt || now();
+
+        sortActiveMissions();
+        sortApprovalQueue();
+
+        return true;
+    }
+
+    function snapshotState() {
+        return clone(state);
+    }
+
+    function openIndexedDb() {
+        if (!global.indexedDB) {
+            return Promise.reject(
+                new Error("IndexedDB is unavailable in this browser.")
+            );
+        }
+
+        if (indexedDbPromise) {
+            return indexedDbPromise;
+        }
+
+        indexedDbPromise = new Promise((resolve, reject) => {
+            const request = global.indexedDB.open(
+                INDEXED_DB_NAME,
+                INDEXED_DB_VERSION
+            );
+
+            request.onupgradeneeded = () => {
+                const database = request.result;
+
+                if (!database.objectStoreNames.contains(INDEXED_DB_STORE)) {
+                    database.createObjectStore(INDEXED_DB_STORE, {
+                        keyPath: "id"
+                    });
+                }
+            };
+
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () =>
+                reject(
+                    request.error ||
+                        new Error("Mission Engine IndexedDB open failed.")
+                );
+            request.onblocked = () =>
+                reject(
+                    new Error("Mission Engine IndexedDB upgrade was blocked.")
+                );
+        });
+
+        return indexedDbPromise;
+    }
+
+    async function indexedDbGet(recordId = INDEXED_DB_RECORD_ID) {
+        const database = await openIndexedDb();
+
+        return new Promise((resolve, reject) => {
+            const transaction = database.transaction(
+                INDEXED_DB_STORE,
+                "readonly"
+            );
+            const store = transaction.objectStore(INDEXED_DB_STORE);
+            const request = store.get(recordId);
+
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () =>
+                reject(
+                    request.error ||
+                        new Error("Mission Engine IndexedDB read failed.")
+                );
+        });
+    }
+
+    async function indexedDbPut(record) {
+        const database = await openIndexedDb();
+
+        return new Promise((resolve, reject) => {
+            const transaction = database.transaction(
+                INDEXED_DB_STORE,
+                "readwrite"
+            );
+            const store = transaction.objectStore(INDEXED_DB_STORE);
+            const request = store.put(record);
+
+            request.onsuccess = () => resolve(true);
+            request.onerror = () =>
+                reject(
+                    request.error ||
+                        new Error("Mission Engine IndexedDB write failed.")
+                );
+            transaction.onerror = () =>
+                reject(
+                    transaction.error ||
+                        new Error(
+                            "Mission Engine IndexedDB transaction failed."
+                        )
+                );
+        });
+    }
+
+    async function indexedDbDelete(recordId) {
+        const database = await openIndexedDb();
+
+        return new Promise((resolve, reject) => {
+            const transaction = database.transaction(
+                INDEXED_DB_STORE,
+                "readwrite"
+            );
+            const store = transaction.objectStore(INDEXED_DB_STORE);
+            const request = store.delete(recordId);
+
+            request.onsuccess = () => resolve(true);
+            request.onerror = () =>
+                reject(
+                    request.error ||
+                        new Error("Mission Engine IndexedDB delete failed.")
+                );
+        });
+    }
+
+    function releaseLegacyLocalStorage() {
         try {
-            global.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            global.localStorage.removeItem(STORAGE_KEY);
+            persistence.localStorageReleased = true;
+            return true;
         } catch (error) {
+            persistence.lastError = error?.message || String(error);
+            return false;
+        }
+    }
+
+    async function persistIndexedDbNow() {
+        if (!global.indexedDB || persistence.suspended) {
+            return false;
+        }
+
+        const snapshot = snapshotState();
+        persistence.writeScheduled = false;
+        persistence.writeInFlight = true;
+
+        try {
+            await indexedDbPut({
+                id: INDEXED_DB_RECORD_ID,
+                schema: "meos.mission-engine.local-state.v1",
+                version: VERSION,
+                buildId: BUILD_ID,
+                savedAt: now(),
+                state: snapshot
+            });
+
+            persistence.mode = "indexeddb-local-laptop";
+            persistence.authoritativeStorage = "indexeddb";
+            persistence.lastPersistedAt = now();
+            persistence.lastError = null;
+            persistence.suspended = false;
+
+            /*
+             * Commission 006.016G1:
+             * Once the full Mission Engine snapshot is safely in IndexedDB,
+             * remove the old multi-megabyte localStorage record. This releases
+             * browser quota without deleting mission history.
+             */
+            releaseLegacyLocalStorage();
+
+            return true;
+        } catch (error) {
+            persistence.lastError = error?.message || String(error);
+            persistence.suspended = true;
+
+            console.error(
+                "[MEOS Mission Engine] IndexedDB persistence failed. Runtime work continues.",
+                error
+            );
+
+            return false;
+        } finally {
+            persistence.writeInFlight = false;
+        }
+    }
+
+    function scheduleIndexedDbPersistence() {
+        if (!global.indexedDB || persistence.suspended) {
+            return false;
+        }
+
+        persistence.writeScheduled = true;
+
+        if (persistenceTimer) {
+            global.clearTimeout(persistenceTimer);
+        }
+
+        persistenceTimer = global.setTimeout(() => {
+            persistenceTimer = null;
+            writeChain = writeChain
+                .catch(() => undefined)
+                .then(() => persistIndexedDbNow());
+        }, PERSISTENCE_DEBOUNCE_MS);
+
+        return true;
+    }
+
+    function persist() {
+        if (global.indexedDB) {
+            scheduleIndexedDbPersistence();
+            return;
+        }
+
+        /*
+         * Legacy fallback only. IndexedDB is the temporary laptop authority
+         * while cloud storage is pending.
+         */
+        try {
+            global.localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify(state)
+            );
+            persistence.mode = "legacy-localstorage-fallback";
+            persistence.authoritativeStorage = "localstorage";
+            persistence.lastPersistedAt = now();
+            persistence.lastError = null;
+        } catch (error) {
+            persistence.lastError = error?.message || String(error);
+            persistence.suspended = true;
+
             console.warn(
-                "MEOS Mission Engine could not save to local storage.",
+                "MEOS Mission Engine fallback localStorage persistence is full. Runtime work continues.",
                 error
             );
         }
     }
 
-    function restore() {
+    function restoreLegacySnapshot() {
         try {
             const stored = global.localStorage.getItem(STORAGE_KEY);
 
@@ -216,29 +476,228 @@
                 return false;
             }
 
-            const parsed = JSON.parse(stored);
-
-            if (!parsed || !Array.isArray(parsed.missions)) {
-                return false;
-            }
-
-            state.missions = parsed.missions || [];
-            state.approvalQueue = parsed.approvalQueue || [];
-            state.completedMissions = parsed.completedMissions || [];
-            state.archivedMissions = parsed.archivedMissions || [];
-            state.activity = parsed.activity || [];
-            state.initializedAt = parsed.initializedAt || now();
-            state.updatedAt = parsed.updatedAt || now();
-
-            return true;
+            return applyStateSnapshot(JSON.parse(stored));
         } catch (error) {
             console.warn(
-                "MEOS Mission Engine could not restore saved missions.",
+                "MEOS Mission Engine could not restore legacy localStorage missions.",
                 error
             );
 
             return false;
         }
+    }
+
+    async function hydrateFromIndexedDb() {
+        if (!global.indexedDB) {
+            persistence.hydrated = true;
+            return {
+                success: true,
+                restored: false,
+                source: "localstorage-fallback"
+            };
+        }
+
+        try {
+            const record = await indexedDbGet(INDEXED_DB_RECORD_ID);
+
+            if (record?.state && applyStateSnapshot(record.state)) {
+                persistence.hydrated = true;
+                persistence.lastRestoredAt = now();
+                persistence.mode = "indexeddb-local-laptop";
+                persistence.authoritativeStorage = "indexeddb";
+                persistence.lastError = null;
+                releaseLegacyLocalStorage();
+
+                global.dispatchEvent(
+                    new CustomEvent("meos:mission-engine-hydrated", {
+                        detail: {
+                            source: "indexeddb",
+                            activeMissions: state.missions.length,
+                            restoredAt: persistence.lastRestoredAt
+                        }
+                    })
+                );
+
+                return {
+                    success: true,
+                    restored: true,
+                    source: "indexeddb"
+                };
+            }
+
+            /*
+             * First IndexedDB run: the synchronous localStorage snapshot is
+             * treated as migration input only. Save it before releasing it.
+             */
+            const saved = await persistIndexedDbNow();
+
+            persistence.hydrated = true;
+            persistence.migratedLegacySnapshot = saved === true;
+
+            return {
+                success: saved === true,
+                restored: false,
+                migratedLegacySnapshot: saved === true,
+                source: "legacy-migration"
+            };
+        } catch (error) {
+            persistence.hydrated = true;
+            persistence.lastError = error?.message || String(error);
+
+            console.error(
+                "[MEOS Mission Engine] IndexedDB hydration failed; keeping runtime state.",
+                error
+            );
+
+            return {
+                success: false,
+                restored: false,
+                error: persistence.lastError
+            };
+        }
+    }
+
+    async function flushPersistence() {
+        if (persistenceTimer) {
+            global.clearTimeout(persistenceTimer);
+            persistenceTimer = null;
+        }
+
+        if (global.indexedDB) {
+            writeChain = writeChain
+                .catch(() => undefined)
+                .then(() => persistIndexedDbNow());
+
+            return writeChain;
+        }
+
+        persist();
+        return !persistence.suspended;
+    }
+
+    function getPersistenceStatus() {
+        return clone({
+            ...persistence,
+            localStorageBytes:
+                (() => {
+                    try {
+                        const value =
+                            global.localStorage.getItem(STORAGE_KEY) || "";
+                        return new Blob([value]).size;
+                    } catch {
+                        return null;
+                    }
+                })()
+        });
+    }
+
+    async function runLaptopPersistenceAcceptanceTest() {
+        const probeId = "mission-engine-acceptance-probe";
+        const probeValue = {
+            id: probeId,
+            schema: "meos.persistence-probe.v1",
+            writtenAt: now(),
+            nonce: createId("PROBE")
+        };
+
+        const checks = [];
+
+        checks.push({
+            name: "IndexedDB is available on this laptop browser",
+            passed: Boolean(global.indexedDB)
+        });
+
+        if (!global.indexedDB) {
+            console.table(checks);
+            return {
+                commission: "006.016G1",
+                version: VERSION,
+                buildId: BUILD_ID,
+                passed: false,
+                checks
+            };
+        }
+
+        try {
+            await indexedDbPut(probeValue);
+            const restoredProbe = await indexedDbGet(probeId);
+
+            checks.push({
+                name: "Laptop repository accepts writes",
+                passed:
+                    restoredProbe?.nonce === probeValue.nonce
+            });
+
+            await indexedDbDelete(probeId);
+            const deletedProbe = await indexedDbGet(probeId);
+
+            checks.push({
+                name: "Laptop repository can read and delete records",
+                passed: deletedProbe === null
+            });
+
+            const flushed = await flushPersistence();
+            const missionRecord =
+                await indexedDbGet(INDEXED_DB_RECORD_ID);
+
+            checks.push({
+                name: "Mission Engine snapshot flushes to IndexedDB",
+                passed:
+                    flushed === true &&
+                    Array.isArray(
+                        missionRecord?.state?.missions
+                    )
+            });
+
+            checks.push({
+                name: "Mission count survives the repository snapshot",
+                passed:
+                    missionRecord?.state?.missions?.length ===
+                    state.missions.length
+            });
+
+            checks.push({
+                name: "Legacy Mission Engine localStorage payload is released",
+                passed:
+                    global.localStorage.getItem(STORAGE_KEY) === null
+            });
+
+            checks.push({
+                name: "IndexedDB is the temporary laptop authority",
+                passed:
+                    persistence.authoritativeStorage === "indexeddb" &&
+                    persistence.mode === "indexeddb-local-laptop"
+            });
+
+            checks.push({
+                name: "Mission runtime remains available while persistence is asynchronous",
+                passed:
+                    typeof createMission === "function" &&
+                    typeof getActiveMissions === "function"
+            });
+        } catch (error) {
+            checks.push({
+                name: "Laptop repository test completed without error",
+                passed: false,
+                error: error?.message || String(error)
+            });
+        }
+
+        const passed = checks.every(item => item.passed);
+
+        console.table(checks);
+        console.info(
+            `[MEOS ${VERSION}] Commission 006.016G1 laptop persistence acceptance: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+            commission: "006.016G1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            checks,
+            persistence: getPersistenceStatus()
+        };
     }
 
     function findMissionRecord(missionId) {
@@ -1371,19 +1830,26 @@
         return true;
     }
 
-    const restored = restore();
+    /*
+     * Synchronous bootstrap preserves the current working session on the
+     * first migration load. IndexedDB then becomes the temporary laptop
+     * authority asynchronously.
+     */
+    const restoredLegacy = restoreLegacySnapshot();
 
-    if (!restored) {
+    if (!restoredLegacy) {
         state.initializedAt = now();
         state.updatedAt = state.initializedAt;
-        persist();
     }
 
     sortActiveMissions();
     sortApprovalQueue();
 
+    const hydrationPromise = hydrateFromIndexedDb();
+
     const MissionEngine = Object.freeze({
         version: VERSION,
+        buildId: BUILD_ID,
 
         constants: Object.freeze({
             MISSION_STATUS,
@@ -1428,13 +1894,18 @@
         getMissionSummary,
 
         exportMissionData,
-        clearMissionData
+        clearMissionData,
+
+        getPersistenceStatus,
+        flushPersistence,
+        whenHydrated: () => hydrationPromise,
+        runLaptopPersistenceAcceptanceTest
     });
 
     global.MEOSMissionEngine = MissionEngine;
 
     console.log(
-        `%cMEOS ${VERSION} Mission Engine initialized.`,
+        `%cMEOS ${VERSION} Mission Engine initialized. Build ${BUILD_ID}.`,
         "font-weight: bold;"
     );
 
