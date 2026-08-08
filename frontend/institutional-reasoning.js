@@ -1,7 +1,7 @@
 /*
  * MEOS Institutional Reasoning Engine
- * Version: 1.1.0
- * Build: IR110-COUNTERFACTUAL-POSITIONING-20260808-A
+ * Version: 1.1.1
+ * Build: IR111-REASONING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A
  *
  * Mission:
  * Turn supported institutional evidence into explainable executive analysis,
@@ -40,8 +40,8 @@
 
     const InstitutionalReasoning = {
         name: "MEOS Institutional Reasoning Engine",
-        version: "1.1.0",
-        buildId: "IR110-COUNTERFACTUAL-POSITIONING-20260808-A",
+        version: "1.1.1",
+        buildId: "IR111-REASONING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A",
         status: "initializing",
         operatingMode: "evidence-grounded-reasoning",
 
@@ -77,6 +77,16 @@
         },
         eventListeners: {},
         initializedAt: null,
+        persistenceState: {
+            authority: "evidence-sources-plus-durable-executive-cognition",
+            browserRole: "best-effort-reasoning-continuity-cache",
+            browserPersistenceSuspended: false,
+            suspensionReason: null,
+            suspendedAt: null,
+            lastPersistedAt: null,
+            lastPersistenceError: null,
+            failureCount: 0
+        },
 
         initialize(options = {}) {
             this.configuration = {
@@ -2167,6 +2177,7 @@
                     this.savedAnalyses.length,
                 analytics:
                     this.clone(this.analytics),
+                persistence: this.clone(this.persistenceState),
                 initializedAt:
                     this.initializedAt
             };
@@ -2247,12 +2258,55 @@
                 };
             }
 
-            this.persistIfEnabled();
+            if (options.skipPersistence !== true) {
+                this.persistIfEnabled();
+            }
 
             return {
                 success: true,
                 status: this.getStatus()
             };
+        },
+
+        isQuotaExceededError(error) {
+            return Boolean(
+                error &&
+                (
+                    error.name === "QuotaExceededError" ||
+                    error.code === 22 ||
+                    error.code === 1014 ||
+                    /quota/i.test(String(error.message || ""))
+                )
+            );
+        },
+
+        suspendBrowserPersistence(error, reason = "storage-quota-exhausted") {
+            const alreadySuspended =
+                this.persistenceState.browserPersistenceSuspended === true;
+
+            this.persistenceState.browserPersistenceSuspended = true;
+            this.persistenceState.suspensionReason = reason;
+            this.persistenceState.suspendedAt =
+                this.persistenceState.suspendedAt || new Date().toISOString();
+            this.persistenceState.lastPersistenceError =
+                error?.message || String(error || reason);
+            this.persistenceState.failureCount += 1;
+
+            if (!alreadySuspended) {
+                console.warn(
+                    "[MEOS Institutional Reasoning] Browser reasoning continuity-cache persistence suspended after storage quota exhaustion. Evidence-grounded reasoning and durable Executive Brain cognition remain operational; repeated local writes are suppressed until persistence is explicitly retried."
+                );
+            }
+
+            return this.clone(this.persistenceState);
+        },
+
+        retryBrowserPersistence() {
+            this.persistenceState.browserPersistenceSuspended = false;
+            this.persistenceState.suspensionReason = null;
+            this.persistenceState.suspendedAt = null;
+            this.persistenceState.lastPersistenceError = null;
+            return this.persist({ force: true });
         },
 
         persistIfEnabled() {
@@ -2269,7 +2323,20 @@
             };
         },
 
-        persist() {
+        persist(options = {}) {
+            if (
+                this.persistenceState.browserPersistenceSuspended === true &&
+                options.force !== true
+            ) {
+                return {
+                    success: true,
+                    persisted: false,
+                    suspended: true,
+                    authority: this.persistenceState.authority,
+                    browserRole: this.persistenceState.browserRole
+                };
+            }
+
             if (
                 !this.configuration.persistenceEnabled
             ) {
@@ -2298,11 +2365,31 @@
                     )
                 );
 
+                this.persistenceState.lastPersistedAt =
+                    new Date().toISOString();
+                this.persistenceState.lastPersistenceError = null;
+
                 return {
                     success: true,
-                    persisted: true
+                    persisted: true,
+                    authority: this.persistenceState.authority,
+                    browserRole: this.persistenceState.browserRole
                 };
             } catch (error) {
+                if (this.isQuotaExceededError(error)) {
+                    this.suspendBrowserPersistence(error);
+                    return {
+                        success: false,
+                        persisted: false,
+                        suspended: true,
+                        error: error.message,
+                        authority: this.persistenceState.authority,
+                        browserRole: this.persistenceState.browserRole
+                    };
+                }
+
+                this.persistenceState.lastPersistenceError = error.message;
+                this.persistenceState.failureCount += 1;
                 console.error(
                     "[MEOS Institutional Reasoning] Persistence failed:",
                     error
@@ -2342,7 +2429,8 @@
                 const result = this.importReasoning(
                     JSON.parse(stored),
                     {
-                        replace: true
+                        replace: true,
+                        skipPersistence: true
                     }
                 );
 
@@ -2362,6 +2450,90 @@
                     error: error.message
                 };
             }
+        },
+
+        runPersistenceAuthorityAcceptanceTest() {
+            const originalSuspended =
+                this.persistenceState.browserPersistenceSuspended;
+            const originalReason = this.persistenceState.suspensionReason;
+            const originalSuspendedAt = this.persistenceState.suspendedAt;
+            const originalError = this.persistenceState.lastPersistenceError;
+            const originalFailureCount = this.persistenceState.failureCount;
+
+            const simulatedQuotaError = new Error(
+                "Simulated browser storage quota exhaustion"
+            );
+            simulatedQuotaError.name = "QuotaExceededError";
+
+            this.suspendBrowserPersistence(
+                simulatedQuotaError,
+                "acceptance-test-quota-exhaustion"
+            );
+
+            const suppressed = this.persist();
+            const checks = [
+                {
+                    name: "Institutional Reasoning declares evidence sources plus durable Executive Brain cognition as authority",
+                    passed:
+                        this.persistenceState.authority ===
+                        "evidence-sources-plus-durable-executive-cognition"
+                },
+                {
+                    name: "Browser persistence is explicitly a best-effort reasoning continuity cache rather than institutional authority",
+                    passed:
+                        this.persistenceState.browserRole ===
+                        "best-effort-reasoning-continuity-cache"
+                },
+                {
+                    name: "Quota exhaustion trips a fail-visible browser persistence circuit breaker",
+                    passed:
+                        this.persistenceState.browserPersistenceSuspended === true &&
+                        this.persistenceState.suspensionReason ===
+                        "acceptance-test-quota-exhaustion"
+                },
+                {
+                    name: "Repeated reasoning-cache writes are suppressed after the first quota failure",
+                    passed:
+                        suppressed?.persisted === false &&
+                        suppressed?.suspended === true
+                },
+                {
+                    name: "Institutional Reasoning remains online while its browser continuity cache is suspended",
+                    passed: this.status === "online"
+                },
+                {
+                    name: "Reasoning history and saved analyses remain in memory when browser persistence degrades",
+                    passed:
+                        Array.isArray(this.reasoningHistory) &&
+                        Array.isArray(this.savedAnalyses)
+                },
+                {
+                    name: "Persistence degradation grants no approval or execution authority",
+                    passed:
+                        this.configuration.requireExecutiveApproval === true &&
+                        this.operatingMode === "evidence-grounded-reasoning"
+                }
+            ];
+
+            this.persistenceState.browserPersistenceSuspended = originalSuspended;
+            this.persistenceState.suspensionReason = originalReason;
+            this.persistenceState.suspendedAt = originalSuspendedAt;
+            this.persistenceState.lastPersistenceError = originalError;
+            this.persistenceState.failureCount = originalFailureCount;
+
+            const result = {
+                commission: "006.017D4H2B",
+                version: this.version,
+                buildId: this.buildId,
+                passed: checks.every((check) => check.passed),
+                checks
+            };
+
+            console.table(checks);
+            console.info(
+                `[MEOS ${this.version}] Commission 006.017D4H2B Institutional Reasoning persistence authority convergence: ${result.passed ? "PASS" : "FAIL"}.`
+            );
+            return result;
         },
 
         clear(options = {}) {
