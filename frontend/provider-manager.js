@@ -1,7 +1,7 @@
 /**
  * MEOS Provider Manager
- * Version: 1.0.0
- * Build: PM100-MADDY-20260801-A
+ * Version: 1.0.1
+ * Build: PM101-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A
  * Status: Commissioned Candidate
  *
  * Purpose:
@@ -25,11 +25,51 @@
   "use strict";
 
   const NAME = "MEOS Provider Manager";
-  const VERSION = "1.0.0";
-  const BUILD_ID = "PM100-MADDY-20260801-A";
+  const VERSION = "1.0.1";
+  const BUILD_ID = "PM101-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A";
   const SCHEMA = "meos.provider-manager.v1";
   const STORAGE_KEY = "meos.provider-manager.history.v1";
   const MAX_HISTORY_ITEMS = 250;
+
+  /*
+   * Commission 006.016G3 — Provider Manager Laptop Persistence
+   *
+   * Temporary authority while MEOS awaits its long-term cloud repository.
+   * Mission Engine and Executive Brain already use this shared IndexedDB
+   * database. Provider Manager receives its own record inside the same
+   * provider-neutral local repository.
+   */
+  const INDEXED_DB_NAME = "meos-local-executive-repository";
+  const INDEXED_DB_VERSION = 1;
+  const INDEXED_DB_STORE = "engine-state";
+  const INDEXED_DB_RECORD_ID = "provider-manager-state";
+  const PERSISTENCE_DEBOUNCE_MS = 150;
+
+  const persistence = {
+    mode: global.indexedDB
+      ? "indexeddb-local-laptop"
+      : "legacy-localstorage-fallback",
+    authoritativeStorage: global.indexedDB
+      ? "indexeddb"
+      : "localstorage",
+    indexedDbAvailable: Boolean(global.indexedDB),
+    databaseName: INDEXED_DB_NAME,
+    storeName: INDEXED_DB_STORE,
+    recordId: INDEXED_DB_RECORD_ID,
+    hydrated: false,
+    migratedLegacySnapshot: false,
+    localStorageReleased: false,
+    writeScheduled: false,
+    writeInFlight: false,
+    suspended: false,
+    lastPersistedAt: null,
+    lastRestoredAt: null,
+    lastError: null
+  };
+
+  let persistenceTimer = null;
+  let indexedDbPromise = null;
+  let writeChain = Promise.resolve();
 
   const PROVIDER_TYPES = Object.freeze([
     "language-model",
@@ -198,31 +238,478 @@
     }
   }
 
-  function loadHistory() {
+  function applyHistorySnapshot(history) {
+    if (!Array.isArray(history)) {
+      return false;
+    }
+
+    state.history = history.slice(-MAX_HISTORY_ITEMS);
+    return true;
+  }
+
+  function loadLegacyHistory() {
     try {
       if (!global.localStorage) {
-        return;
+        return false;
       }
 
       const stored = global.localStorage.getItem(STORAGE_KEY);
       const parsed = stored ? JSON.parse(stored) : [];
 
-      if (Array.isArray(parsed)) {
-        state.history = parsed.slice(-MAX_HISTORY_ITEMS);
-      }
+      return applyHistorySnapshot(parsed);
     } catch (error) {
-      console.warn(`[MEOS] ${NAME} could not load history.`, error);
+      persistence.lastError = error?.message || String(error);
+      console.warn(`[MEOS] ${NAME} could not load legacy history.`, error);
+      return false;
     }
   }
 
+  function openIndexedDb() {
+    if (!global.indexedDB) {
+      return Promise.reject(
+        new Error("IndexedDB is unavailable in this browser.")
+      );
+    }
+
+    if (indexedDbPromise) {
+      return indexedDbPromise;
+    }
+
+    indexedDbPromise = new Promise((resolve, reject) => {
+      const request = global.indexedDB.open(
+        INDEXED_DB_NAME,
+        INDEXED_DB_VERSION
+      );
+
+      request.onupgradeneeded = () => {
+        const database = request.result;
+
+        if (!database.objectStoreNames.contains(INDEXED_DB_STORE)) {
+          database.createObjectStore(INDEXED_DB_STORE, {
+            keyPath: "id"
+          });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () =>
+        reject(
+          request.error ||
+            new Error("Provider Manager IndexedDB open failed.")
+        );
+      request.onblocked = () =>
+        reject(
+          new Error("Provider Manager IndexedDB upgrade was blocked.")
+        );
+    });
+
+    return indexedDbPromise;
+  }
+
+  async function indexedDbGet(recordId = INDEXED_DB_RECORD_ID) {
+    const database = await openIndexedDb();
+
+    return new Promise((resolve, reject) => {
+      const transaction = database.transaction(
+        INDEXED_DB_STORE,
+        "readonly"
+      );
+      const store = transaction.objectStore(INDEXED_DB_STORE);
+      const request = store.get(recordId);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () =>
+        reject(
+          request.error ||
+            new Error("Provider Manager IndexedDB read failed.")
+        );
+    });
+  }
+
+  async function indexedDbPut(record) {
+    const database = await openIndexedDb();
+
+    return new Promise((resolve, reject) => {
+      const transaction = database.transaction(
+        INDEXED_DB_STORE,
+        "readwrite"
+      );
+      const store = transaction.objectStore(INDEXED_DB_STORE);
+      const request = store.put(record);
+
+      request.onsuccess = () => resolve(true);
+      request.onerror = () =>
+        reject(
+          request.error ||
+            new Error("Provider Manager IndexedDB write failed.")
+        );
+      transaction.onerror = () =>
+        reject(
+          transaction.error ||
+            new Error(
+              "Provider Manager IndexedDB transaction failed."
+            )
+        );
+    });
+  }
+
+  async function indexedDbDelete(recordId) {
+    const database = await openIndexedDb();
+
+    return new Promise((resolve, reject) => {
+      const transaction = database.transaction(
+        INDEXED_DB_STORE,
+        "readwrite"
+      );
+      const store = transaction.objectStore(INDEXED_DB_STORE);
+      const request = store.delete(recordId);
+
+      request.onsuccess = () => resolve(true);
+      request.onerror = () =>
+        reject(
+          request.error ||
+            new Error("Provider Manager IndexedDB delete failed.")
+        );
+    });
+  }
+
+  function releaseLegacyLocalStorage() {
+    try {
+      global.localStorage?.removeItem(STORAGE_KEY);
+      persistence.localStorageReleased = true;
+      return true;
+    } catch (error) {
+      persistence.lastError = error?.message || String(error);
+      return false;
+    }
+  }
+
+  function buildPersistenceSnapshot() {
+    return {
+      schema: "meos.provider-manager.state.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      savedAt: new Date().toISOString(),
+      history: state.history.slice(-MAX_HISTORY_ITEMS)
+    };
+  }
+
+  async function persistIndexedDbNow() {
+    if (!global.indexedDB || persistence.suspended) {
+      return false;
+    }
+
+    persistence.writeScheduled = false;
+    persistence.writeInFlight = true;
+
+    try {
+      const snapshot = buildPersistenceSnapshot();
+
+      await indexedDbPut({
+        id: INDEXED_DB_RECORD_ID,
+        schema: "meos.provider-manager.local-state.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        savedAt: snapshot.savedAt,
+        state: snapshot
+      });
+
+      persistence.mode = "indexeddb-local-laptop";
+      persistence.authoritativeStorage = "indexeddb";
+      persistence.lastPersistedAt = new Date().toISOString();
+      persistence.lastError = null;
+      persistence.suspended = false;
+
+      /*
+       * Only release localStorage after the complete bounded history has
+       * successfully reached IndexedDB.
+       */
+      releaseLegacyLocalStorage();
+
+      return true;
+    } catch (error) {
+      persistence.lastError = error?.message || String(error);
+      persistence.suspended = true;
+
+      console.error(
+        `[MEOS] ${NAME} IndexedDB persistence failed. Provider execution continues.`,
+        error
+      );
+
+      return false;
+    } finally {
+      persistence.writeInFlight = false;
+    }
+  }
+
+  function scheduleIndexedDbPersistence() {
+    if (!global.indexedDB || persistence.suspended) {
+      return false;
+    }
+
+    persistence.writeScheduled = true;
+
+    if (persistenceTimer) {
+      global.clearTimeout(persistenceTimer);
+    }
+
+    persistenceTimer = global.setTimeout(() => {
+      persistenceTimer = null;
+      writeChain = writeChain
+        .catch(() => undefined)
+        .then(() => persistIndexedDbNow());
+    }, PERSISTENCE_DEBOUNCE_MS);
+
+    return true;
+  }
+
   function persistHistory() {
+    if (global.indexedDB) {
+      scheduleIndexedDbPersistence();
+      return;
+    }
+
     try {
       if (global.localStorage) {
-        global.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.history));
+        global.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(state.history)
+        );
       }
+
+      persistence.mode = "legacy-localstorage-fallback";
+      persistence.authoritativeStorage = "localstorage";
+      persistence.lastPersistedAt = new Date().toISOString();
+      persistence.lastError = null;
     } catch (error) {
-      console.warn(`[MEOS] ${NAME} could not persist history.`, error);
+      persistence.lastError = error?.message || String(error);
+      persistence.suspended = true;
+
+      console.warn(
+        `[MEOS] ${NAME} fallback localStorage persistence is full. Provider execution continues.`,
+        error
+      );
     }
+  }
+
+  async function hydrateFromIndexedDb() {
+    if (!global.indexedDB) {
+      persistence.hydrated = true;
+      return {
+        success: true,
+        restored: false,
+        source: "localstorage-fallback"
+      };
+    }
+
+    try {
+      const record = await indexedDbGet();
+
+      if (
+        record?.state?.schema === "meos.provider-manager.state.v1" &&
+        applyHistorySnapshot(record.state.history)
+      ) {
+        persistence.hydrated = true;
+        persistence.lastRestoredAt = new Date().toISOString();
+        persistence.mode = "indexeddb-local-laptop";
+        persistence.authoritativeStorage = "indexeddb";
+        persistence.lastError = null;
+        releaseLegacyLocalStorage();
+
+        emit("persistence-hydrated", {
+          source: "indexeddb",
+          historyItems: state.history.length,
+          restoredAt: persistence.lastRestoredAt
+        });
+
+        return {
+          success: true,
+          restored: true,
+          source: "indexeddb",
+          historyItems: state.history.length
+        };
+      }
+
+      /*
+       * First migration load: state.history was synchronously populated from
+       * legacy localStorage before the API was exposed. Persist that history
+       * first, then release the old payload.
+       */
+      const saved = await persistIndexedDbNow();
+
+      persistence.hydrated = true;
+      persistence.migratedLegacySnapshot = saved === true;
+
+      return {
+        success: saved === true,
+        restored: false,
+        migratedLegacySnapshot: saved === true,
+        source: "legacy-migration",
+        historyItems: state.history.length
+      };
+    } catch (error) {
+      persistence.hydrated = true;
+      persistence.lastError = error?.message || String(error);
+
+      console.error(
+        `[MEOS] ${NAME} IndexedDB hydration failed; keeping runtime provider history.`,
+        error
+      );
+
+      return {
+        success: false,
+        restored: false,
+        error: persistence.lastError
+      };
+    }
+  }
+
+  async function flushPersistence() {
+    if (persistenceTimer) {
+      global.clearTimeout(persistenceTimer);
+      persistenceTimer = null;
+    }
+
+    if (global.indexedDB) {
+      writeChain = writeChain
+        .catch(() => undefined)
+        .then(() => persistIndexedDbNow());
+
+      return writeChain;
+    }
+
+    persistHistory();
+    return !persistence.suspended;
+  }
+
+  function getPersistenceStatus() {
+    let localStorageBytes = null;
+
+    try {
+      localStorageBytes = new Blob([
+        global.localStorage?.getItem(STORAGE_KEY) || ""
+      ]).size;
+    } catch (_error) {
+      localStorageBytes = null;
+    }
+
+    return deepFreeze(
+      clone({
+        ...persistence,
+        localStorageBytes
+      })
+    );
+  }
+
+  async function runLaptopPersistenceAcceptanceTest() {
+    const probeId = "provider-manager-acceptance-probe";
+    const probeValue = {
+      id: probeId,
+      schema: "meos.persistence-probe.v1",
+      writtenAt: new Date().toISOString(),
+      nonce: createId("probe")
+    };
+
+    const checks = [
+      {
+        name: "IndexedDB is available on this laptop browser",
+        passed: Boolean(global.indexedDB)
+      }
+    ];
+
+    if (!global.indexedDB) {
+      console.table(checks);
+
+      return {
+        commission: "006.016G3",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed: false,
+        checks
+      };
+    }
+
+    try {
+      await indexedDbPut(probeValue);
+      const restoredProbe = await indexedDbGet(probeId);
+
+      checks.push({
+        name: "Laptop repository accepts Provider Manager writes",
+        passed: restoredProbe?.nonce === probeValue.nonce
+      });
+
+      await indexedDbDelete(probeId);
+      const deletedProbe = await indexedDbGet(probeId);
+
+      checks.push({
+        name: "Laptop repository can read and delete Provider Manager records",
+        passed: deletedProbe === null
+      });
+
+      const expectedHistory = Math.min(
+        state.history.length,
+        MAX_HISTORY_ITEMS
+      );
+
+      const flushed = await flushPersistence();
+      const record = await indexedDbGet();
+
+      checks.push({
+        name: "Provider Manager history snapshot flushes to IndexedDB",
+        passed:
+          flushed === true &&
+          record?.state?.schema === "meos.provider-manager.state.v1"
+      });
+
+      checks.push({
+        name: "Bounded provider history survives the repository snapshot",
+        passed:
+          Array.isArray(record?.state?.history) &&
+          record.state.history.length === expectedHistory
+      });
+
+      checks.push({
+        name: "Legacy Provider Manager localStorage payload is released",
+        passed: global.localStorage?.getItem(STORAGE_KEY) === null
+      });
+
+      checks.push({
+        name: "IndexedDB is the temporary Provider Manager laptop authority",
+        passed:
+          persistence.authoritativeStorage === "indexeddb" &&
+          persistence.mode === "indexeddb-local-laptop"
+      });
+
+      checks.push({
+        name: "Provider Manager runtime remains operational while persistence is asynchronous",
+        passed:
+          typeof request === "function" &&
+          typeof selectProviders === "function" &&
+          typeof runSelfTest === "function"
+      });
+    } catch (error) {
+      checks.push({
+        name: "Laptop repository test completed without error",
+        passed: false,
+        error: error?.message || String(error)
+      });
+    }
+
+    const passed = checks.every(item => item.passed);
+
+    console.table(checks);
+    console.info(
+      `[MEOS ${VERSION}] Commission 006.016G3 Provider Manager laptop persistence acceptance: ${passed ? "PASS" : "FAIL"}.`
+    );
+
+    return {
+      commission: "006.016G3",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      checks,
+      persistence: getPersistenceStatus()
+    };
   }
 
   function record(event, data = {}) {
@@ -1175,6 +1662,7 @@
       })),
       activeExecutions: state.activeExecutions.size,
       historyItems: state.history.length,
+      persistence: getPersistenceStatus(),
       initializedAt: state.initializedAt
     });
   }
@@ -1459,7 +1947,13 @@
     }
   }
 
-  loadHistory();
+  /*
+   * Preserve synchronous startup continuity from the legacy snapshot on the
+   * first migration load. IndexedDB then hydrates asynchronously and becomes
+   * the temporary laptop authority.
+   */
+  loadLegacyHistory();
+  const hydrationPromise = hydrateFromIndexedDb();
 
   const api = {
     name: NAME,
@@ -1488,6 +1982,10 @@
     getHistory,
     clearHistory,
     getStatus,
+    getPersistenceStatus,
+    flushPersistence,
+    whenHydrated: () => hydrationPromise,
+    runLaptopPersistenceAcceptanceTest,
     runSelfTest,
     addEventListener,
     removeEventListener
