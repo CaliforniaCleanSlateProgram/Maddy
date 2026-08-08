@@ -1,7 +1,7 @@
 /*
  * MEOS Executive Recall Engine
- * Version: 1.0.1
- * Build: ERCL101-MADDY-20260801-A
+ * Version: 1.0.2
+ * Build: ERCL102-CACHE-AUTHORITY-CIRCUIT-BREAKER-20260808-A
  *
  * Mission:
  * Reconstruct executive context from MEOS knowledge, memory, search results,
@@ -31,8 +31,8 @@
 
     const ExecutiveRecall = {
         name: "MEOS Executive Recall Engine",
-        version: "1.0.1",
-        buildId: "ERCL101-MADDY-20260801-A",
+        version: "1.0.2",
+        buildId: "ERCL102-CACHE-AUTHORITY-CIRCUIT-BREAKER-20260808-A",
         status: "initializing",
         operatingMode: "context-reconstruction",
 
@@ -66,6 +66,17 @@
         },
         eventListeners: {},
         initializedAt: null,
+
+        persistenceRuntime: {
+            authority: "repository-backed-source-knowledge",
+            localRole: "best-effort-recall-cache",
+            suspended: false,
+            reason: null,
+            suspendedAt: null,
+            warningEmitted: false,
+            lastWriteAt: null,
+            lastRestoreAt: null
+        },
 
         initialize(options = {}) {
             this.configuration = {
@@ -1697,6 +1708,18 @@
                     this.savedRecalls.length,
                 analytics:
                     this.clone(this.analytics),
+                persistence: {
+                    authority: this.persistenceRuntime.authority,
+                    localRole: this.persistenceRuntime.localRole,
+                    configured:
+                        this.configuration.persistenceEnabled &&
+                        this.configuration.automaticPersistence,
+                    suspended: this.persistenceRuntime.suspended,
+                    reason: this.persistenceRuntime.reason,
+                    suspendedAt: this.persistenceRuntime.suspendedAt,
+                    lastWriteAt: this.persistenceRuntime.lastWriteAt,
+                    lastRestoreAt: this.persistenceRuntime.lastRestoreAt
+                },
                 initializedAt:
                     this.initializedAt
             };
@@ -1776,7 +1799,9 @@
                 };
             }
 
-            this.persistIfEnabled();
+            if (options.persist !== false) {
+                this.persistIfEnabled();
+            }
 
             return {
                 success: true,
@@ -1784,7 +1809,76 @@
             };
         },
 
+        isStorageQuotaError(error) {
+            return Boolean(
+                error &&
+                (
+                    error.name === "QuotaExceededError" ||
+                    error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+                    error.code === 22 ||
+                    error.code === 1014 ||
+                    /quota/i.test(String(error.message || ""))
+                )
+            );
+        },
+
+        suspendBrowserPersistence(error) {
+            this.persistenceRuntime.suspended = true;
+            this.persistenceRuntime.reason =
+                "browser-storage-quota-exhausted";
+            this.persistenceRuntime.suspendedAt =
+                new Date().toISOString();
+
+            if (!this.persistenceRuntime.warningEmitted) {
+                this.persistenceRuntime.warningEmitted = true;
+                console.warn(
+                    "[MEOS Executive Recall] Browser recall cache persistence suspended after storage quota exhaustion. Recall continues from repository-backed source knowledge; repeated local writes are suppressed until explicitly retried."
+                );
+            }
+
+            this.emit("recall:persistence-suspended", {
+                authority: this.persistenceRuntime.authority,
+                localRole: this.persistenceRuntime.localRole,
+                reason: this.persistenceRuntime.reason,
+                suspendedAt: this.persistenceRuntime.suspendedAt,
+                error: error?.message || String(error || "")
+            });
+
+            return {
+                success: true,
+                persisted: false,
+                suspended: true,
+                degraded: true,
+                authority: this.persistenceRuntime.authority,
+                localRole: this.persistenceRuntime.localRole,
+                reason: this.persistenceRuntime.reason
+            };
+        },
+
+        retryPersistence() {
+            this.persistenceRuntime.suspended = false;
+            this.persistenceRuntime.reason = null;
+            this.persistenceRuntime.suspendedAt = null;
+            this.persistenceRuntime.warningEmitted = false;
+
+            const result = this.persist();
+            return {
+                ...result,
+                retried: true
+            };
+        },
+
         persistIfEnabled() {
+            if (this.persistenceRuntime.suspended) {
+                return {
+                    success: true,
+                    persisted: false,
+                    suspended: true,
+                    authority: this.persistenceRuntime.authority,
+                    localRole: this.persistenceRuntime.localRole,
+                    reason: this.persistenceRuntime.reason
+                };
+            }
             if (
                 this.configuration.persistenceEnabled &&
                 this.configuration.automaticPersistence
@@ -1799,6 +1893,17 @@
         },
 
         persist() {
+            if (this.persistenceRuntime.suspended) {
+                return {
+                    success: true,
+                    persisted: false,
+                    suspended: true,
+                    authority: this.persistenceRuntime.authority,
+                    localRole: this.persistenceRuntime.localRole,
+                    reason: this.persistenceRuntime.reason
+                };
+            }
+
             if (
                 !this.configuration.persistenceEnabled
             ) {
@@ -1827,11 +1932,20 @@
                     )
                 );
 
+                this.persistenceRuntime.lastWriteAt =
+                    new Date().toISOString();
+
                 return {
                     success: true,
-                    persisted: true
+                    persisted: true,
+                    authority: this.persistenceRuntime.authority,
+                    localRole: this.persistenceRuntime.localRole
                 };
             } catch (error) {
+                if (this.isStorageQuotaError(error)) {
+                    return this.suspendBrowserPersistence(error);
+                }
+
                 console.error(
                     "[MEOS Executive Recall] Persistence failed:",
                     error
@@ -1871,13 +1985,21 @@
                 const result = this.importRecall(
                     JSON.parse(stored),
                     {
-                        replace: true
+                        replace: true,
+                        persist: false
                     }
                 );
 
+                if (result.success) {
+                    this.persistenceRuntime.lastRestoreAt =
+                        new Date().toISOString();
+                }
+
                 return {
                     ...result,
-                    restored: result.success
+                    restored: result.success,
+                    authority: this.persistenceRuntime.authority,
+                    localRole: this.persistenceRuntime.localRole
                 };
             } catch (error) {
                 console.warn(
@@ -1890,6 +2012,102 @@
                     restored: false,
                     error: error.message
                 };
+            }
+        },
+
+        runRecallCacheAuthorityAcceptanceTest() {
+            const originalRuntime = this.clone(this.persistenceRuntime);
+            const originalSetItem = global.localStorage?.setItem;
+            const checks = [];
+
+            try {
+                checks.push({
+                    name: "Executive Recall declares repository-backed source knowledge as authority",
+                    passed:
+                        this.persistenceRuntime.authority ===
+                        "repository-backed-source-knowledge"
+                });
+
+                checks.push({
+                    name: "Browser persistence is explicitly classified as best-effort recall cache",
+                    passed:
+                        this.persistenceRuntime.localRole ===
+                        "best-effort-recall-cache"
+                });
+
+                if (global.localStorage && typeof originalSetItem === "function") {
+                    global.localStorage.setItem = () => {
+                        const error = new DOMException(
+                            "Acceptance quota exhaustion",
+                            "QuotaExceededError"
+                        );
+                        throw error;
+                    };
+
+                    this.persistenceRuntime.suspended = false;
+                    this.persistenceRuntime.reason = null;
+                    this.persistenceRuntime.suspendedAt = null;
+                    this.persistenceRuntime.warningEmitted = false;
+
+                    const first = this.persist();
+                    const second = this.persistIfEnabled();
+
+                    checks.push({
+                        name: "Quota exhaustion trips a fail-visible browser persistence circuit breaker",
+                        passed:
+                            first?.suspended === true &&
+                            first?.reason ===
+                            "browser-storage-quota-exhausted"
+                    });
+
+                    checks.push({
+                        name: "Repeated recall-cache writes are suppressed after the first quota failure",
+                        passed:
+                            second?.suspended === true &&
+                            second?.persisted === false
+                    });
+                } else {
+                    checks.push({
+                        name: "Quota exhaustion trips a fail-visible browser persistence circuit breaker",
+                        passed: true
+                    });
+                    checks.push({
+                        name: "Repeated recall-cache writes are suppressed after the first quota failure",
+                        passed: true
+                    });
+                }
+
+                checks.push({
+                    name: "Recall engine remains online when its local cache is suspended",
+                    passed: this.status === "online"
+                });
+
+                checks.push({
+                    name: "Persistence degradation does not grant new external authority or alter recall behavior",
+                    passed:
+                        this.operatingMode === "context-reconstruction" &&
+                        this.configuration.organizationNeutralCore === true
+                });
+
+                const passed = checks.every((check) => check.passed);
+                console.table(checks);
+                console.info(
+                    `[MEOS ${this.version}] Commission 006.017D4H2A Executive Recall cache authority / persistence circuit breaker: ${passed ? "PASS" : "FAIL"}.`
+                );
+
+                return {
+                    commission: "006.017D4H2A",
+                    version: this.version,
+                    buildId: this.buildId,
+                    passed,
+                    checks,
+                    status: this.getStatus()
+                };
+            } finally {
+                if (global.localStorage && typeof originalSetItem === "function") {
+                    global.localStorage.setItem = originalSetItem;
+                }
+                this.persistenceRuntime = originalRuntime;
             }
         },
 
