@@ -35,7 +35,7 @@ import FamilyFoundationDiscoveryAdapter from "./family-foundation-discovery-adap
 import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resource-discovery-adapter.js";
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 
-const VERSION = "2.10.11";
+const VERSION = "2.10.12";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const RESOURCE_DISCOVERY_INTEGRATION_VERSION = "1.5.1";
@@ -1114,9 +1114,13 @@ const frontendDirectory = path.join(currentDirectory, "frontend");
  * reset by a redeploy or instance replacement. Set MEOS_DATA_DIR to a mounted
  * persistent path before production use.
  */
-const MEOS_DATA_DIR =
-  process.env.MEOS_DATA_DIR ||
-  path.join(currentDirectory, "data");
+const EXECUTIVE_MEMORY_VERSION = "1.1.0";
+const EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED = Boolean(
+  String(process.env.MEOS_DATA_DIR || "").trim()
+);
+const MEOS_DATA_DIR = EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED
+  ? path.resolve(String(process.env.MEOS_DATA_DIR).trim())
+  : path.join(currentDirectory, "data");
 
 const EXECUTIVE_MEMORY_DIR = path.join(
   MEOS_DATA_DIR,
@@ -1929,18 +1933,38 @@ async function executiveMemoryStorageStatus() {
     });
     await fs.unlink(probePath);
 
+    const durable = EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED;
+
     return {
       status: "ready",
       dataDirectory: MEOS_DATA_DIR,
       memoryDirectory: EXECUTIVE_MEMORY_DIR,
-      persistentDiskExpected: Boolean(process.env.MEOS_DATA_DIR)
+      persistenceMode: durable
+        ? "configured-persistent-storage"
+        : "ephemeral-fallback",
+      durable,
+      productionSafe: durable,
+      persistentDiskExpected: durable,
+      configuration: {
+        environmentVariable: "MEOS_DATA_DIR",
+        configured: durable
+      }
     };
   } catch (error) {
     return {
       status: "unavailable",
       dataDirectory: MEOS_DATA_DIR,
       memoryDirectory: EXECUTIVE_MEMORY_DIR,
-      persistentDiskExpected: Boolean(process.env.MEOS_DATA_DIR),
+      persistenceMode: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED
+        ? "configured-persistent-storage"
+        : "ephemeral-fallback",
+      durable: false,
+      productionSafe: false,
+      persistentDiskExpected: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED,
+      configuration: {
+        environmentVariable: "MEOS_DATA_DIR",
+        configured: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED
+      },
       error: error.message
     };
   }
@@ -5964,7 +5988,7 @@ app.get("/api/executive-memory", async (request, response) => {
 
   response.status(storage.status === "ready" ? 200 : 503).json({
     schema: "meos.executive-memory.status.v1",
-    version: "1.0.0",
+    version: EXECUTIVE_MEMORY_VERSION,
     storage,
     collections: [...EXECUTIVE_MEMORY_COLLECTIONS],
     limits: {
@@ -5976,7 +6000,10 @@ app.get("/api/executive-memory", async (request, response) => {
       manifestInitializationSupported: true,
       storageAuthority: "server-executive-memory",
       persistentDiskExpected:
-        storage.persistentDiskExpected === true
+        storage.persistentDiskExpected === true,
+      durable: storage.durable === true,
+      productionSafe: storage.productionSafe === true,
+      persistenceMode: storage.persistenceMode
     }
   });
 });
@@ -11853,10 +11880,19 @@ app.listen(PORT, () => {
 
   executiveMemoryStorageStatus().then(status => {
     console.log(
-      `[MEOS] Executive Memory v1.0.0 ${status.status}. ` +
+      `[MEOS] Executive Memory v${EXECUTIVE_MEMORY_VERSION} ${status.status}. ` +
         `directory=${status.memoryDirectory}, ` +
-        `persistentDiskExpected=${status.persistentDiskExpected}.`
+        `persistenceMode=${status.persistenceMode}, ` +
+        `durable=${status.durable}.`
     );
+
+    if (status.status === "ready" && !status.durable) {
+      console.warn(
+        "[MEOS] Executive Memory is using ephemeral fallback storage. " +
+          "Set MEOS_DATA_DIR to the mounted persistent-disk path before " +
+          "treating institutional memory as production-durable."
+      );
+    }
   });
 
   (async () => {
