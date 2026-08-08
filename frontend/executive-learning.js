@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Learning Engine
- * Version: 1.0.1
+ * Version: 1.0.2
  *
  * Mission:
  * Convert completed work, outcomes, feedback, decisions, alerts, and executive
@@ -18,8 +18,8 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.0.1";
-    const BUILD_ID = "EL101-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A";
+    const VERSION = "1.0.2";
+    const BUILD_ID = "EL102-GOVERNANCE-ACCEPTANCE-FIX-20260808-A";
 
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -2796,10 +2796,16 @@
                         this.status ===
                             "online" &&
                         typeof this
-                            .recordOutcome ===
+                            .observe ===
                             "function" &&
                         typeof this
-                            .submitFeedback ===
+                            .addFeedback ===
+                            "function" &&
+                        typeof this
+                            .validateLesson ===
+                            "function" &&
+                        typeof this
+                            .rejectLesson ===
                             "function" &&
                         typeof this
                             .scan ===
