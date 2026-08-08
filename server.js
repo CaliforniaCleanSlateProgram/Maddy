@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.18";
+const VERSION = "2.10.20";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1391,6 +1391,210 @@ async function writeDurableExecutiveBrainState(
         EXECUTIVE_BRAIN_STATE_REPOSITORY_BUILD_ID,
       storageRole:
         "durable-bounded-institutional-cognition"
+    },
+    expectedPreviousFingerprint
+  });
+}
+
+/* ========================================================================== */
+/* Commission 006.017D5A2 — Provider Manager Bounded Durable Authority Seam   */
+/* ========================================================================== */
+
+/*
+ * Step 10 / P5 prerequisite.
+ *
+ * Provider Manager currently keeps bounded provider execution history on the
+ * laptop. This seam gives that bounded non-secret state a provider-neutral
+ * durable home behind MEOS Institutional Repository Authority.
+ *
+ * IMPORTANT:
+ * - No browser or IndexedDB behavior is changed by this server-only commission.
+ * - No timer, polling loop, or background writer is added.
+ * - Google Workspace is only the currently selected durable provider; MEOS Core
+ *   remains provider-neutral through InstitutionalRepositoryAuthority.
+ * - Credentials, tokens, API keys, passwords, authorization headers, and other
+ *   secrets are rejected recursively.
+ */
+
+const PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION = "006.017D5A2";
+const PROVIDER_MANAGER_STATE_REPOSITORY_VERSION = "1.0.0";
+const PROVIDER_MANAGER_STATE_REPOSITORY_BUILD_ID =
+  "PMSR100-BOUNDED-DURABLE-AUTHORITY-SEAM-20260808-C";
+const PROVIDER_MANAGER_STATE_REPOSITORY_NAMESPACE =
+  "provider-manager";
+const PROVIDER_MANAGER_STATE_REPOSITORY_KEY =
+  "bounded-operational-state";
+const PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION =
+  "operational";
+const PROVIDER_MANAGER_STATE_MAX_HISTORY = 250;
+const PROVIDER_MANAGER_STATE_MAX_BYTES = 256 * 1024;
+
+const PROVIDER_MANAGER_FORBIDDEN_SECRET_KEYS = new Set([
+  "apikey",
+  "api_key",
+  "accesstoken",
+  "access_token",
+  "refreshtoken",
+  "refresh_token",
+  "token",
+  "password",
+  "passwd",
+  "secret",
+  "clientsecret",
+  "client_secret",
+  "authorization",
+  "cookie",
+  "privatekey",
+  "private_key",
+  "credential",
+  "credentials"
+]);
+
+function providerManagerContainsForbiddenSecret(value) {
+  if (Array.isArray(value)) {
+    return value.some(item =>
+      providerManagerContainsForbiddenSecret(item)
+    );
+  }
+
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    const normalizedKey =
+      String(key || "")
+        .replace(/[^a-z0-9_]/gi, "")
+        .toLowerCase();
+
+    if (PROVIDER_MANAGER_FORBIDDEN_SECRET_KEYS.has(normalizedKey)) {
+      return true;
+    }
+
+    if (providerManagerContainsForbiddenSecret(child)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function normalizeProviderManagerStateEnvelope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const error = new Error(
+      "Provider Manager State payload must be an object."
+    );
+    error.status = 400;
+    error.code = "PROVIDER_MANAGER_STATE_PAYLOAD_INVALID";
+    throw error;
+  }
+
+  const state =
+    value.state &&
+    typeof value.state === "object" &&
+    !Array.isArray(value.state)
+      ? value.state
+      : value;
+
+  if (state.schema !== "meos.provider-manager.state.v1") {
+    const error = new Error(
+      "Provider Manager State schema is invalid."
+    );
+    error.status = 400;
+    error.code = "PROVIDER_MANAGER_STATE_SCHEMA_INVALID";
+    throw error;
+  }
+
+  if (!Array.isArray(state.history)) {
+    const error = new Error(
+      'Provider Manager State field "history" must be an array.'
+    );
+    error.status = 400;
+    error.code = "PROVIDER_MANAGER_STATE_SCHEMA_INVALID";
+    throw error;
+  }
+
+  if (state.history.length > PROVIDER_MANAGER_STATE_MAX_HISTORY) {
+    const error = new Error(
+      `Provider Manager State history exceeds ${PROVIDER_MANAGER_STATE_MAX_HISTORY} records.`
+    );
+    error.status = 413;
+    error.code = "PROVIDER_MANAGER_STATE_HISTORY_LIMIT_EXCEEDED";
+    throw error;
+  }
+
+  const allowedState = {
+    schema: "meos.provider-manager.state.v1",
+    version: String(state.version || value.version || "1.0.2"),
+    buildId: String(state.buildId || value.buildId || ""),
+    savedAt: String(state.savedAt || new Date().toISOString()),
+    history: state.history
+  };
+
+  if (providerManagerContainsForbiddenSecret(allowedState)) {
+    const error = new Error(
+      "Provider Manager durable state contains a forbidden credential or secret field."
+    );
+    error.status = 400;
+    error.code = "PROVIDER_MANAGER_STATE_SECRET_REJECTED";
+    throw error;
+  }
+
+  const serialized = JSON.stringify(allowedState);
+  if (Buffer.byteLength(serialized, "utf8") > PROVIDER_MANAGER_STATE_MAX_BYTES) {
+    const error = new Error(
+      `Provider Manager durable state exceeds ${PROVIDER_MANAGER_STATE_MAX_BYTES} bytes.`
+    );
+    error.status = 413;
+    error.code = "PROVIDER_MANAGER_STATE_SIZE_LIMIT_EXCEEDED";
+    throw error;
+  }
+
+  return {
+    schema: "meos.provider-manager.durable-state.v1",
+    version: String(value.version || allowedState.version),
+    buildId: String(value.buildId || allowedState.buildId),
+    savedAt: new Date().toISOString(),
+    state: allowedState
+  };
+}
+
+async function readDurableProviderManagerState() {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  return InstitutionalRepositoryAuthority.read({
+    namespace: PROVIDER_MANAGER_STATE_REPOSITORY_NAMESPACE,
+    key: PROVIDER_MANAGER_STATE_REPOSITORY_KEY,
+    classification:
+      PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION
+  });
+}
+
+async function writeDurableProviderManagerState(
+  value,
+  expectedPreviousFingerprint = undefined
+) {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  const envelope =
+    normalizeProviderManagerStateEnvelope(value);
+
+  return InstitutionalRepositoryAuthority.write({
+    namespace: PROVIDER_MANAGER_STATE_REPOSITORY_NAMESPACE,
+    key: PROVIDER_MANAGER_STATE_REPOSITORY_KEY,
+    classification:
+      PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION,
+    value: envelope,
+    metadata: {
+      subsystem: "provider-manager",
+      stateClass: "bounded-provider-operational-audit",
+      commission:
+        PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
+      buildId:
+        PROVIDER_MANAGER_STATE_REPOSITORY_BUILD_ID,
+      storageRole:
+        "durable-provider-operational-audit",
+      containsSecrets: false
     },
     expectedPreviousFingerprint
   });
@@ -7071,6 +7275,307 @@ app.post(
   }
 );
 
+
+/**
+ * Commission 006.017D5A2 — Provider Manager Bounded Durable Authority Seam
+ *
+ * Server-only P5 prerequisite. This route does not create browser writes,
+ * timers, polling, or cognition loops.
+ */
+app.get(
+  "/api/provider-manager-state",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const result =
+        await readDurableProviderManagerState();
+
+      if (!result?.found) {
+        response.status(404).json({
+          commission:
+            PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.provider-manager-state.read.v1",
+          found: false,
+          authority:
+            "meos-institutional-repository",
+          providerId:
+            result?.providerId || null
+        });
+        return;
+      }
+
+      response.status(200).json({
+        commission:
+          PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.provider-manager-state.read.v1",
+        found: true,
+        authority:
+          result.authority,
+        providerId:
+          result.providerId,
+        record:
+          result.record,
+        value:
+          result.value
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
+          success: false,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "PROVIDER_MANAGER_STATE_DURABLE_READ_FAILED"
+        });
+    }
+  }
+);
+
+app.put(
+  "/api/provider-manager-state",
+  express.json({
+    limit: "300kb",
+    strict: true
+  }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const expectedPreviousFingerprint =
+        request.get(
+          "If-MEOS-Previous-Fingerprint"
+        ) || undefined;
+
+      const result =
+        await writeDurableProviderManagerState(
+          request.body,
+          expectedPreviousFingerprint
+        );
+
+      response.status(200).json({
+        commission:
+          PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.provider-manager-state.write.v1",
+        success: true,
+        authority:
+          result.authority,
+        providerId:
+          result.providerId,
+        verification:
+          result.verification,
+        record:
+          result.record
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
+          success: false,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "PROVIDER_MANAGER_STATE_DURABLE_WRITE_FAILED",
+          details:
+            error?.details || null
+        });
+    }
+  }
+);
+
+app.post(
+  "/api/provider-manager-state/acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const acceptanceKey =
+      `acceptance-${crypto.randomUUID()}`;
+    const namespace =
+      "provider-manager-acceptance";
+
+    try {
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const sentinelState = {
+        schema: "meos.provider-manager.state.v1",
+        version: "1.0.2",
+        buildId:
+          PROVIDER_MANAGER_STATE_REPOSITORY_BUILD_ID,
+        savedAt: new Date().toISOString(),
+        history: [{
+          id: `${acceptanceKey}-history`,
+          type: "provider-execution-acceptance",
+          providerId: "acceptance-provider",
+          capability: "acceptance-only",
+          success: true
+        }]
+      };
+
+      const normalized =
+        normalizeProviderManagerStateEnvelope({
+          version: "1.0.2",
+          buildId:
+            PROVIDER_MANAGER_STATE_REPOSITORY_BUILD_ID,
+          state: sentinelState
+        });
+
+      let secretRejected = false;
+      try {
+        normalizeProviderManagerStateEnvelope({
+          state: {
+            ...sentinelState,
+            history: [{
+              ...sentinelState.history[0],
+              apiKey: "must-never-persist"
+            }]
+          }
+        });
+      } catch (error) {
+        secretRejected =
+          error?.code ===
+          "PROVIDER_MANAGER_STATE_SECRET_REJECTED";
+      }
+
+      const write =
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION,
+          value: normalized,
+          metadata: {
+            subsystem: "provider-manager",
+            purpose:
+              "006.017D5A2-live-acceptance",
+            containsSecrets: false
+          }
+        });
+
+      const read =
+        await InstitutionalRepositoryAuthority.read({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      const checks = [
+        {
+          name:
+            "Provider Manager state resolves through provider-neutral Repository Authority",
+          passed:
+            write?.authority ===
+              "durable-institutional-repository"
+        },
+        {
+          name:
+            "Current durable provider performs verified write without changing MEOS Core semantics",
+          passed:
+            write?.success === true &&
+            write?.verification?.verified === true &&
+            Boolean(write?.providerId)
+        },
+        {
+          name:
+            "Bounded Provider Manager state reads back through durable authority",
+          passed:
+            read?.found === true &&
+            read?.authority ===
+              "durable-institutional-repository"
+        },
+        {
+          name:
+            "Provider Manager audit history survives semantic durable round trip",
+          passed:
+            read?.value?.state?.history?.[0]?.id ===
+              `${acceptanceKey}-history`
+        },
+        {
+          name:
+            "Provider credentials and secrets are rejected from durable Provider Manager state",
+          passed:
+            secretRejected === true
+        },
+        {
+          name:
+            "Provider Manager durable seam is bounded rather than an unbounded cognition log",
+          passed:
+            PROVIDER_MANAGER_STATE_MAX_HISTORY === 250 &&
+            PROVIDER_MANAGER_STATE_MAX_BYTES ===
+              256 * 1024
+        }
+      ];
+
+      const cleanup =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      checks.push({
+        name:
+          "Acceptance sentinel is removed through the same durable authority",
+        passed:
+          cleanup?.success === true &&
+          cleanup?.deleted === true
+      });
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response
+        .status(passed ? 200 : 500)
+        .json({
+          commission:
+            PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.provider-manager-state.durable-authority.acceptance.v1",
+          version:
+            PROVIDER_MANAGER_STATE_REPOSITORY_VERSION,
+          buildId:
+            PROVIDER_MANAGER_STATE_REPOSITORY_BUILD_ID,
+          passed,
+          checks,
+          authorityStatus:
+            InstitutionalRepositoryAuthority.getStatus(),
+          serverVersion: VERSION
+        });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.provider-manager-state.durable-authority.acceptance.v1",
+          version:
+            PROVIDER_MANAGER_STATE_REPOSITORY_VERSION,
+          buildId:
+            PROVIDER_MANAGER_STATE_REPOSITORY_BUILD_ID,
+          passed: false,
+          checks: [],
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "PROVIDER_MANAGER_STATE_DURABLE_ACCEPTANCE_FAILED",
+          serverVersion: VERSION
+        });
+    }
+  }
+);
 
 /**
  * Commission 006.017D3A — Mission State Durable Authority Seam
