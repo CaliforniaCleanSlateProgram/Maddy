@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.14";
+const VERSION = "2.10.15";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1259,7 +1259,7 @@ const frontendDirectory = path.join(currentDirectory, "frontend");
  * reset by a redeploy or instance replacement. Set MEOS_DATA_DIR to a mounted
  * persistent path before production use.
  */
-const EXECUTIVE_MEMORY_VERSION = "1.1.0";
+const EXECUTIVE_MEMORY_VERSION = "1.2.0";
 const EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED = Boolean(
   String(process.env.MEOS_DATA_DIR || "").trim()
 );
@@ -1289,6 +1289,26 @@ const EXECUTIVE_MEMORY_MAX_RECORD_BYTES = Number(
 );
 
 const executiveMemoryWriteLocks = new Map();
+
+const EXECUTIVE_MEMORY_REPOSITORY_COMMISSION = "006.017D2";
+const EXECUTIVE_MEMORY_REPOSITORY_BUILD_ID =
+  "EM120-WORKSPACE-DURABLE-AUTHORITY-20260808-A";
+const EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE =
+  "executive-memory";
+const EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION =
+  "institutional";
+
+const executiveMemoryRepositoryState = {
+  authority: "meos-institutional-repository",
+  providerNeutral: true,
+  localFilesystemRole: "cache-recovery-staging-only",
+  migratedCollections: new Set(),
+  lastDurableReadAt: null,
+  lastDurableWriteAt: null,
+  lastMigrationAt: null,
+  lastError: null
+};
+
 
 
 /**
@@ -1977,7 +1997,26 @@ function normalizeExecutiveMemoryRecord(record, existingRecord = null) {
   return normalized;
 }
 
-async function readExecutiveMemoryCollection(collection) {
+function executiveMemoryManifestRepositoryKey(collection) {
+  return `${EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE}:manifest:${collection}`;
+}
+
+function executiveMemoryRecordRepositoryKey(collection, recordId) {
+  return `${EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE}:record:${collection}:${recordId}`;
+}
+
+function executiveMemoryRepositoryMetadata(collection, extra = {}) {
+  return {
+    subsystem: "executive-memory",
+    collection,
+    commission: EXECUTIVE_MEMORY_REPOSITORY_COMMISSION,
+    buildId: EXECUTIVE_MEMORY_REPOSITORY_BUILD_ID,
+    storageRole: "durable-organizational-state",
+    ...extra
+  };
+}
+
+async function readExecutiveMemoryLocalCache(collection) {
   await ensureExecutiveMemoryDirectory();
 
   const filePath = executiveMemoryCollectionPath(collection);
@@ -1998,10 +2037,10 @@ async function readExecutiveMemoryCollection(collection) {
 
     if (error instanceof SyntaxError) {
       const storageError = new Error(
-        "Executive Memory storage contains invalid JSON."
+        "Executive Memory local cache contains invalid JSON."
       );
       storageError.status = 500;
-      storageError.code = "EXECUTIVE_MEMORY_STORAGE_CORRUPT";
+      storageError.code = "EXECUTIVE_MEMORY_LOCAL_CACHE_CORRUPT";
       throw storageError;
     }
 
@@ -2009,9 +2048,273 @@ async function readExecutiveMemoryCollection(collection) {
   }
 }
 
-async function writeExecutiveMemoryCollection(collection, records) {
-  await ensureExecutiveMemoryDirectory();
+async function writeExecutiveMemoryLocalCache(collection, records) {
+  try {
+    await ensureExecutiveMemoryDirectory();
 
+    const filePath = executiveMemoryCollectionPath(collection);
+    const temporaryPath =
+      `${filePath}.${process.pid}.${Date.now()}.tmp`;
+
+    await fs.writeFile(
+      temporaryPath,
+      `${JSON.stringify(records, null, 2)}\n`,
+      {
+        encoding: "utf8",
+        mode: 0o600
+      }
+    );
+
+    await fs.rename(temporaryPath, filePath);
+    return true;
+  } catch (error) {
+    console.warn(
+      `[MEOS Executive Memory] Local cache update failed for "${collection}" while durable repository authority remains primary:`,
+      error?.message || error
+    );
+    return false;
+  }
+}
+
+async function ensureExecutiveMemoryRepositoryProvider() {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  const status =
+    InstitutionalRepositoryAuthority.getStatus();
+
+  if (!status?.providerCount) {
+    const error = new Error(
+      "No MEOS Institutional Repository provider is registered for Executive Memory."
+    );
+    error.status = 503;
+    error.code =
+      "EXECUTIVE_MEMORY_DURABLE_AUTHORITY_UNAVAILABLE";
+    throw error;
+  }
+
+  return status;
+}
+
+async function readExecutiveMemoryManifest(collection) {
+  await ensureExecutiveMemoryRepositoryProvider();
+
+  return InstitutionalRepositoryAuthority.read({
+    namespace: EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+    key: `manifest:${collection}`,
+    classification:
+      EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION
+  });
+}
+
+async function writeExecutiveMemoryManifest(
+  collection,
+  recordIds,
+  previousFingerprint = undefined
+) {
+  const uniqueRecordIds = [
+    ...new Set(
+      (Array.isArray(recordIds) ? recordIds : [])
+        .map(value => normalizeIdentifier(String(value || "")))
+        .filter(Boolean)
+    )
+  ];
+
+  return InstitutionalRepositoryAuthority.write({
+    namespace: EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+    key: `manifest:${collection}`,
+    classification:
+      EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION,
+    value: {
+      schema: "meos.executive-memory.manifest.v1",
+      collection,
+      recordIds: uniqueRecordIds,
+      recordCount: uniqueRecordIds.length,
+      updatedAt: new Date().toISOString()
+    },
+    metadata: executiveMemoryRepositoryMetadata(collection, {
+      recordType: "collection-manifest"
+    }),
+    expectedPreviousFingerprint: previousFingerprint
+  });
+}
+
+async function migrateExecutiveMemoryCollectionIfNeeded(collection) {
+  const manifestResult =
+    await readExecutiveMemoryManifest(collection);
+
+  if (manifestResult?.found) {
+    return {
+      migrated: false,
+      source: "durable-repository",
+      manifestResult
+    };
+  }
+
+  const localRecords =
+    await readExecutiveMemoryLocalCache(collection);
+
+  if (localRecords.length === 0) {
+    const manifestWrite =
+      await writeExecutiveMemoryManifest(
+        collection,
+        []
+      );
+
+    executiveMemoryRepositoryState.migratedCollections.add(
+      collection
+    );
+    executiveMemoryRepositoryState.lastMigrationAt =
+      new Date().toISOString();
+
+    return {
+      migrated: true,
+      source: "empty-initialization",
+      manifestResult: {
+        found: true,
+        record: manifestWrite.record,
+        value: manifestWrite.record?.value
+      }
+    };
+  }
+
+  for (const record of localRecords) {
+    await InstitutionalRepositoryAuthority.write({
+      namespace:
+        EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+      key:
+        `record:${collection}:${record.id}`,
+      classification:
+        EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION,
+      value: record,
+      metadata:
+        executiveMemoryRepositoryMetadata(collection, {
+          recordType: "executive-memory-record",
+          migratedFrom:
+            "server-filesystem-cache"
+        })
+    });
+  }
+
+  const manifestWrite =
+    await writeExecutiveMemoryManifest(
+      collection,
+      localRecords.map(record => record.id)
+    );
+
+  executiveMemoryRepositoryState.migratedCollections.add(
+    collection
+  );
+  executiveMemoryRepositoryState.lastMigrationAt =
+    new Date().toISOString();
+
+  console.info(
+    `[MEOS Executive Memory] Migrated ${localRecords.length} "${collection}" record(s) from server filesystem staging into durable Institutional Repository authority.`
+  );
+
+  return {
+    migrated: true,
+    source: "server-filesystem-cache",
+    manifestResult: {
+      found: true,
+      record: manifestWrite.record,
+      value: manifestWrite.record?.value
+    }
+  };
+}
+
+async function getExecutiveMemoryManifest(collection) {
+  const migration =
+    await migrateExecutiveMemoryCollectionIfNeeded(collection);
+
+  const value =
+    migration?.manifestResult?.value ||
+    migration?.manifestResult?.record?.value ||
+    null;
+
+  if (
+    !value ||
+    value.schema !==
+      "meos.executive-memory.manifest.v1" ||
+    !Array.isArray(value.recordIds)
+  ) {
+    const error = new Error(
+      `Executive Memory durable manifest for "${collection}" is invalid.`
+    );
+    error.status = 500;
+    error.code =
+      "EXECUTIVE_MEMORY_DURABLE_MANIFEST_INVALID";
+    throw error;
+  }
+
+  return {
+    value,
+    fingerprint:
+      migration?.manifestResult?.record
+        ?.payloadFingerprint || null
+  };
+}
+
+async function readExecutiveMemoryCollection(collection) {
+  try {
+    const manifest =
+      await getExecutiveMemoryManifest(collection);
+
+    const records = [];
+
+    for (const recordId of manifest.value.recordIds) {
+      const read =
+        await InstitutionalRepositoryAuthority.read({
+          namespace:
+            EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+          key:
+            `record:${collection}:${recordId}`,
+          classification:
+            EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION
+        });
+
+      if (!read?.found) {
+        const error = new Error(
+          `Executive Memory durable manifest references missing record "${recordId}" in "${collection}".`
+        );
+        error.status = 500;
+        error.code =
+          "EXECUTIVE_MEMORY_DURABLE_RECORD_MISSING";
+        error.details = {
+          collection,
+          recordId
+        };
+        throw error;
+      }
+
+      records.push(read.value);
+    }
+
+    executiveMemoryRepositoryState.lastDurableReadAt =
+      new Date().toISOString();
+    executiveMemoryRepositoryState.lastError = null;
+
+    await writeExecutiveMemoryLocalCache(
+      collection,
+      records
+    );
+
+    return records;
+  } catch (error) {
+    executiveMemoryRepositoryState.lastError = {
+      at: new Date().toISOString(),
+      operation: "read",
+      collection,
+      code:
+        error?.code ||
+        "EXECUTIVE_MEMORY_DURABLE_READ_FAILED",
+      message: error?.message || String(error)
+    };
+
+    throw error;
+  }
+}
+
+async function writeExecutiveMemoryCollection(collection, records) {
   if (!Array.isArray(records)) {
     throw new TypeError("Executive Memory collection must be an array.");
   }
@@ -2029,20 +2332,111 @@ async function writeExecutiveMemoryCollection(collection, records) {
     throw error;
   }
 
-  const filePath = executiveMemoryCollectionPath(collection);
-  const temporaryPath =
-    `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    const currentManifest =
+      await getExecutiveMemoryManifest(collection);
 
-  await fs.writeFile(
-    temporaryPath,
-    `${JSON.stringify(records, null, 2)}\n`,
-    {
-      encoding: "utf8",
-      mode: 0o600
+    const desiredIds =
+      records.map(record => record.id);
+    const desiredIdSet =
+      new Set(desiredIds);
+    const previousIds =
+      currentManifest.value.recordIds;
+    const removedIds =
+      previousIds.filter(
+        recordId => !desiredIdSet.has(recordId)
+      );
+
+    /*
+     * Write records first, then commit the manifest. The manifest is the
+     * collection visibility boundary: readers do not observe a record as part
+     * of the collection until every durable record write has verified.
+     */
+    for (const record of records) {
+      const existing =
+        await InstitutionalRepositoryAuthority.read({
+          namespace:
+            EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+          key:
+            `record:${collection}:${record.id}`,
+          classification:
+            EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION
+        });
+
+      await InstitutionalRepositoryAuthority.write({
+        namespace:
+          EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+        key:
+          `record:${collection}:${record.id}`,
+        classification:
+          EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION,
+        value: record,
+        metadata:
+          executiveMemoryRepositoryMetadata(collection, {
+            recordType:
+              "executive-memory-record"
+          }),
+        expectedPreviousFingerprint:
+          existing?.found
+            ? existing.record?.payloadFingerprint
+            : null
+      });
     }
-  );
 
-  await fs.rename(temporaryPath, filePath);
+    const manifestWrite =
+      await writeExecutiveMemoryManifest(
+        collection,
+        desiredIds,
+        currentManifest.fingerprint
+      );
+
+    /*
+     * Only after the new manifest is durably verified do we delete records
+     * removed from the logical collection. This avoids a partial-write window
+     * where the manifest points at data that was already destroyed.
+     */
+    for (const recordId of removedIds) {
+      await InstitutionalRepositoryAuthority.delete({
+        namespace:
+          EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+        key:
+          `record:${collection}:${recordId}`,
+        classification:
+          EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION
+      });
+    }
+
+    executiveMemoryRepositoryState.lastDurableWriteAt =
+      new Date().toISOString();
+    executiveMemoryRepositoryState.lastError = null;
+
+    await writeExecutiveMemoryLocalCache(
+      collection,
+      records
+    );
+
+    return {
+      success: true,
+      providerId: manifestWrite.providerId,
+      authority: manifestWrite.authority,
+      recordCount: records.length,
+      removedRecordCount: removedIds.length,
+      verified:
+        manifestWrite?.verification?.verified === true
+    };
+  } catch (error) {
+    executiveMemoryRepositoryState.lastError = {
+      at: new Date().toISOString(),
+      operation: "write",
+      collection,
+      code:
+        error?.code ||
+        "EXECUTIVE_MEMORY_DURABLE_WRITE_FAILED",
+      message: error?.message || String(error)
+    };
+
+    throw error;
+  }
 }
 
 function withExecutiveMemoryWriteLock(collection, operation) {
@@ -2065,56 +2459,111 @@ function withExecutiveMemoryWriteLock(collection, operation) {
 
 async function executiveMemoryStorageStatus() {
   try {
-    await ensureExecutiveMemoryDirectory();
+    await ensureExecutiveMemoryRepositoryProvider();
 
-    const probePath = path.join(
-      EXECUTIVE_MEMORY_DIR,
-      `.meos-write-probe-${process.pid}`
-    );
+    const provider =
+      await InstitutionalRepositoryAuthority.selectProvider({
+        classification:
+          EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION,
+        operation: "write"
+      });
 
-    await fs.writeFile(probePath, "ok", {
-      encoding: "utf8",
-      mode: 0o600
-    });
-    await fs.unlink(probePath);
-
-    const durable = EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED;
+    const authorityStatus =
+      InstitutionalRepositoryAuthority.getStatus();
 
     return {
       status: "ready",
+      authority:
+        "meos-institutional-repository",
+      durable: true,
+      productionSafe: true,
+      persistenceMode:
+        "provider-neutral-durable-repository",
+      providerNeutral: true,
+      activeProviderId: provider.id,
+      localFilesystemRole:
+        executiveMemoryRepositoryState.localFilesystemRole,
       dataDirectory: MEOS_DATA_DIR,
       memoryDirectory: EXECUTIVE_MEMORY_DIR,
-      persistenceMode: durable
-        ? "configured-persistent-storage"
-        : "ephemeral-fallback",
-      durable,
-      productionSafe: durable,
-      persistentDiskExpected: durable,
+      persistentDiskExpected: false,
       configuration: {
         environmentVariable: "MEOS_DATA_DIR",
-        configured: durable
-      }
+        configured:
+          EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED,
+        requiredForDurability: false
+      },
+      repositoryAuthority: {
+        version:
+          InstitutionalRepositoryAuthority.version,
+        commission:
+          InstitutionalRepositoryAuthority.commission,
+        buildId:
+          InstitutionalRepositoryAuthority.buildId,
+        providerCount:
+          authorityStatus.providerCount,
+        durableProviderCount:
+          authorityStatus.durableProviderCount
+      },
+      migration: {
+        mode:
+          "read-through-one-time-local-to-durable",
+        migratedCollections: [
+          ...executiveMemoryRepositoryState
+            .migratedCollections
+        ],
+        lastMigrationAt:
+          executiveMemoryRepositoryState.lastMigrationAt
+      },
+      continuity: {
+        localCacheAvailable: true,
+        localCacheAuthoritative: false,
+        failVisibleIfDurableAuthorityUnavailable: true
+      },
+      lastDurableReadAt:
+        executiveMemoryRepositoryState.lastDurableReadAt,
+      lastDurableWriteAt:
+        executiveMemoryRepositoryState.lastDurableWriteAt,
+      lastError:
+        executiveMemoryRepositoryState.lastError
     };
   } catch (error) {
     return {
-      status: "unavailable",
-      dataDirectory: MEOS_DATA_DIR,
-      memoryDirectory: EXECUTIVE_MEMORY_DIR,
-      persistenceMode: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED
-        ? "configured-persistent-storage"
-        : "ephemeral-fallback",
+      status: "degraded",
+      authority:
+        "meos-institutional-repository",
       durable: false,
       productionSafe: false,
-      persistentDiskExpected: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED,
+      persistenceMode:
+        "durable-authority-unavailable",
+      providerNeutral: true,
+      activeProviderId: null,
+      localFilesystemRole:
+        executiveMemoryRepositoryState.localFilesystemRole,
+      dataDirectory: MEOS_DATA_DIR,
+      memoryDirectory: EXECUTIVE_MEMORY_DIR,
+      persistentDiskExpected: false,
       configuration: {
         environmentVariable: "MEOS_DATA_DIR",
-        configured: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED
+        configured:
+          EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED,
+        requiredForDurability: false
       },
-      error: error.message
+      continuity: {
+        localCacheAvailable: true,
+        localCacheAuthoritative: false,
+        failVisibleIfDurableAuthorityUnavailable: true
+      },
+      lastError: {
+        at: new Date().toISOString(),
+        operation: "status",
+        code:
+          error?.code ||
+          "EXECUTIVE_MEMORY_DURABLE_AUTHORITY_UNAVAILABLE",
+        message: error?.message || String(error)
+      }
     };
   }
 }
-
 
 
 function normalizeFundingUrl(value) {
@@ -6122,11 +6571,214 @@ app.put(
 
 
 /**
+ * Commission 006.017D2 — Executive Memory Durable Authority Acceptance
+ *
+ * Proves that the unchanged /api/executive-memory contract is now backed by
+ * MEOS Institutional Repository authority and that the server filesystem is
+ * only a cache/recovery staging surface.
+ */
+app.post(
+  "/api/executive-memory/acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const collection = "investigation-history";
+    const recordId =
+      `executive-memory-d2-${crypto.randomUUID()}`;
+    const sentinel = {
+      id: recordId,
+      schema:
+        "meos.executive-memory.acceptance-sentinel.v1",
+      commission:
+        EXECUTIVE_MEMORY_REPOSITORY_COMMISSION,
+      buildId:
+        EXECUTIVE_MEMORY_REPOSITORY_BUILD_ID,
+      nonce: crypto.randomUUID(),
+      assertion:
+        "Executive Memory institutional truth survives outside Render's ephemeral filesystem."
+    };
+
+    const checks = [];
+
+    try {
+      await withExecutiveMemoryWriteLock(
+        collection,
+        async () => {
+          const before =
+            await readExecutiveMemoryCollection(collection);
+
+          const normalized =
+            normalizeExecutiveMemoryRecord(
+              sentinel
+            );
+
+          await writeExecutiveMemoryCollection(
+            collection,
+            [...before, normalized]
+          );
+
+          const afterWrite =
+            await readExecutiveMemoryCollection(collection);
+          const restored =
+            afterWrite.find(
+              record => record.id === recordId
+            );
+
+          checks.push({
+            name:
+              "Existing Executive Memory contract writes through durable Repository Authority",
+            passed:
+              Boolean(restored) &&
+              restored.nonce === sentinel.nonce
+          });
+
+          const directAuthorityRead =
+            await InstitutionalRepositoryAuthority.read({
+              namespace:
+                EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+              key:
+                `record:${collection}:${recordId}`,
+              classification:
+                EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION
+            });
+
+          checks.push({
+            name:
+              "Executive Memory record exists directly in provider-neutral durable authority",
+            passed:
+              directAuthorityRead?.found === true &&
+              directAuthorityRead?.value?.nonce ===
+                sentinel.nonce
+          });
+
+          const cachePath =
+            executiveMemoryCollectionPath(collection);
+
+          try {
+            await fs.unlink(cachePath);
+          } catch (error) {
+            if (error?.code !== "ENOENT") {
+              throw error;
+            }
+          }
+
+          const afterCacheLoss =
+            await readExecutiveMemoryCollection(collection);
+          const survivedCacheLoss =
+            afterCacheLoss.find(
+              record => record.id === recordId
+            );
+
+          checks.push({
+            name:
+              "Institutional truth survives deletion of Render filesystem cache",
+            passed:
+              Boolean(survivedCacheLoss) &&
+              survivedCacheLoss.nonce ===
+                sentinel.nonce
+          });
+
+          checks.push({
+            name:
+              "Durable read reconstructs the local cache after cache loss",
+            passed:
+              Array.isArray(
+                await readExecutiveMemoryLocalCache(
+                  collection
+                )
+              )
+          });
+
+          const cleaned =
+            afterCacheLoss.filter(
+              record => record.id !== recordId
+            );
+
+          await writeExecutiveMemoryCollection(
+            collection,
+            cleaned
+          );
+
+          const afterCleanup =
+            await readExecutiveMemoryCollection(collection);
+
+          checks.push({
+            name:
+              "Acceptance sentinel is removed through the same durable authority",
+            passed:
+              !afterCleanup.some(
+                record => record.id === recordId
+              )
+          });
+        }
+      );
+
+      const storage =
+        await executiveMemoryStorageStatus();
+
+      checks.push({
+        name:
+          "Executive Memory reports MEOS Institutional Repository as authority and filesystem as non-authoritative cache",
+        passed:
+          storage.status === "ready" &&
+          storage.durable === true &&
+          storage.authority ===
+            "meos-institutional-repository" &&
+          storage.localFilesystemRole ===
+            "cache-recovery-staging-only"
+      });
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response
+        .status(passed ? 200 : 500)
+        .json({
+          commission:
+            EXECUTIVE_MEMORY_REPOSITORY_COMMISSION,
+          schema:
+            "meos.executive-memory.durable-authority.acceptance.v1",
+          version:
+            EXECUTIVE_MEMORY_VERSION,
+          buildId:
+            EXECUTIVE_MEMORY_REPOSITORY_BUILD_ID,
+          passed,
+          checks,
+          storage,
+          serverVersion: VERSION
+        });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            EXECUTIVE_MEMORY_REPOSITORY_COMMISSION,
+          schema:
+            "meos.executive-memory.durable-authority.acceptance.v1",
+          version:
+            EXECUTIVE_MEMORY_VERSION,
+          buildId:
+            EXECUTIVE_MEMORY_REPOSITORY_BUILD_ID,
+          passed: false,
+          checks,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "EXECUTIVE_MEMORY_DURABLE_AUTHORITY_ACCEPTANCE_FAILED",
+          serverVersion: VERSION
+        });
+    }
+  }
+);
+
+
+/**
  * Durable Executive Memory API
  *
- * These routes provide the server-side persistence contract that Website
- * Intelligence, Executive Opportunity Office, Grant Office, and Executive
- * Investigation will use in the next commissions.
+ * These routes preserve the existing browser-facing Executive Memory contract
+ * while MEOS Institutional Repository is now the durable authority beneath it.
+ * Provider choice remains runtime-selected and provider-neutral.
  */
 app.get("/api/executive-memory", async (request, response) => {
   const storage = await executiveMemoryStorageStatus();
@@ -6143,7 +6795,8 @@ app.get("/api/executive-memory", async (request, response) => {
     continuity: {
       missingRecordReadSemantics: "200-null",
       manifestInitializationSupported: true,
-      storageAuthority: "server-executive-memory",
+      storageAuthority: "meos-institutional-repository",
+      localFilesystemRole: "cache-recovery-staging-only",
       persistentDiskExpected:
         storage.persistentDiskExpected === true,
       durable: storage.durable === true,
