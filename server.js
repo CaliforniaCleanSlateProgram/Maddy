@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.17";
+const VERSION = "2.10.18";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1290,6 +1290,111 @@ const EXECUTIVE_MEMORY_MAX_RECORD_BYTES = Number(
 
 const executiveMemoryWriteLocks = new Map();
 
+
+
+const EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION = "006.017D4A";
+const EXECUTIVE_BRAIN_STATE_REPOSITORY_VERSION = "1.0.0";
+const EXECUTIVE_BRAIN_STATE_REPOSITORY_BUILD_ID =
+  "EBSR100-BOUNDED-COGNITION-DURABLE-AUTHORITY-20260808-A";
+const EXECUTIVE_BRAIN_STATE_REPOSITORY_NAMESPACE =
+  "executive-brain";
+const EXECUTIVE_BRAIN_STATE_REPOSITORY_KEY =
+  "bounded-cognition-state";
+const EXECUTIVE_BRAIN_STATE_REPOSITORY_CLASSIFICATION =
+  "institutional";
+
+function normalizeExecutiveBrainStateEnvelope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const error = new Error(
+      "Executive Brain State payload must be an object."
+    );
+    error.status = 400;
+    error.code = "EXECUTIVE_BRAIN_STATE_PAYLOAD_INVALID";
+    throw error;
+  }
+
+  const state =
+    value.state &&
+    typeof value.state === "object" &&
+    !Array.isArray(value.state)
+      ? value.state
+      : value;
+
+  if (state.schema !== "meos.executive-brain.state.v1") {
+    const error = new Error(
+      "Executive Brain State schema is invalid."
+    );
+    error.status = 400;
+    error.code = "EXECUTIVE_BRAIN_STATE_SCHEMA_INVALID";
+    throw error;
+  }
+
+  const requiredArrays = [
+    "history",
+    "cognitionHistory",
+    "cognitiveDispatchHistory",
+    "cognitiveReentryHistory"
+  ];
+
+  for (const field of requiredArrays) {
+    if (!Array.isArray(state[field])) {
+      const error = new Error(
+        `Executive Brain State field "${field}" must be an array.`
+      );
+      error.status = 400;
+      error.code = "EXECUTIVE_BRAIN_STATE_SCHEMA_INVALID";
+      throw error;
+    }
+  }
+
+  return {
+    schema: "meos.executive-brain.durable-state.v1",
+    version: String(value.version || state.version || "1.3.2"),
+    buildId: String(value.buildId || ""),
+    savedAt: new Date().toISOString(),
+    state
+  };
+}
+
+async function readDurableExecutiveBrainState() {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  return InstitutionalRepositoryAuthority.read({
+    namespace: EXECUTIVE_BRAIN_STATE_REPOSITORY_NAMESPACE,
+    key: EXECUTIVE_BRAIN_STATE_REPOSITORY_KEY,
+    classification:
+      EXECUTIVE_BRAIN_STATE_REPOSITORY_CLASSIFICATION
+  });
+}
+
+async function writeDurableExecutiveBrainState(
+  value,
+  expectedPreviousFingerprint = undefined
+) {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  const envelope =
+    normalizeExecutiveBrainStateEnvelope(value);
+
+  return InstitutionalRepositoryAuthority.write({
+    namespace: EXECUTIVE_BRAIN_STATE_REPOSITORY_NAMESPACE,
+    key: EXECUTIVE_BRAIN_STATE_REPOSITORY_KEY,
+    classification:
+      EXECUTIVE_BRAIN_STATE_REPOSITORY_CLASSIFICATION,
+    value: envelope,
+    metadata: {
+      subsystem: "executive-brain",
+      stateClass: "bounded-institutional-cognition",
+      commission:
+        EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION,
+      buildId:
+        EXECUTIVE_BRAIN_STATE_REPOSITORY_BUILD_ID,
+      storageRole:
+        "durable-bounded-institutional-cognition"
+    },
+    expectedPreviousFingerprint
+  });
+}
 
 const MISSION_STATE_TRANSPORT_FIX_COMMISSION = "006.017D3A1";
 const MISSION_STATE_TRANSPORT_FIX_BUILD_ID =
@@ -6666,6 +6771,302 @@ app.put(
           error?.code ||
           "CONTINUOUS_OPERATIONS_JOB_UPDATE_FAILED"
       });
+    }
+  }
+);
+
+
+/**
+ * Commission 006.017D4A — Executive Brain Bounded Cognition Durable Authority
+ *
+ * Gives Executive Brain a provider-neutral durable authority seam before the
+ * browser engine itself is switched from laptop IndexedDB authority.
+ *
+ * Hot cognition remains runtime memory. Only the bounded persistence contract
+ * already defined by Executive Brain is eligible for institutional storage.
+ */
+app.get(
+  "/api/executive-brain-state",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const result =
+        await readDurableExecutiveBrainState();
+
+      if (!result?.found) {
+        response.status(404).json({
+          commission:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.executive-brain-state.read.v1",
+          found: false,
+          authority:
+            "meos-institutional-repository",
+          providerId:
+            result?.providerId || null
+        });
+        return;
+      }
+
+      response.status(200).json({
+        commission:
+          EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.executive-brain-state.read.v1",
+        found: true,
+        authority:
+          result.authority,
+        providerId:
+          result.providerId,
+        record:
+          result.record,
+        value:
+          result.value
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION,
+          success: false,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "EXECUTIVE_BRAIN_STATE_DURABLE_READ_FAILED"
+        });
+    }
+  }
+);
+
+app.put(
+  "/api/executive-brain-state",
+  express.json({
+    limit: "8mb",
+    strict: true
+  }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const expectedPreviousFingerprint =
+        request.get(
+          "If-MEOS-Previous-Fingerprint"
+        ) || undefined;
+
+      const result =
+        await writeDurableExecutiveBrainState(
+          request.body,
+          expectedPreviousFingerprint
+        );
+
+      response.status(200).json({
+        commission:
+          EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.executive-brain-state.write.v1",
+        success: true,
+        authority:
+          result.authority,
+        providerId:
+          result.providerId,
+        verification:
+          result.verification,
+        record:
+          result.record
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION,
+          success: false,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "EXECUTIVE_BRAIN_STATE_DURABLE_WRITE_FAILED",
+          details:
+            error?.details || null
+        });
+    }
+  }
+);
+
+app.post(
+  "/api/executive-brain-state/acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const acceptanceKey =
+      `acceptance-${crypto.randomUUID()}`;
+    const namespace =
+      "executive-brain-acceptance";
+
+    try {
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const sentinel = {
+        schema:
+          "meos.executive-brain.durable-state.v1",
+        version: "1.3.2",
+        buildId:
+          EXECUTIVE_BRAIN_STATE_REPOSITORY_BUILD_ID,
+        savedAt:
+          new Date().toISOString(),
+        state: {
+          schema:
+            "meos.executive-brain.state.v1",
+          version: "1.3.2",
+          savedAt:
+            new Date().toISOString(),
+          history: [{
+            id: `${acceptanceKey}-history`,
+            event: "durable-cognition-proof"
+          }],
+          cognitionHistory: [{
+            id: `${acceptanceKey}-cognition`,
+            status: "acceptance-only"
+          }],
+          cognitiveDispatchHistory: [{
+            id: `${acceptanceKey}-dispatch`,
+            status: "acceptance-only"
+          }],
+          cognitiveReentryHistory: [{
+            id: `${acceptanceKey}-reentry`,
+            status: "acceptance-only"
+          }]
+        }
+      };
+
+      const write =
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_CLASSIFICATION,
+          value: sentinel,
+          metadata: {
+            subsystem: "executive-brain",
+            stateClass:
+              "bounded-institutional-cognition",
+            purpose:
+              "006.017D4A-live-acceptance"
+          }
+        });
+
+      const read =
+        await InstitutionalRepositoryAuthority.read({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      const checks = [
+        {
+          name:
+            "Executive Brain State resolves through provider-neutral Repository Authority",
+          passed:
+            write?.authority ===
+              "durable-institutional-repository"
+        },
+        {
+          name:
+            "Bounded cognition write is durably verified",
+          passed:
+            write?.success === true &&
+            write?.verification?.verified === true
+        },
+        {
+          name:
+            "Bounded cognition reads back through selected durable provider",
+          passed:
+            read?.found === true &&
+            Boolean(read?.providerId)
+        },
+        {
+          name:
+            "All four bounded Executive Brain history surfaces survive semantic round trip",
+          passed:
+            read?.value?.state?.history?.[0]?.id ===
+              `${acceptanceKey}-history` &&
+            read?.value?.state?.cognitionHistory?.[0]?.id ===
+              `${acceptanceKey}-cognition` &&
+            read?.value?.state?.cognitiveDispatchHistory?.[0]?.id ===
+              `${acceptanceKey}-dispatch` &&
+            read?.value?.state?.cognitiveReentryHistory?.[0]?.id ===
+              `${acceptanceKey}-reentry`
+        },
+        {
+          name:
+            "Executive Brain durable state is classified as institutional cognition rather than browser storage",
+          passed:
+            read?.authority ===
+              "durable-institutional-repository"
+        }
+      ];
+
+      const cleanup =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      checks.push({
+        name:
+          "Acceptance cognition sentinel is removed through the same durable authority",
+        passed:
+          cleanup?.success === true &&
+          cleanup?.deleted === true
+      });
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response
+        .status(passed ? 200 : 500)
+        .json({
+          commission:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.executive-brain-state.durable-authority.acceptance.v1",
+          version:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_VERSION,
+          buildId:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_BUILD_ID,
+          passed,
+          checks,
+          authorityStatus:
+            InstitutionalRepositoryAuthority.getStatus(),
+          serverVersion: VERSION
+        });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.executive-brain-state.durable-authority.acceptance.v1",
+          version:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_VERSION,
+          buildId:
+            EXECUTIVE_BRAIN_STATE_REPOSITORY_BUILD_ID,
+          passed: false,
+          checks: [],
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "EXECUTIVE_BRAIN_STATE_DURABLE_ACCEPTANCE_FAILED",
+          serverVersion: VERSION
+        });
     }
   }
 );
