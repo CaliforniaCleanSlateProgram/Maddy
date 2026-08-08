@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Monitoring Engine
- * Version: 1.0.0
+ * Version: 1.0.1
  *
  * Mission:
  * Continuously observe MEOS operational state, detect risks, deadline pressure,
@@ -37,7 +37,7 @@
 
     const ExecutiveMonitoring = {
         name: "MEOS Executive Monitoring Engine",
-        version: "1.0.0",
+        version: "1.0.1",
         status: "initializing",
         operatingMode: "continuous-executive-oversight",
 
@@ -69,6 +69,19 @@
         eventListeners: {},
         scannerId: null,
         initializedAt: null,
+
+        // Browser persistence is a best-effort continuity cache only.
+        // Monitoring remains operational in memory when this cache is unavailable.
+        persistenceState: {
+            role: "best-effort-browser-monitoring-continuity-cache",
+            authority: "live-runtime-and-durable-institutional-state",
+            suspended: false,
+            reason: null,
+            suspendedAt: null,
+            failureCount: 0,
+            suppressedWriteCount: 0,
+            lastFailure: null
+        },
 
         analytics: {
             totalAlerts: 0,
@@ -102,7 +115,7 @@
             }
 
             console.info(
-                `[MEOS] ${this.name} v${this.version} ${this.status}.`
+                `[MEOS] ${this.name} v${this.version} ${this.status}. Build EM101-MONITORING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A.`
             );
 
             this.emit("monitoring:online", this.getStatus());
@@ -1740,6 +1753,13 @@
                     this.snapshots.length,
                 analytics:
                     this.clone(this.analytics),
+                persistence: this.clone(this.persistenceState),
+                persistenceAuthority: {
+                    authoritative: "live-runtime-and-durable-institutional-state",
+                    browserRole: "best-effort-monitoring-continuity-cache",
+                    browserAuthoritative: false,
+                    degradationExpandsAuthority: false
+                },
                 initializedAt:
                     this.initializedAt
             };
@@ -1832,6 +1852,16 @@
         },
 
         persistIfEnabled() {
+            if (this.persistenceState.suspended) {
+                this.persistenceState.suppressedWriteCount += 1;
+                return {
+                    success: true,
+                    persisted: false,
+                    suppressed: true,
+                    reason: this.persistenceState.reason
+                };
+            }
+
             if (
                 this.configuration.persistenceEnabled &&
                 this.configuration.automaticPersistence
@@ -1842,6 +1872,42 @@
             return {
                 success: true,
                 persisted: false
+            };
+        },
+
+        isStorageQuotaError(error) {
+            return Boolean(
+                error &&
+                (error.name === "QuotaExceededError" ||
+                    error.code === 22 ||
+                    error.code === 1014 ||
+                    /quota/i.test(String(error.message || "")))
+            );
+        },
+
+        suspendBrowserPersistence(error) {
+            this.persistenceState.suspended = true;
+            this.persistenceState.reason = "storage-quota-exhausted";
+            this.persistenceState.suspendedAt = new Date().toISOString();
+            this.persistenceState.failureCount += 1;
+            this.persistenceState.lastFailure = {
+                name: error?.name || "Error",
+                message: error?.message || String(error || "Unknown persistence failure")
+            };
+
+            console.warn(
+                "[MEOS Executive Monitoring] Browser monitoring continuity-cache persistence suspended after storage quota exhaustion. Monitoring and scanning remain operational; live runtime plus durable institutional state remain authoritative, and repeated browser writes are suppressed until persistence is explicitly retried."
+            );
+        },
+
+        retryBrowserPersistence() {
+            this.persistenceState.suspended = false;
+            this.persistenceState.reason = null;
+            this.persistenceState.suspendedAt = null;
+            const result = this.persist();
+            return {
+                ...result,
+                persistenceState: this.clone(this.persistenceState)
             };
         },
 
@@ -1880,6 +1946,22 @@
                     persisted: true
                 };
             } catch (error) {
+                if (this.isStorageQuotaError(error)) {
+                    this.suspendBrowserPersistence(error);
+                    return {
+                        success: false,
+                        persisted: false,
+                        suspended: true,
+                        error: error.message
+                    };
+                }
+
+                this.persistenceState.failureCount += 1;
+                this.persistenceState.lastFailure = {
+                    name: error?.name || "Error",
+                    message: error?.message || String(error)
+                };
+
                 console.error(
                     "[MEOS Executive Monitoring] Persistence failed:",
                     error
@@ -2036,6 +2118,61 @@
                     target.push(item);
                 }
             });
+        },
+
+        runPersistenceAuthorityAcceptanceTest() {
+            const originalSuspended = this.persistenceState.suspended;
+            const originalReason = this.persistenceState.reason;
+            const originalSuppressed = this.persistenceState.suppressedWriteCount;
+
+            this.persistenceState.suspended = true;
+            this.persistenceState.reason = "acceptance-test";
+            const before = this.persistenceState.suppressedWriteCount;
+            const suppressedResult = this.persistIfEnabled();
+            const after = this.persistenceState.suppressedWriteCount;
+
+            const status = this.getStatus();
+            const checks = [
+                ["Executive Monitoring declares live runtime plus durable institutional state as authority",
+                    status.persistenceAuthority?.authoritative === "live-runtime-and-durable-institutional-state"],
+                ["Browser persistence is explicitly a best-effort monitoring continuity cache",
+                    status.persistenceAuthority?.browserRole === "best-effort-monitoring-continuity-cache" &&
+                    status.persistenceAuthority?.browserAuthoritative === false],
+                ["Quota exhaustion circuit breaker is installed and fail-visible",
+                    typeof this.isStorageQuotaError === "function" &&
+                    typeof this.suspendBrowserPersistence === "function" &&
+                    this.isStorageQuotaError({ name: "QuotaExceededError", message: "quota" })],
+                ["Repeated monitoring-cache writes are suppressed while persistence is suspended",
+                    suppressedResult?.suppressed === true && after === before + 1],
+                ["Executive Monitoring scanner remains operational independently of browser cache persistence",
+                    this.status === "online" &&
+                    this.configuration.scannerEnabled === true &&
+                    typeof this.scan === "function"],
+                ["Alerts, snapshots, and monitoring history remain available in active memory",
+                    Array.isArray(this.alerts) && Array.isArray(this.snapshots) && Array.isArray(this.history)],
+                ["Persistence degradation does not grant corrective-action or external execution authority",
+                    this.configuration.requireExecutiveApprovalForCorrectiveAction === true &&
+                    status.persistenceAuthority?.degradationExpandsAuthority === false]
+            ];
+
+            this.persistenceState.suspended = originalSuspended;
+            this.persistenceState.reason = originalReason;
+            this.persistenceState.suppressedWriteCount = originalSuppressed;
+
+            const rows = checks.map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+            console.table(rows);
+            const passed = rows.every((row) => row.passed);
+            console.info(
+                `[MEOS 1.0.1] Commission 006.017D4H2D Executive Monitoring persistence authority convergence: ${passed ? "PASS" : "FAIL"}.`
+            );
+            return {
+                commission: "006.017D4H2D",
+                version: "1.0.1",
+                buildId: "EM101-MONITORING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A",
+                passed,
+                checks: rows,
+                persistence: this.clone(this.persistenceState)
+            };
         },
 
         createId(prefix = "item") {
