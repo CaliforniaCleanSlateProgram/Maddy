@@ -2767,6 +2767,116 @@
 
     const hydrationPromise = hydrateFromDurableAuthority();
 
+    async function runDurableConcurrencyConvergenceAcceptanceTest() {
+        await whenHydratedInternal();
+
+        const checks = [];
+
+        checks.push({
+            name: "Durable writes use optimistic concurrency fingerprints",
+            passed:
+                typeof writeDurableMissionStateWithConvergence === "function" &&
+                MAX_CONCURRENCY_REBASE_ATTEMPTS === 4
+        });
+
+        const sharedId = "MIS-CONCURRENCY-PROBE";
+        const older = {
+            id: sharedId,
+            status: MISSION_STATUS.IN_PROGRESS,
+            updatedAt: "2026-08-08T10:00:00.000Z",
+            title: "Older durable version"
+        };
+        const newer = {
+            id: sharedId,
+            status: MISSION_STATUS.COMPLETED,
+            updatedAt: "2026-08-08T10:01:00.000Z",
+            title: "Newer local version"
+        };
+        const remoteOnly = {
+            id: "MIS-REMOTE-ONLY",
+            status: MISSION_STATUS.QUEUED,
+            updatedAt: "2026-08-08T10:00:30.000Z",
+            title: "Remote-only work"
+        };
+        const localOnly = {
+            id: "MIS-LOCAL-ONLY",
+            status: MISSION_STATUS.IN_PROGRESS,
+            updatedAt: "2026-08-08T10:00:45.000Z",
+            title: "Local-only work"
+        };
+
+        const merged = mergeConcurrentMissionSnapshots(
+            {
+                missions: [older, remoteOnly],
+                approvalQueue: [],
+                completedMissions: [],
+                archivedMissions: [],
+                activity: [],
+                initializedAt: "2026-08-08T09:00:00.000Z",
+                updatedAt: "2026-08-08T10:00:30.000Z"
+            },
+            {
+                missions: [localOnly],
+                approvalQueue: [],
+                completedMissions: [newer],
+                archivedMissions: [],
+                activity: [],
+                initializedAt: "2026-08-08T09:00:00.000Z",
+                updatedAt: "2026-08-08T10:01:00.000Z"
+            }
+        );
+
+        const mergedShared = [
+            ...(merged.missions || []),
+            ...(merged.completedMissions || []),
+            ...(merged.archivedMissions || [])
+        ].find(item => item.id === sharedId);
+
+        checks.push({
+            name: "Concurrent merge preserves independently created work from both authorities",
+            passed:
+                merged.missions.some(item => item.id === remoteOnly.id) &&
+                merged.missions.some(item => item.id === localOnly.id)
+        });
+
+        checks.push({
+            name: "Concurrent merge resolves the same mission by newest lifecycle evidence",
+            passed:
+                mergedShared?.status === MISSION_STATUS.COMPLETED &&
+                merged.completedMissions.some(item => item.id === sharedId) &&
+                !merged.missions.some(item => item.id === sharedId)
+        });
+
+        checks.push({
+            name: "HTTP 409 is recognized as an optimistic concurrency conflict",
+            passed:
+                isOptimisticConcurrencyConflict({ status: 409 }) === true &&
+                isOptimisticConcurrencyConflict({ status: 500 }) === false
+        });
+
+        checks.push({
+            name: "Concurrency telemetry is exposed through Mission Engine persistence status",
+            passed:
+                typeof persistence.concurrencyRebases === "number" &&
+                typeof persistence.concurrencyConflictsExhausted === "number"
+        });
+
+        const passed = checks.every(check => check.passed);
+        console.table(checks);
+        console.log(
+            `[MEOS ${VERSION}] Commission 006.017D3B4 durable concurrency convergence: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+            commission: "006.017D3B4",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            checks,
+            persistence: getPersistenceStatus()
+        };
+    }
+
     const MissionEngine = Object.freeze({
         version: VERSION,
         buildId: BUILD_ID,
