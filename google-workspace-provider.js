@@ -1,15 +1,16 @@
 /**
  * MEOS Google Workspace Provider
  *
- * Provider Version: 1.1.0
- * Build ID: GWP110-DURABLE-ENV-AUTH-20260806-A
+ * Provider Version: 1.2.0
+ * Build ID: GWP120-INSTITUTIONAL-STORAGE-RECON-20260808-A
  * Status: Commission Candidate
  *
  * Purpose:
  * - Provide one secure, reusable Google Workspace connection for MEOS.
  * - Keep Google credentials and OAuth tokens off the frontend.
- * - Begin in read-only mode so trust is earned before write authority is added.
- * - Expose Drive, Docs, and Sheets clients to future MEOS server routes.
+ * - Preserve broad read access while adding narrowly scoped app-managed write authorization.
+ * - Recon the connected organization's real Drive capacity and storage capabilities at runtime.
+ * - Keep institutional storage provider-neutral above this Google adapter.
  *
  * Required environment variables:
  * - GOOGLE_CLIENT_ID
@@ -29,8 +30,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { google } from "googleapis";
 
-const VERSION = "1.1.0";
-const BUILD_ID = "GWP110-DURABLE-ENV-AUTH-20260806-A";
+const VERSION = "1.2.0";
+const BUILD_ID = "GWP120-INSTITUTIONAL-STORAGE-RECON-20260808-A";
 const PROVIDER_ID = "google-workspace";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -90,6 +91,29 @@ const READ_ONLY_SCOPES = Object.freeze([
   "https://www.googleapis.com/auth/spreadsheets.readonly"
 ]);
 
+/*
+ * Recon Mission G — controlled write authorization.
+ *
+ * drive.file is intentionally narrower than full Drive write authority:
+ * Maddy may create and manage files she creates or files explicitly opened/
+ * shared with the app, while broad Workspace reading remains read-only.
+ *
+ * This is the commercial-safe seam: MEOS Core asks for an institutional
+ * repository capability; this Google provider decides what Google authority
+ * is actually available at runtime.
+ */
+const CONTROLLED_WRITE_SCOPES = Object.freeze([
+  "https://www.googleapis.com/auth/drive.file"
+]);
+
+const AUTHORIZATION_SCOPES = Object.freeze([
+  ...READ_ONLY_SCOPES,
+  ...CONTROLLED_WRITE_SCOPES
+]);
+
+const FULL_DRIVE_WRITE_SCOPE =
+  "https://www.googleapis.com/auth/drive";
+
 const state = {
   initialized: false,
   connected: false,
@@ -100,7 +124,10 @@ const state = {
   lastVerifiedAt: null,
   lastError: null,
   account: null,
-  headquarters: null
+  headquarters: null,
+  grantedScopes: [],
+  authorizationRecon: null,
+  institutionalStorage: null
 };
 
 let oauthClient = null;
@@ -385,11 +412,307 @@ function escapeDriveQueryValue(value) {
     .replace(/'/g, "\\'");
 }
 
+function calculateStorageNumbers(storageQuota = {}) {
+  const parseInteger = value => {
+    const raw = String(value ?? "").trim();
+    return /^\d+$/.test(raw) ? BigInt(raw) : null;
+  };
+
+  const limit = parseInteger(storageQuota.limit);
+  const usage = parseInteger(storageQuota.usage);
+  const usageInDrive = parseInteger(storageQuota.usageInDrive);
+  const usageInDriveTrash = parseInteger(
+    storageQuota.usageInDriveTrash
+  );
+
+  const remaining =
+    limit !== null && usage !== null && limit >= usage
+      ? limit - usage
+      : null;
+
+  const percentUsed =
+    limit !== null && usage !== null && limit > 0n
+      ? Number((usage * 10000n) / limit) / 100
+      : null;
+
+  return {
+    limitBytes: limit === null ? null : limit.toString(),
+    usageBytes: usage === null ? null : usage.toString(),
+    usageInDriveBytes:
+      usageInDrive === null ? null : usageInDrive.toString(),
+    usageInDriveTrashBytes:
+      usageInDriveTrash === null
+        ? null
+        : usageInDriveTrash.toString(),
+    remainingBytes:
+      remaining === null ? null : remaining.toString(),
+    percentUsed
+  };
+}
+
+async function inspectGrantedScopes() {
+  requireConnected();
+
+  let accessToken = String(
+    oauthClient.credentials?.access_token || ""
+  ).trim();
+
+  if (!accessToken) {
+    const tokenResponse = await oauthClient.getAccessToken();
+    accessToken = String(
+      tokenResponse?.token || tokenResponse || ""
+    ).trim();
+  }
+
+  if (!accessToken) {
+    return {
+      scopes: [],
+      verified: false,
+      error: "Google access token was unavailable for scope introspection."
+    };
+  }
+
+  try {
+    const tokenInfo = await oauthClient.getTokenInfo(accessToken);
+    const scopes = [...new Set(
+      Array.isArray(tokenInfo?.scopes)
+        ? tokenInfo.scopes.map(value => String(value || "").trim())
+        : []
+    )].filter(Boolean);
+
+    return {
+      scopes,
+      verified: true,
+      expiresIn:
+        Number(tokenInfo?.expiry_date || 0) > 0
+          ? Math.max(
+              0,
+              Math.floor(
+                (Number(tokenInfo.expiry_date) - Date.now()) / 1000
+              )
+            )
+          : null,
+      error: null
+    };
+  } catch (error) {
+    return {
+      scopes: [],
+      verified: false,
+      expiresIn: null,
+      error: normalizeError(error)
+    };
+  }
+}
+
+async function discoverInstitutionalStorage() {
+  requireConnected();
+
+  const aboutResponse = await driveClient.about.get({
+    fields:
+      "user(displayName,emailAddress,permissionId)," +
+      "storageQuota(limit,usage,usageInDrive,usageInDriveTrash)," +
+      "canCreateDrives,maxUploadSize,appInstalled"
+  });
+
+  const about = aboutResponse.data || {};
+  const storage = calculateStorageNumbers(
+    about.storageQuota || {}
+  );
+
+  const scopeRecon = await inspectGrantedScopes();
+  const grantedScopes = scopeRecon.scopes || [];
+
+  const hasScope = scope =>
+    grantedScopes.includes(scope);
+
+  const broadReadAuthorized =
+    hasScope(
+      "https://www.googleapis.com/auth/drive.readonly"
+    ) ||
+    hasScope(FULL_DRIVE_WRITE_SCOPE);
+
+  const controlledWriteAuthorized =
+    hasScope(
+      "https://www.googleapis.com/auth/drive.file"
+    ) ||
+    hasScope(FULL_DRIVE_WRITE_SCOPE);
+
+  const fullDriveWriteAuthorized =
+    hasScope(FULL_DRIVE_WRITE_SCOPE);
+
+  let sharedDrives = [];
+  let sharedDrivesError = null;
+
+  try {
+    const drivesResponse = await driveClient.drives.list({
+      pageSize: 100,
+      fields:
+        "nextPageToken,drives(id,name,createdTime,hidden)"
+    });
+
+    sharedDrives = (drivesResponse.data.drives || []).map(
+      drive => ({
+        id: drive.id || null,
+        name: drive.name || null,
+        createdTime: drive.createdTime || null,
+        hidden: Boolean(drive.hidden)
+      })
+    );
+  } catch (error) {
+    sharedDrivesError = normalizeError(error);
+  }
+
+  let headquartersCapabilities = null;
+
+  if (state.headquarters?.id) {
+    try {
+      const headquartersResponse =
+        await driveClient.files.get({
+          fileId: state.headquarters.id,
+          fields:
+            "id,name,driveId,ownedByMe,isAppAuthorized," +
+            "capabilities(canEdit,canAddChildren,canShare,canMoveItemWithinDrive)",
+          supportsAllDrives: true
+        });
+
+      headquartersCapabilities = {
+        id: headquartersResponse.data.id || null,
+        name: headquartersResponse.data.name || null,
+        driveId: headquartersResponse.data.driveId || null,
+        ownedByMe:
+          headquartersResponse.data.ownedByMe ?? null,
+        isAppAuthorized:
+          headquartersResponse.data.isAppAuthorized ?? null,
+        capabilities: {
+          canEdit:
+            headquartersResponse.data.capabilities?.canEdit ?? null,
+          canAddChildren:
+            headquartersResponse.data.capabilities?.canAddChildren ?? null,
+          canShare:
+            headquartersResponse.data.capabilities?.canShare ?? null,
+          canMoveItemWithinDrive:
+            headquartersResponse.data.capabilities
+              ?.canMoveItemWithinDrive ?? null
+        }
+      };
+    } catch (error) {
+      headquartersCapabilities = {
+        error: normalizeError(error)
+      };
+    }
+  }
+
+  const capacityVisible =
+    storage.limitBytes !== null ||
+    storage.usageBytes !== null;
+
+  const repositoryAssessment = {
+    viableForReadRecon:
+      broadReadAuthorized && capacityVisible,
+    viableForAppManagedWrites:
+      controlledWriteAuthorized,
+    fullDriveWriteAuthorized,
+    authorizationUpgradeRequired:
+      !controlledWriteAuthorized,
+    recommendedNextState:
+      controlledWriteAuthorized
+        ? "controlled-repository-prototype-ready"
+        : "reauthorize-for-drive.file",
+    preferredAuthority:
+      sharedDrives.length > 0
+        ? "existing-shared-drive-or-app-managed-folder"
+        : "app-managed-drive-folder",
+    blockers: [
+      ...(
+        controlledWriteAuthorized
+          ? []
+          : [
+              "Google OAuth token has not granted drive.file controlled write authority."
+            ]
+      ),
+      ...(
+        capacityVisible
+          ? []
+          : [
+              "Google did not report a numeric storage limit or usage value."
+            ]
+      )
+    ]
+  };
+
+  const result = {
+    schema:
+      "meos.google-workspace.institutional-storage-recon.v1",
+    provider: PROVIDER_ID,
+    version: VERSION,
+    buildId: BUILD_ID,
+    inspectedAt: new Date().toISOString(),
+    account: {
+      displayName:
+        about.user?.displayName || state.account?.displayName || null,
+      emailAddress:
+        about.user?.emailAddress || state.account?.emailAddress || null,
+      permissionId:
+        about.user?.permissionId || state.account?.permissionId || null
+    },
+    storage: {
+      ...storage,
+      reportingSemantics:
+        "Google Drive API storageQuota; for pooled-storage organizations Google reports organization-level limit/usage.",
+      maxUploadSizeBytes:
+        about.maxUploadSize || null
+    },
+    sharedDrives: {
+      accessibleCount: sharedDrives.length,
+      canCreateSharedDrives:
+        Boolean(about.canCreateDrives),
+      drives: sharedDrives,
+      error: sharedDrivesError
+    },
+    authorization: {
+      verified: scopeRecon.verified,
+      grantedScopes,
+      requestedScopes: [...AUTHORIZATION_SCOPES],
+      broadReadAuthorized,
+      controlledWriteAuthorized,
+      fullDriveWriteAuthorized,
+      writeModel:
+        "broad-read-plus-app-managed-write",
+      controlledWriteScope:
+        "https://www.googleapis.com/auth/drive.file",
+      fullDriveWriteScope:
+        FULL_DRIVE_WRITE_SCOPE,
+      scopeInspectionError:
+        scopeRecon.error || null
+    },
+    headquarters:
+      headquartersCapabilities,
+    institutionalRepository:
+      repositoryAssessment
+  };
+
+  state.grantedScopes = [...grantedScopes];
+  state.authorizationRecon = {
+    verified: scopeRecon.verified,
+    broadReadAuthorized,
+    controlledWriteAuthorized,
+    fullDriveWriteAuthorized,
+    authorizationUpgradeRequired:
+      !controlledWriteAuthorized,
+    inspectedAt: result.inspectedAt
+  };
+  state.institutionalStorage = result;
+
+  return result;
+}
+
 async function verifyConnection() {
   requireInitialized();
 
   const response = await driveClient.about.get({
-    fields: "user(displayName,emailAddress,permissionId),storageQuota(limit,usage)"
+    fields:
+      "user(displayName,emailAddress,permissionId)," +
+      "storageQuota(limit,usage,usageInDrive,usageInDriveTrash)"
   });
 
   const account = {
@@ -406,15 +729,33 @@ async function verifyConnection() {
   state.lastError = null;
   state.account = account;
 
+  let institutionalStorage = null;
+
+  try {
+    institutionalStorage =
+      await discoverInstitutionalStorage();
+  } catch (error) {
+    state.institutionalStorage = {
+      schema:
+        "meos.google-workspace.institutional-storage-recon.v1",
+      provider: PROVIDER_ID,
+      version: VERSION,
+      buildId: BUILD_ID,
+      inspectedAt: new Date().toISOString(),
+      success: false,
+      error: normalizeError(error)
+    };
+  }
+
   return {
     connected: true,
     account,
-    storageQuota: {
-      limit:
-        response.data.storageQuota?.limit || null,
-      usage:
-        response.data.storageQuota?.usage || null
-    }
+    storageQuota: calculateStorageNumbers(
+      response.data.storageQuota || {}
+    ),
+    institutionalStorage:
+      institutionalStorage ||
+      state.institutionalStorage
   };
 }
 
@@ -472,7 +813,10 @@ async function initialize() {
       {
         configured: true,
         connected: state.connected,
-        mode: "read-only",
+        mode:
+          state.authorizationRecon?.controlledWriteAuthorized
+            ? "read-plus-app-managed-write"
+            : "read-only",
         tokenLoaded: state.tokenLoaded
       }
     );
@@ -500,7 +844,7 @@ function getAuthorizationUrl(options = {}) {
       options.forceConsent === false
         ? "select_account"
         : "consent",
-    scope: READ_ONLY_SCOPES,
+    scope: AUTHORIZATION_SCOPES,
     state: signedState
   });
 }
@@ -583,6 +927,9 @@ async function disconnect({
   state.tokenLoaded = false;
   state.account = null;
   state.headquarters = null;
+  state.grantedScopes = [];
+  state.authorizationRecon = null;
+  state.institutionalStorage = null;
   state.lastError = null;
 
   return getStatus();
@@ -867,12 +1214,20 @@ function getClients() {
 
 function getStatus() {
   const config = configurationStatus();
+  const controlledWriteAuthorized =
+    Boolean(
+      state.authorizationRecon
+        ?.controlledWriteAuthorized
+    );
 
   return {
     provider: PROVIDER_ID,
     version: VERSION,
     buildId: BUILD_ID,
-    mode: "read-only",
+    mode:
+      controlledWriteAuthorized
+        ? "read-plus-app-managed-write"
+        : "read-only",
     initialized: state.initialized,
     configured: config.configured,
     missingConfiguration: config.missing,
@@ -881,7 +1236,17 @@ function getStatus() {
     tokenSource: state.tokenSource,
     durableAuthorizationConfigured:
       Boolean(ENV_REFRESH_TOKEN),
-    scopes: [...READ_ONLY_SCOPES],
+    scopes: {
+      requested: [...AUTHORIZATION_SCOPES],
+      readOnly: [...READ_ONLY_SCOPES],
+      controlledWrite:
+        [...CONTROLLED_WRITE_SCOPES],
+      granted: [...state.grantedScopes]
+    },
+    authorization:
+      state.authorizationRecon
+        ? { ...state.authorizationRecon }
+        : null,
     redirectUriConfigured:
       Boolean(REDIRECT_URI),
     rootFolderConfigured:
@@ -894,6 +1259,14 @@ function getStatus() {
     headquarters: state.headquarters
       ? { ...state.headquarters }
       : null,
+    institutionalStorage:
+      state.institutionalStorage
+        ? JSON.parse(
+            JSON.stringify(
+              state.institutionalStorage
+            )
+          )
+        : null,
     lastInitializedAt:
       state.lastInitializedAt,
     lastAuthorizedAt:
@@ -916,12 +1289,21 @@ function getStatus() {
       authorize: true,
       refreshTokens: true,
       disconnect: true,
+      institutionalStorageRecon: true,
       driveSearch: true,
       driveListFolders: true,
       driveListHeadquarters: true,
       docsRead: true,
       sheetsRead: true,
-      driveWrite: false,
+      driveWrite:
+        controlledWriteAuthorized,
+      driveAppManagedWrite:
+        controlledWriteAuthorized,
+      driveFullWrite:
+        Boolean(
+          state.authorizationRecon
+            ?.fullDriveWriteAuthorized
+        ),
       docsWrite: false,
       sheetsWrite: false,
       gmail: false,
@@ -939,12 +1321,16 @@ const GoogleWorkspaceProvider = Object.freeze({
   id: PROVIDER_ID,
   version: VERSION,
   buildId: BUILD_ID,
-  scopes: READ_ONLY_SCOPES,
+  scopes: AUTHORIZATION_SCOPES,
+  readOnlyScopes: READ_ONLY_SCOPES,
+  controlledWriteScopes:
+    CONTROLLED_WRITE_SCOPES,
   initialize,
   getStatus,
   getAuthorizationUrl,
   authorizeFromCallback,
   verifyConnection,
+  discoverInstitutionalStorage,
   disconnect,
   getClients,
   searchDrive,
@@ -957,7 +1343,9 @@ const GoogleWorkspaceProvider = Object.freeze({
 });
 
 export {
+  AUTHORIZATION_SCOPES,
   BUILD_ID,
+  CONTROLLED_WRITE_SCOPES,
   PROVIDER_ID,
   READ_ONLY_SCOPES,
   VERSION
