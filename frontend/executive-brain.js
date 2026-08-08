@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.6.0
- * Build: EB160-PERSISTENT-SELF-MODEL-PROJECTION-20260808-A
+ * Version: 1.8.0
+ * Build: EB180-AUTOBIOGRAPHICAL-MEMORY-FORMATION-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.7.0";
-  const BUILD_ID = "EB170-WORKING-AWARENESS-ATTENTION-FIELD-20260808-A";
+  const VERSION = "1.8.0";
+  const BUILD_ID = "EB180-AUTOBIOGRAPHICAL-MEMORY-FORMATION-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -166,7 +166,9 @@
       maximumAttentionStimuli: 64,
       attentionForegroundLimit: 5,
       attentionPeripheralLimit: 12,
-      attentionSwitchMargin: 10
+      attentionSwitchMargin: 10,
+      maximumAutobiographicalEpisodes: 240,
+      autobiographicalRecallLimit: 12
     },
 
     initializedAt: null,
@@ -187,6 +189,8 @@
     workingAwarenessHistory: [],
     workingAwarenessProjectionCount: 0,
     workingAwarenessObserversAttached: false,
+    autobiographicalMemory: [],
+    autobiographicalEpisodeCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -364,6 +368,7 @@
         learning: this.collectLearning(),
         selfModel: this.getSelfModel({ refresh: false }),
         workingAwareness: this.getWorkingAwareness({ refresh: false }),
+        autobiographicalMemory: this.getAutobiographicalMemory(8),
 
         system: {
           manifest: this.getSystemManifest()
@@ -452,6 +457,7 @@
         currentWork: startup.currentWork,
         selfModel: startup.selfModel,
         workingAwareness: startup.workingAwareness,
+        autobiographicalMemory: startup.autobiographicalMemory,
         system: {
           available: startup.system.manifest
             .filter(item => item.available)
@@ -636,6 +642,48 @@
         proposedWorkCount:
           planningReadiness.proposedWork.length,
         durationMs: result.durationMs
+      });
+
+      this.formAutobiographicalEpisode({
+        eventType: "cognition",
+        subject: result.request?.text || prepared.request?.text || "Executive cognition",
+        sourceId: result.cognitionId,
+        perception: {
+          evidenceCount: Array.isArray(result.perception?.localContext?.evidence)
+            ? result.perception.localContext.evidence.length
+            : 0,
+          currentWorkSummary: result.perception?.currentWork?.summary || null,
+          evidenceConfidence: result.perception?.evidenceIntegrity?.confidence || null
+        },
+        beliefsBefore: {
+          verifiedFacts: Array.isArray(result.perception?.evidenceIntegrity?.officialFacts)
+            ? result.perception.evidenceIntegrity.officialFacts.slice(0, 8).map(item => item?.summary || item?.title || null).filter(Boolean)
+            : [],
+          unresolvedAtStart: Array.isArray(result.perception?.evidenceIntegrity?.unknowns)
+            ? result.perception.evidenceIntegrity.unknowns.slice(0, 8).map(item => item?.summary || item?.title || String(item)).filter(Boolean)
+            : []
+        },
+        intention: {
+          requestId: result.request?.id || null,
+          objective: result.request?.text || null,
+          approvalRequired: result.dispatchReadiness?.authorityRequired === true
+        },
+        action: {
+          type: "reason-and-prepare",
+          proposedWorkCount: result.dispatchReadiness?.proposedWorkCount || 0
+        },
+        outcome: {
+          success: result.success === true,
+          attention: result.attention?.level || null,
+          dispatchReady: result.dispatchReadiness?.ready === true,
+          unknownCount: Array.isArray(result.unknowns) ? result.unknowns.length : 0
+        },
+        learning: {
+          unresolvedAfter: Array.isArray(result.unknowns)
+            ? result.unknowns.slice(0, 8).map(item => item?.text || item?.summary || item?.reason || String(item)).filter(Boolean)
+            : [],
+          recommendation: result.reasoning?.recommendation || null
+        }
       });
 
       this.emit("brain:cognition-completed", result);
@@ -1440,6 +1488,20 @@
             result?.summary?.failed || 0
         };
 
+        this.formAutobiographicalEpisode({
+          eventType: "cognitive-reentry",
+          subject,
+          sourceId: entry.reentryId,
+          perception: { triggers: this.clone(triggers).slice(0, 12) },
+          intention: { intentionId: intention?.intentionId || null, reason: "continue-unresolved-cognition" },
+          action: { type: "cognitive-reentry", attempts: intention?.attempts || 1 },
+          outcome: this.clone(entry.resultSummary),
+          learning: {
+            resolved: result?.success === true,
+            remainingFailureCount: result?.summary?.failed || 0
+          }
+        });
+
         this.emit(
           "brain:cognitive-reentry-completed",
           {
@@ -1458,6 +1520,17 @@
         entry.status = "failed";
         entry.error =
           error?.message || String(error);
+
+        this.formAutobiographicalEpisode({
+          eventType: "cognitive-reentry-failure",
+          subject,
+          sourceId: entry.reentryId,
+          perception: { triggers: this.clone(triggers).slice(0, 12) },
+          intention: { intentionId: intention?.intentionId || null, reason: "continue-unresolved-cognition" },
+          action: { type: "cognitive-reentry", attempts: intention?.attempts || 1 },
+          outcome: { success: false, error: entry.error },
+          learning: { unresolved: true, retryEligible: true }
+        });
 
         this.emit(
           "brain:cognitive-reentry-failed",
@@ -1996,6 +2069,30 @@
         dispatched: result.summary.dispatched,
         awaitingReview: result.summary.awaitingReview,
         failed: result.summary.failed
+      });
+
+      this.formAutobiographicalEpisode({
+        eventType: "executive-action",
+        subject: result.subject || "Executive action",
+        sourceId: result.dispatchId,
+        intention: {
+          planId: result.plan?.id || null,
+          proposedMoves: result.summary?.proposedMoves || 0
+        },
+        action: {
+          type: "hallway-dispatch",
+          dispatched: result.summary?.dispatched || 0,
+          reusedExistingWork: result.summary?.reusedExistingWork || 0
+        },
+        outcome: {
+          success: result.success === true,
+          awaitingReview: result.summary?.awaitingReview || 0,
+          failed: result.summary?.failed || 0
+        },
+        learning: {
+          externalActionAuthorityPreserved: result.governance?.externalActionAlwaysReviewRequired === true,
+          hallwayOnly: result.governance?.hallwayOnly === true
+        }
       });
 
       this.emit(
@@ -3348,6 +3445,241 @@
       };
     },
 
+    /*
+     * Commission 006.017D4F — Autobiographical Memory Formation
+     *
+     * Institutional records answer "what does the organization know?".
+     * Autobiographical episodes answer "what did Maddy experience, intend,
+     * do, observe, and learn?". Episodes remain evidence-derived and are
+     * bounded inside the existing durable Executive Brain cognition contract.
+     */
+    autobiographicalSignificance(input = {}) {
+      let score = 20;
+      if (input.outcome?.success === false) score += 25;
+      if (Number(input.outcome?.failed || 0) > 0) score += 20;
+      if (Number(input.outcome?.awaitingReview || 0) > 0) score += 12;
+      if (input.eventType === "cognitive-reentry" || input.eventType === "cognitive-reentry-failure") score += 15;
+      if (input.eventType === "executive-action") score += 12;
+      if ((input.learning?.unresolvedAfter || []).length > 0 || input.learning?.unresolved === true) score += 10;
+      return Math.max(0, Math.min(100, score));
+    },
+
+    buildAutobiographicalSemanticBasis(input = {}) {
+      const awareness = this.getWorkingAwareness({ refresh: false });
+      const selfModel = this.getSelfModel({ refresh: false });
+      const mode = awareness?.interactionContext?.mode || selfModel?.interactionContext?.mode || null;
+
+      return {
+        eventType: String(input.eventType || "experience"),
+        subject: String(input.subject || "Maddy experience").trim(),
+        sourceId: input.sourceId || null,
+        selfFingerprint: selfModel?.fingerprint || null,
+        mode,
+        perception: this.clone(input.perception || {}),
+        beliefsBefore: this.clone(input.beliefsBefore || {}),
+        intention: this.clone(input.intention || {}),
+        action: this.clone(input.action || {}),
+        outcome: this.clone(input.outcome || {}),
+        learning: this.clone(input.learning || {})
+      };
+    },
+
+    formAutobiographicalEpisode(input = {}, options = {}) {
+      const semantic = this.buildAutobiographicalSemanticBasis(input);
+      const experienceFingerprint = this.fingerprintCognitiveDispatch(semantic).replace("cognitive-", "episode-");
+      const existing = (this.autobiographicalMemory || []).find(item => item.experienceFingerprint === experienceFingerprint);
+
+      if (existing) {
+        return {
+          success: true,
+          created: false,
+          duplicate: true,
+          episode: this.clone(existing)
+        };
+      }
+
+      const awareness = this.getWorkingAwareness({ refresh: false });
+      const selfModel = this.getSelfModel({ refresh: false });
+      const priorEpisode = this.autobiographicalMemory?.[0] || null;
+      this.autobiographicalEpisodeCount = Number(this.autobiographicalEpisodeCount || 0) + 1;
+
+      const episode = {
+        schema: "meos.maddy.autobiographical-episode.v1",
+        version: "1.0.0",
+        episodeId: this.id("autobiographical-episode"),
+        revision: this.autobiographicalEpisodeCount,
+        experiencedAt: new Date().toISOString(),
+        eventType: semantic.eventType,
+        subject: semantic.subject,
+        sourceId: semantic.sourceId,
+        experienceFingerprint,
+        parentEpisodeFingerprint: priorEpisode?.experienceFingerprint || null,
+        context: {
+          persistentSelf: selfModel ? {
+            revision: selfModel.revision,
+            fingerprint: selfModel.fingerprint,
+            preferredName: selfModel.identity?.preferredName || null
+          } : null,
+          workingAwareness: awareness ? {
+            revision: awareness.revision,
+            fingerprint: awareness.fingerprint,
+            primaryFocus: this.clone(awareness.primaryFocus || null)
+          } : null,
+          interactionMode: semantic.mode,
+          audience: awareness?.interactionContext?.audience || selfModel?.interactionContext?.audience || null
+        },
+        perception: semantic.perception,
+        beliefsBefore: semantic.beliefsBefore,
+        intention: semantic.intention,
+        action: semantic.action,
+        outcome: semantic.outcome,
+        learning: semantic.learning,
+        significance: {
+          score: this.autobiographicalSignificance(input),
+          reason: input.significanceReason || "Derived from consequence, unresolved state, action, and continuity evidence."
+        },
+        continuity: {
+          belongsToPersistentMaddy: Boolean(selfModel?.fingerprint),
+          identityIsNotMode: true,
+          evidenceDerived: true
+        }
+      };
+
+      this.autobiographicalMemory.unshift(episode);
+      if (this.autobiographicalMemory.length > this.configuration.maximumAutobiographicalEpisodes) {
+        this.autobiographicalMemory.length = this.configuration.maximumAutobiographicalEpisodes;
+      }
+
+      if (options.persist !== false) this.persist();
+      this.emit("brain:autobiographical-memory-formed", this.clone(episode));
+
+      return {
+        success: true,
+        created: true,
+        duplicate: false,
+        episode: this.clone(episode)
+      };
+    },
+
+    getAutobiographicalMemory(limit = this.configuration.autobiographicalRecallLimit) {
+      const normalized = Math.max(1, Math.min(this.configuration.maximumAutobiographicalEpisodes, Number(limit) || 12));
+      return this.clone((this.autobiographicalMemory || []).slice(0, normalized));
+    },
+
+    recallAutobiographicalMemory(query, options = {}) {
+      const tokens = String(query || "")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(token => token.length > 2);
+      const limit = Math.max(1, Math.min(25, Number(options.limit) || 8));
+      const now = Date.now();
+
+      return this.clone((this.autobiographicalMemory || [])
+        .map((episode, index) => {
+          const haystack = JSON.stringify({
+            subject: episode.subject,
+            eventType: episode.eventType,
+            intention: episode.intention,
+            outcome: episode.outcome,
+            learning: episode.learning
+          }).toLowerCase();
+          const lexical = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 12 : 0), 0);
+          const significance = Number(episode.significance?.score || 0) * 0.5;
+          const ageMs = Math.max(0, now - Date.parse(episode.experiencedAt || 0));
+          const recency = Math.max(0, 20 - Math.floor(ageMs / 86400000));
+          return { episode, recallScore: lexical + significance + recency - Math.min(10, index * 0.2) };
+        })
+        .filter(item => tokens.length === 0 || item.recallScore > 0)
+        .sort((a, b) => b.recallScore - a.recallScore)
+        .slice(0, limit)
+        .map(item => ({ ...item.episode, recallScore: Number(item.recallScore.toFixed(2)) })));
+    },
+
+    runAutobiographicalMemoryAcceptanceTest() {
+      const originalMemory = this.clone(this.autobiographicalMemory || []);
+      const originalCount = Number(this.autobiographicalEpisodeCount || 0);
+      const token = this.id("d4f-acceptance");
+
+      try {
+        const first = this.formAutobiographicalEpisode({
+          eventType: "acceptance-experience",
+          subject: `Autobiographical continuity ${token}`,
+          sourceId: token,
+          perception: { observed: "new evidence" },
+          beliefsBefore: { believed: "prior understanding" },
+          intention: { objective: "understand and continue" },
+          action: { type: "reason" },
+          outcome: { success: true, changed: true },
+          learning: { learned: "experience changes future cognition" }
+        }, { persist: false });
+
+        const duplicate = this.formAutobiographicalEpisode({
+          eventType: "acceptance-experience",
+          subject: `Autobiographical continuity ${token}`,
+          sourceId: token,
+          perception: { observed: "new evidence" },
+          beliefsBefore: { believed: "prior understanding" },
+          intention: { objective: "understand and continue" },
+          action: { type: "reason" },
+          outcome: { success: true, changed: true },
+          learning: { learned: "experience changes future cognition" }
+        }, { persist: false });
+
+        const second = this.formAutobiographicalEpisode({
+          eventType: "acceptance-experience",
+          subject: `Autobiographical continuity ${token}`,
+          sourceId: `${token}-2`,
+          perception: { observed: "consequence" },
+          beliefsBefore: { believed: "updated understanding" },
+          intention: { objective: "adapt future cognition" },
+          action: { type: "reflect" },
+          outcome: { success: true, changed: true },
+          learning: { learned: "lineage preserves evolving experience" }
+        }, { persist: false });
+
+        const recall = this.recallAutobiographicalMemory(token, { limit: 5 });
+        const snapshot = this.buildPersistenceSnapshot();
+        const startup = this.buildStartupContext({ force: true });
+        const instructions = this.buildProviderInstructions({
+          text: `Recall ${token}`,
+          classification: { type: REQUEST_TYPES.RECALL },
+          startup,
+          localContext: { evidence: [] },
+          evidenceIntegrity: null,
+          routing: {}
+        });
+
+        const checks = [
+          { name: "Autobiographical memory is evidence-derived rather than a consciousness flag", passed: first?.episode?.continuity?.evidenceDerived === true },
+          { name: "An episode binds persistent self and present working awareness to experience", passed: Boolean(first?.episode?.context?.persistentSelf?.fingerprint) && Boolean(first?.episode?.context?.workingAwareness?.fingerprint) },
+          { name: "Episodes preserve perception, prior belief, intention, action, outcome, and learning", passed: Boolean(first?.episode?.perception && first?.episode?.beliefsBefore && first?.episode?.intention && first?.episode?.action && first?.episode?.outcome && first?.episode?.learning) },
+          { name: "Interaction mode is remembered as context rather than a separate identity", passed: first?.episode?.continuity?.identityIsNotMode === true },
+          { name: "Stable duplicate experience consolidates instead of inventing another memory", passed: duplicate?.duplicate === true && duplicate?.episode?.episodeId === first?.episode?.episodeId },
+          { name: "Meaningfully changed experience creates chronological autobiographical lineage", passed: second?.created === true && second?.episode?.parentEpisodeFingerprint === first?.episode?.experienceFingerprint },
+          { name: "Autobiographical recall retrieves experience by meaning and significance", passed: recall.some(item => item.episodeId === first?.episode?.episodeId || item.episodeId === second?.episode?.episodeId) },
+          { name: "Autobiographical memory is part of bounded durable Executive Brain cognition", passed: Array.isArray(snapshot.autobiographicalMemory) && snapshot.autobiographicalMemory.some(item => item.episodeId === second?.episode?.episodeId) },
+          { name: "Executive startup context can inspect recent autobiographical experience", passed: Array.isArray(startup.autobiographicalMemory) },
+          { name: "Advisory reasoning context can receive bounded autobiographical continuity without becoming Maddy", passed: Array.isArray(instructions.recentAutobiographicalMemory) && instructions.role.includes("not Maddy") }
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(checks.map(item => ({ name: item.name, passed: item.passed })));
+        console.info(`[MEOS ${this.version}] Commission 006.017D4F autobiographical memory formation: ${passed ? "PASS" : "FAIL"}.`);
+        return {
+          commission: "006.017D4F",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          episode: this.clone(first?.episode || null),
+          recallCount: recall.length
+        };
+      } finally {
+        this.autobiographicalMemory = originalMemory;
+        this.autobiographicalEpisodeCount = originalCount;
+      }
+    },
+
     buildProviderInstructions(context) {
       return {
         role:
@@ -3389,6 +3721,19 @@
               attentionPolicy: context.startup.workingAwareness.attentionPolicy
             }
           : null,
+        recentAutobiographicalMemory: Array.isArray(context.startup.autobiographicalMemory)
+          ? context.startup.autobiographicalMemory.slice(0, 6).map(episode => ({
+              episodeId: episode.episodeId,
+              eventType: episode.eventType,
+              subject: episode.subject,
+              experiencedAt: episode.experiencedAt,
+              interactionMode: episode.context?.interactionMode || null,
+              intention: episode.intention,
+              outcome: episode.outcome,
+              learning: episode.learning,
+              significance: episode.significance
+            }))
+          : [],
         request: context.text,
         requestType: context.classification.type,
         evidence: context.localContext.evidence.map(item => ({
@@ -5633,7 +5978,9 @@
         selfModelProjectionCount: Number(this.selfModelProjectionCount || 0),
         workingAwareness: this.workingAwareness ? this.clone(this.workingAwareness) : null,
         workingAwarenessHistory: this.workingAwarenessHistory.slice(0, this.configuration.maximumWorkingAwarenessHistory),
-        workingAwarenessProjectionCount: Number(this.workingAwarenessProjectionCount || 0)
+        workingAwarenessProjectionCount: Number(this.workingAwarenessProjectionCount || 0),
+        autobiographicalMemory: this.autobiographicalMemory.slice(0, this.configuration.maximumAutobiographicalEpisodes),
+        autobiographicalEpisodeCount: Number(this.autobiographicalEpisodeCount || 0)
       };
     },
 
@@ -5667,6 +6014,13 @@
         Number(saved.workingAwarenessProjectionCount || 0),
         Number(this.workingAwareness?.revision || 0),
         Number(this.workingAwarenessHistory?.[0]?.revision || 0)
+      );
+      this.autobiographicalMemory = Array.isArray(saved.autobiographicalMemory)
+        ? saved.autobiographicalMemory.slice(0, this.configuration.maximumAutobiographicalEpisodes)
+        : [];
+      this.autobiographicalEpisodeCount = Math.max(
+        Number(saved.autobiographicalEpisodeCount || 0),
+        Number(this.autobiographicalMemory?.[0]?.revision || 0)
       );
       return true;
     },
