@@ -1,6 +1,7 @@
 /*
  * MEOS Institutional Reasoning Engine
- * Version: 1.0.0
+ * Version: 1.1.0
+ * Build: IR110-COUNTERFACTUAL-POSITIONING-20260808-A
  *
  * Mission:
  * Turn supported institutional evidence into explainable executive analysis,
@@ -39,7 +40,8 @@
 
     const InstitutionalReasoning = {
         name: "MEOS Institutional Reasoning Engine",
-        version: "1.0.0",
+        version: "1.1.0",
+        buildId: "IR110-COUNTERFACTUAL-POSITIONING-20260808-A",
         status: "initializing",
         operatingMode: "evidence-grounded-reasoning",
 
@@ -89,7 +91,7 @@
             this.registerSystemKnowledge();
 
             console.info(
-                `[MEOS] ${this.name} v${this.version} ${this.status}.`
+                `[MEOS] ${this.name} v${this.version} ${this.status}. Build ${this.buildId}.`
             );
 
             this.emit("reasoning:online", this.getStatus());
@@ -273,6 +275,969 @@
             this.emit("reasoning:completed", this.clone(response));
 
             return response;
+        },
+
+
+        /*
+         * Commission 006.016D — Counterfactual Positioning Cognition
+         *
+         * Future opportunities are not reminders. They are strategic time.
+         * This cognition asks what must become true before an opportunity is
+         * actionable, distinguishes legitimate adaptation from fabrication,
+         * identifies unknowns that require investigation, and creates
+         * evidence-grounded positioning moves without claiming eligibility
+         * that the institutional record does not support.
+         */
+        analyzePositioning(subject, options = {}) {
+            const query =
+                typeof subject === "string"
+                    ? subject
+                    : subject?.source?.title ||
+                      subject?.title ||
+                      subject?.summary ||
+                      "";
+
+            if (!this.normalizeText(query)) {
+                return {
+                    success: false,
+                    error:
+                        "Counterfactual positioning requires an opportunity subject."
+                };
+            }
+
+            const recallQuestion =
+                [
+                    query,
+                    "opportunity eligibility funded activities restrictions deadline application",
+                    "organization mission strategy current capabilities assets dependencies prior decisions",
+                    "what must become true before this opportunity becomes actionable"
+                ].join(" ");
+
+            const base = this.analyzeStrategy(
+                recallQuestion,
+                {
+                    ...options,
+                    evidenceLimit:
+                        options.evidenceLimit || 100,
+                    includeImplementation: true
+                }
+            );
+
+            const recalledCase =
+                this.findOpportunityCaseInRecall(
+                    base,
+                    subject
+                );
+
+            const caseContent =
+                recalledCase?.content ||
+                (
+                    typeof subject === "object"
+                        ? subject
+                        : {}
+                );
+
+            const opportunity =
+                this.extractOpportunityPositioningState(
+                    caseContent,
+                    recalledCase
+                );
+
+            const organization =
+                this.extractOrganizationPositioningState(
+                    base
+                );
+
+            const counterfactuals =
+                this.buildPositioningCounterfactuals({
+                    opportunity,
+                    organization,
+                    base
+                });
+
+            const alignment =
+                this.buildLegitimateAlignmentAnalysis({
+                    opportunity,
+                    organization,
+                    base
+                });
+
+            const investigations =
+                this.buildPositioningInvestigations({
+                    opportunity,
+                    counterfactuals
+                });
+
+            const moves =
+                this.buildPositioningMoves({
+                    opportunity,
+                    organization,
+                    counterfactuals,
+                    alignment,
+                    investigations
+                });
+
+            const futureStates =
+                this.simulatePositioningFutures({
+                    opportunity,
+                    moves,
+                    investigations
+                });
+
+            const readiness =
+                this.assessPositioningReadiness({
+                    opportunity,
+                    counterfactuals,
+                    investigations,
+                    alignment
+                });
+
+            const response = {
+                success: true,
+                schema:
+                    "meos.institutional-reasoning.positioning-cognition.v1",
+                mode: "counterfactual-positioning",
+                subject: query,
+                opportunity,
+                organizationContext: organization,
+                whatMustBecomeTrue:
+                    counterfactuals,
+                legitimateAlignment: alignment,
+                consequentialUnknowns:
+                    investigations,
+                positioningMoves: moves,
+                futureStates,
+                readiness,
+                guardrails: {
+                    adaptationAllowed: true,
+                    fabricationAllowed: false,
+                    unsupportedEligibilityClaimsAllowed:
+                        false,
+                    missionMutationRequired: false,
+                    principle:
+                        "Adapt real organizational activity only where it truthfully advances the organization's purposes and the opportunity's verified outcomes."
+                },
+                sourceReasoning: base,
+                generatedAt:
+                    new Date().toISOString()
+            };
+
+            this.recordAnalysis({
+                ...base,
+                question:
+                    `Counterfactual positioning: ${query}`,
+                normalizedQuestion:
+                    this.normalizeText(
+                        `counterfactual positioning ${query}`
+                    ),
+                mode: "strategic",
+                recommendation:
+                    base.recommendation,
+                executiveSummary:
+                    base.executiveSummary,
+                positioningCognition:
+                    this.clone(response)
+            });
+
+            this.emit(
+                "reasoning:positioning-completed",
+                this.clone(response)
+            );
+
+            return response;
+        },
+
+        findOpportunityCaseInRecall(base, subject) {
+            const directId =
+                typeof subject === "object"
+                    ? subject?.id ||
+                      subject?.recordId ||
+                      subject?.source?.id
+                    : null;
+
+            const candidates = [
+                ...(base?.sourceRecall?.records || []),
+                ...(base?.evidence || []),
+                ...(base?.findings || [])
+            ];
+
+            const knowledge =
+                global.MEOSKnowledgeEngine ||
+                global.KnowledgeEngine;
+
+            if (
+                directId &&
+                knowledge &&
+                typeof knowledge.getRecordById ===
+                    "function"
+            ) {
+                const direct =
+                    knowledge.getRecordById(directId);
+
+                if (direct) {
+                    return direct;
+                }
+            }
+
+            if (
+                knowledge &&
+                Array.isArray(knowledge.records)
+            ) {
+                const normalized =
+                    this.normalizeText(
+                        typeof subject === "string"
+                            ? subject
+                            : subject?.source?.title ||
+                              subject?.title ||
+                              ""
+                    );
+
+                const match =
+                    knowledge.records.find((record) => {
+                        if (
+                            record.recordType !==
+                            "executive-opportunity-case"
+                        ) {
+                            return false;
+                        }
+
+                        const haystack =
+                            this.normalizeText(
+                                [
+                                    record.title,
+                                    record.summary,
+                                    record.metadata
+                                        ?.opportunitySourceId,
+                                    record.content?.source
+                                        ?.title
+                                ].join(" ")
+                            );
+
+                        return (
+                            normalized &&
+                            (
+                                haystack.includes(
+                                    normalized
+                                ) ||
+                                normalized.includes(
+                                    haystack
+                                )
+                            )
+                        );
+                    });
+
+                if (match) {
+                    return match;
+                }
+            }
+
+            return candidates.find(
+                (item) =>
+                    item?.recordType ===
+                        "executive-opportunity-case" ||
+                    item?.metadata?.evidenceClass ===
+                        "working-executive-analysis"
+            ) || null;
+        },
+
+        extractOpportunityPositioningState(
+            opportunityCase = {},
+            record = null
+        ) {
+            const intelligence =
+                opportunityCase
+                    .opportunityIntelligence || {};
+            const cycle =
+                intelligence.cycle || {};
+            const evidence =
+                opportunityCase.evidence || {};
+            const unknowns =
+                Array.isArray(
+                    opportunityCase.unknowns
+                )
+                    ? opportunityCase.unknowns
+                    : Array.isArray(
+                          record?.metadata?.unknowns
+                      )
+                        ? record.metadata.unknowns
+                        : [];
+
+            return {
+                recordId: record?.id || null,
+                source:
+                    this.clone(
+                        opportunityCase.source || {}
+                    ),
+                cycle:
+                    this.clone(cycle),
+                moneyEvidence:
+                    this.clone(
+                        intelligence.moneyEvidence || []
+                    ),
+                eligibilityEvidence:
+                    this.clone(
+                        intelligence
+                            .eligibilityEvidence || []
+                    ),
+                fundedActivityEvidence:
+                    this.clone(
+                        intelligence
+                            .fundedActivityEvidence || []
+                    ),
+                restrictionEvidence:
+                    this.clone(
+                        intelligence
+                            .restrictionEvidence || []
+                    ),
+                deadlineEvidence:
+                    this.clone(
+                        intelligence
+                            .deadlineEvidence || []
+                    ),
+                applicationEvidence:
+                    this.clone(
+                        intelligence
+                            .applicationEvidence || []
+                    ),
+                evidence:
+                    this.clone(evidence),
+                unknowns:
+                    this.clone(unknowns),
+                disposition:
+                    this.clone(
+                        opportunityCase.disposition ||
+                        {}
+                    ),
+                nextAction:
+                    opportunityCase.nextAction ||
+                    record?.metadata?.nextAction ||
+                    null
+            };
+        },
+
+        extractOrganizationPositioningState(base) {
+            const evidence = [
+                ...(base?.findings || [])
+            ];
+
+            const profile =
+                global.CCSPOrganizationalProfile ||
+                global.MEOSOrganizationalProfile ||
+                global.OrganizationalProfile ||
+                null;
+
+            const strategy =
+                global.CCSPLongTermStrategy ||
+                global.MEOSLongTermStrategy ||
+                global.LongTermStrategy ||
+                null;
+
+            return {
+                profileAvailable:
+                    Boolean(profile),
+                strategyAvailable:
+                    Boolean(strategy),
+                profile:
+                    profile
+                        ? this.clone(
+                              profile.profile ||
+                              profile.organization ||
+                              profile
+                          )
+                        : null,
+                strategy:
+                    strategy
+                        ? this.clone(
+                              strategy.strategy ||
+                              strategy
+                          )
+                        : null,
+                recalledInstitutionalEvidence:
+                    evidence.slice(0, 20)
+            };
+        },
+
+        buildPositioningCounterfactuals(context) {
+            const opportunity =
+                context.opportunity;
+            const conditions = [];
+
+            const add = (
+                category,
+                statement,
+                state,
+                evidenceBasis,
+                blocking = false
+            ) => {
+                conditions.push({
+                    id:
+                        this.createId(
+                            "positioning-condition"
+                        ),
+                    category,
+                    statement,
+                    state,
+                    blocking,
+                    evidenceBasis
+                });
+            };
+
+            if (
+                opportunity.unknowns.length > 0
+            ) {
+                opportunity.unknowns.forEach(
+                    (unknown) => {
+                        add(
+                            "unknown",
+                            `Verify ${String(
+                                unknown
+                            ).replace(/\.$/, "")}.`,
+                            "unverified",
+                            "Executive Opportunity Case unknown",
+                            true
+                        );
+                    }
+                );
+            }
+
+            if (
+                opportunity.evidence?.checks
+                    ?.eligibilityVerified !== true
+            ) {
+                add(
+                    "eligibility",
+                    "Explicit applicant eligibility must be verified before Maddy can claim the organization qualifies.",
+                    "must-become-known",
+                    "Eligibility is not verified in the Opportunity Case.",
+                    true
+                );
+            }
+
+            if (
+                opportunity.cycle
+                    ?.explicitlyOpen !== true
+            ) {
+                add(
+                    "timing",
+                    "The next actionable application window must open or be confirmed.",
+                    "future-condition",
+                    opportunity.cycle?.status ||
+                        "No verified open cycle.",
+                    true
+                );
+            }
+
+            if (
+                opportunity.deadlineEvidence
+                    .length === 0
+            ) {
+                add(
+                    "timing",
+                    "A controlling deadline or next-cycle publication date must be verified.",
+                    "must-become-known",
+                    "No deadline evidence is currently stored.",
+                    false
+                );
+            }
+
+            if (
+                opportunity.applicationEvidence
+                    .length === 0
+            ) {
+                add(
+                    "execution",
+                    "The application path and submission mechanism must be verified.",
+                    "must-become-known",
+                    "No application-path evidence is currently stored.",
+                    false
+                );
+            }
+
+            if (
+                opportunity.fundedActivityEvidence
+                    .length > 0
+            ) {
+                add(
+                    "strategic-fit",
+                    "The organization must be able to truthfully demonstrate that proposed work produces one or more verified funded outcomes.",
+                    "positionable",
+                    opportunity
+                        .fundedActivityEvidence
+                        .slice(0, 6),
+                    false
+                );
+            }
+
+            if (conditions.length === 0) {
+                add(
+                    "readiness",
+                    "Preserve verified readiness and watch for material changes before submission.",
+                    "maintain",
+                    "No material positioning gap was identified from current evidence.",
+                    false
+                );
+            }
+
+            return conditions;
+        },
+
+        buildLegitimateAlignmentAnalysis(context) {
+            const funded =
+                context.opportunity
+                    .fundedActivityEvidence || [];
+            const profileText =
+                JSON.stringify(
+                    context.organization.profile ||
+                    {}
+                ).toLowerCase();
+            const strategyText =
+                JSON.stringify(
+                    context.organization.strategy ||
+                    {}
+                ).toLowerCase();
+
+            const alignments = funded
+                .map((activity) => {
+                    const words =
+                        String(activity)
+                            .toLowerCase()
+                            .match(/[a-z]{4,}/g) || [];
+                    const matches =
+                        [...new Set(words)]
+                            .filter(
+                                (word) =>
+                                    profileText.includes(
+                                        word
+                                    ) ||
+                                    strategyText.includes(
+                                        word
+                                    )
+                            )
+                            .slice(0, 8);
+
+                    return {
+                        fundedOutcome: activity,
+                        evidenceOfExistingAlignment:
+                            matches,
+                        state:
+                            matches.length > 0
+                                ? "adjacent-alignment-candidate"
+                                : "not-yet-supported",
+                        rule:
+                            matches.length > 0
+                                ? "Investigate whether existing or planned real work can truthfully produce this funded outcome."
+                                : "Do not manufacture alignment. Treat as unsupported until real organizational evidence exists."
+                    };
+                });
+
+            return {
+                candidates: alignments,
+                hasAdjacentCandidates:
+                    alignments.some(
+                        (item) =>
+                            item.state ===
+                            "adjacent-alignment-candidate"
+                    ),
+                requiresVerification:
+                    alignments.length > 0,
+                prohibited:
+                    "Changing labels, descriptions, or claims without corresponding real organizational activity."
+            };
+        },
+
+        buildPositioningInvestigations(context) {
+            const investigations =
+                context.opportunity.unknowns.map(
+                    (unknown, index) => ({
+                        id:
+                            this.createId(
+                                "positioning-investigation"
+                            ),
+                        priority:
+                            index === 0
+                                ? "high"
+                                : "normal",
+                        question:
+                            String(unknown),
+                        purpose:
+                            "Resolve a consequential unknown before the opportunity becomes actionable.",
+                        owner: "Maddy",
+                        status:
+                            "investigation-required"
+                    })
+                );
+
+            if (
+                context.opportunity.evidence
+                    ?.checks
+                    ?.eligibilityVerified !== true &&
+                !investigations.some((item) =>
+                    /eligib/i.test(item.question)
+                )
+            ) {
+                investigations.unshift({
+                    id:
+                        this.createId(
+                            "positioning-investigation"
+                        ),
+                    priority: "high",
+                    question:
+                        "What are the controlling applicant eligibility requirements for the next cycle?",
+                    purpose:
+                        "Prevent unsupported qualification claims and identify requirements early enough to act.",
+                    owner: "Maddy",
+                    status:
+                        "investigation-required"
+                });
+            }
+
+            return investigations;
+        },
+
+        buildPositioningMoves(context) {
+            const moves = [];
+            let order = 1;
+
+            context.investigations.forEach(
+                (investigation) => {
+                    moves.push({
+                        order: order++,
+                        type: "investigate",
+                        action:
+                            investigation.question,
+                        whyNow:
+                            investigation.purpose,
+                        owner: "Maddy",
+                        authority:
+                            "within-existing-research-authority",
+                        status: "proposed"
+                    });
+                }
+            );
+
+            context.alignment.candidates
+                .filter(
+                    (candidate) =>
+                        candidate.state ===
+                        "adjacent-alignment-candidate"
+                )
+                .slice(0, 5)
+                .forEach((candidate) => {
+                    moves.push({
+                        order: order++,
+                        type:
+                            "strategic-positioning",
+                        action:
+                            `Test a truthful program pathway connecting existing or planned organizational work to the verified funded outcome: ${candidate.fundedOutcome}`,
+                        whyNow:
+                            "Early discovery creates time to build real capability and evidence before the funding window opens.",
+                        owner: "Maddy",
+                        authority:
+                            "recommend-and-prepare",
+                        status: "proposed",
+                        guardrail:
+                            "No mission fabrication or unsupported eligibility claim."
+                    });
+                });
+
+            if (
+                context.opportunity.cycle
+                    ?.explicitlyOpen !== true
+            ) {
+                moves.push({
+                    order: order++,
+                    type: "monitor",
+                    action:
+                        "Monitor authoritative source material for the next-cycle opening, eligibility changes, deadlines, and application instructions.",
+                    whyNow:
+                        "Positioning work must continue before the application window rather than begin when the deadline appears.",
+                    owner:
+                        "Executive Monitoring",
+                    authority:
+                        "within-existing-monitoring-authority",
+                    status: "proposed"
+                });
+            }
+
+            return moves;
+        },
+
+        simulatePositioningFutures(context) {
+            const blocking =
+                context.investigations.length;
+            const moves =
+                context.moves.length;
+
+            return [
+                {
+                    scenario:
+                        "do-nothing-until-open",
+                    projectedState:
+                        blocking > 0
+                            ? "high-risk-late-discovery"
+                            : "readiness-uncertain",
+                    causalReason:
+                        `${blocking} consequential unknown(s) remain unresolved; waiting consumes positioning time.`
+                },
+                {
+                    scenario:
+                        "investigate-only",
+                    projectedState:
+                        "better-informed",
+                    causalReason:
+                        "Unknowns can be reduced, but organizational readiness may not improve unless findings become real positioning work."
+                },
+                {
+                    scenario:
+                        "position-now-and-monitor",
+                    projectedState:
+                        moves > 0
+                            ? "increasing-readiness"
+                            : "maintain-readiness",
+                    causalReason:
+                        "Early investigation, legitimate capability building, and monitoring preserve optionality before the next cycle."
+                }
+            ];
+        },
+
+        assessPositioningReadiness(context) {
+            const blockers =
+                context.counterfactuals.filter(
+                    (item) => item.blocking
+                ).length;
+            const unknowns =
+                context.investigations.length;
+
+            const score =
+                Math.max(
+                    0,
+                    Math.min(
+                        100,
+                        100 -
+                        blockers * 18 -
+                        unknowns * 8
+                    )
+                );
+
+            return {
+                score,
+                state:
+                    score >= 80
+                        ? "positioned"
+                        : score >= 55
+                            ? "positioning"
+                            : "not-yet-positioned",
+                blockingConditionCount:
+                    blockers,
+                consequentialUnknownCount:
+                    unknowns,
+                interpretation:
+                    blockers > 0
+                        ? "The opportunity is strategically useful now, but Maddy must resolve blocking conditions before claiming readiness."
+                        : "No blocking condition is currently established; continue monitoring for evidence changes."
+            };
+        },
+
+        runCounterfactualPositioningAcceptanceTest() {
+            const fixture = {
+                schema:
+                    "meos.executive-opportunity-case.v1",
+                source: {
+                    title:
+                        "Commission 006.016D Future Opportunity",
+                    geography:
+                        "Santa Cruz County, California"
+                },
+                opportunityIntelligence: {
+                    cycle: {
+                        status:
+                            "current-cycle-complete",
+                        explicitlyOpen: false
+                    },
+                    fundedActivityEvidence: [
+                        "environmental restoration and human services"
+                    ],
+                    deadlineEvidence: [],
+                    applicationEvidence: [
+                        "Future application portal"
+                    ]
+                },
+                evidence: {
+                    checks: {
+                        eligibilityVerified: false
+                    }
+                },
+                unknowns: [
+                    "Explicit applicant eligibility",
+                    "Next application deadline"
+                ],
+                disposition: {
+                    disposition:
+                        "monitor-next-cycle"
+                }
+            };
+
+            const opportunity =
+                this.extractOpportunityPositioningState(
+                    fixture
+                );
+            const organization = {
+                profileAvailable: true,
+                strategyAvailable: true,
+                profile: {
+                    mission:
+                        "human services and environmental protection"
+                },
+                strategy: {
+                    programs:
+                        "watershed restoration"
+                },
+                recalledInstitutionalEvidence: []
+            };
+            const counterfactuals =
+                this.buildPositioningCounterfactuals({
+                    opportunity,
+                    organization,
+                    base: {}
+                });
+            const alignment =
+                this.buildLegitimateAlignmentAnalysis({
+                    opportunity,
+                    organization,
+                    base: {}
+                });
+            const investigations =
+                this.buildPositioningInvestigations({
+                    opportunity,
+                    counterfactuals
+                });
+            const moves =
+                this.buildPositioningMoves({
+                    opportunity,
+                    organization,
+                    counterfactuals,
+                    alignment,
+                    investigations
+                });
+            const futures =
+                this.simulatePositioningFutures({
+                    opportunity,
+                    moves,
+                    investigations
+                });
+
+            const checks = [
+                {
+                    name:
+                        "Future opportunity is preserved as strategic work",
+                    passed:
+                        counterfactuals.length > 0
+                },
+                {
+                    name:
+                        "Unverified eligibility remains an explicit blocker",
+                    passed:
+                        counterfactuals.some(
+                            (item) =>
+                                item.category ===
+                                    "eligibility" &&
+                                item.blocking === true
+                        )
+                },
+                {
+                    name:
+                        "Consequential unknowns become investigations",
+                    passed:
+                        investigations.length >= 2
+                },
+                {
+                    name:
+                        "Adjacent alignment is detected without declaring qualification",
+                    passed:
+                        alignment
+                            .hasAdjacentCandidates ===
+                            true &&
+                        alignment.candidates.every(
+                            (item) =>
+                                item.state !==
+                                "qualified"
+                        )
+                },
+                {
+                    name:
+                        "Mission fabrication is explicitly prohibited",
+                    passed:
+                        /do not manufacture/i.test(
+                            alignment.candidates
+                                .find(
+                                    (item) =>
+                                        item.state ===
+                                        "not-yet-supported"
+                                )?.rule || ""
+                        ) ||
+                        alignment.prohibited
+                            .toLowerCase()
+                            .includes(
+                                "without corresponding real organizational activity"
+                            )
+                },
+                {
+                    name:
+                        "Positioning produces work now rather than a reminder",
+                    passed:
+                        moves.some(
+                            (item) =>
+                                item.type ===
+                                "investigate"
+                        ) &&
+                        moves.some(
+                            (item) =>
+                                item.type ===
+                                "strategic-positioning"
+                        )
+                },
+                {
+                    name:
+                        "Future simulation compares inaction with positioning",
+                    passed:
+                        futures.some(
+                            (item) =>
+                                item.scenario ===
+                                "do-nothing-until-open"
+                        ) &&
+                        futures.some(
+                            (item) =>
+                                item.scenario ===
+                                "position-now-and-monitor"
+                        )
+                },
+                {
+                    name:
+                        "Counterfactual cognition remains evidence-grounded and non-executing",
+                    passed:
+                        this.operatingMode ===
+                            "evidence-grounded-reasoning" &&
+                        this.configuration
+                            .requireExecutiveApproval ===
+                            true
+                }
+            ];
+
+            const passed =
+                checks.every((item) => item.passed);
+
+            console.table(checks);
+            console.info(
+                `[MEOS ${this.version}] Commission 006.016D counterfactual positioning acceptance: ${passed ? "PASS" : "FAIL"}.`
+            );
+
+            return {
+                commission: "006.016D",
+                version: this.version,
+                buildId: this.buildId,
+                passed,
+                checks
+            };
         },
 
         analyzeDecision(question, options = {}) {
@@ -1187,6 +2152,7 @@
             return {
                 name: this.name,
                 version: this.version,
+                buildId: this.buildId,
                 status: this.status,
                 operatingMode: this.operatingMode,
                 organizationNeutralCore:
