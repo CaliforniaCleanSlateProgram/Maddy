@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.15";
+const VERSION = "2.10.16";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1289,6 +1289,104 @@ const EXECUTIVE_MEMORY_MAX_RECORD_BYTES = Number(
 );
 
 const executiveMemoryWriteLocks = new Map();
+
+
+const MISSION_STATE_REPOSITORY_COMMISSION = "006.017D3A";
+const MISSION_STATE_REPOSITORY_VERSION = "1.0.0";
+const MISSION_STATE_REPOSITORY_BUILD_ID =
+  "MSR100-DURABLE-MISSION-AUTHORITY-SEAM-20260808-A";
+const MISSION_STATE_REPOSITORY_NAMESPACE =
+  "mission-engine";
+const MISSION_STATE_REPOSITORY_KEY =
+  "authoritative-state";
+const MISSION_STATE_REPOSITORY_CLASSIFICATION =
+  "institutional";
+
+function normalizeMissionStateEnvelope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const error = new Error(
+      "Mission State payload must be an object."
+    );
+    error.status = 400;
+    error.code = "MISSION_STATE_PAYLOAD_INVALID";
+    throw error;
+  }
+
+  const state =
+    value.state &&
+    typeof value.state === "object" &&
+    !Array.isArray(value.state)
+      ? value.state
+      : value;
+
+  const requiredArrays = [
+    "missions",
+    "approvalQueue",
+    "completedMissions",
+    "archivedMissions",
+    "activity"
+  ];
+
+  for (const field of requiredArrays) {
+    if (!Array.isArray(state[field])) {
+      const error = new Error(
+        `Mission State field "${field}" must be an array.`
+      );
+      error.status = 400;
+      error.code = "MISSION_STATE_SCHEMA_INVALID";
+      throw error;
+    }
+  }
+
+  return {
+    schema: "meos.mission-engine.durable-state.v1",
+    version:
+      String(value.version || "0.1.1"),
+    buildId:
+      String(value.buildId || ""),
+    savedAt: new Date().toISOString(),
+    state
+  };
+}
+
+async function readDurableMissionState() {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  return InstitutionalRepositoryAuthority.read({
+    namespace: MISSION_STATE_REPOSITORY_NAMESPACE,
+    key: MISSION_STATE_REPOSITORY_KEY,
+    classification:
+      MISSION_STATE_REPOSITORY_CLASSIFICATION
+  });
+}
+
+async function writeDurableMissionState(
+  value,
+  expectedPreviousFingerprint = undefined
+) {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  const envelope =
+    normalizeMissionStateEnvelope(value);
+
+  return InstitutionalRepositoryAuthority.write({
+    namespace: MISSION_STATE_REPOSITORY_NAMESPACE,
+    key: MISSION_STATE_REPOSITORY_KEY,
+    classification:
+      MISSION_STATE_REPOSITORY_CLASSIFICATION,
+    value: envelope,
+    metadata: {
+      subsystem: "mission-engine",
+      commission:
+        MISSION_STATE_REPOSITORY_COMMISSION,
+      buildId:
+        MISSION_STATE_REPOSITORY_BUILD_ID,
+      storageRole:
+        "durable-organizational-mission-state"
+    },
+    expectedPreviousFingerprint
+  });
+}
 
 const EXECUTIVE_MEMORY_REPOSITORY_COMMISSION = "006.017D2";
 const EXECUTIVE_MEMORY_REPOSITORY_BUILD_ID =
@@ -6565,6 +6663,293 @@ app.put(
           error?.code ||
           "CONTINUOUS_OPERATIONS_JOB_UPDATE_FAILED"
       });
+    }
+  }
+);
+
+
+/**
+ * Commission 006.017D3A — Mission State Durable Authority Seam
+ *
+ * This is deliberately server-side first. It gives Mission Engine one
+ * provider-neutral durable state contract without yet changing the browser
+ * engine's runtime behavior. The following one-file commission can switch
+ * Mission Engine from IndexedDB authority to this seam and retain IndexedDB
+ * only as offline cache.
+ */
+app.get(
+  "/api/mission-state",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const result =
+        await readDurableMissionState();
+
+      if (!result?.found) {
+        response.status(404).json({
+          commission:
+            MISSION_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.mission-state.read.v1",
+          found: false,
+          authority:
+            "meos-institutional-repository",
+          providerId:
+            result?.providerId || null
+        });
+        return;
+      }
+
+      response.status(200).json({
+        commission:
+          MISSION_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.mission-state.read.v1",
+        found: true,
+        authority:
+          result.authority,
+        providerId:
+          result.providerId,
+        record:
+          result.record,
+        value:
+          result.value
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            MISSION_STATE_REPOSITORY_COMMISSION,
+          success: false,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "MISSION_STATE_DURABLE_READ_FAILED"
+        });
+    }
+  }
+);
+
+app.put(
+  "/api/mission-state",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const expectedPreviousFingerprint =
+        request.get(
+          "If-MEOS-Previous-Fingerprint"
+        ) || undefined;
+
+      const result =
+        await writeDurableMissionState(
+          request.body,
+          expectedPreviousFingerprint
+        );
+
+      response.status(200).json({
+        commission:
+          MISSION_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.mission-state.write.v1",
+        success: true,
+        authority:
+          result.authority,
+        providerId:
+          result.providerId,
+        verification:
+          result.verification,
+        record:
+          result.record
+      });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            MISSION_STATE_REPOSITORY_COMMISSION,
+          success: false,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "MISSION_STATE_DURABLE_WRITE_FAILED",
+          details:
+            error?.details || null
+        });
+    }
+  }
+);
+
+app.post(
+  "/api/mission-state/acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const acceptanceKey =
+      `acceptance-${crypto.randomUUID()}`;
+    const namespace =
+      "mission-engine-acceptance";
+
+    try {
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const sentinel = {
+        schema:
+          "meos.mission-engine.durable-state.v1",
+        version: "0.1.1",
+        buildId:
+          MISSION_STATE_REPOSITORY_BUILD_ID,
+        savedAt:
+          new Date().toISOString(),
+        state: {
+          missions: [{
+            id: acceptanceKey,
+            title:
+              "Durable Mission Authority Sentinel",
+            status: "acceptance-only"
+          }],
+          approvalQueue: [],
+          completedMissions: [],
+          archivedMissions: [],
+          activity: [{
+            id:
+              `${acceptanceKey}-activity`,
+            action:
+              "prove-durable-mission-authority"
+          }],
+          initializedAt:
+            new Date().toISOString(),
+          updatedAt:
+            new Date().toISOString()
+        }
+      };
+
+      const write =
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            MISSION_STATE_REPOSITORY_CLASSIFICATION,
+          value: sentinel,
+          metadata: {
+            subsystem: "mission-engine",
+            purpose:
+              "006.017D3A-live-acceptance"
+          }
+        });
+
+      const read =
+        await InstitutionalRepositoryAuthority.read({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            MISSION_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      const checks = [
+        {
+          name:
+            "Mission State durable seam resolves through provider-neutral Repository Authority",
+          passed:
+            write?.authority ===
+              "durable-institutional-repository"
+        },
+        {
+          name:
+            "Mission State acceptance write is durably verified",
+          passed:
+            write?.success === true &&
+            write?.verification?.verified === true
+        },
+        {
+          name:
+            "Mission State reads back through the selected durable provider",
+          passed:
+            read?.found === true &&
+            Boolean(read?.providerId)
+        },
+        {
+          name:
+            "Mission arrays survive semantic round trip",
+          passed:
+            read?.value?.state?.missions?.[0]?.id ===
+              acceptanceKey &&
+            Array.isArray(
+              read?.value?.state?.approvalQueue
+            ) &&
+            Array.isArray(
+              read?.value?.state?.activity
+            )
+        },
+        {
+          name:
+            "Mission State authority is organization-owned durable storage rather than browser persistence",
+          passed:
+            read?.authority ===
+              "durable-institutional-repository"
+        }
+      ];
+
+      const cleanup =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            MISSION_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      checks.push({
+        name:
+          "Acceptance sentinel is removed through the same durable authority",
+        passed:
+          cleanup?.success === true &&
+          cleanup?.deleted === true
+      });
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response
+        .status(passed ? 200 : 500)
+        .json({
+          commission:
+            MISSION_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.mission-state.durable-authority.acceptance.v1",
+          version:
+            MISSION_STATE_REPOSITORY_VERSION,
+          buildId:
+            MISSION_STATE_REPOSITORY_BUILD_ID,
+          passed,
+          checks,
+          authorityStatus:
+            InstitutionalRepositoryAuthority.getStatus(),
+          serverVersion: VERSION
+        });
+    } catch (error) {
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            MISSION_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.mission-state.durable-authority.acceptance.v1",
+          version:
+            MISSION_STATE_REPOSITORY_VERSION,
+          buildId:
+            MISSION_STATE_REPOSITORY_BUILD_ID,
+          passed: false,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "MISSION_STATE_DURABLE_ACCEPTANCE_FAILED",
+          serverVersion: VERSION
+        });
     }
   }
 );
