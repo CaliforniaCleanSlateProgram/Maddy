@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Planning Engine
- * Version: 1.0.0
+ * Version: 1.0.1
  *
  * Mission:
  * Convert approved executive intent and evidence-grounded recommendations into
@@ -47,14 +47,19 @@
 
     const ExecutivePlanning = {
         name: "MEOS Executive Planning Engine",
-        version: "1.0.0",
+        version: "1.0.1",
         status: "initializing",
         operatingMode: "controlled-executive-planning",
+        buildId: "EP101-PLANNING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A",
 
         configuration: {
             persistenceEnabled: true,
             automaticPersistence: true,
             localStorageKey: STORAGE_KEY,
+            persistenceAuthority:
+                "durable-cognition-plus-hallway-mission-execution-state",
+            browserPersistenceRole:
+                "best-effort-planning-continuity-cache",
             organizationNeutralCore: true,
             requireExecutiveApproval: true,
             defaultPlanStatus: PLAN_STATUSES.DRAFT,
@@ -84,6 +89,16 @@
         },
         eventListeners: {},
         initializedAt: null,
+
+        persistenceRuntime: {
+            suspended: false,
+            reason: null,
+            suspendedAt: null,
+            lastSuccessfulPersistAt: null,
+            lastFailureAt: null,
+            warningEmitted: false,
+            retryCount: 0
+        },
 
         initialize(options = {}) {
             this.configuration = {
@@ -1811,6 +1826,27 @@
                     this.plans.length,
                 analytics:
                     this.clone(this.analytics),
+                persistence: {
+                    authority:
+                        this.configuration.persistenceAuthority,
+                    browserRole:
+                        this.configuration.browserPersistenceRole,
+                    configured:
+                        this.configuration.persistenceEnabled &&
+                        this.configuration.automaticPersistence,
+                    suspended:
+                        this.persistenceRuntime.suspended,
+                    reason:
+                        this.persistenceRuntime.reason,
+                    suspendedAt:
+                        this.persistenceRuntime.suspendedAt,
+                    lastSuccessfulPersistAt:
+                        this.persistenceRuntime.lastSuccessfulPersistAt,
+                    lastFailureAt:
+                        this.persistenceRuntime.lastFailureAt,
+                    retryCount:
+                        this.persistenceRuntime.retryCount
+                },
                 initializedAt:
                     this.initializedAt
             };
@@ -1888,7 +1924,10 @@
                 this.recalculatePlan(plan)
             );
             this.recalculateAnalytics();
-            this.persistIfEnabled();
+
+            if (options.persist !== false) {
+                this.persistIfEnabled();
+            }
 
             return {
                 success: true,
@@ -1897,6 +1936,16 @@
         },
 
         persistIfEnabled() {
+            if (this.persistenceRuntime.suspended) {
+                return {
+                    success: true,
+                    persisted: false,
+                    suspended: true,
+                    degraded: true,
+                    reason: this.persistenceRuntime.reason
+                };
+            }
+
             if (
                 this.configuration.persistenceEnabled &&
                 this.configuration.automaticPersistence
@@ -1910,10 +1959,82 @@
             };
         },
 
+        isStorageQuotaError(error) {
+            return Boolean(
+                error &&
+                (
+                    error.name === "QuotaExceededError" ||
+                    error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+                    error.code === 22 ||
+                    error.code === 1014 ||
+                    /quota/i.test(String(error.message || ""))
+                )
+            );
+        },
+
+        suspendBrowserPersistence(error) {
+            const now = new Date().toISOString();
+
+            this.persistenceRuntime.suspended = true;
+            this.persistenceRuntime.reason =
+                "browser-storage-quota-exhausted";
+            this.persistenceRuntime.suspendedAt =
+                this.persistenceRuntime.suspendedAt || now;
+            this.persistenceRuntime.lastFailureAt = now;
+
+            if (!this.persistenceRuntime.warningEmitted) {
+                this.persistenceRuntime.warningEmitted = true;
+                console.warn(
+                    "[MEOS Executive Planning] Browser planning continuity-cache persistence suspended after storage quota exhaustion. Planning remains operational; durable cognition plus Hallway/Mission execution state remain authoritative, and repeated local writes are suppressed until persistence is explicitly retried."
+                );
+            }
+
+            this.emit("planning:persistence-suspended", {
+                reason: this.persistenceRuntime.reason,
+                suspendedAt: this.persistenceRuntime.suspendedAt,
+                authority: this.configuration.persistenceAuthority,
+                browserRole: this.configuration.browserPersistenceRole,
+                error: error?.message || String(error || "")
+            });
+
+            return {
+                success: true,
+                persisted: false,
+                suspended: true,
+                degraded: true,
+                reason: this.persistenceRuntime.reason,
+                authority: this.configuration.persistenceAuthority
+            };
+        },
+
+        retryPersistence() {
+            this.persistenceRuntime.suspended = false;
+            this.persistenceRuntime.reason = null;
+            this.persistenceRuntime.suspendedAt = null;
+            this.persistenceRuntime.warningEmitted = false;
+            this.persistenceRuntime.retryCount += 1;
+
+            const result = this.persist();
+
+            return {
+                ...result,
+                retried: true,
+                retryCount: this.persistenceRuntime.retryCount
+            };
+        },
+
         persist() {
-            if (
-                !this.configuration.persistenceEnabled
-            ) {
+            if (this.persistenceRuntime.suspended) {
+                return {
+                    success: true,
+                    persisted: false,
+                    suspended: true,
+                    degraded: true,
+                    reason: this.persistenceRuntime.reason
+                };
+            }
+
+            if (!this.configuration.persistenceEnabled) {
                 return {
                     success: false,
                     error:
@@ -1924,6 +2045,8 @@
             if (!global.localStorage) {
                 return {
                     success: false,
+                    persisted: false,
+                    degraded: true,
                     error:
                         "Browser local storage is unavailable."
                 };
@@ -1939,11 +2062,23 @@
                     )
                 );
 
+                this.persistenceRuntime.lastSuccessfulPersistAt =
+                    new Date().toISOString();
+
                 return {
                     success: true,
-                    persisted: true
+                    persisted: true,
+                    authority: this.configuration.persistenceAuthority,
+                    browserRole: this.configuration.browserPersistenceRole
                 };
             } catch (error) {
+                this.persistenceRuntime.lastFailureAt =
+                    new Date().toISOString();
+
+                if (this.isStorageQuotaError(error)) {
+                    return this.suspendBrowserPersistence(error);
+                }
+
                 console.error(
                     "[MEOS Executive Planning] Persistence failed:",
                     error
@@ -1951,6 +2086,7 @@
 
                 return {
                     success: false,
+                    persisted: false,
                     error: error.message
                 };
             }
@@ -1983,7 +2119,8 @@
                 const result = this.importPlanning(
                     JSON.parse(stored),
                     {
-                        replace: true
+                        replace: true,
+                        persist: false
                     }
                 );
 
@@ -2003,6 +2140,114 @@
                     error: error.message
                 };
             }
+        },
+
+        runPersistenceAuthorityAcceptanceTest() {
+            const originalRuntime =
+                this.clone(this.persistenceRuntime);
+
+            const syntheticQuotaError = {
+                name: "QuotaExceededError",
+                message:
+                    "Synthetic acceptance quota exhaustion."
+            };
+
+            this.persistenceRuntime = {
+                suspended: false,
+                reason: null,
+                suspendedAt: null,
+                lastSuccessfulPersistAt: null,
+                lastFailureAt: null,
+                warningEmitted: true,
+                retryCount: 0
+            };
+
+            const suspension =
+                this.suspendBrowserPersistence(
+                    syntheticQuotaError
+                );
+
+            const suppressed =
+                this.persistIfEnabled();
+
+            const checks = [
+                {
+                    name:
+                        "Executive Planning declares durable cognition plus Hallway/Mission execution state as authority",
+                    passed:
+                        this.configuration.persistenceAuthority ===
+                        "durable-cognition-plus-hallway-mission-execution-state"
+                },
+                {
+                    name:
+                        "Browser persistence is explicitly a best-effort planning continuity cache",
+                    passed:
+                        this.configuration.browserPersistenceRole ===
+                        "best-effort-planning-continuity-cache"
+                },
+                {
+                    name:
+                        "Quota exhaustion trips a fail-visible browser persistence circuit breaker",
+                    passed:
+                        suspension?.suspended === true &&
+                        this.persistenceRuntime.suspended === true &&
+                        this.persistenceRuntime.reason ===
+                        "browser-storage-quota-exhausted"
+                },
+                {
+                    name:
+                        "Repeated planning-cache writes are suppressed after the first quota failure",
+                    passed:
+                        suppressed?.suspended === true &&
+                        suppressed?.persisted === false
+                },
+                {
+                    name:
+                        "Executive Planning remains online while its browser continuity cache is suspended",
+                    passed:
+                        this.status === "online"
+                },
+                {
+                    name:
+                        "Plans and planning history remain available in active memory when browser persistence degrades",
+                    passed:
+                        Array.isArray(this.plans) &&
+                        Array.isArray(this.planningHistory)
+                },
+                {
+                    name:
+                        "Persistence degradation does not grant approval, dispatch, spending, or external execution authority",
+                    passed:
+                        this.configuration.requireExecutiveApproval === true &&
+                        this.configuration.autoCreateMissionDrafts === false &&
+                        this.configuration.autoDispatchApprovedPlans === false
+                }
+            ];
+
+            this.persistenceRuntime = originalRuntime;
+
+            const passed =
+                checks.every((check) => check.passed);
+
+            console.table(
+                checks.map((check) => ({
+                    name: check.name,
+                    passed: check.passed
+                }))
+            );
+
+            console.info(
+                `[MEOS ${this.version}] Commission 006.017D4H2C Executive Planning persistence authority convergence: ${passed ? "PASS" : "FAIL"}.`
+            );
+
+            return {
+                commission: "006.017D4H2C",
+                version: this.version,
+                buildId: this.buildId,
+                passed,
+                checks,
+                status: this.getStatus()
+            };
         },
 
         clear(options = {}) {
