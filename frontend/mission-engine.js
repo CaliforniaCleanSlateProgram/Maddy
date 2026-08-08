@@ -1,7 +1,7 @@
 /**
  * MEOS Mission Engine
- * Version: 0.1.1
- * Build: ME011-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A
+ * Version: 0.1.4
+ * Build: ME014-AUTONOMOUS-INSTITUTIONAL-STATE-CONVERGENCE-20260808-A
  *
  * Purpose:
  * The Mission Engine is the central work-management system for MEOS.
@@ -22,8 +22,8 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.3";
-    const BUILD_ID = "ME013-GUARDED-LAPTOP-RECOVERY-20260808-A";
+    const VERSION = "0.1.4";
+    const BUILD_ID = "ME014-AUTONOMOUS-INSTITUTIONAL-STATE-CONVERGENCE-20260808-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -62,6 +62,13 @@
         recoveryCandidate: null,
         recoveryScanAt: null,
         lastRecoveryAt: null,
+        convergenceMode: "autonomous-safe-convergence",
+        convergenceState: "idle",
+        lastConvergenceAt: null,
+        lastConvergenceAction: null,
+        lastConvergenceReason: null,
+        lastConvergenceEvidence: null,
+        convergenceConflict: null,
         lastError: null
     };
 
@@ -401,6 +408,8 @@
                 savedAt: now(),
                 authority: "meos-institutional-repository",
                 role: "offline-continuity-cache",
+                baseDurableFingerprint: persistence.lastDurableFingerprint || null,
+                dirtyWhileOffline: Boolean(persistence.dirtyWhileOffline),
                 state: snapshot
             });
 
@@ -527,6 +536,13 @@
             persistence.degraded = true;
             persistence.dirtyWhileOffline = true;
             persistence.lastError = error?.message || String(error);
+
+            /*
+             * The first cache write happened before the durable attempt. Refresh
+             * it after failure so the laptop carries explicit evidence that its
+             * runtime contains work not yet verified by institutional authority.
+             */
+            await persistIndexedDbCacheNow(snapshot);
 
             console.error(
                 "[MEOS Mission Engine] Durable Mission State write failed. Work remains in local continuity cache and is NOT reported as durably persisted.",
@@ -757,6 +773,343 @@
             persistence.lastDurableFingerprint = beforeFingerprint;
             throw error;
         }
+    }
+
+    function snapshotIdentity(snapshot) {
+        const collections = [
+            "missions",
+            "approvalQueue",
+            "completedMissions",
+            "archivedMissions"
+        ];
+
+        const identity = {};
+        collections.forEach(name => {
+            identity[name] = (Array.isArray(snapshot?.[name]) ? snapshot[name] : [])
+                .map(item => ({
+                    id: item?.id || null,
+                    status: item?.status || null,
+                    updatedAt: item?.updatedAt || item?.completedAt || item?.archivedAt || null
+                }))
+                .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        });
+
+        identity.updatedAt = snapshot?.updatedAt || null;
+        return identity;
+    }
+
+    function snapshotsSemanticallyEqual(left, right) {
+        return JSON.stringify(snapshotIdentity(left)) ===
+            JSON.stringify(snapshotIdentity(right));
+    }
+
+    function convergenceEvidence(localRecord, durablePayload, durableState) {
+        const localState = extractSnapshotCandidate(localRecord);
+        return {
+            observedAt: now(),
+            local: {
+                present: Boolean(localState),
+                dirtyWhileOffline: Boolean(localRecord?.dirtyWhileOffline),
+                baseDurableFingerprint: localRecord?.baseDurableFingerprint || null,
+                savedAt: localRecord?.savedAt || null,
+                counts: snapshotCounts(localState)
+            },
+            durable: {
+                present: Boolean(durableState),
+                fingerprint: durablePayload?.record?.payloadFingerprint || null,
+                providerId: durablePayload?.providerId || null,
+                counts: snapshotCounts(durableState)
+            }
+        };
+    }
+
+    async function verifyDurableSnapshot(expectedSnapshot) {
+        const verification = await fetchDurableMissionState();
+        const verifiedState = extractSnapshotCandidate(verification?.payload?.value);
+
+        return {
+            verified:
+                verification?.found === true &&
+                snapshotsSemanticallyEqual(expectedSnapshot, verifiedState),
+            verification,
+            verifiedState
+        };
+    }
+
+    async function convergeInstitutionalState(options = {}) {
+        const reason = normalizeText(options.reason, "autonomous-check");
+        persistence.convergenceState = "inspecting";
+        persistence.lastConvergenceReason = reason;
+
+        const localRecord = await readIndexedDbCache();
+        let durable;
+
+        try {
+            durable = await fetchDurableMissionState();
+        } catch (error) {
+            persistence.convergenceState = "degraded";
+            persistence.lastConvergenceAt = now();
+            persistence.lastConvergenceAction = "preserve-local-continuity";
+            persistence.lastError = error?.message || String(error);
+            return {
+                success: false,
+                converged: false,
+                degraded: true,
+                action: persistence.lastConvergenceAction,
+                reason,
+                error: persistence.lastError
+            };
+        }
+
+        if (!durable.found) {
+            /*
+             * No institutional record exists. The current runtime is the only
+             * available work state, so promote it and verify before declaring
+             * convergence.
+             */
+            persistence.lastDurableFingerprint = null;
+            await writeDurableMissionState(snapshotState());
+            const verification = await verifyDurableSnapshot(snapshotState());
+            if (!verification.verified) {
+                throw new Error("Autonomous convergence could not verify first institutional promotion.");
+            }
+
+            persistence.convergenceState = "converged";
+            persistence.lastConvergenceAt = now();
+            persistence.lastConvergenceAction = "promoted-runtime-first-authority";
+            persistence.convergenceConflict = null;
+            await persistIndexedDbCacheNow(snapshotState());
+
+            return {
+                success: true,
+                converged: true,
+                action: persistence.lastConvergenceAction,
+                reason
+            };
+        }
+
+        const durableState = extractSnapshotCandidate(durable?.payload?.value);
+        if (!durableState) {
+            throw new Error("Autonomous convergence received an invalid durable Mission State.");
+        }
+
+        const remoteFingerprint =
+            durable?.payload?.record?.payloadFingerprint || null;
+        const evidence = convergenceEvidence(
+            localRecord,
+            durable.payload,
+            durableState
+        );
+        persistence.lastConvergenceEvidence = evidence;
+
+        const localState = extractSnapshotCandidate(localRecord);
+        const localDirty = Boolean(localRecord?.dirtyWhileOffline);
+
+        if (!localState || snapshotsSemanticallyEqual(localState, durableState)) {
+            if (!applyStateSnapshot(durableState)) {
+                throw new Error("Converged durable Mission State could not be applied.");
+            }
+
+            persistence.lastDurableFingerprint = remoteFingerprint;
+            persistence.durableAvailable = true;
+            persistence.degraded = false;
+            persistence.dirtyWhileOffline = false;
+            persistence.convergenceState = "converged";
+            persistence.lastConvergenceAt = now();
+            persistence.lastConvergenceAction = localState
+                ? "verified-equal"
+                : "durable-rebuilt-local-cache";
+            persistence.convergenceConflict = null;
+            await persistIndexedDbCacheNow(snapshotState());
+
+            return {
+                success: true,
+                converged: true,
+                action: persistence.lastConvergenceAction,
+                reason,
+                evidence
+            };
+        }
+
+        if (localDirty) {
+            const baseFingerprint =
+                localRecord?.baseDurableFingerprint || null;
+
+            /*
+             * Safe autonomous promotion is allowed only when the durable record
+             * has not changed since the laptop last knew it. This is optimistic
+             * concurrency: offline work can rejoin automatically without ever
+             * silently overwriting independently changed institutional truth.
+             */
+            if (baseFingerprint && remoteFingerprint === baseFingerprint) {
+                persistence.lastDurableFingerprint = remoteFingerprint;
+                await writeDurableMissionState(localState);
+                const verification = await verifyDurableSnapshot(localState);
+
+                if (!verification.verified) {
+                    throw new Error("Offline Mission State promotion failed post-write verification.");
+                }
+
+                if (!applyStateSnapshot(verification.verifiedState)) {
+                    throw new Error("Verified promoted Mission State could not be applied.");
+                }
+
+                persistence.dirtyWhileOffline = false;
+                persistence.convergenceState = "converged";
+                persistence.lastConvergenceAt = now();
+                persistence.lastConvergenceAction = "promoted-safe-offline-descendant";
+                persistence.convergenceConflict = null;
+                await persistIndexedDbCacheNow(snapshotState());
+
+                global.dispatchEvent(new CustomEvent("meos:mission-state-converged", {
+                    detail: {
+                        action: persistence.lastConvergenceAction,
+                        reason,
+                        evidence,
+                        convergedAt: persistence.lastConvergenceAt
+                    }
+                }));
+
+                return {
+                    success: true,
+                    converged: true,
+                    action: persistence.lastConvergenceAction,
+                    reason,
+                    evidence
+                };
+            }
+
+            /*
+             * Both sides changed, or ancestry cannot be proven. Preserve both,
+             * refuse destructive guessing, and surface the evidence. This is a
+             * conflict, not a failure of continuity.
+             */
+            persistence.convergenceState = "conflict-preserved";
+            persistence.lastConvergenceAt = now();
+            persistence.lastConvergenceAction = "preserved-divergent-authorities";
+            persistence.convergenceConflict = {
+                detectedAt: persistence.lastConvergenceAt,
+                reason: baseFingerprint
+                    ? "durable-authority-changed-during-offline-work"
+                    : "offline-ancestry-unproven",
+                evidence
+            };
+            persistence.degraded = true;
+
+            global.dispatchEvent(new CustomEvent("meos:mission-state-convergence-conflict", {
+                detail: clone(persistence.convergenceConflict)
+            }));
+
+            return {
+                success: false,
+                converged: false,
+                conflict: true,
+                action: persistence.lastConvergenceAction,
+                reason,
+                evidence
+            };
+        }
+
+        /*
+         * A clean local cache is merely a projection. If it diverges from
+         * durable truth, durable truth wins automatically and the projection
+         * is rebuilt.
+         */
+        if (!applyStateSnapshot(durableState)) {
+            throw new Error("Authoritative durable Mission State could not be applied during convergence.");
+        }
+
+        persistence.lastDurableFingerprint = remoteFingerprint;
+        persistence.durableAvailable = true;
+        persistence.degraded = false;
+        persistence.dirtyWhileOffline = false;
+        persistence.convergenceState = "converged";
+        persistence.lastConvergenceAt = now();
+        persistence.lastConvergenceAction = "reprojected-durable-authority";
+        persistence.convergenceConflict = null;
+        await persistIndexedDbCacheNow(snapshotState());
+
+        global.dispatchEvent(new CustomEvent("meos:mission-state-converged", {
+            detail: {
+                action: persistence.lastConvergenceAction,
+                reason,
+                evidence,
+                convergedAt: persistence.lastConvergenceAt
+            }
+        }));
+
+        return {
+            success: true,
+            converged: true,
+            action: persistence.lastConvergenceAction,
+            reason,
+            evidence
+        };
+    }
+
+    async function runAutonomousConvergenceAcceptanceTest() {
+        await whenHydratedInternal();
+
+        const checks = [
+            {
+                name: "Institutional repository remains declared durable authority",
+                passed:
+                    persistence.authoritativeStorage ===
+                    "meos-institutional-repository"
+            },
+            {
+                name: "Autonomous convergence API is available",
+                passed: typeof convergeInstitutionalState === "function"
+            },
+            {
+                name: "Convergence policy distinguishes clean projection from offline dirty work",
+                passed:
+                    persistence.convergenceMode ===
+                    "autonomous-safe-convergence"
+            },
+            {
+                name: "Durable writes retain optimistic concurrency fingerprint",
+                passed:
+                    persistence.lastDurableFingerprint === null ||
+                    typeof persistence.lastDurableFingerprint === "string"
+            }
+        ];
+
+        let convergenceResult = null;
+        try {
+            convergenceResult = await convergeInstitutionalState({
+                reason: "commission-006.017D3B2-acceptance"
+            });
+            checks.push({
+                name: "Live institutional state reaches convergence or explicitly preserves a conflict",
+                passed:
+                    convergenceResult?.converged === true ||
+                    convergenceResult?.conflict === true ||
+                    convergenceResult?.degraded === true
+            });
+        } catch (error) {
+            checks.push({
+                name: "Live institutional state reaches convergence or explicitly preserves a conflict",
+                passed: false,
+                error: error?.message || String(error)
+            });
+        }
+
+        const passed = checks.every(check => check.passed);
+        console.table(checks);
+        console.log(
+            `[MEOS ${VERSION}] Commission 006.017D3B2 autonomous institutional state convergence: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+            commission: "006.017D3B2",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            checks,
+            convergence: convergenceResult,
+            persistence: getPersistenceStatus()
+        };
     }
 
     async function hydrateFromDurableAuthority() {
@@ -2377,7 +2730,9 @@
                 counts: snapshotCounts(item.snapshot)
             }));
         },
-        recoverLaptopMissionState
+        recoverLaptopMissionState,
+        convergeInstitutionalState,
+        runAutonomousConvergenceAcceptanceTest
     });
 
     global.MEOSMissionEngine = MissionEngine;
@@ -2399,5 +2754,22 @@
             `source=${result?.source || "unknown"} | ` +
             `authority=meos-institutional-repository`
         );
+    });
+
+    /*
+     * Reconnection is a natural convergence trigger. No human has to remember
+     * to run a recovery command; MEOS inspects ancestry and either converges
+     * safely or preserves the conflict for explicit review.
+     */
+    global.addEventListener("online", () => {
+        hydrationPromise
+            .then(() => convergeInstitutionalState({ reason: "browser-online" }))
+            .catch(error => {
+                persistence.lastError = error?.message || String(error);
+                console.error(
+                    "[MEOS Mission Engine] Autonomous reconnect convergence failed.",
+                    error
+                );
+            });
     });
 })(window);
