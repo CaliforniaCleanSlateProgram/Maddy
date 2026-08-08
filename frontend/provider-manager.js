@@ -1,7 +1,7 @@
 /**
  * MEOS Provider Manager
- * Version: 1.0.1
- * Build: PM101-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A
+ * Version: 1.0.2
+ * Build: PM102-ISOLATED-SELF-TEST-20260808-A
  * Status: Commissioned Candidate
  *
  * Purpose:
@@ -25,8 +25,8 @@
   "use strict";
 
   const NAME = "MEOS Provider Manager";
-  const VERSION = "1.0.1";
-  const BUILD_ID = "PM101-LAPTOP-INDEXEDDB-PERSISTENCE-20260808-A";
+  const VERSION = "1.0.2";
+  const BUILD_ID = "PM102-ISOLATED-SELF-TEST-20260808-A";
   const SCHEMA = "meos.provider-manager.v1";
   const STORAGE_KEY = "meos.provider-manager.history.v1";
   const MAX_HISTORY_ITEMS = 250;
@@ -1686,6 +1686,17 @@
     const registeredIds = [];
     const assertions = [];
 
+    /*
+     * Commission 006.016G3A:
+     * The Provider Manager self-test must be deterministic even when real
+     * providers are already registered at runtime. Capture those provider IDs
+     * before adding test fixtures, then exclude them from fixture selections.
+     * This prevents a newly commissioned real capability from making an old
+     * "unavailable" assertion fail or collapsing a two-fixture selection into
+     * one real provider.
+     */
+    const preExistingProviderIds = [...state.providers.keys()];
+
     function assert(name, condition, details = {}) {
       assertions.push({
         name,
@@ -1759,7 +1770,8 @@
 
       const singleSelection = selectProviders({
         capabilities: ["general-reasoning", "language-generation"],
-        preferredTypes: ["local-model"]
+        preferredTypes: ["local-model"],
+        excludedProviders: preExistingProviderIds
       });
 
       assert(
@@ -1773,12 +1785,16 @@
       const multiSelection = selectProviders({
         capabilities: ["current-web-research", "source-verification"],
         allowMultiProvider: true,
-        maximumProviders: 2
+        maximumProviders: 2,
+        excludedProviders: preExistingProviderIds
       });
 
       assert(
         "Multi-provider coordinated selection",
-        multiSelection.success && multiSelection.providers.length === 2,
+        multiSelection.success &&
+          multiSelection.providers.length === 2 &&
+          multiSelection.providers.some(provider => provider.id === researchId) &&
+          multiSelection.providers.some(provider => provider.id === verifierId),
         multiSelection
       );
 
@@ -1796,7 +1812,8 @@
 
       const unavailable = selectProviders({
         capabilities: ["website-change-detection"],
-        requireAllCapabilities: true
+        requireAllCapabilities: true,
+        excludedProviders: preExistingProviderIds
       });
 
       assert(
@@ -1818,12 +1835,16 @@
 
       const brainPlan = planForBrainRequest(mockBrainResult, {
         capabilities: ["current-web-research", "source-verification"],
-        maximumProviders: 2
+        maximumProviders: 2,
+        excludedProviders: preExistingProviderIds
       });
 
       assert(
         "Executive Brain request planning compatibility",
-        brainPlan.success && brainPlan.selection.providers.length === 2,
+        brainPlan.success &&
+          brainPlan.selection.providers.length === 2 &&
+          brainPlan.selection.providers.some(provider => provider.id === researchId) &&
+          brainPlan.selection.providers.some(provider => provider.id === verifierId),
         brainPlan
       );
     } catch (error) {
