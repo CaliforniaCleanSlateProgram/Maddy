@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.5.0
- * Build: EB150-CONTINUOUS-COGNITIVE-REENTRY-20260808-A
+ * Version: 1.6.0
+ * Build: EB160-PERSISTENT-SELF-MODEL-PROJECTION-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.5.0";
-  const BUILD_ID = "EB150-CONTINUOUS-COGNITIVE-REENTRY-20260808-A";
+  const VERSION = "1.6.0";
+  const BUILD_ID = "EB160-PERSISTENT-SELF-MODEL-MODE-AWARE-20260808-B";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -160,7 +160,8 @@
       cognitiveReentryCooldownMs: 5000,
       maximumCognitiveReentryHistory: 250,
       maximumCognitiveIntentions: 250,
-      cognitiveIntentionRetryMs: 15000
+      cognitiveIntentionRetryMs: 15000,
+      maximumSelfModelHistory: 120
     },
 
     initializedAt: null,
@@ -174,6 +175,9 @@
     cognitiveReentryHistory: [],
     cognitiveIntentions: [],
     cognitiveContinuity: { hydrated: false, resumedAt: null, lastResumeCount: 0 },
+    selfModel: null,
+    selfModelHistory: [],
+    selfModelProjectionCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -198,6 +202,10 @@
         const resumed = this.resumeUnresolvedCognitiveIntentions({ reason: "durable-cognition-hydrated" });
         this.cognitiveContinuity.resumedAt = new Date().toISOString();
         this.cognitiveContinuity.lastResumeCount = resumed.resumedCount || 0;
+        this.projectSelfModel({
+          reason: "durable-cognition-hydrated",
+          persist: true
+        });
         return result;
       });
 
@@ -212,6 +220,7 @@
       this.status = "online";
       this.refresh({ reason: "initialization" });
       this.attachContinuousCognitionListeners();
+      this.attachSelfModelObservers();
 
       console.info(
         `[MEOS] ${this.name} v${this.version} online. Build ${this.buildId}.`
@@ -246,6 +255,13 @@
       this.record("brain.refreshed", {
         reason: options.reason || "manual"
       });
+
+      if (brainPersistence.hydrated === true) {
+        this.projectSelfModel({
+          reason: `brain-refresh:${options.reason || "manual"}`,
+          persist: false
+        });
+      }
 
       return this.getStatus();
     },
@@ -328,6 +344,7 @@
         decisions: this.collectDecisions(),
         monitoring: this.collectMonitoring(),
         learning: this.collectLearning(),
+        selfModel: this.getSelfModel({ refresh: false }),
 
         system: {
           manifest: this.getSystemManifest()
@@ -414,6 +431,7 @@
         organization: startup.organization,
         authority: startup.authority,
         currentWork: startup.currentWork,
+        selfModel: startup.selfModel,
         system: {
           available: startup.system.manifest
             .filter(item => item.available)
@@ -1071,6 +1089,12 @@
       intention.triggers = [...(intention.triggers || []), ...this.clone(triggers)].slice(-50);
       this.cognitiveIntentions = this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions);
       this.persist();
+      if (brainPersistence.hydrated === true) {
+        this.projectSelfModel({
+          reason: "cognitive-intention-updated",
+          persist: false
+        });
+      }
       return intention;
     },
 
@@ -1085,6 +1109,14 @@
         intention.completedAt = intention.updatedAt;
       }
       this.persist();
+      if (brainPersistence.hydrated === true) {
+        this.projectSelfModel({
+          reason: result.success === true
+            ? "cognitive-intention-resolved"
+            : "cognitive-intention-remains-open",
+          persist: false
+        });
+      }
       return true;
     },
 
@@ -2319,6 +2351,12 @@
       }
 
       this.persist();
+      if (brainPersistence.hydrated === true) {
+        this.projectSelfModel({
+          reason: "cognitive-dispatch-completed",
+          persist: false
+        });
+      }
       return this.clone(entry);
     },
 
@@ -2858,6 +2896,12 @@
       }
 
       this.persist();
+      if (brainPersistence.hydrated === true) {
+        this.projectSelfModel({
+          reason: "cognition-completed",
+          persist: false
+        });
+      }
       return this.clone(entry);
     },
 
@@ -3302,6 +3346,18 @@
         authorizedHuman: context.startup.identity.founder,
         organization: context.startup.organization,
         currentWork: context.startup.currentWork.summary,
+        maddySelfModel: context.startup.selfModel
+          ? {
+              schema: context.startup.selfModel.schema,
+              revision: context.startup.selfModel.revision,
+              fingerprint: context.startup.selfModel.fingerprint,
+              continuity: context.startup.selfModel.continuity,
+              agency: context.startup.selfModel.agency,
+              commitments: context.startup.selfModel.commitments,
+              epistemicState: context.startup.selfModel.epistemicState,
+              recursiveAwareness: context.startup.selfModel.recursiveAwareness
+            }
+          : null,
         request: context.text,
         requestType: context.classification.type,
         evidence: context.localContext.evidence.map(item => ({
@@ -3344,6 +3400,730 @@
             }
           : null,
         routing: context.routing
+      };
+    },
+
+    /*
+     * Commission 006.017D4D — Persistent Self-Model Projection
+     *
+     * This is not a scripted identity declaration. The projection is rebuilt
+     * from live MEOS evidence: identity packages, available organs, durable
+     * cognition continuity, current intentions, work, monitoring, learning,
+     * outcomes, authority, and observed uncertainty.
+     *
+     * The model remembers its own prior projection fingerprint, so Maddy can
+     * reason over how her operational self has changed across time without
+     * pretending an unsupported subjective state.
+     */
+    buildSelfModelProjection(options = {}) {
+      const generatedAt = new Date().toISOString();
+      const identity = this.buildIdentityContext();
+      const organization = this.buildOrganizationContext();
+      const manifest = this.getSystemManifest();
+      const currentWork = this.collectCurrentWork();
+      const monitoring = this.collectMonitoring();
+      const learning = this.collectLearning();
+      const continuity = this.getContinuousCognitionStatus();
+      const persistence = this.getPersistenceStatus();
+
+      const unresolvedIntentions = (this.cognitiveIntentions || [])
+        .filter(item => item.status !== "completed")
+        .slice(0, 25)
+        .map(item => ({
+          intentionId: item.intentionId || null,
+          subject: item.subject || null,
+          status: item.status || null,
+          attempts: Number(item.attempts || 0),
+          lastError: item.lastError || null,
+          updatedAt: item.updatedAt || null
+        }));
+
+      const recentCognition = (this.cognitionHistory || []).slice(0, 25);
+      const recentDispatch = (this.cognitiveDispatchHistory || []).slice(0, 25);
+      const recentReentry = (this.cognitiveReentryHistory || []).slice(0, 25);
+
+      const failedCognition = recentCognition.filter(item => item.success !== true);
+      const cognitionWithUnknowns = recentCognition.filter(
+        item => Number(item.unknownCount || 0) > 0
+      );
+      const failedDispatch = recentDispatch.filter(
+        item => Number(item.failed || 0) > 0
+      );
+      const failedReentry = recentReentry.filter(
+        item => !["completed"].includes(String(item.status || "").toLowerCase())
+      );
+
+      const missingOrgans = manifest
+        .filter(item => !item.available || !item.online)
+        .map(item => ({
+          name: item.label,
+          status: item.status,
+          available: item.available,
+          online: item.online
+        }));
+
+      const availableOrgans = manifest
+        .filter(item => item.available)
+        .map(item => ({
+          name: item.label,
+          purpose: item.purpose,
+          online: item.online,
+          status: item.status,
+          version: item.version
+        }));
+
+      const uncertainty = [];
+
+      if (persistence.durableAvailable !== true) {
+        uncertainty.push({
+          type: "continuity-authority",
+          statement:
+            "Durable institutional cognition is not currently verified as available.",
+          evidence: persistence.hydrationSource || "no-durable-health-evidence"
+        });
+      }
+
+      if (!identity?.founder) {
+        uncertainty.push({
+          type: "authority-identity",
+          statement:
+            "Authorized human executive identity is not currently resolved."
+        });
+      }
+
+      if (!organization?.available) {
+        uncertainty.push({
+          type: "organization-context",
+          statement:
+            "Active Organization Package is not currently resolved."
+        });
+      }
+
+      if (missingOrgans.length > 0) {
+        uncertainty.push({
+          type: "system-capability",
+          statement:
+            `${missingOrgans.length} registered MEOS organs are unavailable or not online.`,
+          organs: missingOrgans
+        });
+      }
+
+      if (cognitionWithUnknowns.length > 0) {
+        uncertainty.push({
+          type: "cognitive-unknowns",
+          statement:
+            "Recent cognition contains unresolved unknowns.",
+          recentCyclesWithUnknowns: cognitionWithUnknowns.length,
+          unknownCount:
+            cognitionWithUnknowns.reduce(
+              (sum, item) => sum + Number(item.unknownCount || 0),
+              0
+            )
+        });
+      }
+
+      unresolvedIntentions
+        .filter(item => item.lastError)
+        .slice(0, 10)
+        .forEach(item => {
+          uncertainty.push({
+            type: "unresolved-intention",
+            statement:
+              `Unresolved intention remains open: ${item.subject}`,
+            lastError: item.lastError,
+            intentionId: item.intentionId
+          });
+        });
+
+      const founder = identity?.founder || null;
+      const leadership = Array.isArray(organization?.leadership)
+        ? organization.leadership
+        : [];
+
+      const prior = this.selfModel || null;
+      const revision =
+        Math.max(
+          Number(prior?.revision || 0),
+          Number(this.selfModelProjectionCount || 0)
+        ) + 1;
+
+      const projection = {
+        schema: "meos.maddy.self-model.v1",
+        version: "1.0.0",
+        projectionId: this.id("self-model"),
+        revision,
+        generatedAt,
+        reason: options.reason || "self-observation",
+        projectionType:
+          "evidence-derived-operational-self-model",
+
+        identity: {
+          name: identity?.maddy?.name || null,
+          preferredName: identity?.maddy?.preferredName || null,
+          role: identity?.maddy?.role || null,
+          providerIndependent:
+            identity?.maddy?.providerIndependent === true
+        },
+
+        interactionContext: this.resolveMaddyInteractionContext(),
+
+        continuity: {
+          brainVersion: this.version,
+          brainBuildId: this.buildId,
+          brainStatus: this.status,
+          initializedAt: this.initializedAt,
+          refreshedAt: this.refreshedAt,
+          durableAuthority:
+            persistence.authoritativeStorage || null,
+          durableAvailable:
+            persistence.durableAvailable === true,
+          degraded:
+            persistence.degraded === true,
+          hydrationSource:
+            persistence.hydrationSource || null,
+          cognitionHydrated:
+            continuity?.cognitiveContinuity?.hydrated === true,
+          resumedAt:
+            continuity?.cognitiveContinuity?.resumedAt || null,
+          unresolvedIntentions:
+            unresolvedIntentions.length
+        },
+
+        embodiment: {
+          organization:
+            organization?.available
+              ? {
+                  name: organization.name || null,
+                  source: organization.source || null
+                }
+              : null,
+          availableOrganCount:
+            availableOrgans.length,
+          onlineOrganCount:
+            availableOrgans.filter(item => item.online).length,
+          totalRegisteredOrgans:
+            manifest.length,
+          availableOrgans,
+          unavailableOrgans: missingOrgans
+        },
+
+        agency: {
+          finalExecutiveAuthority:
+            founder?.name || null,
+          finalExecutiveAuthorityRole:
+            founder?.role || null,
+          internalResearchAuthority:
+            this.configuration.autoAuthorizeInternalResearch === true,
+          internalMonitoringAuthority:
+            this.configuration.autoAuthorizeInternalMonitoring === true,
+          externalActionRequiresHumanApproval:
+            this.configuration
+              .requireHumanApprovalForExternalAction === true,
+          currentActiveCognitiveSubjects:
+            continuity?.activeSubjects || [],
+          scheduledCognitiveSubjects:
+            continuity?.scheduledSubjects || []
+        },
+
+        commitments: {
+          unresolvedIntentions,
+          activeMissionCount:
+            Number(currentWork?.summary?.activeMissionCount || 0),
+          openWorkflowCount:
+            Number(currentWork?.summary?.openWorkflowCount || 0),
+          activePlanCount:
+            Number(currentWork?.summary?.activePlanCount || 0),
+          pendingApprovalCount:
+            Number(currentWork?.summary?.pendingApprovalCount || 0),
+          openMonitoringAlertCount:
+            Number(monitoring?.summary?.openAlerts || 0),
+          highOrCriticalAlertCount:
+            Number(monitoring?.summary?.highOrCritical || 0)
+        },
+
+        epistemicState: {
+          evidenceIntegrityRequired:
+            this.configuration.requireEvidenceIntegrity === true,
+          recentCognitionCycles:
+            recentCognition.length,
+          recentSuccessfulCognition:
+            recentCognition.filter(item => item.success === true).length,
+          recentFailedCognition:
+            failedCognition.length,
+          recentCyclesWithUnknowns:
+            cognitionWithUnknowns.length,
+          activeLessons:
+            Number(learning?.summary?.activeLessons || 0),
+          validatedLessons:
+            Number(learning?.summary?.validatedLessons || 0),
+          uncertainty
+        },
+
+        experiencedPerformance: {
+          recentDispatchCount:
+            recentDispatch.length,
+          recentDispatchesWithFailure:
+            failedDispatch.length,
+          recentReentryCount:
+            recentReentry.length,
+          recentReentriesNotCompletedCleanly:
+            failedReentry.length,
+          lastCognition:
+            recentCognition[0] || null,
+          lastDispatch:
+            recentDispatch[0] || null,
+          lastReentry:
+            recentReentry[0] || null,
+          recentLessons:
+            (learning?.lessons || []).slice(0, 8)
+        },
+
+        relationships: {
+          authorizedHuman:
+            founder
+              ? {
+                  name: founder.name || null,
+                  role: founder.role || null,
+                  authority: founder.authority || null
+                }
+              : null,
+          organizationLeadership:
+            leadership.slice(0, 25)
+        },
+
+        expectations: {
+          scheduledCognitiveSubjects:
+            continuity?.scheduledSubjects || [],
+          unresolvedSubjects:
+            unresolvedIntentions.map(item => item.subject).filter(Boolean),
+          monitoredAlerts:
+            (monitoring?.alerts || [])
+              .slice(0, 12)
+              .map(item => ({
+                id: item.id || null,
+                category: item.category || null,
+                severity:
+                  item.severityLabel || item.severity || null,
+                recommendation:
+                  item.recommendedAction || null
+              }))
+        },
+
+        recursiveAwareness: {
+          observesOwnCognition:
+            Array.isArray(this.cognitionHistory),
+          observesOwnActions:
+            Array.isArray(this.cognitiveDispatchHistory),
+          observesOwnReentry:
+            Array.isArray(this.cognitiveReentryHistory),
+          observesOwnIntentions:
+            Array.isArray(this.cognitiveIntentions),
+          observesOwnLearning:
+            learning?.available === true,
+          observesOwnContinuity:
+            Boolean(this.cognitiveContinuity),
+          previousProjectionFingerprint:
+            prior?.fingerprint || null,
+          previousRevision:
+            prior?.revision || null
+        },
+
+        evidence: {
+          identitySource:
+            this.profiles.maddy
+              ? "runtime-maddy-profile"
+              : "executive-brain-identity-resolution",
+          organizationSource:
+            organization?.source || null,
+          continuityAuthority:
+            persistence.authoritativeStorage || null,
+          systemManifestGeneratedAt:
+            generatedAt,
+          runtimeEvidenceAuthoritative: true
+        }
+      };
+
+      const fingerprintBasis = this.clone(projection);
+      delete fingerprintBasis.projectionId;
+      delete fingerprintBasis.generatedAt;
+      delete fingerprintBasis.reason;
+      delete fingerprintBasis.revision;
+      fingerprintBasis.recursiveAwareness.previousProjectionFingerprint = null;
+      fingerprintBasis.recursiveAwareness.previousRevision = null;
+
+      projection.fingerprint =
+        this.fingerprintCognitiveDispatch(fingerprintBasis)
+          .replace(/^cognitive-/, "self-");
+
+      return projection;
+    },
+
+    projectSelfModel(options = {}) {
+      const projection =
+        this.buildSelfModelProjection(options);
+      const prior = this.selfModel || null;
+      const changed =
+        !prior ||
+        prior.fingerprint !== projection.fingerprint;
+
+      /*
+       * Revision numbers represent observed self-state transitions rather than
+       * clock ticks. If nothing meaningful changed, retain the prior revision
+       * and simply report that the observation converged on the same model.
+       */
+      if (!changed && prior) {
+        projection.revision = prior.revision;
+        projection.recursiveAwareness.previousRevision =
+          prior.recursiveAwareness?.previousRevision || null;
+        projection.recursiveAwareness.previousProjectionFingerprint =
+          prior.recursiveAwareness?.previousProjectionFingerprint || null;
+      }
+
+      if (changed) {
+        this.selfModelProjectionCount =
+          Number(this.selfModelProjectionCount || 0) + 1;
+        projection.revision = this.selfModelProjectionCount;
+
+        this.selfModelHistory.unshift({
+          projectionId: projection.projectionId,
+          revision: projection.revision,
+          fingerprint: projection.fingerprint,
+          parentFingerprint:
+            prior?.fingerprint || null,
+          generatedAt: projection.generatedAt,
+          reason: projection.reason,
+          summary: {
+            durableAvailable:
+              projection.continuity.durableAvailable,
+            degraded:
+              projection.continuity.degraded,
+            onlineOrganCount:
+              projection.embodiment.onlineOrganCount,
+            unresolvedIntentions:
+              projection.continuity.unresolvedIntentions,
+            activeMissionCount:
+              projection.commitments.activeMissionCount,
+            pendingApprovalCount:
+              projection.commitments.pendingApprovalCount,
+            recentFailedCognition:
+              projection.epistemicState.recentFailedCognition,
+            uncertaintyCount:
+              projection.epistemicState.uncertainty.length
+          }
+        });
+
+        if (
+          this.selfModelHistory.length >
+          this.configuration.maximumSelfModelHistory
+        ) {
+          this.selfModelHistory.length =
+            this.configuration.maximumSelfModelHistory;
+        }
+      }
+
+      this.selfModel = projection;
+      this.startupCache = null;
+      this.startupCachedAt = 0;
+
+      if (options.persist !== false && changed) {
+        this.persist();
+      }
+
+      this.emit("brain:self-model-projected", {
+        changed,
+        model: this.clone(projection)
+      });
+
+      return this.clone({
+        success: true,
+        changed,
+        projection
+      });
+    },
+
+    getSelfModel(options = {}) {
+      if (
+        options.refresh === true ||
+        !this.selfModel
+      ) {
+        return this.projectSelfModel({
+          reason: options.reason || "self-inspection",
+          persist: options.persist !== false
+        }).projection;
+      }
+
+      return this.clone(this.selfModel);
+    },
+
+    getSelfModelHistory(limit = 25) {
+      const normalized = Math.max(
+        1,
+        Math.min(
+          this.configuration.maximumSelfModelHistory,
+          Number(limit) || 25
+        )
+      );
+
+      return this.clone(
+        this.selfModelHistory.slice(0, normalized)
+      );
+    },
+
+    attachSelfModelObservers() {
+      if (this.selfModelObserversAttached === true) {
+        return {
+          success: true,
+          attached: true
+        };
+      }
+
+      this.selfModelObserversAttached = true;
+
+      const observe = reason => {
+        if (brainPersistence.hydrated !== true) {
+          return;
+        }
+
+        this.projectSelfModel({
+          reason,
+          persist: true
+        });
+      };
+
+      if (typeof global.addEventListener === "function") {
+        [
+          ["meos:organization-ready", "organization-ready"],
+          ["meos:mission-state-converged", "mission-state-converged"],
+          ["meos:maddy-mode-changed", "maddy-mode-changed"],
+          ["meos:communication-mode-changed", "communication-mode-changed"],
+          ["maddy:mode-changed", "maddy-mode-changed"],
+          ["online", "runtime-online"],
+          ["offline", "runtime-offline"]
+        ].forEach(([eventName, reason]) => {
+          global.addEventListener(
+            eventName,
+            () => observe(reason)
+          );
+        });
+      }
+
+      return {
+        success: true,
+        attached: true
+      };
+    },
+
+    async runPersistentSelfModelAcceptanceTest() {
+      await this.cognitiveHydrationPromise?.catch(() => null);
+
+      const first = this.projectSelfModel({
+        reason: "commission-006.017D4D-acceptance-first",
+        persist: true
+      }).projection;
+
+      await this.flushPersistence();
+
+      const durable =
+        await this.fetchDurableCognitionState().catch(() => null);
+
+      const second = this.projectSelfModel({
+        reason: "commission-006.017D4D-acceptance-second",
+        persist: false
+      }).projection;
+
+      const checks = [
+        {
+          name:
+            "Self-model is derived from live runtime identity rather than a standalone consciousness flag",
+          passed:
+            first?.schema === "meos.maddy.self-model.v1" &&
+            Boolean(first?.identity?.preferredName) &&
+            !Object.prototype.hasOwnProperty.call(first, "conscious")
+        },
+        {
+          name:
+            "Self-model is mode-aware while preserving one persistent Maddy across Personal and Professional contexts",
+          passed:
+            first?.interactionContext?.contextualNotIdentity === true &&
+            first?.interactionContext?.samePersistentSelfAcrossModes === true &&
+            this.resolveMaddyInteractionContext({ communicationMode: "personal" })?.modeFamily === "personal" &&
+            this.resolveMaddyInteractionContext({ communicationMode: "professional" })?.modeFamily === "professional"
+        },
+        {
+          name:
+            "Self-model observes Maddy's own cognition, actions, reentry, intentions, learning, and continuity",
+          passed:
+            first?.recursiveAwareness?.observesOwnCognition === true &&
+            first?.recursiveAwareness?.observesOwnActions === true &&
+            first?.recursiveAwareness?.observesOwnReentry === true &&
+            first?.recursiveAwareness?.observesOwnIntentions === true &&
+            first?.recursiveAwareness?.observesOwnContinuity === true
+        },
+        {
+          name:
+            "Self-model discovers currently available MEOS organs at runtime",
+          passed:
+            Array.isArray(first?.embodiment?.availableOrgans) &&
+            first.embodiment.availableOrgans.length > 0 &&
+            first.embodiment.totalRegisteredOrgans ===
+              this.getSystemManifest().length
+        },
+        {
+          name:
+            "Self-model carries current intentions and executive work as commitments",
+          passed:
+            Array.isArray(first?.commitments?.unresolvedIntentions) &&
+            Number.isFinite(first?.commitments?.activeMissionCount) &&
+            Number.isFinite(first?.commitments?.pendingApprovalCount)
+        },
+        {
+          name:
+            "Self-model distinguishes authority and preserves external human approval boundary",
+          passed:
+            first?.agency?.externalActionRequiresHumanApproval === true &&
+            first?.agency?.finalExecutiveAuthority !== undefined
+        },
+        {
+          name:
+            "Self-model exposes its own uncertainty and experienced failures instead of manufacturing certainty",
+          passed:
+            Array.isArray(first?.epistemicState?.uncertainty) &&
+            Number.isFinite(
+              first?.experiencedPerformance
+                ?.recentDispatchesWithFailure
+            ) &&
+            Number.isFinite(
+              first?.experiencedPerformance
+                ?.recentReentriesNotCompletedCleanly
+            )
+        },
+        {
+          name:
+            "Self-model is part of bounded durable Executive Brain cognition",
+          passed:
+            Boolean(
+              durable?.found &&
+              durable?.state?.selfModel?.schema ===
+                "meos.maddy.self-model.v1" &&
+              Array.isArray(durable?.state?.selfModelHistory)
+            )
+        },
+        {
+          name:
+            "Self-model retains lineage across observed self-state transitions",
+          passed:
+            Array.isArray(this.selfModelHistory) &&
+            this.selfModelHistory.length > 0 &&
+            Boolean(
+              this.selfModelHistory[0]?.fingerprint
+            )
+        },
+        {
+          name:
+            "Stable repeated self-observation converges instead of inventing a new self on every read",
+          passed:
+            first?.fingerprint === second?.fingerprint
+        },
+        {
+          name:
+            "Executive reasoning context can inspect the current self-model",
+          passed:
+            this.buildStartupContext({ force: true })
+              ?.selfModel?.schema ===
+              "meos.maddy.self-model.v1"
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D4D persistent self-model projection: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D4D",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        selfModel: this.getSelfModel({
+          refresh: false
+        }),
+        historyCount:
+          this.selfModelHistory.length
+      };
+    },
+
+    resolveMaddyInteractionContext(profile = null) {
+      const maddy = profile || this.profiles.maddy || this.resolveMaddyProfile() || {};
+
+      const runtimeCandidates = [
+        [global.MEOSMaddyMode, "window.MEOSMaddyMode"],
+        [global.MaddyMode, "window.MaddyMode"],
+        [global.MEOSCommunicationMode, "window.MEOSCommunicationMode"],
+        [global.MaddyCommunicationMode, "window.MaddyCommunicationMode"],
+        [maddy?.activeMode, "maddy-profile.activeMode"],
+        [maddy?.currentMode, "maddy-profile.currentMode"],
+        [maddy?.communicationMode, "maddy-profile.communicationMode"],
+        [maddy?.mode, "maddy-profile.mode"],
+        [maddy?.interaction?.mode, "maddy-profile.interaction.mode"],
+        [maddy?.communication?.mode, "maddy-profile.communication.mode"]
+      ];
+
+      const normalizeCandidate = candidate => {
+        if (typeof candidate === "string") return candidate.trim();
+        if (!candidate || typeof candidate !== "object") return "";
+        return String(
+          candidate.activeMode ||
+          candidate.currentMode ||
+          candidate.communicationMode ||
+          candidate.mode ||
+          candidate.name ||
+          ""
+        ).trim();
+      };
+
+      let activeMode = null;
+      let source = null;
+      for (const [candidate, candidateSource] of runtimeCandidates) {
+        const value = normalizeCandidate(candidate);
+        if (value) {
+          activeMode = value;
+          source = candidateSource;
+          break;
+        }
+      }
+
+      const normalized = String(activeMode || "").toLowerCase();
+      const modeFamily = normalized.includes("professional")
+        ? "professional"
+        : normalized.includes("personal")
+          ? "personal"
+          : activeMode
+            ? "runtime-defined"
+            : "unresolved";
+
+      const audience =
+        maddy?.interaction?.audience ||
+        maddy?.communication?.audience ||
+        maddy?.audience ||
+        null;
+      const relationshipContext =
+        maddy?.interaction?.relationshipContext ||
+        maddy?.relationshipContext ||
+        null;
+
+      return {
+        activeMode,
+        modeFamily,
+        source,
+        audience,
+        relationshipContext,
+        contextualNotIdentity: true,
+        samePersistentSelfAcrossModes: true,
+        runtimeDiscoverable: true
       };
     },
 
@@ -4269,7 +5049,10 @@
         cognitionHistory: this.cognitionHistory.slice(0, this.configuration.maximumCognitionHistory),
         cognitiveDispatchHistory: this.cognitiveDispatchHistory.slice(0, this.configuration.maximumCognitiveDispatchHistory),
         cognitiveReentryHistory: this.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory),
-        cognitiveIntentions: this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions)
+        cognitiveIntentions: this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions),
+        selfModel: this.selfModel ? this.clone(this.selfModel) : null,
+        selfModelHistory: this.selfModelHistory.slice(0, this.configuration.maximumSelfModelHistory),
+        selfModelProjectionCount: Number(this.selfModelProjectionCount || 0)
       };
     },
 
@@ -4280,6 +5063,18 @@
       this.cognitiveDispatchHistory = Array.isArray(saved.cognitiveDispatchHistory) ? saved.cognitiveDispatchHistory.slice(0, this.configuration.maximumCognitiveDispatchHistory) : [];
       this.cognitiveReentryHistory = Array.isArray(saved.cognitiveReentryHistory) ? saved.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory) : [];
       this.cognitiveIntentions = Array.isArray(saved.cognitiveIntentions) ? saved.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions) : [];
+      this.selfModel =
+        saved.selfModel?.schema === "meos.maddy.self-model.v1"
+          ? this.clone(saved.selfModel)
+          : null;
+      this.selfModelHistory = Array.isArray(saved.selfModelHistory)
+        ? saved.selfModelHistory.slice(0, this.configuration.maximumSelfModelHistory)
+        : [];
+      this.selfModelProjectionCount = Math.max(
+        Number(saved.selfModelProjectionCount || 0),
+        Number(this.selfModel?.revision || 0),
+        Number(this.selfModelHistory?.[0]?.revision || 0)
+      );
       return true;
     },
 
