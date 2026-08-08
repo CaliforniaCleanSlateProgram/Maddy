@@ -22,8 +22,8 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.2";
-    const BUILD_ID = "ME012-WORKSPACE-DURABLE-MISSION-AUTHORITY-20260808-A";
+    const VERSION = "0.1.3";
+    const BUILD_ID = "ME013-GUARDED-LAPTOP-RECOVERY-20260808-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -59,6 +59,9 @@
         lastDurableReadAt: null,
         lastDurableWriteAt: null,
         lastDurableFingerprint: null,
+        recoveryCandidate: null,
+        recoveryScanAt: null,
+        lastRecoveryAt: null,
         lastError: null
     };
 
@@ -596,6 +599,166 @@
         }
     }
 
+    function snapshotCounts(snapshot) {
+        return {
+            missions: Array.isArray(snapshot?.missions) ? snapshot.missions.length : 0,
+            approvalQueue: Array.isArray(snapshot?.approvalQueue) ? snapshot.approvalQueue.length : 0,
+            completedMissions: Array.isArray(snapshot?.completedMissions) ? snapshot.completedMissions.length : 0,
+            archivedMissions: Array.isArray(snapshot?.archivedMissions) ? snapshot.archivedMissions.length : 0,
+            activity: Array.isArray(snapshot?.activity) ? snapshot.activity.length : 0
+        };
+    }
+
+    function snapshotWorkCount(snapshot) {
+        const counts = snapshotCounts(snapshot);
+        return counts.missions + counts.completedMissions + counts.archivedMissions;
+    }
+
+    function extractSnapshotCandidate(value) {
+        if (!value || typeof value !== "object") return null;
+        const candidates = [value.state, value.value?.state, value.value, value];
+        return candidates.find(candidate => Array.isArray(candidate?.missions)) || null;
+    }
+
+    async function readAllRecordsFromDatabase(databaseName) {
+        return new Promise((resolve) => {
+            const request = global.indexedDB.open(databaseName);
+            request.onerror = () => resolve([]);
+            request.onsuccess = () => {
+                const database = request.result;
+                const storeNames = [...database.objectStoreNames];
+                if (!storeNames.length) {
+                    database.close();
+                    resolve([]);
+                    return;
+                }
+
+                const results = [];
+                let pending = storeNames.length;
+                storeNames.forEach(storeName => {
+                    try {
+                        const transaction = database.transaction(storeName, "readonly");
+                        const getAll = transaction.objectStore(storeName).getAll();
+                        getAll.onsuccess = () => {
+                            (getAll.result || []).forEach(record => results.push({ storeName, record }));
+                            if (--pending === 0) { database.close(); resolve(results); }
+                        };
+                        getAll.onerror = () => {
+                            if (--pending === 0) { database.close(); resolve(results); }
+                        };
+                    } catch {
+                        if (--pending === 0) { database.close(); resolve(results); }
+                    }
+                });
+            };
+        });
+    }
+
+    async function discoverLaptopRecoveryCandidates() {
+        const candidates = [];
+
+        try {
+            for (let i = 0; i < global.localStorage.length; i += 1) {
+                const key = global.localStorage.key(i);
+                const raw = key ? global.localStorage.getItem(key) : null;
+                if (!raw) continue;
+                try {
+                    const snapshot = extractSnapshotCandidate(JSON.parse(raw));
+                    if (snapshot && snapshotWorkCount(snapshot) > 0) {
+                        candidates.push({ source: `localStorage:${key}`, snapshot: clone(snapshot) });
+                    }
+                } catch { /* unrelated localStorage value */ }
+            }
+        } catch { /* localStorage unavailable */ }
+
+        if (global.indexedDB && typeof global.indexedDB.databases === "function") {
+            const databases = await global.indexedDB.databases().catch(() => []);
+            for (const descriptor of databases || []) {
+                if (!descriptor?.name) continue;
+                const records = await readAllRecordsFromDatabase(descriptor.name);
+                records.forEach(({ storeName, record }) => {
+                    const snapshot = extractSnapshotCandidate(record);
+                    if (snapshot && snapshotWorkCount(snapshot) > 0) {
+                        candidates.push({
+                            source: `indexedDB:${descriptor.name}/${storeName}`,
+                            recordId: record?.id || null,
+                            savedAt: record?.savedAt || null,
+                            snapshot: clone(snapshot)
+                        });
+                    }
+                });
+            }
+        }
+
+        candidates.sort((a, b) => {
+            const workDelta = snapshotWorkCount(b.snapshot) - snapshotWorkCount(a.snapshot);
+            if (workDelta) return workDelta;
+            return snapshotCounts(b.snapshot).activity - snapshotCounts(a.snapshot).activity;
+        });
+
+        persistence.recoveryScanAt = now();
+        persistence.recoveryCandidate = candidates[0]
+            ? { source: candidates[0].source, savedAt: candidates[0].savedAt || null, counts: snapshotCounts(candidates[0].snapshot) }
+            : null;
+
+        return candidates;
+    }
+
+    async function recoverLaptopMissionState(options = {}) {
+        if (options.confirm !== true) {
+            throw new Error("Recovery is guarded. Pass { confirm: true } after inspecting the recovery candidate.");
+        }
+
+        await whenHydratedInternal();
+        const candidates = await discoverLaptopRecoveryCandidates();
+        const candidate = candidates[0];
+        if (!candidate) throw new Error("No non-empty laptop Mission State recovery candidate was found.");
+
+        const durable = await fetchDurableMissionState();
+        const durableEnvelope = durable?.payload?.value;
+        const durableState = extractSnapshotCandidate(durableEnvelope) || { missions: [], approvalQueue: [], completedMissions: [], archivedMissions: [], activity: [] };
+        const candidateWork = snapshotWorkCount(candidate.snapshot);
+        const durableWork = snapshotWorkCount(durableState);
+
+        if (candidateWork <= durableWork && options.force !== true) {
+            throw new Error(`Recovery refused: laptop candidate has ${candidateWork} work records while durable authority has ${durableWork}. Pass force:true only after manual review.`);
+        }
+
+        const before = snapshotState();
+        const beforeFingerprint = persistence.lastDurableFingerprint;
+        try {
+            persistence.lastDurableFingerprint = durable?.payload?.record?.payloadFingerprint || beforeFingerprint || null;
+            const writeResult = await writeDurableMissionState(candidate.snapshot);
+            const verification = await fetchDurableMissionState();
+            const verifiedState = extractSnapshotCandidate(verification?.payload?.value);
+            const candidateCounts = snapshotCounts(candidate.snapshot);
+            const verifiedCounts = snapshotCounts(verifiedState);
+            const verified = verification.found === true &&
+                verifiedCounts.missions === candidateCounts.missions &&
+                verifiedCounts.completedMissions === candidateCounts.completedMissions &&
+                verifiedCounts.archivedMissions === candidateCounts.archivedMissions &&
+                verifiedCounts.activity === candidateCounts.activity;
+
+            if (!verified) throw new Error("Recovery write did not verify byte-semantically by collection counts; runtime state was not switched.");
+            if (!applyStateSnapshot(verifiedState)) throw new Error("Verified recovered state could not be applied to runtime.");
+
+            persistence.migratedLaptopSnapshot = true;
+            persistence.lastRecoveryAt = now();
+            persistence.hydrationSource = "guarded-laptop-recovery";
+            await persistIndexedDbCacheNow(snapshotState());
+
+            global.dispatchEvent(new CustomEvent("meos:mission-state-recovered", {
+                detail: { source: candidate.source, counts: verifiedCounts, recoveredAt: persistence.lastRecoveryAt }
+            }));
+
+            return { success: true, commission: "006.017D3B1", source: candidate.source, counts: verifiedCounts, providerId: writeResult?.providerId || null };
+        } catch (error) {
+            applyStateSnapshot(before);
+            persistence.lastDurableFingerprint = beforeFingerprint;
+            throw error;
+        }
+    }
+
     async function hydrateFromDurableAuthority() {
         const localCache = await readIndexedDbCache();
 
@@ -627,8 +790,22 @@
                 persistence.lastError = null;
                 persistence.degraded = false;
 
-                await persistIndexedDbCacheNow(snapshotState());
-                releaseLegacyLocalStorage();
+                const localSnapshot = extractSnapshotCandidate(localCache);
+                const durableCounts = snapshotCounts(durableState);
+                const localCounts = snapshotCounts(localSnapshot);
+                if (localSnapshot && snapshotWorkCount(localSnapshot) > snapshotWorkCount(durableState)) {
+                    persistence.recoveryCandidate = {
+                        source: `indexedDB:${INDEXED_DB_NAME}/${INDEXED_DB_STORE}`,
+                        savedAt: localCache?.savedAt || null,
+                        counts: localCounts
+                    };
+                    console.warn(
+                        `[MEOS Mission Engine] Guarded recovery candidate preserved: laptop=${snapshotWorkCount(localSnapshot)} work records, durable=${snapshotWorkCount(durableState)}. Durable state remains authoritative until explicit recovery.`
+                    );
+                } else {
+                    await persistIndexedDbCacheNow(snapshotState());
+                    releaseLegacyLocalStorage();
+                }
 
                 global.dispatchEvent(
                     new CustomEvent("meos:mission-engine-hydrated", {
@@ -2191,7 +2368,16 @@
         flushPersistence,
         whenHydrated: () => hydrationPromise,
         runLaptopPersistenceAcceptanceTest,
-        runDurableMissionAuthorityAcceptanceTest
+        runDurableMissionAuthorityAcceptanceTest,
+        discoverLaptopRecoveryCandidates: async () => {
+            const candidates = await discoverLaptopRecoveryCandidates();
+            return candidates.map(item => ({
+                source: item.source,
+                savedAt: item.savedAt || null,
+                counts: snapshotCounts(item.snapshot)
+            }));
+        },
+        recoverLaptopMissionState
     });
 
     global.MEOSMissionEngine = MissionEngine;
