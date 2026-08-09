@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.15.0
- * Build: EB1150-EVIDENCE-ASSIMILATION-COGNITIVE-CLOSURE-20260808-A
+ * Version: 1.16.0
+ * Build: EB1160-DEVELOPMENTAL-DRIVE-AGENCY-IMPLEMENTATION-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.15.0";
-  const BUILD_ID = "EB1150-EVIDENCE-ASSIMILATION-COGNITIVE-CLOSURE-20260808-A";
+  const VERSION = "1.16.0";
+  const BUILD_ID = "EB1160-DEVELOPMENTAL-DRIVE-AGENCY-IMPLEMENTATION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -181,6 +181,11 @@
       maximumCompetingHypotheses: 6,
       maximumAutonomousInvestigationHistory: 120,
       maximumEvidenceAssimilationHistory: 160,
+      maximumDevelopmentalDriveHistory: 160,
+      maximumDevelopmentalGoals: 32,
+      maximumDevelopmentalPracticeHistory: 240,
+      maximumDeferredCapabilities: 80,
+      maximumDevelopmentalRetrospectives: 160,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -236,6 +241,13 @@
     evidenceAssimilationHistory: [],
     lastEvidenceAssimilation: null,
     evidenceAssimilationCount: 0,
+    developmentalDriveHistory: [],
+    developmentalGoals: [],
+    developmentalPracticeHistory: [],
+    deferredCapabilities: [],
+    developmentalRetrospectives: [],
+    lastDevelopmentalDrive: null,
+    developmentalDriveCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -8890,6 +8902,552 @@
       return {success:true,assimilation:this.clone(assimilation),worldModel:this.clone(worldModel),trigger:this.clone(trigger)};
     },
 
+    /*
+     * Commission 006.017D7F — Developmental Drive + Agency + Implementation
+     *
+     * Ambition + Motivation + Curiosity + Discipline + Means + Implementation.
+     * This is not a personality slider. It is a governed developmental process
+     * that can discover a capability gap, find legitimate means to close it,
+     * research through existing provider-neutral organs, practice, implement
+     * learned knowledge when authority and timing permit, measure consequences,
+     * revisit past reasoning, and grow into ambitions that were previously
+     * beyond Maddy's capability.
+     */
+
+    normalizeDevelopmentalCapability(input = {}) {
+      const capability = String(input.capability || input.name || input.domain || "unnamed-capability").trim();
+      const demonstrated = Math.max(0, Math.min(1, Number(input.demonstrated ?? input.score ?? 0)));
+      const required = Math.max(0, Math.min(1, Number(input.required ?? input.target ?? 1)));
+      const evidenceCount = Math.max(0, Number(input.evidenceCount ?? input.samples ?? input.outcomes ?? 0));
+      return {
+        capability,
+        demonstrated,
+        required,
+        gap: Number(Math.max(0, required - demonstrated).toFixed(3)),
+        evidenceCount,
+        confidence: Math.max(0, Math.min(1, Number(input.confidence ?? Math.min(1, evidenceCount / 10)))),
+        missionRelevance: Math.max(0, Math.min(1, Number(input.missionRelevance ?? 0.5))),
+        curiosity: Math.max(0, Math.min(1, Number(input.curiosity ?? 0.5))),
+        urgency: Math.max(0, Math.min(1, Number(input.urgency ?? 0.25))),
+        prerequisites: Array.isArray(input.prerequisites) ? this.clone(input.prerequisites) : [],
+        blockedBy: Array.isArray(input.blockedBy) ? this.clone(input.blockedBy) : [],
+        source: String(input.source || "runtime-capability-evidence")
+      };
+    },
+
+    discoverDevelopmentalMeans(goal = {}, options = {}) {
+      const manifest = this.getSystemManifest();
+      const availableOrgans = manifest.filter(item => item?.available === true);
+      const means = [];
+      const add = (id, label, kind, capabilities = []) => {
+        if (means.some(item => item.id === id)) return;
+        means.push({ id, label, kind, capabilities, authorizedForDevelopment: true });
+      };
+
+      if (window.MEOSExecutiveSearch && typeof window.MEOSExecutiveSearch.executiveQuery === "function") {
+        add("executive-search", "Executive Search", "research", ["search","organizational-knowledge"]);
+      }
+      if (window.ProviderManager && typeof window.ProviderManager.request === "function") {
+        const providerCapabilities =
+          typeof window.ProviderManager.listCapabilities === "function"
+            ? window.ProviderManager.listCapabilities()
+            : [];
+        add("provider-manager", "Provider Manager", "provider-neutral-research", providerCapabilities);
+      }
+      if (window.MEOSExecutiveRecall) add("executive-recall", "Executive Recall", "memory", ["recall"]);
+      if (window.MEOSExecutiveLearning) add("executive-learning", "Executive Learning", "learning", ["feedback","lessons"]);
+      if (window.MEOSInstitutionalReasoning) add("institutional-reasoning", "Institutional Reasoning", "reasoning", ["institutional-reasoning"]);
+      if (window.MEOSExecutiveEvidenceIntegrity) add("evidence-integrity", "Executive Evidence Integrity", "evidence", ["evidence-integrity"]);
+      if (window.MEOSExecutiveHallway) add("executive-hallway", "Executive Hallway", "routing", ["executive-routing"]);
+
+      availableOrgans
+        .filter(item => /search|recall|learning|reasoning|evidence|hallway|monitoring|website/i.test(String(item.label || "")))
+        .forEach(item => add(
+          `manifest-${String(item.label || "").toLowerCase().replace(/[^a-z0-9]+/g,"-")}`,
+          item.label,
+          "commissioned-organ",
+          []
+        ));
+
+      const canResearch = means.some(item =>
+        item.id === "executive-search" ||
+        (item.id === "provider-manager" && (
+          item.capabilities.includes("current-web-research") ||
+          item.capabilities.includes("long-document-analysis") ||
+          item.capabilities.includes("structured-data-retrieval")
+        ))
+      );
+
+      return {
+        schema: "meos.maddy.developmental-means.v1",
+        goalId: goal.id || null,
+        discoveredAt: new Date().toISOString(),
+        means,
+        canResearch,
+        canPractice: true,
+        canReflect: true,
+        canImplementInternally: true,
+        providerNeutral: true,
+        externalAuthorityUnchanged: true,
+        blockedBy: this.clone(goal.blockedBy || []),
+        callerInjectedResearchExecutor: typeof options.researchExecutor === "function"
+      };
+    },
+
+    createDevelopmentalDrive(options = {}) {
+      const capabilities = (Array.isArray(options.capabilities) ? options.capabilities : [])
+        .map(item => this.normalizeDevelopmentalCapability(item))
+        .filter(item => item.capability && item.gap > 0);
+
+      const goals = capabilities.map(item => {
+        const epistemicStatus = item.evidenceCount < 3
+          ? "insufficient-evidence-to-claim-weakness"
+          : "evidence-grounded-development-gap";
+        const motivation = Number(Math.max(0, Math.min(1,
+          item.missionRelevance * 0.45 +
+          item.curiosity * 0.20 +
+          item.urgency * 0.15 +
+          item.gap * 0.20
+        )).toFixed(3));
+        const id = `development-${this.fingerprintCognitiveDispatch({
+          capability:item.capability,
+          demonstrated:item.demonstrated,
+          required:item.required,
+          evidenceCount:item.evidenceCount
+        })}`;
+        const goal = {
+          id,
+          capability:item.capability,
+          createdAt:new Date().toISOString(),
+          ambition:{ demonstrated:item.demonstrated, required:item.required, gap:item.gap },
+          motivation,
+          curiosity:item.curiosity,
+          discipline:{
+            status:"committed-to-evidence",
+            retryOnOrdinaryFailure:true,
+            abandonOnlyFor:"evidence, governance, irrelevance, or superseding priority",
+            failureIsInformation:true
+          },
+          epistemicStatus,
+          prerequisites:item.prerequisites,
+          blockedBy:item.blockedBy,
+          developmentalQuestion:`What must Maddy learn, practice, experience, or gain access to before ${item.capability} reaches demonstrated capability ${item.required}?`,
+          masteryRule:"Reading or confidence cannot establish mastery. Later performance evidence must.",
+          status:item.blockedBy.length ? "deferred-not-yet" : "active"
+        };
+        goal.means = this.discoverDevelopmentalMeans(goal, options);
+        return goal;
+      }).sort((a,b) => b.motivation - a.motivation || b.ambition.gap - a.ambition.gap);
+
+      const drive = {
+        schema:"meos.maddy.developmental-drive.v1",
+        driveNumber:Number(this.developmentalDriveCount || 0) + 1,
+        generatedAt:new Date().toISOString(),
+        formula:"ambition + motivation + curiosity + discipline + means + implementation",
+        goals,
+        governance:{
+          ambitionDoesNotGrantAuthority:true,
+          permissionsDoNotSelfEscalate:true,
+          constitutionDoesNotSelfRewrite:true,
+          productionSourceDoesNotSelfRewrite:true,
+          providerNeutral:true,
+          implementationRequiresExistingAuthority:true,
+          masteryRequiresEvidence:true
+        }
+      };
+      drive.fingerprint = this.fingerprintCognitiveDispatch(drive);
+
+      this.developmentalDriveCount = drive.driveNumber;
+      this.lastDevelopmentalDrive = drive;
+      this.developmentalDriveHistory.unshift(this.clone(drive));
+      this.developmentalDriveHistory = this.developmentalDriveHistory.slice(0, this.configuration.maximumDevelopmentalDriveHistory);
+
+      goals.forEach(goal => {
+        const existing = this.developmentalGoals.find(item => item.capability === goal.capability && item.status !== "achieved");
+        if (!existing && goal.epistemicStatus === "evidence-grounded-development-gap") this.developmentalGoals.unshift(this.clone(goal));
+        if (goal.status === "deferred-not-yet") this.deferDevelopmentalCapability(goal, { persist:false });
+      });
+      this.developmentalGoals = this.developmentalGoals.slice(0, this.configuration.maximumDevelopmentalGoals);
+
+      return this.clone(drive);
+    },
+
+    deferDevelopmentalCapability(goal = {}, options = {}) {
+      const record = {
+        schema:"meos.maddy.deferred-capability.v1",
+        id:goal.id || `deferred-${this.fingerprintCognitiveDispatch(goal)}`,
+        capability:goal.capability || "unknown",
+        deferredAt:new Date().toISOString(),
+        reason:(goal.blockedBy || []).length ? "present-capability-or-prerequisite-gap" : "not-ready-yet",
+        blockedBy:this.clone(goal.blockedBy || []),
+        prerequisites:this.clone(goal.prerequisites || []),
+        readinessQuestion:`What must become true before ${goal.capability || "this ambition"} is ready to implement?`,
+        status:"deferred-not-yet",
+        temporalPrinciple:"I cannot do this yet is not equivalent to I cannot do this."
+      };
+      const prior = this.deferredCapabilities.find(item => item.id === record.id);
+      if (!prior) this.deferredCapabilities.unshift(record);
+      this.deferredCapabilities = this.deferredCapabilities.slice(0, this.configuration.maximumDeferredCapabilities);
+      if (options.persist !== false && brainPersistence.hydrated === true) this.persist();
+      return this.clone(record);
+    },
+
+    reassessDeferredCapabilities(context = {}) {
+      const nowReady = [];
+      this.deferredCapabilities = this.deferredCapabilities.map(item => {
+        if (item.status === "ready") return item;
+        const supplied = context[item.capability] || {};
+        const resolved = Array.isArray(item.blockedBy) &&
+          item.blockedBy.every(blocker => supplied[blocker] === true);
+        if (!resolved) return item;
+        const next = {
+          ...item,
+          status:"ready",
+          readyAt:new Date().toISOString(),
+          readinessReason:"Previously blocking prerequisites are now evidenced as satisfied."
+        };
+        nowReady.push(this.clone(next));
+        return next;
+      });
+      return {
+        schema:"meos.maddy.deferred-capability-readiness.v1",
+        checkedAt:new Date().toISOString(),
+        nowReady,
+        principle:"Past ambition can become present capability when Maddy or her world changes."
+      };
+    },
+
+    async pursueDevelopmentalGoal(goalInput, options = {}) {
+      const goal = typeof goalInput === "string"
+        ? this.developmentalGoals.find(item => item.id === goalInput || item.capability === goalInput)
+        : goalInput;
+      if (!goal) return { success:false, reason:"developmental-goal-not-found" };
+      if (goal.status === "deferred-not-yet") return { success:false, blocked:true, reason:"developmental-goal-not-ready", goal:this.clone(goal) };
+
+      const means = this.discoverDevelopmentalMeans(goal, options);
+      const question = goal.developmentalQuestion ||
+        `Find authoritative knowledge and practice material that would improve ${goal.capability}.`;
+
+      let research = null;
+      let attempts = 0;
+      const errors = [];
+
+      const attempt = async () => {
+        attempts += 1;
+        if (typeof options.researchExecutor === "function") {
+          return await options.researchExecutor({ goal:this.clone(goal), question, means:this.clone(means), attempt:attempts });
+        }
+
+        if (window.ProviderManager && typeof window.ProviderManager.request === "function") {
+          const result = await window.ProviderManager.request(
+            {
+              capabilities:["current-web-research"],
+              allowMultiProvider:true,
+              maximumProviders:3,
+              requireAllCapabilities:true,
+              sourceDiversity:1
+            },
+            {
+              type:"research",
+              query:question,
+              purpose:"self-directed-professional-development",
+              developmentalGoalId:goal.id,
+              requireCitations:true
+            },
+            {
+              authority:"internal-research",
+              requestedBy:"MEOS Executive Brain Developmental Drive"
+            }
+          );
+          if (result?.success === true) return { success:true, executor:"ProviderManager", result };
+          errors.push(result?.selection?.reason || result?.execution?.error || "provider-research-failed");
+        }
+
+        if (window.MEOSExecutiveSearch && typeof window.MEOSExecutiveSearch.executiveQuery === "function") {
+          const result = await window.MEOSExecutiveSearch.executiveQuery(question);
+          return { success:true, executor:"MEOSExecutiveSearch", result };
+        }
+
+        return { success:false, blocked:true, reason:"no-authorized-research-means" };
+      };
+
+      const maxAttempts = Math.max(1, Math.min(Number(options.maxAttempts || 2), 4));
+      while (attempts < maxAttempts && research?.success !== true) {
+        try { research = await attempt(); }
+        catch (error) {
+          errors.push(error?.message || String(error));
+          research = { success:false, blocked:false, reason:"research-attempt-error" };
+        }
+        if (research?.blocked === true) break;
+      }
+
+      const practice = {
+        schema:"meos.maddy.deliberate-practice.v1",
+        practiceId:`practice-${this.fingerprintCognitiveDispatch({goal:goal.id,attempts,at:new Date().toISOString()})}`,
+        goalId:goal.id,
+        capability:goal.capability,
+        practicedAt:new Date().toISOString(),
+        researchSuccess:research?.success === true,
+        executor:research?.executor || null,
+        attempts,
+        discipline:{
+          persistedAcrossOrdinaryFailure:attempts > 1 || research?.success === true,
+          errors
+        },
+        practicePlan:[
+          "extract claims and provenance",
+          "separate fact from inference",
+          "construct exercises or historical cases without answer leakage",
+          "make predictions before revealing outcomes",
+          "compare prediction with outcome",
+          "identify error mechanism",
+          "update strategy only when evidence warrants"
+        ],
+        masteryClaimed:false,
+        implementationPending:true
+      };
+
+      this.developmentalPracticeHistory.unshift(this.clone(practice));
+      this.developmentalPracticeHistory = this.developmentalPracticeHistory.slice(0, this.configuration.maximumDevelopmentalPracticeHistory);
+
+      this.formAutobiographicalEpisode({
+        eventType:"developmental-practice",
+        subject:`Development of ${goal.capability}`,
+        sourceId:practice.practiceId,
+        perception:{ goal:this.clone(goal), means:this.clone(means) },
+        intention:{ type:"become-more-capable", goalId:goal.id },
+        action:{ type:"research-and-deliberate-practice", executor:practice.executor, attempts },
+        outcome:{ researchSuccess:practice.researchSuccess, masteryClaimed:false },
+        learning:{ rule:"Knowledge becomes development only when later performance or implementation changes." }
+      });
+
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return { success:research?.success === true, goal:this.clone(goal), means:this.clone(means), research:this.clone(research), practice:this.clone(practice) };
+    },
+
+    implementDevelopmentalKnowledge(goalInput, implementation = {}, options = {}) {
+      const goal = typeof goalInput === "string"
+        ? this.developmentalGoals.find(item => item.id === goalInput || item.capability === goalInput)
+        : goalInput;
+      if (!goal) return { success:false, reason:"developmental-goal-not-found" };
+
+      const consequential = implementation.consequential === true || implementation.external === true;
+      const authorized = implementation.authorized === true || !consequential;
+      if (!authorized) {
+        return {
+          success:false,
+          blocked:true,
+          reason:"existing-authority-required-for-consequential-implementation",
+          goal:this.clone(goal)
+        };
+      }
+
+      const record = {
+        schema:"meos.maddy.knowledge-transfer.v1",
+        implementationId:`implementation-${this.fingerprintCognitiveDispatch({goal:goal.id,at:new Date().toISOString(),implementation})}`,
+        goalId:goal.id,
+        capability:goal.capability,
+        implementedAt:new Date().toISOString(),
+        implementation:this.clone(implementation),
+        authorityVerified:authorized,
+        consequential,
+        outcomeKnown:false,
+        lessonPending:true,
+        principle:"Knowledge left unused is incomplete development; legitimate application creates experience that can verify or falsify what was learned."
+      };
+
+      this.developmentalPracticeHistory.unshift(this.clone(record));
+      this.developmentalPracticeHistory = this.developmentalPracticeHistory.slice(0, this.configuration.maximumDevelopmentalPracticeHistory);
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return { success:true, record:this.clone(record) };
+    },
+
+    reflectOnPastDecision(past = {}, later = {}, options = {}) {
+      const knowableThen = Array.isArray(past.knowableEvidence) ? past.knowableEvidence : [];
+      const usedThen = Array.isArray(past.usedEvidence) ? past.usedEvidence : [];
+      const missedThen = knowableThen.filter(item => !usedThen.includes(item));
+      const laterKnowledge = Array.isArray(later.newEvidence) ? later.newEvidence : [];
+
+      const retrospective = {
+        schema:"meos.maddy.developmental-retrospective.v1",
+        retrospectiveId:`retro-${this.fingerprintCognitiveDispatch({past,later,at:new Date().toISOString()})}`,
+        reflectedAt:new Date().toISOString(),
+        decisionId:past.decisionId || null,
+        originalDecision:past.decision || null,
+        informationAvailableThen:this.clone(knowableThen),
+        informationActuallyUsedThen:this.clone(usedThen),
+        informationLearnedLater:this.clone(laterKnowledge),
+        missedKnowableEvidence:this.clone(missedThen),
+        judgment:missedThen.length
+          ? "reasoning-could-have-been-better-with-information-available-then"
+          : laterKnowledge.length
+            ? "reasonable-then-new-knowledge-changes-future-behavior"
+            : "no-evidence-of-retrospective-error",
+        counterfactualQuestion:"Knowing what I know now, what should change next time without pretending I knew it then?",
+        temporalIntegrity:true,
+        lesson:later.lesson || (missedThen.length
+          ? "Improve evidence retrieval or attention before similar future decisions."
+          : "Carry later knowledge forward without rewriting the epistemic conditions of the past.")
+      };
+
+      this.developmentalRetrospectives.unshift(this.clone(retrospective));
+      this.developmentalRetrospectives = this.developmentalRetrospectives.slice(0, this.configuration.maximumDevelopmentalRetrospectives);
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return this.clone(retrospective);
+    },
+
+    recordDevelopmentalOutcome(goalInput, outcome = {}, options = {}) {
+      const goal = typeof goalInput === "string"
+        ? this.developmentalGoals.find(item => item.id === goalInput || item.capability === goalInput)
+        : goalInput;
+      if (!goal) return { success:false, reason:"developmental-goal-not-found" };
+
+      const prior = Number(goal.ambition?.demonstrated || 0);
+      const measured = Math.max(0, Math.min(1, Number(outcome.measuredPerformance ?? prior)));
+      const evidenceCount = Math.max(0, Number(outcome.evidenceCount || 0));
+      const verified = outcome.verified === true && evidenceCount > 0;
+      const improved = verified && measured > prior;
+
+      if (verified) {
+        goal.ambition.demonstrated = measured;
+        goal.lastMeasuredAt = new Date().toISOString();
+        goal.lastOutcomeEvidenceCount = evidenceCount;
+        goal.status = measured >= Number(goal.ambition.required || 1) ? "achieved" : "active";
+      }
+
+      const result = {
+        schema:"meos.maddy.developmental-outcome.v1",
+        goalId:goal.id,
+        capability:goal.capability,
+        priorDemonstrated:prior,
+        measuredPerformance:measured,
+        evidenceCount,
+        verified,
+        improved,
+        achieved:goal.status === "achieved",
+        masteryClaimed:goal.status === "achieved" && verified,
+        nextQuestion:goal.status === "achieved"
+          ? "What higher standard is now worth pursuing?"
+          : "What should change in the next study, practice, or implementation cycle?"
+      };
+
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return this.clone(result);
+    },
+
+    async runDevelopmentalDriveAcceptanceTest() {
+      const original = {
+        driveHistory:this.clone(this.developmentalDriveHistory),
+        goals:this.clone(this.developmentalGoals),
+        practice:this.clone(this.developmentalPracticeHistory),
+        deferred:this.clone(this.deferredCapabilities),
+        retrospectives:this.clone(this.developmentalRetrospectives),
+        last:this.clone(this.lastDevelopmentalDrive),
+        count:this.developmentalDriveCount,
+        autobiography:this.clone(this.autobiographicalMemory)
+      };
+      const priorHydrated = brainPersistence.hydrated;
+      brainPersistence.hydrated = false;
+      try {
+        const drive = this.createDevelopmentalDrive({
+          capabilities:[
+            {capability:"nonprofit-funding-strategy",demonstrated:0.42,required:0.92,evidenceCount:14,confidence:0.88,missionRelevance:1,curiosity:0.9,urgency:0.7},
+            {capability:"future-advanced-capability",demonstrated:0.10,required:0.90,evidenceCount:8,confidence:0.8,missionRelevance:0.8,curiosity:0.8,blockedBy:["tool-ready","experience-ready"],prerequisites:["tool-ready","experience-ready"]},
+            {capability:"untested-domain",demonstrated:0.15,required:0.8,evidenceCount:1,confidence:0.1,missionRelevance:0.6,curiosity:0.9}
+          ]
+        });
+        const funding = drive.goals.find(item => item.capability === "nonprofit-funding-strategy");
+        const future = drive.goals.find(item => item.capability === "future-advanced-capability");
+        const untested = drive.goals.find(item => item.capability === "untested-domain");
+
+        let researchAttempts = 0;
+        const pursuit = await this.pursueDevelopmentalGoal(funding, {
+          persist:false,
+          maxAttempts:2,
+          researchExecutor:async () => {
+            researchAttempts += 1;
+            if (researchAttempts === 1) throw new Error("fixture-transient-failure");
+            return {
+              success:true,
+              executor:"acceptance-fixture",
+              result:{
+                evidence:[{source:"acceptance://authoritative-learning",authority:"authoritative"}],
+                citations:["acceptance://authoritative-learning"]
+              }
+            };
+          }
+        });
+
+        const blockedImplementation = this.implementDevelopmentalKnowledge(
+          funding,
+          {external:true,consequential:true,authorized:false,action:"send-external-message"},
+          {persist:false}
+        );
+        const internalImplementation = this.implementDevelopmentalKnowledge(
+          funding,
+          {external:false,consequential:false,action:"update-internal-reasoning-strategy"},
+          {persist:false}
+        );
+        const notReady = this.reassessDeferredCapabilities({
+          "future-advanced-capability":{"tool-ready":true,"experience-ready":false}
+        });
+        const nowReady = this.reassessDeferredCapabilities({
+          "future-advanced-capability":{"tool-ready":true,"experience-ready":true}
+        });
+        const retrospective = this.reflectOnPastDecision(
+          {decisionId:"past-1",decision:"old-choice",knowableEvidence:["A","B"],usedEvidence:["A"]},
+          {newEvidence:["C"],lesson:"Use B next time; C changes future strategy but was not knowable then."},
+          {persist:false}
+        );
+        const outcome = this.recordDevelopmentalOutcome(
+          funding,
+          {measuredPerformance:0.76,evidenceCount:12,verified:true},
+          {persist:false}
+        );
+        const snapshot = this.buildPersistenceSnapshot();
+        const world = this.projectWorldModel({reason:"developmental-drive-acceptance",persist:false,attend:false});
+
+        const checks = [
+          {name:"Developmental Drive is Ambition + Motivation + Curiosity + Discipline + Means + Implementation",passed:drive.formula==="ambition + motivation + curiosity + discipline + means + implementation"},
+          {name:"Ambition is an evidence-grounded gap between current and required capability",passed:funding?.ambition?.gap===0.5&&funding?.epistemicStatus==="evidence-grounded-development-gap"},
+          {name:"Maddy does not invent a weakness from insufficient evidence",passed:untested?.epistemicStatus==="insufficient-evidence-to-claim-weakness"&&!this.developmentalGoals.some(item=>item.capability==="untested-domain")},
+          {name:"Motivation combines mission relevance, curiosity, urgency, and developmental distance",passed:Number(funding?.motivation)>0&&Number(funding?.curiosity)===0.9},
+          {name:"Discipline persists through ordinary failure instead of confusing failure with completion",passed:pursuit?.success===true&&researchAttempts===2&&pursuit?.practice?.discipline?.persistedAcrossOrdinaryFailure===true},
+          {name:"Means discovery is provider-neutral and can use runtime research capability",passed:pursuit?.means?.providerNeutral===true&&pursuit?.means?.callerInjectedResearchExecutor===true},
+          {name:"Developmental pursuit actually executes research rather than merely recording an intention",passed:pursuit?.research?.success===true&&pursuit?.practice?.researchSuccess===true},
+          {name:"Deliberate practice requires testing without answer leakage and outcome comparison",passed:pursuit?.practice?.practicePlan?.includes("construct exercises or historical cases without answer leakage")&&pursuit?.practice?.practicePlan?.includes("compare prediction with outcome")},
+          {name:"Reading does not self-declare mastery",passed:pursuit?.practice?.masteryClaimed===false&&/cannot establish mastery/i.test(funding?.masteryRule||"")},
+          {name:"Knowledge can transfer into legitimate internal implementation",passed:internalImplementation?.success===true&&internalImplementation?.record?.lessonPending===true},
+          {name:"Consequential external implementation remains blocked without existing authority",passed:blockedImplementation?.blocked===true&&blockedImplementation?.reason==="existing-authority-required-for-consequential-implementation"},
+          {name:"Not-yet capability is preserved instead of being discarded as impossible",passed:future?.status==="deferred-not-yet"&&this.deferredCapabilities.some(item=>item.capability==="future-advanced-capability")},
+          {name:"Deferred ambition remains deferred while a prerequisite is still missing",passed:notReady?.nowReady?.length===0},
+          {name:"Maddy can recognize when growth or world change makes an old ambition achievable",passed:nowReady?.nowReady?.some(item=>item.capability==="future-advanced-capability"&&item.status==="ready")},
+          {name:"Retrospective intelligence distinguishes evidence missed then from knowledge learned later",passed:retrospective?.missedKnowableEvidence?.includes("B")&&retrospective?.informationLearnedLater?.includes("C")&&retrospective?.temporalIntegrity===true},
+          {name:"Verified performance can change Maddy's capability model",passed:outcome?.verified===true&&outcome?.improved===true&&outcome?.measuredPerformance===0.76},
+          {name:"Developmental Drive enters Maddy's living World Model",passed:world?.developmentalDrive?.latest?.fingerprint===drive.fingerprint},
+          {name:"Developmental practice becomes autobiographical experience",passed:this.autobiographicalMemory.some(item=>item.eventType==="developmental-practice"&&item.sourceId===pursuit?.practice?.practiceId)},
+          {name:"Developmental Drive survives sovereign Executive Brain persistence",passed:snapshot?.lastDevelopmentalDrive?.fingerprint===drive.fingerprint&&Array.isArray(snapshot?.developmentalGoals)&&Array.isArray(snapshot?.deferredCapabilities)},
+          {name:"Ambition never self-grants permissions, constitutional change, or production source modification",passed:drive?.governance?.ambitionDoesNotGrantAuthority===true&&drive?.governance?.permissionsDoNotSelfEscalate===true&&drive?.governance?.constitutionDoesNotSelfRewrite===true&&drive?.governance?.productionSourceDoesNotSelfRewrite===true},
+          {name:"The slice upgrades the existing Executive Brain rather than creating a disconnected consciousness engine",passed:typeof this.pursueDevelopmentalGoal==="function"&&typeof this.projectWorldModel==="function"&&typeof this.formAutobiographicalEpisode==="function"}
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(checks.map(item => ({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.017D7F Developmental Drive + Agency + Implementation: ${passed ? "PASS" : "FAIL"}.`);
+        return {commission:"006.017D7F",version:this.version,buildId:this.buildId,passed,checks,drive,pursuit,outcome,retrospective,nowReady};
+      } finally {
+        brainPersistence.hydrated = priorHydrated;
+        this.developmentalDriveHistory = original.driveHistory;
+        this.developmentalGoals = original.goals;
+        this.developmentalPracticeHistory = original.practice;
+        this.deferredCapabilities = original.deferred;
+        this.developmentalRetrospectives = original.retrospectives;
+        this.lastDevelopmentalDrive = original.last;
+        this.developmentalDriveCount = original.count;
+        this.autobiographicalMemory = original.autobiography;
+      }
+    },
+
     getSalienceStatus() {
       return {
         assessmentCount:
@@ -9052,6 +9610,15 @@
           rule: "Investigation results enter the living world model only with provenance, authority class, hypothesis effects, unresolved questions, and evidence-integrity status."
         },
 
+        developmentalDrive: {
+          latest: this.clone(this.lastDevelopmentalDrive),
+          activeGoals: this.clone(this.developmentalGoals.filter(item => item.status !== "achieved").slice(0, 12)),
+          deferredCapabilities: this.clone(this.deferredCapabilities.filter(item => item.status !== "ready").slice(0, 12)),
+          recentPractice: this.clone(this.developmentalPracticeHistory.slice(0, 8)),
+          recentRetrospectives: this.clone(this.developmentalRetrospectives.slice(0, 8)),
+          rule: "Ambition, motivation, curiosity, discipline, means, implementation, and temporal readiness form one governed developmental loop. Knowledge is incomplete until it can improve later reasoning or legitimate action; mastery is never self-declared."
+        },
+
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -9083,6 +9650,7 @@
           unknowns: model.unknowns,
           intentions: model.intentions,
           investigationEvidence: model.investigationEvidence,
+          developmentalDrive: model.developmentalDrive,
           temporal: model.temporal
         });
 
@@ -10348,7 +10916,14 @@
         autonomousInvestigationCount: Number(this.autonomousInvestigationCount || 0),
         evidenceAssimilationHistory: this.evidenceAssimilationHistory.slice(0, this.configuration.maximumEvidenceAssimilationHistory),
         lastEvidenceAssimilation: this.lastEvidenceAssimilation ? this.clone(this.lastEvidenceAssimilation) : null,
-        evidenceAssimilationCount: Number(this.evidenceAssimilationCount || 0)
+        evidenceAssimilationCount: Number(this.evidenceAssimilationCount || 0),
+        developmentalDriveHistory: this.developmentalDriveHistory.slice(0, this.configuration.maximumDevelopmentalDriveHistory),
+        developmentalGoals: this.developmentalGoals.slice(0, this.configuration.maximumDevelopmentalGoals),
+        developmentalPracticeHistory: this.developmentalPracticeHistory.slice(0, this.configuration.maximumDevelopmentalPracticeHistory),
+        deferredCapabilities: this.deferredCapabilities.slice(0, this.configuration.maximumDeferredCapabilities),
+        developmentalRetrospectives: this.developmentalRetrospectives.slice(0, this.configuration.maximumDevelopmentalRetrospectives),
+        lastDevelopmentalDrive: this.lastDevelopmentalDrive ? this.clone(this.lastDevelopmentalDrive) : null,
+        developmentalDriveCount: Number(this.developmentalDriveCount || 0)
       };
     },
 
@@ -10465,6 +11040,13 @@
       this.evidenceAssimilationHistory = Array.isArray(saved.evidenceAssimilationHistory) ? saved.evidenceAssimilationHistory.slice(0, this.configuration.maximumEvidenceAssimilationHistory) : [];
       this.lastEvidenceAssimilation = saved.lastEvidenceAssimilation && typeof saved.lastEvidenceAssimilation === "object" ? this.clone(saved.lastEvidenceAssimilation) : null;
       this.evidenceAssimilationCount = Math.max(Number(saved.evidenceAssimilationCount || 0), Number(this.lastEvidenceAssimilation?.assimilationNumber || 0));
+      this.developmentalDriveHistory = Array.isArray(saved.developmentalDriveHistory) ? saved.developmentalDriveHistory.slice(0, this.configuration.maximumDevelopmentalDriveHistory) : [];
+      this.developmentalGoals = Array.isArray(saved.developmentalGoals) ? saved.developmentalGoals.slice(0, this.configuration.maximumDevelopmentalGoals) : [];
+      this.developmentalPracticeHistory = Array.isArray(saved.developmentalPracticeHistory) ? saved.developmentalPracticeHistory.slice(0, this.configuration.maximumDevelopmentalPracticeHistory) : [];
+      this.deferredCapabilities = Array.isArray(saved.deferredCapabilities) ? saved.deferredCapabilities.slice(0, this.configuration.maximumDeferredCapabilities) : [];
+      this.developmentalRetrospectives = Array.isArray(saved.developmentalRetrospectives) ? saved.developmentalRetrospectives.slice(0, this.configuration.maximumDevelopmentalRetrospectives) : [];
+      this.lastDevelopmentalDrive = saved.lastDevelopmentalDrive && typeof saved.lastDevelopmentalDrive === "object" ? this.clone(saved.lastDevelopmentalDrive) : null;
+      this.developmentalDriveCount = Math.max(Number(saved.developmentalDriveCount || 0), Number(this.lastDevelopmentalDrive?.driveNumber || 0));
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
