@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.26";
+const VERSION = "2.10.27";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -8237,7 +8237,13 @@ app.get(
         await readDurableExecutiveLearningState();
 
       if (!result?.found) {
-        response.status(404).json({
+        /*
+         * An empty durable learning repository is a valid first-run state,
+         * not a transport failure. Executive Learning uses found:false to
+         * migrate its bounded recovery cache forward into Repository Authority.
+         * Keep HTTP errors reserved for actual failures.
+         */
+        response.status(200).json({
           commission:
             EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
           schema:
