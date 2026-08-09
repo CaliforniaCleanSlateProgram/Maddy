@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.10.1
- * Build: EB1101-COGNITIVE-REENTRY-LINEAGE-GUARD-20260808-A
+ * Version: 1.11.0
+ * Build: EB1110-SPOOKY-LIVING-WORLD-MODEL-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.10.1";
-  const BUILD_ID = "EB1101-COGNITIVE-REENTRY-LINEAGE-GUARD-20260808-A";
+  const VERSION = "1.11.0";
+  const BUILD_ID = "EB1110-SPOOKY-LIVING-WORLD-MODEL-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -172,6 +172,8 @@
       maximumMetacognitiveReflections: 240,
       metacognitiveRecallLimit: 12,
       maximumTemporalContinuityHistory: 180,
+      maximumWorldModelHistory: 160,
+      maximumRelationshipHistory: 120,
       temporalContinuityResumeThresholdMs: 15000,
       temporalCommitmentLookaheadHours: 720
     },
@@ -208,6 +210,11 @@
     temporalContinuityHistory: [],
     temporalContinuityCheckpointCount: 0,
     temporalContinuityObserversAttached: false,
+    worldModel: null,
+    worldModelHistory: [],
+    worldModelProjectionCount: 0,
+    relationshipModels: {},
+    relationshipHistory: [],
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -247,6 +254,10 @@
           reason: "temporal-continuity-resumed",
           persist: false
         });
+        this.projectWorldModel({
+          reason: "durable-cognition-hydrated",
+          persist: true
+        });
         return result;
       });
 
@@ -268,6 +279,10 @@
         this.temporalContinuity.currentIntervalStartedAt ||
         new Date().toISOString();
       this.projectWorkingAwareness({
+        reason: "initialization",
+        persist: false
+      });
+      this.projectWorldModel({
         reason: "initialization",
         persist: false
       });
@@ -312,6 +327,10 @@
           persist: false
         });
         this.projectWorkingAwareness({
+          reason: `brain-refresh:${options.reason || "manual"}`,
+          persist: false
+        });
+        this.projectWorldModel({
           reason: `brain-refresh:${options.reason || "manual"}`,
           persist: false
         });
@@ -407,6 +426,7 @@
         autobiographicalMemory: this.getAutobiographicalMemory(8),
         metacognitiveContext: this.buildMetacognitiveContext({ limit: 6 }),
         temporalContinuity: this.getTemporalContinuityStatus(),
+        worldModel: this.getWorldModel({ refresh: false }),
 
         system: {
           manifest: this.getSystemManifest()
@@ -497,6 +517,7 @@
         workingAwareness: startup.workingAwareness,
         autobiographicalMemory: startup.autobiographicalMemory,
         temporalContinuity: startup.temporalContinuity,
+        worldModel: startup.worldModel,
         system: {
           available: startup.system.manifest
             .filter(item => item.available)
@@ -7087,6 +7108,611 @@
       }
     },
 
+    /*
+     * Commission 006.017D7A — Spooky Living World Model
+     *
+     * Not a consciousness engine. This is the Executive Brain's living,
+     * MEOS-owned model of reality, self, people, relationships, knowledge,
+     * uncertainty, intentions, and possible futures.
+     *
+     * Epistemic rule: Maddy must preserve HOW she knows something. Innate
+     * constitutional identity, narrative biography, institutional knowledge,
+     * direct observations, memories, inferences, learned lessons, and unknowns
+     * are never silently collapsed into one undifferentiated "fact" bucket.
+     */
+
+    buildEpistemicLayers() {
+      const profile = this.resolveMaddyProfile();
+      const organization = this.buildOrganizationContext();
+      const learning = this.collectLearning();
+      const recentMemory = this.getAutobiographicalMemory(16);
+
+      return {
+        innate: {
+          source: "meos-canonical-identity",
+          authority: "constitutional",
+          identity: this.clone(
+            profile?.identity || profile || null
+          ),
+          oath: this.clone(profile?.oath || []),
+          purpose: this.clone(profile?.purpose || null),
+          disclosure:
+            profile?.identity?.disclosure ||
+            profile?.biography?.disclosure ||
+            null
+        },
+        biography: {
+          source: "maddy-transparent-narrative-identity",
+          authority: "canonical-narrative",
+          content: this.clone(
+            profile?.biography || null
+          ),
+          literalHumanHistory: false
+        },
+        institutional: {
+          source: "organization-package-and-institutional-knowledge",
+          authority: "organization-specific",
+          organization: this.clone(organization)
+        },
+        observed: {
+          source: "commissioned-runtime-organs",
+          currentWork: this.clone(this.collectCurrentWork()),
+          monitoring: this.clone(this.collectMonitoring())
+        },
+        remembered: {
+          source: "maddy-autobiographical-memory",
+          episodes: this.clone(recentMemory)
+        },
+        learned: {
+          source: "executive-learning",
+          content: this.clone(learning)
+        },
+        inferred: {
+          source: "reasoning-only",
+          rule:
+            "Inference is never promoted to verified fact without supporting evidence."
+        }
+      };
+    },
+
+    relationshipKey(person = {}) {
+      const raw = String(
+        person.id ||
+        person.email ||
+        person.name ||
+        person.preferredName ||
+        person.role ||
+        "unknown-person"
+      ).trim().toLowerCase();
+
+      return raw.replace(/[^a-z0-9@._-]+/g, "-");
+    },
+
+    projectRelationshipModel(person = {}, options = {}) {
+      const key = this.relationshipKey(person);
+      const prior = this.relationshipModels[key] || null;
+      const episodes = this.getAutobiographicalMemory(
+        this.configuration.maximumAutobiographicalEpisodes
+      ).filter(episode => {
+        const serialized = JSON.stringify(episode).toLowerCase();
+        const names = [
+          person.name,
+          person.preferredName,
+          person.email
+        ]
+          .filter(Boolean)
+          .map(value => String(value).toLowerCase());
+
+        return names.length > 0 &&
+          names.some(value => serialized.includes(value));
+      });
+
+      const explicitPreferences = this.clone(
+        person.preferences ||
+        person.communicationPreferences ||
+        {}
+      );
+      const explicitBoundaries = this.clone(
+        person.boundaries ||
+        person.communicationBoundaries ||
+        {}
+      );
+      const commitments = episodes
+        .flatMap(item =>
+          Array.isArray(item?.commitments)
+            ? item.commitments
+            : []
+        )
+        .slice(0, 30);
+
+      const model = {
+        schema: "meos.maddy.relationship-model.v1",
+        personKey: key,
+        person: {
+          id: person.id || null,
+          name:
+            person.name ||
+            person.preferredName ||
+            null,
+          role: person.role || null
+        },
+        generatedAt: new Date().toISOString(),
+        relationshipType:
+          options.relationshipType ||
+          person.relationshipType ||
+          "coworker",
+        rapport: {
+          sharedEpisodeCount: episodes.length,
+          explicitPreferences,
+          communicationPatterns:
+            this.clone(
+              person.communicationPatterns || {}
+            )
+        },
+        trust: {
+          status:
+            prior?.trust?.status || "developing",
+          basis:
+            episodes.length > 0
+              ? "shared-history-and-observed-interaction"
+              : "insufficient-shared-history",
+          earnedNotAssumed: true,
+          reliabilityEvidence:
+            this.clone(
+              person.reliabilityEvidence || []
+            )
+        },
+        commitments,
+        boundaries: explicitBoundaries,
+        unresolvedContext:
+          this.clone(
+            person.unresolvedContext || []
+          ),
+        sharedHistory: episodes.slice(0, 20).map(item => ({
+          episodeId: item.episodeId || null,
+          occurredAt:
+            item.occurredAt ||
+            item.createdAt ||
+            null,
+          significance:
+            item.significance || null
+        })),
+        governance: {
+          personSpecific: true,
+          portableAcrossOrganizations: false,
+          neverUniversalizePrivatePreferences: true,
+          neverManufactureAttachment: true,
+          neverClaimUnsubstantiatedEmotion: true,
+          trustMustBeEarnedFromEvidence: true
+        }
+      };
+
+      model.fingerprint =
+        this.fingerprintCognitiveDispatch(model);
+
+      this.relationshipModels[key] = model;
+      this.relationshipHistory.unshift({
+        personKey: key,
+        fingerprint: model.fingerprint,
+        generatedAt: model.generatedAt,
+        sharedEpisodeCount:
+          model.rapport.sharedEpisodeCount
+      });
+      this.relationshipHistory =
+        this.relationshipHistory.slice(
+          0,
+          this.configuration.maximumRelationshipHistory
+        );
+
+      this.emit(
+        "brain:relationship-model-updated",
+        this.clone(model)
+      );
+
+      return this.clone(model);
+    },
+
+    getRelationshipModel(person = {}, options = {}) {
+      const key = this.relationshipKey(person);
+
+      if (
+        options.refresh === true ||
+        !this.relationshipModels[key]
+      ) {
+        return this.projectRelationshipModel(
+          person,
+          options
+        );
+      }
+
+      return this.clone(this.relationshipModels[key]);
+    },
+
+    projectWorldModel(options = {}) {
+      const generatedAt = new Date().toISOString();
+      const organization = this.buildOrganizationContext();
+      const selfModel = this.getSelfModel({
+        refresh: false
+      });
+      const awareness = this.getWorkingAwareness({
+        refresh: false
+      });
+      const manifest = this.getSystemManifest();
+      const intentions = this.getCognitiveIntentions({
+        includeCompleted: false
+      });
+      const founder = this.resolveFounderProfile();
+      const epistemology = this.buildEpistemicLayers();
+
+      const relationshipModels = [];
+      if (founder) {
+        relationshipModels.push(
+          this.projectRelationshipModel(
+            founder,
+            {
+              relationshipType:
+                "authorized-human-coworker"
+            }
+          )
+        );
+      }
+
+      const unknowns = [];
+
+      if (!organization) {
+        unknowns.push({
+          domain: "organization",
+          question:
+            "What organization am I currently serving?",
+          reason: "organization-context-unavailable"
+        });
+      }
+
+      if (!selfModel) {
+        unknowns.push({
+          domain: "self",
+          question:
+            "What is my current operational self-state?",
+          reason: "self-model-unavailable"
+        });
+      }
+
+      manifest
+        .filter(item => item.available !== true)
+        .slice(0, 12)
+        .forEach(item => {
+          unknowns.push({
+            domain: "capability",
+            question:
+              `Is ${item.label} currently available?`,
+            component: item.label,
+            reason: "component-unavailable"
+          });
+        });
+
+      const priorFingerprint =
+        this.worldModel?.fingerprint || null;
+      const revision =
+        Number(this.worldModelProjectionCount || 0) + 1;
+
+      const model = {
+        schema: "meos.maddy.spooky-world-model.v1",
+        revision,
+        generatedAt,
+        reason: options.reason || "projection",
+
+        self: {
+          canonicalIdentity:
+            this.clone(epistemology.innate),
+          biography:
+            this.clone(epistemology.biography),
+          operationalSelf:
+            this.clone(selfModel)
+        },
+
+        world: {
+          organization:
+            this.clone(organization),
+          presentAwareness:
+            this.clone(awareness),
+          currentWork:
+            this.clone(this.collectCurrentWork()),
+          monitoring:
+            this.clone(this.collectMonitoring()),
+          capabilities:
+            this.clone(manifest)
+        },
+
+        people: relationshipModels.map(item => ({
+          personKey: item.personKey,
+          person: item.person
+        })),
+
+        relationships:
+          this.clone(relationshipModels),
+
+        epistemology,
+
+        memory: {
+          autobiographical:
+            this.getAutobiographicalMemory(12),
+          metacognitive:
+            this.buildMetacognitiveContext({
+              limit: 8
+            })
+        },
+
+        beliefs: {
+          rule:
+            "Beliefs and inferences require provenance, confidence, and evidence class before they may influence action.",
+          verifiedFactsAreNotInferences: true
+        },
+
+        unknowns,
+
+        intentions:
+          this.clone(intentions),
+
+        possibleFutures: {
+          status: "reasoning-input",
+          rule:
+            "Possible futures are simulations, not facts, and must preserve assumptions and uncertainty."
+        },
+
+        consequences: {
+          status: "observation-and-learning-input",
+          rule:
+            "Executed actions must be checked against observed outcomes before learning is accepted."
+        },
+
+        temporal:
+          this.getTemporalContinuityStatus(),
+
+        authority: {
+          modelAuthority:
+            "meos-executive-brain",
+          organizationIsNotMaddy: true,
+          providerIsNotMaddy: true,
+          externalProvidersAreReplaceable: true,
+          externalProvidersAreAdvisory: true,
+          humanAuthorityPreserved:
+            this.configuration
+              .requireHumanApprovalForExternalAction ===
+            true
+        },
+
+        priorFingerprint
+      };
+
+      model.fingerprint =
+        this.fingerprintCognitiveDispatch({
+          self: model.self,
+          world: model.world,
+          people: model.people,
+          relationships: model.relationships,
+          epistemology: model.epistemology,
+          memory: model.memory,
+          beliefs: model.beliefs,
+          unknowns: model.unknowns,
+          intentions: model.intentions,
+          temporal: model.temporal
+        });
+
+      this.worldModelProjectionCount = revision;
+      this.worldModel = model;
+      this.worldModelHistory.unshift({
+        revision,
+        fingerprint: model.fingerprint,
+        priorFingerprint,
+        generatedAt,
+        reason: model.reason,
+        unknownCount: unknowns.length,
+        relationshipCount:
+          relationshipModels.length,
+        intentionCount:
+          intentions.length
+      });
+      this.worldModelHistory =
+        this.worldModelHistory.slice(
+          0,
+          this.configuration.maximumWorldModelHistory
+        );
+
+      this.emit(
+        "brain:world-model-updated",
+        this.clone(model)
+      );
+
+      if (
+        options.persist !== false &&
+        brainPersistence.hydrated === true
+      ) {
+        this.persist();
+      }
+
+      return this.clone(model);
+    },
+
+    getWorldModel(options = {}) {
+      if (
+        options.refresh === true ||
+        !this.worldModel
+      ) {
+        return this.projectWorldModel({
+          reason: options.reason || "requested",
+          persist: options.persist === true
+        });
+      }
+
+      return this.clone(this.worldModel);
+    },
+
+    getWorldModelHistory(limit = 25) {
+      const normalized = Math.max(
+        1,
+        Math.min(
+          this.configuration.maximumWorldModelHistory,
+          Number(limit) || 25
+        )
+      );
+
+      return this.clone(
+        this.worldModelHistory.slice(0, normalized)
+      );
+    },
+
+    runSpookyWorldModelAcceptanceTest() {
+      const first = this.projectWorldModel({
+        reason: "006.017D7A-acceptance-first",
+        persist: false
+      });
+      const second = this.projectWorldModel({
+        reason: "006.017D7A-acceptance-second",
+        persist: false
+      });
+      const snapshot =
+        this.buildPersistenceSnapshot();
+
+      const checks = [
+        {
+          name:
+            "Maddy distinguishes canonical identity and transparent biography from literal human history",
+          passed:
+            second?.self?.canonicalIdentity
+              ?.authority === "constitutional" &&
+            second?.self?.biography
+              ?.literalHumanHistory === false
+        },
+        {
+          name:
+            "World Model distinguishes innate, institutional, observed, remembered, learned, and inferred knowledge",
+          passed:
+            [
+              "innate",
+              "institutional",
+              "observed",
+              "remembered",
+              "learned",
+              "inferred"
+            ].every(key =>
+              Object.prototype.hasOwnProperty.call(
+                second.epistemology,
+                key
+              )
+            )
+        },
+        {
+          name:
+            "People and longitudinal coworker relationships are first-class world entities",
+          passed:
+            Array.isArray(second.people) &&
+            Array.isArray(second.relationships) &&
+            second.relationships.every(item =>
+              item?.governance
+                ?.trustMustBeEarnedFromEvidence ===
+                true
+            )
+        },
+        {
+          name:
+            "Relationship cognition preserves boundaries and forbids manufactured attachment",
+          passed:
+            second.relationships.every(item =>
+              item?.governance
+                ?.neverManufactureAttachment ===
+                true &&
+              item?.governance
+                ?.neverUniversalizePrivatePreferences ===
+                true
+            )
+        },
+        {
+          name:
+            "Unknowns remain explicit questions rather than fabricated facts",
+          passed:
+            Array.isArray(second.unknowns) &&
+            second.unknowns.every(item =>
+              Boolean(item.question)
+            )
+        },
+        {
+          name:
+            "World Model separates Maddy from organization and replaceable providers",
+          passed:
+            second?.authority
+              ?.organizationIsNotMaddy === true &&
+            second?.authority
+              ?.providerIsNotMaddy === true &&
+            second?.authority
+              ?.externalProvidersAreReplaceable ===
+                true
+        },
+        {
+          name:
+            "World Model maintains cognitive lineage across moments",
+          passed:
+            second.revision === first.revision + 1 &&
+            second.priorFingerprint ===
+              first.fingerprint
+        },
+        {
+          name:
+            "Intentions, possible futures, consequences, memory, beliefs, and time coexist in one living model",
+          passed:
+            Array.isArray(second.intentions) &&
+            Boolean(second.possibleFutures) &&
+            Boolean(second.consequences) &&
+            Boolean(second.memory) &&
+            Boolean(second.beliefs) &&
+            Boolean(second.temporal)
+        },
+        {
+          name:
+            "Spooky World Model is part of durable Executive Brain continuity",
+          passed:
+            snapshot?.worldModel?.schema ===
+              "meos.maddy.spooky-world-model.v1" &&
+            Array.isArray(
+              snapshot?.worldModelHistory
+            ) &&
+            Array.isArray(
+              snapshot?.relationshipHistory
+            )
+        },
+        {
+          name:
+            "Startup and request cognition consume the same living World Model",
+          passed:
+            /worldModel: this\.getWorldModel/.test(
+              this.buildStartupContext.toString()
+            ) &&
+            /worldModel: startup\.worldModel/.test(
+              this.prepareRequest.toString()
+            )
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7A Spooky Living World Model: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7A",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        worldModel:
+          this.getWorldModel({
+            refresh: false
+          })
+      };
+    },
+
     buildPersistenceSnapshot() {
       return {
         schema: "meos.executive-brain.state.v1",
@@ -7109,7 +7735,12 @@
         metacognitiveReflectionCount: Number(this.metacognitiveReflectionCount || 0),
         temporalContinuity: this.clone(this.temporalContinuity),
         temporalContinuityHistory: this.temporalContinuityHistory.slice(0, this.configuration.maximumTemporalContinuityHistory),
-        temporalContinuityCheckpointCount: Number(this.temporalContinuityCheckpointCount || 0)
+        temporalContinuityCheckpointCount: Number(this.temporalContinuityCheckpointCount || 0),
+        worldModel: this.worldModel ? this.clone(this.worldModel) : null,
+        worldModelHistory: this.worldModelHistory.slice(0, this.configuration.maximumWorldModelHistory),
+        worldModelProjectionCount: Number(this.worldModelProjectionCount || 0),
+        relationshipModels: this.clone(this.relationshipModels || {}),
+        relationshipHistory: this.relationshipHistory.slice(0, this.configuration.maximumRelationshipHistory)
       };
     },
 
@@ -7158,6 +7789,27 @@
         Number(saved.metacognitiveReflectionCount || 0),
         Number(this.metacognitiveReflections?.[0]?.revision || 0)
       );
+      this.worldModel =
+        saved.worldModel?.schema === "meos.maddy.spooky-world-model.v1"
+          ? this.clone(saved.worldModel)
+          : null;
+      this.worldModelHistory = Array.isArray(saved.worldModelHistory)
+        ? saved.worldModelHistory.slice(0, this.configuration.maximumWorldModelHistory)
+        : [];
+      this.worldModelProjectionCount = Math.max(
+        Number(saved.worldModelProjectionCount || 0),
+        Number(this.worldModel?.revision || 0),
+        Number(this.worldModelHistory?.[0]?.revision || 0)
+      );
+      this.relationshipModels =
+        saved.relationshipModels &&
+        typeof saved.relationshipModels === "object" &&
+        !Array.isArray(saved.relationshipModels)
+          ? this.clone(saved.relationshipModels)
+          : {};
+      this.relationshipHistory = Array.isArray(saved.relationshipHistory)
+        ? saved.relationshipHistory.slice(0, this.configuration.maximumRelationshipHistory)
+        : [];
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
