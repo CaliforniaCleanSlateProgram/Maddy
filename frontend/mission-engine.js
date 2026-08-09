@@ -1,7 +1,7 @@
 /**
  * MEOS Mission Engine
- * Version: 0.1.6
- * Build: ME016-DURABLE-AUTHORITY-ACCEPTANCE-REALIGNMENT-20260808-A
+ * Version: 0.1.7
+ * Build: ME017-CLEAN-CONCURRENCY-TRANSPORT-20260808-A
  *
  * Purpose:
  * The Mission Engine is the central work-management system for MEOS.
@@ -22,8 +22,8 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.6";
-    const BUILD_ID = "ME016-DURABLE-AUTHORITY-ACCEPTANCE-REALIGNMENT-20260808-A";
+    const VERSION = "0.1.7";
+    const BUILD_ID = "ME017-CLEAN-CONCURRENCY-TRANSPORT-20260808-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -572,7 +572,20 @@
     }
 
     function isOptimisticConcurrencyConflict(error) {
-        return Number(error?.status) === 409;
+        /*
+         * Transport status is not authority semantics.
+         *
+         * Legacy Mission State endpoints report an expected optimistic
+         * concurrency race as HTTP 409. The clean-concurrency server seam may
+         * return the same MEOS conflict code in a successful HTTP transport
+         * envelope so normal autonomous convergence does not paint DevTools
+         * red. Mission Engine therefore recognizes the MEOS authority code
+         * first and retains HTTP 409 only for backward compatibility.
+         */
+        return (
+            error?.code === "MEOS_REPOSITORY_CONCURRENCY_CONFLICT" ||
+            Number(error?.status) === 409
+        );
     }
 
     async function writeDurableMissionStateWithConvergence(snapshot) {
@@ -589,6 +602,20 @@
             } catch (error) {
                 if (!isOptimisticConcurrencyConflict(error)) throw error;
                 lastConflict = error;
+
+                /*
+                 * A normal same-session optimistic race may rebase
+                 * autonomously. Offline/unverified laptop ancestry may not.
+                 * That path belongs to convergeInstitutionalState(), which
+                 * preserves divergent authorities instead of guessing.
+                 */
+                if (persistence.dirtyWhileOffline) {
+                    persistence.lastConcurrencyAt = now();
+                    persistence.lastConcurrencyAction =
+                        "offline-divergence-preserved-for-authority-convergence";
+                    throw error;
+                }
+
                 if (attempt >= MAX_CONCURRENCY_REBASE_ATTEMPTS) break;
                 const latest = await fetchDurableMissionState();
                 const remoteState = extractSnapshotCandidate(latest?.payload?.value);
@@ -2938,10 +2965,26 @@
         });
 
         checks.push({
-            name: "HTTP 409 is recognized as an optimistic concurrency conflict",
+            name: "MEOS concurrency semantics are recognized independently of transport status",
             passed:
-                isOptimisticConcurrencyConflict({ status: 409 }) === true &&
+                isOptimisticConcurrencyConflict({
+                    status: 200,
+                    code: "MEOS_REPOSITORY_CONCURRENCY_CONFLICT"
+                }) === true &&
+                isOptimisticConcurrencyConflict({
+                    status: 409,
+                    code: "MEOS_REPOSITORY_CONCURRENCY_CONFLICT"
+                }) === true &&
                 isOptimisticConcurrencyConflict({ status: 500 }) === false
+        });
+
+        checks.push({
+            name: "Offline/unverified continuity state is excluded from blind runtime auto-rebase",
+            passed:
+                String(writeDurableMissionStateWithConvergence).includes(
+                    "offline-divergence-preserved-for-authority-convergence"
+                ) &&
+                typeof convergeInstitutionalState === "function"
         });
 
         checks.push({
@@ -2954,11 +2997,11 @@
         const passed = checks.every(check => check.passed);
         console.table(checks);
         console.log(
-            `[MEOS ${VERSION}] Commission 006.017D3B4 durable concurrency convergence: ${passed ? "PASS" : "FAIL"}.`
+            `[MEOS ${VERSION}] Commission 006.017D3B6 clean concurrency transport readiness: ${passed ? "PASS" : "FAIL"}.`
         );
 
         return {
-            commission: "006.017D3B4",
+            commission: "006.017D3B6",
             version: VERSION,
             buildId: BUILD_ID,
             passed,
