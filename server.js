@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.31";
+const VERSION = "2.10.32";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1397,6 +1397,253 @@ async function writeDurableExecutiveBrainState(
 }
 
 /* ========================================================================== */
+/* Commission 006.017D7N — Single-Writer Cognitive Authority + Convergence    */
+/* ========================================================================== */
+
+const COGNITIVE_AUTHORITY_COMMISSION = "006.017D7N";
+const COGNITIVE_AUTHORITY_VERSION = "1.0.0";
+const COGNITIVE_AUTHORITY_BUILD_ID =
+  "SCA100-SINGLE-WRITER-COGNITIVE-AUTHORITY-CONVERGENCE-20260809-A";
+
+let executiveBrainCanonicalWriteChain = Promise.resolve();
+const executiveBrainAuthorityState = {
+  status: "online",
+  runtimeOwner: "meos-durable-server",
+  repositoryWriter: "server-serialized",
+  convergenceCount: 0,
+  directWriteCount: 0,
+  lastWriteAt: null,
+  lastSource: null,
+  lastCanonicalFingerprint: null,
+  lastConflictConvergedAt: null,
+  lastError: null
+};
+
+function stableCognitiveValueKey(value) {
+  try {
+    if (value && typeof value === "object") {
+      return String(
+        value.fingerprint ||
+        value.id ||
+        value.eventId ||
+        value.dispatchId ||
+        value.reentryId ||
+        value.threadId ||
+        value.goalId ||
+        value.initiativeId ||
+        JSON.stringify(value)
+      );
+    }
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function mergeCognitiveArrays(incoming = [], canonical = []) {
+  const merged = [];
+  const seen = new Set();
+  for (const value of [...incoming, ...canonical]) {
+    const key = stableCognitiveValueKey(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(value);
+  }
+  return merged;
+}
+
+function newerCognitiveProjection(incoming, canonical) {
+  if (!incoming) return canonical || null;
+  if (!canonical) return incoming;
+  const incomingRevision = Number(incoming.revision || 0);
+  const canonicalRevision = Number(canonical.revision || 0);
+  if (incomingRevision !== canonicalRevision) {
+    return incomingRevision > canonicalRevision ? incoming : canonical;
+  }
+  const incomingTime = Date.parse(
+    incoming.projectedAt || incoming.updatedAt || incoming.savedAt || ""
+  );
+  const canonicalTime = Date.parse(
+    canonical.projectedAt || canonical.updatedAt || canonical.savedAt || ""
+  );
+  if (Number.isFinite(incomingTime) && Number.isFinite(canonicalTime)) {
+    return incomingTime >= canonicalTime ? incoming : canonical;
+  }
+  return incoming;
+}
+
+function convergeExecutiveBrainSnapshots(canonical, incoming, source = "browser-interactive") {
+  if (!canonical) return incoming;
+  if (!incoming) return canonical;
+
+  const merged = { ...canonical, ...incoming };
+  const keys = new Set([...Object.keys(canonical), ...Object.keys(incoming)]);
+
+  for (const key of keys) {
+    const a = canonical[key];
+    const b = incoming[key];
+
+    if (Array.isArray(a) || Array.isArray(b)) {
+      merged[key] = mergeCognitiveArrays(
+        Array.isArray(b) ? b : [],
+        Array.isArray(a) ? a : []
+      );
+      continue;
+    }
+
+    if (
+      typeof a === "number" &&
+      typeof b === "number" &&
+      /Count$|count$|revision$/i.test(key)
+    ) {
+      merged[key] = Math.max(a, b);
+    }
+  }
+
+  merged.worldModel = newerCognitiveProjection(
+    incoming.worldModel,
+    canonical.worldModel
+  );
+  merged.selfModel = newerCognitiveProjection(
+    incoming.selfModel,
+    canonical.selfModel
+  );
+  merged.workingAwareness = newerCognitiveProjection(
+    incoming.workingAwareness,
+    canonical.workingAwareness
+  );
+  merged.temporalContinuity = newerCognitiveProjection(
+    incoming.temporalContinuity,
+    canonical.temporalContinuity
+  );
+
+  /*
+   * Continuous heartbeat bookkeeping belongs to the durable server runtime.
+   * Browser interaction may contribute cognition, but stale browser state may
+   * never roll the heartbeat backward or overwrite its latest handoff.
+   */
+  if (source !== "server-heartbeat") {
+    merged.continuousCognitionState =
+      canonical.continuousCognitionState || incoming.continuousCognitionState || null;
+    merged.continuousCognitionCycleCount = Math.max(
+      Number(canonical.continuousCognitionCycleCount || 0),
+      Number(incoming.continuousCognitionCycleCount || 0)
+    );
+    merged.lastContinuousCognitionCycle =
+      canonical.lastContinuousCognitionCycle ||
+      incoming.lastContinuousCognitionCycle ||
+      null;
+  }
+
+  merged.schema = "meos.executive-brain.state.v1";
+  merged.savedAt = new Date().toISOString();
+  return merged;
+}
+
+function enqueueCanonicalExecutiveBrainWrite(task) {
+  const run = executiveBrainCanonicalWriteChain
+    .catch(() => undefined)
+    .then(task);
+  executiveBrainCanonicalWriteChain = run.catch(() => undefined);
+  return run;
+}
+
+async function commitCanonicalExecutiveBrainState(value, options = {}) {
+  return enqueueCanonicalExecutiveBrainWrite(async () => {
+    const source = String(options.source || "browser-interactive");
+    const observedFingerprint =
+      options.observedFingerprint || undefined;
+
+    try {
+      const current = await readDurableExecutiveBrainState();
+      const currentFingerprint =
+        current?.record?.payloadFingerprint || undefined;
+      const currentSnapshot =
+        unwrapDurableExecutiveBrainSnapshot(current);
+      const incomingEnvelope =
+        normalizeExecutiveBrainStateEnvelope(value);
+      const incomingSnapshot = incomingEnvelope.state;
+
+      const observedIsCurrent =
+        !observedFingerprint ||
+        !currentFingerprint ||
+        observedFingerprint === currentFingerprint;
+
+      const nextSnapshot = observedIsCurrent
+        ? incomingSnapshot
+        : convergeExecutiveBrainSnapshots(
+            currentSnapshot,
+            incomingSnapshot,
+            source
+          );
+
+      const result = await writeDurableExecutiveBrainState(
+        {
+          version: incomingEnvelope.version,
+          buildId: incomingEnvelope.buildId,
+          state: nextSnapshot
+        },
+        currentFingerprint
+      );
+
+      executiveBrainAuthorityState.status = "online";
+      executiveBrainAuthorityState.lastWriteAt = new Date().toISOString();
+      executiveBrainAuthorityState.lastSource = source;
+      executiveBrainAuthorityState.lastCanonicalFingerprint =
+        result?.record?.payloadFingerprint || null;
+      executiveBrainAuthorityState.lastError = null;
+
+      if (observedIsCurrent) {
+        executiveBrainAuthorityState.directWriteCount += 1;
+      } else {
+        executiveBrainAuthorityState.convergenceCount += 1;
+        executiveBrainAuthorityState.lastConflictConvergedAt =
+          executiveBrainAuthorityState.lastWriteAt;
+      }
+
+      return {
+        ...result,
+        cognitiveAuthority: {
+          commission: COGNITIVE_AUTHORITY_COMMISSION,
+          version: COGNITIVE_AUTHORITY_VERSION,
+          buildId: COGNITIVE_AUTHORITY_BUILD_ID,
+          runtimeOwner: "meos-durable-server",
+          repositoryWriter: "server-serialized",
+          source,
+          converged: !observedIsCurrent,
+          observedFingerprint: observedFingerprint || null,
+          canonicalPreviousFingerprint: currentFingerprint || null,
+          canonicalFingerprint:
+            result?.record?.payloadFingerprint || null
+        }
+      };
+    } catch (error) {
+      executiveBrainAuthorityState.status = "degraded";
+      executiveBrainAuthorityState.lastError = {
+        code: error?.code || "COGNITIVE_AUTHORITY_WRITE_FAILED",
+        message: error?.message || String(error),
+        at: new Date().toISOString()
+      };
+      throw error;
+    }
+  });
+}
+
+function getExecutiveBrainAuthorityStatus() {
+  return {
+    commission: COGNITIVE_AUTHORITY_COMMISSION,
+    version: COGNITIVE_AUTHORITY_VERSION,
+    buildId: COGNITIVE_AUTHORITY_BUILD_ID,
+    ...executiveBrainAuthorityState,
+    authority: {
+      canonicalState: "meos-institutional-repository",
+      externalActionAuthorized: false,
+      humanAuthorityPreserved: true
+    }
+  };
+}
+
+/* ========================================================================== */
 /* Commission 006.017D7M — Durable Cognitive Runtime Heartbeat                */
 /* ========================================================================== */
 
@@ -1600,9 +1847,13 @@ async function runContinuousCognitionHeartbeat() {
     }
 
     const snapshotAfter = brain.buildPersistenceSnapshot();
-    const writeResult = await writeDurableExecutiveBrainState(
+    const writeResult = await commitCanonicalExecutiveBrainState(
       snapshotAfter,
-      durableBefore?.record?.fingerprint || undefined
+      {
+        source: "server-heartbeat",
+        observedFingerprint:
+          durableBefore?.record?.payloadFingerprint || undefined
+      }
     );
     const durableAfter = await readDurableExecutiveBrainState();
     const verifiedSnapshot = unwrapDurableExecutiveBrainSnapshot(durableAfter);
@@ -7602,6 +7853,16 @@ app.get(
   }
 );
 
+app.get(
+  "/api/executive-brain-authority",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    response.status(200).json(
+      getExecutiveBrainAuthorityStatus()
+    );
+  }
+);
+
 
 app.get(
   "/api/executive-brain-state",
@@ -7675,9 +7936,13 @@ app.put(
         ) || undefined;
 
       const result =
-        await writeDurableExecutiveBrainState(
+        await commitCanonicalExecutiveBrainState(
           request.body,
-          expectedPreviousFingerprint
+          {
+            source: "browser-interactive",
+            observedFingerprint:
+              expectedPreviousFingerprint
+          }
         );
 
       response.status(200).json({
@@ -7693,7 +7958,9 @@ app.put(
         verification:
           result.verification,
         record:
-          result.record
+          result.record,
+        cognitiveAuthority:
+          result.cognitiveAuthority
       });
     } catch (error) {
       response
