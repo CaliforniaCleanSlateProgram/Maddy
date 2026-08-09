@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.20.0
- * Build: EB1200-EXECUTIVE-JUDGMENT-PRIORITY-ARBITRATION-20260809-A
+ * Version: 1.20.1
+ * Build: EB1201-PREEMPTION-DISCRIMINATION-ACCEPTANCE-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.20.0";
-  const BUILD_ID = "EB1200-EXECUTIVE-JUDGMENT-PRIORITY-ARBITRATION-20260809-A";
+  const VERSION = "1.20.1";
+  const BUILD_ID = "EB1201-PREEMPTION-DISCRIMINATION-ACCEPTANCE-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10886,9 +10886,48 @@
           {id:"shiny",subject:"Interesting new idea",missionConsequence:0.75,urgency:0.6,irreversibility:0.3,leverage:0.72,informationValue:0.7,capacityFit:0.9}
         ],{materialChange:false});
 
+        // A true preemption fixture must mathematically clear both protected
+        // incumbent attention and the configured preemption margin. Do not
+        // weaken production scoring or thresholds to make the fixture pass.
+        const incumbentBeforePreempt=this.clone(this.currentExecutivePriority);
+        const requiredChallengerScore=Number((
+          Number(incumbentBeforePreempt?.score || 0) +
+          Number(this.configuration.protectedAttentionSwitchCost) +
+          Number(this.configuration.priorityPreemptionThreshold)
+        ).toFixed(3));
+
+        // Human direction is intentionally present here because the acceptance
+        // case is "drop what you're doing now": an explicit executive directive
+        // plus maximum mission/time/irreversibility pressure is a legitimate
+        // high-end challenge, not a scary label bypass.
         const preempt=this.arbitrateExecutivePriorities([
-          {id:"critical",subject:"New compliance threat",missionConsequence:1,urgency:1,irreversibility:1,leverage:0.95,dependencyPressure:0.95,informationValue:0.8,capacityFit:0.8}
+          {
+            id:"critical",
+            subject:"Immediate mission-critical executive directive",
+            origin:"human-direction",
+            reason:"Explicit executive direction coincides with immediate, irreversible mission consequence.",
+            humanDirection:1,
+            missionConsequence:1,
+            urgency:1,
+            irreversibility:1,
+            leverage:1,
+            dependencyPressure:1,
+            informationValue:1,
+            commitmentStrength:1,
+            capacityFit:1
+          }
         ],{materialChange:true});
+
+        const preemptionMath={
+          incumbentScore:Number(preempt.arbitration.incumbent?.score || 0),
+          challengerScore:Number(preempt.arbitration.challenger?.score || 0),
+          switchCost:Number(this.configuration.protectedAttentionSwitchCost),
+          preemptionThreshold:Number(this.configuration.priorityPreemptionThreshold)
+        };
+        preemptionMath.protectedIncumbent=Number((preemptionMath.incumbentScore+preemptionMath.switchCost).toFixed(3));
+        preemptionMath.advantage=Number((preemptionMath.challengerScore-preemptionMath.protectedIncumbent).toFixed(3));
+        preemptionMath.requiredChallengerScore=requiredChallengerScore;
+        preemptionMath.clearsConfiguredMargin=preemptionMath.advantage>=preemptionMath.preemptionThreshold;
 
         const allocations=[
           this.chooseCognitiveInvestment({score:0.20,dimensions:{informationValue:0.2},externalAuthorityRequired:false}),
@@ -10917,7 +10956,8 @@
           {name:"Priority judgment reasons about whether delay may create material loss",passed:opportunity?.delayRisk==="delay-may-create-material-loss"},
           {name:"Protected attention prevents shiny-object thrashing",passed:noThrash.arbitration.selected?.id==="deadline"&&noThrash.arbitration.preempted===false},
           {name:"Meaningful world change can challenge an incumbent priority",passed:preempt.arbitration.challenger?.id==="critical"},
-          {name:"Preemption requires enough advantage to pay switching cost",passed:preempt.arbitration.preempted===true&&preempt.arbitration.selected?.id==="critical"},
+          {name:"True preemption fixture mathematically clears protected attention plus configured margin",passed:preemptionMath.challengerScore>=preemptionMath.requiredChallengerScore&&preemptionMath.clearsConfiguredMargin===true},
+          {name:"Preemption requires enough advantage to pay switching cost",passed:preemptionMath.clearsConfiguredMargin===true&&preempt.arbitration.preempted===true&&preempt.arbitration.selected?.id==="critical"},
           {name:"Cognitive investment can choose to ignore low-value demands",passed:allocations[0].allocation==="ignore"},
           {name:"Cognitive investment can choose monitoring rather than full reasoning",passed:allocations[1].allocation==="monitor"},
           {name:"High-information-value demands can earn investigation",passed:allocations[2].allocation==="investigate"},
@@ -10926,14 +10966,14 @@
           {name:"Priority never implies lower-ranked work is unimportant",passed:preempt.arbitration.truthRule.includes("not a claim that lower-ranked work is unimportant")},
           {name:"Executive judgment enters Maddy's living World Model",passed:world.executiveJudgment.lastArbitration?.fingerprint===preempt.arbitration.fingerprint},
           {name:"Executive priority portfolio survives sovereign Brain persistence",passed:Array.isArray(snapshot.executivePriorityPortfolio)&&snapshot.executivePriorityPortfolio.some(x=>x.id==="critical")},
-          {name:"Current executive priority survives sovereign Brain persistence",passed:snapshot.currentExecutivePriority?.id==="critical"},
+          {name:"Legitimately preempting executive priority survives sovereign Brain persistence",passed:preempt.arbitration.preempted===true&&snapshot.currentExecutivePriority?.id===preempt.arbitration.selected?.id&&snapshot.currentExecutivePriority?.id==="critical"},
           {name:"Executive judgment composes existing cognition instead of creating a disconnected priority engine",passed:typeof this.collectExecutivePriorityDemands==="function"&&typeof this.runAnticipatorySweep==="function"&&typeof this.createDevelopmentalDrive==="function"&&typeof this.reconstructIntent==="function"},
           {name:"Priority arbitration never grants external authority",passed:preempt.arbitration.authorityUnchanged===true}
         ];
         const passed=checks.every(x=>x.passed);
         console.table(checks.map(x=>({name:x.name,passed:x.passed})));
         console.info(`[MEOS ${this.version}] Commission 006.017D7J Executive Judgment + Autonomous Priority Arbitration: ${passed?"PASS":"FAIL"}.`);
-        return {commission:"006.017D7J",version:this.version,buildId:this.buildId,passed,checks,initial,noThrash,preempt,allocations};
+        return {commission:"006.017D7J",version:this.version,buildId:this.buildId,passed,checks,initial,noThrash,preempt,preemptionMath,allocations};
       } finally {
         brainPersistence.hydrated=priorHydrated;
         this.executivePriorityPortfolio=original.portfolio;
