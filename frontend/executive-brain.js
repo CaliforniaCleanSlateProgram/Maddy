@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.19.1
- * Build: EB1191-ANTICIPATORY-SIGNAL-FUSION-SALIENCE-REPAIR-20260809-A
+ * Version: 1.19.2
+ * Build: EB1192-CONVERGENT-SALIENCE-EVIDENCE-DIVERSITY-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.19.1";
-  const BUILD_ID = "EB1191-ANTICIPATORY-SIGNAL-FUSION-SALIENCE-REPAIR-20260809-A";
+  const VERSION = "1.19.2";
+  const BUILD_ID = "EB1192-CONVERGENT-SALIENCE-EVIDENCE-DIVERSITY-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10356,18 +10356,58 @@
         const signals=[...(existing.supportingSignals || []),this.clone(item)];
         const origins=[...new Set([...(existing.origins || [existing.origin]),item.origin])];
         const strongest=signals.slice().sort((a,b)=>b.score-a.score)[0];
-        const independentSupport=Math.min(0.18,Math.max(0,origins.length-1)*0.06);
-        const evidenceBreadth=Math.min(0.08,signals.reduce((sum,signal)=>sum+(signal.evidence?.length||0),0)*0.01);
-        const fusedScore=Number(Math.min(1,strongest.score+independentSupport+evidenceBreadth).toFixed(3));
+
+        // Convergent salience is earned from independent cognitive provenance,
+        // materiality across those signals, and evidence breadth. It is bounded
+        // and cannot make weak duplicated noise look urgent.
+        const independentSignals=origins.length;
+        const meanMateriality=signals.reduce((sum,signal)=>{
+          const d=signal.dimensions || {};
+          return sum + (
+            Number(d.consequence || 0)*0.34 +
+            Number(d.leverage || 0)*0.26 +
+            Number(d.urgency || 0)*0.18 +
+            Number(d.timePressure || 0)*0.12 +
+            Number(d.uncertainty || 0)*0.10
+          );
+        },0)/Math.max(1,signals.length);
+        const evidenceCount=signals.reduce((sum,signal)=>sum+(signal.evidence?.length||0),0);
+        const unknownCount=signals.reduce((sum,signal)=>sum+(signal.unknowns?.length||0),0);
+        const provenanceStrength=Math.min(1,Math.max(0,(independentSignals-1)/3));
+        const evidenceBreadth=Math.min(1,evidenceCount/6);
+        const unresolvedPressure=Math.min(1,unknownCount/6);
+        const convergenceConfidence=Number(Math.min(1,
+          provenanceStrength*0.50 +
+          meanMateriality*0.30 +
+          evidenceBreadth*0.12 +
+          unresolvedPressure*0.08
+        ).toFixed(3));
+
+        const convergenceLift = independentSignals >= 2 && meanMateriality >= 0.50
+          ? Math.min(0.24, convergenceConfidence * 0.24)
+          : 0;
+        const fusedScore=Number(Math.min(1,strongest.score+convergenceLift).toFixed(3));
 
         fused.set(key,{
           ...this.clone(strongest),
           origin:origins.length>1 ? "multi-signal" : strongest.origin,
           origins,
           supportingSignals:signals,
+          convergence:{
+            independentSignals,
+            meanMateriality:Number(meanMateriality.toFixed(3)),
+            evidenceCount,
+            unknownCount,
+            provenanceStrength:Number(provenanceStrength.toFixed(3)),
+            evidenceBreadth:Number(evidenceBreadth.toFixed(3)),
+            unresolvedPressure:Number(unresolvedPressure.toFixed(3)),
+            confidence:convergenceConfidence,
+            lift:Number(convergenceLift.toFixed(3)),
+            thresholdLowered:false
+          },
           score:fusedScore,
           reason:origins.length>1
-            ? `Multiple independent cognitive signals converge on this subject: ${origins.join(", ")}.`
+            ? `Multiple independent cognitive signals converge on this subject: ${origins.join(", ")}. Convergence is weighted by provenance diversity, materiality, evidence breadth, and unresolved pressure.`
             : strongest.reason,
           evidence:signals.flatMap(signal=>signal.evidence || []),
           unknowns:[...new Set(signals.flatMap(signal=>signal.unknowns || []).map(value=>String(value)))],
@@ -10546,7 +10586,7 @@
           {name:"Counterfactual preparedness can create anticipatory attention",passed:sweep.candidates.some(x=>x.origin==="counterfactual-preparedness")},
           {name:"Candidates are prioritized by consequence, time, leverage, uncertainty, and reversibility",passed:top&&typeof top.dimensions?.consequence==="number"&&typeof top.dimensions?.timePressure==="number"&&typeof top.dimensions?.leverage==="number"&&typeof top.dimensions?.uncertainty==="number"&&typeof top.dimensions?.reversibility==="number"},
           {name:"Attention threshold prevents every thought from becoming an initiative",passed:sweep.candidates.length>=sweep.initiatives.length},
-          {name:"High-salience anticipation can reach foreground attention",passed:sweep.initiatives.some(x=>x.attentionLevel==="foreground"&&(x.origins || []).length>=2)},
+          {name:"High-salience anticipation can reach foreground attention",passed:sweep.initiatives.some(x=>x.attentionLevel==="foreground"&&(x.origins || []).length>=2&&x.convergence?.thresholdLowered===false&&x.score>=this.configuration.anticipatoryEscalationThreshold)},
           {name:"Anticipation remains explicitly a hypothesis rather than prophecy",passed:sweep.initiatives.every(x=>x.truthRule.includes("not evidence"))},
           {name:"Self-directed initiative never grants external execution authority",passed:sweep.initiatives.every(x=>x.authority.externalActionAuthorized===false)},
           {name:"Maddy-directed anticipation can invoke the existing Intent Reconstruction machinery",passed:advanced.investigation?.reconstruction?.probableObjective?.includes("deserves action or preparation now")===true},
