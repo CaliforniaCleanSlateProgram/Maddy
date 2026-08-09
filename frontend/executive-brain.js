@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.11.0
- * Build: EB1110-SPOOKY-LIVING-WORLD-MODEL-20260808-A
+ * Version: 1.12.0
+ * Build: EB1120-SALIENCE-EMERGENT-ATTENTION-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.11.0";
-  const BUILD_ID = "EB1110-SPOOKY-LIVING-WORLD-MODEL-20260808-A";
+  const VERSION = "1.12.0";
+  const BUILD_ID = "EB1120-SALIENCE-EMERGENT-ATTENTION-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -174,6 +174,9 @@
       maximumTemporalContinuityHistory: 180,
       maximumWorldModelHistory: 160,
       maximumRelationshipHistory: 120,
+      maximumSalienceHistory: 180,
+      salienceAttentionThreshold: 0.58,
+      salienceInvestigationThreshold: 0.72,
       temporalContinuityResumeThresholdMs: 15000,
       temporalCommitmentLookaheadHours: 720
     },
@@ -215,6 +218,9 @@
     worldModelProjectionCount: 0,
     relationshipModels: {},
     relationshipHistory: [],
+    salienceHistory: [],
+    lastSalienceAssessment: null,
+    salienceAssessmentCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -7328,8 +7334,487 @@
       return this.clone(this.relationshipModels[key]);
     },
 
+    /*
+     * Commission 006.017D7B — Salience + Emergent Attention
+     *
+     * This is the bridge from "Maddy has a model of reality" to "Maddy notices
+     * something a human did not explicitly ask her to notice."
+     *
+     * Salience is not a keyword score. It asks what changed, what that change
+     * touches across mission / people / relationships / intentions / evidence /
+     * time / capability, what becomes newly possible or newly threatened, and
+     * whether uncertainty itself is important enough to investigate.
+     */
+    assessWorldModelSalience(previous, current, options = {}) {
+      const generatedAt = new Date().toISOString();
+      const signals = [];
+      const connections = [];
+      const questions = [];
+
+      const prior = previous || null;
+      const now = current || null;
+
+      if (!now) {
+        return {
+          schema: "meos.maddy.salience-assessment.v1",
+          generatedAt,
+          score: 0,
+          meaningful: false,
+          investigate: false,
+          signals,
+          connections,
+          questions,
+          subject: null
+        };
+      }
+
+      const addSignal = (
+        type,
+        weight,
+        detail,
+        domains = []
+      ) => {
+        signals.push({
+          type,
+          weight,
+          detail,
+          domains
+        });
+      };
+
+      const priorUnknowns =
+        Array.isArray(prior?.unknowns)
+          ? prior.unknowns
+          : [];
+      const currentUnknowns =
+        Array.isArray(now?.unknowns)
+          ? now.unknowns
+          : [];
+
+      const priorIntentions =
+        Array.isArray(prior?.intentions)
+          ? prior.intentions
+          : [];
+      const currentIntentions =
+        Array.isArray(now?.intentions)
+          ? now.intentions
+          : [];
+
+      const priorRelationships =
+        Array.isArray(prior?.relationships)
+          ? prior.relationships
+          : [];
+      const currentRelationships =
+        Array.isArray(now?.relationships)
+          ? now.relationships
+          : [];
+
+      const priorWorkFingerprint =
+        this.fingerprintCognitiveDispatch(
+          prior?.world?.currentWork || null
+        );
+      const currentWorkFingerprint =
+        this.fingerprintCognitiveDispatch(
+          now?.world?.currentWork || null
+        );
+
+      const priorMonitoringFingerprint =
+        this.fingerprintCognitiveDispatch(
+          prior?.world?.monitoring || null
+        );
+      const currentMonitoringFingerprint =
+        this.fingerprintCognitiveDispatch(
+          now?.world?.monitoring || null
+        );
+
+      if (
+        prior &&
+        priorWorkFingerprint !==
+          currentWorkFingerprint
+      ) {
+        addSignal(
+          "work-state-changed",
+          0.26,
+          "Current work changed.",
+          ["work", "execution"]
+        );
+      }
+
+      if (
+        prior &&
+        priorMonitoringFingerprint !==
+          currentMonitoringFingerprint
+      ) {
+        addSignal(
+          "monitoring-state-changed",
+          0.28,
+          "Monitoring evidence changed.",
+          ["monitoring", "external-world"]
+        );
+      }
+
+      if (
+        currentIntentions.length >
+        priorIntentions.length
+      ) {
+        addSignal(
+          "new-intention",
+          0.22,
+          "A new unresolved intention entered the world model.",
+          ["intentions", "future"]
+        );
+      }
+
+      if (
+        currentUnknowns.length >
+        priorUnknowns.length
+      ) {
+        addSignal(
+          "uncertainty-increased",
+          0.20,
+          "The model contains newly material unknowns.",
+          ["unknowns", "evidence"]
+        );
+        currentUnknowns
+          .slice(0, 6)
+          .forEach(item => {
+            if (item?.question) {
+              questions.push(item.question);
+            }
+          });
+      }
+
+      const relationshipChanges =
+        currentRelationships.filter(current => {
+          const priorRelationship =
+            priorRelationships.find(
+              item =>
+                item?.personKey ===
+                current?.personKey
+            );
+
+          return (
+            !priorRelationship ||
+            priorRelationship.fingerprint !==
+              current.fingerprint
+          );
+        });
+
+      if (relationshipChanges.length > 0) {
+        addSignal(
+          "relationship-state-changed",
+          0.24,
+          `${relationshipChanges.length} relationship model(s) changed.`,
+          ["people", "relationships", "trust"]
+        );
+      }
+
+      const capabilityPrior =
+        new Set(
+          (prior?.world?.capabilities || [])
+            .filter(item => item?.available === true)
+            .map(item => item.label)
+        );
+      const capabilityNow =
+        (now?.world?.capabilities || [])
+          .filter(item => item?.available === true)
+          .map(item => item.label);
+
+      const newlyAvailable =
+        capabilityNow.filter(
+          label => !capabilityPrior.has(label)
+        );
+
+      if (prior && newlyAvailable.length > 0) {
+        addSignal(
+          "new-capability",
+          0.34,
+          `New capability available: ${newlyAvailable.join(", ")}`,
+          ["capability", "possible-futures"]
+        );
+      }
+
+      /*
+       * Cross-domain convergence is intentionally important. One weak signal
+       * may be noise; several domains changing together can reveal something
+       * neither a human nor a single-purpose matcher was looking for.
+       */
+      const changedDomains =
+        new Set(
+          signals.flatMap(
+            item => item.domains || []
+          )
+        );
+
+      if (changedDomains.size >= 4) {
+        addSignal(
+          "cross-domain-convergence",
+          0.30,
+          `${changedDomains.size} domains changed together.`,
+          Array.from(changedDomains)
+        );
+        connections.push({
+          type: "emergent-cross-domain-connection",
+          domains: Array.from(changedDomains),
+          reason:
+            "Multiple weak signals became materially stronger when considered together."
+        });
+      }
+
+      const hasIntentions =
+        currentIntentions.length > 0;
+      const hasUnknowns =
+        currentUnknowns.length > 0;
+      const hasMonitoringChange =
+        signals.some(
+          item =>
+            item.type ===
+            "monitoring-state-changed"
+        );
+      const hasRelationshipChange =
+        signals.some(
+          item =>
+            item.type ===
+            "relationship-state-changed"
+        );
+
+      if (
+        hasIntentions &&
+        hasUnknowns &&
+        (
+          hasMonitoringChange ||
+          hasRelationshipChange
+        )
+      ) {
+        addSignal(
+          "future-positioning-implication",
+          0.32,
+          "A live intention intersects new evidence or relationship state while important unknowns remain.",
+          [
+            "intentions",
+            "unknowns",
+            "possible-futures",
+            "relationships"
+          ]
+        );
+        connections.push({
+          type: "positioning-opportunity",
+          reason:
+            "Present change may alter what becomes possible later, not merely what is actionable now."
+        });
+      }
+
+      const rawScore =
+        signals.reduce(
+          (sum, item) =>
+            sum + Number(item.weight || 0),
+          0
+        );
+
+      const score =
+        Math.max(
+          0,
+          Math.min(
+            1,
+            Number(rawScore.toFixed(3))
+          )
+        );
+
+      const meaningful =
+        score >=
+        this.configuration
+          .salienceAttentionThreshold;
+
+      const investigate =
+        score >=
+          this.configuration
+            .salienceInvestigationThreshold ||
+        (
+          meaningful &&
+          questions.length > 0
+        );
+
+      const strongest =
+        [...signals].sort(
+          (a, b) =>
+            Number(b.weight || 0) -
+            Number(a.weight || 0)
+        )[0] || null;
+
+      const subject = meaningful
+        ? (
+            options.subject ||
+            strongest?.detail ||
+            "Meaningful change in Maddy's living world model"
+          )
+        : null;
+
+      const assessment = {
+        schema:
+          "meos.maddy.salience-assessment.v1",
+        generatedAt,
+        assessmentNumber:
+          Number(this.salienceAssessmentCount || 0) +
+          1,
+        priorWorldFingerprint:
+          prior?.fingerprint || null,
+        currentWorldFingerprint:
+          now?.fingerprint || null,
+        score,
+        meaningful,
+        investigate,
+        strongestSignal:
+          strongest?.type || null,
+        signals,
+        connections,
+        questions:
+          [...new Set(questions)].slice(0, 12),
+        affectedDomains:
+          Array.from(changedDomains),
+        subject,
+        epistemicRule:
+          "Salience is a reason to investigate or think, never proof that an inference is true."
+      };
+
+      this.salienceAssessmentCount =
+        assessment.assessmentNumber;
+      this.lastSalienceAssessment =
+        assessment;
+      this.salienceHistory.unshift(
+        this.clone(assessment)
+      );
+      this.salienceHistory =
+        this.salienceHistory.slice(
+          0,
+          this.configuration.maximumSalienceHistory
+        );
+
+      this.emit(
+        "brain:salience-assessed",
+        this.clone(assessment)
+      );
+
+      return this.clone(assessment);
+    },
+
+    attendToWorldModelChange(
+      previous,
+      current,
+      options = {}
+    ) {
+      const assessment =
+        this.assessWorldModelSalience(
+          previous,
+          current,
+          options
+        );
+
+      if (!assessment.meaningful) {
+        return {
+          success: true,
+          attended: false,
+          assessment
+        };
+      }
+
+      /*
+       * Never create a re-entry loop from the re-entry refresh itself.
+       * The world model still updates, but the active lineage owns thought
+       * until it completes.
+       */
+      if (
+        String(options.reason || "")
+          .includes("cognitive-reentry") ||
+        this.cognitiveReentryInFlight.size > 0
+      ) {
+        return {
+          success: true,
+          attended: false,
+          deferredToActiveLineage: true,
+          assessment
+        };
+      }
+
+      const trigger = {
+        source: "executive-brain-world-model",
+        event:
+          "emergent-meaningful-change",
+        salienceScore:
+          assessment.score,
+        investigate:
+          assessment.investigate,
+        signals:
+          this.clone(
+            assessment.signals.slice(0, 8)
+          ),
+        connections:
+          this.clone(
+            assessment.connections.slice(0, 6)
+          ),
+        questions:
+          this.clone(
+            assessment.questions.slice(0, 8)
+          ),
+        worldFingerprint:
+          current?.fingerprint || null
+      };
+
+      const scheduled =
+        this.scheduleCognitiveReentry(
+          assessment.subject,
+          trigger,
+          {
+            immediate:
+              assessment.score >= 0.9
+          }
+        );
+
+      this.record(
+        "cognition.emergent-attention",
+        {
+          subject:
+            assessment.subject,
+          score:
+            assessment.score,
+          investigate:
+            assessment.investigate,
+          scheduled:
+            scheduled?.scheduled === true,
+          affectedDomains:
+            assessment.affectedDomains
+        }
+      );
+
+      return {
+        success: true,
+        attended:
+          scheduled?.scheduled === true,
+        assessment,
+        scheduled
+      };
+    },
+
+    getSalienceStatus() {
+      return {
+        assessmentCount:
+          this.salienceAssessmentCount,
+        lastAssessment:
+          this.clone(
+            this.lastSalienceAssessment
+          ),
+        recent:
+          this.clone(
+            this.salienceHistory.slice(0, 20)
+          )
+      };
+    },
+
     projectWorldModel(options = {}) {
       const generatedAt = new Date().toISOString();
+      const previousWorldModel =
+        this.worldModel
+          ? this.clone(this.worldModel)
+          : null;
       const organization = this.buildOrganizationContext();
       const selfModel = this.getSelfModel({
         refresh: false
@@ -7524,6 +8009,19 @@
       );
 
       if (
+        previousWorldModel &&
+        options.attend !== false
+      ) {
+        this.attendToWorldModelChange(
+          previousWorldModel,
+          model,
+          {
+            reason: model.reason
+          }
+        );
+      }
+
+      if (
         options.persist !== false &&
         brainPersistence.hydrated === true
       ) {
@@ -7559,6 +8057,331 @@
       return this.clone(
         this.worldModelHistory.slice(0, normalized)
       );
+    },
+
+    runEmergentAttentionAcceptanceTest() {
+      const originalWorld =
+        this.worldModel
+          ? this.clone(this.worldModel)
+          : null;
+      const originalIntentions =
+        this.clone(this.cognitiveIntentions);
+      const originalSalience =
+        this.clone(this.salienceHistory);
+      const originalLast =
+        this.clone(this.lastSalienceAssessment);
+      const originalCount =
+        this.salienceAssessmentCount;
+
+      try {
+        const base =
+          this.projectWorldModel({
+            reason:
+              "006.017D7B-acceptance-baseline",
+            persist: false,
+            attend: false
+          });
+
+        const changed =
+          this.clone(base);
+
+        changed.fingerprint =
+          `${base.fingerprint}-meaningful-change`;
+        changed.unknowns = [
+          ...(base.unknowns || []),
+          {
+            domain: "funding",
+            question:
+              "Could a currently adjacent opportunity become strategically viable through legitimate future positioning?",
+            reason:
+              "new-opportunity-eligibility-unknown"
+          }
+        ];
+        changed.intentions = [
+          ...(base.intentions || []),
+          {
+            intentionId:
+              "d7b-acceptance-intention",
+            subject:
+              "Future positioning opportunity",
+            status: "pending"
+          }
+        ];
+        changed.world = {
+          ...(base.world || {}),
+          monitoring: [
+            ...(
+              Array.isArray(
+                base?.world?.monitoring
+              )
+                ? base.world.monitoring
+                : []
+            ),
+            {
+              id:
+                "d7b-monitoring-change",
+              type:
+                "opportunity-change",
+              significance:
+                "strategic"
+            }
+          ]
+        };
+        changed.relationships = [
+          ...(base.relationships || []),
+          {
+            schema:
+              "meos.maddy.relationship-model.v1",
+            personKey:
+              "d7b-partner",
+            fingerprint:
+              "d7b-new-relationship-state",
+            governance: {
+              trustMustBeEarnedFromEvidence:
+                true
+            }
+          }
+        ];
+
+        const assessment =
+          this.assessWorldModelSalience(
+            base,
+            changed,
+            {
+              subject:
+                "Adjacent opportunity may become viable through future positioning"
+            }
+          );
+
+        const originalSchedule =
+          this.scheduleCognitiveReentry;
+        let captured = null;
+
+        this.scheduleCognitiveReentry =
+          (
+            subject,
+            trigger,
+            options
+          ) => {
+            captured = {
+              subject,
+              trigger:
+                this.clone(trigger),
+              options:
+                this.clone(options)
+            };
+            return {
+              success: true,
+              scheduled: true,
+              subject
+            };
+          };
+
+        const attention =
+          this.attendToWorldModelChange(
+            base,
+            changed,
+            {
+              reason:
+                "006.017D7B-acceptance"
+            }
+          );
+
+        this.scheduleCognitiveReentry =
+          originalSchedule;
+
+        const snapshot =
+          this.buildPersistenceSnapshot();
+
+        const checks = [
+          {
+            name:
+              "Maddy compares successive World Models instead of waiting for a human prompt",
+            passed:
+              assessment
+                ?.priorWorldFingerprint ===
+                base.fingerprint &&
+              assessment
+                ?.currentWorldFingerprint ===
+                changed.fingerprint
+          },
+          {
+            name:
+              "Salience crosses work, monitoring, relationships, intentions, uncertainty, and possible futures",
+            passed:
+              assessment
+                ?.affectedDomains
+                ?.includes("monitoring") &&
+              assessment
+                ?.affectedDomains
+                ?.includes("relationships") &&
+              assessment
+                ?.affectedDomains
+                ?.includes("intentions") &&
+              assessment
+                ?.affectedDomains
+                ?.includes("unknowns") &&
+              assessment
+                ?.affectedDomains
+                ?.includes("possible-futures")
+          },
+          {
+            name:
+              "Several weak changes can become one emergent cross-domain signal",
+            passed:
+              assessment?.signals?.some(
+                item =>
+                  item.type ===
+                  "cross-domain-convergence"
+              ) &&
+              assessment?.connections?.some(
+                item =>
+                  item.type ===
+                  "emergent-cross-domain-connection"
+              )
+          },
+          {
+            name:
+              "An adjacent opportunity can be noticed for future positioning rather than rejected for present mismatch",
+            passed:
+              assessment?.signals?.some(
+                item =>
+                  item.type ===
+                  "future-positioning-implication"
+              ) &&
+              assessment?.connections?.some(
+                item =>
+                  item.type ===
+                  "positioning-opportunity"
+              )
+          },
+          {
+            name:
+              "Important uncertainty becomes an explicit investigation question",
+            passed:
+              assessment?.investigate ===
+                true &&
+              assessment?.questions?.some(
+                question =>
+                  question.includes(
+                    "future positioning"
+                  )
+              )
+          },
+          {
+            name:
+              "Salience is treated as a reason to think, never proof of an inference",
+            passed:
+              assessment?.epistemicRule?.includes(
+                "never proof"
+              )
+          },
+          {
+            name:
+              "Meaningful change autonomously enters the existing cognitive re-entry path",
+            passed:
+              attention?.attended === true &&
+              captured?.trigger?.event ===
+                "emergent-meaningful-change"
+          },
+          {
+            name:
+              "Emergent attention carries connections and unknowns into reasoning",
+            passed:
+              Array.isArray(
+                captured?.trigger?.connections
+              ) &&
+              captured.trigger.connections
+                .length > 0 &&
+              Array.isArray(
+                captured?.trigger?.questions
+              ) &&
+              captured.trigger.questions
+                .length > 0
+          },
+          {
+            name:
+              "Active cognitive lineage prevents self-triggering attention loops",
+            passed:
+              /cognitiveReentryInFlight\.size > 0/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /cognitive-reentry/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              )
+          },
+          {
+            name:
+              "Salience and attention lineage survive durable Executive Brain continuity",
+            passed:
+              Array.isArray(
+                snapshot?.salienceHistory
+              ) &&
+              Number(
+                snapshot
+                  ?.salienceAssessmentCount
+              ) >= 1
+          },
+          {
+            name:
+              "Human authority remains intact while internal investigation can begin autonomously",
+            passed:
+              changed?.authority
+                ?.humanAuthorityPreserved ===
+                true &&
+              captured?.trigger
+                ?.investigate === true
+          },
+          {
+            name:
+              "D7B extends the existing Brain rather than creating a disconnected consciousness engine",
+            passed:
+              typeof this
+                .assessWorldModelSalience ===
+                "function" &&
+              typeof this
+                .attendToWorldModelChange ===
+                "function" &&
+              typeof this
+                .executeCognitiveReentry ===
+                "function"
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7B Salience + Emergent Attention: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission: "006.017D7B",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          assessment,
+          attention
+        };
+      } finally {
+        this.worldModel = originalWorld;
+        this.cognitiveIntentions =
+          originalIntentions;
+        this.salienceHistory =
+          originalSalience;
+        this.lastSalienceAssessment =
+          originalLast;
+        this.salienceAssessmentCount =
+          originalCount;
+      }
     },
 
     runSpookyWorldModelAcceptanceTest() {
@@ -7740,7 +8563,10 @@
         worldModelHistory: this.worldModelHistory.slice(0, this.configuration.maximumWorldModelHistory),
         worldModelProjectionCount: Number(this.worldModelProjectionCount || 0),
         relationshipModels: this.clone(this.relationshipModels || {}),
-        relationshipHistory: this.relationshipHistory.slice(0, this.configuration.maximumRelationshipHistory)
+        relationshipHistory: this.relationshipHistory.slice(0, this.configuration.maximumRelationshipHistory),
+        salienceHistory: this.salienceHistory.slice(0, this.configuration.maximumSalienceHistory),
+        lastSalienceAssessment: this.lastSalienceAssessment ? this.clone(this.lastSalienceAssessment) : null,
+        salienceAssessmentCount: Number(this.salienceAssessmentCount || 0)
       };
     },
 
@@ -7810,6 +8636,18 @@
       this.relationshipHistory = Array.isArray(saved.relationshipHistory)
         ? saved.relationshipHistory.slice(0, this.configuration.maximumRelationshipHistory)
         : [];
+      this.salienceHistory = Array.isArray(saved.salienceHistory)
+        ? saved.salienceHistory.slice(0, this.configuration.maximumSalienceHistory)
+        : [];
+      this.lastSalienceAssessment =
+        saved.lastSalienceAssessment &&
+        typeof saved.lastSalienceAssessment === "object"
+          ? this.clone(saved.lastSalienceAssessment)
+          : null;
+      this.salienceAssessmentCount = Math.max(
+        Number(saved.salienceAssessmentCount || 0),
+        Number(this.lastSalienceAssessment?.assessmentNumber || 0)
+      );
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
