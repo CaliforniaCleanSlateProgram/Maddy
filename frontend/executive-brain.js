@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.17.0
- * Build: EB1170-INTENT-RECONSTRUCTION-INVESTIGATIVE-COGNITION-20260809-A
+ * Version: 1.17.1
+ * Build: EB1171-INTENT-RECONSTRUCTION-COHERENCE-REPAIR-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.17.0";
-  const BUILD_ID = "EB1170-INTENT-RECONSTRUCTION-INVESTIGATIVE-COGNITION-20260809-A";
+  const VERSION = "1.17.1";
+  const BUILD_ID = "EB1171-INTENT-RECONSTRUCTION-COHERENCE-REPAIR-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -9499,12 +9499,15 @@
 
       if (explicitObjective) addCandidate(explicitObjective,"explicit-user-objective",0.99);
       if (/find out|look into|dig into|research|investigate|check (?:this|that) out/i.test(utterance)) {
+        const missionObjective = String(activeMission?.objective || "").trim();
         addCandidate(
-          inferredSubject
-            ? `Investigate ${inferredSubject} until the material implications, uncertainties, and next useful questions are understood.`
-            : "Investigate the referenced subject until the material implications, uncertainties, and next useful questions are understood.",
-          "investigative-language-plus-context",
-          inferredSubject ? 0.88 : 0.64
+          missionObjective
+            ? `${missionObjective} Investigate ${inferredSubject || "the referenced subject"} until the material implications, uncertainties, and next useful questions are understood.`
+            : inferredSubject
+              ? `Investigate ${inferredSubject} until the material implications, uncertainties, and next useful questions are understood.`
+              : "Investigate the referenced subject until the material implications, uncertainties, and next useful questions are understood.",
+          missionObjective ? "investigative-language-plus-active-mission" : "investigative-language-plus-context",
+          missionObjective ? 0.94 : inferredSubject ? 0.88 : 0.64
         );
       }
       if (unresolved.length) {
@@ -9581,6 +9584,8 @@
           followMaterialLeads:true,
           crossCheckContradictions:true,
           distinguishFactInferenceUnknown:true,
+          falsificationRequired:true,
+          falsificationQuestion:"What evidence would falsify the current interpretation or working hypothesis?",
           stopWhen:"material uncertainty is resolved, evidence is exhausted, authority is required, or marginal value falls below priority"
         },
         status:"active",
@@ -9610,8 +9615,9 @@
       const intention = this.buildInvestigativeIntention(reconstruction, options);
       const query = [
         intention.objective,
-        ...intention.questions.slice(0,5)
-      ].join("\n");
+        ...intention.questions.slice(0,5),
+        intention.searchStrategy.falsificationQuestion
+      ].filter(Boolean).join("\n");
 
       let result = null;
       let executor = null;
@@ -9764,13 +9770,15 @@
           evidenceCount:4,
           confirmed:true
         });
+        const acceptanceReconstruction = this.clone(reconstruction);
+        const latestReconstructionBeforeProjection = this.clone(this.lastIntentReconstruction);
         const world = this.projectWorldModel({reason:"intent-reconstruction-acceptance",persist:false,attend:false});
         const snapshot = this.buildPersistenceSnapshot();
 
         const checks = [
           {name:"Intent reconstruction uses more than literal speech pattern recognition",passed:reconstruction.signals.some(x=>x.type==="conversation-context")&&reconstruction.signals.some(x=>x.type==="active-mission")&&reconstruction.signals.some(x=>x.type==="unresolved-questions")},
           {name:"Natural language remains evidence of intent rather than unquestioned intent",passed:reconstruction.truthRule.includes("inference")&&reconstruction.epistemicStatus.includes("inference")},
-          {name:"Founder shorthand can resolve to the likely underlying objective",passed:/qualify|pursuable|position/i.test(reconstruction.probableObjective||"")},
+          {name:"Founder shorthand can resolve to the likely underlying objective",passed:/qualify|pursuable|position/i.test(reconstruction.probableObjective||"")&&reconstruction.candidates[0]?.basis==="investigative-language-plus-active-mission"},
           {name:"Relationship communication patterns are only one bounded signal",passed:reconstruction.signals.find(x=>x.type==="relationship-patterns")?.weight===0.08},
           {name:"Maddy preserves alternative candidate objectives instead of collapsing uncertainty",passed:Array.isArray(reconstruction.candidates)&&reconstruction.candidates.length>=2},
           {name:"Cheap reversible investigation may proceed on a working interpretation",passed:reconstruction.actionPolicy.cheapReversibleResearchMayProceed===true},
@@ -9780,13 +9788,13 @@
           {name:"Investigation actually executes authorized research",passed:investigation.success===true&&investigation.evidence.executor==="caller-injected-research-executor"},
           {name:"Investigation asks what is known versus assumed",passed:capturedQuery.includes("What is already known and what is merely assumed?")},
           {name:"Investigation actively searches for adjacent implications and opportunities",passed:capturedQuery.includes("adjacent fact, dependency, eligibility condition, prerequisite, or opportunity")},
-          {name:"Investigation includes falsification rather than confirmation-only search",passed:capturedQuery.includes("What evidence would falsify it?")},
+          {name:"Investigation includes falsification rather than confirmation-only search",passed:investigation.intention.searchStrategy?.falsificationRequired===true&&capturedQuery.includes("What evidence would falsify the current interpretation or working hypothesis?")},
           {name:"Research never silently becomes consequential action",passed:investigation.evidence.consequentialActionTaken===false&&investigation.intention.consequentialActionAuthorized===false},
           {name:"Maddy can learn revisable user communication patterns from confirmed interaction",passed:pattern.success===true&&pattern.pattern.status==="confirmed-pattern"&&pattern.pattern.confidence<1},
           {name:"Understanding the user's intent does not require agreeing with the user's conclusion",passed:reconstruction.independenceRule.includes("does not require agreement")},
-          {name:"Intent reconstruction becomes part of Maddy's living World Model",passed:world.intentReconstruction.latest?.fingerprint===reconstruction.fingerprint},
+          {name:"Intent reconstruction becomes part of Maddy's living World Model",passed:world.intentReconstruction.latest?.fingerprint===latestReconstructionBeforeProjection?.fingerprint&&Array.isArray(world.intentReconstruction.recent)&&world.intentReconstruction.recent.some(item=>item.fingerprint===acceptanceReconstruction.fingerprint)},
           {name:"Contextual investigation becomes autobiographical experience",passed:this.autobiographicalMemory.some(x=>x.eventType==="intent-reconstruction-investigation"&&x.sourceId===investigation.intention.id)},
-          {name:"Intent reconstruction and investigations survive sovereign Brain persistence",passed:snapshot.lastIntentReconstruction?.fingerprint===reconstruction.fingerprint&&Array.isArray(snapshot.investigativeIntentions)},
+          {name:"Intent reconstruction and investigations survive sovereign Brain persistence",passed:snapshot.lastIntentReconstruction?.fingerprint===latestReconstructionBeforeProjection?.fingerprint&&Array.isArray(snapshot.intentReconstructionHistory)&&snapshot.intentReconstructionHistory.some(item=>item.fingerprint===acceptanceReconstruction.fingerprint)&&Array.isArray(snapshot.investigativeIntentions)&&snapshot.investigativeIntentions.some(item=>item.id===investigation.intention.id)},
           {name:"Provider choice remains outside the semantic identity of intent reconstruction",passed:investigation.intention.authority==="investigation-only"&&!JSON.stringify(reconstruction).toLowerCase().includes("google")},
           {name:"The slice upgrades the existing Executive Brain rather than creating a disconnected intent engine",passed:typeof this.reconstructIntent==="function"&&typeof this.investigateReconstructedIntent==="function"&&typeof this.projectWorldModel==="function"}
         ];
