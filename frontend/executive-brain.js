@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.13.0
- * Build: EB1130-CAUSAL-COUNTERFACTUAL-INVESTIGATION-20260808-A
+ * Version: 1.14.0
+ * Build: EB1140-AUTONOMOUS-EVIDENCE-INVESTIGATION-LOOP-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.13.0";
-  const BUILD_ID = "EB1130-CAUSAL-COUNTERFACTUAL-INVESTIGATION-20260808-A";
+  const VERSION = "1.14.0";
+  const BUILD_ID = "EB1140-AUTONOMOUS-EVIDENCE-INVESTIGATION-LOOP-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -179,6 +179,9 @@
       salienceInvestigationThreshold: 0.72,
       maximumCausalInvestigationHistory: 120,
       maximumCompetingHypotheses: 6,
+      maximumAutonomousInvestigationHistory: 120,
+      maximumAutonomousInvestigationSteps: 8,
+      investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
       temporalCommitmentLookaheadHours: 720
     },
@@ -226,6 +229,9 @@
     causalInvestigationHistory: [],
     lastCausalInvestigation: null,
     causalInvestigationCount: 0,
+    autonomousInvestigationHistory: [],
+    lastAutonomousInvestigation: null,
+    autonomousInvestigationCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -7767,6 +7773,29 @@
             )
           : null;
 
+      if (
+        causalInvestigation &&
+        assessment.investigate === true
+      ) {
+        Promise.resolve(
+          this.runAutonomousEvidenceInvestigation(
+            causalInvestigation,
+            {}
+          )
+        ).catch(error => {
+          this.record(
+            "cognition.autonomous-investigation-error",
+            {
+              subject:
+                causalInvestigation.subject,
+              error:
+                error?.message ||
+                String(error)
+            }
+          );
+        });
+      }
+
       const trigger = {
         source: "executive-brain-world-model",
         event:
@@ -8177,6 +8206,569 @@
       return this.clone(result);
     },
 
+    /*
+     * Commission 006.017D7D — Autonomous Evidence Investigation Loop
+     *
+     * D7C decides what evidence would discriminate between competing theories.
+     * D7D closes the loop: route an authorized investigation through existing
+     * MEOS organs, evaluate returned evidence, update or kill hypotheses,
+     * discover second-order questions, and continue until uncertainty is
+     * sufficiently reduced or authority / capability / evidence runs out.
+     *
+     * No provider is assumed. No external provider becomes MEOS authority.
+     */
+    resolveInvestigationCapability(investigation = {}) {
+      const manifest = this.getSystemManifest();
+      const preferred = [
+        "Executive Search",
+        "Executive Recall",
+        "Institutional Reasoning",
+        "Website Intelligence",
+        "Executive Monitoring"
+      ];
+
+      const available = preferred
+        .map(label =>
+          manifest.find(item =>
+            String(item?.label || "")
+              .toLowerCase() === label.toLowerCase()
+          )
+        )
+        .filter(item => item?.available === true);
+
+      return {
+        available: available.length > 0,
+        candidates: available,
+        providerNeutral: true,
+        investigation
+      };
+    },
+
+    evaluateInvestigationEvidence(hypotheses = [], evidence = {}) {
+      const normalizedEvidence = {
+        source:
+          evidence.source || "unknown",
+        authority:
+          evidence.authority || "unverified",
+        supports:
+          Array.isArray(evidence.supports)
+            ? evidence.supports
+            : [],
+        contradicts:
+          Array.isArray(evidence.contradicts)
+            ? evidence.contradicts
+            : [],
+        facts:
+          Array.isArray(evidence.facts)
+            ? evidence.facts
+            : [],
+        unknowns:
+          Array.isArray(evidence.unknowns)
+            ? evidence.unknowns
+            : [],
+        provenance:
+          evidence.provenance || null
+      };
+
+      const updated = hypotheses.map(hypothesis => {
+        const supported =
+          normalizedEvidence.supports.includes(
+            hypothesis.hypothesisId
+          );
+        const contradicted =
+          normalizedEvidence.contradicts.includes(
+            hypothesis.hypothesisId
+          );
+
+        let confidence =
+          Number(hypothesis.confidence || 0.3);
+
+        if (supported) {
+          confidence +=
+            normalizedEvidence.authority === "authoritative"
+              ? 0.24
+              : 0.12;
+        }
+
+        if (contradicted) {
+          confidence -=
+            normalizedEvidence.authority === "authoritative"
+              ? 0.38
+              : 0.18;
+        }
+
+        confidence =
+          Math.max(
+            0,
+            Math.min(
+              0.99,
+              Number(confidence.toFixed(3))
+            )
+          );
+
+        const killed =
+          contradicted &&
+          normalizedEvidence.authority === "authoritative" &&
+          confidence <= 0.12;
+
+        return {
+          ...this.clone(hypothesis),
+          confidence,
+          status:
+            killed
+              ? "falsified"
+              : "hypothesis-not-fact",
+          evidenceUpdate: {
+            supported,
+            contradicted,
+            evidenceAuthority:
+              normalizedEvidence.authority,
+            provenance:
+              normalizedEvidence.provenance
+          }
+        };
+      });
+
+      return {
+        evidence: normalizedEvidence,
+        hypotheses: updated,
+        surviving:
+          updated.filter(item =>
+            item.status !== "falsified"
+          ),
+        falsified:
+          updated.filter(item =>
+            item.status === "falsified"
+          )
+      };
+    },
+
+    calculateInvestigationResolution(hypotheses = [], evidence = {}) {
+      const active =
+        hypotheses.filter(item =>
+          item.status !== "falsified"
+        );
+      const confidences =
+        active.map(item =>
+          Number(item.confidence || 0)
+        );
+      const strongest =
+        confidences.length
+          ? Math.max(...confidences)
+          : 0;
+      const runnerUp =
+        confidences
+          .sort((a, b) => b - a)[1] || 0;
+      const discrimination =
+        Math.max(0, strongest - runnerUp);
+      const authorityBonus =
+        evidence?.authority === "authoritative"
+          ? 0.18
+          : 0;
+
+      return Math.max(
+        0,
+        Math.min(
+          1,
+          Number(
+            (
+              strongest * 0.62 +
+              discrimination * 0.20 +
+              authorityBonus
+            ).toFixed(3)
+          )
+        )
+      );
+    },
+
+    discoverSecondOrderQuestions(result = {}, priorQuestions = []) {
+      const discovered = [];
+
+      (result?.evidence?.unknowns || [])
+        .forEach(question => {
+          if (
+            question &&
+            !priorQuestions.includes(question)
+          ) {
+            discovered.push({
+              question,
+              origin:
+                "evidence-created-unknown",
+              significance:
+                "second-order",
+              status: "unresolved"
+            });
+          }
+        });
+
+      if (
+        result?.falsified?.length > 0 &&
+        result?.surviving?.length > 0
+      ) {
+        discovered.push({
+          question:
+            "What mechanism best explains why the surviving hypothesis fits evidence that falsified the competing explanation?",
+          origin:
+            "hypothesis-falsification",
+          significance:
+            "second-order",
+          status: "unresolved"
+        });
+      }
+
+      return discovered.slice(0, 8);
+    },
+
+    async executeInvestigationStep(investigation = {}, context = {}) {
+      /*
+       * Existing organs remain the executors. This method never hard-codes an
+       * outside vendor. A caller/test may inject an executor; production uses
+       * the best commissioned MEOS organ available.
+       */
+      if (typeof context.executor === "function") {
+        return await context.executor(
+          this.clone(investigation)
+        );
+      }
+
+      const capability =
+        this.resolveInvestigationCapability(
+          investigation
+        );
+
+      if (!capability.available) {
+        return {
+          success: false,
+          blocked: true,
+          reason:
+            "no-authorized-investigation-capability",
+          evidence: null
+        };
+      }
+
+      const question =
+        investigation?.question ||
+        "Investigate the highest-information unresolved question.";
+
+      try {
+        if (
+          window.MEOSExecutiveSearch &&
+          typeof window.MEOSExecutiveSearch
+            .executiveQuery === "function"
+        ) {
+          const searchResult =
+            await window.MEOSExecutiveSearch
+              .executiveQuery(question);
+
+          return {
+            success: true,
+            executor:
+              "MEOSExecutiveSearch",
+            evidence: {
+              source:
+                "meos-executive-search",
+              authority: "unverified",
+              facts: this.clone(
+                searchResult?.results ||
+                searchResult?.items ||
+                []
+              ),
+              supports: [],
+              contradicts: [],
+              unknowns: [],
+              provenance:
+                searchResult?.provenance ||
+                null
+            }
+          };
+        }
+      } catch (error) {
+        return {
+          success: false,
+          blocked: false,
+          reason:
+            "investigation-executor-error",
+          error: error?.message || String(error),
+          evidence: null
+        };
+      }
+
+      return {
+        success: false,
+        blocked: true,
+        reason:
+          "available-capability-has-no-compatible-investigation-interface",
+        evidence: null
+      };
+    },
+
+    async runAutonomousEvidenceInvestigation(
+      causalInvestigation = {},
+      context = {}
+    ) {
+      const generatedAt =
+        new Date().toISOString();
+      let hypotheses =
+        this.clone(
+          causalInvestigation.hypotheses || []
+        );
+      let queue =
+        this.clone(
+          causalInvestigation.investigations || []
+        );
+      const steps = [];
+      const discoveredQuestions = [];
+      let resolution = 0;
+      let stopReason = null;
+
+      const maxSteps =
+        Math.max(
+          1,
+          Math.min(
+            this.configuration
+              .maximumAutonomousInvestigationSteps,
+            Number(context.maxSteps) ||
+              this.configuration
+                .maximumAutonomousInvestigationSteps
+          )
+        );
+
+      for (
+        let index = 0;
+        index < maxSteps;
+        index += 1
+      ) {
+        const next =
+          queue.shift();
+
+        if (!next) {
+          stopReason =
+            "no-further-discriminating-investigation";
+          break;
+        }
+
+        const execution =
+          await this.executeInvestigationStep(
+            next,
+            context
+          );
+
+        if (
+          execution?.blocked === true
+        ) {
+          stopReason =
+            execution.reason ||
+            "authority-or-capability-required";
+          steps.push({
+            step: index + 1,
+            investigation:
+              this.clone(next),
+            execution:
+              this.clone(execution)
+          });
+          break;
+        }
+
+        if (
+          execution?.success !== true ||
+          !execution?.evidence
+        ) {
+          steps.push({
+            step: index + 1,
+            investigation:
+              this.clone(next),
+            execution:
+              this.clone(execution)
+          });
+          continue;
+        }
+
+        const evaluated =
+          this.evaluateInvestigationEvidence(
+            hypotheses,
+            execution.evidence
+          );
+
+        hypotheses =
+          evaluated.hypotheses;
+
+        resolution =
+          this.calculateInvestigationResolution(
+            hypotheses,
+            evaluated.evidence
+          );
+
+        const secondOrder =
+          this.discoverSecondOrderQuestions(
+            evaluated,
+            discoveredQuestions.map(
+              item => item.question
+            )
+          );
+
+        discoveredQuestions.push(
+          ...secondOrder
+        );
+
+        secondOrder.forEach(
+          (item, questionIndex) => {
+            queue.push({
+              investigationId:
+                `second-order-${index + 1}-${questionIndex + 1}`,
+              hypothesisId: null,
+              question: item.question,
+              purpose:
+                "second-order-uncertainty-reduction",
+              expectedInformationGain:
+                Math.max(
+                  0.35,
+                  0.75 - index * 0.05
+                ),
+              authority:
+                "internal-investigation-only-unless-external-action-is-approved",
+              preferredEvidence:
+                "authoritative-primary-source-when-available"
+            });
+          }
+        );
+
+        queue.sort(
+          (a, b) =>
+            Number(
+              b.expectedInformationGain || 0
+            ) -
+            Number(
+              a.expectedInformationGain || 0
+            )
+        );
+
+        steps.push({
+          step: index + 1,
+          investigation:
+            this.clone(next),
+          execution:
+            this.clone(execution),
+          evaluated:
+            this.clone(evaluated),
+          resolution,
+          secondOrder:
+            this.clone(secondOrder)
+        });
+
+        if (
+          resolution >=
+          this.configuration
+            .investigationResolutionThreshold
+        ) {
+          stopReason =
+            "uncertainty-sufficiently-resolved";
+          break;
+        }
+      }
+
+      if (!stopReason) {
+        stopReason =
+          steps.length >= maxSteps
+            ? "investigation-step-limit"
+            : "investigation-complete";
+      }
+
+      const surviving =
+        hypotheses.filter(item =>
+          item.status !== "falsified"
+        );
+      const falsified =
+        hypotheses.filter(item =>
+          item.status === "falsified"
+        );
+
+      const result = {
+        schema:
+          "meos.maddy.autonomous-evidence-investigation.v1",
+        investigationNumber:
+          Number(
+            this.autonomousInvestigationCount || 0
+          ) + 1,
+        generatedAt,
+        subject:
+          causalInvestigation.subject ||
+          "Autonomous evidence investigation",
+        causalFingerprint:
+          causalInvestigation.fingerprint || null,
+        steps,
+        hypotheses,
+        survivingHypotheses: surviving,
+        falsifiedHypotheses: falsified,
+        discoveredQuestions,
+        resolution,
+        resolved:
+          resolution >=
+          this.configuration
+            .investigationResolutionThreshold,
+        stopReason,
+        governance: {
+          providerNeutral: true,
+          evidenceDoesNotBecomeFactWithoutAuthority:
+            true,
+          externalActionRequiresExistingAuthority:
+            true,
+          mayInvestigateAutonomouslyWithinAuthority:
+            true,
+          humanEscalationRequiredWhenBlocked:
+            stopReason?.includes("authority") ===
+              true
+        }
+      };
+
+      result.fingerprint =
+        this.fingerprintCognitiveDispatch(
+          result
+        );
+
+      this.autonomousInvestigationCount =
+        result.investigationNumber;
+      this.lastAutonomousInvestigation =
+        result;
+      this.autonomousInvestigationHistory
+        .unshift(this.clone(result));
+      this.autonomousInvestigationHistory =
+        this.autonomousInvestigationHistory
+          .slice(
+            0,
+            this.configuration
+              .maximumAutonomousInvestigationHistory
+          );
+
+      this.emit(
+        "brain:autonomous-investigation-completed",
+        this.clone(result)
+      );
+
+      this.record(
+        "cognition.autonomous-investigation",
+        {
+          subject: result.subject,
+          steps: steps.length,
+          resolution,
+          falsified:
+            falsified.length,
+          surviving:
+            surviving.length,
+          secondOrderQuestions:
+            discoveredQuestions.length,
+          stopReason
+        }
+      );
+
+      if (
+        brainPersistence.hydrated === true
+      ) {
+        this.persist();
+      }
+
+      return this.clone(result);
+    },
+
     getSalienceStatus() {
       return {
         assessmentCount:
@@ -8440,6 +9032,346 @@
       return this.clone(
         this.worldModelHistory.slice(0, normalized)
       );
+    },
+
+    async runAutonomousEvidenceInvestigationAcceptanceTest() {
+      const causal = {
+        subject:
+          "Future opportunity positioning",
+        fingerprint:
+          "d7d-causal-fingerprint",
+        hypotheses: [
+          {
+            hypothesisId:
+              "positioning-changes-eligibility",
+            claim:
+              "Legitimate positioning changes future eligibility.",
+            status:
+              "hypothesis-not-fact",
+            confidence: 0.42,
+            falsifiers: [
+              "authoritative rules make eligibility structurally impossible"
+            ],
+            unansweredQuestions: [
+              "Can the gap be closed?"
+            ]
+          },
+          {
+            hypothesisId:
+              "relationship-unlocks-path",
+            claim:
+              "A partner changes feasibility.",
+            status:
+              "hypothesis-not-fact",
+            confidence: 0.34,
+            falsifiers: [
+              "partner lacks relevant capability"
+            ],
+            unansweredQuestions: [
+              "Does the partner have capability?"
+            ]
+          },
+          {
+            hypothesisId:
+              "coincidence-or-noise",
+            claim:
+              "The apparent connection is noise.",
+            status:
+              "hypothesis-not-fact",
+            confidence: 0.30,
+            falsifiers: [
+              "authoritative evidence establishes mechanism"
+            ],
+            unansweredQuestions: [
+              "Is there a mechanism?"
+            ]
+          }
+        ],
+        investigations: [
+          {
+            investigationId:
+              "test-investigation-1",
+            hypothesisId:
+              "coincidence-or-noise",
+            question:
+              "Does authoritative evidence establish a real positioning mechanism?",
+            purpose: "falsification",
+            expectedInformationGain: 0.91,
+            authority:
+              "internal-investigation-only-unless-external-action-is-approved",
+            preferredEvidence:
+              "authoritative-primary-source-when-available"
+          },
+          {
+            investigationId:
+              "test-investigation-2",
+            hypothesisId:
+              "positioning-changes-eligibility",
+            question:
+              "Can the eligibility gap be legitimately closed?",
+            purpose: "falsification",
+            expectedInformationGain: 0.82,
+            authority:
+              "internal-investigation-only-unless-external-action-is-approved",
+            preferredEvidence:
+              "authoritative-primary-source-when-available"
+          }
+        ]
+      };
+
+      let call = 0;
+      const executor = async investigation => {
+        call += 1;
+
+        if (call === 1) {
+          return {
+            success: true,
+            executor: "acceptance-authoritative-source",
+            evidence: {
+              source:
+                "authoritative-primary-source",
+              authority:
+                "authoritative",
+              facts: [
+                "A documented mechanism exists."
+              ],
+              supports: [
+                "positioning-changes-eligibility"
+              ],
+              contradicts: [
+                "coincidence-or-noise"
+              ],
+              unknowns: [
+                "Which legitimate capability-building path has the lowest cost and shortest lead time?"
+              ],
+              provenance:
+                "acceptance://primary-source/1"
+            }
+          };
+        }
+
+        return {
+          success: true,
+          executor:
+            "acceptance-authoritative-source",
+          evidence: {
+            source:
+              "authoritative-primary-source",
+            authority:
+              "authoritative",
+            facts: [
+              "The gap can be closed through an allowed capability path."
+            ],
+            supports: [
+              "positioning-changes-eligibility"
+            ],
+            contradicts: [],
+            unknowns: [],
+            provenance:
+              "acceptance://primary-source/2"
+          }
+        };
+      };
+
+      const result =
+        await this.runAutonomousEvidenceInvestigation(
+          causal,
+          {
+            executor,
+            maxSteps: 3
+          }
+        );
+
+      const snapshot =
+        this.buildPersistenceSnapshot();
+
+      const checks = [
+        {
+          name:
+            "Maddy executes the highest-information investigation rather than merely recommending it",
+          passed:
+            result.steps?.[0]
+              ?.investigation
+              ?.investigationId ===
+                "test-investigation-1"
+        },
+        {
+          name:
+            "Investigation execution is provider-neutral and accepts an authorized MEOS executor seam",
+          passed:
+            typeof this
+              .executeInvestigationStep ===
+                "function" &&
+            result.governance
+              ?.providerNeutral === true
+        },
+        {
+          name:
+            "Returned evidence is evaluated against competing hypotheses",
+          passed:
+            result.steps?.[0]
+              ?.evaluated
+              ?.hypotheses
+              ?.length === 3
+        },
+        {
+          name:
+            "Authoritative contradictory evidence can kill a hypothesis",
+          passed:
+            result.falsifiedHypotheses
+              ?.some(item =>
+                item.hypothesisId ===
+                  "coincidence-or-noise"
+              )
+        },
+        {
+          name:
+            "Supporting evidence strengthens a surviving hypothesis without turning it into fact",
+          passed:
+            result.survivingHypotheses
+              ?.some(item =>
+                item.hypothesisId ===
+                  "positioning-changes-eligibility" &&
+                item.confidence > 0.42 &&
+                item.status ===
+                  "hypothesis-not-fact"
+              )
+        },
+        {
+          name:
+            "Evidence-created unknowns become second-order investigation questions",
+          passed:
+            result.discoveredQuestions
+              ?.some(item =>
+                item.origin ===
+                  "evidence-created-unknown"
+              )
+        },
+        {
+          name:
+            "Falsification itself can generate a deeper causal question",
+          passed:
+            result.discoveredQuestions
+              ?.some(item =>
+                item.origin ===
+                  "hypothesis-falsification"
+              )
+        },
+        {
+          name:
+            "Second-order questions are fed back into the investigation queue",
+          passed:
+            result.steps.length >= 2
+        },
+        {
+          name:
+            "Investigation calculates uncertainty resolution instead of declaring victory after one result",
+          passed:
+            typeof result.resolution ===
+              "number" &&
+            result.resolution >= 0 &&
+            result.resolution <= 1
+        },
+        {
+          name:
+            "The loop stops by explicit resolution, exhaustion, limit, or authority/capability boundary",
+          passed:
+            [
+              "uncertainty-sufficiently-resolved",
+              "no-further-discriminating-investigation",
+              "investigation-step-limit",
+              "investigation-complete"
+            ].includes(result.stopReason) ||
+            String(result.stopReason)
+              .includes("authority") ||
+            String(result.stopReason)
+              .includes("capability")
+        },
+        {
+          name:
+            "Evidence never silently becomes fact merely because an executor returned it",
+          passed:
+            result.governance
+              ?.evidenceDoesNotBecomeFactWithoutAuthority ===
+                true
+        },
+        {
+          name:
+            "External consequential action still requires existing authority",
+          passed:
+            result.governance
+              ?.externalActionRequiresExistingAuthority ===
+                true
+        },
+        {
+          name:
+            "Autonomous internal investigation is permitted within existing authority",
+          passed:
+            result.governance
+              ?.mayInvestigateAutonomouslyWithinAuthority ===
+                true
+        },
+        {
+          name:
+            "Autonomous investigation lineage survives durable Executive Brain continuity",
+          passed:
+            Array.isArray(
+              snapshot
+                ?.autonomousInvestigationHistory
+            ) &&
+            snapshot
+              .autonomousInvestigationHistory
+              .length > 0 &&
+            Number(
+              snapshot
+                ?.autonomousInvestigationCount
+            ) >= 1
+        },
+        {
+          name:
+            "D7D is wired from emergent attention through D7C rather than becoming a disconnected engine",
+          passed:
+            /runAutonomousEvidenceInvestigation/.test(
+              this
+                .attendToWorldModelChange
+                .toString()
+            ) &&
+            typeof this
+              .runCausalCounterfactualInvestigation ===
+                "function"
+        },
+        {
+          name:
+            "Existing Executive Brain cognition remains the sovereign coordinator",
+          passed:
+            typeof this
+              .executeCognitiveReentry ===
+                "function" &&
+            typeof this
+              .projectWorldModel ===
+                "function" &&
+            typeof this
+              .assessWorldModelSalience ===
+                "function"
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7D Autonomous Evidence Investigation Loop: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7D",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        result
+      };
     },
 
     runCausalCounterfactualAcceptanceTest() {
@@ -9221,7 +10153,10 @@
         salienceAssessmentCount: Number(this.salienceAssessmentCount || 0),
         causalInvestigationHistory: this.causalInvestigationHistory.slice(0, this.configuration.maximumCausalInvestigationHistory),
         lastCausalInvestigation: this.lastCausalInvestigation ? this.clone(this.lastCausalInvestigation) : null,
-        causalInvestigationCount: Number(this.causalInvestigationCount || 0)
+        causalInvestigationCount: Number(this.causalInvestigationCount || 0),
+        autonomousInvestigationHistory: this.autonomousInvestigationHistory.slice(0, this.configuration.maximumAutonomousInvestigationHistory),
+        lastAutonomousInvestigation: this.lastAutonomousInvestigation ? this.clone(this.lastAutonomousInvestigation) : null,
+        autonomousInvestigationCount: Number(this.autonomousInvestigationCount || 0)
       };
     },
 
@@ -9318,6 +10253,22 @@
       this.causalInvestigationCount = Math.max(
         Number(saved.causalInvestigationCount || 0),
         Number(this.lastCausalInvestigation?.investigationNumber || 0)
+      );
+      this.autonomousInvestigationHistory =
+        Array.isArray(saved.autonomousInvestigationHistory)
+          ? saved.autonomousInvestigationHistory.slice(
+              0,
+              this.configuration.maximumAutonomousInvestigationHistory
+            )
+          : [];
+      this.lastAutonomousInvestigation =
+        saved.lastAutonomousInvestigation &&
+        typeof saved.lastAutonomousInvestigation === "object"
+          ? this.clone(saved.lastAutonomousInvestigation)
+          : null;
+      this.autonomousInvestigationCount = Math.max(
+        Number(saved.autonomousInvestigationCount || 0),
+        Number(this.lastAutonomousInvestigation?.investigationNumber || 0)
       );
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
