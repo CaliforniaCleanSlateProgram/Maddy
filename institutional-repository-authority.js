@@ -1,9 +1,9 @@
 /**
  * MEOS Institutional Repository Authority
  *
- * Version: 1.1.0
- * Commission: 006.017D0B
- * Build: IRA110-SOVEREIGN-STATE-PORTABILITY-20260808-A
+ * Version: 1.1.1
+ * Commission: 006.017D0B1
+ * Build: IRA111-PORTABILITY-PUBLIC-INTERFACE-20260808-A
  *
  * Purpose:
  * - Give MEOS one provider-neutral authority for durable organizational state.
@@ -21,10 +21,10 @@
 
 import crypto from "crypto";
 
-const VERSION = "1.1.0";
-const COMMISSION = "006.017D0B";
+const VERSION = "1.1.1";
+const COMMISSION = "006.017D0B1";
 const BUILD_ID =
-  "IRA110-SOVEREIGN-STATE-PORTABILITY-20260808-A";
+  "IRA111-PORTABILITY-PUBLIC-INTERFACE-20260808-A";
 
 const SCHEMA = Object.freeze({
   status: "meos.institutional-repository-authority.status.v1",
@@ -1703,6 +1703,17 @@ const API = Object.freeze({
     InstitutionalRepository
       .delete
       .bind(InstitutionalRepository),
+
+  exportPortableStatePackage: (...args) =>
+    InstitutionalRepository.exportPortableStatePackage(...args),
+
+  validatePortableStatePackage: (...args) =>
+    InstitutionalRepository.validatePortableStatePackage(...args),
+
+  restorePortableStatePackage: (...args) =>
+    InstitutionalRepository.restorePortableStatePackage(...args),
+
+
   getStatus:
     InstitutionalRepository
       .getStatus
