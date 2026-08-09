@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.23.0";
-  const BUILD_ID = "EB1221-CONTINUOUS-HANDOFF-PERSISTENCE-ACCEPTANCE-20260809-A";
+  const VERSION = "1.23.1";
+  const BUILD_ID = "EB1231-HEAD-ON-A-SWIVEL-OPEN-DOMAIN-CURIOSITY-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -175,6 +175,10 @@
       productiveIdleHistoryLimit: 96,
       productiveIdleCooldownMs: 60000,
       productiveIdleMaxConsecutiveSameSubject: 3,
+      openDomainCuriosityEnabled: true,
+      openDomainCuriosityBaseValue: 0.58,
+      openDomainCuriosityAdjacentValue: 0.52,
+      openDomainCuriosityMissionSeedLimit: 8,
       meaningfulChangeDebounceMs: 1200,
       cognitiveReentryCooldownMs: 5000,
       maximumCognitiveReentryHistory: 250,
@@ -11429,6 +11433,90 @@
         evidence:x?.evidence||[],unknowns:[x?.question||x],externalResearchUseful:true
       }));
 
+      /*
+       * D7O1 — Head on a Swivel.
+       *
+       * Do not confuse "nothing already queued" with "nothing worth learning."
+       * Scan the living organization and runtime for learning seeds, then create
+       * an open-domain exploration candidate when no stronger internal candidate
+       * exists. Organization context sets responsibility and priority; it is not
+       * an intellectual whitelist.
+       */
+      const awareness = typeof this.collectAwarenessStimuli === "function"
+        ? this.collectAwarenessStimuli()
+        : [];
+
+      (Array.isArray(awareness) ? awareness.slice(0,24) : []).forEach(signal => {
+        const kind=String(signal?.kind||"");
+        const subject=String(signal?.subject||"").trim();
+        if(!subject) return;
+        if(!["active-mission","monitoring-alert","cognitive-intention"].includes(kind)) return;
+
+        const salience=Math.max(0,Math.min(100,Number(signal.salience||0)));
+        add({
+          subject,
+          origin:`runtime-${kind}`,
+          reason:`Build enough domain understanding around this live organizational signal to recognize risks, opportunities, dependencies, and useful adjacent knowledge before it becomes urgent.`,
+          move:"study-live-organizational-context",
+          value:0.48+(salience/100)*0.34,
+          evidence:[{
+            source:signal.source||"MEOS runtime",
+            kind,
+            status:signal.status||null,
+            salience
+          }],
+          unknowns:[],
+          externalResearchUseful:true
+        });
+      });
+
+      if(this.configuration.openDomainCuriosityEnabled===true && candidates.length===0){
+        const organization=this.buildOrganizationContext?.()||{};
+        const mission=String(
+          organization.mission||
+          organization.operatingPurpose||
+          organization.longTermPurpose||
+          ""
+        ).trim();
+        const organizationName=String(organization.name||"the organization").trim();
+
+        if(mission){
+          add({
+            subject:`Deepen domain expertise and discover useful adjacent knowledge for ${organizationName}`,
+            origin:"open-domain-curiosity",
+            reason:`No queued cognitive work currently clears the gate. Use the organization's mission as a starting point—not a boundary—to discover what Maddy does not yet know, follow promising adjacent concepts, and build expertise that could create future organizational advantage.`,
+            move:"explore-read-learn-connect",
+            value:Number(this.configuration.openDomainCuriosityBaseValue||0.58),
+            evidence:[{
+              source:organization.source||"organization-context",
+              organization:organizationName,
+              mission
+            }],
+            unknowns:[
+              `What important facts, methods, emerging developments, adjacent disciplines, or counterexamples related to "${mission}" does Maddy not yet understand?`,
+              "Which adjacent subject could create unexpected leverage if understood deeply?",
+              "What would falsify the assumption that a discovered topic deserves more attention?"
+            ],
+            externalResearchUseful:true
+          });
+        } else {
+          add({
+            subject:"Explore a high-value unfamiliar domain and test for organizational relevance",
+            origin:"open-domain-curiosity",
+            reason:"No queued work clears the gate and no mission context is currently available. Curiosity may explore broadly, but continued attention must earn itself through evidence of learning value or future leverage.",
+            move:"explore-read-learn-connect",
+            value:Number(this.configuration.openDomainCuriosityAdjacentValue||0.52),
+            evidence:[],
+            unknowns:[
+              "What unfamiliar subject is changing in the external world?",
+              "Could understanding it create future leverage, preparedness, or better judgment?",
+              "What evidence would justify deeper investigation?"
+            ],
+            externalResearchUseful:true
+          });
+        }
+      }
+
       const last=this.lastProductiveIdleAction;
       return candidates.map(item=>{
         const same=last&&this.normalize(last.subject)===this.normalize(item.subject);
@@ -11447,7 +11535,7 @@
       const selected=candidates[0]||null;
       if(!selected){
         const action={schema:"meos.maddy.productive-idle-action.v1",action:"rest",
-          reason:"No internal developmental move clears the bounded value and diminishing-return gates.",
+          reason:"No queued, organizational, or open-domain exploratory move clears the bounded value and diminishing-return gates.",
           completedAt:new Date().toISOString(),externalActionAuthorized:false,
           truthRule:"Rest is a governed cognitive outcome when further work has insufficient expected value."};
         this.lastProductiveIdleAction=action;
