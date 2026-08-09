@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.33";
+const VERSION = "2.10.34";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1648,9 +1648,9 @@ function getExecutiveBrainAuthorityStatus() {
 /* ========================================================================== */
 
 const HEADLESS_RESEARCH_COMMISSION = "006.017D7P1";
-const HEADLESS_RESEARCH_VERSION = "1.0.0";
+const HEADLESS_RESEARCH_VERSION = "1.1.0";
 const HEADLESS_RESEARCH_BUILD_ID =
-  "HRO100-PROVIDER-NEUTRAL-HEADLESS-RESEARCH-ORCHESTRATION-20260809-A";
+  "HRO110-PUBLIC-WEB-SEARCH-RETRIEVAL-ADAPTER-20260809-A";
 
 const headlessResearchRuntime = {
   status: "online",
@@ -1953,6 +1953,219 @@ async function executeHeadlessResearch(request = {}) {
     };
   }
 }
+
+const PUBLIC_WEB_ADAPTER_ID = "public-web-http-v1";
+
+function decodeHtmlEntities(value = "") {
+  return String(value)
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#x2F;/g, "/");
+}
+
+function stripHtml(value = "") {
+  return decodeHtmlEntities(
+    String(value)
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+  ).trim();
+}
+
+function normalizePublicUrl(value = "") {
+  try {
+    const url = new URL(String(value));
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPublicResearchUrl(url, options = {}) {
+  const normalized = normalizePublicUrl(url);
+  if (!normalized) {
+    throw Object.assign(
+      new Error("Public research retrieval requires an HTTP(S) URL."),
+      { code: "INVALID_PUBLIC_RESEARCH_URL" }
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    Number(options.timeoutMs || 12000)
+  );
+
+  try {
+    const response = await fetch(normalized, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "MEOS-Maddy-Research/1.0 (+provider-neutral-public-research)",
+        "Accept":
+          "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.5"
+      }
+    });
+
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(`Public research retrieval returned HTTP ${response.status}.`),
+        { code: "PUBLIC_RESEARCH_HTTP_ERROR", status: response.status }
+      );
+    }
+
+    const contentType = String(
+      response.headers.get("content-type") || ""
+    ).toLowerCase();
+
+    const body = await response.text();
+    const maxChars = Number(options.maxChars || 50000);
+    const readable =
+      contentType.includes("html")
+        ? stripHtml(body)
+        : body.trim();
+
+    return {
+      success: true,
+      source: response.url || normalized,
+      contentType,
+      text: readable.slice(0, maxChars),
+      truncated: readable.length > maxChars,
+      retrievedAt: new Date().toISOString()
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseDuckDuckGoHtml(html = "") {
+  const results = [];
+  const blockPattern =
+    /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>|<div[^>]+class="[^"]*result__snippet[^"]*"[^>]*>)([\s\S]*?)<\/(?:a|div)>/gi;
+
+  let match;
+  while ((match = blockPattern.exec(html)) && results.length < 12) {
+    let href = decodeHtmlEntities(match[1]);
+    try {
+      const parsed = new URL(href, "https://html.duckduckgo.com");
+      const uddg = parsed.searchParams.get("uddg");
+      if (uddg) href = decodeURIComponent(uddg);
+    } catch {}
+
+    const source = normalizePublicUrl(href);
+    if (!source) continue;
+
+    results.push({
+      source,
+      title: stripHtml(match[2]),
+      excerpt: stripHtml(match[3]),
+      retrievedAt: new Date().toISOString(),
+      evidenceStatus: "search-discovery"
+    });
+  }
+  return results;
+}
+
+registerHeadlessResearchCapability({
+  id: PUBLIC_WEB_ADAPTER_ID,
+  name: "Public Web Search",
+  kind: "search-provider",
+  operations: ["search"],
+  authoritative: false,
+  async execute(context = {}) {
+    const queries = [
+      ...(Array.isArray(context.questions) ? context.questions : []),
+      context.subject
+    ].filter(Boolean).slice(0, 4);
+
+    const evidence = [];
+    const seen = new Set();
+
+    for (const query of queries) {
+      const searchUrl =
+        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+      const response = await fetch(searchUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; MEOS-Maddy-Research/1.0)",
+          "Accept": "text/html"
+        }
+      });
+      if (!response.ok) continue;
+      const html = await response.text();
+      for (const item of parseDuckDuckGoHtml(html)) {
+        if (seen.has(item.source)) continue;
+        seen.add(item.source);
+        evidence.push(item);
+        if (evidence.length >= Number(context.limits?.maxSources || 12)) {
+          break;
+        }
+      }
+      if (evidence.length >= Number(context.limits?.maxSources || 12)) break;
+    }
+
+    return {
+      success: evidence.length > 0,
+      evidence
+    };
+  }
+});
+
+registerHeadlessResearchCapability({
+  id: "public-web-retrieval-v1",
+  name: "Public Web Retrieval",
+  kind: "retrieval-provider",
+  operations: ["retrieve", "cross-check"],
+  authoritative: false,
+  async execute(context = {}) {
+    const prior = Array.isArray(context.evidence)
+      ? context.evidence
+      : [];
+    const maxSources = Math.min(
+      Number(context.limits?.maxSources || 12),
+      8
+    );
+    const evidence = [];
+
+    for (const candidate of prior.slice(0, maxSources)) {
+      if (!candidate?.source) continue;
+      try {
+        const page = await fetchPublicResearchUrl(
+          candidate.source,
+          { maxChars: 30000 }
+        );
+        if (!page.text) continue;
+
+        evidence.push({
+          source: page.source,
+          title: candidate.title || null,
+          excerpt: page.text.slice(0, 6000),
+          retrievedAt: page.retrievedAt,
+          authoritative:
+            /\.(gov|edu)(\/|$)/i.test(
+              new URL(page.source).hostname
+            ),
+          evidenceStatus: "retrieved-public-source"
+        });
+      } catch {
+        continue;
+      }
+    }
+
+    return {
+      success: evidence.length > 0,
+      evidence
+    };
+  }
+});
 
 function getHeadlessResearchStatus() {
   return {
