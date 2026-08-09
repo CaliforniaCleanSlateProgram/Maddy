@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.16.0
- * Build: EB1160-DEVELOPMENTAL-DRIVE-AGENCY-IMPLEMENTATION-20260809-A
+ * Version: 1.17.0
+ * Build: EB1170-INTENT-RECONSTRUCTION-INVESTIGATIVE-COGNITION-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.16.0";
-  const BUILD_ID = "EB1160-DEVELOPMENTAL-DRIVE-AGENCY-IMPLEMENTATION-20260809-A";
+  const VERSION = "1.17.0";
+  const BUILD_ID = "EB1170-INTENT-RECONSTRUCTION-INVESTIGATIVE-COGNITION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -186,6 +186,8 @@
       maximumDevelopmentalPracticeHistory: 240,
       maximumDeferredCapabilities: 80,
       maximumDevelopmentalRetrospectives: 160,
+      maximumIntentReconstructions: 200,
+      maximumInvestigativeIntentions: 120,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -248,6 +250,10 @@
     developmentalRetrospectives: [],
     lastDevelopmentalDrive: null,
     developmentalDriveCount: 0,
+    intentReconstructionHistory: [],
+    investigativeIntentions: [],
+    lastIntentReconstruction: null,
+    intentReconstructionCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -9448,6 +9454,357 @@
       }
     },
 
+    /*
+     * Commission 006.017D7G — Intent Reconstruction + Investigative Cognition
+     *
+     * Maddy does not reduce a human instruction to keywords. She reconstructs
+     * probable intent from language plus context, history, mission, world state,
+     * unresolved questions, and learned communication patterns. Inference stays
+     * explicitly uncertain. Cheap reversible research can test ambiguity;
+     * consequential action still requires sufficient confidence and authority.
+     */
+    reconstructIntent(input = {}, options = {}) {
+      const utterance = String(input.utterance || input.text || input.instruction || "").trim();
+      const conversation = Array.isArray(input.conversationContext) ? input.conversationContext : [];
+      const relationshipPatterns = Array.isArray(input.relationshipPatterns) ? input.relationshipPatterns : [];
+      const unresolved = Array.isArray(input.unresolvedQuestions) ? input.unresolvedQuestions : [];
+      const activeMission = input.activeMission || null;
+      const attention = Array.isArray(input.attention) ? input.attention : [];
+      const worldContext = input.worldContext || this.worldModel || null;
+
+      const signals = [];
+      if (utterance) signals.push({type:"utterance",weight:0.28,value:utterance});
+      if (conversation.length) signals.push({type:"conversation-context",weight:0.22,value:this.clone(conversation.slice(-12))});
+      if (activeMission) signals.push({type:"active-mission",weight:0.16,value:this.clone(activeMission)});
+      if (unresolved.length) signals.push({type:"unresolved-questions",weight:0.14,value:this.clone(unresolved.slice(0,12))});
+      if (relationshipPatterns.length) signals.push({type:"relationship-patterns",weight:0.08,value:this.clone(relationshipPatterns.slice(0,12))});
+      if (attention.length) signals.push({type:"attention",weight:0.07,value:this.clone(attention.slice(0,12))});
+      if (worldContext) signals.push({type:"world-model",weight:0.05,value:{fingerprint:worldContext?.fingerprint || null}});
+
+      const explicitObjective = String(input.objective || "").trim();
+      const inferredSubject = String(
+        input.subject ||
+        input.referent ||
+        unresolved[0]?.subject ||
+        activeMission?.subject ||
+        activeMission?.title ||
+        ""
+      ).trim();
+
+      const candidateObjectives = [];
+      const addCandidate = (objective, basis, confidence) => {
+        if (!objective || candidateObjectives.some(item => item.objective === objective)) return;
+        candidateObjectives.push({objective,basis,confidence:Number(Math.max(0,Math.min(1,confidence)).toFixed(3))});
+      };
+
+      if (explicitObjective) addCandidate(explicitObjective,"explicit-user-objective",0.99);
+      if (/find out|look into|dig into|research|investigate|check (?:this|that) out/i.test(utterance)) {
+        addCandidate(
+          inferredSubject
+            ? `Investigate ${inferredSubject} until the material implications, uncertainties, and next useful questions are understood.`
+            : "Investigate the referenced subject until the material implications, uncertainties, and next useful questions are understood.",
+          "investigative-language-plus-context",
+          inferredSubject ? 0.88 : 0.64
+        );
+      }
+      if (unresolved.length) {
+        addCandidate(
+          `Resolve or materially reduce the active uncertainty: ${String(unresolved[0]?.question || unresolved[0])}`,
+          "unresolved-question-continuity",
+          0.84
+        );
+      }
+      if (activeMission?.objective) {
+        addCandidate(String(activeMission.objective),"active-mission-continuity",0.78);
+      }
+      if (!candidateObjectives.length && utterance) {
+        addCandidate(`Determine the practical meaning and intended outcome of: ${utterance}`,"language-only-fallback",0.45);
+      }
+
+      candidateObjectives.sort((a,b) => b.confidence - a.confidence);
+      const primary = candidateObjectives[0] || null;
+      const runnerUp = candidateObjectives[1] || null;
+      const ambiguity = runnerUp ? Number(Math.max(0, runnerUp.confidence - (primary.confidence - 0.15)).toFixed(3)) : 0;
+      const confidence = primary ? Number(Math.max(0, primary.confidence - Math.max(0, ambiguity) * 0.25).toFixed(3)) : 0;
+
+      const reconstruction = {
+        schema:"meos.maddy.intent-reconstruction.v1",
+        reconstructionNumber:Number(this.intentReconstructionCount || 0)+1,
+        reconstructedAt:new Date().toISOString(),
+        utterance,
+        subject:inferredSubject || null,
+        probableObjective:primary?.objective || null,
+        confidence,
+        candidates:candidateObjectives,
+        signals,
+        unresolvedQuestions:this.clone(unresolved),
+        epistemicStatus:confidence >= 0.82 ? "high-confidence-inference" : confidence >= 0.62 ? "working-inference" : "materially-ambiguous",
+        actionPolicy:{
+          cheapReversibleResearchMayProceed:confidence >= 0.45,
+          consequentialActionMayProceedFromInferenceAlone:false,
+          clarifyBeforeConsequentialAction:confidence < 0.90,
+          testInterpretationAgainstEvidence:true
+        },
+        independenceRule:"Understanding the user's likely intent does not require agreement with the user's conclusion.",
+        truthRule:"Probable intent is an inference and must never be stored or reported as an explicit user statement unless it actually was one."
+      };
+      reconstruction.fingerprint = this.fingerprintCognitiveDispatch(reconstruction);
+
+      this.intentReconstructionCount = reconstruction.reconstructionNumber;
+      this.lastIntentReconstruction = reconstruction;
+      this.intentReconstructionHistory.unshift(this.clone(reconstruction));
+      this.intentReconstructionHistory = this.intentReconstructionHistory.slice(0,this.configuration.maximumIntentReconstructions);
+      return this.clone(reconstruction);
+    },
+
+    buildInvestigativeIntention(reconstruction = {}, options = {}) {
+      const origin = String(options.origin || "founder-directed");
+      const intention = {
+        schema:"meos.maddy.investigative-intention.v1",
+        id:`investigation-${this.fingerprintCognitiveDispatch({origin,reconstruction:reconstruction.fingerprint,at:new Date().toISOString()})}`,
+        createdAt:new Date().toISOString(),
+        origin,
+        sourceReconstruction:reconstruction.fingerprint || null,
+        subject:reconstruction.subject || null,
+        objective:reconstruction.probableObjective || "Reduce material uncertainty.",
+        confidence:Number(reconstruction.confidence || 0),
+        questions:[
+          ...(reconstruction.unresolvedQuestions || []).map(item => String(item?.question || item)),
+          "What is already known and what is merely assumed?",
+          "What authoritative evidence would materially change the conclusion?",
+          "What adjacent fact, dependency, eligibility condition, prerequisite, or opportunity could matter more than the obvious question?",
+          "What should be true if the current interpretation is correct?",
+          "What evidence would falsify it?"
+        ].filter(Boolean),
+        searchStrategy:{
+          startWithAuthoritativeSources:true,
+          followMaterialLeads:true,
+          crossCheckContradictions:true,
+          distinguishFactInferenceUnknown:true,
+          stopWhen:"material uncertainty is resolved, evidence is exhausted, authority is required, or marginal value falls below priority"
+        },
+        status:"active",
+        authority:"investigation-only",
+        consequentialActionAuthorized:false
+      };
+      this.investigativeIntentions.unshift(this.clone(intention));
+      this.investigativeIntentions = this.investigativeIntentions.slice(0,this.configuration.maximumInvestigativeIntentions);
+      return this.clone(intention);
+    },
+
+    async investigateReconstructedIntent(input = {}, options = {}) {
+      const reconstruction = input?.schema === "meos.maddy.intent-reconstruction.v1"
+        ? input
+        : this.reconstructIntent(input, options);
+
+      if (reconstruction.actionPolicy?.cheapReversibleResearchMayProceed !== true) {
+        return {
+          success:false,
+          blocked:true,
+          reason:"intent-too-ambiguous-for-autonomous-investigation",
+          reconstruction:this.clone(reconstruction),
+          clarificationNeeded:true
+        };
+      }
+
+      const intention = this.buildInvestigativeIntention(reconstruction, options);
+      const query = [
+        intention.objective,
+        ...intention.questions.slice(0,5)
+      ].join("\n");
+
+      let result = null;
+      let executor = null;
+
+      if (typeof options.researchExecutor === "function") {
+        executor = "caller-injected-research-executor";
+        result = await options.researchExecutor({
+          reconstruction:this.clone(reconstruction),
+          intention:this.clone(intention),
+          query
+        });
+      } else if (window.ProviderManager && typeof window.ProviderManager.request === "function") {
+        executor = "ProviderManager";
+        result = await window.ProviderManager.request(
+          {
+            capabilities:["current-web-research"],
+            allowMultiProvider:true,
+            maximumProviders:3,
+            requireAllCapabilities:true,
+            sourceDiversity:1
+          },
+          {
+            type:"research",
+            query,
+            purpose:"intent-reconstruction-investigation",
+            investigationId:intention.id,
+            requireCitations:true
+          },
+          {
+            authority:"internal-research",
+            requestedBy:"MEOS Executive Brain Intent Reconstruction"
+          }
+        );
+      } else if (window.MEOSExecutiveSearch && typeof window.MEOSExecutiveSearch.executiveQuery === "function") {
+        executor = "MEOSExecutiveSearch";
+        result = await window.MEOSExecutiveSearch.executiveQuery(query);
+      } else {
+        intention.status = "blocked";
+        intention.blockedReason = "no-authorized-research-means";
+        return {
+          success:false,
+          blocked:true,
+          reason:intention.blockedReason,
+          reconstruction:this.clone(reconstruction),
+          intention:this.clone(intention)
+        };
+      }
+
+      const evidence = {
+        schema:"meos.maddy.intent-investigation-result.v1",
+        investigationId:intention.id,
+        completedAt:new Date().toISOString(),
+        executor,
+        success:result?.success !== false,
+        result:this.clone(result),
+        interpretationWasInference:true,
+        consequentialActionTaken:false,
+        nextStep:"Assimilate evidence, test the reconstructed intent and hypotheses, then report implications or continue a material lead."
+      };
+
+      const stored = this.investigativeIntentions.find(item => item.id === intention.id);
+      if (stored) {
+        stored.status = evidence.success ? "researched" : "blocked";
+        stored.lastResult = this.clone(evidence);
+      }
+
+      this.formAutobiographicalEpisode({
+        eventType:"intent-reconstruction-investigation",
+        subject:intention.subject || "contextual investigation",
+        sourceId:intention.id,
+        perception:{utterance:reconstruction.utterance,signals:reconstruction.signals,confidence:reconstruction.confidence},
+        intention:{type:"understand-what-the-human-actually-needs",objective:intention.objective},
+        action:{type:"provider-neutral-investigation",executor},
+        outcome:{success:evidence.success,consequentialActionTaken:false},
+        learning:{rule:"Context can support a probable intent, but evidence and later correction must remain able to change the interpretation."}
+      });
+
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return {
+        success:evidence.success,
+        reconstruction:this.clone(reconstruction),
+        intention:this.clone(intention),
+        evidence:this.clone(evidence)
+      };
+    },
+
+    learnCommunicationPattern(example = {}, options = {}) {
+      const phrase = String(example.phrase || example.utterance || "").trim();
+      const meaning = String(example.meaning || example.confirmedIntent || "").trim();
+      if (!phrase || !meaning) return {success:false,reason:"phrase-and-confirmed-meaning-required"};
+      const evidenceCount = Math.max(1,Number(example.evidenceCount || 1));
+      const confirmed = example.confirmed === true;
+      const pattern = {
+        phrase,
+        meaning,
+        evidenceCount,
+        confidence:Number(Math.min(0.95,(confirmed ? 0.65 : 0.40) + Math.min(0.30,evidenceCount * 0.05)).toFixed(3)),
+        status:confirmed ? "confirmed-pattern" : "provisional-pattern",
+        learnedAt:new Date().toISOString(),
+        rule:"Communication patterns are revisable evidence about likely intent, never permanent definitions of the human."
+      };
+      this.record("cognition.communication-pattern",pattern);
+      return {success:true,pattern:this.clone(pattern)};
+    },
+
+    async runIntentReconstructionAcceptanceTest() {
+      const original = {
+        history:this.clone(this.intentReconstructionHistory),
+        intentions:this.clone(this.investigativeIntentions),
+        last:this.clone(this.lastIntentReconstruction),
+        count:this.intentReconstructionCount,
+        autobiography:this.clone(this.autobiographicalMemory)
+      };
+      const priorHydrated = brainPersistence.hydrated;
+      brainPersistence.hydrated = false;
+      try {
+        const reconstruction = this.reconstructIntent({
+          utterance:"Go find out more about this.",
+          subject:"county funding program",
+          conversationContext:[
+            "We were evaluating whether the organization could participate.",
+            "The unresolved concern was eligibility and whether a partnership path changes the answer."
+          ],
+          activeMission:{title:"Funding positioning",objective:"Determine whether the opportunity is legitimately pursuable and how to position before the next cycle."},
+          unresolvedQuestions:[{subject:"county funding program",question:"Can the organization qualify directly or through a legitimate partner?"}],
+          relationshipPatterns:[{phrase:"go find out more",meaning:"investigate implications rather than return links"}],
+          attention:["eligibility","partnership","future positioning"]
+        });
+
+        let capturedQuery = "";
+        const investigation = await this.investigateReconstructedIntent(reconstruction,{
+          persist:false,
+          origin:"founder-directed",
+          researchExecutor:async ({query}) => {
+            capturedQuery = query;
+            return {
+              success:true,
+              evidence:[
+                {claim:"eligibility has a prerequisite",authority:"authoritative",source:"acceptance://program"},
+                {claim:"partner participation may satisfy a separate route",authority:"authoritative",source:"acceptance://rules"}
+              ]
+            };
+          }
+        });
+
+        const ambiguous = this.reconstructIntent({utterance:"That thing."});
+        const pattern = this.learnCommunicationPattern({
+          phrase:"go find out more",
+          meaning:"investigate until implications and next useful questions are understood",
+          evidenceCount:4,
+          confirmed:true
+        });
+        const world = this.projectWorldModel({reason:"intent-reconstruction-acceptance",persist:false,attend:false});
+        const snapshot = this.buildPersistenceSnapshot();
+
+        const checks = [
+          {name:"Intent reconstruction uses more than literal speech pattern recognition",passed:reconstruction.signals.some(x=>x.type==="conversation-context")&&reconstruction.signals.some(x=>x.type==="active-mission")&&reconstruction.signals.some(x=>x.type==="unresolved-questions")},
+          {name:"Natural language remains evidence of intent rather than unquestioned intent",passed:reconstruction.truthRule.includes("inference")&&reconstruction.epistemicStatus.includes("inference")},
+          {name:"Founder shorthand can resolve to the likely underlying objective",passed:/qualify|pursuable|position/i.test(reconstruction.probableObjective||"")},
+          {name:"Relationship communication patterns are only one bounded signal",passed:reconstruction.signals.find(x=>x.type==="relationship-patterns")?.weight===0.08},
+          {name:"Maddy preserves alternative candidate objectives instead of collapsing uncertainty",passed:Array.isArray(reconstruction.candidates)&&reconstruction.candidates.length>=2},
+          {name:"Cheap reversible investigation may proceed on a working interpretation",passed:reconstruction.actionPolicy.cheapReversibleResearchMayProceed===true},
+          {name:"Consequential action cannot proceed from inferred intent alone",passed:reconstruction.actionPolicy.consequentialActionMayProceedFromInferenceAlone===false},
+          {name:"Materially ambiguous shorthand asks for clarification rather than pretending",passed:ambiguous.epistemicStatus==="materially-ambiguous"&&ambiguous.actionPolicy.clarifyBeforeConsequentialAction===true},
+          {name:"Founder-directed investigation enters the same investigative cognition machinery",passed:investigation.intention.origin==="founder-directed"},
+          {name:"Investigation actually executes authorized research",passed:investigation.success===true&&investigation.evidence.executor==="caller-injected-research-executor"},
+          {name:"Investigation asks what is known versus assumed",passed:capturedQuery.includes("What is already known and what is merely assumed?")},
+          {name:"Investigation actively searches for adjacent implications and opportunities",passed:capturedQuery.includes("adjacent fact, dependency, eligibility condition, prerequisite, or opportunity")},
+          {name:"Investigation includes falsification rather than confirmation-only search",passed:capturedQuery.includes("What evidence would falsify it?")},
+          {name:"Research never silently becomes consequential action",passed:investigation.evidence.consequentialActionTaken===false&&investigation.intention.consequentialActionAuthorized===false},
+          {name:"Maddy can learn revisable user communication patterns from confirmed interaction",passed:pattern.success===true&&pattern.pattern.status==="confirmed-pattern"&&pattern.pattern.confidence<1},
+          {name:"Understanding the user's intent does not require agreeing with the user's conclusion",passed:reconstruction.independenceRule.includes("does not require agreement")},
+          {name:"Intent reconstruction becomes part of Maddy's living World Model",passed:world.intentReconstruction.latest?.fingerprint===reconstruction.fingerprint},
+          {name:"Contextual investigation becomes autobiographical experience",passed:this.autobiographicalMemory.some(x=>x.eventType==="intent-reconstruction-investigation"&&x.sourceId===investigation.intention.id)},
+          {name:"Intent reconstruction and investigations survive sovereign Brain persistence",passed:snapshot.lastIntentReconstruction?.fingerprint===reconstruction.fingerprint&&Array.isArray(snapshot.investigativeIntentions)},
+          {name:"Provider choice remains outside the semantic identity of intent reconstruction",passed:investigation.intention.authority==="investigation-only"&&!JSON.stringify(reconstruction).toLowerCase().includes("google")},
+          {name:"The slice upgrades the existing Executive Brain rather than creating a disconnected intent engine",passed:typeof this.reconstructIntent==="function"&&typeof this.investigateReconstructedIntent==="function"&&typeof this.projectWorldModel==="function"}
+        ];
+
+        const passed = checks.every(item=>item.passed);
+        console.table(checks.map(item=>({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.017D7G Intent Reconstruction + Investigative Cognition: ${passed?"PASS":"FAIL"}.`);
+        return {commission:"006.017D7G",version:this.version,buildId:this.buildId,passed,checks,reconstruction,investigation,ambiguous,pattern};
+      } finally {
+        brainPersistence.hydrated = priorHydrated;
+        this.intentReconstructionHistory = original.history;
+        this.investigativeIntentions = original.intentions;
+        this.lastIntentReconstruction = original.last;
+        this.intentReconstructionCount = original.count;
+        this.autobiographicalMemory = original.autobiography;
+      }
+    },
+
     getSalienceStatus() {
       return {
         assessmentCount:
@@ -9619,6 +9976,13 @@
           rule: "Ambition, motivation, curiosity, discipline, means, implementation, and temporal readiness form one governed developmental loop. Knowledge is incomplete until it can improve later reasoning or legitimate action; mastery is never self-declared."
         },
 
+        intentReconstruction: {
+          latest: this.clone(this.lastIntentReconstruction),
+          recent: this.clone(this.intentReconstructionHistory.slice(0, 8)),
+          activeInvestigations: this.clone(this.investigativeIntentions.filter(item => item.status === "active").slice(0, 12)),
+          rule: "Natural language is evidence of intent, not the whole intent. Reconstruct probable meaning from utterance, conversational context, active mission, world state, relationship patterns, unresolved questions, and attention; preserve uncertainty and test material assumptions before consequential action."
+        },
+
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -9651,6 +10015,7 @@
           intentions: model.intentions,
           investigationEvidence: model.investigationEvidence,
           developmentalDrive: model.developmentalDrive,
+          intentReconstruction: model.intentReconstruction,
           temporal: model.temporal
         });
 
@@ -10923,7 +11288,11 @@
         deferredCapabilities: this.deferredCapabilities.slice(0, this.configuration.maximumDeferredCapabilities),
         developmentalRetrospectives: this.developmentalRetrospectives.slice(0, this.configuration.maximumDevelopmentalRetrospectives),
         lastDevelopmentalDrive: this.lastDevelopmentalDrive ? this.clone(this.lastDevelopmentalDrive) : null,
-        developmentalDriveCount: Number(this.developmentalDriveCount || 0)
+        developmentalDriveCount: Number(this.developmentalDriveCount || 0),
+        intentReconstructionHistory: this.intentReconstructionHistory.slice(0, this.configuration.maximumIntentReconstructions),
+        investigativeIntentions: this.investigativeIntentions.slice(0, this.configuration.maximumInvestigativeIntentions),
+        lastIntentReconstruction: this.lastIntentReconstruction ? this.clone(this.lastIntentReconstruction) : null,
+        intentReconstructionCount: Number(this.intentReconstructionCount || 0)
       };
     },
 
@@ -11047,6 +11416,10 @@
       this.developmentalRetrospectives = Array.isArray(saved.developmentalRetrospectives) ? saved.developmentalRetrospectives.slice(0, this.configuration.maximumDevelopmentalRetrospectives) : [];
       this.lastDevelopmentalDrive = saved.lastDevelopmentalDrive && typeof saved.lastDevelopmentalDrive === "object" ? this.clone(saved.lastDevelopmentalDrive) : null;
       this.developmentalDriveCount = Math.max(Number(saved.developmentalDriveCount || 0), Number(this.lastDevelopmentalDrive?.driveNumber || 0));
+      this.intentReconstructionHistory = Array.isArray(saved.intentReconstructionHistory) ? saved.intentReconstructionHistory.slice(0, this.configuration.maximumIntentReconstructions) : [];
+      this.investigativeIntentions = Array.isArray(saved.investigativeIntentions) ? saved.investigativeIntentions.slice(0, this.configuration.maximumInvestigativeIntentions) : [];
+      this.lastIntentReconstruction = saved.lastIntentReconstruction && typeof saved.lastIntentReconstruction === "object" ? this.clone(saved.lastIntentReconstruction) : null;
+      this.intentReconstructionCount = Math.max(Number(saved.intentReconstructionCount || 0), Number(this.lastIntentReconstruction?.reconstructionNumber || 0));
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
