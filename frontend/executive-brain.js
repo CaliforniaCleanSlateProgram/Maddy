@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.16.0
- * Build: EB1160-PORTFOLIO-COGNITION-SHARED-LEVERAGE-20260809-A
+ * Version: 1.15.0
+ * Build: EB1150-EVIDENCE-ASSIMILATION-COGNITIVE-CLOSURE-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.16.0";
-  const BUILD_ID = "EB1160-PORTFOLIO-COGNITION-SHARED-LEVERAGE-20260809-A";
+  const VERSION = "1.15.0";
+  const BUILD_ID = "EB1150-EVIDENCE-ASSIMILATION-COGNITIVE-CLOSURE-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -181,7 +181,6 @@
       maximumCompetingHypotheses: 6,
       maximumAutonomousInvestigationHistory: 120,
       maximumEvidenceAssimilationHistory: 160,
-      maximumPortfolioCognitionHistory: 80,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -237,9 +236,6 @@
     evidenceAssimilationHistory: [],
     lastEvidenceAssimilation: null,
     evidenceAssimilationCount: 0,
-    portfolioCognitionHistory: [],
-    lastPortfolioCognition: null,
-    portfolioCognitionCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -8883,8 +8879,6 @@
         authority:{ providerNeutral:true, providerIsNotMaddy:true, evidenceDoesNotSelfAuthorizeAction:true, externalActionRequiresExistingAuthority:true } };
       assimilation.fingerprint=this.fingerprintCognitiveDispatch(assimilation);
       this.evidenceAssimilationCount=assimilation.assimilationNumber; this.lastEvidenceAssimilation=assimilation; this.evidenceAssimilationHistory.unshift(this.clone(assimilation)); this.evidenceAssimilationHistory=this.evidenceAssimilationHistory.slice(0,this.configuration.maximumEvidenceAssimilationHistory);
-      const portfolioCognition=this.runOpportunityPortfolioCognition({persist:false});
-      assimilation.portfolioCognition={fingerprint:portfolioCognition?.fingerprint||null,caseCount:portfolioCognition?.caseCount||0,sharedPrerequisiteCount:portfolioCognition?.sharedPrerequisites?.length||0,highestLeverage:this.clone(portfolioCognition?.leverageCandidates?.[0]||null)};
       const worldModel=this.projectWorldModel({reason:"autonomous-investigation-evidence-assimilated",persist:false,attend:false});
       const trigger={source:"executive-brain-evidence-assimilation",event:"autonomous-investigation-evidence-assimilated",assimilationFingerprint:assimilation.fingerprint,investigationFingerprint:investigation.fingerprint||null,resolution:assimilation.resolution,resolved:assimilation.resolved,falsifiedHypothesisIds:falsified.map(x=>x.hypothesisId),survivingHypothesisIds:surviving.map(x=>x.hypothesisId),unknowns:unresolvedQuestions.slice(0,12),worldFingerprint:worldModel?.fingerprint||null};
       const existing=(this.cognitiveIntentions||[]).find(x=>x?.key===this.normalize(assimilation.subject)&&x?.status!=="completed");
@@ -8894,152 +8888,6 @@
       this.emit("brain:evidence-assimilated",this.clone(assimilation)); this.record("cognition.evidence-assimilated",{subject:assimilation.subject,evidenceCount:evidenceItems.length,surviving:surviving.length,falsified:falsified.length,unknowns:unresolvedQuestions.length,resolution:assimilation.resolution});
       if(options.persist!==false&&brainPersistence.hydrated===true)this.persist();
       return {success:true,assimilation:this.clone(assimilation),worldModel:this.clone(worldModel),trigger:this.clone(trigger)};
-    },
-
-    /*
-     * Commission 006.017D7F — Portfolio Cognition + Shared Leverage
-     * Cross-opportunity cognition over existing Executive Opportunity Cases.
-     */
-    collectOpportunityPortfolioCases(options = {}) {
-      const knowledge = global.MEOSKnowledgeEngine || global.KnowledgeEngine;
-      const records = knowledge?.getRecordsByType
-        ? knowledge.getRecordsByType("executive-opportunity-case")
-        : [];
-      const limit = Math.max(2, Math.min(Number(options.limit || 200), 500));
-      return (records || []).slice(0, limit).map(record => ({
-        recordId: record.id,
-        title: record.content?.source?.title || record.title || record.id,
-        authority: record.authority || "working",
-        confidence: Number(record.confidence || 0),
-        case: this.clone(record.content || {}),
-        sourceIds: this.clone(record.sourceIds || [])
-      }));
-    },
-
-    extractPortfolioRequirementSignals(value, path = "", output = []) {
-      if (value === null || value === undefined) return output;
-      const keySignal = /(eligib|prerequis|require|readiness|gap|unknown|depend|constraint|position|nextaction|action|registration|partner|match|cost.?share|deadline|capabilit)/i;
-      if (Array.isArray(value)) {
-        value.forEach((item, index) =>
-          this.extractPortfolioRequirementSignals(item, `${path}[${index}]`, output)
-        );
-        return output;
-      }
-      if (typeof value === "object") {
-        Object.entries(value).forEach(([key, child]) => {
-          const childPath = path ? `${path}.${key}` : key;
-          if (keySignal.test(key) && ["string","number","boolean"].includes(typeof child)) {
-            const raw = String(child).trim();
-            if (raw && raw.length >= 4 && !/^(true|false|null|unknown)$/i.test(raw)) {
-              output.push({ path: childPath, raw });
-            }
-          }
-          this.extractPortfolioRequirementSignals(child, childPath, output);
-        });
-      }
-      return output;
-    },
-
-    normalizePortfolioRequirement(text = "") {
-      return String(text).toLowerCase()
-        .replace(/\b(the|a|an|and|or|to|for|of|in|on|with|by|from|before|after|must|should|need|needs|required|requirement)\b/g, " ")
-        .replace(/[^a-z0-9%$]+/g, " ").replace(/\s+/g, " ").trim()
-        .split(" ").filter(token => token.length > 2).slice(0, 14).sort().join(" ");
-    },
-
-    runOpportunityPortfolioCognition(options = {}) {
-      const cases = Array.isArray(options.cases)
-        ? this.clone(options.cases)
-        : this.collectOpportunityPortfolioCases(options);
-      const requirementMap = new Map();
-
-      cases.forEach(opportunity => {
-        const signals = this.extractPortfolioRequirementSignals(opportunity.case || {});
-        const seen = new Set();
-        signals.forEach(signal => {
-          const signature = this.normalizePortfolioRequirement(signal.raw);
-          if (!signature || signature.length < 5 || seen.has(signature)) return;
-          seen.add(signature);
-          if (!requirementMap.has(signature)) {
-            requirementMap.set(signature, {
-              signature, examples: [], opportunityIds: [], opportunityTitles: [], paths: []
-            });
-          }
-          const cluster = requirementMap.get(signature);
-          cluster.examples.push(signal.raw);
-          cluster.opportunityIds.push(opportunity.recordId);
-          cluster.opportunityTitles.push(opportunity.title);
-          cluster.paths.push(signal.path);
-        });
-      });
-
-      const clusters = [...requirementMap.values()].map(cluster => ({
-        ...cluster,
-        opportunityIds: [...new Set(cluster.opportunityIds)],
-        opportunityTitles: [...new Set(cluster.opportunityTitles)],
-        paths: [...new Set(cluster.paths)],
-        examples: [...new Set(cluster.examples)].slice(0, 5)
-      })).map(cluster => ({
-        ...cluster,
-        opportunityCount: cluster.opportunityIds.length,
-        leverageScore: Number((cluster.opportunityIds.length / Math.max(cases.length, 1)).toFixed(3))
-      })).sort((a,b) => b.opportunityCount - a.opportunityCount || b.leverageScore - a.leverageScore);
-
-      const sharedPrerequisites = clusters.filter(item => item.opportunityCount >= 2);
-      const bottlenecks = sharedPrerequisites.filter(item =>
-        item.paths.some(path => /(eligib|gap|unknown|depend|constraint|registration|partner|match|cost.?share|capabilit)/i.test(path))
-      ).slice(0,20);
-      const leverageCandidates = sharedPrerequisites.slice(0,20).map((item,index) => ({
-        rank:index+1,
-        requirement:item.examples[0] || item.signature,
-        opportunityCount:item.opportunityCount,
-        opportunityIds:this.clone(item.opportunityIds),
-        leverageScore:item.leverageScore,
-        reason:`Resolving one repeated institutional requirement may improve ${item.opportunityCount} opportunity paths at once.`,
-        epistemicStatus:"portfolio-inference-not-fact"
-      }));
-      const sequencing = leverageCandidates.map((item,index) => ({
-        sequence:index+1,
-        requirement:item.requirement,
-        reason:index===0 ? "Highest observed cross-opportunity leverage." : "Ordered after higher-reuse institutional prerequisites.",
-        authority:"recommendation-only-until-existing-governance-authorizes-work"
-      }));
-
-      const result = {
-        schema:"meos.maddy.opportunity-portfolio-cognition.v1",
-        cognitionNumber:Number(this.portfolioCognitionCount||0)+1,
-        generatedAt:new Date().toISOString(),
-        caseCount:cases.length,
-        caseIds:cases.map(item=>item.recordId),
-        sharedPrerequisites,bottlenecks,leverageCandidates,sequencing,
-        portfolioUnknowns:cases.length<2 ? ["At least two Executive Opportunity Cases are required for genuine cross-opportunity portfolio cognition."] : [],
-        governance:{
-          caseJudgmentsAreNotOfficialFacts:true,
-          portfolioInferenceIsNotFact:true,
-          providerNeutral:true,
-          noNewExternalAuthority:true,
-          consequentialWorkRequiresExistingAuthority:true
-        }
-      };
-      result.fingerprint=this.fingerprintCognitiveDispatch(result);
-      this.portfolioCognitionCount=result.cognitionNumber;
-      this.lastPortfolioCognition=result;
-      this.portfolioCognitionHistory.unshift(this.clone(result));
-      this.portfolioCognitionHistory=this.portfolioCognitionHistory.slice(0,this.configuration.maximumPortfolioCognitionHistory);
-
-      const worldModel=this.projectWorldModel({reason:"opportunity-portfolio-cognition",persist:false,attend:false});
-      this.formAutobiographicalEpisode({
-        eventType:"portfolio-cognition", subject:"Cross-opportunity portfolio reasoning", sourceId:result.fingerprint,
-        perception:{opportunityCases:result.caseCount,repeatedRequirements:sharedPrerequisites.length},
-        intention:{type:"find-shared-institutional-leverage"},
-        action:{type:"compare-opportunity-universe"},
-        outcome:{leverageCandidates:leverageCandidates.length,bottlenecks:bottlenecks.length,worldFingerprint:worldModel?.fingerprint||null},
-        learning:{highestLeverage:leverageCandidates[0]||null}
-      });
-      this.emit("brain:portfolio-cognition-completed",this.clone(result));
-      this.record("cognition.portfolio",{caseCount:result.caseCount,sharedPrerequisites:sharedPrerequisites.length,bottlenecks:bottlenecks.length,leverageCandidates:leverageCandidates.length});
-      if(options.persist!==false && brainPersistence.hydrated===true) this.persist();
-      return this.clone(result);
     },
 
     getSalienceStatus() {
@@ -9204,12 +9052,6 @@
           rule: "Investigation results enter the living world model only with provenance, authority class, hypothesis effects, unresolved questions, and evidence-integrity status."
         },
 
-        portfolioCognition: {
-          latest: this.clone(this.lastPortfolioCognition),
-          recent: this.clone(this.portfolioCognitionHistory.slice(0, 6)),
-          rule: "Maddy reasons across opportunity cases as a portfolio so shared prerequisites, bottlenecks, sequencing, and institutional leverage can matter more than any single opportunity."
-        },
-
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -9241,7 +9083,6 @@
           unknowns: model.unknowns,
           intentions: model.intentions,
           investigationEvidence: model.investigationEvidence,
-          portfolioCognition: model.portfolioCognition,
           temporal: model.temporal
         });
 
@@ -9319,39 +9160,6 @@
       return this.clone(
         this.worldModelHistory.slice(0, normalized)
       );
-    },
-
-    runPortfolioCognitionAcceptanceTest() {
-      const fixtureCases=[
-        {recordId:"opportunity-a",title:"Future Opportunity A",case:{eligibility:{requiredCapability:"licensed behavioral health service partner"},readiness:{registrationGap:"active government vendor registration"},unknowns:[{requirement:"verified service outcome data"}]}},
-        {recordId:"opportunity-b",title:"Future Opportunity B",case:{eligibility:{requiredCapability:"licensed behavioral health service partner"},constraints:{registrationGap:"active government vendor registration"},positioning:{requiredEvidence:"verified service outcome data"}}},
-        {recordId:"opportunity-c",title:"Future Opportunity C",case:{prerequisites:{partnerRequirement:"licensed behavioral health service partner"},readiness:{registrationGap:"active government vendor registration"},nextAction:"develop audited financial controls"}}
-      ];
-      const result=this.runOpportunityPortfolioCognition({cases:fixtureCases,persist:false});
-      const snapshot=this.buildPersistenceSnapshot();
-      const partner=result.sharedPrerequisites.find(item=>item.examples.some(example=>/licensed behavioral health service partner/i.test(example)));
-      const registration=result.sharedPrerequisites.find(item=>item.examples.some(example=>/active government vendor registration/i.test(example)));
-      const checks=[
-        {name:"Maddy reasons across multiple opportunity cases instead of isolated cards",passed:result.caseCount===3&&result.caseIds.length===3},
-        {name:"Repeated prerequisites are detected across separate opportunities",passed:partner?.opportunityCount===3},
-        {name:"Shared readiness gaps become portfolio bottlenecks",passed:registration?.opportunityCount===3&&result.bottlenecks.some(item=>item.signature===registration.signature)},
-        {name:"One institutional change can be recognized as leverage across several future opportunities",passed:result.leverageCandidates.some(item=>item.opportunityCount===3&&/improve 3 opportunity paths/i.test(item.reason))},
-        {name:"Portfolio cognition creates sequencing instead of duplicate isolated chores",passed:result.sequencing.length>0&&result.sequencing.every((item,index)=>item.sequence===index+1)},
-        {name:"Portfolio conclusions remain inference rather than silently becoming fact",passed:result.leverageCandidates.every(item=>item.epistemicStatus==="portfolio-inference-not-fact")&&result.governance?.portfolioInferenceIsNotFact===true},
-        {name:"Executive Opportunity Case judgments do not inherit source authority",passed:result.governance?.caseJudgmentsAreNotOfficialFacts===true},
-        {name:"Portfolio cognition is provider-neutral and grants no new external authority",passed:result.governance?.providerNeutral===true&&result.governance?.noNewExternalAuthority===true},
-        {name:"Consequential portfolio work remains governed by existing authority",passed:result.governance?.consequentialWorkRequiresExistingAuthority===true},
-        {name:"Portfolio cognition becomes part of Maddy's living World Model",passed:this.lastWorldModel?.portfolioCognition?.latest?.fingerprint===result.fingerprint},
-        {name:"Portfolio cognition becomes autobiographical experience",passed:this.autobiographicalMemory?.some(item=>item.eventType==="portfolio-cognition"&&item.sourceId===result.fingerprint)},
-        {name:"Portfolio cognition survives sovereign Executive Brain persistence",passed:snapshot?.lastPortfolioCognition?.fingerprint===result.fingerprint&&snapshot?.portfolioCognitionHistory?.length>0},
-        {name:"Evidence assimilation re-evaluates portfolio cognition as Maddy learns",passed:/runOpportunityPortfolioCognition/.test(this.assimilateAutonomousInvestigationEvidence.toString())},
-        {name:"Portfolio cognition reuses Knowledge Engine Executive Opportunity Cases rather than creating another database",passed:/getRecordsByType/.test(this.collectOpportunityPortfolioCases.toString())&&/executive-opportunity-case/.test(this.collectOpportunityPortfolioCases.toString())},
-        {name:"Portfolio cognition remains inside the existing Executive Brain",passed:typeof this.runOpportunityPortfolioCognition==="function"&&typeof this.projectWorldModel==="function"&&typeof this.executeCognitiveReentry==="function"}
-      ];
-      const passed=checks.every(item=>item.passed);
-      console.table(checks);
-      console.info(`[MEOS ${this.version}] Commission 006.017D7F Portfolio Cognition + Shared Leverage: ${passed?"PASS":"FAIL"}.`);
-      return {commission:"006.017D7F",version:this.version,buildId:this.buildId,passed,checks,result};
     },
 
     async runEvidenceAssimilationCognitiveClosureAcceptanceTest() {
@@ -10540,10 +10348,7 @@
         autonomousInvestigationCount: Number(this.autonomousInvestigationCount || 0),
         evidenceAssimilationHistory: this.evidenceAssimilationHistory.slice(0, this.configuration.maximumEvidenceAssimilationHistory),
         lastEvidenceAssimilation: this.lastEvidenceAssimilation ? this.clone(this.lastEvidenceAssimilation) : null,
-        evidenceAssimilationCount: Number(this.evidenceAssimilationCount || 0),
-        portfolioCognitionHistory: this.portfolioCognitionHistory.slice(0, this.configuration.maximumPortfolioCognitionHistory),
-        lastPortfolioCognition: this.lastPortfolioCognition ? this.clone(this.lastPortfolioCognition) : null,
-        portfolioCognitionCount: Number(this.portfolioCognitionCount || 0)
+        evidenceAssimilationCount: Number(this.evidenceAssimilationCount || 0)
       };
     },
 
@@ -10660,9 +10465,6 @@
       this.evidenceAssimilationHistory = Array.isArray(saved.evidenceAssimilationHistory) ? saved.evidenceAssimilationHistory.slice(0, this.configuration.maximumEvidenceAssimilationHistory) : [];
       this.lastEvidenceAssimilation = saved.lastEvidenceAssimilation && typeof saved.lastEvidenceAssimilation === "object" ? this.clone(saved.lastEvidenceAssimilation) : null;
       this.evidenceAssimilationCount = Math.max(Number(saved.evidenceAssimilationCount || 0), Number(this.lastEvidenceAssimilation?.assimilationNumber || 0));
-      this.portfolioCognitionHistory = Array.isArray(saved.portfolioCognitionHistory) ? saved.portfolioCognitionHistory.slice(0, this.configuration.maximumPortfolioCognitionHistory) : [];
-      this.lastPortfolioCognition = saved.lastPortfolioCognition && typeof saved.lastPortfolioCognition === "object" ? this.clone(saved.lastPortfolioCognition) : null;
-      this.portfolioCognitionCount = Math.max(Number(saved.portfolioCognitionCount || 0), Number(this.lastPortfolioCognition?.cognitionNumber || 0));
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
