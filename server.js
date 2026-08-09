@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.37";
+const VERSION = "2.10.38";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -3034,7 +3034,75 @@ async function readDurableProviderManagerState() {
   });
 }
 
-async function writeDurableProviderManagerState(
+const PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_COMMISSION =
+  "006.017D7Q1";
+const PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_VERSION =
+  "1.0.0";
+const PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_BUILD_ID =
+  "PMPR100-SERIALIZED-BOUNDED-TRANSIENT-RECOVERY-20260809-A";
+
+let providerManagerDurableWriteChain = Promise.resolve();
+
+const providerManagerPersistenceResilienceState = {
+  status: "online",
+  serialized: true,
+  maximumAttempts: 3,
+  writeCount: 0,
+  recoveredTransientCount: 0,
+  failedWriteCount: 0,
+  lastAttemptCount: 0,
+  lastWriteAt: null,
+  lastRecoveryAt: null,
+  lastError: null
+};
+
+function providerManagerTransientPersistenceError(error) {
+  const status = Number(
+    error?.status ||
+    error?.response?.status ||
+    error?.code
+  );
+
+  const code = String(
+    error?.code ||
+    error?.response?.data?.error?.status ||
+    ""
+  ).toUpperCase();
+
+  return (
+    [408, 429, 500, 502, 503, 504].includes(status) ||
+    [
+      "ECONNRESET",
+      "ETIMEDOUT",
+      "EAI_AGAIN",
+      "ENOTFOUND",
+      "ABORT_ERR",
+      "INTERNAL",
+      "UNAVAILABLE",
+      "RESOURCE_EXHAUSTED"
+    ].includes(code)
+  );
+}
+
+function providerManagerPersistenceBackoffMs(attempt) {
+  return Math.min(
+    1600,
+    200 * Math.pow(2, Math.max(0, attempt - 1))
+  );
+}
+
+function enqueueProviderManagerDurableWrite(task) {
+  const run = providerManagerDurableWriteChain
+    .catch(() => undefined)
+    .then(task);
+
+  providerManagerDurableWriteChain =
+    run.catch(() => undefined);
+
+  return run;
+}
+
+async function writeDurableProviderManagerStateOnce(
   value,
   expectedPreviousFingerprint = undefined
 ) {
@@ -3056,12 +3124,132 @@ async function writeDurableProviderManagerState(
         PROVIDER_MANAGER_STATE_REPOSITORY_COMMISSION,
       buildId:
         PROVIDER_MANAGER_STATE_REPOSITORY_BUILD_ID,
+      persistenceResilienceCommission:
+        PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_COMMISSION,
+      persistenceResilienceBuildId:
+        PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_BUILD_ID,
       storageRole:
         "durable-provider-operational-audit",
       containsSecrets: false
     },
     expectedPreviousFingerprint
   });
+}
+
+async function writeDurableProviderManagerState(
+  value,
+  expectedPreviousFingerprint = undefined
+) {
+  return enqueueProviderManagerDurableWrite(async () => {
+    const maximumAttempts =
+      providerManagerPersistenceResilienceState.maximumAttempts;
+
+    let lastError = null;
+
+    for (
+      let attempt = 1;
+      attempt <= maximumAttempts;
+      attempt += 1
+    ) {
+      try {
+        const result =
+          await writeDurableProviderManagerStateOnce(
+            value,
+            expectedPreviousFingerprint
+          );
+
+        providerManagerPersistenceResilienceState.status =
+          "online";
+        providerManagerPersistenceResilienceState.writeCount += 1;
+        providerManagerPersistenceResilienceState.lastAttemptCount =
+          attempt;
+        providerManagerPersistenceResilienceState.lastWriteAt =
+          new Date().toISOString();
+        providerManagerPersistenceResilienceState.lastError =
+          null;
+
+        if (attempt > 1) {
+          providerManagerPersistenceResilienceState
+            .recoveredTransientCount += 1;
+          providerManagerPersistenceResilienceState.lastRecoveryAt =
+            providerManagerPersistenceResilienceState.lastWriteAt;
+        }
+
+        return {
+          ...result,
+          persistenceResilience: {
+            commission:
+              PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_COMMISSION,
+            version:
+              PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_VERSION,
+            buildId:
+              PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_BUILD_ID,
+            serialized: true,
+            attempts: attempt,
+            recoveredTransientFailure:
+              attempt > 1
+          }
+        };
+      } catch (error) {
+        lastError = error;
+
+        const retryable =
+          providerManagerTransientPersistenceError(error);
+
+        if (!retryable || attempt >= maximumAttempts) {
+          providerManagerPersistenceResilienceState.status =
+            "degraded";
+          providerManagerPersistenceResilienceState.failedWriteCount += 1;
+          providerManagerPersistenceResilienceState.lastAttemptCount =
+            attempt;
+          providerManagerPersistenceResilienceState.lastError = {
+            code:
+              error?.code ||
+              "PROVIDER_MANAGER_DURABLE_WRITE_FAILED",
+            status:
+              error?.status ||
+              error?.response?.status ||
+              null,
+            message:
+              error?.message ||
+              String(error),
+            at: new Date().toISOString(),
+            retryable
+          };
+          throw error;
+        }
+
+        await new Promise(resolve =>
+          setTimeout(
+            resolve,
+            providerManagerPersistenceBackoffMs(attempt)
+          )
+        );
+      }
+    }
+
+    throw lastError ||
+      new Error(
+        "Provider Manager durable persistence exhausted bounded recovery."
+      );
+  });
+}
+
+function getProviderManagerPersistenceResilienceStatus() {
+  return {
+    commission:
+      PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_COMMISSION,
+    version:
+      PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_VERSION,
+    buildId:
+      PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_BUILD_ID,
+    ...providerManagerPersistenceResilienceState,
+    authority: {
+      durableState: "meos-institutional-repository",
+      externalActionAuthorized: false,
+      humanAuthorityPreserved: true
+    }
+  };
 }
 
 
@@ -10043,6 +10231,16 @@ app.post(
  * timers, polling, or cognition loops.
  */
 app.get(
+  "/api/provider-manager-persistence-runtime",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    response.status(200).json(
+      getProviderManagerPersistenceResilienceStatus()
+    );
+  }
+);
+
+app.get(
   "/api/provider-manager-state",
   async (request, response) => {
     response.set("Cache-Control", "no-store");
@@ -10132,7 +10330,9 @@ app.put(
         verification:
           result.verification,
         record:
-          result.record
+          result.record,
+        persistenceResilience:
+          result.persistenceResilience || null
       });
     } catch (error) {
       response
