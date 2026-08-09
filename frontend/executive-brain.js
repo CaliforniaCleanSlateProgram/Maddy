@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
  * Version: 1.22.1
- * Build: EB1221-CONTINUOUS-HANDOFF-PERSISTENCE-ACCEPTANCE-20260809-A
+ * Build: EB1230-PRODUCTIVE-IDLE-COGNITION-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,7 +16,7 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.22.1";
+  const VERSION = "1.23.0";
   const BUILD_ID = "EB1221-CONTINUOUS-HANDOFF-PERSISTENCE-ACCEPTANCE-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
@@ -169,6 +169,12 @@
       continuousCognitionCycleBudget: 6,
       continuousCognitionIdleBackoffMs: 15000,
       continuousCognitionActiveBackoffMs: 5000,
+      productiveIdleCognitionEnabled: true,
+      productiveIdleMinimumValue: 0.42,
+      productiveIdleDiminishingReturnFloor: 0.12,
+      productiveIdleHistoryLimit: 96,
+      productiveIdleCooldownMs: 60000,
+      productiveIdleMaxConsecutiveSameSubject: 3,
       meaningfulChangeDebounceMs: 1200,
       cognitiveReentryCooldownMs: 5000,
       maximumCognitiveReentryHistory: 250,
@@ -291,6 +297,9 @@
     continuousCognitionState: null,
     continuousCognitionCycleCount: 0,
     lastContinuousCognitionCycle: null,
+    productiveIdleHistory: [],
+    lastProductiveIdleAction: null,
+    productiveIdleConsecutiveSameSubject: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -11358,6 +11367,129 @@
     },
 
     /*
+     * Commission 006.017D7O — Productive Idle Cognition
+     *
+     * Available cognitive time becomes governed development, not random activity.
+     * Existing investigations, developmental goals, unfinished cognition,
+     * preparedness insights, and World Model unknowns compete for investment.
+     */
+    collectProductiveIdleCandidates(options = {}) {
+      if (this.configuration.productiveIdleCognitionEnabled !== true) return [];
+      const now=Date.now(), candidates=[];
+      const add=c=>{
+        const subject=String(c?.subject||"").trim();
+        if(!subject) return;
+        const value=Number(Math.max(0,Math.min(1,c.value??0)));
+        if(value<Number(this.configuration.productiveIdleMinimumValue||0)) return;
+        candidates.push({
+          schema:"meos.maddy.productive-idle-candidate.v1",
+          id:`idle-${this.fingerprintCognitiveDispatch({subject,origin:c.origin,move:c.move})}`,
+          subject,origin:String(c.origin||"unknown"),reason:String(c.reason||""),
+          move:String(c.move||"investigate"),value:Number(value.toFixed(3)),
+          evidence:this.clone(c.evidence||[]),unknowns:this.clone(c.unknowns||[]),
+          externalResearchUseful:c.externalResearchUseful===true,
+          externalActionAuthorized:false
+        });
+      };
+
+      (this.investigativeIntentions||[]).filter(x=>x?.status==="active").forEach(x=>add({
+        subject:x.subject||x.objective,origin:"active-investigation",
+        reason:x.objective||"Continue an unresolved investigation.",
+        move:"continue-investigation",value:0.82,evidence:x.evidence||[],
+        unknowns:x.questions||[],externalResearchUseful:true
+      }));
+      (this.developmentalGoals||[]).filter(x=>x?.status!=="achieved").forEach(x=>add({
+        subject:x.subject||x.capability||x.goal,origin:"developmental-drive",
+        reason:x.reason||"Develop capability that improves future organizational performance.",
+        move:"study-practice-integrate",
+        value:Number(x.impact??0.55)*0.40+Number(x.leverage??0.75)*0.35+Number(x.urgency??0.35)*0.25,
+        evidence:x.evidence||[],unknowns:x.unknowns||[],externalResearchUseful:true
+      }));
+      (this.cognitiveIntentions||[]).filter(x=>x?.status!=="completed").forEach(x=>add({
+        subject:x.subject,origin:"unfinished-cognition",
+        reason:"Resolve unfinished cognition when higher-priority work is absent.",
+        move:"resume-unfinished-cognition",value:x.status==="blocked"?0.72:0.62,
+        evidence:x.triggers||[],unknowns:[x.lastError].filter(Boolean)
+      }));
+      (this.preparednessInsights||[]).slice(0,24).forEach(x=>{
+        const best=x.robustActionsNow?.[0]; if(!best)return;
+        add({subject:`Preparedness: ${best.action}`,origin:"counterfactual-preparedness",
+          reason:x.recommendation||"Validate a low-regret preparedness move before it becomes urgent.",
+          move:"validate-preparedness",value:Number(best.preparednessScore??best.robustness??0.6),
+          evidence:[{simulationId:x.simulationId,preparednessScore:best.preparednessScore}],
+          unknowns:best.falsifiers||[]});
+      });
+      const wm=this.worldModel||this.getWorldModel?.({refresh:false});
+      const unknowns=wm?.temporal?.unknowns||wm?.unknowns||[];
+      (Array.isArray(unknowns)?unknowns.slice(0,16):[]).forEach(x=>add({
+        subject:String(x?.subject||x?.question||x),origin:"world-model-unknown",
+        reason:"Resolve a decision-relevant unknown before a human has to ask.",
+        move:"investigate-world-model-unknown",
+        value:Number(x?.consequence??0.6)*0.45+Number(x?.urgency??0.35)*0.20+0.35,
+        evidence:x?.evidence||[],unknowns:[x?.question||x],externalResearchUseful:true
+      }));
+
+      const last=this.lastProductiveIdleAction;
+      return candidates.map(item=>{
+        const same=last&&this.normalize(last.subject)===this.normalize(item.subject);
+        const age=last?.completedAt?now-Date.parse(last.completedAt):Infinity;
+        const cooldown=same&&age<Number(this.configuration.productiveIdleCooldownMs||0);
+        const repetitionPenalty=same?Math.min(0.45,Number(this.productiveIdleConsecutiveSameSubject||0)*0.15):0;
+        return {...item,cooldown,repetitionPenalty,
+          adjustedValue:Number(Math.max(0,item.value-repetitionPenalty).toFixed(3))};
+      }).filter(x=>!x.cooldown)
+        .filter(x=>x.adjustedValue>=Number(this.configuration.productiveIdleDiminishingReturnFloor||0))
+        .sort((a,b)=>b.adjustedValue-a.adjustedValue);
+    },
+
+    runProductiveIdleCognition(options = {}) {
+      const candidates=this.collectProductiveIdleCandidates(options);
+      const selected=candidates[0]||null;
+      if(!selected){
+        const action={schema:"meos.maddy.productive-idle-action.v1",action:"rest",
+          reason:"No internal developmental move clears the bounded value and diminishing-return gates.",
+          completedAt:new Date().toISOString(),externalActionAuthorized:false,
+          truthRule:"Rest is a governed cognitive outcome when further work has insufficient expected value."};
+        this.lastProductiveIdleAction=action;
+        return {success:true,productive:false,action:this.clone(action),candidates:[]};
+      }
+      const previous=this.lastProductiveIdleAction;
+      const same=previous&&this.normalize(previous.subject)===this.normalize(selected.subject);
+      this.productiveIdleConsecutiveSameSubject=same?Number(this.productiveIdleConsecutiveSameSubject||0)+1:1;
+      if(this.productiveIdleConsecutiveSameSubject>Number(this.configuration.productiveIdleMaxConsecutiveSameSubject||3)){
+        const action={schema:"meos.maddy.productive-idle-action.v1",action:"rest",subject:selected.subject,
+          reason:"Repetition guard stopped further investment until new evidence, time, or priority change justifies return.",
+          completedAt:new Date().toISOString(),externalActionAuthorized:false,
+          truthRule:"Discipline includes stopping when repeated cognition has diminishing returns."};
+        this.lastProductiveIdleAction=action;
+        return {success:true,productive:false,action:this.clone(action),candidates:this.clone(candidates)};
+      }
+      const action={schema:"meos.maddy.productive-idle-action.v1",action:selected.move,
+        subject:selected.subject,origin:selected.origin,reason:selected.reason,
+        expectedValue:selected.adjustedValue,evidence:this.clone(selected.evidence),
+        unknowns:this.clone(selected.unknowns),startedAt:new Date().toISOString(),
+        completedAt:new Date().toISOString(),
+        authority:{internalCognitionAuthorized:true,externalActionAuthorized:false},
+        capability:{externalResearchUseful:selected.externalResearchUseful,
+          externalResearchExecuted:false,
+          missingCapability:selected.externalResearchUseful?"commissioned-headless-public-research-executor":null},
+        nextMove:selected.externalResearchUseful
+          ?`Use an authorized research capability to investigate ${selected.subject}, seek disconfirming evidence, then integrate verified learning into the World Model.`
+          :`Continue internal evidence-grounded cognition on ${selected.subject}.`,
+        truthRule:"Productive idle cognition may choose what to learn; it may not claim research, mastery, or facts not actually obtained."};
+      this.productiveIdleHistory.unshift(this.clone(action));
+      this.productiveIdleHistory=this.productiveIdleHistory.slice(0,Number(this.configuration.productiveIdleHistoryLimit||96));
+      this.lastProductiveIdleAction=action;
+      this.autobiographicalMemory.unshift({
+        schema:"meos.maddy.autobiographical-memory.v1",eventType:"productive-idle-cognition",
+        sourceId:`productive-idle-${this.fingerprintCognitiveDispatch(action)}`,occurredAt:action.completedAt,
+        subject:action.subject,action:{type:action.action,origin:action.origin},
+        outcome:{selectedForDevelopment:true,externalResearchExecuted:false,expectedValue:action.expectedValue},
+        truthStatus:"internal-cognitive-action"});
+      return {success:true,productive:true,action:this.clone(action),candidates:this.clone(candidates)};
+    },
+
+    /*
      * Commission 006.017D7L — Continuous Cognitive Orchestration Handoff
      *
      * This is deliberately a contract and resumable cycle, not a fake setInterval
@@ -11447,6 +11579,10 @@
             : "determine the next evidence-grounded cognitive move"
         });
         threadAction={action:"open-thread",...opened};
+      } else {
+        const productiveIdle=this.runProductiveIdleCognition(options);
+        threadAction={action:productiveIdle.productive?"productive-idle":"governed-rest",
+          success:productiveIdle.success,productiveIdle:this.clone(productiveIdle)};
       }
 
       const handoff=this.buildContinuousCognitionHandoff(options);
@@ -13159,7 +13295,10 @@
         cognitiveThreadEventCount: Number(this.cognitiveThreadEventCount || 0),
         continuousCognitionState: this.continuousCognitionState ? this.clone(this.continuousCognitionState) : null,
         continuousCognitionCycleCount: Number(this.continuousCognitionCycleCount || 0),
-        lastContinuousCognitionCycle: this.lastContinuousCognitionCycle ? this.clone(this.lastContinuousCognitionCycle) : null
+        lastContinuousCognitionCycle: this.lastContinuousCognitionCycle ? this.clone(this.lastContinuousCognitionCycle) : null,
+        productiveIdleHistory: this.productiveIdleHistory.slice(0, this.configuration.productiveIdleHistoryLimit),
+        lastProductiveIdleAction: this.lastProductiveIdleAction ? this.clone(this.lastProductiveIdleAction) : null,
+        productiveIdleConsecutiveSameSubject: Number(this.productiveIdleConsecutiveSameSubject || 0)
       };
     },
 
@@ -13308,6 +13447,9 @@
       this.continuousCognitionState = saved.continuousCognitionState && typeof saved.continuousCognitionState === "object" ? this.clone(saved.continuousCognitionState) : null;
       this.continuousCognitionCycleCount = Math.max(Number(saved.continuousCognitionCycleCount || 0), Number(saved.lastContinuousCognitionCycle?.cycleNumber || 0));
       this.lastContinuousCognitionCycle = saved.lastContinuousCognitionCycle && typeof saved.lastContinuousCognitionCycle === "object" ? this.clone(saved.lastContinuousCognitionCycle) : null;
+      this.productiveIdleHistory = Array.isArray(saved.productiveIdleHistory) ? saved.productiveIdleHistory.slice(0, this.configuration.productiveIdleHistoryLimit) : [];
+      this.lastProductiveIdleAction = saved.lastProductiveIdleAction && typeof saved.lastProductiveIdleAction === "object" ? this.clone(saved.lastProductiveIdleAction) : null;
+      this.productiveIdleConsecutiveSameSubject = Number(saved.productiveIdleConsecutiveSameSubject || 0);
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
