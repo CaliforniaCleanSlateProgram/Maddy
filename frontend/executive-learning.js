@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Learning Engine
- * Version: 1.0.2
+ * Version: 1.1.0
  *
  * Mission:
  * Convert completed work, outcomes, feedback, decisions, alerts, and executive
@@ -18,27 +18,31 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.0.2";
-    const BUILD_ID = "EL102-GOVERNANCE-ACCEPTANCE-FIX-20260808-A";
+    const VERSION = "1.1.0";
+    const BUILD_ID = "EL110-DURABLE-AUTHORITY-FLIP-20260808-A";
 
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
     const INDEXED_DB_STORE = "engine-state";
     const INDEXED_DB_RECORD_ID = "executive-learning-state";
+    const DURABLE_STATE_ENDPOINT = "/api/executive-learning-state";
     const PERSISTENCE_DEBOUNCE_MS = 200;
 
     const persistence = {
-        mode: global.indexedDB
-            ? "indexeddb-local-laptop"
-            : "legacy-localstorage-fallback",
-        authoritativeStorage: global.indexedDB
-            ? "indexeddb"
-            : "localstorage",
+        mode: "institutional-repository-authority",
+        authoritativeStorage: "meos-institutional-repository",
+        cacheRole: global.indexedDB
+            ? "bounded-recovery-cache"
+            : "unavailable",
         indexedDbAvailable: Boolean(global.indexedDB),
         databaseName: INDEXED_DB_NAME,
         storeName: INDEXED_DB_STORE,
         recordId: INDEXED_DB_RECORD_ID,
+        durableEndpoint: DURABLE_STATE_ENDPOINT,
         hydrated: false,
+        durableAuthorityReady: false,
+        degraded: false,
+        degradedReason: null,
         migratedLegacySnapshot: false,
         localStorageReleased: false,
         writeScheduled: false,
@@ -46,12 +50,69 @@
         suspended: false,
         lastPersistedAt: null,
         lastRestoredAt: null,
+        lastCachePersistedAt: null,
+        lastDurableProviderId: null,
         lastError: null
     };
 
     let persistenceTimer = null;
     let indexedDbPromise = null;
     let writeChain = Promise.resolve();
+
+    async function executiveLearningStateRequest(
+        method = "GET",
+        body = undefined
+    ) {
+        const options = {
+            method,
+            headers: {
+                "Accept": "application/json"
+            },
+            cache: "no-store"
+        };
+
+        if (body !== undefined) {
+            options.headers["Content-Type"] =
+                "application/json";
+            options.body = JSON.stringify(body);
+        }
+
+        const response = await global.fetch(
+            DURABLE_STATE_ENDPOINT,
+            options
+        );
+
+        let payload = null;
+
+        try {
+            payload = await response.json();
+        } catch (_error) {
+            payload = null;
+        }
+
+        if (response.status === 404 && method === "GET") {
+            return {
+                found: false,
+                authority:
+                    "meos-institutional-repository"
+            };
+        }
+
+        if (!response.ok) {
+            const error = new Error(
+                payload?.error ||
+                    `Executive Learning durable authority returned HTTP ${response.status}.`
+            );
+            error.status = response.status;
+            error.code =
+                payload?.code ||
+                "EXECUTIVE_LEARNING_DURABLE_REQUEST_FAILED";
+            error.details = payload?.details || null;
+            throw error;
+        }
+
+        return payload || {};
+    }
 
     function openIndexedDb() {
         if (!global.indexedDB) {
@@ -252,9 +313,8 @@
                 ...(options.configuration || options)
             };
 
-            this.restoreLegacySnapshot();
             this.hydrationPromise =
-                this.hydrateFromIndexedDb();
+                this.hydrateFromDurableAuthority();
             this.initializedAt = new Date().toISOString();
             this.status = "online";
 
@@ -2275,7 +2335,7 @@
             }
         },
 
-        async persistIndexedDbNow() {
+        async persistIndexedDbCacheNow() {
             if (
                 !this.configuration.persistenceEnabled ||
                 !global.indexedDB ||
@@ -2302,11 +2362,9 @@
                     state: snapshot
                 });
 
-                persistence.mode =
-                    "indexeddb-local-laptop";
-                persistence.authoritativeStorage =
-                    "indexeddb";
-                persistence.lastPersistedAt =
+                persistence.cacheRole =
+                    "bounded-recovery-cache";
+                persistence.lastCachePersistedAt =
                     new Date().toISOString();
                 persistence.lastError = null;
                 persistence.suspended = false;
@@ -2320,9 +2378,88 @@
                 persistence.suspended = true;
 
                 console.error(
-                    "[MEOS Executive Learning] IndexedDB persistence failed. Learning runtime continues.",
+                    "[MEOS Executive Learning] IndexedDB recovery-cache write failed. Durable Repository Authority remains primary.",
                     error
                 );
+
+                return false;
+            } finally {
+                persistence.writeInFlight = false;
+            }
+        },
+
+        async persistDurableNow() {
+            if (
+                !this.configuration.persistenceEnabled ||
+                persistence.suspended
+            ) {
+                return false;
+            }
+
+            persistence.writeScheduled = false;
+            persistence.writeInFlight = true;
+
+            try {
+                const snapshot =
+                    this.buildPersistenceSnapshot();
+
+                const result =
+                    await executiveLearningStateRequest(
+                        "PUT",
+                        {
+                            version: this.version,
+                            buildId: this.buildId,
+                            state: snapshot
+                        }
+                    );
+
+                if (
+                    result?.success !== true ||
+                    result?.authority !==
+                        "durable-institutional-repository"
+                ) {
+                    throw new Error(
+                        "Executive Learning durable write was not verified by MEOS Repository Authority."
+                    );
+                }
+
+                persistence.mode =
+                    "institutional-repository-authority";
+                persistence.authoritativeStorage =
+                    "meos-institutional-repository";
+                persistence.durableAuthorityReady = true;
+                persistence.degraded = false;
+                persistence.degradedReason = null;
+                persistence.lastDurableProviderId =
+                    result.providerId || null;
+                persistence.lastPersistedAt =
+                    new Date().toISOString();
+                persistence.lastError = null;
+                persistence.suspended = false;
+
+                this.releaseLegacyLocalStorage();
+
+                if (global.indexedDB) {
+                    await this.persistIndexedDbCacheNow();
+                }
+
+                return true;
+            } catch (error) {
+                persistence.lastError =
+                    error?.message || String(error);
+                persistence.degraded = true;
+                persistence.degradedReason =
+                    "durable-authority-unavailable";
+
+                /*
+                 * Do not promote browser storage to authority during a
+                 * provider outage. Keep a bounded recovery cache only.
+                 */
+                if (global.indexedDB) {
+                    try {
+                        await this.persistIndexedDbCacheNow();
+                    } catch (_cacheError) {}
+                }
 
                 return false;
             } finally {
@@ -2341,10 +2478,6 @@
                     error:
                         "Executive Learning persistence is disabled."
                 };
-            }
-
-            if (!global.indexedDB) {
-                return this.persistLegacyFallback();
             }
 
             if (persistence.suspended) {
@@ -2373,7 +2506,7 @@
                     writeChain = writeChain
                         .catch(() => undefined)
                         .then(() =>
-                            this.persistIndexedDbNow()
+                            this.persistDurableNow()
                         );
                 }, PERSISTENCE_DEBOUNCE_MS);
 
@@ -2385,13 +2518,7 @@
         },
 
         persist() {
-            if (global.indexedDB) {
-                return this.flushPersistence();
-            }
-
-            return Promise.resolve(
-                this.persistLegacyFallback()
-            );
+            return this.flushPersistence();
         },
 
         persistLegacyFallback() {
@@ -2423,12 +2550,6 @@
                     )
                 );
 
-                persistence.mode =
-                    "legacy-localstorage-fallback";
-                persistence.authoritativeStorage =
-                    "localstorage";
-                persistence.lastPersistedAt =
-                    new Date().toISOString();
                 persistence.lastError = null;
 
                 return {
@@ -2509,98 +2630,174 @@
             }
         },
 
-        async hydrateFromIndexedDb() {
-            if (!global.indexedDB) {
-                persistence.hydrated = true;
-                return {
-                    success: true,
-                    restored: false,
-                    source:
-                        "localstorage-fallback"
-                };
-            }
-
+        async hydrateFromDurableAuthority() {
             try {
-                const record =
-                    await indexedDbGet();
+                const durable =
+                    await executiveLearningStateRequest(
+                        "GET"
+                    );
 
                 if (
-                    record?.state &&
-                    record.state.schema === SCHEMA
+                    durable?.found === true &&
+                    durable?.value?.state?.schema ===
+                        SCHEMA
                 ) {
                     const result =
                         this.importLearning(
-                            record.state,
+                            durable.value.state,
                             {
                                 replace: true
                             }
                         );
 
-                    if (result.success) {
-                        persistence.hydrated = true;
-                        persistence.lastRestoredAt =
-                            new Date().toISOString();
-                        persistence.mode =
-                            "indexeddb-local-laptop";
-                        persistence.authoritativeStorage =
-                            "indexeddb";
-                        persistence.lastError = null;
-                        this.releaseLegacyLocalStorage();
-
-                        this.emit(
-                            "learning:persistence-hydrated",
-                            {
-                                source:
-                                    "indexeddb",
-                                restoredAt:
-                                    persistence.lastRestoredAt,
-                                observations:
-                                    this.observations.length,
-                                lessons:
-                                    this.lessons.length,
-                                feedback:
-                                    this.feedback.length,
-                                history:
-                                    this.history.length
-                            }
+                    if (!result.success) {
+                        throw new Error(
+                            "Executive Learning durable state could not be imported."
                         );
+                    }
 
-                        return {
-                            success: true,
-                            restored: true,
-                            source: "indexeddb"
-                        };
+                    persistence.hydrated = true;
+                    persistence.durableAuthorityReady = true;
+                    persistence.degraded = false;
+                    persistence.degradedReason = null;
+                    persistence.lastRestoredAt =
+                        new Date().toISOString();
+                    persistence.lastDurableProviderId =
+                        durable.providerId || null;
+                    persistence.mode =
+                        "institutional-repository-authority";
+                    persistence.authoritativeStorage =
+                        "meos-institutional-repository";
+                    persistence.lastError = null;
+                    this.releaseLegacyLocalStorage();
+
+                    if (global.indexedDB) {
+                        await this.persistIndexedDbCacheNow();
+                    }
+
+                    this.emit(
+                        "learning:persistence-hydrated",
+                        {
+                            source:
+                                "meos-institutional-repository",
+                            restoredAt:
+                                persistence.lastRestoredAt,
+                            observations:
+                                this.observations.length,
+                            lessons:
+                                this.lessons.length,
+                            feedback:
+                                this.feedback.length,
+                            history:
+                                this.history.length
+                        }
+                    );
+
+                    return {
+                        success: true,
+                        restored: true,
+                        source:
+                            "meos-institutional-repository",
+                        authority:
+                            "meos-institutional-repository"
+                    };
+                }
+
+                /*
+                 * First durable boot: recover the existing laptop snapshot,
+                 * then migrate it forward into MEOS Repository Authority.
+                 */
+                let recoveredFromCache = false;
+
+                if (global.indexedDB) {
+                    const record =
+                        await indexedDbGet();
+
+                    if (
+                        record?.state &&
+                        record.state.schema === SCHEMA
+                    ) {
+                        const result =
+                            this.importLearning(
+                                record.state,
+                                { replace: true }
+                            );
+                        recoveredFromCache =
+                            result.success === true;
                     }
                 }
 
-                const saved =
-                    await this.persistIndexedDbNow();
+                if (!recoveredFromCache) {
+                    this.restoreLegacySnapshot();
+                }
+
+                const migrated =
+                    await this.persistDurableNow();
 
                 persistence.hydrated = true;
                 persistence.migratedLegacySnapshot =
-                    saved === true;
+                    migrated === true;
 
                 return {
-                    success: saved === true,
-                    restored: false,
+                    success: migrated === true,
+                    restored: recoveredFromCache,
                     migratedLegacySnapshot:
-                        saved === true,
+                        migrated === true,
                     source:
-                        "legacy-migration"
+                        recoveredFromCache
+                            ? "indexeddb-recovery-migrated"
+                            : "initial-durable-state",
+                    authority:
+                        "meos-institutional-repository"
                 };
             } catch (error) {
+                /*
+                 * Provider outage does not transfer authority to the laptop.
+                 * Recover cache for continuity only and mark degraded.
+                 */
+                let recovered = false;
+
+                if (global.indexedDB) {
+                    try {
+                        const record =
+                            await indexedDbGet();
+
+                        if (
+                            record?.state &&
+                            record.state.schema === SCHEMA
+                        ) {
+                            const result =
+                                this.importLearning(
+                                    record.state,
+                                    { replace: true }
+                                );
+                            recovered =
+                                result.success === true;
+                        }
+                    } catch (_cacheError) {}
+                }
+
                 persistence.hydrated = true;
+                persistence.durableAuthorityReady = false;
+                persistence.degraded = true;
+                persistence.degradedReason =
+                    "durable-authority-unavailable";
                 persistence.lastError =
                     error?.message || String(error);
-
-                console.error(
-                    "[MEOS Executive Learning] IndexedDB hydration failed; keeping runtime learning state.",
-                    error
-                );
+                persistence.mode =
+                    "institutional-repository-authority";
+                persistence.authoritativeStorage =
+                    "meos-institutional-repository";
 
                 return {
-                    success: false,
-                    restored: false,
+                    success: recovered,
+                    restored: recovered,
+                    source: recovered
+                        ? "indexeddb-recovery-cache"
+                        : "runtime-only",
+                    authority:
+                        "meos-institutional-repository",
+                    degraded: true,
                     error:
                         persistence.lastError
                 };
@@ -2615,20 +2812,13 @@
                 persistenceTimer = null;
             }
 
-            if (global.indexedDB) {
-                writeChain = writeChain
-                    .catch(() => undefined)
-                    .then(() =>
-                        this.persistIndexedDbNow()
-                    );
+            writeChain = writeChain
+                .catch(() => undefined)
+                .then(() =>
+                    this.persistDurableNow()
+                );
 
-                return writeChain;
-            }
-
-            const result =
-                this.persistLegacyFallback();
-
-            return result.success === true;
+            return writeChain;
         },
 
         getPersistenceStatus() {
@@ -2661,166 +2851,115 @@
             );
         },
 
-        async runLaptopPersistenceAcceptanceTest() {
-            const probeId =
-                "executive-learning-acceptance-probe";
-            const probeValue = {
-                id: probeId,
-                schema:
-                    "meos.persistence-probe.v1",
-                writtenAt:
-                    new Date().toISOString(),
-                nonce:
-                    this.createId(
-                        "learning-probe"
-                    )
-            };
+        async runDurableAuthorityAcceptanceTest() {
+            const checks = [];
 
-            const checks = [
-                {
-                    name:
-                        "IndexedDB is available on this laptop browser",
-                    passed:
-                        Boolean(
-                            global.indexedDB
-                        )
-                }
-            ];
+            await this.whenHydrated();
 
-            if (!global.indexedDB) {
-                console.table(checks);
-                return {
-                    commission:
-                        "006.016G4",
-                    version:
-                        this.version,
-                    buildId:
-                        this.buildId,
-                    passed: false,
-                    checks
-                };
-            }
+            checks.push({
+                name:
+                    "Executive Learning authority is MEOS Institutional Repository",
+                passed:
+                    persistence.authoritativeStorage ===
+                        "meos-institutional-repository" &&
+                    persistence.mode ===
+                        "institutional-repository-authority"
+            });
 
-            try {
-                await indexedDbPut(probeValue);
-                const restoredProbe =
-                    await indexedDbGet(
-                        probeId
-                    );
+            const snapshot =
+                this.buildPersistenceSnapshot();
 
-                checks.push({
-                    name:
-                        "Laptop repository accepts Executive Learning writes",
-                    passed:
-                        restoredProbe?.nonce ===
-                        probeValue.nonce
-                });
+            const durableWrite =
+                await this.persistDurableNow();
 
-                await indexedDbDelete(
-                    probeId
+            checks.push({
+                name:
+                    "Executive Learning writes current learning through durable Repository Authority",
+                passed:
+                    durableWrite === true &&
+                    persistence.durableAuthorityReady ===
+                        true &&
+                    persistence.degraded === false
+            });
+
+            const durableRead =
+                await executiveLearningStateRequest(
+                    "GET"
                 );
-                const deletedProbe =
-                    await indexedDbGet(
-                        probeId
-                    );
 
-                checks.push({
-                    name:
-                        "Laptop repository can read and delete Executive Learning records",
-                    passed:
-                        deletedProbe === null
-                });
+            checks.push({
+                name:
+                    "Durable Executive Learning reads back from MEOS authority",
+                passed:
+                    durableRead?.found === true &&
+                    durableRead?.authority ===
+                        "durable-institutional-repository" &&
+                    durableRead?.value?.state?.schema ===
+                        SCHEMA
+            });
 
-                const expected = {
-                    observations:
-                        this.observations.length,
-                    lessons:
-                        this.lessons.length,
-                    feedback:
-                        this.feedback.length,
-                    history:
-                        this.history.length
-                };
+            checks.push({
+                name:
+                    "Durable round trip preserves learning semantics",
+                passed:
+                    durableRead?.value?.state?.observations?.length ===
+                        snapshot.observations.length &&
+                    durableRead?.value?.state?.lessons?.length ===
+                        snapshot.lessons.length &&
+                    durableRead?.value?.state?.feedback?.length ===
+                        snapshot.feedback.length &&
+                    durableRead?.value?.state?.history?.length ===
+                        snapshot.history.length
+            });
 
-                const flushed =
-                    await this.flushPersistence();
-                const record =
+            let cachePassed = true;
+
+            if (global.indexedDB) {
+                await this.persistIndexedDbCacheNow();
+                const cache =
                     await indexedDbGet();
-
-                checks.push({
-                    name:
-                        "Executive Learning snapshot flushes to IndexedDB",
-                    passed:
-                        flushed === true &&
-                        record?.state?.schema ===
-                            SCHEMA
-                });
-
-                checks.push({
-                    name:
-                        "Learning records survive the repository snapshot",
-                    passed:
-                        record?.state?.observations?.length ===
-                            expected.observations &&
-                        record?.state?.lessons?.length ===
-                            expected.lessons &&
-                        record?.state?.feedback?.length ===
-                            expected.feedback &&
-                        record?.state?.history?.length ===
-                            expected.history
-                });
-
-                checks.push({
-                    name:
-                        "Legacy Executive Learning localStorage payload is released",
-                    passed:
-                        global.localStorage?.getItem(
-                            this.configuration.localStorageKey
-                        ) === null
-                });
-
-                checks.push({
-                    name:
-                        "IndexedDB is the temporary Executive Learning laptop authority",
-                    passed:
-                        persistence.authoritativeStorage ===
-                            "indexeddb" &&
-                        persistence.mode ===
-                            "indexeddb-local-laptop"
-                });
-
-                checks.push({
-                    name:
-                        "Executive Learning governance remains intact while persistence is asynchronous",
-                    passed:
-                        this.status ===
-                            "online" &&
-                        typeof this
-                            .observe ===
-                            "function" &&
-                        typeof this
-                            .addFeedback ===
-                            "function" &&
-                        typeof this
-                            .validateLesson ===
-                            "function" &&
-                        typeof this
-                            .rejectLesson ===
-                            "function" &&
-                        typeof this
-                            .scan ===
-                            "function"
-                });
-            } catch (error) {
-                checks.push({
-                    name:
-                        "Laptop repository test completed without error",
-                    passed: false,
-                    error:
-                        error?.message ||
-                        String(error)
-                });
+                cachePassed =
+                    cache?.state?.schema === SCHEMA;
             }
+
+            checks.push({
+                name:
+                    "IndexedDB is bounded recovery cache, not Executive Learning authority",
+                passed:
+                    cachePassed &&
+                    persistence.authoritativeStorage ===
+                        "meos-institutional-repository" &&
+                    persistence.cacheRole ===
+                        (global.indexedDB
+                            ? "bounded-recovery-cache"
+                            : "unavailable")
+            });
+
+            checks.push({
+                name:
+                    "Legacy localStorage is released from institutional authority",
+                passed:
+                    global.localStorage?.getItem(
+                        this.configuration.localStorageKey
+                    ) === null
+            });
+
+            checks.push({
+                name:
+                    "Executive Learning governance remains intact after authority flip",
+                passed:
+                    this.status === "online" &&
+                    typeof this.observe ===
+                        "function" &&
+                    typeof this.addFeedback ===
+                        "function" &&
+                    typeof this.validateLesson ===
+                        "function" &&
+                    typeof this.rejectLesson ===
+                        "function" &&
+                    typeof this.scan ===
+                        "function"
+            });
 
             const passed =
                 checks.every(
@@ -2829,12 +2968,12 @@
 
             console.table(checks);
             console.info(
-                `[MEOS ${this.version}] Commission 006.016G4 Executive Learning laptop persistence acceptance: ${passed ? "PASS" : "FAIL"}.`
+                `[MEOS ${this.version}] Commission 006.017D6B Executive Learning durable authority flip: ${passed ? "PASS" : "FAIL"}.`
             );
 
             return {
                 commission:
-                    "006.016G4",
+                    "006.017D6B",
                 version:
                     this.version,
                 buildId:
@@ -2844,6 +2983,10 @@
                 persistence:
                     this.getPersistenceStatus()
             };
+        },
+
+        async runLaptopPersistenceAcceptanceTest() {
+            return this.runDurableAuthorityAcceptanceTest();
         },
 
         clear(options = {}) {
