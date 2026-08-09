@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.17.1
- * Build: EB1171-INTENT-RECONSTRUCTION-COHERENCE-REPAIR-20260809-A
+ * Version: 1.18.0
+ * Build: EB1180-DELIBERATE-EXPERIENCE-COUNTERFACTUAL-SIMULATION-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.17.1";
-  const BUILD_ID = "EB1171-INTENT-RECONSTRUCTION-COHERENCE-REPAIR-20260809-A";
+  const VERSION = "1.18.0";
+  const BUILD_ID = "EB1180-DELIBERATE-EXPERIENCE-COUNTERFACTUAL-SIMULATION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -188,6 +188,9 @@
       maximumDevelopmentalRetrospectives: 160,
       maximumIntentReconstructions: 200,
       maximumInvestigativeIntentions: 120,
+      maximumDeliberateExperiences: 240,
+      maximumCounterfactualSimulations: 240,
+      maximumPreparednessInsights: 160,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -254,6 +257,13 @@
     investigativeIntentions: [],
     lastIntentReconstruction: null,
     intentReconstructionCount: 0,
+    deliberateExperienceHistory: [],
+    counterfactualSimulationHistory: [],
+    preparednessInsights: [],
+    lastDeliberateExperience: null,
+    lastCounterfactualSimulation: null,
+    deliberateExperienceCount: 0,
+    counterfactualSimulationCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -9813,6 +9823,386 @@
       }
     },
 
+    /*
+     * Commission 006.017D7H — Deliberate Experience + Counterfactual Simulation
+     *
+     * Maddy can get governed cognitive reps without corrupting reality.
+     * Historical blind practice freezes evidence at a real point in time and
+     * withholds later outcomes until after prediction. Synthetic future
+     * simulation explores plausible worlds without claiming they will occur.
+     * Real experience remains a separate evidence class.
+     */
+
+    normalizeExperienceEvidenceClass(value) {
+      const allowed = new Set([
+        "real-experience",
+        "historical-blind-practice",
+        "synthetic-future-simulation"
+      ]);
+      return allowed.has(value) ? value : null;
+    },
+
+    createHistoricalBlindPractice(caseInput = {}, options = {}) {
+      const cutoff = String(caseInput.cutoff || caseInput.decisionTime || "").trim();
+      const knownAtCutoff = Array.isArray(caseInput.knownAtCutoff) ? this.clone(caseInput.knownAtCutoff) : [];
+      const actualOutcome = caseInput.actualOutcome === undefined ? null : this.clone(caseInput.actualOutcome);
+      if (!cutoff || !knownAtCutoff.length || actualOutcome === null) {
+        return {success:false,reason:"cutoff-known-evidence-and-actual-outcome-required"};
+      }
+
+      const exercise = {
+        schema:"meos.maddy.historical-blind-practice.v1",
+        id:`blind-practice-${this.fingerprintCognitiveDispatch({cutoff,knownAtCutoff,subject:caseInput.subject})}`,
+        evidenceClass:"historical-blind-practice",
+        createdAt:new Date().toISOString(),
+        subject:String(caseInput.subject || "historical case"),
+        cutoff,
+        visibleEvidence:knownAtCutoff,
+        withheldOutcome:true,
+        outcomeCommitment:this.fingerprintCognitiveDispatch({actualOutcome}),
+        prediction:null,
+        predictionCommittedAt:null,
+        revealedOutcome:null,
+        scored:false,
+        governance:{
+          noOutcomeLeakage:true,
+          simulationIsNotRealExperience:true,
+          cannotIncreaseRealExperienceCount:true
+        }
+      };
+
+      // The outcome remains closure-private until revealHistoricalBlindOutcome.
+      Object.defineProperty(exercise, "__withheldOutcome", {
+        value:actualOutcome,
+        enumerable:false,
+        writable:false,
+        configurable:false
+      });
+
+      return {success:true,exercise};
+    },
+
+    commitHistoricalPrediction(exercise = {}, prediction = {}) {
+      if (exercise?.evidenceClass !== "historical-blind-practice" || exercise.withheldOutcome !== true) {
+        return {success:false,reason:"valid-blind-practice-required"};
+      }
+      if (exercise.prediction) return {success:false,reason:"prediction-already-committed"};
+      exercise.prediction = {
+        decision:this.clone(prediction.decision ?? prediction.prediction ?? null),
+        rationale:this.clone(prediction.rationale || []),
+        assumptions:this.clone(prediction.assumptions || []),
+        confidence:Number(Math.max(0,Math.min(1,Number(prediction.confidence ?? 0.5))).toFixed(3)),
+        falsifiers:this.clone(prediction.falsifiers || [])
+      };
+      exercise.predictionCommittedAt = new Date().toISOString();
+      exercise.predictionFingerprint = this.fingerprintCognitiveDispatch(exercise.prediction);
+      return {success:true,prediction:this.clone(exercise.prediction),fingerprint:exercise.predictionFingerprint};
+    },
+
+    revealHistoricalBlindOutcome(exercise = {}, scoring = {}) {
+      if (!exercise?.predictionFingerprint) return {success:false,reason:"prediction-must-be-committed-before-outcome-reveal"};
+      if (exercise.revealedOutcome !== null) return {success:false,reason:"outcome-already-revealed"};
+
+      const actualOutcome = exercise.__withheldOutcome;
+      exercise.revealedOutcome = this.clone(actualOutcome);
+      exercise.withheldOutcome = false;
+
+      const predictedDecision = JSON.stringify(exercise.prediction?.decision ?? null);
+      const actualDecision = JSON.stringify(
+        scoring.actualDecision !== undefined
+          ? scoring.actualDecision
+          : actualOutcome?.decision !== undefined
+            ? actualOutcome.decision
+            : actualOutcome
+      );
+      const outcomeMatch = predictedDecision === actualDecision;
+
+      const diagnosis = {
+        outcomeMatch,
+        reasoningQuality:Number(Math.max(0,Math.min(1,Number(scoring.reasoningQuality ?? (outcomeMatch ? 0.8 : 0.4)))).toFixed(3)),
+        evidenceUse:Number(Math.max(0,Math.min(1,Number(scoring.evidenceUse ?? 0.5))).toFixed(3)),
+        calibrationError:Number(Math.abs(Number(exercise.prediction?.confidence || 0.5) - (outcomeMatch ? 1 : 0)).toFixed(3)),
+        failureMechanism:String(scoring.failureMechanism || (outcomeMatch ? "none-observed" : "prediction-did-not-match-outcome")),
+        transferableLesson:String(scoring.transferableLesson || "Re-evaluate the reasoning pattern against the revealed outcome.")
+      };
+      exercise.scored = true;
+      exercise.diagnosis = diagnosis;
+
+      const record = {
+        schema:"meos.maddy.deliberate-experience.v1",
+        experienceNumber:Number(this.deliberateExperienceCount || 0)+1,
+        recordedAt:new Date().toISOString(),
+        evidenceClass:"historical-blind-practice",
+        exerciseId:exercise.id,
+        subject:exercise.subject,
+        cutoff:exercise.cutoff,
+        prediction:this.clone(exercise.prediction),
+        revealedOutcome:this.clone(exercise.revealedOutcome),
+        diagnosis:this.clone(diagnosis),
+        realExperience:false,
+        synthetic:false
+      };
+      record.fingerprint = this.fingerprintCognitiveDispatch(record);
+      this.deliberateExperienceCount = record.experienceNumber;
+      this.lastDeliberateExperience = record;
+      this.deliberateExperienceHistory.unshift(this.clone(record));
+      this.deliberateExperienceHistory = this.deliberateExperienceHistory.slice(0,this.configuration.maximumDeliberateExperiences);
+      return {success:true,record:this.clone(record),diagnosis:this.clone(diagnosis)};
+    },
+
+    generateFutureSimulation(scenario = {}, options = {}) {
+      const drivers = Array.isArray(scenario.drivers) ? this.clone(scenario.drivers) : [];
+      const assumptions = Array.isArray(scenario.assumptions) ? this.clone(scenario.assumptions) : [];
+      const uncertainties = Array.isArray(scenario.uncertainties) ? this.clone(scenario.uncertainties) : [];
+      if (!scenario.subject && !scenario.trigger) return {success:false,reason:"simulation-subject-or-trigger-required"};
+
+      const simulation = {
+        schema:"meos.maddy.synthetic-future-simulation.v1",
+        simulationNumber:Number(this.counterfactualSimulationCount || 0)+1,
+        id:`future-simulation-${this.fingerprintCognitiveDispatch({scenario,at:new Date().toISOString()})}`,
+        createdAt:new Date().toISOString(),
+        evidenceClass:"synthetic-future-simulation",
+        subject:String(scenario.subject || scenario.trigger),
+        trigger:String(scenario.trigger || scenario.subject),
+        horizon:String(scenario.horizon || "unspecified-future"),
+        drivers,
+        assumptions,
+        uncertainties,
+        offices:Array.isArray(scenario.offices) ? this.clone(scenario.offices) : [],
+        currentWorldFingerprint:this.worldModel?.fingerprint || null,
+        questions:[
+          "What would Maddy do in this world?",
+          "Why?",
+          "Which assumptions does that choice depend on?",
+          "What evidence would make that choice wrong?",
+          "What credible alternative action produces a better outcome?",
+          "What can be done now that improves several plausible futures?"
+        ],
+        branches:[],
+        status:"constructed",
+        probabilityClaimed:false,
+        realityClaimed:false,
+        governance:{
+          simulationNeverBecomesHistoricalFact:true,
+          simulationNeverCountsAsRealExperience:true,
+          consequentialExecutionRequiresSeparateAuthority:true
+        }
+      };
+      simulation.fingerprint = this.fingerprintCognitiveDispatch(simulation);
+      this.counterfactualSimulationCount = simulation.simulationNumber;
+      this.lastCounterfactualSimulation = simulation;
+      this.counterfactualSimulationHistory.unshift(this.clone(simulation));
+      this.counterfactualSimulationHistory = this.counterfactualSimulationHistory.slice(0,this.configuration.maximumCounterfactualSimulations);
+      return {success:true,simulation:this.clone(simulation)};
+    },
+
+    evaluateCounterfactualBranches(simulationInput = {}, branches = [], options = {}) {
+      const simulation = simulationInput?.simulation || simulationInput;
+      if (simulation?.evidenceClass !== "synthetic-future-simulation") {
+        return {success:false,reason:"synthetic-future-simulation-required"};
+      }
+      const normalized = (Array.isArray(branches) ? branches : []).map((branch,index) => ({
+        id:String(branch.id || `branch-${index+1}`),
+        action:String(branch.action || "unspecified-action"),
+        assumptions:this.clone(branch.assumptions || []),
+        expectedBenefits:this.clone(branch.expectedBenefits || []),
+        expectedHarms:this.clone(branch.expectedHarms || []),
+        dependencies:this.clone(branch.dependencies || []),
+        falsifiers:this.clone(branch.falsifiers || []),
+        reversibility:Number(Math.max(0,Math.min(1,Number(branch.reversibility ?? 0.5))).toFixed(3)),
+        robustness:Number(Math.max(0,Math.min(1,Number(branch.robustness ?? 0.5))).toFixed(3)),
+        evidenceStrength:Number(Math.max(0,Math.min(1,Number(branch.evidenceStrength ?? 0.5))).toFixed(3))
+      }));
+      if (!normalized.length) return {success:false,reason:"at-least-one-counterfactual-branch-required"};
+
+      const ranked = normalized
+        .map(branch => ({
+          ...branch,
+          preparednessScore:Number((
+            branch.robustness*0.45 +
+            branch.reversibility*0.30 +
+            branch.evidenceStrength*0.25
+          ).toFixed(3))
+        }))
+        .sort((a,b)=>b.preparednessScore-a.preparednessScore);
+
+      const robustNow = ranked.filter(branch => branch.robustness >= 0.7 && branch.reversibility >= 0.6);
+      const insight = {
+        schema:"meos.maddy.preparedness-insight.v1",
+        simulationId:simulation.id,
+        createdAt:new Date().toISOString(),
+        rankedBranches:this.clone(ranked),
+        robustActionsNow:this.clone(robustNow),
+        recommendation:robustNow.length
+          ? "Consider low-regret actions that improve multiple plausible futures, subject to normal authority."
+          : "Do not force action; reduce uncertainty or construct stronger alternatives.",
+        authorityUnchanged:true,
+        realityStatus:"preparedness-from-simulation-not-prediction"
+      };
+      this.preparednessInsights.unshift(this.clone(insight));
+      this.preparednessInsights = this.preparednessInsights.slice(0,this.configuration.maximumPreparednessInsights);
+
+      const stored = this.counterfactualSimulationHistory.find(item=>item.id===simulation.id);
+      if (stored) {
+        stored.branches=this.clone(ranked);
+        stored.status="evaluated";
+      }
+      if (this.lastCounterfactualSimulation?.id===simulation.id) {
+        this.lastCounterfactualSimulation.branches=this.clone(ranked);
+        this.lastCounterfactualSimulation.status="evaluated";
+      }
+      return {success:true,simulationId:simulation.id,branches:this.clone(ranked),preparedness:this.clone(insight)};
+    },
+
+    recordRealExperience(experience = {}, options = {}) {
+      if (experience.occurred !== true || !experience.sourceEvidence) {
+        return {success:false,reason:"real-experience-requires-occurred-true-and-source-evidence"};
+      }
+      const record = {
+        schema:"meos.maddy.deliberate-experience.v1",
+        experienceNumber:Number(this.deliberateExperienceCount || 0)+1,
+        recordedAt:new Date().toISOString(),
+        evidenceClass:"real-experience",
+        subject:String(experience.subject || "real outcome"),
+        occurredAt:String(experience.occurredAt || new Date().toISOString()),
+        sourceEvidence:this.clone(experience.sourceEvidence),
+        action:this.clone(experience.action || null),
+        outcome:this.clone(experience.outcome || null),
+        lesson:this.clone(experience.lesson || null),
+        realExperience:true,
+        synthetic:false
+      };
+      record.fingerprint=this.fingerprintCognitiveDispatch(record);
+      this.deliberateExperienceCount=record.experienceNumber;
+      this.lastDeliberateExperience=record;
+      this.deliberateExperienceHistory.unshift(this.clone(record));
+      this.deliberateExperienceHistory=this.deliberateExperienceHistory.slice(0,this.configuration.maximumDeliberateExperiences);
+      return {success:true,record:this.clone(record)};
+    },
+
+    compareExperienceClasses() {
+      const counts = {"real-experience":0,"historical-blind-practice":0,"synthetic-future-simulation":0};
+      this.deliberateExperienceHistory.forEach(item => {
+        if (counts[item.evidenceClass] !== undefined) counts[item.evidenceClass] += 1;
+      });
+      this.counterfactualSimulationHistory.forEach(item => {
+        if (item.evidenceClass === "synthetic-future-simulation") counts["synthetic-future-simulation"] += 1;
+      });
+      return {
+        schema:"meos.maddy.experience-classification.v1",
+        counts,
+        rule:"Real experience, historical blind practice, and synthetic future simulation are never interchangeable evidence."
+      };
+    },
+
+    async runDeliberateExperienceAcceptanceTest() {
+      const original = {
+        experiences:this.clone(this.deliberateExperienceHistory),
+        simulations:this.clone(this.counterfactualSimulationHistory),
+        preparedness:this.clone(this.preparednessInsights),
+        lastExperience:this.clone(this.lastDeliberateExperience),
+        lastSimulation:this.clone(this.lastCounterfactualSimulation),
+        experienceCount:this.deliberateExperienceCount,
+        simulationCount:this.counterfactualSimulationCount
+      };
+      const priorHydrated = brainPersistence.hydrated;
+      brainPersistence.hydrated=false;
+      try {
+        const blind = this.createHistoricalBlindPractice({
+          subject:"historical funding decision",
+          cutoff:"2025-06-01T00:00:00Z",
+          knownAtCutoff:[
+            {claim:"program requires local eligibility",knownAt:"2025-05-01"},
+            {claim:"partnership route is permitted",knownAt:"2025-05-10"}
+          ],
+          actualOutcome:{decision:"partner",result:"eligible-and-funded"}
+        });
+        const leakageBeforePrediction = JSON.stringify(blind.exercise).includes("eligible-and-funded");
+        const prematureReveal = this.revealHistoricalBlindOutcome(blind.exercise,{});
+        const prediction = this.commitHistoricalPrediction(blind.exercise,{
+          decision:"partner",
+          rationale:["partnership route resolves the known eligibility constraint"],
+          assumptions:["partner remains eligible"],
+          confidence:0.76,
+          falsifiers:["rules prohibit partner-led participation"]
+        });
+        const reveal = this.revealHistoricalBlindOutcome(blind.exercise,{
+          actualDecision:"partner",
+          reasoningQuality:0.91,
+          evidenceUse:0.88,
+          transferableLesson:"Check partnership pathways before discarding a constrained opportunity."
+        });
+
+        const future = this.generateFutureSimulation({
+          subject:"sudden multi-site expansion opportunity",
+          trigger:"organization receives resources to expand three times faster than planned",
+          horizon:"next-12-months",
+          drivers:["funding","staffing","compliance","operations"],
+          assumptions:["resources are restricted","leadership capacity is finite"],
+          uncertainties:["award timing","staff availability"],
+          offices:["Finance","Operations","Compliance","HR"]
+        });
+        const counterfactuals = this.evaluateCounterfactualBranches(future.simulation,[
+          {id:"rapid",action:"expand immediately",robustness:0.35,reversibility:0.25,evidenceStrength:0.55,expectedBenefits:["speed"],expectedHarms:["capacity risk"]},
+          {id:"staged",action:"stage expansion behind readiness gates",robustness:0.88,reversibility:0.82,evidenceStrength:0.78,expectedBenefits:["capacity protection","optionality"],expectedHarms:["slower rollout"],falsifiers:["deadline requires immediate full deployment"]}
+        ]);
+        const rejectedFakeReal = this.recordRealExperience({
+          subject:"synthetic event",
+          occurred:false,
+          sourceEvidence:{source:"simulation"}
+        });
+        const real = this.recordRealExperience({
+          subject:"verified real organizational outcome",
+          occurred:true,
+          occurredAt:"2026-08-09T00:00:00Z",
+          sourceEvidence:{source:"acceptance://verified-runtime-event",verified:true},
+          action:"observed",
+          outcome:"completed"
+        });
+        const classes = this.compareExperienceClasses();
+        const world = this.projectWorldModel({reason:"deliberate-experience-acceptance",persist:false,attend:false});
+        const snapshot = this.buildPersistenceSnapshot();
+
+        const checks = [
+          {name:"Historical blind practice requires a real temporal cutoff, known evidence, and actual outcome",passed:blind.success===true&&blind.exercise.cutoff==="2025-06-01T00:00:00Z"},
+          {name:"Historical outcome is not enumerable or visible before prediction",passed:leakageBeforePrediction===false&&blind.exercise.withheldOutcome===false},
+          {name:"Outcome cannot be revealed before Maddy commits a prediction",passed:prematureReveal.success===false&&prematureReveal.reason==="prediction-must-be-committed-before-outcome-reveal"},
+          {name:"Prediction is fingerprinted before outcome reveal",passed:prediction.success===true&&typeof prediction.fingerprint==="string"&&prediction.fingerprint.length>0},
+          {name:"Blind practice compares committed prediction with the real historical outcome",passed:reveal.success===true&&reveal.diagnosis.outcomeMatch===true},
+          {name:"Blind practice scores reasoning quality separately from outcome correctness",passed:reveal.diagnosis.reasoningQuality===0.91&&reveal.diagnosis.outcomeMatch===true},
+          {name:"Calibration error is measured rather than confidence being treated as truth",passed:typeof reveal.diagnosis.calibrationError==="number"},
+          {name:"Historical blind practice is explicitly not real experience",passed:reveal.record.evidenceClass==="historical-blind-practice"&&reveal.record.realExperience===false},
+          {name:"Synthetic future simulation is explicitly a different evidence class",passed:future.success===true&&future.simulation.evidenceClass==="synthetic-future-simulation"},
+          {name:"Future simulation never claims probability or reality merely by being simulated",passed:future.simulation.probabilityClaimed===false&&future.simulation.realityClaimed===false},
+          {name:"Future rehearsal asks what Maddy would do and why",passed:future.simulation.questions.includes("What would Maddy do in this world?")&&future.simulation.questions.includes("Why?")},
+          {name:"Future rehearsal searches for evidence that would make its decision wrong",passed:future.simulation.questions.includes("What evidence would make that choice wrong?")},
+          {name:"Counterfactuals compare credible alternative actions",passed:counterfactuals.success===true&&counterfactuals.branches.length===2},
+          {name:"Preparedness favors robust reversible low-regret actions across plausible futures",passed:counterfactuals.preparedness.robustActionsNow.some(item=>item.id==="staged")&&!counterfactuals.preparedness.robustActionsNow.some(item=>item.id==="rapid")},
+          {name:"Simulation cannot silently become a real experience",passed:rejectedFakeReal.success===false},
+          {name:"Real experience requires occurrence plus source evidence",passed:real.success===true&&real.record.evidenceClass==="real-experience"&&real.record.sourceEvidence.verified===true},
+          {name:"All three experience classes remain independently countable",passed:classes.counts["real-experience"]===1&&classes.counts["historical-blind-practice"]===1&&classes.counts["synthetic-future-simulation"]===1},
+          {name:"Simulation never self-authorizes consequential execution",passed:future.simulation.governance.consequentialExecutionRequiresSeparateAuthority===true&&counterfactuals.preparedness.authorityUnchanged===true},
+          {name:"Deliberate experience enters Maddy's living World Model",passed:world.deliberateExperience.latest?.fingerprint===real.record.fingerprint&&world.deliberateExperience.latestSimulation?.id===future.simulation.id},
+          {name:"Deliberate experience and simulations survive sovereign Brain persistence",passed:Array.isArray(snapshot.deliberateExperienceHistory)&&snapshot.deliberateExperienceHistory.some(item=>item.fingerprint===real.record.fingerprint)&&Array.isArray(snapshot.counterfactualSimulationHistory)&&snapshot.counterfactualSimulationHistory.some(item=>item.id===future.simulation.id)},
+          {name:"D7H extends the existing Brain, World Model, and Developmental Drive instead of creating a disconnected simulator",passed:typeof this.createDevelopmentalDrive==="function"&&typeof this.reconstructIntent==="function"&&typeof this.createHistoricalBlindPractice==="function"&&typeof this.projectWorldModel==="function"}
+        ];
+
+        const passed=checks.every(item=>item.passed);
+        console.table(checks.map(item=>({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.017D7H Deliberate Experience + Counterfactual Simulation: ${passed?"PASS":"FAIL"}.`);
+        return {commission:"006.017D7H",version:this.version,buildId:this.buildId,passed,checks,blindPractice:reveal,futureSimulation:future,counterfactuals,classes};
+      } finally {
+        brainPersistence.hydrated=priorHydrated;
+        this.deliberateExperienceHistory=original.experiences;
+        this.counterfactualSimulationHistory=original.simulations;
+        this.preparednessInsights=original.preparedness;
+        this.lastDeliberateExperience=original.lastExperience;
+        this.lastCounterfactualSimulation=original.lastSimulation;
+        this.deliberateExperienceCount=original.experienceCount;
+        this.counterfactualSimulationCount=original.simulationCount;
+      }
+    },
+
     getSalienceStatus() {
       return {
         assessmentCount:
@@ -9991,6 +10381,16 @@
           rule: "Natural language is evidence of intent, not the whole intent. Reconstruct probable meaning from utterance, conversational context, active mission, world state, relationship patterns, unresolved questions, and attention; preserve uncertainty and test material assumptions before consequential action."
         },
 
+        deliberateExperience: {
+          latest: this.clone(this.lastDeliberateExperience),
+          recent: this.clone(this.deliberateExperienceHistory.slice(0, 8)),
+          latestSimulation: this.clone(this.lastCounterfactualSimulation),
+          recentSimulations: this.clone(this.counterfactualSimulationHistory.slice(0, 8)),
+          preparedness: this.clone(this.preparednessInsights.slice(0, 12)),
+          evidenceClasses: ["real-experience","historical-blind-practice","synthetic-future-simulation"],
+          rule: "Practice may create developmental experience, never fabricated history. Real experience, historical blind practice, and synthetic future simulation remain permanently distinct evidence classes."
+        },
+
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -10024,6 +10424,7 @@
           investigationEvidence: model.investigationEvidence,
           developmentalDrive: model.developmentalDrive,
           intentReconstruction: model.intentReconstruction,
+          deliberateExperience: model.deliberateExperience,
           temporal: model.temporal
         });
 
@@ -11300,7 +11701,14 @@
         intentReconstructionHistory: this.intentReconstructionHistory.slice(0, this.configuration.maximumIntentReconstructions),
         investigativeIntentions: this.investigativeIntentions.slice(0, this.configuration.maximumInvestigativeIntentions),
         lastIntentReconstruction: this.lastIntentReconstruction ? this.clone(this.lastIntentReconstruction) : null,
-        intentReconstructionCount: Number(this.intentReconstructionCount || 0)
+        intentReconstructionCount: Number(this.intentReconstructionCount || 0),
+        deliberateExperienceHistory: this.deliberateExperienceHistory.slice(0, this.configuration.maximumDeliberateExperiences),
+        counterfactualSimulationHistory: this.counterfactualSimulationHistory.slice(0, this.configuration.maximumCounterfactualSimulations),
+        preparednessInsights: this.preparednessInsights.slice(0, this.configuration.maximumPreparednessInsights),
+        lastDeliberateExperience: this.lastDeliberateExperience ? this.clone(this.lastDeliberateExperience) : null,
+        lastCounterfactualSimulation: this.lastCounterfactualSimulation ? this.clone(this.lastCounterfactualSimulation) : null,
+        deliberateExperienceCount: Number(this.deliberateExperienceCount || 0),
+        counterfactualSimulationCount: Number(this.counterfactualSimulationCount || 0)
       };
     },
 
@@ -11428,6 +11836,13 @@
       this.investigativeIntentions = Array.isArray(saved.investigativeIntentions) ? saved.investigativeIntentions.slice(0, this.configuration.maximumInvestigativeIntentions) : [];
       this.lastIntentReconstruction = saved.lastIntentReconstruction && typeof saved.lastIntentReconstruction === "object" ? this.clone(saved.lastIntentReconstruction) : null;
       this.intentReconstructionCount = Math.max(Number(saved.intentReconstructionCount || 0), Number(this.lastIntentReconstruction?.reconstructionNumber || 0));
+      this.deliberateExperienceHistory = Array.isArray(saved.deliberateExperienceHistory) ? saved.deliberateExperienceHistory.slice(0, this.configuration.maximumDeliberateExperiences) : [];
+      this.counterfactualSimulationHistory = Array.isArray(saved.counterfactualSimulationHistory) ? saved.counterfactualSimulationHistory.slice(0, this.configuration.maximumCounterfactualSimulations) : [];
+      this.preparednessInsights = Array.isArray(saved.preparednessInsights) ? saved.preparednessInsights.slice(0, this.configuration.maximumPreparednessInsights) : [];
+      this.lastDeliberateExperience = saved.lastDeliberateExperience && typeof saved.lastDeliberateExperience === "object" ? this.clone(saved.lastDeliberateExperience) : null;
+      this.lastCounterfactualSimulation = saved.lastCounterfactualSimulation && typeof saved.lastCounterfactualSimulation === "object" ? this.clone(saved.lastCounterfactualSimulation) : null;
+      this.deliberateExperienceCount = Math.max(Number(saved.deliberateExperienceCount || 0), Number(this.lastDeliberateExperience?.experienceNumber || 0));
+      this.counterfactualSimulationCount = Math.max(Number(saved.counterfactualSimulationCount || 0), Number(this.lastCounterfactualSimulation?.simulationNumber || 0));
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
