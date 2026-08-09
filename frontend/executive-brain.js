@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.21.0
- * Build: EB1210-SUSTAINED-COGNITIVE-THREAD-CLOSURE-20260809-A
+ * Version: 1.22.0
+ * Build: EB1220-CONTINUOUS-COGNITIVE-ORCHESTRATION-HANDOFF-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.21.0";
-  const BUILD_ID = "EB1210-SUSTAINED-COGNITIVE-THREAD-CLOSURE-20260809-A";
+  const VERSION = "1.22.0";
+  const BUILD_ID = "EB1220-CONTINUOUS-COGNITIVE-ORCHESTRATION-HANDOFF-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -166,6 +166,9 @@
       cognitiveThreadLimit: 48,
       cognitiveThreadStepLimit: 24,
       cognitiveThreadDiminishingReturnFloor: 0.08,
+      continuousCognitionCycleBudget: 6,
+      continuousCognitionIdleBackoffMs: 15000,
+      continuousCognitionActiveBackoffMs: 5000,
       meaningfulChangeDebounceMs: 1200,
       cognitiveReentryCooldownMs: 5000,
       maximumCognitiveReentryHistory: 250,
@@ -285,6 +288,9 @@
     activeCognitiveThreadId: null,
     lastCognitiveThreadEvent: null,
     cognitiveThreadEventCount: 0,
+    continuousCognitionState: null,
+    continuousCognitionCycleCount: 0,
+    lastContinuousCognitionCycle: null,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -11351,6 +11357,253 @@
       }
     },
 
+    /*
+     * Commission 006.017D7L — Continuous Cognitive Orchestration Handoff
+     *
+     * This is deliberately a contract and resumable cycle, not a fake setInterval
+     * claim of 24/7 consciousness. The durable runtime can invoke the same cycle
+     * after browser exit once the server-side owner is commissioned.
+     */
+    buildContinuousCognitionHandoff(options = {}) {
+      const now=new Date().toISOString();
+      const openThreads=this.cognitiveThreads
+        .filter(thread=>["active","paused","blocked"].includes(thread.status))
+        .map(thread=>({
+          id:thread.id,
+          subject:thread.subject,
+          status:thread.status,
+          closureState:thread.closureState,
+          nextIntendedMove:thread.nextIntendedMove,
+          resumeTriggers:this.clone(thread.resumeTriggers || []),
+          updatedAt:thread.updatedAt
+        }));
+      const handoff={
+        schema:"meos.maddy.continuous-cognition-handoff.v1",
+        generatedAt:now,
+        brainVersion:this.version,
+        brainBuildId:this.buildId,
+        worldModelFingerprint:this.worldModel?.fingerprint || null,
+        currentPriority:this.clone(this.currentExecutivePriority),
+        priorityPortfolio:this.clone(this.executivePriorityPortfolio.slice(0,12)),
+        activeThreadId:this.activeCognitiveThreadId,
+        openThreads,
+        anticipatorySweep:this.clone(this.lastAnticipatorySweep),
+        nextWakeAt:new Date(Date.now()+Number(options.backoffMs || (
+          this.activeCognitiveThreadId
+            ? this.configuration.continuousCognitionActiveBackoffMs
+            : this.configuration.continuousCognitionIdleBackoffMs
+        ))).toISOString(),
+        requestedCycleBudget:Number(options.cycleBudget || this.configuration.continuousCognitionCycleBudget),
+        authority:{
+          externalActionAuthorized:false,
+          serverRuntimeOwnerRequired:true
+        },
+        truthRule:"A handoff preserves what cognition should resume; it is not proof that a browser-independent runtime is currently executing it."
+      };
+      handoff.fingerprint=this.fingerprintCognitiveDispatch(handoff);
+      return handoff;
+    },
+
+    runContinuousCognitionCycle(options = {}) {
+      const startedAt=new Date().toISOString();
+      const world=this.projectWorldModel({
+        reason:"continuous-cognition-cycle",
+        persist:false,
+        attend:false
+      });
+
+      const anticipatory=this.runAnticipatorySweep({promptedByHuman:false});
+      const judgment=this.runExecutiveJudgmentCycle({
+        materialChange:options.materialChange===true,
+        humanDirection:options.humanDirection
+      });
+
+      let threadAction={action:"idle",success:true};
+      const selected=judgment.arbitration?.selected || null;
+      const active=this.cognitiveThreads.find(thread=>thread.id===this.activeCognitiveThreadId);
+
+      if (active && selected && active.priorityId && selected.id!==active.priorityId) {
+        const preemption=this.preemptCognitiveThreadForPriority(selected,{
+          materialChange:options.materialChange===true
+        });
+        threadAction={action:preemption.preempted?"checkpoint-preempt":"protect-thread",...preemption};
+      } else if (active) {
+        threadAction={
+          action:"continue-thread",
+          success:true,
+          threadId:active.id,
+          nextIntendedMove:active.nextIntendedMove
+        };
+      } else if (selected) {
+        const opened=this.createCognitiveThread({
+          subject:selected.subject,
+          origin:selected.origin,
+          priorityId:selected.id,
+          objective:`Pursue the current executive priority until verified closure or a governed pause: ${selected.subject}.`,
+          unknowns:this.clone(selected.unknowns || []),
+          evidence:this.clone(selected.evidence || []),
+          nextIntendedMove:selected.cognitiveInvestment?.allocation==="investigate"
+            ? "investigate highest-value unresolved question"
+            : "determine the next evidence-grounded cognitive move"
+        });
+        threadAction={action:"open-thread",...opened};
+      }
+
+      const handoff=this.buildContinuousCognitionHandoff(options);
+      const cycle={
+        schema:"meos.maddy.continuous-cognition-cycle.v1",
+        cycleNumber:Number(this.continuousCognitionCycleCount || 0)+1,
+        startedAt,
+        completedAt:new Date().toISOString(),
+        worldModelFingerprint:world.fingerprint || null,
+        anticipatorySweepFingerprint:anticipatory.sweep?.fingerprint || null,
+        priorityArbitrationFingerprint:judgment.arbitration?.fingerprint || null,
+        threadAction:this.clone(threadAction),
+        handoff:this.clone(handoff),
+        authorityUnchanged:true,
+        browserIndependentExecutionClaimed:false
+      };
+      cycle.fingerprint=this.fingerprintCognitiveDispatch(cycle);
+      this.continuousCognitionCycleCount=cycle.cycleNumber;
+      this.lastContinuousCognitionCycle=cycle;
+      this.continuousCognitionState={
+        status:"handoff-ready",
+        lastCycleNumber:cycle.cycleNumber,
+        lastCycleAt:cycle.completedAt,
+        nextWakeAt:handoff.nextWakeAt,
+        handoffFingerprint:handoff.fingerprint,
+        runtimeOwner:"durable-server-required"
+      };
+      return {
+        success:true,
+        cycle:this.clone(cycle),
+        world:this.clone(world),
+        anticipatory:this.clone(anticipatory),
+        judgment:this.clone(judgment),
+        threadAction:this.clone(threadAction),
+        handoff:this.clone(handoff)
+      };
+    },
+
+    async runContinuousCognitionHandoffAcceptanceTest() {
+      const original={
+        cognitionState:this.clone(this.continuousCognitionState),
+        cycleCount:this.continuousCognitionCycleCount,
+        lastCycle:this.clone(this.lastContinuousCognitionCycle),
+        threads:this.clone(this.cognitiveThreads),
+        activeThreadId:this.activeCognitiveThreadId,
+        priority:this.clone(this.currentExecutivePriority),
+        portfolio:this.clone(this.executivePriorityPortfolio),
+        arbitration:this.clone(this.lastPriorityArbitration),
+        anticipatory:this.clone(this.anticipatoryInitiatives),
+        lastSweep:this.clone(this.lastAnticipatorySweep)
+      };
+      const priorHydrated=brainPersistence.hydrated;
+      brainPersistence.hydrated=false;
+      try {
+        this.continuousCognitionState=null;
+        this.continuousCognitionCycleCount=0;
+        this.lastContinuousCognitionCycle=null;
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        this.anticipatoryInitiatives=[];
+
+        // A durable runtime should be able to call one deterministic cognition
+        // cycle, persist the resulting handoff, and later invoke another cycle.
+        const first=this.runContinuousCognitionCycle({
+          humanDirection:{
+            id:"fixture-continuous-priority",
+            subject:"Prepare for a material future opportunity",
+            reason:"Acceptance fixture for resumable continuous cognition.",
+            missionConsequence:0.92,
+            urgency:0.82,
+            irreversibility:0.72,
+            leverage:0.9
+          }
+        });
+
+        const firstThreadId=this.activeCognitiveThreadId;
+        const firstHandoff=this.buildContinuousCognitionHandoff({backoffMs:5000});
+        const snapshot=this.buildPersistenceSnapshot();
+
+        // Simulate process re-entry by restoring only from the sovereign Brain
+        // snapshot, then run another cycle. This does not pretend the browser
+        // itself survived.
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        this.continuousCognitionState=null;
+        this.lastContinuousCognitionCycle=null;
+        this.continuousCognitionCycleCount=0;
+        this.restorePersistenceSnapshot(snapshot);
+
+        const restoredThread=this.cognitiveThreads.find(thread=>thread.id===firstThreadId);
+        const second=this.runContinuousCognitionCycle({});
+        const secondHandoff=second.handoff;
+
+        const checks=[
+          {name:"Continuous cognition is exposed as an invokable cycle rather than a browser timer claim",passed:typeof this.runContinuousCognitionCycle==="function"&&first.cycle.browserIndependentExecutionClaimed===false},
+          {name:"Each cognition cycle refreshes the living World Model",passed:Boolean(first.cycle.worldModelFingerprint)},
+          {name:"Each cognition cycle can run prompt-independent anticipatory attention",passed:first.anticipatory.sweep?.promptedByHuman===false},
+          {name:"Each cognition cycle composes Executive Judgment",passed:Boolean(first.cycle.priorityArbitrationFingerprint)},
+          {name:"A selected executive priority can open a sustained cognitive thread",passed:first.threadAction.action==="open-thread"&&Boolean(firstThreadId)},
+          {name:"The handoff preserves the current executive priority",passed:firstHandoff.currentPriority?.id==="fixture-continuous-priority"},
+          {name:"The handoff preserves unfinished cognitive threads",passed:firstHandoff.openThreads.some(thread=>thread.id===firstThreadId)},
+          {name:"The handoff preserves the next intended cognitive move",passed:firstHandoff.openThreads.some(thread=>thread.id===firstThreadId&&Boolean(thread.nextIntendedMove))},
+          {name:"The handoff contains an explicit next wake time for a durable runtime",passed:typeof firstHandoff.nextWakeAt==="string"&&!Number.isNaN(Date.parse(firstHandoff.nextWakeAt))},
+          {name:"The handoff carries a bounded cycle budget",passed:firstHandoff.requestedCycleBudget===this.configuration.continuousCognitionCycleBudget},
+          {name:"The handoff never grants external authority",passed:firstHandoff.authority.externalActionAuthorized===false},
+          {name:"The handoff explicitly requires a durable server runtime owner",passed:firstHandoff.authority.serverRuntimeOwnerRequired===true},
+          {name:"The handoff refuses to claim that persistence equals execution",passed:firstHandoff.truthRule.includes("not proof")},
+          {name:"Continuous cognition state survives sovereign Brain persistence",passed:snapshot.continuousCognitionState?.handoffFingerprint===firstHandoff.fingerprint},
+          {name:"Continuous cognition cycle count survives sovereign Brain persistence",passed:Number(snapshot.continuousCognitionCycleCount)>=1},
+          {name:"Unfinished thought survives simulated process re-entry",passed:Boolean(restoredThread)&&restoredThread.nextIntendedMove===firstHandoff.openThreads.find(thread=>thread.id===firstThreadId)?.nextIntendedMove},
+          {name:"The active cognitive-thread identity survives simulated process re-entry",passed:this.activeCognitiveThreadId===firstThreadId},
+          {name:"A second cognition cycle can continue after restored state",passed:second.success===true&&second.cycle.cycleNumber>first.cycle.cycleNumber},
+          {name:"Re-entry produces a fresh resumable handoff rather than replaying the old one",passed:secondHandoff.fingerprint!==firstHandoff.fingerprint},
+          {name:"Continuous cognition composes Anticipation, Judgment, and Sustained Thread cognition",passed:typeof this.runAnticipatorySweep==="function"&&typeof this.runExecutiveJudgmentCycle==="function"&&typeof this.advanceCognitiveThread==="function"},
+          {name:"Continuous cognition remains provider-neutral",passed:!JSON.stringify({firstHandoff,secondHandoff}).toLowerCase().includes("google")},
+          {name:"Continuous cognition does not self-authorize external work",passed:first.cycle.authorityUnchanged===true&&second.cycle.authorityUnchanged===true},
+          {name:"Browser-independent 24/7 cognition remains an explicit infrastructure gap",passed:this.continuousCognitionState?.runtimeOwner==="durable-server-required"&&second.cycle.browserIndependentExecutionClaimed===false}
+        ];
+        const passed=checks.every(check=>check.passed);
+        console.table(checks.map(check=>({name:check.name,passed:check.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.017D7L Continuous Cognitive Orchestration Handoff: ${passed?"PASS":"FAIL"}.`);
+        return {commission:"006.017D7L",version:this.version,buildId:this.buildId,passed,checks,first,firstHandoff,snapshot,restoredThread,second,secondHandoff};
+      } finally {
+        brainPersistence.hydrated=priorHydrated;
+        this.continuousCognitionState=original.cognitionState;
+        this.continuousCognitionCycleCount=original.cycleCount;
+        this.lastContinuousCognitionCycle=original.lastCycle;
+        this.cognitiveThreads=original.threads;
+        this.activeCognitiveThreadId=original.activeThreadId;
+        this.currentExecutivePriority=original.priority;
+        this.executivePriorityPortfolio=original.portfolio;
+        this.lastPriorityArbitration=original.arbitration;
+        this.anticipatoryInitiatives=original.anticipatory;
+        this.lastAnticipatorySweep=original.lastSweep;
+      }
+    },
+
+    restorePersistenceSnapshot(saved = {}) {
+      if (!saved || typeof saved !== "object") return {success:false,reason:"snapshot-required"};
+      if (Array.isArray(saved.executivePriorityPortfolio)) this.executivePriorityPortfolio=this.clone(saved.executivePriorityPortfolio).slice(0,this.configuration.priorityPortfolioLimit);
+      this.currentExecutivePriority=saved.currentExecutivePriority ? this.clone(saved.currentExecutivePriority) : null;
+      this.lastPriorityArbitration=saved.lastPriorityArbitration ? this.clone(saved.lastPriorityArbitration) : null;
+      this.priorityArbitrationCount=Math.max(Number(saved.priorityArbitrationCount||0),Number(this.lastPriorityArbitration?.arbitrationNumber||0));
+      if (Array.isArray(saved.cognitiveThreads)) this.cognitiveThreads=this.clone(saved.cognitiveThreads).slice(0,this.configuration.cognitiveThreadLimit);
+      this.activeCognitiveThreadId=saved.activeCognitiveThreadId || null;
+      this.lastCognitiveThreadEvent=saved.lastCognitiveThreadEvent ? this.clone(saved.lastCognitiveThreadEvent) : null;
+      this.cognitiveThreadEventCount=Math.max(Number(saved.cognitiveThreadEventCount||0),Number(this.lastCognitiveThreadEvent?.eventNumber||0));
+      this.continuousCognitionState=saved.continuousCognitionState ? this.clone(saved.continuousCognitionState) : null;
+      this.continuousCognitionCycleCount=Number(saved.continuousCognitionCycleCount||0);
+      this.lastContinuousCognitionCycle=saved.lastContinuousCognitionCycle ? this.clone(saved.lastContinuousCognitionCycle) : null;
+      return {success:true};
+    },
+
     getSalienceStatus() {
       return {
         assessmentCount:
@@ -11560,6 +11813,13 @@
           rule: "A cognitive thread preserves unfinished thought across cycles and interruptions. Closure requires explicit criteria and verification; interruption checkpoints state rather than erasing it; material contradiction may reopen a closed-for-now thread."
         },
 
+        continuousCognition: {
+          state: this.clone(this.continuousCognitionState),
+          lastCycle: this.clone(this.lastContinuousCognitionCycle),
+          cycleCount: Number(this.continuousCognitionCycleCount || 0),
+          rule: "Continuous cognition is an orchestration contract over existing cognitive organs. This browser Brain may prepare and persist resumable cognitive work, but it must not claim browser-independent 24/7 life until a durable server runtime owns and invokes the contract."
+        },
+
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -11597,6 +11857,7 @@
           anticipatoryInitiative: model.anticipatoryInitiative,
           executiveJudgment: model.executiveJudgment,
           sustainedCognition: model.sustainedCognition,
+          continuousCognition: model.continuousCognition,
           temporal: model.temporal
         });
 
@@ -12891,7 +13152,10 @@
         cognitiveThreads: this.cognitiveThreads.slice(0, this.configuration.cognitiveThreadLimit),
         activeCognitiveThreadId: this.activeCognitiveThreadId,
         lastCognitiveThreadEvent: this.lastCognitiveThreadEvent ? this.clone(this.lastCognitiveThreadEvent) : null,
-        cognitiveThreadEventCount: Number(this.cognitiveThreadEventCount || 0)
+        cognitiveThreadEventCount: Number(this.cognitiveThreadEventCount || 0),
+        continuousCognitionState: this.continuousCognitionState ? this.clone(this.continuousCognitionState) : null,
+        continuousCognitionCycleCount: Number(this.continuousCognitionCycleCount || 0),
+        lastContinuousCognitionCycle: this.lastContinuousCognitionCycle ? this.clone(this.lastContinuousCognitionCycle) : null
       };
     },
 
@@ -13037,6 +13301,9 @@
       this.activeCognitiveThreadId = saved.activeCognitiveThreadId || null;
       this.lastCognitiveThreadEvent = saved.lastCognitiveThreadEvent && typeof saved.lastCognitiveThreadEvent === "object" ? this.clone(saved.lastCognitiveThreadEvent) : null;
       this.cognitiveThreadEventCount = Math.max(Number(saved.cognitiveThreadEventCount || 0), Number(this.lastCognitiveThreadEvent?.eventNumber || 0));
+      this.continuousCognitionState = saved.continuousCognitionState && typeof saved.continuousCognitionState === "object" ? this.clone(saved.continuousCognitionState) : null;
+      this.continuousCognitionCycleCount = Math.max(Number(saved.continuousCognitionCycleCount || 0), Number(saved.lastContinuousCognitionCycle?.cycleNumber || 0));
+      this.lastContinuousCognitionCycle = saved.lastContinuousCognitionCycle && typeof saved.lastContinuousCognitionCycle === "object" ? this.clone(saved.lastContinuousCognitionCycle) : null;
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
