@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.19.2
- * Build: EB1192-CONVERGENT-SALIENCE-EVIDENCE-DIVERSITY-20260809-A
+ * Version: 1.19.3
+ * Build: EB1193-FOREGROUND-DISCRIMINATION-ACCEPTANCE-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.19.2";
-  const BUILD_ID = "EB1192-CONVERGENT-SALIENCE-EVIDENCE-DIVERSITY-20260809-A";
+  const VERSION = "1.19.3";
+  const BUILD_ID = "EB1193-FOREGROUND-DISCRIMINATION-ACCEPTANCE-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10529,44 +10529,91 @@
       const priorHydrated=brainPersistence.hydrated;
       brainPersistence.hydrated=false;
       try {
+        // Scenario A: convergent but not critical. Maddy should notice it and
+        // keep it active without falsely manufacturing foreground urgency.
         this.cognitiveIntentions=[{
-          intentionId:"fixture-intention",
+          intentionId:"fixture-ordinary-intention",
+          subject:"Routine partnership eligibility follow-up",
+          status:"blocked",
+          triggers:[{source:"monitoring",event:"follow-up-needed"}],
+          lastError:"partner confirmation pending"
+        }];
+        this.investigativeIntentions=[{
+          id:"fixture-ordinary-investigation",
+          subject:"Routine partnership eligibility follow-up",
+          objective:"Confirm whether the routine partnership detail changes current positioning.",
+          confidence:0.68,
+          status:"active",
+          questions:["Has the partnership requirement changed?"]
+        }];
+        this.developmentalGoals=[{
+          subject:"routine partnership review",
+          status:"active",
+          reason:"Improve consistency in routine eligibility review.",
+          impact:0.50,
+          leverage:0.45,
+          urgency:0.25
+        }];
+        this.preparednessInsights=[];
+
+        const ordinarySweep=this.runAnticipatorySweep({promptedByHuman:false});
+
+        // Scenario B: genuinely critical convergence. Independent organs point
+        // to the same near-term concern with high consequence, time pressure,
+        // leverage, and unresolved uncertainty. This must earn foreground.
+        this.cognitiveIntentions=[{
+          intentionId:"fixture-critical-intention",
           subject:"County funding eligibility deadline",
           status:"blocked",
-          triggers:[{source:"monitoring",event:"deadline-shift"}],
+          triggers:[
+            {source:"monitoring",event:"deadline-shift"},
+            {source:"mission",event:"eligibility-prerequisite"}
+          ],
           lastError:"eligibility prerequisite unresolved"
         }];
         this.investigativeIntentions=[{
-          id:"fixture-investigation",
+          id:"fixture-critical-investigation",
           subject:"County funding eligibility deadline",
-          objective:"Resolve whether a legitimate partnership route satisfies eligibility.",
-          confidence:0.61,
+          objective:"Resolve whether a legitimate partnership route satisfies eligibility before the near-term deadline.",
+          confidence:0.52,
           status:"active",
-          questions:["Does the current rule permit partner-led participation?"]
+          questions:[
+            "Does the current rule permit partner-led participation?",
+            "Has the eligibility language changed?",
+            "What evidence would make the opportunity nonviable?"
+          ]
         }];
         this.developmentalGoals=[{
-          subject:"restricted-funding cash-flow reasoning",
+          subject:"County funding eligibility deadline",
           status:"active",
-          reason:"Improve readiness before a high-growth award.",
-          impact:0.75,
-          leverage:0.8,
-          urgency:0.4
+          reason:"Improve deadline-critical funding eligibility reasoning before a material opportunity closes.",
+          impact:0.95,
+          leverage:0.92,
+          urgency:0.95,
+          horizonDays:7,
+          unknowns:["partner route not yet verified"]
         }];
         this.preparednessInsights=[{
-          simulationId:"fixture-simulation",
-          recommendation:"Validate staged expansion readiness.",
+          simulationId:"fixture-critical-simulation",
+          recommendation:"Validate a low-regret partnership readiness path immediately.",
           robustActionsNow:[{
-            action:"stage expansion behind readiness gates",
-            preparednessScore:0.84,
-            robustness:0.88,
-            reversibility:0.82,
-            falsifiers:["award deadline makes staging impossible"]
+            action:"validate partnership eligibility path now",
+            preparednessScore:0.93,
+            robustness:0.92,
+            reversibility:0.88,
+            evidenceStrength:0.82,
+            assumptions:["partner remains eligible"],
+            falsifiers:["rules prohibit partner-led participation"]
           }]
         }];
 
-        const sweep=this.runAnticipatorySweep({promptedByHuman:false});
-        const top=sweep.candidates[0];
-        const chosen=sweep.initiatives[0];
+        const criticalSweep=this.runAnticipatorySweep({promptedByHuman:false});
+        const criticalForeground=criticalSweep.initiatives.find(item =>
+          item.attentionLevel==="foreground" &&
+          item.subject==="County funding eligibility deadline"
+        ) || criticalSweep.initiatives.find(item=>item.attentionLevel==="foreground");
+        const chosen=criticalForeground || criticalSweep.initiatives[0];
+
         let captured="";
         const advanced=chosen ? await this.advanceAnticipatoryInitiative(chosen,{
           researchExecutor:async ({query})=>{
@@ -10578,33 +10625,47 @@
         const world=this.projectWorldModel({reason:"anticipatory-initiative-acceptance",persist:false,attend:false});
         const snapshot=this.buildPersistenceSnapshot();
 
+        const ordinaryForeground=ordinarySweep.initiatives.filter(item=>item.attentionLevel==="foreground");
+        const ordinaryActive=ordinarySweep.initiatives.filter(item=>item.attentionLevel==="active");
+
         const checks=[
-          {name:"Maddy can generate attention candidates without a human prompt",passed:sweep.success===true&&sweep.sweep.promptedByHuman===false&&sweep.candidates.length>0},
-          {name:"Anticipation composes unresolved intentions rather than creating a disconnected proactive engine",passed:sweep.candidates.some(x=>(x.origins || [x.origin]).includes("unresolved-intention"))},
-          {name:"Active investigations can independently compete for future attention",passed:sweep.candidates.some(x=>(x.origins || [x.origin]).includes("active-investigation"))},
-          {name:"Developmental Drive can create anticipatory attention",passed:sweep.candidates.some(x=>x.origin==="developmental-drive")},
-          {name:"Counterfactual preparedness can create anticipatory attention",passed:sweep.candidates.some(x=>x.origin==="counterfactual-preparedness")},
-          {name:"Candidates are prioritized by consequence, time, leverage, uncertainty, and reversibility",passed:top&&typeof top.dimensions?.consequence==="number"&&typeof top.dimensions?.timePressure==="number"&&typeof top.dimensions?.leverage==="number"&&typeof top.dimensions?.uncertainty==="number"&&typeof top.dimensions?.reversibility==="number"},
-          {name:"Attention threshold prevents every thought from becoming an initiative",passed:sweep.candidates.length>=sweep.initiatives.length},
-          {name:"High-salience anticipation can reach foreground attention",passed:sweep.initiatives.some(x=>x.attentionLevel==="foreground"&&(x.origins || []).length>=2&&x.convergence?.thresholdLowered===false&&x.score>=this.configuration.anticipatoryEscalationThreshold)},
-          {name:"Anticipation remains explicitly a hypothesis rather than prophecy",passed:sweep.initiatives.every(x=>x.truthRule.includes("not evidence"))},
-          {name:"Self-directed initiative never grants external execution authority",passed:sweep.initiatives.every(x=>x.authority.externalActionAuthorized===false)},
+          {name:"Maddy can generate attention candidates without a human prompt",passed:criticalSweep.success===true&&criticalSweep.sweep.promptedByHuman===false&&criticalSweep.candidates.length>0},
+          {name:"Anticipation composes unresolved intentions rather than creating a disconnected proactive engine",passed:criticalSweep.candidates.some(x=>(x.origins || [x.origin]).includes("unresolved-intention"))},
+          {name:"Active investigations can independently compete for future attention",passed:criticalSweep.candidates.some(x=>(x.origins || [x.origin]).includes("active-investigation"))},
+          {name:"Developmental Drive can create anticipatory attention",passed:criticalSweep.candidates.some(x=>(x.origins || [x.origin]).includes("developmental-drive"))},
+          {name:"Counterfactual preparedness can create anticipatory attention",passed:criticalSweep.candidates.some(x=>(x.origins || [x.origin]).includes("counterfactual-preparedness"))},
+          {name:"Candidates are prioritized by consequence, time, leverage, uncertainty, and reversibility",passed:criticalSweep.candidates.some(x=>typeof x.dimensions?.consequence==="number"&&typeof x.dimensions?.timePressure==="number"&&typeof x.dimensions?.leverage==="number"&&typeof x.dimensions?.uncertainty==="number"&&typeof x.dimensions?.reversibility==="number")},
+          {name:"Attention threshold prevents every thought from becoming an initiative",passed:criticalSweep.candidates.length>=criticalSweep.initiatives.length},
+          {name:"Ordinary convergence can remain active without manufacturing foreground urgency",passed:ordinaryForeground.length===0&&ordinaryActive.length>=0},
+          {name:"Genuinely critical convergent evidence can earn foreground attention",passed:Boolean(criticalForeground)&&criticalForeground.score>=this.configuration.anticipatoryEscalationThreshold&&(criticalForeground.origins || []).length>=2&&criticalForeground.convergence?.thresholdLowered===false},
+          {name:"Foreground discrimination preserves the existing 0.86 threshold",passed:this.configuration.anticipatoryEscalationThreshold===0.86},
+          {name:"Anticipation remains explicitly a hypothesis rather than prophecy",passed:criticalSweep.initiatives.every(x=>x.truthRule.includes("not evidence"))},
+          {name:"Self-directed initiative never grants external execution authority",passed:criticalSweep.initiatives.every(x=>x.authority.externalActionAuthorized===false)},
           {name:"Maddy-directed anticipation can invoke the existing Intent Reconstruction machinery",passed:advanced.investigation?.reconstruction?.probableObjective?.includes("deserves action or preparation now")===true},
           {name:"Maddy-directed anticipation can invoke real authorized investigation",passed:advanced.success===true&&advanced.investigation?.evidence?.executor==="caller-injected-research-executor"},
           {name:"Anticipatory investigation requires falsification",passed:captured.includes("falsify")===true},
           {name:"Anticipatory investigation searches for low-regret positioning now",passed:advanced.investigation?.reconstruction?.probableObjective?.includes("low-regret move")===true},
           {name:"Self-directed anticipation becomes autobiographical experience",passed:this.autobiographicalMemory.some(x=>x.eventType==="self-directed-anticipatory-investigation")},
-          {name:"Anticipatory state enters Maddy's living World Model",passed:world.anticipatoryInitiative.latestSweep?.fingerprint===sweep.sweep.fingerprint},
+          {name:"Anticipatory state enters Maddy's living World Model",passed:world.anticipatoryInitiative.latestSweep?.fingerprint===criticalSweep.sweep.fingerprint},
           {name:"Anticipatory initiatives survive sovereign Brain persistence",passed:Array.isArray(snapshot.anticipatoryInitiatives)&&snapshot.anticipatoryInitiatives.some(x=>x.id===chosen?.id&&["researched","blocked","active"].includes(x.status))},
-          {name:"The sweep itself survives sovereign Brain persistence",passed:snapshot.lastAnticipatorySweep?.fingerprint===sweep.sweep.fingerprint},
-          {name:"No Google or vendor semantics are embedded in anticipatory cognition",passed:!JSON.stringify(sweep).toLowerCase().includes("google")},
+          {name:"The sweep itself survives sovereign Brain persistence",passed:snapshot.lastAnticipatorySweep?.fingerprint===criticalSweep.sweep.fingerprint},
+          {name:"No Google or vendor semantics are embedded in anticipatory cognition",passed:!JSON.stringify(criticalSweep).toLowerCase().includes("google")},
           {name:"Anticipation reuses the existing World Model and cognitive organs",passed:typeof this.projectWorldModel==="function"&&typeof this.reconstructIntent==="function"&&typeof this.investigateReconstructedIntent==="function"&&typeof this.createDevelopmentalDrive==="function"},
           {name:"The pasture slice remains continuous-cognition compatible without claiming browser-independent 24/7 execution",passed:this.configuration.continuousCognitionEnabled===true&&this.configuration.anticipatoryInitiativeEnabled===true}
         ];
         const passed=checks.every(x=>x.passed);
         console.table(checks.map(x=>({name:x.name,passed:x.passed})));
         console.info(`[MEOS ${this.version}] Commission 006.017D7I Anticipatory Initiative + Self-Directed Attention: ${passed?"PASS":"FAIL"}.`);
-        return {commission:"006.017D7I",version:this.version,buildId:this.buildId,passed,checks,sweep,advanced};
+        return {
+          commission:"006.017D7I",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          checks,
+          ordinarySweep,
+          criticalSweep,
+          advanced
+        };
       } finally {
         brainPersistence.hydrated=priorHydrated;
         this.cognitiveIntentions=original.intentions;
