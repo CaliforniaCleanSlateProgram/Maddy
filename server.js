@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.34";
+const VERSION = "2.10.35";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1648,9 +1648,9 @@ function getExecutiveBrainAuthorityStatus() {
 /* ========================================================================== */
 
 const HEADLESS_RESEARCH_COMMISSION = "006.017D7P1";
-const HEADLESS_RESEARCH_VERSION = "1.1.0";
+const HEADLESS_RESEARCH_VERSION = "1.1.1";
 const HEADLESS_RESEARCH_BUILD_ID =
-  "HRO110-PUBLIC-WEB-SEARCH-RETRIEVAL-ADAPTER-20260809-A";
+  "HRO111-RESEARCH-HELPER-NAMESPACE-REPAIR-20260809-A";
 
 const headlessResearchRuntime = {
   status: "online",
@@ -1966,7 +1966,7 @@ function decodeHtmlEntities(value = "") {
     .replace(/&#x2F;/g, "/");
 }
 
-function stripHtml(value = "") {
+function stripResearchHtml(value = "") {
   return decodeHtmlEntities(
     String(value)
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -2030,7 +2030,7 @@ async function fetchPublicResearchUrl(url, options = {}) {
     const maxChars = Number(options.maxChars || 50000);
     const readable =
       contentType.includes("html")
-        ? stripHtml(body)
+        ? stripResearchHtml(body)
         : body.trim();
 
     return {
@@ -2065,8 +2065,8 @@ function parseDuckDuckGoHtml(html = "") {
 
     results.push({
       source,
-      title: stripHtml(match[2]),
-      excerpt: stripHtml(match[3]),
+      title: stripResearchHtml(match[2]),
+      excerpt: stripResearchHtml(match[3]),
       retrievedAt: new Date().toISOString(),
       evidenceStatus: "search-discovery"
     });
