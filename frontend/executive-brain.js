@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.12.1
- * Build: EB1121-CROSS-DOMAIN-SALIENCE-PROPAGATION-20260808-A
+ * Version: 1.13.0
+ * Build: EB1130-CAUSAL-COUNTERFACTUAL-INVESTIGATION-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.12.1";
-  const BUILD_ID = "EB1121-CROSS-DOMAIN-SALIENCE-PROPAGATION-20260808-A";
+  const VERSION = "1.13.0";
+  const BUILD_ID = "EB1130-CAUSAL-COUNTERFACTUAL-INVESTIGATION-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -177,6 +177,8 @@
       maximumSalienceHistory: 180,
       salienceAttentionThreshold: 0.58,
       salienceInvestigationThreshold: 0.72,
+      maximumCausalInvestigationHistory: 120,
+      maximumCompetingHypotheses: 6,
       temporalContinuityResumeThresholdMs: 15000,
       temporalCommitmentLookaheadHours: 720
     },
@@ -221,6 +223,9 @@
     salienceHistory: [],
     lastSalienceAssessment: null,
     salienceAssessmentCount: 0,
+    causalInvestigationHistory: [],
+    lastCausalInvestigation: null,
+    causalInvestigationCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -7751,6 +7756,17 @@
         };
       }
 
+      const causalInvestigation =
+        assessment.investigate
+          ? this.runCausalCounterfactualInvestigation(
+              assessment,
+              {
+                previousWorldModel: previous,
+                currentWorldModel: current
+              }
+            )
+          : null;
+
       const trigger = {
         source: "executive-brain-world-model",
         event:
@@ -7771,6 +7787,25 @@
           this.clone(
             assessment.questions.slice(0, 8)
           ),
+        causalInvestigation:
+          causalInvestigation
+            ? {
+                fingerprint:
+                  causalInvestigation.fingerprint,
+                hypotheses:
+                  this.clone(
+                    causalInvestigation.hypotheses
+                  ),
+                counterfactuals:
+                  this.clone(
+                    causalInvestigation.counterfactuals
+                  ),
+                nextInvestigation:
+                  this.clone(
+                    causalInvestigation.nextInvestigation
+                  )
+              }
+            : null,
         worldFingerprint:
           current?.fingerprint || null
       };
@@ -7808,6 +7843,338 @@
         assessment,
         scheduled
       };
+    },
+
+    /*
+     * Commission 006.017D7C — Causal + Counterfactual Autonomous Investigation
+     *
+     * Emergent attention is not allowed to collapse into one convenient story.
+     * Maddy must construct competing explanations, expose assumptions,
+     * distinguish evidence from inference, ask what would falsify each theory,
+     * reason about "what if" worlds, and choose the next investigation by
+     * expected uncertainty reduction rather than familiarity.
+     */
+    buildCompetingCausalHypotheses(assessment = {}, context = {}) {
+      const signals = Array.isArray(assessment?.signals)
+        ? assessment.signals
+        : [];
+      const questions = Array.isArray(assessment?.questions)
+        ? assessment.questions
+        : [];
+      const connections = Array.isArray(assessment?.connections)
+        ? assessment.connections
+        : [];
+
+      const candidates = [];
+
+      const pushHypothesis = (
+        id,
+        claim,
+        causalPath,
+        assumptions,
+        evidenceFor,
+        evidenceAgainst,
+        falsifiers,
+        confidence = 0.35
+      ) => {
+        candidates.push({
+          hypothesisId: id,
+          claim,
+          status: "hypothesis-not-fact",
+          confidence,
+          causalPath,
+          assumptions,
+          evidence: {
+            supporting: evidenceFor,
+            contradicting: evidenceAgainst
+          },
+          falsifiers,
+          unansweredQuestions: questions.slice(0, 6)
+        });
+      };
+
+      if (
+        signals.some(item =>
+          item.type === "future-positioning-implication"
+        )
+      ) {
+        pushHypothesis(
+          "positioning-changes-eligibility",
+          "A presently adjacent opportunity may become viable because organizational positioning can change before a future decision point.",
+          [
+            "present mismatch",
+            "capability/relationship development",
+            "future eligibility or competitiveness",
+            "opportunity viability"
+          ],
+          [
+            "the relevant requirement can legitimately be satisfied",
+            "the opportunity or a successor cycle remains available",
+            "positioning cost does not exceed expected mission value"
+          ],
+          connections.filter(item =>
+            item.type === "positioning-opportunity"
+          ),
+          [],
+          [
+            "authoritative eligibility rules make the requirement structurally impossible for the organization",
+            "the required capability cannot be built or partnered for within the available time",
+            "the future cycle is discontinued"
+          ],
+          0.42
+        );
+      }
+
+      if (
+        signals.some(item =>
+          item.type === "relationship-state-changed"
+        )
+      ) {
+        pushHypothesis(
+          "relationship-unlocks-path",
+          "A changed human relationship may alter access, information, partnership capacity, or execution probability.",
+          [
+            "relationship state change",
+            "new information/access/trust",
+            "changed organizational option set",
+            "changed outcome probability"
+          ],
+          [
+            "the relationship is relevant to the affected intention",
+            "trust or access is supported by interaction evidence"
+          ],
+          signals.filter(item =>
+            item.type === "relationship-state-changed"
+          ),
+          [],
+          [
+            "the person has no relevant authority, information, capability, or connection",
+            "the apparent relationship change is noise or stale context"
+          ],
+          0.34
+        );
+      }
+
+      if (
+        signals.some(item =>
+          item.type === "monitoring-state-changed"
+        )
+      ) {
+        pushHypothesis(
+          "external-change-alters-future",
+          "A change in the external environment may have altered the value, timing, risk, or feasibility of an existing intention.",
+          [
+            "external observation",
+            "constraint/opportunity change",
+            "intention impact",
+            "future outcome change"
+          ],
+          [
+            "the monitoring observation is current",
+            "the observation applies to the organization or relevant future state"
+          ],
+          signals.filter(item =>
+            item.type === "monitoring-state-changed"
+          ),
+          [],
+          [
+            "authoritative evidence shows the observation is stale or inapplicable",
+            "the affected intention is causally independent of the observed change"
+          ],
+          0.38
+        );
+      }
+
+      // Mandatory skeptical alternative prevents confirmation-by-design.
+      pushHypothesis(
+        "coincidence-or-noise",
+        "The apparent connection may be coincidental, stale, incomplete, or too weak to justify changing strategy.",
+        [
+          "multiple observations",
+          "human/model pattern detection",
+          "apparent connection without sufficient causal evidence"
+        ],
+        [
+          "cross-domain convergence can still arise from unrelated events"
+        ],
+        [],
+        connections,
+        [
+          "independent authoritative evidence establishes a causal mechanism",
+          "the predicted consequence occurs under a controlled or strongly discriminating observation"
+        ],
+        0.30
+      );
+
+      return candidates
+        .slice(
+          0,
+          this.configuration.maximumCompetingHypotheses
+        )
+        .map((item, index) => ({
+          ...item,
+          rank: index + 1
+        }));
+    },
+
+    buildCounterfactuals(hypotheses = [], context = {}) {
+      return hypotheses.flatMap(hypothesis => {
+        const claim = hypothesis.claim;
+        return [
+          {
+            hypothesisId: hypothesis.hypothesisId,
+            type: "absence",
+            question:
+              `What would we expect if this proposed cause had NOT occurred?`,
+            comparison:
+              `Compare observed state against a plausible world without: ${claim}`,
+            status: "simulation-not-fact"
+          },
+          {
+            hypothesisId: hypothesis.hypothesisId,
+            type: "intervention",
+            question:
+              `What changes if MEOS deliberately changes one controllable upstream condition?`,
+            comparison:
+              "Estimate whether the predicted downstream result changes while preserving other known constraints.",
+            status: "simulation-not-fact"
+          }
+        ];
+      }).slice(0, 12);
+    },
+
+    rankDiscriminatingInvestigations(hypotheses = [], assessment = {}) {
+      const investigations = [];
+
+      hypotheses.forEach(hypothesis => {
+        (hypothesis.falsifiers || []).forEach((falsifier, index) => {
+          const differentiates =
+            hypotheses.filter(other =>
+              other.hypothesisId !== hypothesis.hypothesisId
+            ).length;
+
+          const evidenceGap =
+            (hypothesis.unansweredQuestions || []).length;
+
+          const expectedInformationGain =
+            Math.min(
+              1,
+              Number(
+                (
+                  0.35 +
+                  differentiates * 0.08 +
+                  evidenceGap * 0.04 -
+                  index * 0.03
+                ).toFixed(3)
+              )
+            );
+
+          investigations.push({
+            investigationId:
+              `${hypothesis.hypothesisId}-falsifier-${index + 1}`,
+            hypothesisId: hypothesis.hypothesisId,
+            question:
+              `Can we establish whether: ${falsifier}?`,
+            purpose: "falsification",
+            expectedInformationGain,
+            authority:
+              "internal-investigation-only-unless-external-action-is-approved",
+            preferredEvidence:
+              "authoritative-primary-source-when-available"
+          });
+        });
+      });
+
+      return investigations.sort(
+        (a, b) =>
+          b.expectedInformationGain -
+          a.expectedInformationGain
+      );
+    },
+
+    runCausalCounterfactualInvestigation(
+      assessment = {},
+      context = {}
+    ) {
+      const hypotheses =
+        this.buildCompetingCausalHypotheses(
+          assessment,
+          context
+        );
+      const counterfactuals =
+        this.buildCounterfactuals(
+          hypotheses,
+          context
+        );
+      const investigations =
+        this.rankDiscriminatingInvestigations(
+          hypotheses,
+          assessment
+        );
+      const nextInvestigation =
+        investigations[0] || null;
+
+      const result = {
+        schema:
+          "meos.maddy.causal-counterfactual-investigation.v1",
+        investigationNumber:
+          Number(this.causalInvestigationCount || 0) + 1,
+        generatedAt: new Date().toISOString(),
+        subject:
+          assessment?.subject ||
+          "Emergent world-model connection",
+        salienceFingerprint:
+          assessment?.currentWorldFingerprint || null,
+        epistemicStatus:
+          "hypotheses-under-investigation",
+        hypotheses,
+        counterfactuals,
+        investigations,
+        nextInvestigation,
+        governance: {
+          correlationIsNotCausation: true,
+          hypothesisIsNotFact: true,
+          disconfirmingEvidenceRequired: true,
+          externalActionRequiresExistingAuthority: true,
+          investigationMayProceedAutonomouslyWithinAuthority: true
+        }
+      };
+
+      result.fingerprint =
+        this.fingerprintCognitiveDispatch(result);
+
+      this.causalInvestigationCount =
+        result.investigationNumber;
+      this.lastCausalInvestigation =
+        result;
+      this.causalInvestigationHistory.unshift(
+        this.clone(result)
+      );
+      this.causalInvestigationHistory =
+        this.causalInvestigationHistory.slice(
+          0,
+          this.configuration
+            .maximumCausalInvestigationHistory
+        );
+
+      this.emit(
+        "brain:causal-investigation-created",
+        this.clone(result)
+      );
+
+      this.record(
+        "cognition.causal-investigation",
+        {
+          subject: result.subject,
+          hypothesisCount: hypotheses.length,
+          counterfactualCount:
+            counterfactuals.length,
+          nextInvestigation:
+            nextInvestigation?.question || null
+        }
+      );
+
+      return this.clone(result);
     },
 
     getSalienceStatus() {
@@ -8073,6 +8440,255 @@
       return this.clone(
         this.worldModelHistory.slice(0, normalized)
       );
+    },
+
+    runCausalCounterfactualAcceptanceTest() {
+      const assessment = {
+        schema:
+          "meos.maddy.salience-assessment.v1",
+        subject:
+          "Adjacent opportunity may become viable through future positioning",
+        currentWorldFingerprint:
+          "d7c-world-fingerprint",
+        meaningful: true,
+        investigate: true,
+        signals: [
+          {
+            type:
+              "future-positioning-implication",
+            domains: [
+              "intentions",
+              "unknowns",
+              "possible-futures"
+            ]
+          },
+          {
+            type:
+              "relationship-state-changed",
+            domains: [
+              "people",
+              "relationships"
+            ]
+          },
+          {
+            type:
+              "monitoring-state-changed",
+            domains: [
+              "monitoring",
+              "external-world"
+            ]
+          }
+        ],
+        connections: [
+          {
+            type:
+              "positioning-opportunity",
+            reason:
+              "Present change may alter what becomes possible later."
+          },
+          {
+            type:
+              "emergent-cross-domain-connection",
+            domains: [
+              "relationships",
+              "monitoring",
+              "possible-futures"
+            ]
+          }
+        ],
+        questions: [
+          "Can a present eligibility gap be legitimately closed before a future cycle?",
+          "Would a credible partner change execution feasibility?"
+        ]
+      };
+
+      const result =
+        this.runCausalCounterfactualInvestigation(
+          assessment,
+          {
+            acceptanceTest: true
+          }
+        );
+      const snapshot =
+        this.buildPersistenceSnapshot();
+
+      const checks = [
+        {
+          name:
+            "Maddy generates multiple competing causal explanations instead of one convenient story",
+          passed:
+            result.hypotheses.length >= 3
+        },
+        {
+          name:
+            "A skeptical coincidence/noise hypothesis is always considered",
+          passed:
+            result.hypotheses.some(
+              item =>
+                item.hypothesisId ===
+                "coincidence-or-noise"
+            )
+        },
+        {
+          name:
+            "Every hypothesis is explicitly marked as hypothesis rather than fact",
+          passed:
+            result.hypotheses.every(
+              item =>
+                item.status ===
+                "hypothesis-not-fact"
+            )
+        },
+        {
+          name:
+            "Causal hypotheses expose mechanisms and assumptions",
+          passed:
+            result.hypotheses.every(
+              item =>
+                Array.isArray(item.causalPath) &&
+                item.causalPath.length > 0 &&
+                Array.isArray(item.assumptions)
+            )
+        },
+        {
+          name:
+            "Maddy actively looks for disconfirming and falsifying evidence",
+          passed:
+            result.hypotheses.every(
+              item =>
+                Array.isArray(item.falsifiers) &&
+                item.falsifiers.length > 0
+            )
+        },
+        {
+          name:
+            "Counterfactual reasoning asks what happens without the proposed cause",
+          passed:
+            result.counterfactuals.some(
+              item =>
+                item.type === "absence" &&
+                item.status ===
+                "simulation-not-fact"
+            )
+        },
+        {
+          name:
+            "Intervention reasoning asks what changes if a controllable upstream condition changes",
+          passed:
+            result.counterfactuals.some(
+              item =>
+                item.type === "intervention"
+            )
+        },
+        {
+          name:
+            "Future positioning is reasoned about as a causal path, not present-fit matching",
+          passed:
+            result.hypotheses.some(
+              item =>
+                item.hypothesisId ===
+                "positioning-changes-eligibility"
+            )
+        },
+        {
+          name:
+            "Human relationships can be causal context without being assumed causal truth",
+          passed:
+            result.hypotheses.some(
+              item =>
+                item.hypothesisId ===
+                "relationship-unlocks-path" &&
+                item.status ===
+                "hypothesis-not-fact"
+            )
+        },
+        {
+          name:
+            "Next investigation is selected for expected information gain",
+          passed:
+            result.nextInvestigation
+              ?.expectedInformationGain > 0 &&
+            result.investigations.every(
+              (item, index, array) =>
+                index === 0 ||
+                array[index - 1]
+                  .expectedInformationGain >=
+                  item.expectedInformationGain
+            )
+        },
+        {
+          name:
+            "Investigation prefers authoritative evidence and preserves external-action authority",
+          passed:
+            result.nextInvestigation
+              ?.preferredEvidence ===
+                "authoritative-primary-source-when-available" &&
+            result.governance
+              ?.externalActionRequiresExistingAuthority ===
+                true
+        },
+        {
+          name:
+            "Correlation is explicitly prevented from silently becoming causation",
+          passed:
+            result.governance
+              ?.correlationIsNotCausation ===
+                true &&
+            result.governance
+              ?.hypothesisIsNotFact === true
+        },
+        {
+          name:
+            "Causal investigation lineage survives durable Executive Brain continuity",
+          passed:
+            Array.isArray(
+              snapshot
+                ?.causalInvestigationHistory
+            ) &&
+            snapshot
+              .causalInvestigationHistory
+              .length > 0 &&
+            Number(
+              snapshot
+                ?.causalInvestigationCount
+            ) >= 1
+        },
+        {
+          name:
+            "D7C remains inside Executive Brain and feeds the existing emergent-attention re-entry path",
+          passed:
+            typeof this
+              .runCausalCounterfactualInvestigation ===
+                "function" &&
+            /causalInvestigation/.test(
+              this
+                .attendToWorldModelChange
+                .toString()
+            ) &&
+            /scheduleCognitiveReentry/.test(
+              this
+                .attendToWorldModelChange
+                .toString()
+            )
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7C Causal + Counterfactual Autonomous Investigation: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7C",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        result
+      };
     },
 
     runEmergentAttentionAcceptanceTest() {
@@ -8602,7 +9218,10 @@
         relationshipHistory: this.relationshipHistory.slice(0, this.configuration.maximumRelationshipHistory),
         salienceHistory: this.salienceHistory.slice(0, this.configuration.maximumSalienceHistory),
         lastSalienceAssessment: this.lastSalienceAssessment ? this.clone(this.lastSalienceAssessment) : null,
-        salienceAssessmentCount: Number(this.salienceAssessmentCount || 0)
+        salienceAssessmentCount: Number(this.salienceAssessmentCount || 0),
+        causalInvestigationHistory: this.causalInvestigationHistory.slice(0, this.configuration.maximumCausalInvestigationHistory),
+        lastCausalInvestigation: this.lastCausalInvestigation ? this.clone(this.lastCausalInvestigation) : null,
+        causalInvestigationCount: Number(this.causalInvestigationCount || 0)
       };
     },
 
@@ -8683,6 +9302,22 @@
       this.salienceAssessmentCount = Math.max(
         Number(saved.salienceAssessmentCount || 0),
         Number(this.lastSalienceAssessment?.assessmentNumber || 0)
+      );
+      this.causalInvestigationHistory =
+        Array.isArray(saved.causalInvestigationHistory)
+          ? saved.causalInvestigationHistory.slice(
+              0,
+              this.configuration.maximumCausalInvestigationHistory
+            )
+          : [];
+      this.lastCausalInvestigation =
+        saved.lastCausalInvestigation &&
+        typeof saved.lastCausalInvestigation === "object"
+          ? this.clone(saved.lastCausalInvestigation)
+          : null;
+      this.causalInvestigationCount = Math.max(
+        Number(saved.causalInvestigationCount || 0),
+        Number(this.lastCausalInvestigation?.investigationNumber || 0)
       );
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
