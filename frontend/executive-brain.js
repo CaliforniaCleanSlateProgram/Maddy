@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.14.1
- * Build: EB1141-DURABLE-HYPOTHESIS-FALSIFICATION-20260808-A
+ * Version: 1.15.0
+ * Build: EB1150-EVIDENCE-ASSIMILATION-COGNITIVE-CLOSURE-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.14.1";
-  const BUILD_ID = "EB1141-DURABLE-HYPOTHESIS-FALSIFICATION-20260808-A";
+  const VERSION = "1.15.0";
+  const BUILD_ID = "EB1150-EVIDENCE-ASSIMILATION-COGNITIVE-CLOSURE-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -180,6 +180,7 @@
       maximumCausalInvestigationHistory: 120,
       maximumCompetingHypotheses: 6,
       maximumAutonomousInvestigationHistory: 120,
+      maximumEvidenceAssimilationHistory: 160,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -232,6 +233,9 @@
     autonomousInvestigationHistory: [],
     lastAutonomousInvestigation: null,
     autonomousInvestigationCount: 0,
+    evidenceAssimilationHistory: [],
+    lastEvidenceAssimilation: null,
+    evidenceAssimilationCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -8842,6 +8846,8 @@
         }
       );
 
+      result.assimilation = this.assimilateAutonomousInvestigationEvidence(result, { persist: false });
+
       if (
         brainPersistence.hydrated === true
       ) {
@@ -8849,6 +8855,39 @@
       }
 
       return this.clone(result);
+    },
+
+    /* Commission 006.017D7E — Evidence Assimilation + Cognitive Closure */
+    assimilateAutonomousInvestigationEvidence(investigation = {}, options = {}) {
+      const generatedAt = new Date().toISOString();
+      const evidenceItems = (investigation.steps || []).map(step => step?.evaluated?.evidence || step?.execution?.evidence).filter(Boolean).map((evidence, index) => ({
+        id: `autonomous-investigation-evidence-${investigation.investigationNumber || 0}-${index + 1}`,
+        title: evidence.source || `Investigation evidence ${index + 1}`,
+        summary: Array.isArray(evidence.facts) ? evidence.facts.join(" ") : String(evidence.summary || ""),
+        source: evidence.source || "autonomous-investigation", provenance: evidence.provenance || null, authority: evidence.authority || "unverified",
+        evidenceClass: evidence.authority === "authoritative" ? "verified-external-source" : "unverified-information",
+        facts: this.clone(evidence.facts || []), supports: this.clone(evidence.supports || []), contradicts: this.clone(evidence.contradicts || [])
+      }));
+      const integrity = this.prepareEvidenceIntegrity(investigation.subject || "Autonomous evidence investigation", { evidence: evidenceItems, confidence: Number(investigation.resolution || 0), answerableLocally: false }, { requestType: REQUEST_TYPES.RESEARCH, source: "executive-brain-autonomous-investigation" });
+      const surviving = (investigation.survivingHypotheses || []).map(item => ({ hypothesisId:item.hypothesisId, claim:item.claim, confidence:Number(item.confidence||0), status:item.status || "hypothesis-not-fact" }));
+      const falsified = (investigation.falsifiedHypotheses || []).map(item => ({ hypothesisId:item.hypothesisId, claim:item.claim, confidence:Number(item.confidence||0), status:"falsified", falsificationHistory:this.clone(item.falsificationHistory||[]) }));
+      const unresolvedQuestions = [...(investigation.discoveredQuestions||[]).map(x=>x?.question).filter(Boolean), ...(investigation.hypotheses||[]).filter(x=>x.status!=="falsified").flatMap(x=>x.unansweredQuestions||[]).filter(Boolean)].filter((v,i,a)=>a.indexOf(v)===i).slice(0,24);
+      const assimilation = { schema:"meos.maddy.evidence-assimilation.v1", assimilationNumber:Number(this.evidenceAssimilationCount||0)+1, generatedAt, subject:investigation.subject||"Autonomous evidence investigation", investigationNumber:investigation.investigationNumber||null, investigationFingerprint:investigation.fingerprint||null, causalFingerprint:investigation.causalFingerprint||null, evidence:evidenceItems,
+        evidenceIntegrity:{ applied:integrity?.available===true||integrity?.success===true, success:integrity?.success===true, fallback:integrity?.fallback===true, confidence:Number(integrity?.confidence||0), conflictCount:Array.isArray(integrity?.conflicts)?integrity.conflicts.length:0 },
+        beliefUpdate:{ survivingHypotheses:surviving, falsifiedHypotheses:falsified, rule:"A supported hypothesis remains an inference unless authoritative evidence and MEOS evidence rules justify a stronger class." },
+        unknowns:unresolvedQuestions.map(question=>({question,status:"unresolved",origin:"autonomous-investigation"})), resolution:Number(investigation.resolution||0), resolved:investigation.resolved===true, stopReason:investigation.stopReason||null,
+        authority:{ providerNeutral:true, providerIsNotMaddy:true, evidenceDoesNotSelfAuthorizeAction:true, externalActionRequiresExistingAuthority:true } };
+      assimilation.fingerprint=this.fingerprintCognitiveDispatch(assimilation);
+      this.evidenceAssimilationCount=assimilation.assimilationNumber; this.lastEvidenceAssimilation=assimilation; this.evidenceAssimilationHistory.unshift(this.clone(assimilation)); this.evidenceAssimilationHistory=this.evidenceAssimilationHistory.slice(0,this.configuration.maximumEvidenceAssimilationHistory);
+      const worldModel=this.projectWorldModel({reason:"autonomous-investigation-evidence-assimilated",persist:false,attend:false});
+      const trigger={source:"executive-brain-evidence-assimilation",event:"autonomous-investigation-evidence-assimilated",assimilationFingerprint:assimilation.fingerprint,investigationFingerprint:investigation.fingerprint||null,resolution:assimilation.resolution,resolved:assimilation.resolved,falsifiedHypothesisIds:falsified.map(x=>x.hypothesisId),survivingHypothesisIds:surviving.map(x=>x.hypothesisId),unknowns:unresolvedQuestions.slice(0,12),worldFingerprint:worldModel?.fingerprint||null};
+      const existing=(this.cognitiveIntentions||[]).find(x=>x?.key===this.normalize(assimilation.subject)&&x?.status!=="completed");
+      if(existing){ existing.triggers=Array.isArray(existing.triggers)?existing.triggers:[]; existing.triggers.push(this.clone(trigger)); existing.triggers=existing.triggers.slice(-50); existing.updatedAt=generatedAt; }
+      else if(options.createIntention!==false) this.upsertCognitiveIntention(assimilation.subject,[trigger],{status:"pending",kind:"evidence-assimilation-follow-through",sourceId:assimilation.fingerprint,persist:false});
+      this.formAutobiographicalEpisode({eventType:"evidence-assimilation",subject:assimilation.subject,sourceId:assimilation.fingerprint,perception:{evidenceCount:evidenceItems.length,evidenceIntegrity:this.clone(assimilation.evidenceIntegrity)},intention:{type:"update-beliefs-and-continue-cognition",unresolvedQuestions:unresolvedQuestions.length},action:{type:"assimilate-investigation-evidence",worldFingerprint:worldModel?.fingerprint||null},outcome:{resolved:assimilation.resolved,resolution:assimilation.resolution,survivingHypotheses:surviving.length,falsifiedHypotheses:falsified.length},learning:{unknownsRemain:unresolvedQuestions.length,stopReason:assimilation.stopReason}});
+      this.emit("brain:evidence-assimilated",this.clone(assimilation)); this.record("cognition.evidence-assimilated",{subject:assimilation.subject,evidenceCount:evidenceItems.length,surviving:surviving.length,falsified:falsified.length,unknowns:unresolvedQuestions.length,resolution:assimilation.resolution});
+      if(options.persist!==false&&brainPersistence.hydrated===true)this.persist();
+      return {success:true,assimilation:this.clone(assimilation),worldModel:this.clone(worldModel),trigger:this.clone(trigger)};
     },
 
     getSalienceStatus() {
@@ -9007,6 +9046,12 @@
             "Executed actions must be checked against observed outcomes before learning is accepted."
         },
 
+        investigationEvidence: {
+          latest: this.clone(this.lastEvidenceAssimilation),
+          recent: this.clone(this.evidenceAssimilationHistory.slice(0, 8)),
+          rule: "Investigation results enter the living world model only with provenance, authority class, hypothesis effects, unresolved questions, and evidence-integrity status."
+        },
+
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -9037,6 +9082,7 @@
           beliefs: model.beliefs,
           unknowns: model.unknowns,
           intentions: model.intentions,
+          investigationEvidence: model.investigationEvidence,
           temporal: model.temporal
         });
 
@@ -9114,6 +9160,34 @@
       return this.clone(
         this.worldModelHistory.slice(0, normalized)
       );
+    },
+
+    async runEvidenceAssimilationCognitiveClosureAcceptanceTest() {
+      const priorHydrated=brainPersistence.hydrated; brainPersistence.hydrated=false;
+      const subject="Commission 006.017D7E Evidence Assimilation Fixture";
+      const fixture={investigationNumber:6177,subject,causalFingerprint:"d7e-causal",fingerprint:"d7e-investigation",steps:[{evaluated:{evidence:{source:"authoritative-primary-source",authority:"authoritative",facts:["A verified mechanism exists."],supports:["mechanism-exists"],contradicts:["noise-only"],unknowns:["What is the shortest legitimate positioning path?"],provenance:"acceptance://d7e/primary-source"}}}],hypotheses:[{hypothesisId:"mechanism-exists",claim:"A legitimate mechanism exists.",confidence:.81,status:"hypothesis-not-fact",unansweredQuestions:["Which path is best?"]},{hypothesisId:"noise-only",claim:"The signal is only noise.",confidence:0,status:"falsified",falsificationHistory:[{reason:"authoritative-contradictory-evidence",provenance:"acceptance://d7e/primary-source"}]}],survivingHypotheses:[{hypothesisId:"mechanism-exists",claim:"A legitimate mechanism exists.",confidence:.81,status:"hypothesis-not-fact",unansweredQuestions:["Which path is best?"]}],falsifiedHypotheses:[{hypothesisId:"noise-only",claim:"The signal is only noise.",confidence:0,status:"falsified",falsificationHistory:[{reason:"authoritative-contradictory-evidence",provenance:"acceptance://d7e/primary-source"}]}],discoveredQuestions:[{question:"What is the shortest legitimate positioning path?",origin:"evidence-created-unknown"}],resolution:.81,resolved:true,stopReason:"uncertainty-sufficiently-resolved"};
+      try {
+        const result=this.assimilateAutonomousInvestigationEvidence(fixture,{persist:false}); const snapshot=this.buildPersistenceSnapshot();
+        const checks=[
+          {name:"Investigation evidence crosses an explicit assimilation seam",passed:result?.success===true&&result.assimilation?.investigationFingerprint===fixture.fingerprint},
+          {name:"Evidence Integrity is invoked before evidence enters durable cognition",passed:/prepareEvidenceIntegrity/.test(this.assimilateAutonomousInvestigationEvidence.toString())&&typeof result.assimilation?.evidenceIntegrity==="object"},
+          {name:"Authoritative provenance survives assimilation",passed:result.assimilation?.evidence?.[0]?.authority==="authoritative"&&result.assimilation?.evidence?.[0]?.provenance==="acceptance://d7e/primary-source"},
+          {name:"Supported hypotheses remain inference rather than silently becoming fact",passed:result.assimilation?.beliefUpdate?.survivingHypotheses?.some(x=>x.hypothesisId==="mechanism-exists"&&x.status==="hypothesis-not-fact")},
+          {name:"Falsification history survives assimilation",passed:result.assimilation?.beliefUpdate?.falsifiedHypotheses?.some(x=>x.hypothesisId==="noise-only"&&x.falsificationHistory?.some(y=>y.reason==="authoritative-contradictory-evidence"))},
+          {name:"Evidence-created unknowns remain live",passed:result.assimilation?.unknowns?.some(x=>x.question==="What is the shortest legitimate positioning path?")},
+          {name:"Assimilated evidence becomes part of the living World Model",passed:result.worldModel?.investigationEvidence?.latest?.fingerprint===result.assimilation?.fingerprint},
+          {name:"World Model fingerprint includes investigation evidence",passed:/investigationEvidence/.test(this.projectWorldModel.toString())&&Boolean(result.worldModel?.fingerprint)},
+          {name:"Assimilation feeds the existing cognitive intention lineage",passed:this.cognitiveIntentions?.some(x=>x.key===this.normalize(subject)&&x.triggers?.some(y=>y.event==="autonomous-investigation-evidence-assimilated"))},
+          {name:"Assimilation is autobiographical experience",passed:this.autobiographicalMemory?.some(x=>x.eventType==="evidence-assimilation"&&x.subject===subject)},
+          {name:"Evidence cannot self-authorize consequential action",passed:result.assimilation?.authority?.evidenceDoesNotSelfAuthorizeAction===true&&result.assimilation?.authority?.externalActionRequiresExistingAuthority===true},
+          {name:"Providers remain tools rather than Maddy's identity",passed:result.assimilation?.authority?.providerNeutral===true&&result.assimilation?.authority?.providerIsNotMaddy===true},
+          {name:"Assimilation survives sovereign Executive Brain persistence",passed:snapshot?.lastEvidenceAssimilation?.fingerprint===result.assimilation?.fingerprint&&snapshot?.evidenceAssimilationHistory?.length>0},
+          {name:"Autonomous investigation is directly wired into assimilation",passed:/assimilateAutonomousInvestigationEvidence/.test(this.runAutonomousEvidenceInvestigation.toString())},
+          {name:"Assimilation updates the World Model without recursive salience",passed:/attend:\s*false/.test(this.assimilateAutonomousInvestigationEvidence.toString())},
+          {name:"Existing continuous cognition remains the follow-through path",passed:typeof this.executeCognitiveReentry==="function"&&typeof this.runPositioningCognitionAndDispatch==="function"&&typeof this.projectWorldModel==="function"}
+        ];
+        const passed=checks.every(x=>x.passed); console.table(checks); console.info(`[MEOS ${this.version}] Commission 006.017D7E Evidence Assimilation + Cognitive Closure: ${passed?"PASS":"FAIL"}.`); return {commission:"006.017D7E",version:this.version,buildId:this.buildId,passed,checks,result};
+      } finally { brainPersistence.hydrated=priorHydrated; }
     },
 
     async runAutonomousEvidenceInvestigationAcceptanceTest() {
@@ -10271,7 +10345,10 @@
         causalInvestigationCount: Number(this.causalInvestigationCount || 0),
         autonomousInvestigationHistory: this.autonomousInvestigationHistory.slice(0, this.configuration.maximumAutonomousInvestigationHistory),
         lastAutonomousInvestigation: this.lastAutonomousInvestigation ? this.clone(this.lastAutonomousInvestigation) : null,
-        autonomousInvestigationCount: Number(this.autonomousInvestigationCount || 0)
+        autonomousInvestigationCount: Number(this.autonomousInvestigationCount || 0),
+        evidenceAssimilationHistory: this.evidenceAssimilationHistory.slice(0, this.configuration.maximumEvidenceAssimilationHistory),
+        lastEvidenceAssimilation: this.lastEvidenceAssimilation ? this.clone(this.lastEvidenceAssimilation) : null,
+        evidenceAssimilationCount: Number(this.evidenceAssimilationCount || 0)
       };
     },
 
@@ -10385,6 +10462,9 @@
         Number(saved.autonomousInvestigationCount || 0),
         Number(this.lastAutonomousInvestigation?.investigationNumber || 0)
       );
+      this.evidenceAssimilationHistory = Array.isArray(saved.evidenceAssimilationHistory) ? saved.evidenceAssimilationHistory.slice(0, this.configuration.maximumEvidenceAssimilationHistory) : [];
+      this.lastEvidenceAssimilation = saved.lastEvidenceAssimilation && typeof saved.lastEvidenceAssimilation === "object" ? this.clone(saved.lastEvidenceAssimilation) : null;
+      this.evidenceAssimilationCount = Math.max(Number(saved.evidenceAssimilationCount || 0), Number(this.lastEvidenceAssimilation?.assimilationNumber || 0));
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
