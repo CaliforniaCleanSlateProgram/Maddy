@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.20";
+const VERSION = "2.10.22";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1598,6 +1598,111 @@ async function writeDurableProviderManagerState(
     },
     expectedPreviousFingerprint
   });
+}
+
+/* ========================================================================== */
+/* Commission 006.017D0C — Live Sovereign State Portability Gateway           */
+/* ========================================================================== */
+
+/*
+ * This gateway exposes the provider-neutral export/verify/restore capability
+ * already commissioned in Institutional Repository Authority v1.1.0.
+ *
+ * It does NOT make Google part of the MEOS package format. It does NOT add
+ * browser storage, localStorage, IndexedDB writes, RAM history, timers,
+ * scanners, or background loops.
+ *
+ * The default export manifest begins with the durable singleton state already
+ * migrated and proven in this deployment:
+ *   - Mission Engine durable state
+ *   - Executive Brain bounded cognition state
+ *   - Provider Manager bounded operational/audit state
+ *
+ * Additional repository records can be exported later without changing the
+ * package format or making a storage provider part of MEOS Core.
+ */
+const MEOS_PORTABILITY_GATEWAY_COMMISSION = "006.017D0C";
+const MEOS_PORTABILITY_GATEWAY_VERSION = "1.0.0";
+const MEOS_PORTABILITY_GATEWAY_BUILD_ID =
+  "MPG100-LIVE-SOVEREIGN-PORTABILITY-GATEWAY-20260808-A";
+const MEOS_PORTABILITY_MAX_PACKAGE_BYTES = 20 * 1024 * 1024;
+
+function requirePortabilityCore() {
+  const exportReady =
+    typeof InstitutionalRepositoryAuthority.exportPortableStatePackage ===
+    "function";
+  const restoreReady =
+    typeof InstitutionalRepositoryAuthority.restorePortableStatePackage ===
+    "function";
+  const validateReady =
+    typeof InstitutionalRepositoryAuthority.validatePortableStatePackage ===
+    "function";
+
+  if (!exportReady || !restoreReady || !validateReady) {
+    const error = new Error(
+      "MEOS Sovereign State Portability Core v1.1.0 is required before using the live portability gateway."
+    );
+    error.status = 503;
+    error.code = "MEOS_PORTABILITY_CORE_NOT_READY";
+    throw error;
+  }
+
+  return true;
+}
+
+function getDefaultPortableStateManifest() {
+  return [
+    {
+      namespace: MISSION_STATE_REPOSITORY_NAMESPACE,
+      key: MISSION_STATE_REPOSITORY_KEY,
+      classification: MISSION_STATE_REPOSITORY_CLASSIFICATION,
+      required: false,
+      subsystem: "mission-engine"
+    },
+    {
+      namespace: EXECUTIVE_BRAIN_STATE_REPOSITORY_NAMESPACE,
+      key: EXECUTIVE_BRAIN_STATE_REPOSITORY_KEY,
+      classification: EXECUTIVE_BRAIN_STATE_REPOSITORY_CLASSIFICATION,
+      required: false,
+      subsystem: "executive-brain"
+    },
+    {
+      namespace: PROVIDER_MANAGER_STATE_REPOSITORY_NAMESPACE,
+      key: PROVIDER_MANAGER_STATE_REPOSITORY_KEY,
+      classification: PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION,
+      required: false,
+      subsystem: "provider-manager"
+    }
+  ];
+}
+
+function normalizePortableManifest(value) {
+  const source =
+    Array.isArray(value) && value.length
+      ? value
+      : getDefaultPortableStateManifest();
+
+  if (source.length > 100) {
+    const error = new Error(
+      "Portable state manifest may contain at most 100 repository records."
+    );
+    error.status = 413;
+    error.code = "MEOS_PORTABILITY_MANIFEST_LIMIT_EXCEEDED";
+    throw error;
+  }
+
+  return source.map(item => ({
+    namespace: String(item?.namespace || "").trim(),
+    key: String(item?.key || "").trim(),
+    classification: String(
+      item?.classification || "institutional"
+    ).trim(),
+    required: item?.required === true
+  }));
+}
+
+function portablePackageByteLength(value) {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
 
 const MISSION_STATE_TRANSPORT_FIX_COMMISSION = "006.017D3A1";
@@ -7275,6 +7380,379 @@ app.post(
   }
 );
 
+
+/**
+ * Commission 006.017D0C — Live Sovereign State Portability Gateway
+ */
+app.get("/api/meos-portability/status", (request, response) => {
+  response.set("Cache-Control", "no-store");
+
+  try {
+    requirePortabilityCore();
+    registerGoogleInstitutionalRepositoryAuthority();
+
+    response.status(200).json({
+      commission: MEOS_PORTABILITY_GATEWAY_COMMISSION,
+      schema: "meos.portability-gateway.status.v1",
+      version: MEOS_PORTABILITY_GATEWAY_VERSION,
+      buildId: MEOS_PORTABILITY_GATEWAY_BUILD_ID,
+      ready: true,
+      providerNeutral: true,
+      defaultManifest: getDefaultPortableStateManifest(),
+      repository: InstitutionalRepositoryAuthority.getStatus(),
+      serverVersion: VERSION
+    });
+  } catch (error) {
+    response.status(error?.status || 500).json({
+      commission: MEOS_PORTABILITY_GATEWAY_COMMISSION,
+      ready: false,
+      error: error?.message || String(error),
+      code: error?.code || "MEOS_PORTABILITY_STATUS_FAILED",
+      serverVersion: VERSION
+    });
+  }
+});
+
+app.post(
+  "/api/meos-portability/export",
+  express.json({ limit: "1mb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      requirePortabilityCore();
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const manifest = normalizePortableManifest(
+        request.body?.records
+      );
+
+      const portablePackage =
+        await InstitutionalRepositoryAuthority.exportPortableStatePackage({
+          records: manifest,
+          packageMetadata: {
+            purpose:
+              String(request.body?.purpose || "authorized-deployment-backup")
+                .slice(0, 240),
+            gatewayCommission:
+              MEOS_PORTABILITY_GATEWAY_COMMISSION,
+            gatewayBuildId:
+              MEOS_PORTABILITY_GATEWAY_BUILD_ID,
+            exportedByServerVersion: VERSION
+          }
+        });
+
+      const bytes =
+        portablePackageByteLength(portablePackage);
+
+      if (bytes > MEOS_PORTABILITY_MAX_PACKAGE_BYTES) {
+        const error = new Error(
+          `Portable MEOS state package exceeds ${MEOS_PORTABILITY_MAX_PACKAGE_BYTES} bytes.`
+        );
+        error.status = 413;
+        error.code = "MEOS_PORTABLE_PACKAGE_SIZE_LIMIT_EXCEEDED";
+        throw error;
+      }
+
+      response.status(200).json({
+        commission: MEOS_PORTABILITY_GATEWAY_COMMISSION,
+        schema: "meos.portability-gateway.export.v1",
+        success: true,
+        providerNeutral: true,
+        bytes,
+        package: portablePackage,
+        serverVersion: VERSION
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        commission: MEOS_PORTABILITY_GATEWAY_COMMISSION,
+        success: false,
+        error: error?.message || String(error),
+        code: error?.code || "MEOS_PORTABILITY_EXPORT_FAILED",
+        details: error?.details || null,
+        serverVersion: VERSION
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/meos-portability/restore",
+  express.json({ limit: "21mb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      requirePortabilityCore();
+
+      if (request.body?.confirmRestore !== true) {
+        const error = new Error(
+          "Portable state restore requires explicit confirmRestore=true."
+        );
+        error.status = 400;
+        error.code = "MEOS_PORTABILITY_RESTORE_CONFIRMATION_REQUIRED";
+        throw error;
+      }
+
+      const portablePackage = request.body?.package;
+      const bytes =
+        portablePackageByteLength(portablePackage);
+
+      if (bytes > MEOS_PORTABILITY_MAX_PACKAGE_BYTES) {
+        const error = new Error(
+          `Portable MEOS state package exceeds ${MEOS_PORTABILITY_MAX_PACKAGE_BYTES} bytes.`
+        );
+        error.status = 413;
+        error.code = "MEOS_PORTABLE_PACKAGE_SIZE_LIMIT_EXCEEDED";
+        throw error;
+      }
+
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const result =
+        await InstitutionalRepositoryAuthority.restorePortableStatePackage(
+          portablePackage,
+          {
+            overwrite: request.body?.overwrite === true,
+            restoreMetadata: {
+              restoredThrough:
+                "meos-live-portability-gateway",
+              gatewayCommission:
+                MEOS_PORTABILITY_GATEWAY_COMMISSION,
+              gatewayBuildId:
+                MEOS_PORTABILITY_GATEWAY_BUILD_ID
+            }
+          }
+        );
+
+      response.status(result.success ? 200 : 409).json({
+        commission: MEOS_PORTABILITY_GATEWAY_COMMISSION,
+        schema: "meos.portability-gateway.restore.v1",
+        ...result,
+        serverVersion: VERSION
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        commission: MEOS_PORTABILITY_GATEWAY_COMMISSION,
+        success: false,
+        error: error?.message || String(error),
+        code: error?.code || "MEOS_PORTABILITY_RESTORE_FAILED",
+        details: error?.details || null,
+        serverVersion: VERSION
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/meos-portability/acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const namespace = "meos-portability-acceptance";
+    const key = `sentinel-${crypto.randomUUID()}`;
+    const classification = "institutional";
+
+    try {
+      requirePortabilityCore();
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const sentinelValue = {
+        schema: "meos.portability.acceptance-sentinel.v1",
+        id: key,
+        createdAt: new Date().toISOString(),
+        meaning:
+          "If this survives export-delete-restore, the live escape path works."
+      };
+
+      const seed =
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key,
+          classification,
+          value: sentinelValue,
+          metadata: {
+            purpose:
+              "006.017D0C-live-portability-acceptance"
+          }
+        });
+
+      const portablePackage =
+        await InstitutionalRepositoryAuthority.exportPortableStatePackage({
+          records: [
+            {
+              namespace,
+              key,
+              classification,
+              required: true
+            }
+          ],
+          packageMetadata: {
+            purpose:
+              "006.017D0C-live-portability-acceptance"
+          }
+        });
+
+      const verified =
+        InstitutionalRepositoryAuthority.validatePortableStatePackage(
+          portablePackage
+        );
+
+      const removed =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key,
+          classification
+        });
+
+      const afterDelete =
+        await InstitutionalRepositoryAuthority.read({
+          namespace,
+          key,
+          classification
+        });
+
+      const restored =
+        await InstitutionalRepositoryAuthority.restorePortableStatePackage(
+          portablePackage
+        );
+
+      const afterRestore =
+        await InstitutionalRepositoryAuthority.read({
+          namespace,
+          key,
+          classification
+        });
+
+      const protectedRestore =
+        await InstitutionalRepositoryAuthority.restorePortableStatePackage(
+          portablePackage
+        );
+
+      const tampered =
+        JSON.parse(JSON.stringify(portablePackage));
+      tampered.records[0].value = {
+        tampered: true
+      };
+
+      let tamperRejected = false;
+      try {
+        InstitutionalRepositoryAuthority.validatePortableStatePackage(
+          tampered
+        );
+      } catch (error) {
+        tamperRejected =
+          error?.code ===
+            "MEOS_PORTABLE_PACKAGE_FINGERPRINT_MISMATCH" ||
+          error?.code ===
+            "MEOS_PORTABLE_RECORD_FINGERPRINT_MISMATCH";
+      }
+
+      const cleanup =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key,
+          classification
+        });
+
+      const checks = [
+        {
+          name:
+            "Live repository provider accepts an isolated portability sentinel",
+          passed:
+            seed?.success === true &&
+            seed?.verification?.verified === true
+        },
+        {
+          name:
+            "Live gateway exports durable state in MEOS provider-neutral package format",
+          passed:
+            portablePackage?.schema ===
+              "meos.sovereign-state-package.v1" &&
+            portablePackage?.recordCount === 1 &&
+            Boolean(portablePackage?.packageFingerprint)
+        },
+        {
+          name:
+            "Exported package verifies before restore",
+          passed:
+            verified?.verified === true
+        },
+        {
+          name:
+            "Acceptance state can be removed from the live repository before restore",
+          passed:
+            removed?.success === true &&
+            removed?.deleted === true &&
+            afterDelete?.found === false
+        },
+        {
+          name:
+            "Portable package restores the same state through live Repository Authority",
+          passed:
+            restored?.success === true &&
+            restored?.restoredCount === 1 &&
+            afterRestore?.found === true &&
+            afterRestore?.value?.id === key
+        },
+        {
+          name:
+            "Existing durable truth is protected from accidental restore overwrite",
+          passed:
+            protectedRestore?.restoredCount === 0 &&
+            protectedRestore?.protectedCount === 1
+        },
+        {
+          name:
+            "Tampered portable package is rejected",
+          passed: tamperRejected === true
+        },
+        {
+          name:
+            "Acceptance sentinel is cleaned up after verification",
+          passed:
+            cleanup?.success === true &&
+            cleanup?.deleted === true
+        }
+      ];
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response.status(passed ? 200 : 500).json({
+        commission: MEOS_PORTABILITY_GATEWAY_COMMISSION,
+        schema: "meos.portability-gateway.acceptance.v1",
+        version: MEOS_PORTABILITY_GATEWAY_VERSION,
+        buildId: MEOS_PORTABILITY_GATEWAY_BUILD_ID,
+        passed,
+        checks,
+        serverVersion: VERSION
+      });
+    } catch (error) {
+      try {
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key,
+          classification
+        });
+      } catch (_cleanupError) {
+        // Acceptance cleanup is best effort after a failed test.
+      }
+
+      response.status(error?.status || 500).json({
+        commission: MEOS_PORTABILITY_GATEWAY_COMMISSION,
+        schema: "meos.portability-gateway.acceptance.v1",
+        version: MEOS_PORTABILITY_GATEWAY_VERSION,
+        buildId: MEOS_PORTABILITY_GATEWAY_BUILD_ID,
+        passed: false,
+        checks: [],
+        error: error?.message || String(error),
+        code: error?.code || "MEOS_PORTABILITY_ACCEPTANCE_FAILED",
+        serverVersion: VERSION
+      });
+    }
+  }
+);
 
 /**
  * Commission 006.017D5A2 — Provider Manager Bounded Durable Authority Seam
