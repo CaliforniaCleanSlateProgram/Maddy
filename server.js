@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.32";
+const VERSION = "2.10.33";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1642,6 +1642,333 @@ function getExecutiveBrainAuthorityStatus() {
     }
   };
 }
+
+/* ========================================================================== */
+/* Commission 006.017D7P1 — Headless Research Orchestration                   */
+/* ========================================================================== */
+
+const HEADLESS_RESEARCH_COMMISSION = "006.017D7P1";
+const HEADLESS_RESEARCH_VERSION = "1.0.0";
+const HEADLESS_RESEARCH_BUILD_ID =
+  "HRO100-PROVIDER-NEUTRAL-HEADLESS-RESEARCH-ORCHESTRATION-20260809-A";
+
+const headlessResearchRuntime = {
+  status: "online",
+  providerNeutral: true,
+  browserIndependent: true,
+  runtimeOwner: "meos-durable-server",
+  researchCount: 0,
+  completedCount: 0,
+  failedCount: 0,
+  lastResearchAt: null,
+  lastCompletedAt: null,
+  lastError: null
+};
+
+function normalizeResearchCapability(capability = {}) {
+  return {
+    id: String(capability.id || capability.name || "").trim(),
+    name: String(capability.name || capability.id || "").trim(),
+    kind: String(capability.kind || capability.type || "unknown").trim(),
+    operations: Array.isArray(capability.operations)
+      ? capability.operations.map(String)
+      : [],
+    authoritative: capability.authoritative === true,
+    available: capability.available !== false,
+    execute:
+      typeof capability.execute === "function"
+        ? capability.execute
+        : null
+  };
+}
+
+const headlessResearchCapabilities = new Map();
+
+function registerHeadlessResearchCapability(capability = {}) {
+  const normalized = normalizeResearchCapability(capability);
+  if (!normalized.id || !normalized.execute) {
+    return {
+      success: false,
+      code: "INVALID_RESEARCH_CAPABILITY",
+      message:
+        "Research capabilities require a stable id and executable adapter."
+    };
+  }
+  headlessResearchCapabilities.set(normalized.id, normalized);
+  return {
+    success: true,
+    capability: {
+      ...normalized,
+      execute: undefined
+    }
+  };
+}
+
+function listHeadlessResearchCapabilities() {
+  return [...headlessResearchCapabilities.values()]
+    .filter(capability => capability.available)
+    .map(capability => ({
+      id: capability.id,
+      name: capability.name,
+      kind: capability.kind,
+      operations: capability.operations,
+      authoritative: capability.authoritative,
+      available: capability.available
+    }));
+}
+
+function selectHeadlessResearchCapability(operation, options = {}) {
+  const required = String(operation || "").trim();
+  const preferred = Array.isArray(options.preferredProviders)
+    ? options.preferredProviders.map(String)
+    : [];
+
+  const candidates = [...headlessResearchCapabilities.values()]
+    .filter(capability => capability.available)
+    .filter(capability =>
+      capability.operations.includes(required)
+    );
+
+  candidates.sort((a, b) => {
+    const ai = preferred.indexOf(a.id);
+    const bi = preferred.indexOf(b.id);
+    if (ai >= 0 || bi >= 0) {
+      if (ai < 0) return 1;
+      if (bi < 0) return -1;
+      if (ai !== bi) return ai - bi;
+    }
+    if (a.authoritative !== b.authoritative) {
+      return a.authoritative ? -1 : 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+
+  return candidates[0] || null;
+}
+
+function buildHeadlessResearchPlan(request = {}) {
+  const subject = String(
+    request.subject ||
+    request.question ||
+    request.objective ||
+    ""
+  ).trim();
+
+  const unknowns = Array.isArray(request.unknowns)
+    ? request.unknowns.map(String).filter(Boolean)
+    : [];
+
+  if (!subject) {
+    return {
+      success: false,
+      code: "RESEARCH_SUBJECT_REQUIRED"
+    };
+  }
+
+  const questions = [
+    ...unknowns,
+    ...(
+      unknowns.length
+        ? []
+        : [
+            `What is established about ${subject}?`,
+            `What important claims about ${subject} are uncertain, disputed, or context-dependent?`,
+            `What adjacent concepts could materially change how ${subject} should be understood or applied?`
+          ]
+    )
+  ].slice(0, 12);
+
+  return {
+    success: true,
+    plan: {
+      schema: "meos.headless-research-plan.v1",
+      subject,
+      reason: String(request.reason || ""),
+      questions,
+      stages: [
+        {
+          operation: "search",
+          purpose: "Discover candidate sources and terminology."
+        },
+        {
+          operation: "retrieve",
+          purpose: "Read the strongest available sources rather than relying on snippets."
+        },
+        {
+          operation: "cross-check",
+          purpose: "Seek independent support, disagreement, and disconfirming evidence."
+        },
+        {
+          operation: "synthesize",
+          purpose: "Separate supported facts, inferences, conflicts, and unresolved unknowns."
+        }
+      ],
+      authority: {
+        internalResearchAuthorized: true,
+        externalActionAuthorized: false,
+        humanAuthorityPreserved: true
+      },
+      truthRule:
+        "Research may update belief only from evidence actually retrieved. Search snippets, unavailable pages, and unsupported model completion are not verified facts."
+    }
+  };
+}
+
+async function executeHeadlessResearch(request = {}) {
+  const built = buildHeadlessResearchPlan(request);
+  if (!built.success) return built;
+
+  const plan = built.plan;
+  const evidence = [];
+  const missingCapabilities = [];
+  const providerTrace = [];
+  headlessResearchRuntime.researchCount += 1;
+  headlessResearchRuntime.lastResearchAt =
+    new Date().toISOString();
+
+  try {
+    for (const stage of plan.stages) {
+      if (stage.operation === "synthesize") continue;
+
+      const capability =
+        selectHeadlessResearchCapability(
+          stage.operation,
+          request
+        );
+
+      if (!capability) {
+        missingCapabilities.push(stage.operation);
+        providerTrace.push({
+          operation: stage.operation,
+          status: "missing-capability"
+        });
+        continue;
+      }
+
+      const result = await capability.execute({
+        subject: plan.subject,
+        questions: plan.questions,
+        evidence: evidence.slice(),
+        purpose: stage.purpose,
+        limits: {
+          maxSources: Number(request.maxSources || 12),
+          maxDepth: Number(request.maxDepth || 3)
+        },
+        authority: plan.authority
+      });
+
+      providerTrace.push({
+        operation: stage.operation,
+        providerId: capability.id,
+        providerKind: capability.kind,
+        success: result?.success === true
+      });
+
+      if (Array.isArray(result?.evidence)) {
+        for (const item of result.evidence) {
+          if (!item || !item.source) continue;
+          evidence.push({
+            source: String(item.source),
+            title: item.title
+              ? String(item.title)
+              : null,
+            claim: item.claim
+              ? String(item.claim)
+              : null,
+            excerpt: item.excerpt
+              ? String(item.excerpt)
+              : null,
+            retrievedAt:
+              item.retrievedAt ||
+              new Date().toISOString(),
+            providerId: capability.id,
+            authoritative:
+              item.authoritative === true ||
+              capability.authoritative === true,
+            evidenceStatus:
+              item.evidenceStatus ||
+              "retrieved-unverified"
+          });
+        }
+      }
+    }
+
+    const result = {
+      success: true,
+      schema: "meos.headless-research-result.v1",
+      commission: HEADLESS_RESEARCH_COMMISSION,
+      buildId: HEADLESS_RESEARCH_BUILD_ID,
+      subject: plan.subject,
+      plan,
+      evidence,
+      providerTrace,
+      missingCapabilities: [
+        ...new Set(missingCapabilities)
+      ],
+      synthesis: {
+        status:
+          evidence.length > 0
+            ? "evidence-ready-for-existing-meos-reasoning"
+            : "insufficient-evidence",
+        supportedFacts: [],
+        inferences: [],
+        conflicts: [],
+        unknowns: plan.questions.slice(),
+        note:
+          evidence.length > 0
+            ? "Retrieved evidence must pass existing MEOS Evidence Integrity / Institutional Reasoning before belief integration."
+            : "No evidence was retrieved. Maddy must not claim that external research occurred."
+      },
+      authority: plan.authority,
+      completedAt: new Date().toISOString()
+    };
+
+    headlessResearchRuntime.completedCount += 1;
+    headlessResearchRuntime.lastCompletedAt =
+      result.completedAt;
+    headlessResearchRuntime.lastError = null;
+
+    return result;
+  } catch (error) {
+    headlessResearchRuntime.failedCount += 1;
+    headlessResearchRuntime.lastError = {
+      code:
+        error?.code ||
+        "HEADLESS_RESEARCH_FAILED",
+      message:
+        error?.message ||
+        String(error),
+      at: new Date().toISOString()
+    };
+
+    return {
+      success: false,
+      commission: HEADLESS_RESEARCH_COMMISSION,
+      buildId: HEADLESS_RESEARCH_BUILD_ID,
+      subject: plan.subject,
+      evidence,
+      providerTrace,
+      error: headlessResearchRuntime.lastError,
+      authority: plan.authority
+    };
+  }
+}
+
+function getHeadlessResearchStatus() {
+  return {
+    commission: HEADLESS_RESEARCH_COMMISSION,
+    version: HEADLESS_RESEARCH_VERSION,
+    buildId: HEADLESS_RESEARCH_BUILD_ID,
+    ...headlessResearchRuntime,
+    capabilities:
+      listHeadlessResearchCapabilities(),
+    authority: {
+      externalActionAuthorized: false,
+      humanAuthorityPreserved: true
+    }
+  };
+}
+
 
 /* ========================================================================== */
 /* Commission 006.017D7M — Durable Cognitive Runtime Heartbeat                */
@@ -7843,6 +8170,31 @@ app.put(
  * Hot cognition remains runtime memory. Only the bounded persistence contract
  * already defined by Executive Brain is eligible for institutional storage.
  */
+app.get(
+  "/api/headless-research-runtime",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    response.status(200).json(
+      getHeadlessResearchStatus()
+    );
+  }
+);
+
+app.post(
+  "/api/headless-research",
+  express.json({ limit: "1mb" }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    const result = await executeHeadlessResearch(
+      request.body || {}
+    );
+    response
+      .status(result.success ? 200 : 400)
+      .json(result);
+  }
+);
+
+
 app.get(
   "/api/continuous-cognition-runtime",
   (request, response) => {
