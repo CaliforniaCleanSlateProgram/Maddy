@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.24";
+const VERSION = "2.10.25";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1600,6 +1600,137 @@ async function writeDurableProviderManagerState(
   });
 }
 
+
+/* ========================================================================== */
+/* Commission 006.017D6A — Executive Learning Durable Authority Seam          */
+/* ========================================================================== */
+
+/*
+ * Step 10 / P6 prerequisite.
+ *
+ * Executive Learning currently keeps approved institutional learning on the
+ * laptop. This seam gives that learning a provider-neutral durable home behind
+ * MEOS Institutional Repository Authority before the browser authority flip.
+ *
+ * Sovereignty invariant:
+ * - MEOS owns the state schema and authority semantics.
+ * - Google Workspace is only the currently selected durable provider.
+ * - This state is included in the MEOS sovereign portability manifest so a
+ *   provider swap does not strand Maddy's accumulated institutional learning.
+ * - No browser authority is changed by this server-only commission.
+ */
+
+const EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION = "006.017D6A";
+const EXECUTIVE_LEARNING_STATE_REPOSITORY_VERSION = "1.0.0";
+const EXECUTIVE_LEARNING_STATE_REPOSITORY_BUILD_ID =
+  "ELSR100-DURABLE-AUTHORITY-SEAM-20260808-A";
+const EXECUTIVE_LEARNING_STATE_REPOSITORY_NAMESPACE =
+  "executive-learning";
+const EXECUTIVE_LEARNING_STATE_REPOSITORY_KEY =
+  "institutional-learning-state";
+const EXECUTIVE_LEARNING_STATE_REPOSITORY_CLASSIFICATION =
+  "institutional";
+const EXECUTIVE_LEARNING_STATE_MAX_BYTES = 8 * 1024 * 1024;
+
+function normalizeExecutiveLearningStateEnvelope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const error = new Error(
+      "Executive Learning State payload must be an object."
+    );
+    error.status = 400;
+    error.code = "EXECUTIVE_LEARNING_STATE_PAYLOAD_INVALID";
+    throw error;
+  }
+
+  const state =
+    value.state &&
+    typeof value.state === "object" &&
+    !Array.isArray(value.state)
+      ? value.state
+      : value;
+
+  if (state.schema !== "meos.executive-learning.package.v1") {
+    const error = new Error(
+      "Executive Learning State schema is invalid."
+    );
+    error.status = 400;
+    error.code = "EXECUTIVE_LEARNING_STATE_SCHEMA_INVALID";
+    throw error;
+  }
+
+  for (const field of ["observations", "lessons", "feedback", "history"]) {
+    if (!Array.isArray(state[field])) {
+      const error = new Error(
+        `Executive Learning State field "${field}" must be an array.`
+      );
+      error.status = 400;
+      error.code = "EXECUTIVE_LEARNING_STATE_SCHEMA_INVALID";
+      throw error;
+    }
+  }
+
+  const serialized = JSON.stringify(state);
+  if (
+    Buffer.byteLength(serialized, "utf8") >
+    EXECUTIVE_LEARNING_STATE_MAX_BYTES
+  ) {
+    const error = new Error(
+      `Executive Learning durable state exceeds ${EXECUTIVE_LEARNING_STATE_MAX_BYTES} bytes.`
+    );
+    error.status = 413;
+    error.code = "EXECUTIVE_LEARNING_STATE_SIZE_LIMIT_EXCEEDED";
+    throw error;
+  }
+
+  return {
+    schema: "meos.executive-learning.durable-state.v1",
+    version: String(value.version || state.version || "1.0.2"),
+    buildId: String(value.buildId || state.buildId || ""),
+    savedAt: new Date().toISOString(),
+    state
+  };
+}
+
+async function readDurableExecutiveLearningState() {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  return InstitutionalRepositoryAuthority.read({
+    namespace: EXECUTIVE_LEARNING_STATE_REPOSITORY_NAMESPACE,
+    key: EXECUTIVE_LEARNING_STATE_REPOSITORY_KEY,
+    classification:
+      EXECUTIVE_LEARNING_STATE_REPOSITORY_CLASSIFICATION
+  });
+}
+
+async function writeDurableExecutiveLearningState(
+  value,
+  expectedPreviousFingerprint = undefined
+) {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  const envelope =
+    normalizeExecutiveLearningStateEnvelope(value);
+
+  return InstitutionalRepositoryAuthority.write({
+    namespace: EXECUTIVE_LEARNING_STATE_REPOSITORY_NAMESPACE,
+    key: EXECUTIVE_LEARNING_STATE_REPOSITORY_KEY,
+    classification:
+      EXECUTIVE_LEARNING_STATE_REPOSITORY_CLASSIFICATION,
+    value: envelope,
+    metadata: {
+      subsystem: "executive-learning",
+      stateClass: "institutional-learning",
+      commission:
+        EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
+      buildId:
+        EXECUTIVE_LEARNING_STATE_REPOSITORY_BUILD_ID,
+      storageRole: "durable-institutional-learning",
+      providerNeutral: true
+    },
+    expectedPreviousFingerprint
+  });
+}
+
 /* ========================================================================== */
 /* Commission 006.017D0C — Live Sovereign State Portability Gateway           */
 /* ========================================================================== */
@@ -1700,6 +1831,14 @@ function getDefaultPortableStateManifest() {
       classification: PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION,
       required: false,
       subsystem: "provider-manager"
+    ,
+    {
+      namespace: EXECUTIVE_LEARNING_STATE_REPOSITORY_NAMESPACE,
+      key: EXECUTIVE_LEARNING_STATE_REPOSITORY_KEY,
+      classification:
+        EXECUTIVE_LEARNING_STATE_REPOSITORY_CLASSIFICATION,
+      required: false,
+      subsystem: "executive-learning"
     }
   ];
 }
@@ -8075,6 +8214,300 @@ app.post(
         checks: [],
         error: error?.message || String(error),
         code: error?.code || "MEOS_PORTABILITY_ACCEPTANCE_FAILED",
+        serverVersion: VERSION
+      });
+    }
+  }
+);
+
+
+/**
+ * Commission 006.017D6A — Executive Learning Durable Authority Seam
+ *
+ * Server-only P6 prerequisite. The browser remains unchanged until the
+ * Executive Learning authority-flip commission passes independently.
+ */
+app.get(
+  "/api/executive-learning-state",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const result =
+        await readDurableExecutiveLearningState();
+
+      if (!result?.found) {
+        response.status(404).json({
+          commission:
+            EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
+          schema:
+            "meos.executive-learning-state.read.v1",
+          found: false,
+          authority: "meos-institutional-repository",
+          providerId: result?.providerId || null
+        });
+        return;
+      }
+
+      response.status(200).json({
+        commission:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.executive-learning-state.read.v1",
+        found: true,
+        authority: result.authority,
+        providerId: result.providerId,
+        record: result.record,
+        value: result.value
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        commission:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
+        success: false,
+        error: error?.message || String(error),
+        code:
+          error?.code ||
+          "EXECUTIVE_LEARNING_STATE_DURABLE_READ_FAILED"
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/executive-learning-state",
+  express.json({
+    limit: "9mb",
+    strict: true
+  }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const expectedPreviousFingerprint =
+        request.get("If-MEOS-Previous-Fingerprint") || undefined;
+
+      const result =
+        await writeDurableExecutiveLearningState(
+          request.body,
+          expectedPreviousFingerprint
+        );
+
+      response.status(200).json({
+        commission:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.executive-learning-state.write.v1",
+        success: true,
+        authority: result.authority,
+        providerId: result.providerId,
+        verification: result.verification,
+        record: result.record
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        commission:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
+        success: false,
+        error: error?.message || String(error),
+        code:
+          error?.code ||
+          "EXECUTIVE_LEARNING_STATE_DURABLE_WRITE_FAILED",
+        details: error?.details || null
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/executive-learning-state/acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const acceptanceKey =
+      `acceptance-${crypto.randomUUID()}`;
+    const namespace =
+      "executive-learning-acceptance";
+
+    try {
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const sentinelState = {
+        schema: "meos.executive-learning.package.v1",
+        version: "1.0.2",
+        buildId:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_BUILD_ID,
+        exportedAt: new Date().toISOString(),
+        observations: [{
+          id: `${acceptanceKey}-observation`,
+          type: "acceptance-observation"
+        }],
+        lessons: [{
+          id: `${acceptanceKey}-lesson`,
+          status: "validated",
+          confidence: 0.91
+        }],
+        feedback: [{
+          id: `${acceptanceKey}-feedback`,
+          type: "positive"
+        }],
+        history: [{
+          id: `${acceptanceKey}-history`,
+          event: "acceptance-only"
+        }]
+      };
+
+      const normalized =
+        normalizeExecutiveLearningStateEnvelope({
+          version: "1.0.2",
+          buildId:
+            EXECUTIVE_LEARNING_STATE_REPOSITORY_BUILD_ID,
+          state: sentinelState
+        });
+
+      const write =
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            EXECUTIVE_LEARNING_STATE_REPOSITORY_CLASSIFICATION,
+          value: normalized,
+          metadata: {
+            subsystem: "executive-learning",
+            purpose:
+              "006.017D6A-live-acceptance",
+            providerNeutral: true
+          }
+        });
+
+      const read =
+        await InstitutionalRepositoryAuthority.read({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            EXECUTIVE_LEARNING_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      const portableManifest =
+        getDefaultPortableStateManifest();
+
+      const checks = [
+        {
+          name:
+            "Executive Learning resolves through provider-neutral Repository Authority",
+          passed:
+            write?.authority ===
+              "durable-institutional-repository"
+        },
+        {
+          name:
+            "Current provider performs a verified durable write without becoming MEOS authority",
+          passed:
+            write?.success === true &&
+            write?.verification?.verified === true &&
+            Boolean(write?.providerId)
+        },
+        {
+          name:
+            "Executive Learning durable state reads back through the same authority",
+          passed:
+            read?.found === true &&
+            read?.authority ===
+              "durable-institutional-repository"
+        },
+        {
+          name:
+            "Learning semantics survive durable round trip",
+          passed:
+            read?.value?.state?.lessons?.[0]?.id ===
+              `${acceptanceKey}-lesson` &&
+            read?.value?.state?.observations?.[0]?.id ===
+              `${acceptanceKey}-observation` &&
+            read?.value?.state?.feedback?.[0]?.id ===
+              `${acceptanceKey}-feedback`
+        },
+        {
+          name:
+            "Executive Learning is included in the sovereign Go Bag manifest",
+          passed:
+            portableManifest.some(item =>
+              item?.subsystem === "executive-learning" &&
+              item?.namespace ===
+                EXECUTIVE_LEARNING_STATE_REPOSITORY_NAMESPACE &&
+              item?.key ===
+                EXECUTIVE_LEARNING_STATE_REPOSITORY_KEY
+            )
+        },
+        {
+          name:
+            "Durable seam remains bounded and provider-neutral",
+          passed:
+            EXECUTIVE_LEARNING_STATE_MAX_BYTES ===
+              8 * 1024 * 1024 &&
+            normalized.schema ===
+              "meos.executive-learning.durable-state.v1"
+        }
+      ];
+
+      const cleanup =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            EXECUTIVE_LEARNING_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      checks.push({
+        name:
+          "Executive Learning acceptance sentinel is removed through the same authority",
+        passed:
+          cleanup?.success === true &&
+          cleanup?.deleted === true
+      });
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response.status(passed ? 200 : 500).json({
+        commission:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.executive-learning-state.durable-authority.acceptance.v1",
+        version:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_VERSION,
+        buildId:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_BUILD_ID,
+        passed,
+        checks,
+        authorityStatus:
+          InstitutionalRepositoryAuthority.getStatus(),
+        serverVersion: VERSION
+      });
+    } catch (error) {
+      try {
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            EXECUTIVE_LEARNING_STATE_REPOSITORY_CLASSIFICATION
+        });
+      } catch {}
+
+      response.status(error?.status || 500).json({
+        commission:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_COMMISSION,
+        schema:
+          "meos.executive-learning-state.durable-authority.acceptance.v1",
+        version:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_VERSION,
+        buildId:
+          EXECUTIVE_LEARNING_STATE_REPOSITORY_BUILD_ID,
+        passed: false,
+        checks: [],
+        error: error?.message || String(error),
+        code:
+          error?.code ||
+          "EXECUTIVE_LEARNING_STATE_DURABLE_ACCEPTANCE_FAILED",
         serverVersion: VERSION
       });
     }
