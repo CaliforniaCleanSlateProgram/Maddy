@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.22.0
- * Build: EB1220-CONTINUOUS-COGNITIVE-ORCHESTRATION-HANDOFF-20260809-A
+ * Version: 1.22.1
+ * Build: EB1221-CONTINUOUS-HANDOFF-PERSISTENCE-ACCEPTANCE-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.22.0";
-  const BUILD_ID = "EB1220-CONTINUOUS-COGNITIVE-ORCHESTRATION-HANDOFF-20260809-A";
+  const VERSION = "1.22.1";
+  const BUILD_ID = "EB1221-CONTINUOUS-HANDOFF-PERSISTENCE-ACCEPTANCE-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -11525,7 +11525,11 @@
         });
 
         const firstThreadId=this.activeCognitiveThreadId;
-        const firstHandoff=this.buildContinuousCognitionHandoff({backoffMs:5000});
+        // Use the exact handoff emitted by the completed cognition cycle.
+        // Rebuilding a handoff here would correctly produce a new timestamp,
+        // nextWakeAt, and fingerprint, making persistence appear broken when
+        // the persisted state actually references the original cycle handoff.
+        const firstHandoff=this.clone(first.handoff);
         const snapshot=this.buildPersistenceSnapshot();
 
         // Simulate process re-entry by restoring only from the sovereign Brain
