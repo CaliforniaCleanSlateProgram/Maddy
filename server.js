@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.39";
+const VERSION = "2.10.40";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2360,9 +2360,9 @@ registerHeadlessResearchCapability({
 /* ========================================================================== */
 
 const RESEARCH_LEARNING_COMMISSION = "006.017D7R1";
-const RESEARCH_LEARNING_VERSION = "1.0.0";
+const RESEARCH_LEARNING_VERSION = "1.0.1";
 const RESEARCH_LEARNING_BUILD_ID =
-  "RLB100-DURABLE-EVIDENCE-BACKED-RESEARCH-LEARNING-20260809-A";
+  "RLB101-CONVERGENT-EXECUTIVE-MEMORY-UPSERT-20260809-A";
 const RESEARCH_LEARNING_COLLECTION = "investigation-history";
 const RESEARCH_LEARNING_MAX_RECORDS = 250;
 
@@ -2375,6 +2375,9 @@ const researchLearningRuntime = {
   persistedLearningCount: 0,
   skippedLearningCount: 0,
   failedLearningCount: 0,
+  convergenceRetryCount: 0,
+  convergedWriteCount: 0,
+  lastWriteAttempts: 0,
   lastLearningId: null,
   lastPersistedAt: null,
   lastError: null
@@ -2494,6 +2497,155 @@ function enqueueResearchLearningWrite(task) {
   return run;
 }
 
+
+async function upsertExecutiveMemoryRecordConvergently(
+  collection,
+  record,
+  options = {}
+) {
+  const maximumAttempts = Math.max(
+    1,
+    Math.min(5, Number(options.maximumAttempts || 4))
+  );
+
+  let recordAttempts = 0;
+  let manifestAttempts = 0;
+  let converged = false;
+
+  /*
+   * Phase 1 — upsert only the target record.
+   * Do not rewrite the entire collection: other runtime surfaces may be
+   * legitimately updating neighboring records at the same time.
+   */
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    recordAttempts = attempt;
+
+    const existing =
+      await InstitutionalRepositoryAuthority.read({
+        namespace:
+          EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+        key:
+          `record:${collection}:${record.id}`,
+        classification:
+          EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION
+      });
+
+    try {
+      await InstitutionalRepositoryAuthority.write({
+        namespace:
+          EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE,
+        key:
+          `record:${collection}:${record.id}`,
+        classification:
+          EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION,
+        value: record,
+        metadata:
+          executiveMemoryRepositoryMetadata(collection, {
+            recordType: "research-learning-record",
+            researchLearningCommission:
+              RESEARCH_LEARNING_COMMISSION,
+            researchLearningBuildId:
+              RESEARCH_LEARNING_BUILD_ID
+          }),
+        expectedPreviousFingerprint:
+          existing?.found
+            ? existing.record?.payloadFingerprint
+            : null
+      });
+      if (attempt > 1) converged = true;
+      break;
+    } catch (error) {
+      if (
+        error?.code !== "MEOS_REPOSITORY_CONCURRENCY_CONFLICT" ||
+        attempt >= maximumAttempts
+      ) {
+        throw error;
+      }
+      researchLearningRuntime.convergenceRetryCount += 1;
+      converged = true;
+    }
+  }
+
+  /*
+   * Phase 2 — converge the collection manifest.
+   * Re-read on every conflict and append only this record id to the newest
+   * manifest. This preserves concurrent writers instead of replacing them
+   * with a stale snapshot.
+   */
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    manifestAttempts = attempt;
+
+    const manifest =
+      await getExecutiveMemoryManifest(collection);
+
+    const currentIds = Array.isArray(
+      manifest.value?.recordIds
+    )
+      ? manifest.value.recordIds.slice()
+      : [];
+
+    if (currentIds.includes(record.id)) {
+      if (attempt > 1) converged = true;
+      break;
+    }
+
+    if (currentIds.length >= EXECUTIVE_MEMORY_MAX_RECORDS) {
+      const error = new Error(
+        "Executive Memory collection exceeds the record limit."
+      );
+      error.status = 413;
+      error.code = "EXECUTIVE_MEMORY_COLLECTION_TOO_LARGE";
+      throw error;
+    }
+
+    try {
+      await writeExecutiveMemoryManifest(
+        collection,
+        [...currentIds, record.id],
+        manifest.fingerprint
+      );
+      if (attempt > 1) converged = true;
+      break;
+    } catch (error) {
+      if (
+        error?.code !== "MEOS_REPOSITORY_CONCURRENCY_CONFLICT" ||
+        attempt >= maximumAttempts
+      ) {
+        throw error;
+      }
+      researchLearningRuntime.convergenceRetryCount += 1;
+      converged = true;
+    }
+  }
+
+  /*
+   * Cache is a convenience only. Rebuild it from durable authority after the
+   * converged manifest commit; a cache failure never outranks durable truth.
+   */
+  try {
+    const latest =
+      await readExecutiveMemoryCollection(collection);
+    await writeExecutiveMemoryLocalCache(
+      collection,
+      latest
+    );
+  } catch (error) {
+    console.warn(
+      `[MEOS Research Learning] Durable upsert succeeded but local cache refresh failed for "${collection}":`,
+      error?.message || error
+    );
+  }
+
+  return {
+    success: true,
+    converged,
+    recordAttempts,
+    manifestAttempts,
+    totalAttempts:
+      recordAttempts + manifestAttempts
+  };
+}
+
 async function persistDurableResearchLearning(result = {}) {
   return enqueueResearchLearningWrite(async () => {
     const record = buildDurableResearchLearningRecord(result);
@@ -2508,35 +2660,19 @@ async function persistDurableResearchLearning(result = {}) {
     }
 
     try {
-      const current =
-        await readExecutiveMemoryCollection(
-          RESEARCH_LEARNING_COLLECTION
+      const upsert =
+        await upsertExecutiveMemoryRecordConvergently(
+          RESEARCH_LEARNING_COLLECTION,
+          record,
+          { maximumAttempts: 4 }
         );
 
-      const records = Array.isArray(current)
-        ? current.slice()
-        : [];
+      researchLearningRuntime.lastWriteAttempts =
+        upsert.totalAttempts;
 
-      const existingIndex = records.findIndex(
-        item => item?.id === record.id
-      );
-
-      if (existingIndex >= 0) {
-        records[existingIndex] = record;
-      } else {
-        records.push(record);
+      if (upsert.converged) {
+        researchLearningRuntime.convergedWriteCount += 1;
       }
-
-      const bounded = records.length > EXECUTIVE_MEMORY_MAX_RECORDS
-        ? records.slice(
-            records.length - EXECUTIVE_MEMORY_MAX_RECORDS
-          )
-        : records;
-
-      await writeExecutiveMemoryCollection(
-        RESEARCH_LEARNING_COLLECTION,
-        bounded
-      );
 
       researchLearningRuntime.persistedLearningCount += 1;
       researchLearningRuntime.lastLearningId = record.id;
@@ -2551,7 +2687,10 @@ async function persistDurableResearchLearning(result = {}) {
         evidenceCount: record.evidenceCount,
         epistemicStatus: record.epistemicStatus,
         knowledgeEngineIngestionRequired: true,
-        worldModelIntegrationRequired: true
+        worldModelIntegrationRequired: true,
+        convergedWrite: upsert.converged,
+        recordAttempts: upsert.recordAttempts,
+        manifestAttempts: upsert.manifestAttempts
       };
     } catch (error) {
       researchLearningRuntime.failedLearningCount += 1;
