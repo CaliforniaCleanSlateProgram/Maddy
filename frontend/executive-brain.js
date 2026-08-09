@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.14.0
- * Build: EB1140-AUTONOMOUS-EVIDENCE-INVESTIGATION-LOOP-20260808-A
+ * Version: 1.14.1
+ * Build: EB1141-DURABLE-HYPOTHESIS-FALSIFICATION-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.14.0";
-  const BUILD_ID = "EB1140-AUTONOMOUS-EVIDENCE-INVESTIGATION-LOOP-20260808-A";
+  const VERSION = "1.14.1";
+  const BUILD_ID = "EB1141-DURABLE-HYPOTHESIS-FALSIFICATION-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -8280,6 +8280,41 @@
             hypothesis.hypothesisId
           );
 
+        /*
+         * Durable falsification doctrine:
+         * once authoritative contradictory evidence falsifies a hypothesis,
+         * later unrelated evidence may not silently resurrect it.
+         * Reopening requires new authoritative supporting evidence and leaves
+         * an explicit audit trail showing that the hypothesis was reopened.
+         */
+        const previouslyFalsified =
+          hypothesis.status === "falsified";
+
+        if (
+          previouslyFalsified &&
+          !(
+            supported &&
+            normalizedEvidence.authority ===
+              "authoritative"
+          )
+        ) {
+          return {
+            ...this.clone(hypothesis),
+            status: "falsified",
+            evidenceUpdate: {
+              supported,
+              contradicted,
+              evidenceAuthority:
+                normalizedEvidence.authority,
+              provenance:
+                normalizedEvidence.provenance,
+              durableFalsificationPreserved:
+                true,
+              reopened: false
+            }
+          };
+        }
+
         let confidence =
           Number(hypothesis.confidence || 0.3);
 
@@ -8311,6 +8346,12 @@
           normalizedEvidence.authority === "authoritative" &&
           confidence <= 0.12;
 
+        const reopened =
+          previouslyFalsified &&
+          supported &&
+          normalizedEvidence.authority ===
+            "authoritative";
+
         return {
           ...this.clone(hypothesis),
           confidence,
@@ -8318,13 +8359,54 @@
             killed
               ? "falsified"
               : "hypothesis-not-fact",
+          falsificationHistory:
+            [
+              ...(
+                Array.isArray(
+                  hypothesis.falsificationHistory
+                )
+                  ? hypothesis.falsificationHistory
+                  : []
+              ),
+              ...(
+                killed
+                  ? [{
+                      at:
+                        new Date().toISOString(),
+                      provenance:
+                        normalizedEvidence.provenance,
+                      reason:
+                        "authoritative-contradictory-evidence"
+                    }]
+                  : []
+              ),
+              ...(
+                reopened
+                  ? [{
+                      at:
+                        new Date().toISOString(),
+                      provenance:
+                        normalizedEvidence.provenance,
+                      reason:
+                        "authoritative-supporting-evidence-reopened-hypothesis",
+                      reopened: true
+                    }]
+                  : []
+              )
+            ],
           evidenceUpdate: {
             supported,
             contradicted,
             evidenceAuthority:
               normalizedEvidence.authority,
             provenance:
-              normalizedEvidence.provenance
+              normalizedEvidence.provenance,
+            durableFalsificationPreserved:
+              killed || (
+                previouslyFalsified &&
+                !reopened
+              ),
+            reopened
           }
         };
       });
@@ -9226,6 +9308,39 @@
         },
         {
           name:
+            "A falsified hypothesis stays falsified when later unrelated evidence arrives",
+          passed:
+            result.hypotheses
+              ?.some(item =>
+                item.hypothesisId ===
+                  "coincidence-or-noise" &&
+                item.status ===
+                  "falsified" &&
+                item.evidenceUpdate
+                  ?.durableFalsificationPreserved ===
+                  true
+              )
+        },
+        {
+          name:
+            "Falsification carries an auditable evidence history instead of disappearing",
+          passed:
+            result.hypotheses
+              ?.some(item =>
+                item.hypothesisId ===
+                  "coincidence-or-noise" &&
+                Array.isArray(
+                  item.falsificationHistory
+                ) &&
+                item.falsificationHistory
+                  .some(entry =>
+                    entry.reason ===
+                      "authoritative-contradictory-evidence"
+                  )
+              )
+        },
+        {
+          name:
             "Supporting evidence strengthens a surviving hypothesis without turning it into fact",
           passed:
             result.survivingHypotheses
@@ -9361,11 +9476,11 @@
 
       console.table(checks);
       console.info(
-        `[MEOS ${this.version}] Commission 006.017D7D Autonomous Evidence Investigation Loop: ${passed ? "PASS" : "FAIL"}.`
+        `[MEOS ${this.version}] Commission 006.017D7D1 Durable Hypothesis Falsification: ${passed ? "PASS" : "FAIL"}.`
       );
 
       return {
-        commission: "006.017D7D",
+        commission: "006.017D7D1",
         version: this.version,
         buildId: this.buildId,
         passed,
