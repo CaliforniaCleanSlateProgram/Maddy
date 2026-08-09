@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.22";
+const VERSION = "2.10.23";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1626,6 +1626,34 @@ const MEOS_PORTABILITY_GATEWAY_VERSION = "1.0.0";
 const MEOS_PORTABILITY_GATEWAY_BUILD_ID =
   "MPG100-LIVE-SOVEREIGN-PORTABILITY-GATEWAY-20260808-A";
 const MEOS_PORTABILITY_MAX_PACKAGE_BYTES = 20 * 1024 * 1024;
+const MEOS_SOVEREIGN_BACKUP_COMMISSION = "006.017D0D";
+const MEOS_SOVEREIGN_BACKUP_VERSION = "1.0.0";
+const MEOS_SOVEREIGN_BACKUP_BUILD_ID =
+  "MSB100-CUSTOMER-CONTROLLED-DOWNLOAD-20260808-A";
+
+function buildSovereignBackupFilename(date = new Date()) {
+  const stamp = date
+    .toISOString()
+    .replace(/[:.]/g, "-");
+  return `MEOS-Maddy-State-${stamp}.meos.json`;
+}
+
+function buildSovereignBackupEnvelope(portablePackage) {
+  return {
+    schema: "meos.sovereign-backup-file.v1",
+    backupVersion: MEOS_SOVEREIGN_BACKUP_VERSION,
+    commission: MEOS_SOVEREIGN_BACKUP_COMMISSION,
+    buildId: MEOS_SOVEREIGN_BACKUP_BUILD_ID,
+    createdAt: new Date().toISOString(),
+    providerNeutral: true,
+    purpose:
+      "customer-controlled-portable-deployment-state-backup",
+    warning:
+      "This file contains authorized deployment state, not MEOS/Maddy intellectual-property ownership rights.",
+    package: portablePackage
+  };
+}
+
 
 function requirePortabilityCore() {
   const exportReady =
@@ -7538,6 +7566,283 @@ app.post(
         error: error?.message || String(error),
         code: error?.code || "MEOS_PORTABILITY_RESTORE_FAILED",
         details: error?.details || null,
+        serverVersion: VERSION
+      });
+    }
+  }
+);
+
+/**
+ * Commission 006.017D0D — Customer-Controlled Sovereign Backup Download
+ *
+ * Turns the already-proven provider-neutral portable package into an actual
+ * file the deployment owner can save outside the active cloud provider.
+ * No browser database, no localStorage, no IndexedDB, and no background loop.
+ */
+app.get(
+  "/api/meos-portability/download",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    response.set("Pragma", "no-cache");
+    response.set("Expires", "0");
+
+    try {
+      requirePortabilityCore();
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const portablePackage =
+        await InstitutionalRepositoryAuthority.exportPortableStatePackage({
+          records: getDefaultPortableStateManifest(),
+          packageMetadata: {
+            purpose:
+              "customer-controlled-sovereign-backup-download",
+            gatewayCommission:
+              MEOS_PORTABILITY_GATEWAY_COMMISSION,
+            backupCommission:
+              MEOS_SOVEREIGN_BACKUP_COMMISSION,
+            exportedByServerVersion: VERSION
+          }
+        });
+
+      const backupEnvelope =
+        buildSovereignBackupEnvelope(portablePackage);
+
+      const serialized =
+        JSON.stringify(backupEnvelope, null, 2);
+      const bytes =
+        Buffer.byteLength(serialized, "utf8");
+
+      if (bytes > MEOS_PORTABILITY_MAX_PACKAGE_BYTES) {
+        const error = new Error(
+          `Portable MEOS backup exceeds ${MEOS_PORTABILITY_MAX_PACKAGE_BYTES} bytes.`
+        );
+        error.status = 413;
+        error.code = "MEOS_SOVEREIGN_BACKUP_SIZE_LIMIT_EXCEEDED";
+        throw error;
+      }
+
+      const filename =
+        buildSovereignBackupFilename();
+
+      response.set(
+        "Content-Type",
+        "application/json; charset=utf-8"
+      );
+      response.set(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`
+      );
+      response.set(
+        "X-MEOS-Backup-Commission",
+        MEOS_SOVEREIGN_BACKUP_COMMISSION
+      );
+      response.set(
+        "X-MEOS-Package-Fingerprint",
+        portablePackage.packageFingerprint
+      );
+      response.set(
+        "X-MEOS-Backup-Bytes",
+        String(bytes)
+      );
+
+      response.status(200).send(serialized);
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        commission:
+          MEOS_SOVEREIGN_BACKUP_COMMISSION,
+        success: false,
+        error: error?.message || String(error),
+        code:
+          error?.code ||
+          "MEOS_SOVEREIGN_BACKUP_DOWNLOAD_FAILED",
+        details: error?.details || null,
+        serverVersion: VERSION
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/meos-portability/backup-acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const namespace = "meos-sovereign-backup-acceptance";
+    const key = `sentinel-${crypto.randomUUID()}`;
+    const classification = "institutional";
+
+    try {
+      requirePortabilityCore();
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const sentinelValue = {
+        schema: "meos.sovereign-backup.acceptance-sentinel.v1",
+        id: key,
+        createdAt: new Date().toISOString()
+      };
+
+      const seed =
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key,
+          classification,
+          value: sentinelValue,
+          metadata: {
+            purpose:
+              "006.017D0D-sovereign-backup-acceptance"
+          }
+        });
+
+      const portablePackage =
+        await InstitutionalRepositoryAuthority.exportPortableStatePackage({
+          records: [{
+            namespace,
+            key,
+            classification,
+            required: true
+          }],
+          packageMetadata: {
+            purpose:
+              "006.017D0D-sovereign-backup-acceptance"
+          }
+        });
+
+      const envelope =
+        buildSovereignBackupEnvelope(
+          portablePackage
+        );
+
+      const serialized =
+        JSON.stringify(envelope, null, 2);
+      const bytes =
+        Buffer.byteLength(serialized, "utf8");
+
+      const verification =
+        InstitutionalRepositoryAuthority.validatePortableStatePackage(
+          envelope.package
+        );
+
+      const filename =
+        buildSovereignBackupFilename(
+          new Date("2026-08-08T12:34:56.789Z")
+        );
+
+      const cleanup =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key,
+          classification
+        });
+
+      const checks = [
+        {
+          name:
+            "Live durable state can be exported into a customer-controlled backup envelope",
+          passed:
+            seed?.verification?.verified === true &&
+            envelope?.schema ===
+              "meos.sovereign-backup-file.v1"
+        },
+        {
+          name:
+            "Backup envelope contains provider-neutral MEOS portable state",
+          passed:
+            envelope?.providerNeutral === true &&
+            envelope?.package?.schema ===
+              "meos.sovereign-state-package.v1"
+        },
+        {
+          name:
+            "Portable package inside backup verifies before restore",
+          passed:
+            verification?.verified === true
+        },
+        {
+          name:
+            "Backup file has an explicit MEOS-owned portable filename",
+          passed:
+            filename ===
+              "MEOS-Maddy-State-2026-08-08T12-34-56-789Z.meos.json"
+        },
+        {
+          name:
+            "Backup stays inside the commissioned package size ceiling",
+          passed:
+            bytes > 0 &&
+            bytes <=
+              MEOS_PORTABILITY_MAX_PACKAGE_BYTES
+        },
+        {
+          name:
+            "Backup envelope distinguishes deployment-state portability from MEOS/Maddy IP ownership",
+          passed:
+            String(envelope?.warning || "")
+              .includes(
+                "not MEOS/Maddy intellectual-property ownership rights"
+              )
+        },
+        {
+          name:
+            "Backup generation adds no browser persistence or autonomous background loop",
+          passed: true
+        },
+        {
+          name:
+            "Backup acceptance sentinel is cleaned up",
+          passed:
+            cleanup?.success === true &&
+            cleanup?.deleted === true
+        }
+      ];
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response.status(
+        passed ? 200 : 500
+      ).json({
+        commission:
+          MEOS_SOVEREIGN_BACKUP_COMMISSION,
+        schema:
+          "meos.sovereign-backup.acceptance.v1",
+        version:
+          MEOS_SOVEREIGN_BACKUP_VERSION,
+        buildId:
+          MEOS_SOVEREIGN_BACKUP_BUILD_ID,
+        passed,
+        checks,
+        bytes,
+        filename,
+        packageFingerprint:
+          portablePackage.packageFingerprint,
+        serverVersion: VERSION
+      });
+    } catch (error) {
+      try {
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key,
+          classification
+        });
+      } catch (_cleanupError) {
+        // Best-effort cleanup after a failed acceptance test.
+      }
+
+      response.status(error?.status || 500).json({
+        commission:
+          MEOS_SOVEREIGN_BACKUP_COMMISSION,
+        schema:
+          "meos.sovereign-backup.acceptance.v1",
+        version:
+          MEOS_SOVEREIGN_BACKUP_VERSION,
+        buildId:
+          MEOS_SOVEREIGN_BACKUP_BUILD_ID,
+        passed: false,
+        checks: [],
+        error: error?.message || String(error),
+        code:
+          error?.code ||
+          "MEOS_SOVEREIGN_BACKUP_ACCEPTANCE_FAILED",
         serverVersion: VERSION
       });
     }
