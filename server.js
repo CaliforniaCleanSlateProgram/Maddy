@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.38";
+const VERSION = "2.10.39";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2354,6 +2354,238 @@ registerHeadlessResearchCapability({
 });
 
 
+
+/* ========================================================================== */
+/* Commission 006.017D7R1 — Durable Research Learning Bridge                  */
+/* ========================================================================== */
+
+const RESEARCH_LEARNING_COMMISSION = "006.017D7R1";
+const RESEARCH_LEARNING_VERSION = "1.0.0";
+const RESEARCH_LEARNING_BUILD_ID =
+  "RLB100-DURABLE-EVIDENCE-BACKED-RESEARCH-LEARNING-20260809-A";
+const RESEARCH_LEARNING_COLLECTION = "investigation-history";
+const RESEARCH_LEARNING_MAX_RECORDS = 250;
+
+let researchLearningWriteChain = Promise.resolve();
+
+const researchLearningRuntime = {
+  status: "online",
+  runtimeOwner: "meos-durable-server",
+  durableAuthority: "executive-memory/investigation-history",
+  persistedLearningCount: 0,
+  skippedLearningCount: 0,
+  failedLearningCount: 0,
+  lastLearningId: null,
+  lastPersistedAt: null,
+  lastError: null
+};
+
+function stableResearchLearningId(result = {}) {
+  const subject = String(result.subject || "unknown")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "unknown";
+
+  const basis = JSON.stringify({
+    subject: result.subject || "",
+    evidence: (Array.isArray(result.evidence) ? result.evidence : [])
+      .map(item => [
+        item?.source || "",
+        item?.evidenceStatus || "",
+        item?.title || ""
+      ])
+      .sort(),
+    quality: result.synthesis?.evidenceQuality || "none",
+    direct: Number(result.synthesis?.directSubjectMatchCount || 0),
+    authoritative: Number(result.synthesis?.authoritativeSourceCount || 0)
+  });
+
+  const fingerprint = crypto
+    .createHash("sha256")
+    .update(basis)
+    .digest("hex")
+    .slice(0, 20);
+
+  return `research-learning-${subject}-${fingerprint}`;
+}
+
+function buildDurableResearchLearningRecord(result = {}) {
+  const synthesis = result.synthesis || {};
+  const closure = result.researchLoop?.closure || {};
+  const evidence = Array.isArray(result.evidence)
+    ? result.evidence
+    : [];
+
+  const durableEvidence = evidence
+    .filter(item =>
+      item?.source &&
+      item?.evidenceStatus === "retrieved-public-source"
+    )
+    .map(item => ({
+      source: String(item.source),
+      title: item.title ? String(item.title) : null,
+      authoritative: item.authoritative === true,
+      retrievedAt: item.retrievedAt || null,
+      evidenceStatus: String(item.evidenceStatus)
+    }))
+    .slice(0, 40);
+
+  return {
+    id: stableResearchLearningId(result),
+    schema: "meos.research-learning.record.v1",
+    recordType: "research-learning",
+    subject: String(result.subject || ""),
+    learnedAt: new Date().toISOString(),
+    researchCommission: String(
+      result.commission || HEADLESS_RESEARCH_COMMISSION
+    ),
+    researchBuildId: String(
+      result.buildId || HEADLESS_RESEARCH_BUILD_ID
+    ),
+    evidenceQuality: String(
+      synthesis.evidenceQuality || "none"
+    ),
+    supportedFacts: Array.isArray(synthesis.supportedFacts)
+      ? synthesis.supportedFacts
+      : [],
+    inferences: Array.isArray(synthesis.inferences)
+      ? synthesis.inferences
+      : [],
+    conflicts: Array.isArray(synthesis.conflicts)
+      ? synthesis.conflicts
+      : [],
+    unknowns: Array.isArray(synthesis.unknowns)
+      ? synthesis.unknowns
+      : [],
+    requiresFurtherInvestigation:
+      synthesis.requiresFurtherInvestigation === true,
+    evidence: durableEvidence,
+    evidenceCount: durableEvidence.length,
+    researchClosure: {
+      autonomous: closure.autonomous === true,
+      passesExecuted: Number(closure.passesExecuted || 0),
+      stopReason: closure.stopReason || null
+    },
+    epistemicStatus:
+      synthesis.evidenceQuality === "strong"
+        ? "candidate-knowledge"
+        : "research-learning-with-open-uncertainty",
+    integrationAuthority: {
+      durableLearningRecorded: true,
+      knowledgeEngineIngestionRequired: true,
+      worldModelIntegrationRequired: true,
+      beliefAuthority:
+        "meos-evidence-integrity-and-institutional-reasoning",
+      externalActionAuthorized: false,
+      humanAuthorityPreserved: true
+    }
+  };
+}
+
+function enqueueResearchLearningWrite(task) {
+  const run = researchLearningWriteChain
+    .catch(() => undefined)
+    .then(task);
+
+  researchLearningWriteChain =
+    run.catch(() => undefined);
+
+  return run;
+}
+
+async function persistDurableResearchLearning(result = {}) {
+  return enqueueResearchLearningWrite(async () => {
+    const record = buildDurableResearchLearningRecord(result);
+
+    if (!record.subject || record.evidenceCount === 0) {
+      researchLearningRuntime.skippedLearningCount += 1;
+      return {
+        persisted: false,
+        reason: "no-retrieved-evidence",
+        record
+      };
+    }
+
+    try {
+      const current =
+        await readExecutiveMemoryCollection(
+          RESEARCH_LEARNING_COLLECTION
+        );
+
+      const records = Array.isArray(current)
+        ? current.slice()
+        : [];
+
+      const existingIndex = records.findIndex(
+        item => item?.id === record.id
+      );
+
+      if (existingIndex >= 0) {
+        records[existingIndex] = record;
+      } else {
+        records.push(record);
+      }
+
+      const bounded = records.length > EXECUTIVE_MEMORY_MAX_RECORDS
+        ? records.slice(
+            records.length - EXECUTIVE_MEMORY_MAX_RECORDS
+          )
+        : records;
+
+      await writeExecutiveMemoryCollection(
+        RESEARCH_LEARNING_COLLECTION,
+        bounded
+      );
+
+      researchLearningRuntime.persistedLearningCount += 1;
+      researchLearningRuntime.lastLearningId = record.id;
+      researchLearningRuntime.lastPersistedAt =
+        new Date().toISOString();
+      researchLearningRuntime.lastError = null;
+
+      return {
+        persisted: true,
+        collection: RESEARCH_LEARNING_COLLECTION,
+        recordId: record.id,
+        evidenceCount: record.evidenceCount,
+        epistemicStatus: record.epistemicStatus,
+        knowledgeEngineIngestionRequired: true,
+        worldModelIntegrationRequired: true
+      };
+    } catch (error) {
+      researchLearningRuntime.failedLearningCount += 1;
+      researchLearningRuntime.lastError = {
+        code:
+          error?.code ||
+          "RESEARCH_LEARNING_PERSISTENCE_FAILED",
+        message:
+          error?.message ||
+          String(error),
+        at: new Date().toISOString()
+      };
+      throw error;
+    }
+  });
+}
+
+function getResearchLearningRuntimeStatus() {
+  return {
+    commission: RESEARCH_LEARNING_COMMISSION,
+    version: RESEARCH_LEARNING_VERSION,
+    buildId: RESEARCH_LEARNING_BUILD_ID,
+    ...researchLearningRuntime,
+    collection: RESEARCH_LEARNING_COLLECTION,
+    authority: {
+      durableState: "meos-executive-memory",
+      knowledgeEngineIngestionRequired: true,
+      worldModelIntegrationRequired: true,
+      externalActionAuthorized: false,
+      humanAuthorityPreserved: true
+    }
+  };
+}
+
 function researchAssessmentSignature(result = {}) {
   const synthesis = result.synthesis || {};
   return JSON.stringify({
@@ -2486,7 +2718,7 @@ async function executeHeadlessResearch(request = {}) {
       "Autonomous research may continue internal investigation within configured bounds; it may not convert unresolved evidence into certainty or external-action authority."
   };
 
-  return {
+  const completedResearch = {
     ...finalPass,
     commission: HEADLESS_RESEARCH_COMMISSION,
     buildId: HEADLESS_RESEARCH_BUILD_ID,
@@ -2529,6 +2761,27 @@ async function executeHeadlessResearch(request = {}) {
           },
     completedAt: new Date().toISOString()
   };
+
+  try {
+    completedResearch.durableLearning =
+      await persistDurableResearchLearning(
+        completedResearch
+      );
+  } catch (error) {
+    completedResearch.durableLearning = {
+      persisted: false,
+      error: {
+        code:
+          error?.code ||
+          "RESEARCH_LEARNING_PERSISTENCE_FAILED",
+        message:
+          error?.message ||
+          String(error)
+      }
+    };
+  }
+
+  return completedResearch;
 }
 
 function getHeadlessResearchStatus() {
@@ -8935,6 +9188,16 @@ app.put(
  * Hot cognition remains runtime memory. Only the bounded persistence contract
  * already defined by Executive Brain is eligible for institutional storage.
  */
+app.get(
+  "/api/research-learning-runtime",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    response.status(200).json(
+      getResearchLearningRuntimeStatus()
+    );
+  }
+);
+
 app.get(
   "/api/headless-research-runtime",
   (request, response) => {
