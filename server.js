@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.35";
+const VERSION = "2.10.36";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1648,9 +1648,9 @@ function getExecutiveBrainAuthorityStatus() {
 /* ========================================================================== */
 
 const HEADLESS_RESEARCH_COMMISSION = "006.017D7P1";
-const HEADLESS_RESEARCH_VERSION = "1.1.1";
+const HEADLESS_RESEARCH_VERSION = "1.2.0";
 const HEADLESS_RESEARCH_BUILD_ID =
-  "HRO111-RESEARCH-HELPER-NAMESPACE-REPAIR-20260809-A";
+  "HRO120-EVIDENCE-TO-LEARNING-ITERATIVE-RESEARCH-20260809-A";
 
 const headlessResearchRuntime = {
   status: "online",
@@ -1814,6 +1814,184 @@ function buildHeadlessResearchPlan(request = {}) {
   };
 }
 
+
+function normalizeResearchTerm(value = "") {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function assessRetrievedResearchEvidence(plan, evidence = []) {
+  const subject = normalizeResearchTerm(plan?.subject || "");
+  const subjectTokens = subject
+    .split(/\s+/)
+    .filter(token => token.length > 2);
+
+  const retrieved = evidence.filter(item =>
+    item?.evidenceStatus === "retrieved-public-source"
+  );
+
+  const discovery = evidence.filter(item =>
+    item?.evidenceStatus === "search-discovery"
+  );
+
+  const sourceMap = new Map();
+  for (const item of retrieved) {
+    const source = String(item.source || "");
+    if (!source) continue;
+    if (!sourceMap.has(source)) sourceMap.set(source, item);
+  }
+
+  const uniqueRetrieved = [...sourceMap.values()];
+  const authoritative = uniqueRetrieved.filter(item =>
+    item.authoritative === true
+  );
+
+  const directMatches = uniqueRetrieved.filter(item => {
+    const haystack = normalizeResearchTerm(
+      `${item.title || ""} ${item.excerpt || ""}`
+    );
+    if (!haystack) return false;
+    if (subject && haystack.includes(subject)) return true;
+    return subjectTokens.length > 1 &&
+      subjectTokens.every(token => haystack.includes(token));
+  });
+
+  const partialMatches = uniqueRetrieved.filter(item => {
+    const haystack = normalizeResearchTerm(
+      `${item.title || ""} ${item.excerpt || ""}`
+    );
+    if (!haystack || subjectTokens.length === 0) return false;
+    const hits = subjectTokens.filter(token =>
+      haystack.includes(token)
+    ).length;
+    return hits >= Math.max(1, Math.ceil(subjectTokens.length / 2));
+  });
+
+  const supportedFacts = [];
+  const inferences = [];
+  const conflicts = [];
+  const unknowns = Array.isArray(plan?.questions)
+    ? plan.questions.slice()
+    : [];
+
+  if (directMatches.length >= 2) {
+    supportedFacts.push({
+      claim: `Multiple independently retrieved public sources directly reference "${plan.subject}".`,
+      confidence: directMatches.length >= 3 ? "high" : "moderate",
+      basis: directMatches.slice(0, 5).map(item => ({
+        source: item.source,
+        title: item.title || null,
+        authoritative: item.authoritative === true
+      }))
+    });
+  } else if (directMatches.length === 1) {
+    inferences.push({
+      claim: `One retrieved public source directly references "${plan.subject}", which is insufficient by itself for strong verification.`,
+      confidence: "low",
+      basis: [{
+        source: directMatches[0].source,
+        title: directMatches[0].title || null,
+        authoritative: directMatches[0].authoritative === true
+      }]
+    });
+  } else if (uniqueRetrieved.length > 0) {
+    inferences.push({
+      claim: `The retrieved source set did not directly verify "${plan.subject}" under that exact name.`,
+      confidence: "moderate",
+      basis: uniqueRetrieved.slice(0, 5).map(item => ({
+        source: item.source,
+        title: item.title || null,
+        authoritative: item.authoritative === true
+      })),
+      caution:
+        "Absence from this bounded retrieval set is not proof of nonexistence."
+    });
+  }
+
+  if (authoritative.length === 0 && uniqueRetrieved.length > 0) {
+    unknowns.push(
+      `Can "${plan.subject}" be verified in an authoritative government, academic, scientific, or primary-source reference?`
+    );
+  }
+
+  if (directMatches.length === 0 && partialMatches.length > 0) {
+    unknowns.push(
+      `Did search discovery substitute, autocorrect, or semantically drift from "${plan.subject}" toward a different term?`
+    );
+  }
+
+  const evidenceQuality =
+    authoritative.length > 0 && directMatches.length > 1
+      ? "strong"
+      : directMatches.length > 0
+        ? "mixed"
+        : uniqueRetrieved.length > 0
+          ? "insufficient-for-direct-verification"
+          : "none";
+
+  return {
+    evidenceQuality,
+    retrievedSourceCount: uniqueRetrieved.length,
+    discoverySourceCount: discovery.length,
+    authoritativeSourceCount: authoritative.length,
+    directSubjectMatchCount: directMatches.length,
+    partialSubjectMatchCount: partialMatches.length,
+    supportedFacts,
+    inferences,
+    conflicts,
+    unknowns: [...new Set(unknowns)],
+    requiresFurtherInvestigation:
+      uniqueRetrieved.length === 0 ||
+      directMatches.length < 2 ||
+      authoritative.length === 0
+  };
+}
+
+function buildResearchContinuation(plan, assessment) {
+  if (!assessment?.requiresFurtherInvestigation) {
+    return {
+      recommended: false,
+      reason:
+        "Current evidence is sufficient for bounded integration; further research may still be useful if new questions emerge."
+    };
+  }
+
+  const nextQuestions = [];
+  if (assessment.directSubjectMatchCount === 0) {
+    nextQuestions.push(
+      `Search the exact quoted term "${plan.subject}" and identify whether reputable sources use it.`
+    );
+    nextQuestions.push(
+      `Identify plausible alternate spellings, scientific names, common names, or search substitutions for "${plan.subject}".`
+    );
+  }
+  if (assessment.authoritativeSourceCount === 0) {
+    nextQuestions.push(
+      `Seek authoritative government, academic, scientific, or primary-source references for "${plan.subject}".`
+    );
+  }
+  nextQuestions.push(
+    "Actively seek evidence that would contradict the leading interpretation."
+  );
+
+  return {
+    recommended: true,
+    reason:
+      "The retrieved evidence does not yet justify closing the research question.",
+    nextQuestions: [...new Set(nextQuestions)].slice(0, 6),
+    loopPolicy: {
+      autonomousInternalResearchAllowed: true,
+      maxAdditionalPasses: 2,
+      stopWhen:
+        "Evidence quality becomes sufficient, new searches cease producing material information, or the configured research bounds are reached.",
+      externalActionAuthorized: false
+    }
+  };
+}
+
 async function executeHeadlessResearch(request = {}) {
   const built = buildHeadlessResearchPlan(request);
   if (!built.success) return built;
@@ -1905,23 +2083,31 @@ async function executeHeadlessResearch(request = {}) {
       missingCapabilities: [
         ...new Set(missingCapabilities)
       ],
-      synthesis: {
-        status:
-          evidence.length > 0
-            ? "evidence-ready-for-existing-meos-reasoning"
-            : "insufficient-evidence",
-        supportedFacts: [],
-        inferences: [],
-        conflicts: [],
-        unknowns: plan.questions.slice(),
-        note:
-          evidence.length > 0
-            ? "Retrieved evidence must pass existing MEOS Evidence Integrity / Institutional Reasoning before belief integration."
-            : "No evidence was retrieved. Maddy must not claim that external research occurred."
-      },
+      synthesis: (() => {
+        const assessment =
+          assessRetrievedResearchEvidence(plan, evidence);
+        return {
+          status:
+            evidence.length > 0
+              ? "evidence-assessed-for-meos-integration"
+              : "insufficient-evidence",
+          ...assessment,
+          note:
+            evidence.length > 0
+              ? "Research evidence has been conservatively assessed for direct support, source authority, unresolved uncertainty, and further-investigation need. Existing MEOS Evidence Integrity / Institutional Reasoning remain the belief-integration authority."
+              : "No evidence was retrieved. Maddy must not claim that external research occurred."
+        };
+      })(),
+      continuation: null,
       authority: plan.authority,
       completedAt: new Date().toISOString()
     };
+
+    result.continuation =
+      buildResearchContinuation(
+        plan,
+        result.synthesis
+      );
 
     headlessResearchRuntime.completedCount += 1;
     headlessResearchRuntime.lastCompletedAt =
