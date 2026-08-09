@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.30";
+const VERSION = "2.10.31";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1415,9 +1415,9 @@ async function writeDurableExecutiveBrainState(
  * preserve cognition. It does not grant external-action authority.
  */
 const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.2";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.3";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR102-INDEPENDENT-SERVER-LIFECYCLE-STARTUP-20260809-A";
+  "CCR103-DURABLE-FINGERPRINT-OBSERVABILITY-REPAIR-20260809-A";
 const CONTINUOUS_COGNITION_RUNTIME_ENABLED =
   String(process.env.MEOS_CONTINUOUS_COGNITION_ENABLED || "true")
     .trim()
@@ -1630,8 +1630,8 @@ async function runContinuousCognitionHeartbeat() {
     continuousCognitionRuntimeState.handoffFingerprint =
       expectedHandoffFingerprint;
     continuousCognitionRuntimeState.durableFingerprint =
-      durableAfter?.record?.fingerprint ||
-      writeResult?.record?.fingerprint ||
+      durableAfter?.record?.payloadFingerprint ||
+      writeResult?.record?.payloadFingerprint ||
       null;
     continuousCognitionRuntimeState.activeThreadId =
       cycleResult.handoff?.activeThreadId || null;
