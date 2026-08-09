@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.28";
+const VERSION = "2.10.29";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1415,9 +1415,9 @@ async function writeDurableExecutiveBrainState(
  * preserve cognition. It does not grant external-action authority.
  */
 const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.0";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.1";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR100-DURABLE-COGNITIVE-RUNTIME-HEARTBEAT-20260809-A";
+  "CCR101-STARTUP-LIFECYCLE-COHERENCE-REPAIR-20260809-A";
 const CONTINUOUS_COGNITION_RUNTIME_ENABLED =
   String(process.env.MEOS_CONTINUOUS_COGNITION_ENABLED || "true")
     .trim()
@@ -16110,7 +16110,7 @@ app.listen(PORT, () => {
         "[MEOS] Continuous Operations Runtime failed to start:",
         error
       );
-
+    }
 
     try {
       const cognitionStatus =
@@ -16134,7 +16134,6 @@ app.listen(PORT, () => {
         "[MEOS] Durable Cognitive Runtime failed to start:",
         error
       );
-    }
     }
   })();
 });
