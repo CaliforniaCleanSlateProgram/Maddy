@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.19.0
- * Build: EB1190-ANTICIPATORY-INITIATIVE-SELF-DIRECTED-ATTENTION-20260809-A
+ * Version: 1.19.1
+ * Build: EB1191-ANTICIPATORY-SIGNAL-FUSION-SALIENCE-REPAIR-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.19.0";
-  const BUILD_ID = "EB1190-ANTICIPATORY-INITIATIVE-SELF-DIRECTED-ATTENTION-20260809-A";
+  const VERSION = "1.19.1";
+  const BUILD_ID = "EB1191-ANTICIPATORY-SIGNAL-FUSION-SALIENCE-REPAIR-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10340,13 +10340,43 @@
         proposedInternalMove:"investigate-world-model-unknown"
       }));
 
-      const deduped = new Map();
+      const fused = new Map();
       candidates.forEach(item => {
         const key = this.normalize(item.subject);
-        const existing = deduped.get(key);
-        if (!existing || item.score > existing.score) deduped.set(key,item);
+        const existing = fused.get(key);
+        if (!existing) {
+          fused.set(key,{
+            ...this.clone(item),
+            origins:[item.origin],
+            supportingSignals:[this.clone(item)]
+          });
+          return;
+        }
+
+        const signals=[...(existing.supportingSignals || []),this.clone(item)];
+        const origins=[...new Set([...(existing.origins || [existing.origin]),item.origin])];
+        const strongest=signals.slice().sort((a,b)=>b.score-a.score)[0];
+        const independentSupport=Math.min(0.18,Math.max(0,origins.length-1)*0.06);
+        const evidenceBreadth=Math.min(0.08,signals.reduce((sum,signal)=>sum+(signal.evidence?.length||0),0)*0.01);
+        const fusedScore=Number(Math.min(1,strongest.score+independentSupport+evidenceBreadth).toFixed(3));
+
+        fused.set(key,{
+          ...this.clone(strongest),
+          origin:origins.length>1 ? "multi-signal" : strongest.origin,
+          origins,
+          supportingSignals:signals,
+          score:fusedScore,
+          reason:origins.length>1
+            ? `Multiple independent cognitive signals converge on this subject: ${origins.join(", ")}.`
+            : strongest.reason,
+          evidence:signals.flatMap(signal=>signal.evidence || []),
+          unknowns:[...new Set(signals.flatMap(signal=>signal.unknowns || []).map(value=>String(value)))],
+          assumptions:[...new Set(signals.flatMap(signal=>signal.assumptions || []).map(value=>JSON.stringify(value)))].map(value=>JSON.parse(value)),
+          falsifiers:[...new Set(signals.flatMap(signal=>signal.falsifiers || []).map(value=>String(value)))]
+        });
       });
-      return [...deduped.values()]
+
+      return [...fused.values()]
         .sort((a,b)=>b.score-a.score)
         .slice(0,Number(options.limit || this.configuration.anticipatoryCandidateLimit));
     },
@@ -10364,6 +10394,8 @@
           createdAt:new Date().toISOString(),
           subject:candidate.subject,
           origin:candidate.origin,
+          origins:this.clone(candidate.origins || [candidate.origin]),
+          supportingSignals:this.clone(candidate.supportingSignals || [candidate]),
           score:candidate.score,
           reason:candidate.reason,
           evidence:this.clone(candidate.evidence),
@@ -10508,13 +10540,13 @@
 
         const checks=[
           {name:"Maddy can generate attention candidates without a human prompt",passed:sweep.success===true&&sweep.sweep.promptedByHuman===false&&sweep.candidates.length>0},
-          {name:"Anticipation composes unresolved intentions rather than creating a disconnected proactive engine",passed:sweep.candidates.some(x=>x.origin==="unresolved-intention")},
-          {name:"Active investigations can independently compete for future attention",passed:sweep.candidates.some(x=>x.origin==="active-investigation")},
+          {name:"Anticipation composes unresolved intentions rather than creating a disconnected proactive engine",passed:sweep.candidates.some(x=>(x.origins || [x.origin]).includes("unresolved-intention"))},
+          {name:"Active investigations can independently compete for future attention",passed:sweep.candidates.some(x=>(x.origins || [x.origin]).includes("active-investigation"))},
           {name:"Developmental Drive can create anticipatory attention",passed:sweep.candidates.some(x=>x.origin==="developmental-drive")},
           {name:"Counterfactual preparedness can create anticipatory attention",passed:sweep.candidates.some(x=>x.origin==="counterfactual-preparedness")},
           {name:"Candidates are prioritized by consequence, time, leverage, uncertainty, and reversibility",passed:top&&typeof top.dimensions?.consequence==="number"&&typeof top.dimensions?.timePressure==="number"&&typeof top.dimensions?.leverage==="number"&&typeof top.dimensions?.uncertainty==="number"&&typeof top.dimensions?.reversibility==="number"},
           {name:"Attention threshold prevents every thought from becoming an initiative",passed:sweep.candidates.length>=sweep.initiatives.length},
-          {name:"High-salience anticipation can reach foreground attention",passed:sweep.initiatives.some(x=>["foreground","active"].includes(x.attentionLevel))},
+          {name:"High-salience anticipation can reach foreground attention",passed:sweep.initiatives.some(x=>x.attentionLevel==="foreground"&&(x.origins || []).length>=2)},
           {name:"Anticipation remains explicitly a hypothesis rather than prophecy",passed:sweep.initiatives.every(x=>x.truthRule.includes("not evidence"))},
           {name:"Self-directed initiative never grants external execution authority",passed:sweep.initiatives.every(x=>x.authority.externalActionAuthorized===false)},
           {name:"Maddy-directed anticipation can invoke the existing Intent Reconstruction machinery",passed:advanced.investigation?.reconstruction?.probableObjective?.includes("deserves action or preparation now")===true},
@@ -10523,7 +10555,7 @@
           {name:"Anticipatory investigation searches for low-regret positioning now",passed:advanced.investigation?.reconstruction?.probableObjective?.includes("low-regret move")===true},
           {name:"Self-directed anticipation becomes autobiographical experience",passed:this.autobiographicalMemory.some(x=>x.eventType==="self-directed-anticipatory-investigation")},
           {name:"Anticipatory state enters Maddy's living World Model",passed:world.anticipatoryInitiative.latestSweep?.fingerprint===sweep.sweep.fingerprint},
-          {name:"Anticipatory initiatives survive sovereign Brain persistence",passed:Array.isArray(snapshot.anticipatoryInitiatives)&&snapshot.anticipatoryInitiatives.some(x=>x.id===chosen?.id)},
+          {name:"Anticipatory initiatives survive sovereign Brain persistence",passed:Array.isArray(snapshot.anticipatoryInitiatives)&&snapshot.anticipatoryInitiatives.some(x=>x.id===chosen?.id&&["researched","blocked","active"].includes(x.status))},
           {name:"The sweep itself survives sovereign Brain persistence",passed:snapshot.lastAnticipatorySweep?.fingerprint===sweep.sweep.fingerprint},
           {name:"No Google or vendor semantics are embedded in anticipatory cognition",passed:!JSON.stringify(sweep).toLowerCase().includes("google")},
           {name:"Anticipation reuses the existing World Model and cognitive organs",passed:typeof this.projectWorldModel==="function"&&typeof this.reconstructIntent==="function"&&typeof this.investigateReconstructedIntent==="function"&&typeof this.createDevelopmentalDrive==="function"},
