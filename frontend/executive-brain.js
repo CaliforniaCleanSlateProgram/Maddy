@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.20.1
- * Build: EB1201-PREEMPTION-DISCRIMINATION-ACCEPTANCE-20260809-A
+ * Version: 1.21.0
+ * Build: EB1210-SUSTAINED-COGNITIVE-THREAD-CLOSURE-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.20.1";
-  const BUILD_ID = "EB1201-PREEMPTION-DISCRIMINATION-ACCEPTANCE-20260809-A";
+  const VERSION = "1.21.0";
+  const BUILD_ID = "EB1210-SUSTAINED-COGNITIVE-THREAD-CLOSURE-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -163,6 +163,9 @@
       priorityPortfolioLimit: 32,
       priorityPreemptionThreshold: 0.12,
       protectedAttentionSwitchCost: 0.08,
+      cognitiveThreadLimit: 48,
+      cognitiveThreadStepLimit: 24,
+      cognitiveThreadDiminishingReturnFloor: 0.08,
       meaningfulChangeDebounceMs: 1200,
       cognitiveReentryCooldownMs: 5000,
       maximumCognitiveReentryHistory: 250,
@@ -278,6 +281,10 @@
     currentExecutivePriority: null,
     lastPriorityArbitration: null,
     priorityArbitrationCount: 0,
+    cognitiveThreads: [],
+    activeCognitiveThreadId: null,
+    lastCognitiveThreadEvent: null,
+    cognitiveThreadEventCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -10983,6 +10990,367 @@
       }
     },
 
+    /*
+     * Commission 006.017D7K — Sustained Cognitive Thread + Closure
+     *
+     * Executive judgment chooses what deserves attention. A cognitive thread
+     * preserves what Maddy is trying to resolve, what she already established,
+     * what remains unknown, and what she intends to do next across reasoning
+     * cycles, interruptions, blocking conditions, and later re-entry.
+     */
+    createCognitiveThread(input = {}) {
+      const now=new Date().toISOString();
+      const subject=String(input.subject || this.currentExecutivePriority?.subject || "").trim();
+      if (!subject) return {success:false,reason:"thread-subject-required"};
+      const id=String(input.id || `thread-${this.fingerprintCognitiveDispatch({subject,objective:input.objective,createdAt:now})}`);
+      const existing=this.cognitiveThreads.find(thread=>thread.id===id);
+      if (existing) return {success:true,reused:true,thread:this.clone(existing)};
+      const thread={
+        schema:"meos.maddy.cognitive-thread.v1",
+        id,
+        subject,
+        objective:String(input.objective || `Reach an evidence-grounded executive conclusion about ${subject}.`),
+        origin:String(input.origin || this.currentExecutivePriority?.origin || "executive-judgment"),
+        priorityId:input.priorityId || this.currentExecutivePriority?.id || null,
+        status:"active",
+        closureState:"open",
+        openedAt:now,
+        updatedAt:now,
+        closedAt:null,
+        cycleCount:0,
+        established:this.clone(input.established || []),
+        unknowns:this.clone(input.unknowns || []),
+        hypotheses:this.clone(input.hypotheses || []),
+        contradictions:[],
+        evidence:this.clone(input.evidence || []),
+        nextIntendedMove:String(input.nextIntendedMove || "investigate highest-value unresolved question"),
+        closureCriteria:this.clone(input.closureCriteria || [
+          "material decision question answered",
+          "remaining uncertainty explicitly bounded",
+          "conclusion supported by evidence",
+          "closure independently verified"
+        ]),
+        closureVerification:null,
+        checkpoints:[],
+        resumeTriggers:[],
+        marginalValueHistory:[],
+        authority:{externalActionAuthorized:false},
+        truthRule:"Thread continuity preserves reasoning state; it does not convert hypotheses, simulations, or remembered conclusions into verified facts."
+      };
+      this.cognitiveThreads.unshift(thread);
+      this.cognitiveThreads=this.cognitiveThreads.slice(0,this.configuration.cognitiveThreadLimit);
+      this.activeCognitiveThreadId=id;
+      this.recordCognitiveThreadEvent("opened",thread,{});
+      return {success:true,thread:this.clone(thread)};
+    },
+
+    recordCognitiveThreadEvent(type, thread, detail = {}) {
+      const event={
+        schema:"meos.maddy.cognitive-thread-event.v1",
+        eventNumber:Number(this.cognitiveThreadEventCount || 0)+1,
+        occurredAt:new Date().toISOString(),
+        type:String(type),
+        threadId:thread?.id || null,
+        subject:thread?.subject || null,
+        detail:this.clone(detail)
+      };
+      event.fingerprint=this.fingerprintCognitiveDispatch(event);
+      this.cognitiveThreadEventCount=event.eventNumber;
+      this.lastCognitiveThreadEvent=event;
+      return event;
+    },
+
+    checkpointCognitiveThread(threadInput, reason = "interrupted", options = {}) {
+      const thread=typeof threadInput==="string"
+        ? this.cognitiveThreads.find(item=>item.id===threadInput)
+        : threadInput;
+      if (!thread) return {success:false,reason:"thread-not-found"};
+      const checkpoint={
+        checkpointedAt:new Date().toISOString(),
+        reason,
+        established:this.clone(thread.established),
+        unknowns:this.clone(thread.unknowns),
+        hypotheses:this.clone(thread.hypotheses),
+        contradictions:this.clone(thread.contradictions),
+        nextIntendedMove:thread.nextIntendedMove,
+        cycleCount:thread.cycleCount
+      };
+      thread.checkpoints.unshift(checkpoint);
+      thread.checkpoints=thread.checkpoints.slice(0,12);
+      thread.updatedAt=checkpoint.checkpointedAt;
+      if (options.status) thread.status=options.status;
+      if (options.resumeTrigger) {
+        thread.resumeTriggers.unshift({
+          trigger:String(options.resumeTrigger),
+          createdAt:checkpoint.checkpointedAt,
+          satisfied:false
+        });
+      }
+      if (this.activeCognitiveThreadId===thread.id && thread.status!=="active") this.activeCognitiveThreadId=null;
+      this.recordCognitiveThreadEvent("checkpointed",thread,{reason,status:thread.status});
+      return {success:true,thread:this.clone(thread),checkpoint:this.clone(checkpoint)};
+    },
+
+    resumeCognitiveThread(threadInput, context = {}) {
+      const thread=typeof threadInput==="string"
+        ? this.cognitiveThreads.find(item=>item.id===threadInput)
+        : threadInput;
+      if (!thread) return {success:false,reason:"thread-not-found"};
+      if (thread.closureState==="verified-closed" && context.materialContradiction!==true) {
+        return {success:false,reason:"thread-closed-no-material-change",thread:this.clone(thread)};
+      }
+      if (context.materialContradiction===true) {
+        thread.closureState="reopened";
+        thread.contradictions.unshift({
+          detectedAt:new Date().toISOString(),
+          claim:String(context.claim || "material contradiction"),
+          evidence:this.clone(context.evidence || [])
+        });
+        thread.closedAt=null;
+        thread.closureVerification=null;
+      }
+      thread.status="active";
+      thread.updatedAt=new Date().toISOString();
+      this.activeCognitiveThreadId=thread.id;
+      this.recordCognitiveThreadEvent(context.materialContradiction===true?"reopened":"resumed",thread,{
+        nextIntendedMove:thread.nextIntendedMove,
+        materialContradiction:context.materialContradiction===true
+      });
+      return {success:true,thread:this.clone(thread)};
+    },
+
+    advanceCognitiveThread(threadInput, update = {}) {
+      const thread=typeof threadInput==="string"
+        ? this.cognitiveThreads.find(item=>item.id===threadInput)
+        : threadInput;
+      if (!thread) return {success:false,reason:"thread-not-found"};
+      if (thread.status!=="active") return {success:false,reason:"thread-not-active",thread:this.clone(thread)};
+      if (thread.cycleCount>=this.configuration.cognitiveThreadStepLimit) {
+        return this.checkpointCognitiveThread(thread,"cycle-limit",{status:"paused",resumeTrigger:"new material evidence or explicit executive direction"});
+      }
+
+      const uniquePush=(target,values=[])=>{
+        for (const value of values) {
+          const key=JSON.stringify(value);
+          if (!target.some(existing=>JSON.stringify(existing)===key)) target.push(this.clone(value));
+        }
+      };
+      uniquePush(thread.established,update.established || []);
+      uniquePush(thread.unknowns,update.unknowns || []);
+      uniquePush(thread.hypotheses,update.hypotheses || []);
+      uniquePush(thread.evidence,update.evidence || []);
+
+      if (Array.isArray(update.resolvedUnknowns) && update.resolvedUnknowns.length) {
+        const resolved=new Set(update.resolvedUnknowns.map(value=>String(value)));
+        thread.unknowns=thread.unknowns.filter(value=>!resolved.has(String(value)));
+      }
+
+      thread.cycleCount+=1;
+      thread.updatedAt=new Date().toISOString();
+      if (update.nextIntendedMove) thread.nextIntendedMove=String(update.nextIntendedMove);
+
+      const marginalValue=Math.max(0,Math.min(1,Number(update.marginalValue ?? 0.5)));
+      thread.marginalValueHistory.unshift({cycle:thread.cycleCount,value:marginalValue,at:thread.updatedAt});
+      thread.marginalValueHistory=thread.marginalValueHistory.slice(0,8);
+
+      const recent=thread.marginalValueHistory.slice(0,3);
+      const diminishing=recent.length===3 && recent.every(item=>item.value<this.configuration.cognitiveThreadDiminishingReturnFloor);
+      if (diminishing && thread.unknowns.length) {
+        return this.checkpointCognitiveThread(thread,"diminishing-return",{status:"paused",resumeTrigger:"new evidence changes expected information value"});
+      }
+
+      this.recordCognitiveThreadEvent("advanced",thread,{cycleCount:thread.cycleCount,marginalValue});
+      return {success:true,thread:this.clone(thread),diminishingReturn:false};
+    },
+
+    verifyCognitiveThreadClosure(threadInput, verification = {}) {
+      const thread=typeof threadInput==="string"
+        ? this.cognitiveThreads.find(item=>item.id===threadInput)
+        : threadInput;
+      if (!thread) return {success:false,reason:"thread-not-found"};
+      const decisionAnswered=verification.decisionAnswered===true;
+      const uncertaintyBounded=verification.uncertaintyBounded===true;
+      const evidenceGrounded=verification.evidenceGrounded===true;
+      const independentlyVerified=verification.independentlyVerified===true;
+      const verified=decisionAnswered&&uncertaintyBounded&&evidenceGrounded&&independentlyVerified;
+      thread.closureVerification={
+        verifiedAt:new Date().toISOString(),
+        decisionAnswered,
+        uncertaintyBounded,
+        evidenceGrounded,
+        independentlyVerified,
+        evidence:this.clone(verification.evidence || []),
+        verified
+      };
+      if (!verified) {
+        thread.closureState="closure-rejected";
+        thread.status="active";
+        thread.updatedAt=thread.closureVerification.verifiedAt;
+        this.activeCognitiveThreadId=thread.id;
+        this.recordCognitiveThreadEvent("closure-rejected",thread,{verification:thread.closureVerification});
+        return {success:false,reason:"closure-not-verified",thread:this.clone(thread)};
+      }
+      thread.closureState="verified-closed";
+      thread.status="closed";
+      thread.closedAt=thread.closureVerification.verifiedAt;
+      thread.updatedAt=thread.closedAt;
+      if (this.activeCognitiveThreadId===thread.id) this.activeCognitiveThreadId=null;
+      this.recordCognitiveThreadEvent("closed",thread,{verification:thread.closureVerification});
+      this.formAutobiographicalEpisode({
+        eventType:"cognitive-thread-closure",
+        subject:thread.subject,
+        sourceId:thread.id,
+        perception:{objective:thread.objective,evidence:thread.evidence},
+        intention:{type:"sustain-until-closure",closureCriteria:thread.closureCriteria},
+        action:{cycles:thread.cycleCount,checkpoints:thread.checkpoints.length},
+        outcome:{verified:true,closureState:thread.closureState},
+        learning:{established:thread.established,remainingUnknowns:thread.unknowns}
+      });
+      return {success:true,thread:this.clone(thread)};
+    },
+
+    preemptCognitiveThreadForPriority(newPriority = {}, options = {}) {
+      const active=this.cognitiveThreads.find(thread=>thread.id===this.activeCognitiveThreadId);
+      if (!active) return {success:true,preempted:false,reason:"no-active-thread"};
+      const arbitration=this.arbitrateExecutivePriorities([newPriority],{materialChange:options.materialChange===true});
+      if (arbitration.arbitration.preempted!==true) {
+        return {success:true,preempted:false,arbitration};
+      }
+      const checkpoint=this.checkpointCognitiveThread(active,"executive-priority-preemption",{
+        status:"paused",
+        resumeTrigger:"preempting priority reaches closure or loses priority"
+      });
+      return {success:true,preempted:true,checkpoint,arbitration};
+    },
+
+    async runSustainedCognitiveThreadAcceptanceTest() {
+      const original={
+        threads:this.clone(this.cognitiveThreads),
+        activeId:this.activeCognitiveThreadId,
+        lastEvent:this.clone(this.lastCognitiveThreadEvent),
+        eventCount:this.cognitiveThreadEventCount,
+        priority:this.clone(this.currentExecutivePriority),
+        portfolio:this.clone(this.executivePriorityPortfolio),
+        arbitration:this.clone(this.lastPriorityArbitration),
+        autobiography:this.clone(this.autobiographicalMemory)
+      };
+      const priorHydrated=brainPersistence.hydrated;
+      brainPersistence.hydrated=false;
+      try {
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority=null;
+
+        const opened=this.createCognitiveThread({
+          id:"fixture-thread",
+          subject:"Future funding positioning",
+          objective:"Determine whether positioning now materially improves future eligibility.",
+          established:["future cycle exists"],
+          unknowns:["eligibility prerequisite","partner viability"],
+          hypotheses:["early positioning improves competitiveness"],
+          nextIntendedMove:"verify eligibility prerequisite"
+        });
+
+        const cycle1=this.advanceCognitiveThread("fixture-thread",{
+          established:["eligibility language requires prerequisite"],
+          evidence:[{source:"fixture://authoritative-rule",verified:true}],
+          resolvedUnknowns:["eligibility prerequisite"],
+          unknowns:["whether partner route is viable"],
+          nextIntendedMove:"investigate partner route",
+          marginalValue:0.82
+        });
+        const checkpoint=this.checkpointCognitiveThread("fixture-thread","higher-priority-interruption",{status:"paused",resumeTrigger:"urgent work closes"});
+        const resumed=this.resumeCognitiveThread("fixture-thread");
+        const cycle2=this.advanceCognitiveThread("fixture-thread",{
+          established:["partner route appears viable subject to verification"],
+          evidence:[{source:"fixture://partner-rule",verified:true}],
+          resolvedUnknowns:["partner viability","whether partner route is viable"],
+          nextIntendedMove:"verify conclusion and close if supported",
+          marginalValue:0.66
+        });
+
+        const rejected=this.verifyCognitiveThreadClosure("fixture-thread",{
+          decisionAnswered:true,
+          uncertaintyBounded:true,
+          evidenceGrounded:true,
+          independentlyVerified:false
+        });
+        const closed=this.verifyCognitiveThreadClosure("fixture-thread",{
+          decisionAnswered:true,
+          uncertaintyBounded:true,
+          evidenceGrounded:true,
+          independentlyVerified:true,
+          evidence:[{source:"fixture://independent-check",verified:true}]
+        });
+
+        const blocked=this.createCognitiveThread({
+          id:"fixture-blocked",
+          subject:"Blocked external dependency",
+          unknowns:["awaiting authoritative change"]
+        });
+        const blockedCheckpoint=this.checkpointCognitiveThread("fixture-blocked","external-dependency",{status:"blocked",resumeTrigger:"authoritative dependency changes"});
+
+        const diminishing=this.createCognitiveThread({
+          id:"fixture-diminishing",
+          subject:"Low-yield unresolved research",
+          unknowns:["unresolved question"]
+        });
+        this.advanceCognitiveThread("fixture-diminishing",{marginalValue:0.02});
+        this.advanceCognitiveThread("fixture-diminishing",{marginalValue:0.03});
+        const diminishingResult=this.advanceCognitiveThread("fixture-diminishing",{marginalValue:0.01});
+
+        const reopened=this.resumeCognitiveThread("fixture-thread",{
+          materialContradiction:true,
+          claim:"new authoritative rule contradicts prior conclusion",
+          evidence:[{source:"fixture://new-rule",verified:true}]
+        });
+
+        const world=this.projectWorldModel({reason:"sustained-cognition-acceptance",persist:false,attend:false});
+        const snapshot=this.buildPersistenceSnapshot();
+
+        const checks=[
+          {name:"Maddy can explicitly represent unfinished thought",passed:opened.success===true&&opened.thread.closureState==="open"},
+          {name:"A cognitive thread preserves its objective across reasoning cycles",passed:cycle2.thread.objective===opened.thread.objective},
+          {name:"Established conclusions accumulate without erasing prior reasoning",passed:cycle2.thread.established.includes("future cycle exists")&&cycle2.thread.established.includes("eligibility language requires prerequisite")},
+          {name:"Resolved unknowns can leave the active uncertainty set",passed:!cycle2.thread.unknowns.includes("eligibility prerequisite")},
+          {name:"The next intended cognitive move survives across cycles",passed:cycle2.thread.nextIntendedMove==="verify conclusion and close if supported"},
+          {name:"Interruption checkpoints established reasoning instead of erasing it",passed:checkpoint.checkpoint.established.includes("eligibility language requires prerequisite")},
+          {name:"Interrupted cognition can pause without pretending to be complete",passed:checkpoint.thread.status==="paused"&&checkpoint.thread.closureState==="open"},
+          {name:"Paused cognition can resume from preserved state",passed:resumed.success===true&&resumed.thread.nextIntendedMove==="investigate partner route"},
+          {name:"Closure is rejected when independent verification is missing",passed:rejected.success===false&&rejected.reason==="closure-not-verified"},
+          {name:"Verified closure requires decision answer, bounded uncertainty, evidence, and independent verification",passed:closed.success===true&&closed.thread.closureState==="verified-closed"},
+          {name:"Thread completion does not claim the world problem is permanently solved",passed:closed.thread.closureState==="verified-closed"&&!closed.thread.truthRule.includes("permanently solved")},
+          {name:"Blocked thought preserves a concrete resume trigger",passed:blockedCheckpoint.thread.status==="blocked"&&blockedCheckpoint.thread.resumeTriggers.some(x=>x.trigger.includes("authoritative dependency changes"))},
+          {name:"Diminishing cognitive returns can pause unresolved thought instead of looping forever",passed:diminishingResult.success===true&&diminishingResult.thread.status==="paused"&&diminishingResult.checkpoint.reason==="diminishing-return"},
+          {name:"Material contradiction can reopen a previously verified thread",passed:reopened.success===true&&reopened.thread.closureState==="reopened"&&reopened.thread.contradictions.length>0},
+          {name:"Reopened cognition preserves the prior thread rather than creating amnesia",passed:reopened.thread.established.includes("future cycle exists")&&reopened.thread.cycleCount===2},
+          {name:"Verified cognitive closure becomes autobiographical experience",passed:this.autobiographicalMemory.some(x=>x.eventType==="cognitive-thread-closure"&&x.sourceId==="fixture-thread")},
+          {name:"Sustained cognition enters Maddy's living World Model",passed:world.sustainedCognition.openThreads.some(x=>x.id==="fixture-thread")},
+          {name:"Open and interrupted cognitive threads survive sovereign Brain persistence",passed:Array.isArray(snapshot.cognitiveThreads)&&snapshot.cognitiveThreads.some(x=>x.id==="fixture-thread"&&x.closureState==="reopened")},
+          {name:"Active cognitive-thread identity survives sovereign Brain persistence",passed:snapshot.activeCognitiveThreadId==="fixture-thread"},
+          {name:"Cognitive-thread event continuity survives sovereign Brain persistence",passed:snapshot.lastCognitiveThreadEvent?.threadId==="fixture-thread"},
+          {name:"Thread continuity never grants external authority",passed:this.cognitiveThreads.every(x=>x.authority.externalActionAuthorized===false)},
+          {name:"Sustained cognition composes Executive Judgment instead of replacing it",passed:typeof this.arbitrateExecutivePriorities==="function"&&typeof this.runExecutiveJudgmentCycle==="function"},
+          {name:"Sustained cognition composes existing Intent Reconstruction and investigation organs",passed:typeof this.reconstructIntent==="function"&&typeof this.investigateReconstructedIntent==="function"},
+          {name:"Thread truth boundary prevents continuity from upgrading hypotheses into facts",passed:this.cognitiveThreads.every(x=>x.truthRule.includes("does not convert hypotheses"))}
+        ];
+        const passed=checks.every(x=>x.passed);
+        console.table(checks.map(x=>({name:x.name,passed:x.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.017D7K Sustained Cognitive Thread + Closure: ${passed?"PASS":"FAIL"}.`);
+        return {commission:"006.017D7K",version:this.version,buildId:this.buildId,passed,checks,opened,cycle1,checkpoint,resumed,cycle2,rejected,closed,blocked,blockedCheckpoint,diminishingResult,reopened};
+      } finally {
+        brainPersistence.hydrated=priorHydrated;
+        this.cognitiveThreads=original.threads;
+        this.activeCognitiveThreadId=original.activeId;
+        this.lastCognitiveThreadEvent=original.lastEvent;
+        this.cognitiveThreadEventCount=original.eventCount;
+        this.currentExecutivePriority=original.priority;
+        this.executivePriorityPortfolio=original.portfolio;
+        this.lastPriorityArbitration=original.arbitration;
+        this.autobiographicalMemory=original.autobiography;
+      }
+    },
+
     getSalienceStatus() {
       return {
         assessmentCount:
@@ -11184,6 +11552,14 @@
           rule: "Attention is scarce. Maddy must compare competing demands, account for opportunity cost and switching cost, protect justified commitments, and preempt only when new evidence materially changes what deserves attention. Priority never creates external authority."
         },
 
+        sustainedCognition: {
+          activeThreadId: this.activeCognitiveThreadId,
+          activeThread: this.clone(this.cognitiveThreads.find(thread => thread.id === this.activeCognitiveThreadId) || null),
+          openThreads: this.clone(this.cognitiveThreads.filter(thread => ["active","paused","blocked"].includes(thread.status)).slice(0, 12)),
+          lastEvent: this.clone(this.lastCognitiveThreadEvent),
+          rule: "A cognitive thread preserves unfinished thought across cycles and interruptions. Closure requires explicit criteria and verification; interruption checkpoints state rather than erasing it; material contradiction may reopen a closed-for-now thread."
+        },
+
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -11220,6 +11596,7 @@
           deliberateExperience: model.deliberateExperience,
           anticipatoryInitiative: model.anticipatoryInitiative,
           executiveJudgment: model.executiveJudgment,
+          sustainedCognition: model.sustainedCognition,
           temporal: model.temporal
         });
 
@@ -12510,7 +12887,11 @@
         executivePriorityPortfolio: this.executivePriorityPortfolio.slice(0, this.configuration.priorityPortfolioLimit),
         currentExecutivePriority: this.currentExecutivePriority ? this.clone(this.currentExecutivePriority) : null,
         lastPriorityArbitration: this.lastPriorityArbitration ? this.clone(this.lastPriorityArbitration) : null,
-        priorityArbitrationCount: Number(this.priorityArbitrationCount || 0)
+        priorityArbitrationCount: Number(this.priorityArbitrationCount || 0),
+        cognitiveThreads: this.cognitiveThreads.slice(0, this.configuration.cognitiveThreadLimit),
+        activeCognitiveThreadId: this.activeCognitiveThreadId,
+        lastCognitiveThreadEvent: this.lastCognitiveThreadEvent ? this.clone(this.lastCognitiveThreadEvent) : null,
+        cognitiveThreadEventCount: Number(this.cognitiveThreadEventCount || 0)
       };
     },
 
@@ -12652,6 +13033,10 @@
       this.currentExecutivePriority = saved.currentExecutivePriority && typeof saved.currentExecutivePriority === "object" ? this.clone(saved.currentExecutivePriority) : null;
       this.lastPriorityArbitration = saved.lastPriorityArbitration && typeof saved.lastPriorityArbitration === "object" ? this.clone(saved.lastPriorityArbitration) : null;
       this.priorityArbitrationCount = Math.max(Number(saved.priorityArbitrationCount || 0), Number(this.lastPriorityArbitration?.arbitrationNumber || 0));
+      this.cognitiveThreads = Array.isArray(saved.cognitiveThreads) ? saved.cognitiveThreads.slice(0, this.configuration.cognitiveThreadLimit) : [];
+      this.activeCognitiveThreadId = saved.activeCognitiveThreadId || null;
+      this.lastCognitiveThreadEvent = saved.lastCognitiveThreadEvent && typeof saved.lastCognitiveThreadEvent === "object" ? this.clone(saved.lastCognitiveThreadEvent) : null;
+      this.cognitiveThreadEventCount = Math.max(Number(saved.cognitiveThreadEventCount || 0), Number(this.lastCognitiveThreadEvent?.eventNumber || 0));
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
