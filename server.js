@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.36";
+const VERSION = "2.10.37";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1647,10 +1647,10 @@ function getExecutiveBrainAuthorityStatus() {
 /* Commission 006.017D7P1 — Headless Research Orchestration                   */
 /* ========================================================================== */
 
-const HEADLESS_RESEARCH_COMMISSION = "006.017D7P1";
-const HEADLESS_RESEARCH_VERSION = "1.2.0";
+const HEADLESS_RESEARCH_COMMISSION = "006.017D7P4";
+const HEADLESS_RESEARCH_VERSION = "1.3.0";
 const HEADLESS_RESEARCH_BUILD_ID =
-  "HRO120-EVIDENCE-TO-LEARNING-ITERATIVE-RESEARCH-20260809-A";
+  "HRO130-AUTONOMOUS-RESEARCH-CLOSURE-LOOP-20260809-A";
 
 const headlessResearchRuntime = {
   status: "online",
@@ -1992,7 +1992,7 @@ function buildResearchContinuation(plan, assessment) {
   };
 }
 
-async function executeHeadlessResearch(request = {}) {
+async function executeHeadlessResearchPass(request = {}) {
   const built = buildHeadlessResearchPlan(request);
   if (!built.success) return built;
 
@@ -2352,6 +2352,184 @@ registerHeadlessResearchCapability({
     };
   }
 });
+
+
+function researchAssessmentSignature(result = {}) {
+  const synthesis = result.synthesis || {};
+  return JSON.stringify({
+    quality: synthesis.evidenceQuality || null,
+    retrieved: Number(synthesis.retrievedSourceCount || 0),
+    authoritative: Number(synthesis.authoritativeSourceCount || 0),
+    direct: Number(synthesis.directSubjectMatchCount || 0),
+    partial: Number(synthesis.partialSubjectMatchCount || 0),
+    unknowns: Array.isArray(synthesis.unknowns)
+      ? synthesis.unknowns.slice().sort()
+      : []
+  });
+}
+
+function mergeResearchEvidence(results = []) {
+  const merged = [];
+  const seen = new Set();
+  for (const result of results) {
+    for (const item of Array.isArray(result?.evidence) ? result.evidence : []) {
+      const key = [
+        String(item?.source || ""),
+        String(item?.evidenceStatus || ""),
+        String(item?.title || "")
+      ].join("|");
+      if (!item?.source || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+  }
+  return merged;
+}
+
+async function executeHeadlessResearch(request = {}) {
+  const maxAdditionalPasses = Math.max(
+    0,
+    Math.min(
+      2,
+      Number(request.maxAdditionalPasses ?? 2)
+    )
+  );
+
+  const passes = [];
+  let currentRequest = {
+    ...request,
+    maxAdditionalPasses: 0
+  };
+  let previousSignature = null;
+  let stopReason = "initial-pass-complete";
+
+  for (let passIndex = 0; passIndex <= maxAdditionalPasses; passIndex += 1) {
+    const pass = await executeHeadlessResearchPass(currentRequest);
+    passes.push(pass);
+
+    if (!pass.success) {
+      stopReason = "research-pass-failed";
+      break;
+    }
+
+    const continuation = pass.continuation || {};
+    const signature = researchAssessmentSignature(pass);
+
+    if (continuation.recommended !== true) {
+      stopReason = "evidence-sufficient-for-bounded-closure";
+      break;
+    }
+
+    if (passIndex >= maxAdditionalPasses) {
+      stopReason = "configured-research-bound-reached";
+      break;
+    }
+
+    if (previousSignature && signature === previousSignature) {
+      stopReason = "diminishing-returns-no-material-change";
+      break;
+    }
+
+    const nextQuestions = Array.isArray(continuation.nextQuestions)
+      ? continuation.nextQuestions.filter(Boolean)
+      : [];
+
+    if (nextQuestions.length === 0) {
+      stopReason = "no-actionable-follow-up-question";
+      break;
+    }
+
+    previousSignature = signature;
+    currentRequest = {
+      ...request,
+      unknowns: nextQuestions,
+      reason:
+        `Autonomous continuation pass ${passIndex + 2}: ` +
+        String(continuation.reason || "Resolve remaining research uncertainty."),
+      maxAdditionalPasses: 0
+    };
+  }
+
+  const finalPass = passes[passes.length - 1] || {
+    success: false,
+    subject: String(request.subject || request.question || ""),
+    evidence: [],
+    synthesis: {
+      status: "insufficient-evidence",
+      supportedFacts: [],
+      inferences: [],
+      conflicts: [],
+      unknowns: []
+    }
+  };
+
+  const mergedEvidence = mergeResearchEvidence(passes);
+  const finalAssessment =
+    finalPass.plan
+      ? assessRetrievedResearchEvidence(
+          finalPass.plan,
+          mergedEvidence
+        )
+      : finalPass.synthesis;
+
+  const closure = {
+    schema: "meos.autonomous-research-closure.v1",
+    autonomous: true,
+    passesExecuted: passes.length,
+    maximumPasses: maxAdditionalPasses + 1,
+    stopReason,
+    evidenceQuality: finalAssessment?.evidenceQuality || "none",
+    requiresFurtherInvestigation:
+      finalAssessment?.requiresFurtherInvestigation === true,
+    externalActionAuthorized: false,
+    truthRule:
+      "Autonomous research may continue internal investigation within configured bounds; it may not convert unresolved evidence into certainty or external-action authority."
+  };
+
+  return {
+    ...finalPass,
+    commission: HEADLESS_RESEARCH_COMMISSION,
+    buildId: HEADLESS_RESEARCH_BUILD_ID,
+    evidence: mergedEvidence,
+    synthesis: {
+      ...finalAssessment,
+      status:
+        mergedEvidence.length > 0
+          ? "autonomous-research-assessed"
+          : "insufficient-evidence",
+      note:
+        "Evidence from all autonomous passes is merged and conservatively reassessed. Existing MEOS Evidence Integrity / Institutional Reasoning remain the belief-integration authority."
+    },
+    researchLoop: {
+      passes: passes.map((pass, index) => ({
+        passNumber: index + 1,
+        subject: pass.subject,
+        questions: pass.plan?.questions || [],
+        evidenceCount: Array.isArray(pass.evidence) ? pass.evidence.length : 0,
+        evidenceQuality: pass.synthesis?.evidenceQuality || null,
+        directSubjectMatchCount:
+          Number(pass.synthesis?.directSubjectMatchCount || 0),
+        authoritativeSourceCount:
+          Number(pass.synthesis?.authoritativeSourceCount || 0),
+        continuationRecommended:
+          pass.continuation?.recommended === true
+      })),
+      closure
+    },
+    continuation:
+      finalAssessment?.requiresFurtherInvestigation === true
+        ? buildResearchContinuation(
+            finalPass.plan || { subject: finalPass.subject, questions: [] },
+            finalAssessment
+          )
+        : {
+            recommended: false,
+            reason:
+              "Autonomous bounded research reached sufficient evidence for handoff to MEOS belief integration."
+          },
+    completedAt: new Date().toISOString()
+  };
+}
 
 function getHeadlessResearchStatus() {
   return {
