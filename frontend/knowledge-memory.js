@@ -1,6 +1,6 @@
 /*
  * MEOS Knowledge Memory
- * Version: 1.1.1
+ * Version: 1.1.2
  *
  * Purpose:
  * Upgrade the completed MEOS Knowledge Engine with document memory,
@@ -26,7 +26,7 @@
 
     const STORAGE_KEY = "meos.knowledge-memory.v1";
     const SCHEMA = "meos-knowledge-memory";
-    const VERSION = "1.1.1";
+    const VERSION = "1.1.2";
     const EXECUTIVE_MEMORY_COLLECTION = "investigation-history";
     const EXECUTIVE_MEMORY_ENDPOINT = "/api/executive-memory";
     const EXECUTIVE_MEMORY_MANIFEST_ID = "knowledge-memory-manifest-v1";
@@ -50,6 +50,8 @@
                 EXECUTIVE_MEMORY_SHARD_TARGET_BYTES,
             localStorageRole: "legacy-migration-only",
             persistenceDebounceMs: 450,
+            persistenceMaximumAttempts: 3,
+            persistenceRetryDelayMs: 125,
 
             defaultChunkSize: 1200,
             defaultChunkOverlap: 180,
@@ -88,6 +90,9 @@
         restorePromise: null,
         lastPersistenceAt: null,
         lastPersistenceError: null,
+        persistenceConvergenceRetryCount: 0,
+        persistenceConvergedWriteCount: 0,
+        lastPersistenceAttempts: 0,
         restoredFromExecutiveMemory: false,
         executiveMemoryManifestKnownMissing: false,
         executiveMemoryManifestBootstrapAt: null,
@@ -3412,6 +3417,12 @@
                     this.lastPersistenceAt,
                 lastPersistenceError:
                     this.lastPersistenceError,
+                persistenceConvergenceRetryCount:
+                    this.persistenceConvergenceRetryCount,
+                persistenceConvergedWriteCount:
+                    this.persistenceConvergedWriteCount,
+                lastPersistenceAttempts:
+                    this.lastPersistenceAttempts,
                 documentCount:
                     this.documents.length,
                 currentDocumentCount:
@@ -3881,11 +3892,82 @@
                     }
                 };
 
-                await this.executiveMemoryRequest(
-                    "PUT",
-                    manifest.id,
-                    manifest
+                const maximumAttempts = Math.max(
+                    1,
+                    Number(
+                        this.configuration
+                            .persistenceMaximumAttempts
+                    ) || 3
                 );
+                let manifestWriteAttempts = 0;
+                let manifestWriteConverged = false;
+
+                while (
+                    manifestWriteAttempts <
+                    maximumAttempts
+                ) {
+                    manifestWriteAttempts += 1;
+
+                    try {
+                        await this.executiveMemoryRequest(
+                            "PUT",
+                            manifest.id,
+                            manifest
+                        );
+
+                        if (manifestWriteAttempts > 1) {
+                            manifestWriteConverged = true;
+                            this.persistenceConvergedWriteCount += 1;
+                        }
+
+                        break;
+                    } catch (error) {
+                        const isConcurrencyConflict =
+                            error?.code ===
+                                "MEOS_REPOSITORY_CONCURRENCY_CONFLICT" ||
+                            Number(error?.details?.status) === 409;
+
+                        if (
+                            !isConcurrencyConflict ||
+                            manifestWriteAttempts >=
+                                maximumAttempts
+                        ) {
+                            throw error;
+                        }
+
+                        this.persistenceConvergenceRetryCount += 1;
+
+                        // Re-observe canonical durable authority before retrying.
+                        // Knowledge Memory owns this manifest's complete shard set,
+                        // so convergence republishes the current complete snapshot
+                        // rather than weakening repository compare-and-swap safety.
+                        previousManifest =
+                            await this.findExecutiveMemoryRecord(
+                                manifest.id
+                            );
+
+                        const retryDelay = Math.max(
+                            0,
+                            Number(
+                                this.configuration
+                                    .persistenceRetryDelayMs
+                            ) || 0
+                        );
+
+                        if (retryDelay > 0) {
+                            await new Promise((resolve) =>
+                                global.setTimeout(
+                                    resolve,
+                                    retryDelay *
+                                        manifestWriteAttempts
+                                )
+                            );
+                        }
+                    }
+                }
+
+                this.lastPersistenceAttempts =
+                    manifestWriteAttempts;
 
                 const bootstrapped =
                     this.executiveMemoryManifestKnownMissing;
@@ -3933,7 +4015,11 @@
                     manifestId: manifest.id,
                     shardCount: shards.length,
                     counts: manifest.counts,
-                    bootstrapped
+                    bootstrapped,
+                    writeAttempts:
+                        manifestWriteAttempts,
+                    converged:
+                        manifestWriteConverged
                 });
 
                 return {
@@ -3944,7 +4030,11 @@
                     manifestId: manifest.id,
                     shardCount: shards.length,
                     counts: manifest.counts,
-                    bootstrapped
+                    bootstrapped,
+                    writeAttempts:
+                        manifestWriteAttempts,
+                    converged:
+                        manifestWriteConverged
                 };
             })()
                 .catch((error) => {
