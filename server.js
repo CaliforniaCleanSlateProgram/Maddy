@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.25";
+const VERSION = "2.10.26";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1831,7 +1831,7 @@ function getDefaultPortableStateManifest() {
       classification: PROVIDER_MANAGER_STATE_REPOSITORY_CLASSIFICATION,
       required: false,
       subsystem: "provider-manager"
-    ,
+    },
     {
       namespace: EXECUTIVE_LEARNING_STATE_REPOSITORY_NAMESPACE,
       key: EXECUTIVE_LEARNING_STATE_REPOSITORY_KEY,
