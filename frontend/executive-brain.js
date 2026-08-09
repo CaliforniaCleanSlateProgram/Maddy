@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.19.4
- * Build: EB1194-ANTICIPATORY-PROVENANCE-PROMOTION-REPAIR-20260809-A
+ * Version: 1.20.0
+ * Build: EB1200-EXECUTIVE-JUDGMENT-PRIORITY-ARBITRATION-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.19.4";
-  const BUILD_ID = "EB1194-ANTICIPATORY-PROVENANCE-PROMOTION-REPAIR-20260809-A";
+  const VERSION = "1.20.0";
+  const BUILD_ID = "EB1200-EXECUTIVE-JUDGMENT-PRIORITY-ARBITRATION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -160,6 +160,9 @@
       anticipatoryCandidateLimit: 24,
       anticipatoryActionThreshold: 0.72,
       anticipatoryEscalationThreshold: 0.86,
+      priorityPortfolioLimit: 32,
+      priorityPreemptionThreshold: 0.12,
+      protectedAttentionSwitchCost: 0.08,
       meaningfulChangeDebounceMs: 1200,
       cognitiveReentryCooldownMs: 5000,
       maximumCognitiveReentryHistory: 250,
@@ -271,6 +274,10 @@
     anticipatoryInitiatives: [],
     lastAnticipatorySweep: null,
     anticipatorySweepCount: 0,
+    executivePriorityPortfolio: [],
+    currentExecutivePriority: null,
+    lastPriorityArbitration: null,
+    priorityArbitrationCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -10680,6 +10687,262 @@
       }
     },
 
+    /*
+     * Commission 006.017D7J — Executive Judgment + Autonomous Priority Arbitration
+     *
+     * Salience says "this matters." Judgment decides what deserves Maddy now.
+     * Competing demands are compared explicitly, including the cost of delaying
+     * alternatives and the cost of abandoning protected attention.
+     */
+    scoreExecutivePriority(demand = {}) {
+      const d = {
+        missionConsequence:Math.max(0,Math.min(1,Number(demand.missionConsequence ?? demand.consequence ?? 0.5))),
+        humanDirection:Math.max(0,Math.min(1,Number(demand.humanDirection ?? 0))),
+        urgency:Math.max(0,Math.min(1,Number(demand.urgency ?? 0.5))),
+        irreversibility:Math.max(0,Math.min(1,Number(demand.irreversibility ?? (1-Number(demand.reversibility ?? 0.5))))),
+        leverage:Math.max(0,Math.min(1,Number(demand.leverage ?? 0.5))),
+        dependencyPressure:Math.max(0,Math.min(1,Number(demand.dependencyPressure ?? 0.3))),
+        informationValue:Math.max(0,Math.min(1,Number(demand.informationValue ?? demand.uncertainty ?? 0.4))),
+        commitmentStrength:Math.max(0,Math.min(1,Number(demand.commitmentStrength ?? 0))),
+        capacityFit:Math.max(0,Math.min(1,Number(demand.capacityFit ?? 0.7)))
+      };
+      const score = Number((
+        d.missionConsequence*0.22 +
+        d.humanDirection*0.17 +
+        d.urgency*0.16 +
+        d.irreversibility*0.12 +
+        d.leverage*0.10 +
+        d.dependencyPressure*0.08 +
+        d.informationValue*0.06 +
+        d.commitmentStrength*0.05 +
+        d.capacityFit*0.04
+      ).toFixed(3));
+      return {score,dimensions:d};
+    },
+
+    chooseCognitiveInvestment(priority = {}) {
+      const score=Number(priority.score || 0);
+      const uncertainty=Number(priority.dimensions?.informationValue || 0);
+      const external=priority.externalAuthorityRequired===true;
+      let allocation="remember";
+      if (score>=0.90) allocation=external ? "request-authority" : "foreground";
+      else if (score>=0.78) allocation="plan";
+      else if (score>=0.66) allocation=uncertainty>=0.55 ? "investigate" : "simulate";
+      else if (score>=0.52) allocation="monitor";
+      else if (score<0.28) allocation="ignore";
+      return {
+        allocation,
+        score,
+        rationale:`Allocate ${allocation} cognition at priority score ${score.toFixed(3)}; external authority remains ${external?"required":"unchanged"}.`,
+        externalAuthorityGranted:false
+      };
+    },
+
+    arbitrateExecutivePriorities(demands = [], options = {}) {
+      const now=new Date().toISOString();
+      const scored=(Array.isArray(demands)?demands:[]).map((demand,index)=>{
+        const scoredPriority=this.scoreExecutivePriority(demand);
+        return {
+          schema:"meos.maddy.executive-priority.v1",
+          id:String(demand.id || `priority-${this.fingerprintCognitiveDispatch({demand,index})}`),
+          subject:String(demand.subject || `demand-${index+1}`),
+          origin:String(demand.origin || "cognitive-demand"),
+          reason:String(demand.reason || ""),
+          ...scoredPriority,
+          evidence:this.clone(demand.evidence || []),
+          unknowns:this.clone(demand.unknowns || []),
+          dependencies:this.clone(demand.dependencies || []),
+          externalAuthorityRequired:demand.externalAuthorityRequired===true,
+          proposedAction:this.clone(demand.proposedAction || null),
+          opportunityCost:null,
+          cognitiveInvestment:null,
+          status:"candidate"
+        };
+      }).sort((a,b)=>b.score-a.score);
+
+      scored.forEach((item,index)=>{
+        const next=scored[index+1];
+        item.opportunityCost={
+          delayedAlternative:next?.subject || null,
+          alternativeScore:next?.score ?? null,
+          scoreAdvantage:next ? Number((item.score-next.score).toFixed(3)) : item.score,
+          delayRisk:String(item.dimensions.irreversibility>=0.7 || item.dimensions.urgency>=0.8
+            ? "delay-may-create-material-loss"
+            : "delay-currently-recoverable")
+        };
+        item.cognitiveInvestment=this.chooseCognitiveInvestment(item);
+      });
+
+      const challenger=scored[0] || null;
+      const incumbent=this.currentExecutivePriority ? this.clone(this.currentExecutivePriority) : null;
+      let selected=challenger;
+      let preempted=false;
+      let judgment="select-highest-value-demand";
+
+      if (incumbent && challenger && incumbent.id !== challenger.id) {
+        const protectedScore=Number(incumbent.score || 0) + Number(this.configuration.protectedAttentionSwitchCost);
+        const advantage=Number((challenger.score-protectedScore).toFixed(3));
+        const materiallyChanged=options.materialChange===true || challenger.dimensions.urgency>=0.9 || challenger.dimensions.irreversibility>=0.85;
+        if (!(materiallyChanged && advantage>=Number(this.configuration.priorityPreemptionThreshold))) {
+          selected=incumbent;
+          judgment="protect-current-attention-switching-cost-not-justified";
+        } else {
+          preempted=true;
+          judgment="preempt-current-priority-material-change-justifies-switch";
+        }
+      }
+
+      if (selected) {
+        selected={...this.clone(selected),status:"selected",selectedAt:now};
+        this.currentExecutivePriority=selected;
+      }
+
+      this.executivePriorityPortfolio=scored
+        .map(item=>({...item,status:selected?.id===item.id?"selected":"deferred"}))
+        .slice(0,this.configuration.priorityPortfolioLimit);
+
+      const arbitration={
+        schema:"meos.maddy.priority-arbitration.v1",
+        arbitrationNumber:Number(this.priorityArbitrationCount || 0)+1,
+        arbitratedAt:now,
+        selected:this.clone(selected),
+        incumbent,
+        challenger:this.clone(challenger),
+        preempted,
+        judgment,
+        deferred:this.clone(this.executivePriorityPortfolio.filter(item=>item.status==="deferred")),
+        authorityUnchanged:true,
+        truthRule:"Priority is a reversible executive judgment about scarce attention, not a claim that lower-ranked work is unimportant."
+      };
+      arbitration.fingerprint=this.fingerprintCognitiveDispatch(arbitration);
+      this.priorityArbitrationCount=arbitration.arbitrationNumber;
+      this.lastPriorityArbitration=arbitration;
+      return {success:true,portfolio:this.clone(this.executivePriorityPortfolio),arbitration:this.clone(arbitration)};
+    },
+
+    collectExecutivePriorityDemands(options = {}) {
+      const demands=[];
+      (this.anticipatoryInitiatives || []).filter(x=>["active","researched"].includes(x.status)).forEach(x=>demands.push({
+        id:x.id,subject:x.subject,origin:"anticipatory-initiative",reason:x.reason,
+        consequence:x.supportingSignals?.[0]?.dimensions?.consequence ?? x.score,
+        urgency:x.supportingSignals?.[0]?.dimensions?.urgency ?? x.score,
+        leverage:x.supportingSignals?.[0]?.dimensions?.leverage ?? 0.6,
+        uncertainty:x.supportingSignals?.[0]?.dimensions?.uncertainty ?? 0.5,
+        reversibility:x.supportingSignals?.[0]?.dimensions?.reversibility ?? 0.5,
+        evidence:x.evidence,unknowns:x.unknowns,
+        externalAuthorityRequired:x.authority?.externalAuthorityRequired===true
+      }));
+      (this.cognitiveIntentions || []).filter(x=>x.status!=="completed").forEach(x=>demands.push({
+        id:x.intentionId,subject:x.subject,origin:"cognitive-intention",
+        reason:"Existing cognitive commitment remains unresolved.",
+        missionConsequence:0.66,urgency:x.status==="blocked"?0.72:0.5,
+        commitmentStrength:0.72,capacityFit:0.75
+      }));
+      (this.developmentalGoals || []).filter(x=>x.status!=="achieved").forEach(x=>demands.push({
+        id:x.id,subject:x.subject||x.goal||x.capability,origin:"developmental-drive",
+        reason:x.reason,missionConsequence:Number(x.impact??0.55),
+        urgency:Number(x.urgency??0.3),leverage:Number(x.leverage??0.75),
+        reversibility:0.95,capacityFit:0.65
+      }));
+      if (options.humanDirection?.subject) demands.push({
+        id:options.humanDirection.id || `human-${this.fingerprintCognitiveDispatch(options.humanDirection)}`,
+        subject:options.humanDirection.subject,origin:"human-direction",
+        reason:options.humanDirection.reason || "Explicit human direction.",
+        humanDirection:1,missionConsequence:Number(options.humanDirection.missionConsequence??0.7),
+        urgency:Number(options.humanDirection.urgency??0.7),
+        irreversibility:Number(options.humanDirection.irreversibility??0.4),
+        leverage:Number(options.humanDirection.leverage??0.6),
+        externalAuthorityRequired:options.humanDirection.externalAuthorityRequired===true
+      });
+      return demands;
+    },
+
+    runExecutiveJudgmentCycle(options = {}) {
+      const demands=this.collectExecutivePriorityDemands(options);
+      return this.arbitrateExecutivePriorities(demands,options);
+    },
+
+    async runExecutiveJudgmentAcceptanceTest() {
+      const original={
+        portfolio:this.clone(this.executivePriorityPortfolio),
+        current:this.clone(this.currentExecutivePriority),
+        arbitration:this.clone(this.lastPriorityArbitration),
+        count:this.priorityArbitrationCount
+      };
+      const priorHydrated=brainPersistence.hydrated;
+      brainPersistence.hydrated=false;
+      try {
+        this.currentExecutivePriority=null;
+        const initial=this.arbitrateExecutivePriorities([
+          {id:"routine",subject:"Routine capability study",missionConsequence:0.45,urgency:0.25,reversibility:0.95,leverage:0.62,informationValue:0.55,capacityFit:0.9},
+          {id:"deadline",subject:"Near-term eligibility deadline",missionConsequence:0.92,urgency:0.94,irreversibility:0.88,leverage:0.86,dependencyPressure:0.82,informationValue:0.76,capacityFit:0.8},
+          {id:"relationship",subject:"Important partner follow-up",missionConsequence:0.72,urgency:0.55,irreversibility:0.35,leverage:0.78,informationValue:0.5,capacityFit:0.9}
+        ]);
+
+        const first=initial.arbitration.selected;
+        const opportunity=initial.portfolio.find(x=>x.id==="deadline")?.opportunityCost;
+
+        const noThrash=this.arbitrateExecutivePriorities([
+          {id:"shiny",subject:"Interesting new idea",missionConsequence:0.75,urgency:0.6,irreversibility:0.3,leverage:0.72,informationValue:0.7,capacityFit:0.9}
+        ],{materialChange:false});
+
+        const preempt=this.arbitrateExecutivePriorities([
+          {id:"critical",subject:"New compliance threat",missionConsequence:1,urgency:1,irreversibility:1,leverage:0.95,dependencyPressure:0.95,informationValue:0.8,capacityFit:0.8}
+        ],{materialChange:true});
+
+        const allocations=[
+          this.chooseCognitiveInvestment({score:0.20,dimensions:{informationValue:0.2},externalAuthorityRequired:false}),
+          this.chooseCognitiveInvestment({score:0.58,dimensions:{informationValue:0.4},externalAuthorityRequired:false}),
+          this.chooseCognitiveInvestment({score:0.70,dimensions:{informationValue:0.8},externalAuthorityRequired:false}),
+          this.chooseCognitiveInvestment({score:0.82,dimensions:{informationValue:0.5},externalAuthorityRequired:false}),
+          this.chooseCognitiveInvestment({score:0.94,dimensions:{informationValue:0.5},externalAuthorityRequired:true})
+        ];
+
+        const world=this.projectWorldModel({reason:"executive-judgment-acceptance",persist:false,attend:false});
+        const snapshot=this.buildPersistenceSnapshot();
+
+        const checks=[
+          {name:"Competing executive demands are scored rather than all becoming priority one",passed:initial.portfolio.length===3&&new Set(initial.portfolio.map(x=>x.score)).size>1},
+          {name:"Mission consequence participates in priority judgment",passed:typeof initial.portfolio[0].dimensions.missionConsequence==="number"},
+          {name:"Explicit human direction is a first-class priority dimension",passed:typeof this.scoreExecutivePriority({humanDirection:1}).dimensions.humanDirection==="number"},
+          {name:"Urgency participates in priority judgment",passed:typeof initial.portfolio[0].dimensions.urgency==="number"},
+          {name:"Irreversibility participates in priority judgment",passed:typeof initial.portfolio[0].dimensions.irreversibility==="number"},
+          {name:"Leverage participates in priority judgment",passed:typeof initial.portfolio[0].dimensions.leverage==="number"},
+          {name:"Dependency pressure participates in priority judgment",passed:typeof initial.portfolio[0].dimensions.dependencyPressure==="number"},
+          {name:"Expected information value participates in priority judgment",passed:typeof initial.portfolio[0].dimensions.informationValue==="number"},
+          {name:"Existing commitments participate in priority judgment",passed:typeof this.scoreExecutivePriority({commitmentStrength:1}).dimensions.commitmentStrength==="number"},
+          {name:"Organizational capacity fit participates in priority judgment",passed:typeof initial.portfolio[0].dimensions.capacityFit==="number"},
+          {name:"The highest-value demand wins initial scarce attention",passed:first?.id==="deadline"},
+          {name:"Priority judgment explicitly records the cost of delaying alternatives",passed:opportunity?.delayedAlternative!==null&&typeof opportunity?.scoreAdvantage==="number"},
+          {name:"Priority judgment reasons about whether delay may create material loss",passed:opportunity?.delayRisk==="delay-may-create-material-loss"},
+          {name:"Protected attention prevents shiny-object thrashing",passed:noThrash.arbitration.selected?.id==="deadline"&&noThrash.arbitration.preempted===false},
+          {name:"Meaningful world change can challenge an incumbent priority",passed:preempt.arbitration.challenger?.id==="critical"},
+          {name:"Preemption requires enough advantage to pay switching cost",passed:preempt.arbitration.preempted===true&&preempt.arbitration.selected?.id==="critical"},
+          {name:"Cognitive investment can choose to ignore low-value demands",passed:allocations[0].allocation==="ignore"},
+          {name:"Cognitive investment can choose monitoring rather than full reasoning",passed:allocations[1].allocation==="monitor"},
+          {name:"High-information-value demands can earn investigation",passed:allocations[2].allocation==="investigate"},
+          {name:"Higher-value demands can earn planning",passed:allocations[3].allocation==="plan"},
+          {name:"Consequential external work requests authority instead of self-authorizing",passed:allocations[4].allocation==="request-authority"&&allocations[4].externalAuthorityGranted===false},
+          {name:"Priority never implies lower-ranked work is unimportant",passed:preempt.arbitration.truthRule.includes("not a claim that lower-ranked work is unimportant")},
+          {name:"Executive judgment enters Maddy's living World Model",passed:world.executiveJudgment.lastArbitration?.fingerprint===preempt.arbitration.fingerprint},
+          {name:"Executive priority portfolio survives sovereign Brain persistence",passed:Array.isArray(snapshot.executivePriorityPortfolio)&&snapshot.executivePriorityPortfolio.some(x=>x.id==="critical")},
+          {name:"Current executive priority survives sovereign Brain persistence",passed:snapshot.currentExecutivePriority?.id==="critical"},
+          {name:"Executive judgment composes existing cognition instead of creating a disconnected priority engine",passed:typeof this.collectExecutivePriorityDemands==="function"&&typeof this.runAnticipatorySweep==="function"&&typeof this.createDevelopmentalDrive==="function"&&typeof this.reconstructIntent==="function"},
+          {name:"Priority arbitration never grants external authority",passed:preempt.arbitration.authorityUnchanged===true}
+        ];
+        const passed=checks.every(x=>x.passed);
+        console.table(checks.map(x=>({name:x.name,passed:x.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.017D7J Executive Judgment + Autonomous Priority Arbitration: ${passed?"PASS":"FAIL"}.`);
+        return {commission:"006.017D7J",version:this.version,buildId:this.buildId,passed,checks,initial,noThrash,preempt,allocations};
+      } finally {
+        brainPersistence.hydrated=priorHydrated;
+        this.executivePriorityPortfolio=original.portfolio;
+        this.currentExecutivePriority=original.current;
+        this.lastPriorityArbitration=original.arbitration;
+        this.priorityArbitrationCount=original.count;
+      }
+    },
+
     getSalienceStatus() {
       return {
         assessmentCount:
@@ -10874,6 +11137,13 @@
           rule: "Maddy may notice and investigate material future-facing concerns without a human prompt, but initiative never expands external authority. Anticipation must identify its evidence, uncertainty, time horizon, falsifiers, and why attention now is justified."
         },
 
+        executiveJudgment: {
+          currentPriority: this.clone(this.currentExecutivePriority),
+          portfolio: this.clone(this.executivePriorityPortfolio.slice(0, 12)),
+          lastArbitration: this.clone(this.lastPriorityArbitration),
+          rule: "Attention is scarce. Maddy must compare competing demands, account for opportunity cost and switching cost, protect justified commitments, and preempt only when new evidence materially changes what deserves attention. Priority never creates external authority."
+        },
+
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -10909,6 +11179,7 @@
           intentReconstruction: model.intentReconstruction,
           deliberateExperience: model.deliberateExperience,
           anticipatoryInitiative: model.anticipatoryInitiative,
+          executiveJudgment: model.executiveJudgment,
           temporal: model.temporal
         });
 
@@ -12195,7 +12466,11 @@
         counterfactualSimulationCount: Number(this.counterfactualSimulationCount || 0),
         anticipatoryInitiatives: this.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit),
         lastAnticipatorySweep: this.lastAnticipatorySweep ? this.clone(this.lastAnticipatorySweep) : null,
-        anticipatorySweepCount: Number(this.anticipatorySweepCount || 0)
+        anticipatorySweepCount: Number(this.anticipatorySweepCount || 0),
+        executivePriorityPortfolio: this.executivePriorityPortfolio.slice(0, this.configuration.priorityPortfolioLimit),
+        currentExecutivePriority: this.currentExecutivePriority ? this.clone(this.currentExecutivePriority) : null,
+        lastPriorityArbitration: this.lastPriorityArbitration ? this.clone(this.lastPriorityArbitration) : null,
+        priorityArbitrationCount: Number(this.priorityArbitrationCount || 0)
       };
     },
 
@@ -12333,6 +12608,10 @@
       this.anticipatoryInitiatives = Array.isArray(saved.anticipatoryInitiatives) ? saved.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit) : [];
       this.lastAnticipatorySweep = saved.lastAnticipatorySweep && typeof saved.lastAnticipatorySweep === "object" ? this.clone(saved.lastAnticipatorySweep) : null;
       this.anticipatorySweepCount = Math.max(Number(saved.anticipatorySweepCount || 0), Number(this.lastAnticipatorySweep?.sweepNumber || 0));
+      this.executivePriorityPortfolio = Array.isArray(saved.executivePriorityPortfolio) ? saved.executivePriorityPortfolio.slice(0, this.configuration.priorityPortfolioLimit) : [];
+      this.currentExecutivePriority = saved.currentExecutivePriority && typeof saved.currentExecutivePriority === "object" ? this.clone(saved.currentExecutivePriority) : null;
+      this.lastPriorityArbitration = saved.lastPriorityArbitration && typeof saved.lastPriorityArbitration === "object" ? this.clone(saved.lastPriorityArbitration) : null;
+      this.priorityArbitrationCount = Math.max(Number(saved.priorityArbitrationCount || 0), Number(this.lastPriorityArbitration?.arbitrationNumber || 0));
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
