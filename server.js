@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.23";
+const VERSION = "2.10.24";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1746,6 +1746,28 @@ const MISSION_STATE_REPOSITORY_KEY =
   "authoritative-state";
 const MISSION_STATE_REPOSITORY_CLASSIFICATION =
   "institutional";
+
+const MISSION_STATE_CLEAN_CONCURRENCY_COMMISSION =
+  "006.017D3B7";
+const MISSION_STATE_CLEAN_CONCURRENCY_BUILD_ID =
+  "MSR102-CLEAN-CONCURRENCY-TRANSPORT-20260808-A";
+
+/*
+ * An expected optimistic-concurrency race is authority information, not a
+ * failed HTTP transport. Returning the MEOS conflict envelope over HTTP 200
+ * lets Mission Engine rebase/retry without painting a normal successful
+ * convergence red in DevTools.
+ *
+ * IMPORTANT: only the exact recoverable concurrency code is transport-clean.
+ * Corrupt envelopes, fingerprint-integrity failures, validation failures,
+ * provider failures, and every other error retain their real HTTP status.
+ */
+function missionStateWriteTransportStatus(error) {
+  return error?.code ===
+    "MEOS_REPOSITORY_CONCURRENCY_CONFLICT"
+    ? 200
+    : (error?.status || 500);
+}
 
 function normalizeMissionStateEnvelope(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -8463,11 +8485,24 @@ app.put(
       });
     } catch (error) {
       response
-        .status(error?.status || 500)
+        .status(
+          missionStateWriteTransportStatus(error)
+        )
         .json({
           commission:
-            MISSION_STATE_REPOSITORY_COMMISSION,
+            error?.code ===
+              "MEOS_REPOSITORY_CONCURRENCY_CONFLICT"
+              ? MISSION_STATE_CLEAN_CONCURRENCY_COMMISSION
+              : MISSION_STATE_REPOSITORY_COMMISSION,
+          buildId:
+            error?.code ===
+              "MEOS_REPOSITORY_CONCURRENCY_CONFLICT"
+              ? MISSION_STATE_CLEAN_CONCURRENCY_BUILD_ID
+              : MISSION_STATE_REPOSITORY_BUILD_ID,
           success: false,
+          convergenceRequired:
+            error?.code ===
+              "MEOS_REPOSITORY_CONCURRENCY_CONFLICT",
           error:
             error?.message || String(error),
           code:
@@ -8475,6 +8510,186 @@ app.put(
             "MISSION_STATE_DURABLE_WRITE_FAILED",
           details:
             error?.details || null
+        });
+    }
+  }
+);
+
+app.post(
+  "/api/mission-state/clean-concurrency-acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const acceptanceKey =
+      `clean-concurrency-${crypto.randomUUID()}`;
+    const namespace =
+      "mission-engine-clean-concurrency-acceptance";
+
+    try {
+      registerGoogleInstitutionalRepositoryAuthority();
+
+      const first =
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            MISSION_STATE_REPOSITORY_CLASSIFICATION,
+          value: {
+            schema:
+              "meos.mission-state.clean-concurrency.acceptance.v1",
+            revision: 1,
+            acceptanceKey
+          },
+          metadata: {
+            subsystem: "mission-engine",
+            purpose:
+              "006.017D3B7-clean-concurrency-transport"
+          }
+        });
+
+      let conflict = null;
+
+      try {
+        await InstitutionalRepositoryAuthority.write({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            MISSION_STATE_REPOSITORY_CLASSIFICATION,
+          value: {
+            schema:
+              "meos.mission-state.clean-concurrency.acceptance.v1",
+            revision: 2,
+            acceptanceKey
+          },
+          metadata: {
+            subsystem: "mission-engine",
+            purpose:
+              "006.017D3B7-clean-concurrency-transport"
+          },
+          expectedPreviousFingerprint:
+            "intentionally-stale-fingerprint"
+        });
+      } catch (error) {
+        conflict = error;
+      }
+
+      const read =
+        await InstitutionalRepositoryAuthority.read({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            MISSION_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      const checks = [
+        {
+          name:
+            "Repository Authority still rejects a stale optimistic-concurrency fingerprint",
+          passed:
+            conflict?.code ===
+              "MEOS_REPOSITORY_CONCURRENCY_CONFLICT"
+        },
+        {
+          name:
+            "Expected concurrency race maps to clean HTTP transport",
+          passed:
+            missionStateWriteTransportStatus(
+              conflict
+            ) === 200
+        },
+        {
+          name:
+            "Integrity conflicts remain real HTTP conflicts",
+          passed:
+            missionStateWriteTransportStatus({
+              code:
+                "MEOS_REPOSITORY_EXISTING_FINGERPRINT_MISMATCH",
+              status: 409
+            }) === 409 &&
+            missionStateWriteTransportStatus({
+              code:
+                "MEOS_REPOSITORY_EXISTING_ENVELOPE_INVALID",
+              status: 409
+            }) === 409
+        },
+        {
+          name:
+            "Rejected stale write does not replace durable truth",
+          passed:
+            read?.found === true &&
+            read?.value?.revision === 1 &&
+            read?.record?.payloadFingerprint ===
+              first?.record?.payloadFingerprint
+        },
+        {
+          name:
+            "Clean transport remains behind provider-neutral Repository Authority",
+          passed:
+            read?.authority ===
+              "durable-institutional-repository"
+        }
+      ];
+
+      const cleanup =
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            MISSION_STATE_REPOSITORY_CLASSIFICATION
+        });
+
+      checks.push({
+        name:
+          "Clean-concurrency acceptance sentinel is removed",
+        passed:
+          cleanup?.success === true &&
+          cleanup?.deleted === true
+      });
+
+      const passed =
+        checks.every(check => check.passed);
+
+      response
+        .status(passed ? 200 : 500)
+        .json({
+          commission:
+            MISSION_STATE_CLEAN_CONCURRENCY_COMMISSION,
+          schema:
+            "meos.mission-state.clean-concurrency.acceptance.v1",
+          version: "1.0.0",
+          buildId:
+            MISSION_STATE_CLEAN_CONCURRENCY_BUILD_ID,
+          passed,
+          checks,
+          serverVersion: VERSION
+        });
+    } catch (error) {
+      try {
+        await InstitutionalRepositoryAuthority.delete({
+          namespace,
+          key: acceptanceKey,
+          classification:
+            MISSION_STATE_REPOSITORY_CLASSIFICATION
+        });
+      } catch {}
+
+      response
+        .status(error?.status || 500)
+        .json({
+          commission:
+            MISSION_STATE_CLEAN_CONCURRENCY_COMMISSION,
+          schema:
+            "meos.mission-state.clean-concurrency.acceptance.v1",
+          version: "1.0.0",
+          buildId:
+            MISSION_STATE_CLEAN_CONCURRENCY_BUILD_ID,
+          passed: false,
+          error:
+            error?.message || String(error),
+          code:
+            error?.code ||
+            "MISSION_STATE_CLEAN_CONCURRENCY_ACCEPTANCE_FAILED",
+          serverVersion: VERSION
         });
     }
   }
