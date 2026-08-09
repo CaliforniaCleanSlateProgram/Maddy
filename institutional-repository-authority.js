@@ -1,9 +1,9 @@
 /**
  * MEOS Institutional Repository Authority
  *
- * Version: 1.0.0
- * Commission: 006.017D1
- * Build: IRA100-PROVIDER-NEUTRAL-MEMORY-FABRIC-20260808-A
+ * Version: 1.1.0
+ * Commission: 006.017D0B
+ * Build: IRA110-SOVEREIGN-STATE-PORTABILITY-20260808-A
  *
  * Purpose:
  * - Give MEOS one provider-neutral authority for durable organizational state.
@@ -21,10 +21,10 @@
 
 import crypto from "crypto";
 
-const VERSION = "1.0.0";
-const COMMISSION = "006.017D1";
+const VERSION = "1.1.0";
+const COMMISSION = "006.017D0B";
 const BUILD_ID =
-  "IRA100-PROVIDER-NEUTRAL-MEMORY-FABRIC-20260808-A";
+  "IRA110-SOVEREIGN-STATE-PORTABILITY-20260808-A";
 
 const SCHEMA = Object.freeze({
   status: "meos.institutional-repository-authority.status.v1",
@@ -33,7 +33,11 @@ const SCHEMA = Object.freeze({
   readResult: "meos.institutional-repository-authority.read-result.v1",
   deleteResult: "meos.institutional-repository-authority.delete-result.v1",
   acceptance:
-    "meos.institutional-repository-authority.acceptance.v1"
+    "meos.institutional-repository-authority.acceptance.v1",
+  portablePackage:
+    "meos.sovereign-state-package.v1",
+  portablePackageResult:
+    "meos.sovereign-state-package.result.v1"
 });
 
 const MEMORY_CLASSES = Object.freeze({
@@ -962,6 +966,260 @@ class InstitutionalRepositoryAuthority {
     };
   }
 
+  /**
+   * Export selected authorized deployment state into a provider-neutral MEOS
+   * package. The caller chooses the manifest; the Repository Authority chooses
+   * the active physical provider. No provider-specific metadata is required to
+   * restore the package later.
+   */
+  async exportPortableStatePackage({
+    records = [],
+    packageMetadata = {}
+  } = {}) {
+    if (!Array.isArray(records) || records.length === 0) {
+      const error = new Error(
+        "Portable state export requires at least one repository record descriptor."
+      );
+      error.code = "MEOS_PORTABLE_PACKAGE_MANIFEST_REQUIRED";
+      error.status = 400;
+      throw error;
+    }
+
+    const exportedRecords = [];
+    const missingRecords = [];
+
+    for (const descriptor of records) {
+      const namespace = normalizeIdentifier(
+        descriptor?.namespace,
+        "Portable package namespace"
+      );
+      const key = normalizeIdentifier(
+        descriptor?.key,
+        "Portable package key"
+      );
+      const classification = normalizeClassification(
+        descriptor?.classification || MEMORY_CLASSES.INSTITUTIONAL
+      );
+
+      const result = await this.read({
+        namespace,
+        key,
+        classification
+      });
+
+      if (!result.found) {
+        if (descriptor?.required === false) {
+          missingRecords.push({
+            namespace,
+            key,
+            classification,
+            required: false
+          });
+          continue;
+        }
+
+        const error = new Error(
+          `Required portable state record "${namespace}:${key}" was not found.`
+        );
+        error.code = "MEOS_PORTABLE_PACKAGE_REQUIRED_RECORD_MISSING";
+        error.status = 409;
+        error.details = { namespace, key, classification };
+        throw error;
+      }
+
+      exportedRecords.push({
+        namespace,
+        key,
+        classification,
+        revision: result.record.revision,
+        previousFingerprint: result.record.previousFingerprint || null,
+        payloadFingerprint: result.record.payloadFingerprint,
+        metadata: clone(result.record.metadata || {}),
+        value: clone(result.value)
+      });
+    }
+
+    const content = {
+      schema: SCHEMA.portablePackage,
+      formatVersion: 1,
+      meosRepositoryVersion: VERSION,
+      exportedAt: nowIso(),
+      recordCount: exportedRecords.length,
+      missingOptionalCount: missingRecords.length,
+      packageMetadata:
+        packageMetadata && typeof packageMetadata === "object"
+          ? clone(packageMetadata)
+          : {},
+      records: exportedRecords,
+      missingOptionalRecords: missingRecords
+    };
+
+    const packageFingerprint = fingerprint(content);
+
+    this.recordEvent("portable-package-exported", {
+      recordCount: exportedRecords.length,
+      missingOptionalCount: missingRecords.length,
+      packageFingerprint
+    });
+
+    return {
+      ...content,
+      packageFingerprint
+    };
+  }
+
+  validatePortableStatePackage(portablePackage) {
+    if (
+      !portablePackage ||
+      typeof portablePackage !== "object" ||
+      Array.isArray(portablePackage) ||
+      portablePackage.schema !== SCHEMA.portablePackage ||
+      portablePackage.formatVersion !== 1 ||
+      !Array.isArray(portablePackage.records)
+    ) {
+      const error = new Error("MEOS portable state package is invalid.");
+      error.code = "MEOS_PORTABLE_PACKAGE_INVALID";
+      error.status = 400;
+      throw error;
+    }
+
+    const suppliedFingerprint = String(
+      portablePackage.packageFingerprint || ""
+    ).trim();
+
+    const content = clone(portablePackage);
+    delete content.packageFingerprint;
+
+    const actualFingerprint = fingerprint(content);
+
+    if (
+      !suppliedFingerprint ||
+      suppliedFingerprint !== actualFingerprint
+    ) {
+      const error = new Error(
+        "MEOS portable state package fingerprint verification failed."
+      );
+      error.code = "MEOS_PORTABLE_PACKAGE_FINGERPRINT_MISMATCH";
+      error.status = 409;
+      error.details = {
+        expected: suppliedFingerprint || null,
+        actual: actualFingerprint
+      };
+      throw error;
+    }
+
+    for (const record of portablePackage.records) {
+      normalizeIdentifier(record?.namespace, "Portable package namespace");
+      normalizeIdentifier(record?.key, "Portable package key");
+      normalizeClassification(record?.classification);
+
+      if (fingerprint(record?.value) !== record?.payloadFingerprint) {
+        const error = new Error(
+          `Portable record "${record?.namespace}:${record?.key}" failed payload fingerprint verification.`
+        );
+        error.code = "MEOS_PORTABLE_RECORD_FINGERPRINT_MISMATCH";
+        error.status = 409;
+        throw error;
+      }
+    }
+
+    return {
+      success: true,
+      verified: true,
+      packageFingerprint: actualFingerprint,
+      recordCount: portablePackage.records.length
+    };
+  }
+
+  /**
+   * Restore a verified package through whichever compatible repository provider
+   * this deployment currently selects. This deliberately restores MEOS state,
+   * not provider-specific files, IDs, folders, or credentials.
+   *
+   * overwrite=false is the safe default: existing durable truth is protected.
+   */
+  async restorePortableStatePackage(
+    portablePackage,
+    { overwrite = false, restoreMetadata = {} } = {}
+  ) {
+    const validation = this.validatePortableStatePackage(portablePackage);
+    const results = [];
+
+    for (const portableRecord of portablePackage.records) {
+      const existing = await this.read({
+        namespace: portableRecord.namespace,
+        key: portableRecord.key,
+        classification: portableRecord.classification
+      });
+
+      if (existing.found && !overwrite) {
+        results.push({
+          namespace: portableRecord.namespace,
+          key: portableRecord.key,
+          classification: portableRecord.classification,
+          restored: false,
+          reason: "existing-durable-state-protected",
+          existingFingerprint: existing.record.payloadFingerprint
+        });
+        continue;
+      }
+
+      const write = await this.write({
+        namespace: portableRecord.namespace,
+        key: portableRecord.key,
+        classification: portableRecord.classification,
+        value: clone(portableRecord.value),
+        metadata: {
+          ...clone(portableRecord.metadata || {}),
+          ...clone(
+            restoreMetadata && typeof restoreMetadata === "object"
+              ? restoreMetadata
+              : {}
+          ),
+          restoredFromPortablePackage: true,
+          sourcePackageFingerprint: validation.packageFingerprint,
+          sourcePayloadFingerprint: portableRecord.payloadFingerprint
+        },
+        expectedPreviousFingerprint:
+          existing.found
+            ? existing.record.payloadFingerprint
+            : null
+      });
+
+      results.push({
+        namespace: portableRecord.namespace,
+        key: portableRecord.key,
+        classification: portableRecord.classification,
+        restored: true,
+        providerId: write.providerId,
+        verified: write.verification?.verified === true,
+        payloadFingerprint: write.record.payloadFingerprint
+      });
+    }
+
+    const restoredCount =
+      results.filter(item => item.restored).length;
+    const protectedCount =
+      results.filter(item => !item.restored).length;
+
+    this.recordEvent("portable-package-restored", {
+      packageFingerprint: validation.packageFingerprint,
+      restoredCount,
+      protectedCount
+    });
+
+    return {
+      schema: SCHEMA.portablePackageResult,
+      success: results.every(
+        item => item.restored === false || item.verified === true
+      ),
+      packageFingerprint: validation.packageFingerprint,
+      restoredCount,
+      protectedCount,
+      results
+    };
+  }
+
   getStatus() {
     const durableProviders =
       this.listProviders().filter(provider =>
@@ -986,6 +1244,10 @@ class InstitutionalRepositoryAuthority {
           : "awaiting-durable-provider",
       architecture:
         "provider-neutral-memory-fabric",
+      portability:
+        "provider-neutral-export-verify-restore",
+      portablePackageSchema:
+        SCHEMA.portablePackage,
       codeAuthority: "github",
       durableStateAuthority:
         "meos-institutional-repository",
@@ -1238,6 +1500,151 @@ class InstitutionalRepositoryAuthority {
         ).toLowerCase().includes(
           "microsoft"
         )
+    });
+
+    const portablePackage =
+      await testAuthority.exportPortableStatePackage({
+        records: [
+          {
+            namespace: "acceptance",
+            key: "institutional-state",
+            classification:
+              MEMORY_CLASSES.INSTITUTIONAL
+          },
+          {
+            namespace: "acceptance",
+            key: "optional-not-present",
+            classification:
+              MEMORY_CLASSES.INSTITUTIONAL,
+            required: false
+          }
+        ],
+        packageMetadata: {
+          purpose: "provider-independent-portability-acceptance"
+        }
+      });
+
+    checks.push({
+      name:
+        "Authorized durable state exports into a provider-neutral MEOS package",
+      passed:
+        portablePackage.schema ===
+          SCHEMA.portablePackage &&
+        portablePackage.recordCount === 1 &&
+        portablePackage.missingOptionalCount === 1 &&
+        Boolean(portablePackage.packageFingerprint)
+    });
+
+    checks.push({
+      name:
+        "Portable package verifies independently of its storage provider",
+      passed:
+        testAuthority.validatePortableStatePackage(
+          portablePackage
+        ).verified === true
+    });
+
+    const restoreAuthority =
+      new InstitutionalRepositoryAuthority();
+    const restoredMemory = new Map();
+
+    restoreAuthority.registerProvider({
+      id: "different-compatible-provider",
+      name: "Different Compatible Provider",
+      priority: 100,
+      capabilities: [
+        CAPABILITY.DURABLE_READ,
+        CAPABILITY.DURABLE_WRITE,
+        CAPABILITY.DURABLE_DELETE,
+        CAPABILITY.READ_AFTER_WRITE,
+        CAPABILITY.ORGANIZATION_OWNED
+      ],
+      health: async () => ({
+        available: true,
+        durable: true
+      }),
+      read: async key => ({
+        success: true,
+        found: restoredMemory.has(key),
+        value:
+          restoredMemory.has(key)
+            ? clone(restoredMemory.get(key))
+            : null
+      }),
+      write: async (key, value) => {
+        restoredMemory.set(key, clone(value));
+        return {
+          success: true,
+          durable: true
+        };
+      },
+      delete: async key => ({
+        success: true,
+        deleted: restoredMemory.delete(key)
+      })
+    });
+
+    const restore =
+      await restoreAuthority.restorePortableStatePackage(
+        portablePackage
+      );
+
+    const restoredRead =
+      await restoreAuthority.read({
+        namespace: "acceptance",
+        key: "institutional-state",
+        classification:
+          MEMORY_CLASSES.INSTITUTIONAL
+      });
+
+    checks.push({
+      name:
+        "Portable state restores through a different compatible provider without provider-specific translation",
+      passed:
+        restore.success === true &&
+        restore.restoredCount === 1 &&
+        restoredRead.found === true &&
+        restoredRead.providerId ===
+          "different-compatible-provider" &&
+        restoredRead.value?.revisionMarker === 2
+    });
+
+    const protectedRestore =
+      await restoreAuthority.restorePortableStatePackage(
+        portablePackage
+      );
+
+    checks.push({
+      name:
+        "Restore protects existing durable truth unless overwrite is explicitly authorized",
+      passed:
+        protectedRestore.restoredCount === 0 &&
+        protectedRestore.protectedCount === 1
+    });
+
+    const tamperedPackage =
+      clone(portablePackage);
+    tamperedPackage.records[0].value = {
+      tampered: true
+    };
+
+    let tamperRejected = false;
+    try {
+      restoreAuthority.validatePortableStatePackage(
+        tamperedPackage
+      );
+    } catch (error) {
+      tamperRejected =
+        error?.code ===
+          "MEOS_PORTABLE_PACKAGE_FINGERPRINT_MISMATCH" ||
+        error?.code ===
+          "MEOS_PORTABLE_RECORD_FINGERPRINT_MISMATCH";
+    }
+
+    checks.push({
+      name:
+        "Tampered portable state is rejected before restore",
+      passed: tamperRejected
     });
 
     const passed =
