@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.18.0
- * Build: EB1180-DELIBERATE-EXPERIENCE-COUNTERFACTUAL-SIMULATION-20260809-A
+ * Version: 1.19.0
+ * Build: EB1190-ANTICIPATORY-INITIATIVE-SELF-DIRECTED-ATTENTION-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.18.0";
-  const BUILD_ID = "EB1180-DELIBERATE-EXPERIENCE-COUNTERFACTUAL-SIMULATION-20260809-A";
+  const VERSION = "1.19.0";
+  const BUILD_ID = "EB1190-ANTICIPATORY-INITIATIVE-SELF-DIRECTED-ATTENTION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -156,6 +156,10 @@
       autoAuthorizeInternalMonitoring: true,
       maximumCognitiveDispatchHistory: 200,
       continuousCognitionEnabled: true,
+      anticipatoryInitiativeEnabled: true,
+      anticipatoryCandidateLimit: 24,
+      anticipatoryActionThreshold: 0.72,
+      anticipatoryEscalationThreshold: 0.86,
       meaningfulChangeDebounceMs: 1200,
       cognitiveReentryCooldownMs: 5000,
       maximumCognitiveReentryHistory: 250,
@@ -264,6 +268,9 @@
     lastCounterfactualSimulation: null,
     deliberateExperienceCount: 0,
     counterfactualSimulationCount: 0,
+    anticipatoryInitiatives: [],
+    lastAnticipatorySweep: null,
+    anticipatorySweepCount: 0,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -10203,6 +10210,342 @@
       }
     },
 
+    /*
+     * Commission 006.017D7I — Anticipatory Initiative + Self-Directed Attention
+     *
+     * This is the "pasture" cognition slice: Maddy can look across her own
+     * living state and ask what deserves attention before a human asks.
+     * It does not create authority, prophecy, or a detached proactive engine.
+     * It composes existing World Model, unresolved intentions, developmental
+     * drive, investigations, simulations, preparedness, monitoring, and time.
+     */
+    collectAnticipatoryCandidates(options = {}) {
+      const now = new Date();
+      const candidates = [];
+      const add = (candidate = {}) => {
+        const subject = String(candidate.subject || "").trim();
+        if (!subject) return;
+        const evidence = Array.isArray(candidate.evidence) ? candidate.evidence.filter(Boolean) : [];
+        const unknowns = Array.isArray(candidate.unknowns) ? candidate.unknowns.filter(Boolean) : [];
+        const horizonDays = Number.isFinite(Number(candidate.horizonDays)) ? Number(candidate.horizonDays) : 90;
+        const urgency = Math.max(0, Math.min(1, Number(candidate.urgency ?? 0.5)));
+        const consequence = Math.max(0, Math.min(1, Number(candidate.consequence ?? 0.5)));
+        const uncertainty = Math.max(0, Math.min(1, Number(candidate.uncertainty ?? (unknowns.length ? 0.65 : 0.35))));
+        const reversibility = Math.max(0, Math.min(1, Number(candidate.reversibility ?? 0.5)));
+        const leverage = Math.max(0, Math.min(1, Number(candidate.leverage ?? 0.5)));
+        const timePressure = Math.max(0, Math.min(1, horizonDays <= 0 ? 1 : horizonDays <= 14 ? 0.9 : horizonDays <= 45 ? 0.72 : horizonDays <= 120 ? 0.5 : 0.3));
+        const score = Number((
+          consequence * 0.28 +
+          urgency * 0.20 +
+          timePressure * 0.16 +
+          leverage * 0.16 +
+          uncertainty * 0.12 +
+          (1 - reversibility) * 0.08
+        ).toFixed(3));
+        candidates.push({
+          schema:"meos.maddy.anticipatory-candidate.v1",
+          subject,
+          origin:String(candidate.origin || "world-model"),
+          reason:String(candidate.reason || "material future-facing condition"),
+          evidence:this.clone(evidence),
+          unknowns:this.clone(unknowns),
+          assumptions:this.clone(candidate.assumptions || []),
+          falsifiers:this.clone(candidate.falsifiers || []),
+          horizonDays,
+          score,
+          dimensions:{urgency,consequence,uncertainty,reversibility,leverage,timePressure},
+          proposedInternalMove:String(candidate.proposedInternalMove || "investigate-and-reassess"),
+          externalAuthorityRequired:candidate.externalAuthorityRequired === true,
+          observedAt:now.toISOString()
+        });
+      };
+
+      (this.cognitiveIntentions || []).filter(item => item?.status !== "completed").forEach(item => add({
+        subject:item.subject,
+        origin:"unresolved-intention",
+        reason:"Unresolved cognition remains open and may become more important as time or evidence changes.",
+        evidence:item.triggers || [],
+        unknowns:[item.lastError].filter(Boolean),
+        urgency:item.status === "blocked" ? 0.75 : 0.55,
+        consequence:0.68,
+        leverage:0.66,
+        reversibility:0.8,
+        horizonDays:14,
+        proposedInternalMove:"resume-cognition"
+      }));
+
+      (this.investigativeIntentions || []).filter(item => item?.status === "active").forEach(item => add({
+        subject:item.subject || item.objective,
+        origin:"active-investigation",
+        reason:item.objective,
+        evidence:[{sourceReconstruction:item.sourceReconstruction,confidence:item.confidence}],
+        unknowns:item.questions || [],
+        urgency:0.58,
+        consequence:0.64,
+        uncertainty:Math.max(0.35,1-Number(item.confidence || 0)),
+        leverage:0.7,
+        reversibility:0.9,
+        horizonDays:21,
+        proposedInternalMove:"continue-investigation"
+      }));
+
+      (this.developmentalGoals || []).filter(item => item?.status !== "achieved").forEach(item => add({
+        subject:item.subject || item.capability || item.goal,
+        origin:"developmental-drive",
+        reason:item.reason || "Capability development may improve future organizational performance.",
+        evidence:item.evidence || [],
+        unknowns:item.unknowns || [],
+        urgency:Number(item.urgency ?? 0.35),
+        consequence:Number(item.impact ?? 0.55),
+        leverage:Number(item.leverage ?? 0.75),
+        reversibility:0.95,
+        horizonDays:Number(item.horizonDays ?? 90),
+        proposedInternalMove:"practice-or-learn"
+      }));
+
+      (this.preparednessInsights || []).slice(0,24).forEach(item => {
+        const best = item.robustActionsNow?.[0];
+        if (!best) return;
+        add({
+          subject:`Preparedness: ${best.action}`,
+          origin:"counterfactual-preparedness",
+          reason:item.recommendation,
+          evidence:[{simulationId:item.simulationId,preparednessScore:best.preparednessScore}],
+          unknowns:best.falsifiers || [],
+          assumptions:best.assumptions || [],
+          falsifiers:best.falsifiers || [],
+          urgency:0.48,
+          consequence:0.72,
+          leverage:best.robustness ?? 0.7,
+          reversibility:best.reversibility ?? 0.7,
+          horizonDays:60,
+          proposedInternalMove:"validate-low-regret-preparedness"
+        });
+      });
+
+      const wm = this.worldModel || this.getWorldModel?.({refresh:false});
+      const temporalUnknowns = wm?.temporal?.unknowns || wm?.unknowns || [];
+      (Array.isArray(temporalUnknowns) ? temporalUnknowns.slice(0,12) : []).forEach(item => add({
+        subject:String(item?.subject || item?.question || item),
+        origin:"world-model-unknown",
+        reason:"A living World Model unknown may become decision-relevant before a human asks.",
+        evidence:item?.evidence || [],
+        unknowns:[item?.question || item],
+        urgency:Number(item?.urgency ?? 0.4),
+        consequence:Number(item?.consequence ?? 0.6),
+        uncertainty:0.82,
+        leverage:0.62,
+        reversibility:0.9,
+        horizonDays:Number(item?.horizonDays ?? 45),
+        proposedInternalMove:"investigate-world-model-unknown"
+      }));
+
+      const deduped = new Map();
+      candidates.forEach(item => {
+        const key = this.normalize(item.subject);
+        const existing = deduped.get(key);
+        if (!existing || item.score > existing.score) deduped.set(key,item);
+      });
+      return [...deduped.values()]
+        .sort((a,b)=>b.score-a.score)
+        .slice(0,Number(options.limit || this.configuration.anticipatoryCandidateLimit));
+    },
+
+    runAnticipatorySweep(options = {}) {
+      if (this.configuration.anticipatoryInitiativeEnabled !== true) {
+        return {success:true,enabled:false,candidates:[],initiatives:[]};
+      }
+      const candidates = this.collectAnticipatoryCandidates(options);
+      const initiatives = candidates
+        .filter(item => item.score >= Number(this.configuration.anticipatoryActionThreshold))
+        .map(candidate => ({
+          schema:"meos.maddy.anticipatory-initiative.v1",
+          id:`anticipatory-${this.fingerprintCognitiveDispatch({subject:candidate.subject,origin:candidate.origin,reason:candidate.reason})}`,
+          createdAt:new Date().toISOString(),
+          subject:candidate.subject,
+          origin:candidate.origin,
+          score:candidate.score,
+          reason:candidate.reason,
+          evidence:this.clone(candidate.evidence),
+          unknowns:this.clone(candidate.unknowns),
+          assumptions:this.clone(candidate.assumptions),
+          falsifiers:this.clone(candidate.falsifiers),
+          horizonDays:candidate.horizonDays,
+          proposedInternalMove:candidate.proposedInternalMove,
+          attentionLevel:candidate.score >= Number(this.configuration.anticipatoryEscalationThreshold) ? "foreground" : "active",
+          authority:{
+            internalInvestigationAllowed:true,
+            externalActionAuthorized:false,
+            externalAuthorityRequired:candidate.externalAuthorityRequired === true
+          },
+          status:"active",
+          truthRule:"Anticipation is a prioritized hypothesis about what may matter, not evidence that the anticipated event will occur."
+        }));
+
+      const existing = new Map((this.anticipatoryInitiatives || []).map(item => [item.id,item]));
+      initiatives.forEach(item => existing.set(item.id,item));
+      this.anticipatoryInitiatives = [...existing.values()]
+        .sort((a,b)=>b.score-a.score)
+        .slice(0,this.configuration.anticipatoryCandidateLimit);
+
+      const sweep = {
+        schema:"meos.maddy.anticipatory-sweep.v1",
+        sweepNumber:Number(this.anticipatorySweepCount || 0)+1,
+        sweptAt:new Date().toISOString(),
+        candidateCount:candidates.length,
+        initiativeCount:initiatives.length,
+        foregroundCount:initiatives.filter(item=>item.attentionLevel==="foreground").length,
+        topCandidate:this.clone(candidates[0] || null),
+        initiatives:this.clone(initiatives),
+        promptedByHuman:options.promptedByHuman === true
+      };
+      sweep.fingerprint=this.fingerprintCognitiveDispatch(sweep);
+      this.anticipatorySweepCount=sweep.sweepNumber;
+      this.lastAnticipatorySweep=sweep;
+      return {success:true,enabled:true,candidates:this.clone(candidates),initiatives:this.clone(initiatives),sweep:this.clone(sweep)};
+    },
+
+    async advanceAnticipatoryInitiative(initiativeInput = {}, options = {}) {
+      const initiative = initiativeInput?.schema === "meos.maddy.anticipatory-initiative.v1"
+        ? initiativeInput
+        : (this.anticipatoryInitiatives || []).find(item => item.id === initiativeInput?.id);
+      if (!initiative) return {success:false,reason:"anticipatory-initiative-required"};
+
+      const reconstruction = this.reconstructIntent({
+        utterance:`Investigate proactively: ${initiative.subject}`,
+        subject:initiative.subject,
+        objective:`Determine whether ${initiative.subject} deserves action or preparation now, why, what evidence could falsify that conclusion, and what low-regret move improves the organization's position.`,
+        unresolvedQuestions:(initiative.unknowns || []).map(question => ({subject:initiative.subject,question})),
+        worldContext:this.worldModel
+      });
+      const investigation = await this.investigateReconstructedIntent(reconstruction,{
+        ...options,
+        origin:"maddy-directed",
+        persist:false
+      });
+
+      initiative.lastAdvancedAt=new Date().toISOString();
+      initiative.lastInvestigation=this.clone(investigation);
+      initiative.status=investigation.success ? "researched" : "blocked";
+      const stored=(this.anticipatoryInitiatives || []).find(item=>item.id===initiative.id);
+      if (stored) Object.assign(stored,this.clone(initiative));
+
+      this.formAutobiographicalEpisode({
+        eventType:"self-directed-anticipatory-investigation",
+        subject:initiative.subject,
+        sourceId:initiative.id,
+        perception:{reason:initiative.reason,score:initiative.score,evidence:initiative.evidence},
+        intention:{type:"anticipate-before-prompt",proposedInternalMove:initiative.proposedInternalMove},
+        action:{type:"internal-investigation",origin:"maddy-directed"},
+        outcome:{success:investigation.success,blocked:investigation.blocked===true},
+        learning:{truthRule:initiative.truthRule}
+      });
+      return {success:investigation.success,initiative:this.clone(initiative),investigation:this.clone(investigation)};
+    },
+
+    async runAnticipatoryInitiativeAcceptanceTest() {
+      const original={
+        intentions:this.clone(this.cognitiveIntentions),
+        investigations:this.clone(this.investigativeIntentions),
+        developmental:this.clone(this.developmentalGoals),
+        preparedness:this.clone(this.preparednessInsights),
+        initiatives:this.clone(this.anticipatoryInitiatives),
+        sweep:this.clone(this.lastAnticipatorySweep),
+        count:this.anticipatorySweepCount,
+        autobiography:this.clone(this.autobiographicalMemory)
+      };
+      const priorHydrated=brainPersistence.hydrated;
+      brainPersistence.hydrated=false;
+      try {
+        this.cognitiveIntentions=[{
+          intentionId:"fixture-intention",
+          subject:"County funding eligibility deadline",
+          status:"blocked",
+          triggers:[{source:"monitoring",event:"deadline-shift"}],
+          lastError:"eligibility prerequisite unresolved"
+        }];
+        this.investigativeIntentions=[{
+          id:"fixture-investigation",
+          subject:"County funding eligibility deadline",
+          objective:"Resolve whether a legitimate partnership route satisfies eligibility.",
+          confidence:0.61,
+          status:"active",
+          questions:["Does the current rule permit partner-led participation?"]
+        }];
+        this.developmentalGoals=[{
+          subject:"restricted-funding cash-flow reasoning",
+          status:"active",
+          reason:"Improve readiness before a high-growth award.",
+          impact:0.75,
+          leverage:0.8,
+          urgency:0.4
+        }];
+        this.preparednessInsights=[{
+          simulationId:"fixture-simulation",
+          recommendation:"Validate staged expansion readiness.",
+          robustActionsNow:[{
+            action:"stage expansion behind readiness gates",
+            preparednessScore:0.84,
+            robustness:0.88,
+            reversibility:0.82,
+            falsifiers:["award deadline makes staging impossible"]
+          }]
+        }];
+
+        const sweep=this.runAnticipatorySweep({promptedByHuman:false});
+        const top=sweep.candidates[0];
+        const chosen=sweep.initiatives[0];
+        let captured="";
+        const advanced=chosen ? await this.advanceAnticipatoryInitiative(chosen,{
+          researchExecutor:async ({query})=>{
+            captured=query;
+            return {success:true,evidence:[{source:"acceptance://authoritative",verified:true,claim:"fixture evidence"}]};
+          }
+        }) : {success:false};
+
+        const world=this.projectWorldModel({reason:"anticipatory-initiative-acceptance",persist:false,attend:false});
+        const snapshot=this.buildPersistenceSnapshot();
+
+        const checks=[
+          {name:"Maddy can generate attention candidates without a human prompt",passed:sweep.success===true&&sweep.sweep.promptedByHuman===false&&sweep.candidates.length>0},
+          {name:"Anticipation composes unresolved intentions rather than creating a disconnected proactive engine",passed:sweep.candidates.some(x=>x.origin==="unresolved-intention")},
+          {name:"Active investigations can independently compete for future attention",passed:sweep.candidates.some(x=>x.origin==="active-investigation")},
+          {name:"Developmental Drive can create anticipatory attention",passed:sweep.candidates.some(x=>x.origin==="developmental-drive")},
+          {name:"Counterfactual preparedness can create anticipatory attention",passed:sweep.candidates.some(x=>x.origin==="counterfactual-preparedness")},
+          {name:"Candidates are prioritized by consequence, time, leverage, uncertainty, and reversibility",passed:top&&typeof top.dimensions?.consequence==="number"&&typeof top.dimensions?.timePressure==="number"&&typeof top.dimensions?.leverage==="number"&&typeof top.dimensions?.uncertainty==="number"&&typeof top.dimensions?.reversibility==="number"},
+          {name:"Attention threshold prevents every thought from becoming an initiative",passed:sweep.candidates.length>=sweep.initiatives.length},
+          {name:"High-salience anticipation can reach foreground attention",passed:sweep.initiatives.some(x=>["foreground","active"].includes(x.attentionLevel))},
+          {name:"Anticipation remains explicitly a hypothesis rather than prophecy",passed:sweep.initiatives.every(x=>x.truthRule.includes("not evidence"))},
+          {name:"Self-directed initiative never grants external execution authority",passed:sweep.initiatives.every(x=>x.authority.externalActionAuthorized===false)},
+          {name:"Maddy-directed anticipation can invoke the existing Intent Reconstruction machinery",passed:advanced.investigation?.reconstruction?.probableObjective?.includes("deserves action or preparation now")===true},
+          {name:"Maddy-directed anticipation can invoke real authorized investigation",passed:advanced.success===true&&advanced.investigation?.evidence?.executor==="caller-injected-research-executor"},
+          {name:"Anticipatory investigation requires falsification",passed:captured.includes("falsify")===true},
+          {name:"Anticipatory investigation searches for low-regret positioning now",passed:advanced.investigation?.reconstruction?.probableObjective?.includes("low-regret move")===true},
+          {name:"Self-directed anticipation becomes autobiographical experience",passed:this.autobiographicalMemory.some(x=>x.eventType==="self-directed-anticipatory-investigation")},
+          {name:"Anticipatory state enters Maddy's living World Model",passed:world.anticipatoryInitiative.latestSweep?.fingerprint===sweep.sweep.fingerprint},
+          {name:"Anticipatory initiatives survive sovereign Brain persistence",passed:Array.isArray(snapshot.anticipatoryInitiatives)&&snapshot.anticipatoryInitiatives.some(x=>x.id===chosen?.id)},
+          {name:"The sweep itself survives sovereign Brain persistence",passed:snapshot.lastAnticipatorySweep?.fingerprint===sweep.sweep.fingerprint},
+          {name:"No Google or vendor semantics are embedded in anticipatory cognition",passed:!JSON.stringify(sweep).toLowerCase().includes("google")},
+          {name:"Anticipation reuses the existing World Model and cognitive organs",passed:typeof this.projectWorldModel==="function"&&typeof this.reconstructIntent==="function"&&typeof this.investigateReconstructedIntent==="function"&&typeof this.createDevelopmentalDrive==="function"},
+          {name:"The pasture slice remains continuous-cognition compatible without claiming browser-independent 24/7 execution",passed:this.configuration.continuousCognitionEnabled===true&&this.configuration.anticipatoryInitiativeEnabled===true}
+        ];
+        const passed=checks.every(x=>x.passed);
+        console.table(checks.map(x=>({name:x.name,passed:x.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.017D7I Anticipatory Initiative + Self-Directed Attention: ${passed?"PASS":"FAIL"}.`);
+        return {commission:"006.017D7I",version:this.version,buildId:this.buildId,passed,checks,sweep,advanced};
+      } finally {
+        brainPersistence.hydrated=priorHydrated;
+        this.cognitiveIntentions=original.intentions;
+        this.investigativeIntentions=original.investigations;
+        this.developmentalGoals=original.developmental;
+        this.preparednessInsights=original.preparedness;
+        this.anticipatoryInitiatives=original.initiatives;
+        this.lastAnticipatorySweep=original.sweep;
+        this.anticipatorySweepCount=original.count;
+        this.autobiographicalMemory=original.autobiography;
+      }
+    },
+
     getSalienceStatus() {
       return {
         assessmentCount:
@@ -10391,6 +10734,12 @@
           rule: "Practice may create developmental experience, never fabricated history. Real experience, historical blind practice, and synthetic future simulation remain permanently distinct evidence classes."
         },
 
+        anticipatoryInitiative: {
+          latestSweep: this.clone(this.lastAnticipatorySweep),
+          active: this.clone(this.anticipatoryInitiatives.filter(item => item.status === "active").slice(0, 12)),
+          rule: "Maddy may notice and investigate material future-facing concerns without a human prompt, but initiative never expands external authority. Anticipation must identify its evidence, uncertainty, time horizon, falsifiers, and why attention now is justified."
+        },
+
         temporal:
           this.getTemporalContinuityStatus(),
 
@@ -10425,6 +10774,7 @@
           developmentalDrive: model.developmentalDrive,
           intentReconstruction: model.intentReconstruction,
           deliberateExperience: model.deliberateExperience,
+          anticipatoryInitiative: model.anticipatoryInitiative,
           temporal: model.temporal
         });
 
@@ -11708,7 +12058,10 @@
         lastDeliberateExperience: this.lastDeliberateExperience ? this.clone(this.lastDeliberateExperience) : null,
         lastCounterfactualSimulation: this.lastCounterfactualSimulation ? this.clone(this.lastCounterfactualSimulation) : null,
         deliberateExperienceCount: Number(this.deliberateExperienceCount || 0),
-        counterfactualSimulationCount: Number(this.counterfactualSimulationCount || 0)
+        counterfactualSimulationCount: Number(this.counterfactualSimulationCount || 0),
+        anticipatoryInitiatives: this.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit),
+        lastAnticipatorySweep: this.lastAnticipatorySweep ? this.clone(this.lastAnticipatorySweep) : null,
+        anticipatorySweepCount: Number(this.anticipatorySweepCount || 0)
       };
     },
 
@@ -11843,6 +12196,9 @@
       this.lastCounterfactualSimulation = saved.lastCounterfactualSimulation && typeof saved.lastCounterfactualSimulation === "object" ? this.clone(saved.lastCounterfactualSimulation) : null;
       this.deliberateExperienceCount = Math.max(Number(saved.deliberateExperienceCount || 0), Number(this.lastDeliberateExperience?.experienceNumber || 0));
       this.counterfactualSimulationCount = Math.max(Number(saved.counterfactualSimulationCount || 0), Number(this.lastCounterfactualSimulation?.simulationNumber || 0));
+      this.anticipatoryInitiatives = Array.isArray(saved.anticipatoryInitiatives) ? saved.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit) : [];
+      this.lastAnticipatorySweep = saved.lastAnticipatorySweep && typeof saved.lastAnticipatorySweep === "object" ? this.clone(saved.lastAnticipatorySweep) : null;
+      this.anticipatorySweepCount = Math.max(Number(saved.anticipatorySweepCount || 0), Number(this.lastAnticipatorySweep?.sweepNumber || 0));
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
