@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.27";
+const VERSION = "2.10.28";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1395,6 +1395,315 @@ async function writeDurableExecutiveBrainState(
     expectedPreviousFingerprint
   });
 }
+
+/* ========================================================================== */
+/* Commission 006.017D7M — Durable Cognitive Runtime Heartbeat                */
+/* ========================================================================== */
+
+/*
+ * D7L proved that Executive Brain can emit a resumable cognition handoff but
+ * deliberately refused to pretend browser persistence was 24/7 execution.
+ * D7M gives that handoff a real server-side owner.
+ *
+ * The runtime executes the commissioned Executive Brain source itself in a
+ * headless VM context. It does not reimplement Maddy's cognition in server.js.
+ * Each wake hydrates the sovereign Brain snapshot, runs one bounded cognition
+ * cycle, writes the resulting snapshot through Institutional Repository
+ * Authority, verifies the durable round trip, then schedules from nextWakeAt.
+ *
+ * Authority invariant: this runtime may think, investigate internally, and
+ * preserve cognition. It does not grant external-action authority.
+ */
+const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.0";
+const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
+  "CCR100-DURABLE-COGNITIVE-RUNTIME-HEARTBEAT-20260809-A";
+const CONTINUOUS_COGNITION_RUNTIME_ENABLED =
+  String(process.env.MEOS_CONTINUOUS_COGNITION_ENABLED || "true")
+    .trim()
+    .toLowerCase() !== "false";
+const CONTINUOUS_COGNITION_MIN_WAKE_MS = Math.max(
+  1000,
+  Number(process.env.MEOS_CONTINUOUS_COGNITION_MIN_WAKE_MS || 1000)
+);
+const CONTINUOUS_COGNITION_MAX_WAKE_MS = Math.max(
+  CONTINUOUS_COGNITION_MIN_WAKE_MS,
+  Number(process.env.MEOS_CONTINUOUS_COGNITION_MAX_WAKE_MS || 60_000)
+);
+const CONTINUOUS_COGNITION_RETRY_MS = Math.max(
+  5000,
+  Number(process.env.MEOS_CONTINUOUS_COGNITION_RETRY_MS || 30_000)
+);
+
+const continuousCognitionRuntimeState = {
+  status: "initializing",
+  enabled: CONTINUOUS_COGNITION_RUNTIME_ENABLED,
+  startedAt: null,
+  lastWakeAt: null,
+  lastCompletedAt: null,
+  nextWakeAt: null,
+  cycleNumber: null,
+  handoffFingerprint: null,
+  durableFingerprint: null,
+  activeThreadId: null,
+  wakeCount: 0,
+  failedWakeCount: 0,
+  inFlight: false,
+  timer: null,
+  lastError: null
+};
+
+let continuousCognitionBrainSourcePromise = null;
+
+async function loadContinuousCognitionBrainSource() {
+  if (!continuousCognitionBrainSourcePromise) {
+    const brainPath = path.join(frontendDirectory, "executive-brain.js");
+    continuousCognitionBrainSourcePromise = fs.readFile(brainPath, "utf8")
+      .then(source => ({ source, brainPath }))
+      .catch(error => {
+        continuousCognitionBrainSourcePromise = null;
+        throw error;
+      });
+  }
+  return continuousCognitionBrainSourcePromise;
+}
+
+function unwrapDurableExecutiveBrainSnapshot(readResult) {
+  if (!readResult?.found) return null;
+  const value = readResult.value;
+  if (!value || typeof value !== "object") return null;
+  if (value.state?.schema === "meos.executive-brain.state.v1") {
+    return value.state;
+  }
+  if (value.schema === "meos.executive-brain.state.v1") {
+    return value;
+  }
+  return null;
+}
+
+async function createHeadlessContinuousCognitionBrain(snapshot = null) {
+  const { source, brainPath } = await loadContinuousCognitionBrainSource();
+  const headlessWindow = {
+    console,
+    setTimeout,
+    clearTimeout,
+    crypto: globalThis.crypto,
+    document: {
+      readyState: "loading",
+      addEventListener() {}
+    },
+    addEventListener() {},
+    fetch: async () => {
+      throw new Error(
+        "Headless continuous cognition does not use browser fetch; durable authority is injected by the server runtime."
+      );
+    }
+  };
+  headlessWindow.window = headlessWindow;
+
+  vm.runInNewContext(source, headlessWindow, {
+    filename: brainPath,
+    timeout: 5000
+  });
+
+  const brain = headlessWindow.ExecutiveBrain;
+  if (
+    !brain ||
+    typeof brain.runContinuousCognitionCycle !== "function" ||
+    typeof brain.buildPersistenceSnapshot !== "function" ||
+    typeof brain.applyPersistenceSnapshot !== "function"
+  ) {
+    const error = new Error(
+      "Commissioned Executive Brain does not expose the D7L continuous cognition persistence contract."
+    );
+    error.code = "CONTINUOUS_COGNITION_BRAIN_CONTRACT_MISSING";
+    throw error;
+  }
+
+  // Prevent browser initialization/persistence. The server owns hydration and
+  // durable writes explicitly through InstitutionalRepositoryAuthority.
+  brain.status = "online";
+  brain.configuration.persistenceEnabled = false;
+
+  if (snapshot) {
+    const restored = brain.applyPersistenceSnapshot(snapshot);
+    if (!restored) {
+      const error = new Error(
+        "Durable Executive Brain snapshot could not be restored into the headless cognition runtime."
+      );
+      error.code = "CONTINUOUS_COGNITION_DURABLE_RESTORE_FAILED";
+      throw error;
+    }
+  }
+
+  return brain;
+}
+
+function scheduleContinuousCognitionWake(nextWakeAt) {
+  if (continuousCognitionRuntimeState.timer) {
+    clearTimeout(continuousCognitionRuntimeState.timer);
+    continuousCognitionRuntimeState.timer = null;
+  }
+
+  const targetMs = Date.parse(String(nextWakeAt || ""));
+  const requestedDelay = Number.isFinite(targetMs)
+    ? Math.max(0, targetMs - Date.now())
+    : CONTINUOUS_COGNITION_RETRY_MS;
+  const delay = Math.min(
+    CONTINUOUS_COGNITION_MAX_WAKE_MS,
+    Math.max(CONTINUOUS_COGNITION_MIN_WAKE_MS, requestedDelay)
+  );
+  const scheduledAt = new Date(Date.now() + delay).toISOString();
+  continuousCognitionRuntimeState.nextWakeAt = scheduledAt;
+  continuousCognitionRuntimeState.timer = setTimeout(() => {
+    continuousCognitionRuntimeState.timer = null;
+    runContinuousCognitionHeartbeat().catch(error => {
+      console.error(
+        "[MEOS] Durable Cognitive Runtime heartbeat escaped its guarded wake:",
+        error
+      );
+    });
+  }, delay);
+  continuousCognitionRuntimeState.timer.unref?.();
+  return scheduledAt;
+}
+
+async function runContinuousCognitionHeartbeat() {
+  if (!CONTINUOUS_COGNITION_RUNTIME_ENABLED) {
+    continuousCognitionRuntimeState.status = "disabled";
+    return getContinuousCognitionRuntimeStatus();
+  }
+  if (continuousCognitionRuntimeState.inFlight) {
+    return getContinuousCognitionRuntimeStatus();
+  }
+
+  continuousCognitionRuntimeState.inFlight = true;
+  continuousCognitionRuntimeState.lastWakeAt = new Date().toISOString();
+  continuousCognitionRuntimeState.lastError = null;
+
+  try {
+    const durableBefore = await readDurableExecutiveBrainState();
+    const snapshotBefore = unwrapDurableExecutiveBrainSnapshot(durableBefore);
+    const brain = await createHeadlessContinuousCognitionBrain(snapshotBefore);
+    const cycleResult = brain.runContinuousCognitionCycle({});
+
+    if (
+      cycleResult?.success !== true ||
+      cycleResult?.cycle?.authorityUnchanged !== true ||
+      cycleResult?.handoff?.authority?.externalActionAuthorized !== false
+    ) {
+      const error = new Error(
+        "Continuous cognition cycle violated the bounded D7L runtime contract."
+      );
+      error.code = "CONTINUOUS_COGNITION_AUTHORITY_GUARD_FAILED";
+      throw error;
+    }
+
+    const snapshotAfter = brain.buildPersistenceSnapshot();
+    const writeResult = await writeDurableExecutiveBrainState(
+      snapshotAfter,
+      durableBefore?.record?.fingerprint || undefined
+    );
+    const durableAfter = await readDurableExecutiveBrainState();
+    const verifiedSnapshot = unwrapDurableExecutiveBrainSnapshot(durableAfter);
+    const expectedHandoffFingerprint =
+      cycleResult.handoff?.fingerprint || null;
+    const persistedHandoffFingerprint =
+      verifiedSnapshot?.continuousCognitionState?.handoffFingerprint || null;
+
+    if (
+      !verifiedSnapshot ||
+      !expectedHandoffFingerprint ||
+      persistedHandoffFingerprint !== expectedHandoffFingerprint
+    ) {
+      const error = new Error(
+        "Continuous cognition durable read-after-write verification failed."
+      );
+      error.code = "CONTINUOUS_COGNITION_DURABLE_VERIFY_FAILED";
+      throw error;
+    }
+
+    continuousCognitionRuntimeState.status = "online";
+    continuousCognitionRuntimeState.lastCompletedAt = new Date().toISOString();
+    continuousCognitionRuntimeState.cycleNumber =
+      Number(cycleResult.cycle?.cycleNumber || 0);
+    continuousCognitionRuntimeState.handoffFingerprint =
+      expectedHandoffFingerprint;
+    continuousCognitionRuntimeState.durableFingerprint =
+      durableAfter?.record?.fingerprint ||
+      writeResult?.record?.fingerprint ||
+      null;
+    continuousCognitionRuntimeState.activeThreadId =
+      cycleResult.handoff?.activeThreadId || null;
+    continuousCognitionRuntimeState.wakeCount += 1;
+
+    scheduleContinuousCognitionWake(cycleResult.handoff?.nextWakeAt);
+    return getContinuousCognitionRuntimeStatus();
+  } catch (error) {
+    continuousCognitionRuntimeState.status = "degraded";
+    continuousCognitionRuntimeState.failedWakeCount += 1;
+    continuousCognitionRuntimeState.lastError = {
+      code: error?.code || "CONTINUOUS_COGNITION_HEARTBEAT_FAILED",
+      message: error?.message || String(error),
+      at: new Date().toISOString()
+    };
+    scheduleContinuousCognitionWake(
+      new Date(Date.now() + CONTINUOUS_COGNITION_RETRY_MS).toISOString()
+    );
+    throw error;
+  } finally {
+    continuousCognitionRuntimeState.inFlight = false;
+  }
+}
+
+function getContinuousCognitionRuntimeStatus() {
+  return {
+    commission: CONTINUOUS_COGNITION_RUNTIME_COMMISSION,
+    version: CONTINUOUS_COGNITION_RUNTIME_VERSION,
+    buildId: CONTINUOUS_COGNITION_RUNTIME_BUILD_ID,
+    status: continuousCognitionRuntimeState.status,
+    enabled: continuousCognitionRuntimeState.enabled,
+    browserIndependent: true,
+    runtimeOwner: "meos-durable-server",
+    cognitionSource: "commissioned-executive-brain",
+    authority: {
+      durableState: "meos-institutional-repository",
+      externalActionAuthorized: false,
+      humanAuthorityPreserved: true
+    },
+    startedAt: continuousCognitionRuntimeState.startedAt,
+    lastWakeAt: continuousCognitionRuntimeState.lastWakeAt,
+    lastCompletedAt: continuousCognitionRuntimeState.lastCompletedAt,
+    nextWakeAt: continuousCognitionRuntimeState.nextWakeAt,
+    cycleNumber: continuousCognitionRuntimeState.cycleNumber,
+    handoffFingerprint: continuousCognitionRuntimeState.handoffFingerprint,
+    durableFingerprint: continuousCognitionRuntimeState.durableFingerprint,
+    activeThreadId: continuousCognitionRuntimeState.activeThreadId,
+    wakeCount: continuousCognitionRuntimeState.wakeCount,
+    failedWakeCount: continuousCognitionRuntimeState.failedWakeCount,
+    inFlight: continuousCognitionRuntimeState.inFlight,
+    lastError: continuousCognitionRuntimeState.lastError
+  };
+}
+
+async function startContinuousCognitionRuntime() {
+  if (!CONTINUOUS_COGNITION_RUNTIME_ENABLED) {
+    continuousCognitionRuntimeState.status = "disabled";
+    return getContinuousCognitionRuntimeStatus();
+  }
+  if (continuousCognitionRuntimeState.startedAt) {
+    return getContinuousCognitionRuntimeStatus();
+  }
+
+  continuousCognitionRuntimeState.startedAt = new Date().toISOString();
+  continuousCognitionRuntimeState.status = "starting";
+
+  // Wake immediately on process start. Durable hydration determines whether
+  // this is a fresh cycle or continuation of unfinished thought.
+  scheduleContinuousCognitionWake(new Date().toISOString());
+  return getContinuousCognitionRuntimeStatus();
+}
+
 
 /* ========================================================================== */
 /* Commission 006.017D5A2 — Provider Manager Bounded Durable Authority Seam   */
@@ -7283,6 +7592,17 @@ app.put(
  * Hot cognition remains runtime memory. Only the bounded persistence contract
  * already defined by Executive Brain is eligible for institutional storage.
  */
+app.get(
+  "/api/continuous-cognition-runtime",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    response.status(200).json(
+      getContinuousCognitionRuntimeStatus()
+    );
+  }
+);
+
+
 app.get(
   "/api/executive-brain-state",
   async (request, response) => {
@@ -15790,6 +16110,31 @@ app.listen(PORT, () => {
         "[MEOS] Continuous Operations Runtime failed to start:",
         error
       );
+
+
+    try {
+      const cognitionStatus =
+        await startContinuousCognitionRuntime();
+
+      console.log(
+        `[MEOS] Durable Cognitive Runtime ` +
+          `v${CONTINUOUS_COGNITION_RUNTIME_VERSION} ${cognitionStatus.status}. ` +
+          `enabled=${cognitionStatus.enabled}, ` +
+          `owner=${cognitionStatus.runtimeOwner}, ` +
+          `build=${CONTINUOUS_COGNITION_RUNTIME_BUILD_ID}.`
+      );
+    } catch (error) {
+      continuousCognitionRuntimeState.status = "degraded";
+      continuousCognitionRuntimeState.lastError = {
+        code: error?.code || "CONTINUOUS_COGNITION_START_FAILED",
+        message: error?.message || String(error),
+        at: new Date().toISOString()
+      };
+      console.error(
+        "[MEOS] Durable Cognitive Runtime failed to start:",
+        error
+      );
+    }
     }
   })();
 });
