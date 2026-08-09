@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.19.3
- * Build: EB1193-FOREGROUND-DISCRIMINATION-ACCEPTANCE-20260809-A
+ * Version: 1.19.4
+ * Build: EB1194-ANTICIPATORY-PROVENANCE-PROMOTION-REPAIR-20260809-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.19.3";
-  const BUILD_ID = "EB1193-FOREGROUND-DISCRIMINATION-ACCEPTANCE-20260809-A";
+  const VERSION = "1.19.4";
+  const BUILD_ID = "EB1194-ANTICIPATORY-PROVENANCE-PROMOTION-REPAIR-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10436,6 +10436,7 @@
           origin:candidate.origin,
           origins:this.clone(candidate.origins || [candidate.origin]),
           supportingSignals:this.clone(candidate.supportingSignals || [candidate]),
+          convergence:this.clone(candidate.convergence || null),
           score:candidate.score,
           reason:candidate.reason,
           evidence:this.clone(candidate.evidence),
