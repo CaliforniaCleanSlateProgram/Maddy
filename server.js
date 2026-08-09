@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.29";
+const VERSION = "2.10.30";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1415,9 +1415,9 @@ async function writeDurableExecutiveBrainState(
  * preserve cognition. It does not grant external-action authority.
  */
 const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.1";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.2";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR101-STARTUP-LIFECYCLE-COHERENCE-REPAIR-20260809-A";
+  "CCR102-INDEPENDENT-SERVER-LIFECYCLE-STARTUP-20260809-A";
 const CONTINUOUS_COGNITION_RUNTIME_ENABLED =
   String(process.env.MEOS_CONTINUOUS_COGNITION_ENABLED || "true")
     .trim()
@@ -16045,6 +16045,39 @@ app.listen(PORT, () => {
     }
   });
 
+  /*
+   * Commission 006.017D7M2 — Independent Cognitive Runtime Lifecycle
+   *
+   * The cognitive heartbeat is a first-class server lifecycle service. It must
+   * not wait behind unrelated startup work such as funding registry hydration,
+   * resource-office initialization, or Continuous Operations startup.
+   *
+   * The startup function is idempotent and only schedules the first bounded
+   * wake. The heartbeat itself retains all D7M authority guards.
+   */
+  startContinuousCognitionRuntime()
+    .then(cognitionStatus => {
+      console.log(
+        `[MEOS] Durable Cognitive Runtime ` +
+          `v${CONTINUOUS_COGNITION_RUNTIME_VERSION} ${cognitionStatus.status}. ` +
+          `enabled=${cognitionStatus.enabled}, ` +
+          `owner=${cognitionStatus.runtimeOwner}, ` +
+          `build=${CONTINUOUS_COGNITION_RUNTIME_BUILD_ID}.`
+      );
+    })
+    .catch(error => {
+      continuousCognitionRuntimeState.status = "degraded";
+      continuousCognitionRuntimeState.lastError = {
+        code: error?.code || "CONTINUOUS_COGNITION_START_FAILED",
+        message: error?.message || String(error),
+        at: new Date().toISOString()
+      };
+      console.error(
+        "[MEOS] Durable Cognitive Runtime failed to start:",
+        error
+      );
+    });
+
   (async () => {
     try {
       const fundingRegistry =
@@ -16112,28 +16145,5 @@ app.listen(PORT, () => {
       );
     }
 
-    try {
-      const cognitionStatus =
-        await startContinuousCognitionRuntime();
-
-      console.log(
-        `[MEOS] Durable Cognitive Runtime ` +
-          `v${CONTINUOUS_COGNITION_RUNTIME_VERSION} ${cognitionStatus.status}. ` +
-          `enabled=${cognitionStatus.enabled}, ` +
-          `owner=${cognitionStatus.runtimeOwner}, ` +
-          `build=${CONTINUOUS_COGNITION_RUNTIME_BUILD_ID}.`
-      );
-    } catch (error) {
-      continuousCognitionRuntimeState.status = "degraded";
-      continuousCognitionRuntimeState.lastError = {
-        code: error?.code || "CONTINUOUS_COGNITION_START_FAILED",
-        message: error?.message || String(error),
-        at: new Date().toISOString()
-      };
-      console.error(
-        "[MEOS] Durable Cognitive Runtime failed to start:",
-        error
-      );
-    }
   })();
 });
