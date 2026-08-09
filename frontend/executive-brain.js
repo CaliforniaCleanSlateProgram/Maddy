@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.12.0
- * Build: EB1120-SALIENCE-EMERGENT-ATTENTION-20260808-A
+ * Version: 1.12.1
+ * Build: EB1121-CROSS-DOMAIN-SALIENCE-PROPAGATION-20260808-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.12.0";
-  const BUILD_ID = "EB1120-SALIENCE-EMERGENT-ATTENTION-20260808-A";
+  const VERSION = "1.12.1";
+  const BUILD_ID = "EB1121-CROSS-DOMAIN-SALIENCE-PROPAGATION-20260808-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -7604,6 +7604,22 @@
         });
       }
 
+      /*
+       * D7B1 — recompute the final affected-domain graph after every
+       * emergent/positioning signal has been added. The earlier D7B snapshot
+       * was intentionally taken too early, which meant a valid
+       * possible-futures connection could influence salience while being
+       * omitted from assessment.affectedDomains.
+       */
+      const finalAffectedDomains =
+        Array.from(
+          new Set(
+            signals.flatMap(
+              item => item.domains || []
+            )
+          )
+        );
+
       const rawScore =
         signals.reduce(
           (sum, item) =>
@@ -7670,7 +7686,7 @@
         questions:
           [...new Set(questions)].slice(0, 12),
         affectedDomains:
-          Array.from(changedDomains),
+          finalAffectedDomains,
         subject,
         epistemicRule:
           "Salience is a reason to investigate or think, never proof that an inference is true."
@@ -8109,6 +8125,23 @@
         ];
         changed.world = {
           ...(base.world || {}),
+          currentWork: [
+            ...(
+              Array.isArray(
+                base?.world?.currentWork
+              )
+                ? base.world.currentWork
+                : []
+            ),
+            {
+              id:
+                "d7b-work-change",
+              type:
+                "strategic-positioning-work",
+              status:
+                "newly-relevant"
+            }
+          ],
           monitoring: [
             ...(
               Array.isArray(
@@ -8209,6 +8242,9 @@
             name:
               "Salience crosses work, monitoring, relationships, intentions, uncertainty, and possible futures",
             passed:
+              assessment
+                ?.affectedDomains
+                ?.includes("work") &&
               assessment
                 ?.affectedDomains
                 ?.includes("monitoring") &&
@@ -8359,11 +8395,11 @@
 
         console.table(checks);
         console.info(
-          `[MEOS ${this.version}] Commission 006.017D7B Salience + Emergent Attention: ${passed ? "PASS" : "FAIL"}.`
+          `[MEOS ${this.version}] Commission 006.017D7B1 Cross-Domain Salience Propagation: ${passed ? "PASS" : "FAIL"}.`
         );
 
         return {
-          commission: "006.017D7B",
+          commission: "006.017D7B1",
           version: this.version,
           buildId: this.buildId,
           passed,
