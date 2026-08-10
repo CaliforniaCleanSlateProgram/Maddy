@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.1";
-  const BUILD_ID = "EB1251-REAPPRAISAL-ACCEPTANCE-HYDRATION-BARRIER-20260809-A";
+  const VERSION = "1.26.0";
+  const BUILD_ID = "EB1260-AUTONOMOUS-CONSEQUENCE-PROPAGATION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    consequencePropagationState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     cognitiveReappraisalState: {
       count: 0,
       lastAt: null,
@@ -8338,6 +8344,378 @@
       return reappraisal;
     },
 
+    propagateCognitiveConsequences(
+      reappraisal = {},
+      assessment = {},
+      previous = null,
+      current = null
+    ) {
+      const now = current || this.worldModel || {};
+      const prior = previous || {};
+
+      const changedDomains = new Set(
+        Array.isArray(reappraisal?.affectedDomains)
+          ? reappraisal.affectedDomains
+          : Array.isArray(assessment?.affectedDomains)
+            ? assessment.affectedDomains
+            : []
+      );
+
+      const changedSubjects = new Set(
+        [
+          reappraisal?.subject,
+          assessment?.subject,
+          ...(assessment?.signals || [])
+            .map(item => item?.detail)
+        ]
+          .filter(Boolean)
+          .map(value =>
+            String(value).toLowerCase()
+          )
+      );
+
+      const textTouchesChange = value => {
+        const text = this.textContent(value)
+          .toLowerCase();
+        if (!text) return false;
+
+        for (const subject of changedSubjects) {
+          const tokens = subject
+            .split(/[^a-z0-9]+/i)
+            .filter(token => token.length >= 5);
+
+          if (
+            tokens.some(token =>
+              text.includes(token)
+            )
+          ) {
+            return true;
+          }
+        }
+
+        for (const domain of changedDomains) {
+          const token =
+            String(domain || "")
+              .toLowerCase()
+              .trim();
+          if (
+            token.length >= 4 &&
+            text.includes(token)
+          ) {
+            return true;
+          }
+        }
+
+        return false;
+      };
+
+      const intentions =
+        Array.isArray(now?.intentions)
+          ? now.intentions
+          : [];
+
+      const affectedIntentions =
+        intentions
+          .filter(item =>
+            textTouchesChange(item)
+          )
+          .slice(0, 12)
+          .map(item => ({
+            type: "intention",
+            id:
+              item?.intentionId ||
+              item?.id ||
+              null,
+            subject:
+              item?.subject ||
+              item?.objective ||
+              null,
+            status: item?.status || null,
+            consequence:
+              "Existing cognitive commitment may require reconsideration."
+          }));
+
+      const currentWork =
+        now?.world?.currentWork || null;
+
+      const affectedWork =
+        textTouchesChange(currentWork)
+          ? [{
+              type: "current-work",
+              consequence:
+                "Current execution context intersects the changed world state.",
+              fingerprint:
+                this.fingerprintCognitiveDispatch(
+                  currentWork
+                )
+            }]
+          : [];
+
+      const monitoring =
+        now?.world?.monitoring || null;
+
+      const affectedMonitoring =
+        textTouchesChange(monitoring)
+          ? [{
+              type: "monitoring",
+              consequence:
+                "Monitoring assumptions or watch conditions may require refresh.",
+              fingerprint:
+                this.fingerprintCognitiveDispatch(
+                  monitoring
+                )
+            }]
+          : [];
+
+      const relationships =
+        Array.isArray(now?.relationships)
+          ? now.relationships
+          : [];
+
+      const affectedRelationships =
+        relationships
+          .filter(item =>
+            textTouchesChange(item)
+          )
+          .slice(0, 12)
+          .map(item => ({
+            type: "relationship",
+            personKey:
+              item?.personKey || null,
+            consequence:
+              "Relationship strategy may be affected by the changed belief or world state."
+          }));
+
+      const priorityPortfolio =
+        Array.isArray(
+          this.executivePriorityPortfolio
+        )
+          ? this.executivePriorityPortfolio
+          : [];
+
+      const affectedPriorities =
+        priorityPortfolio
+          .filter(item =>
+            textTouchesChange(item)
+          )
+          .slice(0, 12)
+          .map(item => ({
+            type: "priority",
+            id: item?.id || null,
+            subject: item?.subject || null,
+            priorScore:
+              Number(item?.score || 0),
+            status: item?.status || null,
+            consequence:
+              "Executive priority should be rescored against the changed world state."
+          }));
+
+      const planning =
+        global.ExecutivePlanning;
+
+      const planningStatus =
+        planning &&
+        typeof planning.getStatus ===
+          "function"
+          ? this.safe(
+              () => planning.getStatus(),
+              null
+            )
+          : null;
+
+      const planningTouched =
+        textTouchesChange(planningStatus);
+
+      const consequences = [
+        ...affectedIntentions,
+        ...affectedWork,
+        ...affectedMonitoring,
+        ...affectedRelationships,
+        ...affectedPriorities
+      ];
+
+      if (planningTouched) {
+        consequences.push({
+          type: "planning",
+          consequence:
+            "Existing planning state may depend on an assumption affected by this change.",
+          mutationPerformed: false
+        });
+      }
+
+      const rerun = {
+        causalCounterfactual:
+          reappraisal
+            ?.causalReassessmentRequired ===
+            true,
+        planning:
+          affectedIntentions.length > 0 ||
+          planningTouched,
+        monitoring:
+          affectedMonitoring.length > 0 ||
+          (assessment?.questions || [])
+            .length > 0,
+        priorityArbitration:
+          affectedPriorities.length > 0 ||
+          reappraisal
+            ?.reprioritizeAttention === true,
+        futureSimulation:
+          changedDomains.has(
+            "possible-futures"
+          ) ||
+          changedDomains.has("future") ||
+          reappraisal
+            ?.reconsiderPriorConclusions ===
+            true
+      };
+
+      const officeSignals = [];
+      const domainOfficeMap = {
+        funding: "Development",
+        finance: "Finance",
+        compliance: "Compliance",
+        work: "Operations",
+        execution: "Operations",
+        people: "Human Resources",
+        relationships: "Community Relations",
+        trust: "Community Relations",
+        monitoring: "Operations",
+        evidence: "Executive Office",
+        unknowns: "Executive Office",
+        "external-world":
+          "Executive Office",
+        "possible-futures":
+          "Executive Office",
+        future: "Executive Office"
+      };
+
+      changedDomains.forEach(domain => {
+        const office =
+          domainOfficeMap[domain];
+        if (office) officeSignals.push(office);
+      });
+
+      const affectedOffices =
+        [...new Set(officeSignals)];
+
+      const propagation = {
+        schema:
+          "meos.maddy.consequence-propagation.v1",
+        createdAt:
+          new Date().toISOString(),
+        sourceReappraisal:
+          reappraisal?.id ||
+          reappraisal?.createdAt ||
+          null,
+        subject:
+          reappraisal?.subject ||
+          assessment?.subject ||
+          "Meaningful world-model change",
+        changedDomains:
+          [...changedDomains],
+        consequences,
+        affected: {
+          intentions: affectedIntentions,
+          currentWork: affectedWork,
+          monitoring: affectedMonitoring,
+          relationships:
+            affectedRelationships,
+          priorities: affectedPriorities,
+          planning:
+            planningTouched
+              ? [{
+                  available: true,
+                  mutationPerformed: false
+                }]
+              : [],
+          offices: affectedOffices
+        },
+        rerun,
+        invalidation: {
+          priorConclusions:
+            reappraisal
+              ?.reconsiderPriorConclusions ===
+              true,
+          plansMayRequireReview:
+            rerun.planning,
+          prioritiesMayRequireRescore:
+            rerun.priorityArbitration,
+          futureAssumptionsMayRequireResimulation:
+            rerun.futureSimulation
+        },
+        nextCognition: [
+          rerun.causalCounterfactual
+            ? "rerun-causal-counterfactual-reasoning"
+            : null,
+          rerun.planning
+            ? "review-affected-plans-and-dependencies"
+            : null,
+          rerun.monitoring
+            ? "refresh-monitoring-and-open-unknowns"
+            : null,
+          rerun.priorityArbitration
+            ? "re-arbitrate-executive-attention"
+            : null,
+          rerun.futureSimulation
+            ? "rerun-affected-future-simulations"
+            : null
+        ].filter(Boolean),
+        rule:
+          "Consequences propagate cognition and review requirements; they do not silently mutate plans, dispatch work, or grant external authority.",
+        authority: {
+          planMutationAuthorized: false,
+          hallwayDispatchAuthorized: false,
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
+
+      this.consequencePropagationState.count += 1;
+      this.consequencePropagationState.lastAt =
+        propagation.createdAt;
+      this.consequencePropagationState.last =
+        this.clone(propagation);
+      this.consequencePropagationState.history.unshift(
+        this.clone(propagation)
+      );
+      this.consequencePropagationState.history =
+        this.consequencePropagationState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.consequence-propagation",
+        propagation
+      );
+
+      this.emit(
+        "brain:consequence-propagated",
+        this.clone(propagation)
+      );
+
+      return propagation;
+    },
+
+    getConsequencePropagationStatus() {
+      return {
+        commission: "006.017D7T1",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.consequence-propagation.v1",
+        ...this.clone(
+          this.consequencePropagationState
+        ),
+        authority: {
+          planMutationAuthorized: false,
+          hallwayDispatchAuthorized: false,
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
+    },
+
     getCognitiveReappraisalStatus() {
       return {
         commission: "006.017D7S1",
@@ -8400,6 +8778,14 @@
           current
         );
 
+      const consequencePropagation =
+        this.propagateCognitiveConsequences(
+          cognitiveReappraisal,
+          assessment,
+          previous,
+          current
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -8456,6 +8842,10 @@
           ),
         cognitiveReappraisal:
           this.clone(cognitiveReappraisal),
+        consequencePropagation:
+          this.clone(
+            consequencePropagation
+          ),
         causalInvestigation:
           causalInvestigation
             ? {
@@ -14407,6 +14797,222 @@
         this.cognitiveIntentions = original;
         await this.flushPersistence();
       }
+    },
+
+    async runConsequencePropagationAcceptanceTest() {
+      const hydration =
+        await this.hydrateResearchKnowledgeBeforeCognition();
+
+      const base =
+        this.projectWorldModel({
+          reason:
+            "006.017D7T1-baseline",
+          persist: false,
+          attend: false
+        });
+
+      const changed =
+        this.clone(base);
+
+      const active =
+        changed?.beliefs
+          ?.durableResearchLearning
+          ?.active || [];
+
+      if (active.length > 0) {
+        active[0].durableLearningFingerprint =
+          `${active[0].durableLearningFingerprint || "research"}-consequence-change`;
+        active[0].unknowns = [
+          ...(active[0].unknowns || []),
+          "What plans, priorities, monitoring, relationships, and future assumptions depend on this changed evidence?"
+        ];
+      }
+
+      changed.intentions = [
+        ...(changed.intentions || []),
+        {
+          intentionId:
+            "d7t1-dependent-intention",
+          subject:
+            active[0]?.subject ||
+            "Research-dependent strategic intention",
+          status: "active",
+          reason:
+            "Acceptance fixture: existing intention depends on changed evidence."
+        }
+      ];
+
+      const assessment =
+        this.assessWorldModelSalience(
+          base,
+          changed,
+          {
+            subject:
+              active[0]?.subject ||
+              "Material research belief change"
+          }
+        );
+
+      const reappraisal =
+        this.buildCognitiveReappraisal(
+          assessment,
+          base,
+          changed
+        );
+
+      const propagation =
+        this.propagateCognitiveConsequences(
+          reappraisal,
+          assessment,
+          base,
+          changed
+        );
+
+      const checks = [
+        {
+          name:
+            "Commissioned research-knowledge hydration is ready",
+          passed:
+            hydration?.success === true
+        },
+        {
+          name:
+            "Acceptance uses a real active durable research belief",
+          passed:
+            active.length > 0
+        },
+        {
+          name:
+            "Existing salience authority detects the material change",
+          passed:
+            assessment?.meaningful === true
+        },
+        {
+          name:
+            "Existing cognitive reappraisal remains upstream authority",
+          passed:
+            reappraisal?.schema ===
+            "meos.maddy.cognitive-reappraisal.v1"
+        },
+        {
+          name:
+            "Consequence propagation produces an inspectable blast-radius map",
+          passed:
+            propagation?.schema ===
+            "meos.maddy.consequence-propagation.v1" &&
+            Array.isArray(
+              propagation?.consequences
+            )
+        },
+        {
+          name:
+            "A dependent cognitive intention is identified for reconsideration",
+          passed:
+            propagation?.affected
+              ?.intentions
+              ?.some(
+                item =>
+                  item.id ===
+                  "d7t1-dependent-intention"
+              ) === true
+        },
+        {
+          name:
+            "Changed belief can invalidate prior conclusions without silently rewriting truth",
+          passed:
+            propagation?.invalidation
+              ?.priorConclusions === true &&
+            /do not silently mutate/i.test(
+              propagation?.rule || ""
+            )
+        },
+        {
+          name:
+            "Affected planning is reviewable without plan mutation",
+          passed:
+            propagation?.rerun
+              ?.planning === true &&
+            propagation?.authority
+              ?.planMutationAuthorized === false
+        },
+        {
+          name:
+            "Monitoring/open uncertainty can be scheduled for cognitive refresh",
+          passed:
+            propagation?.rerun
+              ?.monitoring === true
+        },
+        {
+          name:
+            "Executive attention is marked for re-arbitration",
+          passed:
+            propagation?.rerun
+              ?.priorityArbitration === true
+        },
+        {
+          name:
+            "Future assumptions can be marked for re-simulation",
+          passed:
+            propagation?.rerun
+              ?.futureSimulation === true
+        },
+        {
+          name:
+            "Existing causal/counterfactual reasoning remains downstream",
+          passed:
+            /runCausalCounterfactualInvestigation/.test(
+              this.attendToWorldModelChange.toString()
+            )
+        },
+        {
+          name:
+            "Existing cognitive re-entry carries the consequence map forward",
+          passed:
+            /consequencePropagation/.test(
+              this.attendToWorldModelChange.toString()
+            ) &&
+            /scheduleCognitiveReentry/.test(
+              this.attendToWorldModelChange.toString()
+            )
+        },
+        {
+          name:
+            "Consequence propagation does not dispatch work or grant external authority",
+          passed:
+            propagation?.authority
+              ?.hallwayDispatchAuthorized === false &&
+            propagation?.authority
+              ?.externalActionAuthorized === false &&
+            propagation?.authority
+              ?.humanAuthorityPreserved === true
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7T1 Autonomous Consequence Propagation: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7T1",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        hydration,
+        activeResearchBeliefCount:
+          active.length,
+        assessment,
+        reappraisal,
+        propagation,
+        authority: {
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
     },
 
     async runMeaningfulChangeReappraisalAcceptanceTest() {
