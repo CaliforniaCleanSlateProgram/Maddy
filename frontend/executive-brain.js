@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.0
- * Build: EB1250-COGNITIVE-PROMOTION-JUDGMENT-20260810-A
+ * Version: 1.25.1
+ * Build: EB1251-COGNITIVE-REVISIT-MEMORY-20260810-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.0";
-  const BUILD_ID = "EB1250-COGNITIVE-PROMOTION-JUDGMENT-20260810-A";
+  const VERSION = "1.25.1";
+  const BUILD_ID = "EB1251-COGNITIVE-REVISIT-MEMORY-20260810-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -155,6 +155,7 @@
       autoAuthorizeInternalResearch: true,
       autoAuthorizeInternalMonitoring: true,
       maximumCognitiveDispatchHistory: 200,
+      maximumCognitiveRevisitMemories: 240,
       continuousCognitionEnabled: true,
       anticipatoryInitiativeEnabled: true,
       anticipatoryCandidateLimit: 24,
@@ -228,6 +229,8 @@
     history: [],
     cognitionHistory: [],
     cognitiveDispatchHistory: [],
+    cognitiveRevisitMemories: [],
+    cognitiveRevisitMemoryCount: 0,
     cognitiveReentryHistory: [],
     cognitiveIntentions: [],
     cognitiveContinuity: { hydrated: false, resumedAt: null, lastResumeCount: 0 },
@@ -2240,6 +2243,26 @@
           )
         );
 
+      /*
+       * Commission 006.018G — Cognitive Revisit Memory
+       *
+       * REVISIT is not work. Preserve a compact, durable memory of what was
+       * released, why it matters, and which material conditions would justify
+       * bringing it back into attention. Re-observing the same unchanged fish
+       * refreshes one memory instead of creating another Mission or record.
+       */
+      for (const item of promotionDecisions) {
+        if (item.judgment?.disposition === "revisit") {
+          item.revisitMemory = this.rememberCognitiveRevisit(
+            positioning,
+            item.move,
+            item.judgment,
+            positioningFingerprint,
+            { persist: false }
+          );
+        }
+      }
+
       let planResult = {
         success: true,
         created: false,
@@ -2661,6 +2684,74 @@
         created: result?.success === true,
         reused: false
       };
+    },
+
+    buildCognitiveRevisitKey(positioning = {}, move = {}, positioningFingerprint = null) {
+      const opportunity = positioning.opportunity || {};
+      const subject = String(positioning.subject || opportunity.title || opportunity.name || "").trim().toLowerCase();
+      const recordId = String(opportunity.recordId || opportunity.id || "").trim().toLowerCase();
+      const moveType = String(move.type || "").trim().toLowerCase();
+      const action = String(move.action || "").trim().toLowerCase().replace(/\s+/g, " ");
+      return this.fingerprintCognitiveDispatch({
+        schema: "meos.maddy.cognitive-revisit-identity.v1",
+        opportunity: recordId || subject,
+        moveType,
+        action,
+        positioningFingerprint: positioningFingerprint || null
+      });
+    },
+
+    rememberCognitiveRevisit(positioning = {}, move = {}, judgment = {}, positioningFingerprint = null, options = {}) {
+      if (judgment?.disposition !== "revisit") return null;
+
+      const now = new Date().toISOString();
+      const key = this.buildCognitiveRevisitKey(positioning, move, positioningFingerprint);
+      const conditions = Array.from(new Set(
+        (Array.isArray(judgment.revisit?.conditions) ? judgment.revisit.conditions : [])
+          .map(value => String(value || "").trim())
+          .filter(Boolean)
+      )).sort();
+      const existingIndex = this.cognitiveRevisitMemories.findIndex(item => item?.key === key);
+      const prior = existingIndex >= 0 ? this.cognitiveRevisitMemories[existingIndex] : null;
+      const record = {
+        schema: "meos.maddy.cognitive-revisit-memory.v1",
+        id: prior?.id || this.id("revisit"),
+        key,
+        status: "watching",
+        subject: positioning.subject || positioning.opportunity?.title || null,
+        opportunityRecordId: positioning.opportunity?.recordId || null,
+        moveType: move.type || null,
+        action: String(move.action || "").trim() || null,
+        reason: judgment.reason || null,
+        trigger: judgment.revisit?.when || "material-change",
+        conditions,
+        positioningFingerprint: positioningFingerprint || null,
+        firstSeenAt: prior?.firstSeenAt || now,
+        lastSeenAt: now,
+        observationCount: Number(prior?.observationCount || 0) + 1,
+        lastMaterialChangeAt: prior?.lastMaterialChangeAt || null,
+        promotedAt: prior?.promotedAt || null,
+        releasedAt: prior?.releasedAt || null
+      };
+
+      if (existingIndex >= 0) this.cognitiveRevisitMemories.splice(existingIndex, 1);
+      else this.cognitiveRevisitMemoryCount += 1;
+      this.cognitiveRevisitMemories.unshift(record);
+      if (this.cognitiveRevisitMemories.length > this.configuration.maximumCognitiveRevisitMemories) {
+        this.cognitiveRevisitMemories.length = this.configuration.maximumCognitiveRevisitMemories;
+      }
+      if (options.persist !== false) this.persist();
+      return this.clone(record);
+    },
+
+    getCognitiveRevisitMemories(options = {}) {
+      const status = options.status ? String(options.status).trim().toLowerCase() : null;
+      const limit = Math.max(1, Math.min(this.configuration.maximumCognitiveRevisitMemories, Number(options.limit) || 50));
+      return this.clone(
+        this.cognitiveRevisitMemories
+          .filter(item => !status || String(item?.status || "").toLowerCase() === status)
+          .slice(0, limit)
+      );
     },
 
     assessCognitiveMovePromotion(positioning = {}, move = {}, options = {}) {
@@ -7368,6 +7459,44 @@
         input?.prompt ||
         ""
       ).trim();
+    },
+
+    runCognitiveRevisitMemoryAcceptanceTest() {
+      const savedMemories = this.clone(this.cognitiveRevisitMemories);
+      const savedCount = this.cognitiveRevisitMemoryCount;
+      this.cognitiveRevisitMemories = [];
+      this.cognitiveRevisitMemoryCount = 0;
+
+      const positioning = {
+        subject: "006.018G Little Fish Fixture",
+        opportunity: { recordId: "OPP-018G", title: "Little Fish Fixture", cycle: { explicitlyOpen: false } },
+        readiness: { state: "not-yet-positioned" }
+      };
+      const move = { type: "monitor", action: "Monitor the authoritative source for the next cycle.", whyNow: "The next cycle is not open.", status: "proposed" };
+      const judgment = this.assessCognitiveMovePromotion(positioning, move);
+      const fingerprint = this.fingerprintCognitiveDispatch(this.buildPositioningSemanticIdentity(positioning));
+      const first = this.rememberCognitiveRevisit(positioning, move, judgment, fingerprint, { persist: false });
+      const second = this.rememberCognitiveRevisit(positioning, move, judgment, fingerprint, { persist: false });
+      const snapshot = this.buildPersistenceSnapshot();
+      const source = this.runPositioningCognitionAndDispatch.toString();
+
+      const checks = [
+        { name: "REVISIT creates a lightweight cognitive memory", passed: judgment.disposition === "revisit" && first?.schema === "meos.maddy.cognitive-revisit-memory.v1" },
+        { name: "Revisit memory preserves why the subject matters", passed: Boolean(first?.reason && first?.action && first?.subject) },
+        { name: "Revisit memory preserves material wake conditions", passed: first?.trigger === "material-source-change" && first?.conditions?.includes("cycle-opens") },
+        { name: "Unchanged rediscovery refreshes one memory instead of multiplying records", passed: this.cognitiveRevisitMemories.length === 1 && second?.id === first?.id && second?.observationCount === 2 },
+        { name: "Revisit memory is not a Mission or Plan", passed: first?.status === "watching" && !Object.prototype.hasOwnProperty.call(first || {}, "missionId") && !Object.prototype.hasOwnProperty.call(first || {}, "planId") },
+        { name: "Revisit memory survives sovereign Brain persistence", passed: Array.isArray(snapshot.cognitiveRevisitMemories) && snapshot.cognitiveRevisitMemories.some(item => item.key === first?.key) },
+        { name: "Positioning records REVISIT before any Plan decision", passed: source.indexOf("rememberCognitiveRevisit") >= 0 && source.indexOf("rememberCognitiveRevisit") < source.indexOf("createOrReusePositioningPlan") },
+        { name: "No polling or automatic wake loop is introduced", passed: !/setInterval\s*\([^)]*revisit/i.test(source) }
+      ];
+
+      this.cognitiveRevisitMemories = savedMemories;
+      this.cognitiveRevisitMemoryCount = savedCount;
+      const passed = checks.every(item => item.passed);
+      console.table(checks);
+      console.log(`[MEOS ${this.version}] Commission 006.018G Cognitive Revisit Memory: ${passed ? "PASS" : "FAIL"}.`);
+      return { commission: "006.018G", version: this.version, buildId: this.buildId, passed, checks, fixture: { first, second } };
     },
 
     runCognitivePromotionJudgmentAcceptanceTest() {
@@ -14079,6 +14208,8 @@
         history: this.history.slice(0, 100),
         cognitionHistory: this.cognitionHistory.slice(0, this.configuration.maximumCognitionHistory),
         cognitiveDispatchHistory: this.cognitiveDispatchHistory.slice(0, this.configuration.maximumCognitiveDispatchHistory),
+        cognitiveRevisitMemories: this.cognitiveRevisitMemories.slice(0, this.configuration.maximumCognitiveRevisitMemories),
+        cognitiveRevisitMemoryCount: Number(this.cognitiveRevisitMemoryCount || 0),
         cognitiveReentryHistory: this.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory),
         cognitiveIntentions: this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions),
         selfModel: this.selfModel ? this.clone(this.selfModel) : null,
@@ -14154,6 +14285,8 @@
       this.history = Array.isArray(saved.history) ? saved.history : [];
       this.cognitionHistory = Array.isArray(saved.cognitionHistory) ? saved.cognitionHistory.slice(0, this.configuration.maximumCognitionHistory) : [];
       this.cognitiveDispatchHistory = Array.isArray(saved.cognitiveDispatchHistory) ? saved.cognitiveDispatchHistory.slice(0, this.configuration.maximumCognitiveDispatchHistory) : [];
+      this.cognitiveRevisitMemories = Array.isArray(saved.cognitiveRevisitMemories) ? saved.cognitiveRevisitMemories.slice(0, this.configuration.maximumCognitiveRevisitMemories) : [];
+      this.cognitiveRevisitMemoryCount = Math.max(Number(saved.cognitiveRevisitMemoryCount || 0), this.cognitiveRevisitMemories.length);
       this.cognitiveReentryHistory = Array.isArray(saved.cognitiveReentryHistory) ? saved.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory) : [];
       this.cognitiveIntentions = Array.isArray(saved.cognitiveIntentions) ? saved.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions) : [];
       this.selfModel =
