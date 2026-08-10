@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.32.0";
-  const BUILD_ID = "EB1320-BACKWARD-POSITIONING-OPTION-VALUE-20260809-A";
+  const VERSION = "1.33.0";
+  const BUILD_ID = "EB1330-CROSS-FUTURE-PORTFOLIO-ROBUSTNESS-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    crossFuturePortfolioState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     backwardPositioningState: {
       count: 0,
       lastAt: null,
@@ -10852,6 +10858,642 @@
       return result;
     },
 
+    reasonAcrossFuturePortfolio(
+      backwardPositioning = {},
+      options = {}
+    ) {
+      const apply =
+        options.apply === true;
+
+      const now =
+        new Date().toISOString();
+
+      const portfolioId =
+        this.id(
+          "cross-future-portfolio"
+        );
+
+      const plans =
+        Array.isArray(
+          backwardPositioning?.plans
+        )
+          ? backwardPositioning.plans
+          : [];
+
+      const normalizeResource = value =>
+        this.normalize(
+          this.textContent(value)
+        );
+
+      const inferResourceClaims = plan => {
+        const text =
+          this.normalize(
+            this.textContent({
+              subject: plan?.subject,
+              requirements:
+                plan?.requirements,
+              moves:
+                plan
+                  ?.minimumReversibleMoves
+            })
+          );
+
+        const claims = [];
+
+        const rules = [
+          ["executive-attention",
+            ["verify", "investigate", "map", "decision", "review"]],
+          ["relationship-capacity",
+            ["partner", "relationship", "access"]],
+          ["compliance-capacity",
+            ["eligibility", "authority", "registration", "permission"]],
+          ["evidence-capacity",
+            ["evidence", "competitive", "performance", "falsifier"]],
+          ["financial-capacity",
+            ["resource", "spend", "fund", "cost", "budget"]]
+        ];
+
+        rules.forEach(
+          ([resource, tokens]) => {
+            const hits =
+              tokens.filter(token =>
+                text.includes(token)
+              ).length;
+
+            if (hits > 0) {
+              claims.push({
+                resource,
+                demand:
+                  Math.min(
+                    1,
+                    0.25 +
+                    hits * 0.15
+                  ),
+                evidence:
+                  tokens.filter(token =>
+                    text.includes(token)
+                  )
+              });
+            }
+          }
+        );
+
+        if (
+          !claims.some(
+            claim =>
+              claim.resource ===
+              "executive-attention"
+          )
+        ) {
+          claims.push({
+            resource:
+              "executive-attention",
+            demand: 0.35,
+            evidence: [
+              "future-positioning-cognition"
+            ]
+          });
+        }
+
+        return claims;
+      };
+
+      const futures =
+        plans.map(plan => ({
+          planId: plan.planId,
+          subject: plan.subject,
+          sourceCandidateId:
+            plan.sourceCandidateId,
+          lineageEvidence:
+            this.clone(
+              plan
+                ?.desiredFuturePosition
+                ?.lineageEvidence ||
+              []
+            ),
+          moves:
+            this.clone(
+              plan
+                ?.minimumReversibleMoves ||
+              []
+            ),
+          resourceClaims:
+            inferResourceClaims(plan)
+        }));
+
+      const resourceMap =
+        new Map();
+
+      futures.forEach(future => {
+        future.resourceClaims.forEach(
+          claim => {
+            if (
+              !resourceMap.has(
+                claim.resource
+              )
+            ) {
+              resourceMap.set(
+                claim.resource,
+                []
+              );
+            }
+
+            resourceMap
+              .get(claim.resource)
+              .push({
+                planId:
+                  future.planId,
+                subject:
+                  future.subject,
+                demand:
+                  claim.demand,
+                evidence:
+                  claim.evidence
+              });
+          }
+        );
+      });
+
+      const sharedConstraints =
+        [...resourceMap.entries()]
+          .filter(
+            ([, claims]) =>
+              claims.length > 1
+          )
+          .map(
+            ([resource, claims]) => ({
+              resource,
+              competingFutureCount:
+                claims.length,
+              aggregateDemand:
+                Number(
+                  claims
+                    .reduce(
+                      (sum, item) =>
+                        sum +
+                        Number(
+                          item.demand ||
+                          0
+                        ),
+                      0
+                    )
+                    .toFixed(3)
+                ),
+              claims,
+              finiteCapacityAssumed:
+                false,
+              capacityUnknown:
+                true,
+              requiresCapacityEvidence:
+                true
+            })
+          );
+
+      const moveGroups =
+        new Map();
+
+      futures.forEach(future => {
+        future.moves.forEach(move => {
+          const action =
+            normalizeResource(
+              move?.action
+            );
+
+          if (!action) {
+            return;
+          }
+
+          if (!moveGroups.has(action)) {
+            moveGroups.set(
+              action,
+              []
+            );
+          }
+
+          moveGroups.get(action).push({
+            planId:
+              future.planId,
+            subject:
+              future.subject,
+            move:
+              this.clone(move)
+          });
+        });
+      });
+
+      const robustMoves =
+        [...moveGroups.entries()]
+          .filter(
+            ([, entries]) =>
+              entries.length > 1
+          )
+          .map(([action, entries]) => {
+            const reversibility =
+              Math.min(
+                ...entries.map(
+                  item =>
+                    Number(
+                      item.move
+                        ?.reversibility ||
+                      0
+                    )
+                )
+              );
+
+            const optionValue =
+              Number(
+                (
+                  entries.reduce(
+                    (sum, item) =>
+                      sum +
+                      Number(
+                        item.move
+                          ?.optionValue ||
+                        0
+                      ),
+                    0
+                  ) /
+                  entries.length
+                ).toFixed(3)
+              );
+
+            const informationValue =
+              Number(
+                (
+                  entries.reduce(
+                    (sum, item) =>
+                      sum +
+                      Number(
+                        item.move
+                          ?.informationValue ||
+                        0
+                      ),
+                    0
+                  ) /
+                  entries.length
+                ).toFixed(3)
+              );
+
+            return {
+              moveId:
+                `${portfolioId}-robust-${action}`,
+              action,
+              supportsFuturePlanIds:
+                entries.map(
+                  item => item.planId
+                ),
+              supportsFutureSubjects:
+                entries.map(
+                  item => item.subject
+                ),
+              futureCoverage:
+                entries.length,
+              reversibility,
+              optionValue,
+              informationValue,
+              robustnessScore:
+                Number(
+                  (
+                    (
+                      entries.length /
+                      Math.max(
+                        1,
+                        futures.length
+                      )
+                    ) *
+                      0.45 +
+                    reversibility *
+                      0.2 +
+                    optionValue *
+                      0.2 +
+                    informationValue *
+                      0.15
+                  ).toFixed(3)
+                ),
+              externalAuthorityRequired:
+                entries.some(
+                  item =>
+                    item.move
+                      ?.externalAuthorityRequired ===
+                    true
+                )
+            };
+          })
+          .sort(
+            (a, b) =>
+              b.robustnessScore -
+              a.robustnessScore
+          );
+
+      const pairwiseConflicts = [];
+
+      for (
+        let i = 0;
+        i < futures.length;
+        i += 1
+      ) {
+        for (
+          let j = i + 1;
+          j < futures.length;
+          j += 1
+        ) {
+          const left = futures[i];
+          const right = futures[j];
+
+          const leftResources =
+            new Set(
+              left.resourceClaims.map(
+                item => item.resource
+              )
+            );
+
+          const overlap =
+            right.resourceClaims
+              .map(
+                item => item.resource
+              )
+              .filter(resource =>
+                leftResources.has(
+                  resource
+                )
+              );
+
+          if (overlap.length > 0) {
+            pairwiseConflicts.push({
+              conflictId:
+                this.id(
+                  "future-conflict"
+                ),
+              leftPlanId:
+                left.planId,
+              rightPlanId:
+                right.planId,
+              leftSubject:
+                left.subject,
+              rightSubject:
+                right.subject,
+              sharedResources:
+                overlap,
+              conflictStatus:
+                "potential-capacity-conflict",
+              destructiveTradeoffProven:
+                false,
+              evidenceNeeded:
+                overlap.map(
+                  resource =>
+                    `Verified available capacity for ${resource}`
+                ),
+              truthRule:
+                "Shared demand identifies a potential portfolio conflict; it does not prove that both futures cannot be pursued."
+            });
+          }
+        }
+      }
+
+      const optionClosingMoves =
+        futures.flatMap(future =>
+          future.moves
+            .filter(
+              move =>
+                Number(
+                  move?.reversibility ||
+                  0
+                ) < 0.7 ||
+                Number(
+                  move
+                    ?.commitmentCost ||
+                  0
+                ) > 0.45 ||
+                move
+                  ?.externalAuthorityRequired ===
+                  true
+            )
+            .map(move => ({
+              planId:
+                future.planId,
+              subject:
+                future.subject,
+              action:
+                move.action,
+              reason:
+                "This move may reduce portfolio optionality and should not be treated as robust across futures without explicit tradeoff analysis."
+            }))
+        );
+
+      const portfolioCandidates =
+        robustMoves
+          .filter(
+            move =>
+              move.futureCoverage >= 2 &&
+              move.reversibility >=
+                0.9 &&
+              move.optionValue >=
+                0.85 &&
+              move
+                .externalAuthorityRequired ===
+                false
+          )
+          .map(move => ({
+            id:
+              `cross-future-${
+                move.moveId
+              }`,
+            subject:
+              `Cross-future robust move: ${move.action}`,
+            origin:
+              "cross-future-portfolio",
+            reason:
+              `This reversible move preserves or increases option value across ${move.futureCoverage} plausible futures.`,
+            evidence: futures
+              .filter(future =>
+                move
+                  .supportsFuturePlanIds
+                  .includes(
+                    future.planId
+                  )
+              )
+              .flatMap(
+                future =>
+                  future.lineageEvidence
+              ),
+            unknowns:
+              sharedConstraints
+                .filter(constraint =>
+                  constraint.claims.some(
+                    claim =>
+                      move
+                        .supportsFuturePlanIds
+                        .includes(
+                          claim.planId
+                        )
+                  )
+                )
+                .map(
+                  constraint =>
+                    `Available ${constraint.resource} capacity`
+                ),
+            urgency: 0.58,
+            consequence: 0.82,
+            leverage:
+              move.optionValue,
+            reversibility:
+              move.reversibility,
+            informationValue:
+              move.informationValue,
+            capacityFit: 0.72,
+            proposedInternalMove:
+              move.action,
+            futureCoverage:
+              move.futureCoverage,
+            robustnessScore:
+              move.robustnessScore,
+            externalAuthorityRequired:
+              false
+          }));
+
+      const result = {
+        schema:
+          "meos.maddy.cross-future-portfolio-robustness.v1",
+        portfolioId,
+        createdAt: now,
+        applied: apply,
+        sourceBackwardPositioningId:
+          backwardPositioning
+            ?.positioningId ||
+          null,
+        futureCount:
+          futures.length,
+        futures,
+        sharedConstraints,
+        pairwiseConflicts,
+        robustMoves,
+        optionClosingMoves,
+        portfolioCandidates,
+        judgment: {
+          robustAcrossFutures:
+            robustMoves.length,
+          potentialConflicts:
+            pairwiseConflicts.length,
+          optionClosingMoves:
+            optionClosingMoves.length,
+          preferredPosture:
+            robustMoves.length > 0
+              ? "preserve-optionality-while-learning"
+              : "gather-capacity-and-tradeoff-evidence"
+        },
+        truthBoundary: {
+          futuresArePredictions:
+            false,
+          sharedDemandProvesScarcity:
+            false,
+          potentialConflictProvesMutualExclusion:
+            false,
+          portfolioPreferenceIsJudgment:
+            true
+        },
+        authority: {
+          internalPortfolioCognitionAuthorized:
+            apply,
+          resourceAllocationAuthorized:
+            false,
+          spendingAuthorized: false,
+          externalRelationshipActionAuthorized:
+            false,
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      if (
+        apply &&
+        portfolioCandidates.length > 0
+      ) {
+        const existingIds =
+          new Set(
+            (this.executivePriorityPortfolio || [])
+              .map(item => item?.id)
+              .filter(Boolean)
+          );
+
+        portfolioCandidates
+          .filter(
+            item =>
+              !existingIds.has(
+                item.id
+              )
+          )
+          .forEach(item => {
+            this.executivePriorityPortfolio.push({
+              ...this.clone(item),
+              status: "candidate",
+              createdAt: now,
+              updatedAt: now
+            });
+          });
+
+        this.executivePriorityPortfolio =
+          this.executivePriorityPortfolio.slice(
+            0,
+            this.configuration
+              .priorityPortfolioLimit
+          );
+      }
+
+      this.crossFuturePortfolioState.count +=
+        1;
+      this.crossFuturePortfolioState.lastAt =
+        now;
+      this.crossFuturePortfolioState.last =
+        this.clone(result);
+      this.crossFuturePortfolioState.history.unshift(
+        this.clone(result)
+      );
+      this.crossFuturePortfolioState.history =
+        this.crossFuturePortfolioState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.cross-future-portfolio",
+        result
+      );
+
+      this.emit(
+        "brain:cross-future-portfolio",
+        this.clone(result)
+      );
+
+      return result;
+    },
+
+    getCrossFuturePortfolioStatus() {
+      return {
+        commission: "006.017D7T8",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.cross-future-portfolio-robustness.v1",
+        ...this.clone(
+          this.crossFuturePortfolioState
+        ),
+        authority: {
+          resourceAllocationAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
     getBackwardPositioningStatus() {
       return {
         commission: "006.017D7T7",
@@ -11127,6 +11769,14 @@
           }
         );
 
+      const crossFuturePortfolio =
+        this.reasonAcrossFuturePortfolio(
+          backwardPositioning,
+          {
+            apply: true
+          }
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -11210,6 +11860,10 @@
         backwardPositioning:
           this.clone(
             backwardPositioning
+          ),
+        crossFuturePortfolio:
+          this.clone(
+            crossFuturePortfolio
           ),
         causalInvestigation:
           causalInvestigation
@@ -17161,6 +17815,415 @@
       } finally {
         this.cognitiveIntentions = original;
         await this.flushPersistence();
+      }
+    },
+
+    async runCrossFuturePortfolioAcceptanceTest() {
+      const original = {
+        portfolio:
+          this.clone(
+            this.executivePriorityPortfolio
+          ),
+        state:
+          this.clone(
+            this.crossFuturePortfolioState
+          )
+      };
+
+      try {
+        this.executivePriorityPortfolio =
+          [];
+
+        const makeMoves = () => [
+          {
+            moveId:
+              this.id("verify"),
+            action:
+              "verify-positioning-prerequisites",
+            timing: "today",
+            reversibility: 0.98,
+            optionValue: 0.92,
+            commitmentCost: 0.08,
+            informationValue: 0.95,
+            internalOnly: true,
+            externalAuthorityRequired:
+              false
+          },
+          {
+            moveId:
+              this.id("investigate"),
+            action:
+              "investigate-future-falsifiers",
+            timing: "today",
+            reversibility: 0.96,
+            optionValue: 0.9,
+            commitmentCost: 0.1,
+            informationValue: 0.97,
+            internalOnly: true,
+            externalAuthorityRequired:
+              false
+          },
+          {
+            moveId:
+              this.id("map"),
+            action:
+              "map-capability-and-relationship-gaps",
+            timing: "today",
+            reversibility: 0.94,
+            optionValue: 0.88,
+            commitmentCost: 0.12,
+            informationValue: 0.9,
+            internalOnly: true,
+            externalAuthorityRequired:
+              false
+          }
+        ];
+
+        const backward = {
+          schema:
+            "meos.maddy.backward-positioning-option-value.v1",
+          positioningId:
+            "d7t8-positioning",
+          applied: true,
+          plans: [
+            {
+              planId:
+                "d7t8-future-a",
+              subject:
+                "County funding pathway",
+              sourceCandidateId:
+                "d7t8-a",
+              desiredFuturePosition: {
+                lineageEvidence: [{
+                  type:
+                    "synthetic-future-lineage",
+                  lineageId:
+                    "d7t8-lineage-a"
+                }]
+              },
+              requirements: [
+                {
+                  category:
+                    "eligibility-and-authority",
+                  statement:
+                    "Verify eligibility and authority."
+                },
+                {
+                  category:
+                    "relationships-and-access",
+                  statement:
+                    "Develop partner relationship and access."
+                },
+                {
+                  category:
+                    "evidence-and-competitive-readiness",
+                  statement:
+                    "Build evidence and competitive readiness."
+                }
+              ],
+              minimumReversibleMoves:
+                makeMoves()
+            },
+            {
+              planId:
+                "d7t8-future-b",
+              subject:
+                "Regional partnership pathway",
+              sourceCandidateId:
+                "d7t8-b",
+              desiredFuturePosition: {
+                lineageEvidence: [{
+                  type:
+                    "synthetic-future-lineage",
+                  lineageId:
+                    "d7t8-lineage-b"
+                }]
+              },
+              requirements: [
+                {
+                  category:
+                    "eligibility-and-authority",
+                  statement:
+                    "Verify eligibility and authority."
+                },
+                {
+                  category:
+                    "relationships-and-access",
+                  statement:
+                    "Develop partner relationship and access."
+                },
+                {
+                  category:
+                    "evidence-and-competitive-readiness",
+                  statement:
+                    "Build evidence and competitive readiness."
+                }
+              ],
+              minimumReversibleMoves:
+                makeMoves()
+            }
+          ]
+        };
+
+        const preview =
+          this.reasonAcrossFuturePortfolio(
+            backward,
+            {
+              apply: false
+            }
+          );
+
+        const afterPreview =
+          this.clone(
+            this.executivePriorityPortfolio
+          );
+
+        const applied =
+          this.reasonAcrossFuturePortfolio(
+            backward,
+            {
+              apply: true
+            }
+          );
+
+        const inserted =
+          this.executivePriorityPortfolio
+            .filter(
+              item =>
+                item?.origin ===
+                "cross-future-portfolio"
+            );
+
+        const checks = [
+          {
+            name:
+              "Portfolio cognition compares multiple plausible future positions together",
+            passed:
+              applied?.futureCount === 2
+          },
+          {
+            name:
+              "Future lineage evidence remains attached to portfolio cognition",
+            passed:
+              applied?.futures
+                ?.every(
+                  future =>
+                    future
+                      ?.lineageEvidence
+                      ?.length >= 1
+                ) === true
+          },
+          {
+            name:
+              "Shared executive attention demand is recognized across futures",
+            passed:
+              applied
+                ?.sharedConstraints
+                ?.some(
+                  item =>
+                    item.resource ===
+                      "executive-attention" &&
+                    item
+                      .competingFutureCount ===
+                      2
+                ) === true
+          },
+          {
+            name:
+              "Shared relationship capacity demand is recognized across futures",
+            passed:
+              applied
+                ?.sharedConstraints
+                ?.some(
+                  item =>
+                    item.resource ===
+                      "relationship-capacity" &&
+                    item
+                      .competingFutureCount ===
+                      2
+                ) === true
+          },
+          {
+            name:
+              "Shared demand is treated as capacity unknown rather than invented scarcity",
+            passed:
+              applied
+                ?.sharedConstraints
+                ?.every(
+                  item =>
+                    item
+                      .finiteCapacityAssumed ===
+                      false &&
+                    item
+                      .capacityUnknown ===
+                      true &&
+                    item
+                      .requiresCapacityEvidence ===
+                      true
+                ) === true
+          },
+          {
+            name:
+              "Potential cross-future conflicts are identified without claiming mutual exclusion",
+            passed:
+              applied
+                ?.pairwiseConflicts
+                ?.length >= 1 &&
+              applied
+                ?.pairwiseConflicts
+                ?.every(
+                  item =>
+                    item
+                      .destructiveTradeoffProven ===
+                      false
+                ) === true
+          },
+          {
+            name:
+              "Moves shared by multiple futures are recognized as robust",
+            passed:
+              applied
+                ?.robustMoves
+                ?.length >= 3 &&
+              applied
+                ?.robustMoves
+                ?.every(
+                  item =>
+                    item.futureCoverage ===
+                      2
+                ) === true
+          },
+          {
+            name:
+              "Robust moves preserve high reversibility and option value",
+            passed:
+              applied
+                ?.robustMoves
+                ?.every(
+                  item =>
+                    item.reversibility >=
+                      0.9 &&
+                    item.optionValue >=
+                      0.85
+                ) === true
+          },
+          {
+            name:
+              "Portfolio posture prefers optionality while learning",
+            passed:
+              applied?.judgment
+                ?.preferredPosture ===
+                "preserve-optionality-while-learning"
+          },
+          {
+            name:
+              "Preview does not mutate Executive Priority Portfolio",
+            passed:
+              preview?.applied ===
+                false &&
+              afterPreview.length === 0
+          },
+          {
+            name:
+              "Applied robust moves reuse existing Executive Priority Portfolio",
+            passed:
+              inserted.length >= 3 &&
+              inserted.length ===
+                applied
+                  ?.portfolioCandidates
+                  ?.length
+          },
+          {
+            name:
+              "Cross-future portfolio judgment preserves truth boundaries",
+            passed:
+              applied?.truthBoundary
+                ?.futuresArePredictions ===
+                false &&
+              applied?.truthBoundary
+                ?.sharedDemandProvesScarcity ===
+                false &&
+              applied?.truthBoundary
+                ?.potentialConflictProvesMutualExclusion ===
+                false &&
+              applied?.truthBoundary
+                ?.portfolioPreferenceIsJudgment ===
+                true
+          },
+          {
+            name:
+              "Meaningful-change path carries cross-future portfolio cognition into cognitive re-entry",
+            passed:
+              /reasonAcrossFuturePortfolio/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /crossFuturePortfolio/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /scheduleCognitiveReentry/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              )
+          },
+          {
+            name:
+              "Portfolio cognition grants no resource allocation, spending, Hallway, planning execution, or external-action authority",
+            passed:
+              applied?.authority
+                ?.resourceAllocationAuthorized ===
+                false &&
+              applied?.authority
+                ?.spendingAuthorized ===
+                false &&
+              applied?.authority
+                ?.planningExecutionAuthorized ===
+                false &&
+              applied?.authority
+                ?.hallwayDispatchAuthorized ===
+                false &&
+              applied?.authority
+                ?.externalActionAuthorized ===
+                false &&
+              applied?.authority
+                ?.humanAuthorityPreserved ===
+                true
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7T8 Cross-Future Portfolio Robustness: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:
+            "006.017D7T8",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          preview,
+          applied,
+          portfolioCandidates:
+            inserted,
+          authority:
+            applied?.authority
+        };
+      } finally {
+        this.executivePriorityPortfolio =
+          original.portfolio;
+        this.crossFuturePortfolioState =
+          original.state;
       }
     },
 
