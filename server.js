@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.41";
+const VERSION = "2.10.42";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2961,7 +2961,12 @@ const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M";
 const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.3";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
   "CCR103-DURABLE-FINGERPRINT-OBSERVABILITY-REPAIR-20260809-A";
+const AUTONOMOUS_RUNTIME_ENABLED =
+  String(process.env.MEOS_AUTONOMOUS_RUNTIME_ENABLED || "false")
+    .trim()
+    .toLowerCase() === "true";
 const CONTINUOUS_COGNITION_RUNTIME_ENABLED =
+  AUTONOMOUS_RUNTIME_ENABLED &&
   String(process.env.MEOS_CONTINUOUS_COGNITION_ENABLED || "true")
     .trim()
     .toLowerCase() !== "false";
@@ -2977,6 +2982,13 @@ const CONTINUOUS_COGNITION_RETRY_MS = Math.max(
   5000,
   Number(process.env.MEOS_CONTINUOUS_COGNITION_RETRY_MS || 30_000)
 );
+const CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS = Math.max(
+  60_000,
+  Number(
+    process.env.MEOS_CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS ||
+      5 * 60_000
+  )
+);
 
 const continuousCognitionRuntimeState = {
   status: "initializing",
@@ -2991,12 +3003,20 @@ const continuousCognitionRuntimeState = {
   activeThreadId: null,
   wakeCount: 0,
   failedWakeCount: 0,
+  durableCheckpointCount: 0,
+  skippedDurableCheckpointCount: 0,
+  lastDurableCheckpointAt: null,
+  lastDurableCheckpointReason: null,
+  hotBrainHydratedAt: null,
+  hotBrainReuseCount: 0,
   inFlight: false,
   timer: null,
   lastError: null
 };
 
 let continuousCognitionBrainSourcePromise = null;
+let continuousCognitionHotBrain = null;
+let continuousCognitionObservedDurableFingerprint = null;
 
 async function loadContinuousCognitionBrainSource() {
   if (!continuousCognitionBrainSourcePromise) {
@@ -3082,6 +3102,88 @@ async function createHeadlessContinuousCognitionBrain(snapshot = null) {
   return brain;
 }
 
+async function getResidentContinuousCognitionBrain() {
+  if (continuousCognitionHotBrain) {
+    continuousCognitionRuntimeState.hotBrainReuseCount += 1;
+    return continuousCognitionHotBrain;
+  }
+
+  const durable = await readDurableExecutiveBrainState();
+  const snapshot = unwrapDurableExecutiveBrainSnapshot(durable);
+  continuousCognitionHotBrain =
+    await createHeadlessContinuousCognitionBrain(snapshot);
+  continuousCognitionObservedDurableFingerprint =
+    durable?.record?.payloadFingerprint || undefined;
+  continuousCognitionRuntimeState.durableFingerprint =
+    durable?.record?.payloadFingerprint || null;
+  continuousCognitionRuntimeState.hotBrainHydratedAt =
+    new Date().toISOString();
+  return continuousCognitionHotBrain;
+}
+
+function shouldCheckpointContinuousCognition(cycleResult) {
+  const now = Date.now();
+  const last = Date.parse(
+    continuousCognitionRuntimeState.lastDurableCheckpointAt || 0
+  );
+  const intervalDue =
+    !Number.isFinite(last) ||
+    now - last >= CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS;
+  const nextThreadId = cycleResult?.handoff?.activeThreadId || null;
+  const threadChanged =
+    nextThreadId !== continuousCognitionRuntimeState.activeThreadId;
+
+  return {
+    required: intervalDue || threadChanged,
+    reason: threadChanged
+      ? "active-thread-transition"
+      : intervalDue
+        ? "durable-checkpoint-interval"
+        : "hot-cognition-continuation"
+  };
+}
+
+async function checkpointContinuousCognition(brain, cycleResult, reason) {
+  const snapshotAfter = brain.buildPersistenceSnapshot();
+  const writeResult = await commitCanonicalExecutiveBrainState(
+    snapshotAfter,
+    {
+      source: "server-heartbeat",
+      observedFingerprint:
+        continuousCognitionObservedDurableFingerprint || undefined
+    }
+  );
+
+  if (
+    writeResult?.success !== true ||
+    writeResult?.verification?.verified !== true
+  ) {
+    const error = new Error(
+      "Continuous cognition durable checkpoint was not verified by Repository Authority."
+    );
+    error.code = "CONTINUOUS_COGNITION_DURABLE_VERIFY_FAILED";
+    throw error;
+  }
+
+  const expectedHandoffFingerprint =
+    cycleResult.handoff?.fingerprint || null;
+  continuousCognitionObservedDurableFingerprint =
+    writeResult?.record?.payloadFingerprint ||
+    continuousCognitionObservedDurableFingerprint ||
+    null;
+  continuousCognitionRuntimeState.durableFingerprint =
+    continuousCognitionObservedDurableFingerprint;
+  continuousCognitionRuntimeState.lastDurableCheckpointAt =
+    new Date().toISOString();
+  continuousCognitionRuntimeState.lastDurableCheckpointReason = reason;
+  continuousCognitionRuntimeState.durableCheckpointCount += 1;
+
+  return {
+    writeResult,
+    expectedHandoffFingerprint
+  };
+}
+
 function scheduleContinuousCognitionWake(nextWakeAt) {
   if (continuousCognitionRuntimeState.timer) {
     clearTimeout(continuousCognitionRuntimeState.timer);
@@ -3125,9 +3227,7 @@ async function runContinuousCognitionHeartbeat() {
   continuousCognitionRuntimeState.lastError = null;
 
   try {
-    const durableBefore = await readDurableExecutiveBrainState();
-    const snapshotBefore = unwrapDurableExecutiveBrainSnapshot(durableBefore);
-    const brain = await createHeadlessContinuousCognitionBrain(snapshotBefore);
+    const brain = await getResidentContinuousCognitionBrain();
     const cycleResult = brain.runContinuousCognitionCycle({});
 
     if (
@@ -3142,32 +3242,19 @@ async function runContinuousCognitionHeartbeat() {
       throw error;
     }
 
-    const snapshotAfter = brain.buildPersistenceSnapshot();
-    const writeResult = await commitCanonicalExecutiveBrainState(
-      snapshotAfter,
-      {
-        source: "server-heartbeat",
-        observedFingerprint:
-          durableBefore?.record?.payloadFingerprint || undefined
-      }
-    );
-    const durableAfter = await readDurableExecutiveBrainState();
-    const verifiedSnapshot = unwrapDurableExecutiveBrainSnapshot(durableAfter);
+    const checkpointDecision =
+      shouldCheckpointContinuousCognition(cycleResult);
     const expectedHandoffFingerprint =
       cycleResult.handoff?.fingerprint || null;
-    const persistedHandoffFingerprint =
-      verifiedSnapshot?.continuousCognitionState?.handoffFingerprint || null;
 
-    if (
-      !verifiedSnapshot ||
-      !expectedHandoffFingerprint ||
-      persistedHandoffFingerprint !== expectedHandoffFingerprint
-    ) {
-      const error = new Error(
-        "Continuous cognition durable read-after-write verification failed."
+    if (checkpointDecision.required) {
+      await checkpointContinuousCognition(
+        brain,
+        cycleResult,
+        checkpointDecision.reason
       );
-      error.code = "CONTINUOUS_COGNITION_DURABLE_VERIFY_FAILED";
-      throw error;
+    } else {
+      continuousCognitionRuntimeState.skippedDurableCheckpointCount += 1;
     }
 
     continuousCognitionRuntimeState.status = "online";
@@ -3176,10 +3263,6 @@ async function runContinuousCognitionHeartbeat() {
       Number(cycleResult.cycle?.cycleNumber || 0);
     continuousCognitionRuntimeState.handoffFingerprint =
       expectedHandoffFingerprint;
-    continuousCognitionRuntimeState.durableFingerprint =
-      durableAfter?.record?.payloadFingerprint ||
-      writeResult?.record?.payloadFingerprint ||
-      null;
     continuousCognitionRuntimeState.activeThreadId =
       cycleResult.handoff?.activeThreadId || null;
     continuousCognitionRuntimeState.wakeCount += 1;
@@ -3228,6 +3311,18 @@ function getContinuousCognitionRuntimeStatus() {
     activeThreadId: continuousCognitionRuntimeState.activeThreadId,
     wakeCount: continuousCognitionRuntimeState.wakeCount,
     failedWakeCount: continuousCognitionRuntimeState.failedWakeCount,
+    hotBrainHydratedAt: continuousCognitionRuntimeState.hotBrainHydratedAt,
+    hotBrainReuseCount: continuousCognitionRuntimeState.hotBrainReuseCount,
+    durableCheckpointMs: CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS,
+    durableCheckpointCount:
+      continuousCognitionRuntimeState.durableCheckpointCount,
+    skippedDurableCheckpointCount:
+      continuousCognitionRuntimeState.skippedDurableCheckpointCount,
+    lastDurableCheckpointAt:
+      continuousCognitionRuntimeState.lastDurableCheckpointAt,
+    lastDurableCheckpointReason:
+      continuousCognitionRuntimeState.lastDurableCheckpointReason,
+    persistenceMode: "resident-hot-cognition-bounded-durable-checkpoint",
     inFlight: continuousCognitionRuntimeState.inFlight,
     lastError: continuousCognitionRuntimeState.lastError
   };
@@ -4402,6 +4497,7 @@ const CONTINUOUS_OPERATIONS_MAX_RUN_HISTORY = Number(
   process.env.MEOS_CONTINUOUS_OPERATIONS_MAX_RUN_HISTORY || 100
 );
 const CONTINUOUS_OPERATIONS_ENABLED =
+  AUTONOMOUS_RUNTIME_ENABLED &&
   String(process.env.MEOS_CONTINUOUS_OPERATIONS_ENABLED || "true")
     .trim()
     .toLowerCase() !== "false";
@@ -13105,19 +13201,44 @@ app.get(
 app.get("/health", async (request, response) => {
   pruneTtsCache();
   const executiveMemory = await executiveMemoryStorageStatus();
-  const continuousOperations =
-    await getContinuousOperationsStatus().catch(error => ({
-      version: CONTINUOUS_OPERATIONS_VERSION,
-      enabled: CONTINUOUS_OPERATIONS_ENABLED,
-      status: "unavailable",
-      error: error?.message || String(error)
-    }));
-  const fundingIntelligence =
-    await getFundingIntelligenceStatus().catch(error => ({
-      version: FUNDING_INTELLIGENCE_VERSION,
-      status: "unavailable",
-      error: error?.message || String(error)
-    }));
+
+  /*
+   * Commission 006.018R — health must be a heartbeat, not a database crawl.
+   * Render and other infrastructure may poll this endpoint frequently. Never
+   * fan a liveness probe out across durable Executive Memory records or public
+   * providers. Deep operational status remains available through its dedicated
+   * APIs; /health reports resident runtime telemetry only.
+   */
+  const continuousOperations = {
+    schema: "meos.continuous-operations.health.v1",
+    version: CONTINUOUS_OPERATIONS_VERSION,
+    enabled: CONTINUOUS_OPERATIONS_ENABLED,
+    status: CONTINUOUS_OPERATIONS_ENABLED
+      ? continuousOperationsState.status
+      : "disabled",
+    startedAt: continuousOperationsState.startedAt,
+    lastTickAt: continuousOperationsState.lastTickAt,
+    nextTickAt: continuousOperationsState.nextTickAt,
+    activeJobCount: continuousOperationsState.activeJobIds.size,
+    completedRuns: continuousOperationsState.completedRuns,
+    failedRuns: continuousOperationsState.failedRuns,
+    lastError: continuousOperationsState.lastError
+  };
+
+  const fundingIntelligence = {
+    schema: "meos.funding-intelligence.health.v1",
+    version: FUNDING_INTELLIGENCE_VERSION,
+    status: fundingIntelligenceState.status,
+    lastRunAt: fundingIntelligenceState.lastRunAt,
+    lastSuccessAt: fundingIntelligenceState.lastSuccessAt,
+    lastError: fundingIntelligenceState.lastError,
+    runtimeMetrics: {
+      sourcesInvestigated: fundingIntelligenceState.sourcesInvestigated,
+      sourcesDiscovered: fundingIntelligenceState.sourcesDiscovered,
+      opportunitiesDiscovered: fundingIntelligenceState.opportunitiesDiscovered,
+      duplicatesRejected: fundingIntelligenceState.duplicatesRejected
+    }
+  };
 
   response.json({
     application: "MEOS",
@@ -13125,6 +13246,14 @@ app.get("/health", async (request, response) => {
     version: VERSION,
     voiceEngine: VOICE_ENGINE_VERSION,
     status: "online",
+    runtimeResourceControl: {
+      mode: AUTONOMOUS_RUNTIME_ENABLED ? "autonomous" : "cockpit-only",
+      masterAutonomousRuntimeEnabled: AUTONOMOUS_RUNTIME_ENABLED,
+      continuousCognitionEnabled: CONTINUOUS_COGNITION_RUNTIME_ENABLED,
+      continuousOperationsEnabled: CONTINUOUS_OPERATIONS_ENABLED,
+      healthProbePolicy: "resident-telemetry-only-no-durable-fanout"
+    },
+    continuousCognition: getContinuousCognitionRuntimeStatus(),
     providers: {
       openai: OPENAI_API_KEY ? "configured" : "missing",
       elevenlabs:
@@ -18323,48 +18452,55 @@ app.listen(PORT, () => {
     });
 
   (async () => {
-    try {
-      const fundingRegistry =
-        await ensureFundingSourceRegistry();
+    if (AUTONOMOUS_RUNTIME_ENABLED) {
+      try {
+        const fundingRegistry =
+          await ensureFundingSourceRegistry();
 
-      fundingIntelligenceState.status = "online";
+        fundingIntelligenceState.status = "online";
 
+        console.log(
+          `[MEOS] Funding Intelligence Network ` +
+            `v${FUNDING_INTELLIGENCE_VERSION} registry ready. ` +
+            `sources=${fundingRegistry.total}.`
+        );
+
+        console.log(
+          `[MEOS] Autonomous Executive Qualification ` +
+            `v${FUNDING_QUALIFICATION_VERSION} ready.`
+        );
+      } catch (error) {
+        fundingIntelligenceState.status = "degraded";
+        fundingIntelligenceState.lastError =
+          error?.message || String(error);
+
+        console.error(
+          "[MEOS] Funding Intelligence registry failed to initialize:",
+          error
+        );
+      }
+
+      try {
+        const resourceStatus =
+          await executiveResourceDevelopmentOffice
+            .initialize();
+
+        console.log(
+          `[MEOS] Executive Resource Development Office ` +
+            `v${resourceStatus.version} ${resourceStatus.status}. ` +
+            `portfolio=${resourceStatus.portfolioTotal}, ` +
+            `desk=${resourceStatus.executiveDeskTotal}.`
+        );
+      } catch (error) {
+        console.error(
+          "[MEOS] Executive Resource Development Office failed to initialize:",
+          error
+        );
+      }
+    } else {
+      fundingIntelligenceState.status = "paused";
       console.log(
-        `[MEOS] Funding Intelligence Network ` +
-          `v${FUNDING_INTELLIGENCE_VERSION} registry ready. ` +
-          `sources=${fundingRegistry.total}.`
-      );
-
-      console.log(
-        `[MEOS] Autonomous Executive Qualification ` +
-          `v${FUNDING_QUALIFICATION_VERSION} ready.`
-      );
-    } catch (error) {
-      fundingIntelligenceState.status = "degraded";
-      fundingIntelligenceState.lastError =
-        error?.message || String(error);
-
-      console.error(
-        "[MEOS] Funding Intelligence registry failed to initialize:",
-        error
-      );
-    }
-
-    try {
-      const resourceStatus =
-        await executiveResourceDevelopmentOffice
-          .initialize();
-
-      console.log(
-        `[MEOS] Executive Resource Development Office ` +
-          `v${resourceStatus.version} ${resourceStatus.status}. ` +
-          `portfolio=${resourceStatus.portfolioTotal}, ` +
-          `desk=${resourceStatus.executiveDeskTotal}.`
-      );
-    } catch (error) {
-      console.error(
-        "[MEOS] Executive Resource Development Office failed to initialize:",
-        error
+        "[MEOS] Autonomous runtime is OFF. Funding registry/rebuild startup work deferred; cockpit/API remains available."
       );
     }
 
