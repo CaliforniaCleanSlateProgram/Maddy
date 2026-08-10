@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.31.0";
-  const BUILD_ID = "EB1310-TEMPORAL-STRATEGIC-DELTA-FORESIGHT-20260809-A";
+  const VERSION = "1.31.1";
+  const BUILD_ID = "EB1311-TEMPORAL-UNCERTAINTY-INVESTIGATION-REPAIR-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10055,8 +10055,13 @@
             const uncertaintyPressure =
               Math.min(
                 1,
-                0.35 +
-                newUnknowns.length * 0.12
+                newUnknowns.length > 0
+                  ? 0.55 +
+                    Math.max(
+                      0,
+                      newUnknowns.length - 1
+                    ) * 0.12
+                  : 0.35
               );
 
             const opportunitySignal =
@@ -10386,7 +10391,7 @@
 
     getTemporalStrategicDeltaStatus() {
       return {
-        commission: "006.017D7T6",
+        commission: "006.017D7T6A",
         version: this.version,
         buildId: this.buildId,
         schema:
@@ -16970,7 +16975,7 @@
 
         console.table(checks);
         console.info(
-          `[MEOS ${this.version}] Commission 006.017D7T6 Temporal Strategic Delta Foresight: ${passed ? "PASS" : "FAIL"}.`
+          `[MEOS ${this.version}] Commission 006.017D7T6A Temporal Uncertainty Investigation Repair: ${passed ? "PASS" : "FAIL"}.`
         );
 
         return {
