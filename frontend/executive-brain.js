@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.28.0";
-  const BUILD_ID = "EB1280-GOVERNED-COGNITIVE-STATE-REVISION-20260809-A";
+  const VERSION = "1.29.0";
+  const BUILD_ID = "EB1290-CONSEQUENCE-DRIVEN-PLAN-MONITORING-REVISION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    planMonitoringRevisionState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     cognitiveRevisionState: {
       count: 0,
       lastAt: null,
@@ -9093,6 +9099,419 @@
       return revision;
     },
 
+    reviseAffectedPlanAndMonitoringState(
+      cognitiveRevision = {},
+      reconciliation = {},
+      options = {}
+    ) {
+      const apply =
+        options.apply === true;
+
+      const planning =
+        global.ExecutivePlanning;
+      const monitoring =
+        global.ExecutiveMonitoring;
+
+      const now =
+        new Date().toISOString();
+
+      const revisionId =
+        this.id(
+          "plan-monitoring-revision"
+        );
+
+      const selectedOrgans =
+        (reconciliation?.selected || [])
+          .map(item => item?.organ)
+          .filter(Boolean);
+
+      const planningSelected =
+        selectedOrgans.includes(
+          "executive-planning"
+        );
+
+      const monitoringSelected =
+        selectedOrgans.includes(
+          "executive-monitoring"
+        );
+
+      const affectedIntentionIds =
+        new Set(
+          (reconciliation?.staleIntentions || [])
+            .map(item => item?.intentionId)
+            .filter(Boolean)
+        );
+
+      const affectedSubjects =
+        [
+          reconciliation?.subject,
+          cognitiveRevision?.subject,
+          ...(reconciliation?.staleIntentions || [])
+            .map(item => item?.subject)
+        ]
+          .filter(Boolean)
+          .map(item =>
+            this.normalize(item)
+          );
+
+      const touchesSubject = value => {
+        const text =
+          this.normalize(
+            this.textContent(value)
+          );
+
+        if (!text) return false;
+
+        return affectedSubjects.some(
+          subject => {
+            if (!subject) return false;
+
+            const tokens =
+              subject
+                .split(/[^a-z0-9]+/i)
+                .filter(
+                  token =>
+                    token.length >= 5
+                );
+
+            return (
+              text.includes(subject) ||
+              tokens.some(token =>
+                text.includes(token)
+              )
+            );
+          }
+        );
+      };
+
+      const plans =
+        Array.isArray(planning?.plans)
+          ? planning.plans
+          : Array.isArray(
+              planning?.state?.plans
+            )
+            ? planning.state.plans
+            : [];
+
+      const planRevisions =
+        planningSelected
+          ? plans
+              .filter(plan => {
+                const metadata =
+                  plan?.metadata || {};
+
+                const linkedIntention =
+                  metadata
+                    ?.cognitiveIntentionId ||
+                  metadata
+                    ?.intentionId ||
+                  null;
+
+                return (
+                  (
+                    linkedIntention &&
+                    affectedIntentionIds.has(
+                      linkedIntention
+                    )
+                  ) ||
+                  touchesSubject(plan)
+                );
+              })
+              .slice(0, 12)
+              .map(plan => {
+                const before =
+                  this.clone(plan);
+
+                if (apply) {
+                  plan.metadata =
+                    plan.metadata || {};
+
+                  plan.metadata
+                    .cognitiveRevisionHistory =
+                    Array.isArray(
+                      plan.metadata
+                        .cognitiveRevisionHistory
+                    )
+                      ? plan.metadata
+                          .cognitiveRevisionHistory
+                      : [];
+
+                  plan.metadata
+                    .cognitiveRevisionHistory
+                    .push({
+                      revisionId,
+                      revisedAt: now,
+                      sourceCognitiveRevision:
+                        cognitiveRevision
+                          ?.revisionId ||
+                        null,
+                      sourceReconciliation:
+                        reconciliation
+                          ?.createdAt ||
+                        null,
+                      priorStatus:
+                        plan?.status ||
+                        null,
+                      reason:
+                        "Plan assumptions intersect materially changed cognitive state.",
+                      prior:
+                        this.clone(before)
+                    });
+
+                  plan.status =
+                    "reconsideration-required";
+                  plan.updatedAt = now;
+                  plan.metadata
+                    .lastCognitiveRevisionId =
+                    revisionId;
+
+                  if (
+                    typeof planning
+                      ?.recalculatePlan ===
+                    "function"
+                  ) {
+                    this.safe(() =>
+                      planning.recalculatePlan(
+                        plan
+                      )
+                    );
+                  }
+                }
+
+                return {
+                  planId:
+                    plan?.planId ||
+                    plan?.id ||
+                    null,
+                  found: true,
+                  applied: apply,
+                  before,
+                  after:
+                    apply
+                      ? this.clone(plan)
+                      : null
+                };
+              })
+          : [];
+
+      const alerts =
+        Array.isArray(monitoring?.alerts)
+          ? monitoring.alerts
+          : Array.isArray(
+              monitoring?.state?.alerts
+            )
+            ? monitoring.state.alerts
+            : [];
+
+      const monitoringRevisions =
+        monitoringSelected
+          ? alerts
+              .filter(alert =>
+                ![
+                  "resolved",
+                  "dismissed",
+                  "archived"
+                ].includes(
+                  String(
+                    alert?.status || ""
+                  ).toLowerCase()
+                ) &&
+                touchesSubject(alert)
+              )
+              .slice(0, 12)
+              .map(alert => {
+                const before =
+                  this.clone(alert);
+
+                if (apply) {
+                  alert.metadata =
+                    alert.metadata || {};
+
+                  alert.metadata
+                    .cognitiveRevisionHistory =
+                    Array.isArray(
+                      alert.metadata
+                        .cognitiveRevisionHistory
+                    )
+                      ? alert.metadata
+                          .cognitiveRevisionHistory
+                      : [];
+
+                  alert.metadata
+                    .cognitiveRevisionHistory
+                    .push({
+                      revisionId,
+                      revisedAt: now,
+                      sourceCognitiveRevision:
+                        cognitiveRevision
+                          ?.revisionId ||
+                        null,
+                      sourceReconciliation:
+                        reconciliation
+                          ?.createdAt ||
+                        null,
+                      priorStatus:
+                        alert?.status ||
+                        null,
+                      reason:
+                        "Monitoring condition intersects materially changed cognitive state.",
+                      prior:
+                        this.clone(before)
+                    });
+
+                  alert.status =
+                    "reconsideration-required";
+                  alert.updatedAt = now;
+                  alert.metadata
+                    .lastCognitiveRevisionId =
+                    revisionId;
+                }
+
+                return {
+                  alertId:
+                    alert?.alertId ||
+                    alert?.id ||
+                    null,
+                  found: true,
+                  applied: apply,
+                  before,
+                  after:
+                    apply
+                      ? this.clone(alert)
+                      : null
+                };
+              })
+          : [];
+
+      if (apply) {
+        if (
+          planRevisions.length > 0 &&
+          typeof planning
+            ?.persistIfEnabled ===
+            "function"
+        ) {
+          this.safe(() =>
+            planning.persistIfEnabled()
+          );
+        }
+
+        if (
+          monitoringRevisions.length > 0 &&
+          typeof monitoring
+            ?.persistIfEnabled ===
+            "function"
+        ) {
+          this.safe(() =>
+            monitoring.persistIfEnabled()
+          );
+        }
+      }
+
+      const result = {
+        schema:
+          "meos.maddy.plan-monitoring-cognitive-revision.v1",
+        revisionId,
+        createdAt: now,
+        applied: apply,
+        subject:
+          reconciliation?.subject ||
+          cognitiveRevision?.subject ||
+          "Governed cognitive revision",
+        planning: {
+          selected:
+            planningSelected,
+          available:
+            Boolean(planning),
+          matchedCount:
+            planRevisions.length,
+          revisions:
+            planRevisions
+        },
+        monitoring: {
+          selected:
+            monitoringSelected,
+          available:
+            Boolean(monitoring),
+          matchedCount:
+            monitoringRevisions.length,
+          revisions:
+            monitoringRevisions
+        },
+        isolation: {
+          unaffectedPlansMutated: false,
+          unaffectedMonitoringMutated:
+            false,
+          rule:
+            "Only existing plans and monitoring records inside the selectively reconciled blast radius may be revised."
+        },
+        authority: {
+          internalPlanStateRevisionAuthorized:
+            apply &&
+            planningSelected,
+          internalMonitoringStateRevisionAuthorized:
+            apply &&
+            monitoringSelected,
+          missionExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      this.planMonitoringRevisionState.count += 1;
+      this.planMonitoringRevisionState.lastAt =
+        now;
+      this.planMonitoringRevisionState.last =
+        this.clone(result);
+      this.planMonitoringRevisionState.history.unshift(
+        this.clone(result)
+      );
+      this.planMonitoringRevisionState.history =
+        this.planMonitoringRevisionState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.plan-monitoring-revision",
+        result
+      );
+
+      this.emit(
+        "brain:plan-monitoring-revised",
+        this.clone(result)
+      );
+
+      return result;
+    },
+
+    getPlanMonitoringRevisionStatus() {
+      return {
+        commission: "006.017D7T4",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.plan-monitoring-cognitive-revision.v1",
+        ...this.clone(
+          this.planMonitoringRevisionState
+        ),
+        authority: {
+          missionExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
     getCognitiveRevisionStatus() {
       return {
         commission: "006.017D7T3",
@@ -9246,6 +9665,15 @@
           }
         );
 
+      const planMonitoringRevision =
+        this.reviseAffectedPlanAndMonitoringState(
+          cognitiveRevision,
+          cognitiveReconciliation,
+          {
+            apply: true
+          }
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -9313,6 +9741,10 @@
         cognitiveRevision:
           this.clone(
             cognitiveRevision
+          ),
+        planMonitoringRevision:
+          this.clone(
+            planMonitoringRevision
           ),
         causalInvestigation:
           causalInvestigation
@@ -15265,6 +15697,382 @@
         this.cognitiveIntentions = original;
         await this.flushPersistence();
       }
+    },
+
+    async runPlanMonitoringRevisionAcceptanceTest() {
+      const hydration =
+        await this.hydrateResearchKnowledgeBeforeCognition();
+
+      const planning =
+        global.ExecutivePlanning;
+      const monitoring =
+        global.ExecutiveMonitoring;
+
+      const subject =
+        "D7T4 consequence revision fixture";
+
+      const plan =
+        planning?.createPlan?.(
+          {
+            title: subject,
+            objective:
+              "Existing plan whose assumptions depend on changed reality.",
+            metadata: {
+              cognitiveIntentionId:
+                "d7t4-intention"
+            }
+          },
+          {
+            persist: false
+          }
+        );
+
+      const planRecord =
+        plan?.plan || plan;
+
+      const unrelatedPlan =
+        planning?.createPlan?.(
+          {
+            title:
+              "D7T4 unrelated plan fixture",
+            objective:
+              "Must remain untouched."
+          },
+          {
+            persist: false
+          }
+        );
+
+      const unrelatedPlanRecord =
+        unrelatedPlan?.plan ||
+        unrelatedPlan;
+
+      const monitoringAlert =
+        monitoring?.upsertAlert?.({
+          type:
+            "d7t4-cognitive-watch",
+          title: subject,
+          summary:
+            "Existing monitoring condition depends on changed reality.",
+          severity: 3,
+          status: "open",
+          source:
+            "006.017D7T4-acceptance"
+        });
+
+      const alertRecord =
+        monitoringAlert?.alert ||
+        monitoringAlert;
+
+      const unrelatedAlert =
+        monitoring?.upsertAlert?.({
+          type:
+            "d7t4-unrelated-watch",
+          title:
+            "D7T4 unrelated monitoring fixture",
+          summary:
+            "Must remain untouched.",
+          severity: 1,
+          status: "open",
+          source:
+            "006.017D7T4-acceptance"
+        });
+
+      const unrelatedAlertRecord =
+        unrelatedAlert?.alert ||
+        unrelatedAlert;
+
+      const reconciliation = {
+        schema:
+          "meos.maddy.selective-cognitive-reconciliation.v1",
+        createdAt:
+          new Date().toISOString(),
+        subject,
+        staleIntentions: [{
+          intentionId:
+            "d7t4-intention",
+          subject,
+          reconciliationStatus:
+            "review-required"
+        }],
+        selected: [
+          {
+            organ:
+              "executive-planning",
+            required: true
+          },
+          {
+            organ:
+              "executive-monitoring",
+            required: true
+          }
+        ],
+        untouched: [
+          {
+            organ:
+              "future-simulation",
+            required: false
+          }
+        ]
+      };
+
+      const cognitiveRevision = {
+        schema:
+          "meos.maddy.governed-cognitive-state-revision.v1",
+        revisionId:
+          "d7t4-cognitive-revision",
+        subject,
+        applied: true
+      };
+
+      const beforePlan =
+        this.clone(planRecord);
+      const beforeAlert =
+        this.clone(alertRecord);
+      const beforeUnrelatedPlan =
+        this.clone(
+          unrelatedPlanRecord
+        );
+      const beforeUnrelatedAlert =
+        this.clone(
+          unrelatedAlertRecord
+        );
+
+      const preview =
+        this.reviseAffectedPlanAndMonitoringState(
+          cognitiveRevision,
+          reconciliation,
+          {
+            apply: false
+          }
+        );
+
+      const applied =
+        this.reviseAffectedPlanAndMonitoringState(
+          cognitiveRevision,
+          reconciliation,
+          {
+            apply: true
+          }
+        );
+
+      const afterPlan =
+        this.clone(
+          planning?.getPlanById?.(
+            planRecord?.planId ||
+            planRecord?.id
+          ) ||
+          planRecord
+        );
+
+      const afterAlert =
+        this.clone(
+          monitoring?.getAlertById?.(
+            alertRecord?.alertId ||
+            alertRecord?.id
+          ) ||
+          alertRecord
+        );
+
+      const afterUnrelatedPlan =
+        this.clone(
+          planning?.getPlanById?.(
+            unrelatedPlanRecord
+              ?.planId ||
+            unrelatedPlanRecord?.id
+          ) ||
+          unrelatedPlanRecord
+        );
+
+      const afterUnrelatedAlert =
+        this.clone(
+          monitoring?.getAlertById?.(
+            unrelatedAlertRecord
+              ?.alertId ||
+            unrelatedAlertRecord?.id
+          ) ||
+          unrelatedAlertRecord
+        );
+
+      const checks = [
+        {
+          name:
+            "Commissioned research-knowledge hydration remains ready",
+          passed:
+            hydration?.success === true
+        },
+        {
+          name:
+            "Existing Executive Planning organ is used",
+          passed:
+            Boolean(planning) &&
+            typeof planning.createPlan ===
+              "function" &&
+            planRecord != null
+        },
+        {
+          name:
+            "Existing Executive Monitoring organ is used",
+          passed:
+            Boolean(monitoring) &&
+            typeof monitoring.upsertAlert ===
+              "function" &&
+            alertRecord != null
+        },
+        {
+          name:
+            "Preview identifies affected plan and monitoring state without mutation",
+          passed:
+            preview?.applied === false &&
+            preview?.planning
+              ?.matchedCount >= 1 &&
+            preview?.monitoring
+              ?.matchedCount >= 1 &&
+            planRecord?.status ===
+              beforePlan?.status &&
+            alertRecord?.status ===
+              beforeAlert?.status
+        },
+        {
+          name:
+            "Affected plan is revised to reconsideration-required",
+          passed:
+            afterPlan?.status ===
+              "reconsideration-required"
+        },
+        {
+          name:
+            "Affected plan preserves prior state and revision provenance",
+          passed:
+            afterPlan?.metadata
+              ?.cognitiveRevisionHistory
+              ?.some(
+                item =>
+                  item?.prior?.status ===
+                    beforePlan?.status &&
+                  item
+                    ?.sourceCognitiveRevision ===
+                    cognitiveRevision
+                      .revisionId
+              ) === true
+        },
+        {
+          name:
+            "Affected monitoring condition is revised to reconsideration-required",
+          passed:
+            afterAlert?.status ===
+              "reconsideration-required"
+        },
+        {
+          name:
+            "Affected monitoring preserves prior state and revision provenance",
+          passed:
+            afterAlert?.metadata
+              ?.cognitiveRevisionHistory
+              ?.some(
+                item =>
+                  item?.prior?.status ===
+                    beforeAlert?.status &&
+                  item
+                    ?.sourceCognitiveRevision ===
+                    cognitiveRevision
+                      .revisionId
+              ) === true
+        },
+        {
+          name:
+            "Unrelated plan is left untouched",
+          passed:
+            afterUnrelatedPlan?.status ===
+              beforeUnrelatedPlan?.status &&
+            afterUnrelatedPlan?.metadata
+              ?.lastCognitiveRevisionId ==
+              null
+        },
+        {
+          name:
+            "Unrelated monitoring condition is left untouched",
+          passed:
+            afterUnrelatedAlert?.status ===
+              beforeUnrelatedAlert?.status &&
+            afterUnrelatedAlert?.metadata
+              ?.lastCognitiveRevisionId ==
+              null
+        },
+        {
+          name:
+            "Existing Planning recalculation is reused for affected plans",
+          passed:
+            /recalculatePlan/.test(
+              this.reviseAffectedPlanAndMonitoringState
+                .toString()
+            )
+        },
+        {
+          name:
+            "Existing Planning and Monitoring persistence paths are reused",
+          passed:
+            /planning\.persistIfEnabled/.test(
+              this.reviseAffectedPlanAndMonitoringState
+                .toString()
+            ) &&
+            /monitoring\.persistIfEnabled/.test(
+              this.reviseAffectedPlanAndMonitoringState
+                .toString()
+            )
+        },
+        {
+          name:
+            "Existing meaningful-change path carries plan and monitoring revision into cognitive re-entry",
+          passed:
+            /reviseAffectedPlanAndMonitoringState/.test(
+              this.attendToWorldModelChange
+                .toString()
+            ) &&
+            /planMonitoringRevision/.test(
+              this.attendToWorldModelChange
+                .toString()
+            ) &&
+            /scheduleCognitiveReentry/.test(
+              this.attendToWorldModelChange
+                .toString()
+            )
+        },
+        {
+          name:
+            "Plan and monitoring revision does not authorize execution or external action",
+          passed:
+            applied?.authority
+              ?.missionExecutionAuthorized === false &&
+            applied?.authority
+              ?.hallwayDispatchAuthorized === false &&
+            applied?.authority
+              ?.externalActionAuthorized === false &&
+            applied?.authority
+              ?.humanAuthorityPreserved === true
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7T4 Consequence-Driven Plan + Monitoring Revision: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7T4",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        hydration,
+        preview,
+        applied,
+        authority:
+          applied?.authority
+      };
     },
 
     async runGovernedCognitiveStateRevisionAcceptanceTest() {
