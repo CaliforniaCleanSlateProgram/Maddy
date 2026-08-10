@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.30.0";
-  const BUILD_ID = "EB1300-SELECTIVE-TEMPORAL-CONSEQUENCE-RESIMULATION-20260809-A";
+  const VERSION = "1.31.0";
+  const BUILD_ID = "EB1310-TEMPORAL-STRATEGIC-DELTA-FORESIGHT-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    temporalStrategicDeltaState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     temporalResimulationState: {
       count: 0,
       lastAt: null,
@@ -9903,6 +9909,504 @@
       return result;
     },
 
+    analyzeTemporalStrategicDelta(
+      temporalResimulation = {},
+      options = {}
+    ) {
+      const apply =
+        options.apply === true;
+
+      const now =
+        new Date().toISOString();
+
+      const analysisId =
+        this.id(
+          "temporal-strategic-delta"
+        );
+
+      const normalizeItems = items =>
+        (Array.isArray(items) ? items : [])
+          .map(item =>
+            this.normalize(
+              this.textContent(item)
+            )
+          )
+          .filter(Boolean);
+
+      const tokenSet = items =>
+        new Set(
+          normalizeItems(items)
+            .flatMap(item =>
+              item
+                .split(/[^a-z0-9]+/i)
+                .filter(
+                  token =>
+                    token.length >= 4
+                )
+            )
+        );
+
+      const revisions =
+        Array.isArray(
+          temporalResimulation?.revisions
+        )
+          ? temporalResimulation.revisions
+          : [];
+
+      const deltas =
+        revisions
+          .map(revision => {
+            const prior =
+              revision?.prior || null;
+            const successor =
+              revision
+                ?.successorSimulation ||
+              null;
+
+            if (!prior || !successor) {
+              return null;
+            }
+
+            const priorDrivers =
+              normalizeItems(
+                prior.drivers
+              );
+            const successorDrivers =
+              normalizeItems(
+                successor.drivers
+              );
+            const priorAssumptions =
+              normalizeItems(
+                prior.assumptions
+              );
+            const successorAssumptions =
+              normalizeItems(
+                successor.assumptions
+              );
+            const priorUnknowns =
+              normalizeItems(
+                prior.uncertainties
+              );
+            const successorUnknowns =
+              normalizeItems(
+                successor.uncertainties
+              );
+
+            const priorDriverTokens =
+              tokenSet(prior.drivers);
+            const successorDriverTokens =
+              tokenSet(
+                successor.drivers
+              );
+
+            const newDrivers =
+              successorDrivers.filter(
+                item =>
+                  !priorDrivers.includes(
+                    item
+                  )
+              );
+
+            const removedDrivers =
+              priorDrivers.filter(
+                item =>
+                  !successorDrivers.includes(
+                    item
+                  )
+              );
+
+            const newAssumptions =
+              successorAssumptions.filter(
+                item =>
+                  !priorAssumptions.includes(
+                    item
+                  )
+              );
+
+            const retiredAssumptions =
+              priorAssumptions.filter(
+                item =>
+                  !successorAssumptions.includes(
+                    item
+                  )
+              );
+
+            const newUnknowns =
+              successorUnknowns.filter(
+                item =>
+                  !priorUnknowns.includes(
+                    item
+                  )
+              );
+
+            const changedRealityAdded =
+              (successor.drivers || [])
+                .some(
+                  driver =>
+                    driver?.type ===
+                      "material-world-model-change"
+                );
+
+            const temporalPressure =
+              changedRealityAdded
+                ? 0.82
+                : 0.45;
+
+            const uncertaintyPressure =
+              Math.min(
+                1,
+                0.35 +
+                newUnknowns.length * 0.12
+              );
+
+            const opportunitySignal =
+              Math.min(
+                1,
+                0.3 +
+                newDrivers.length * 0.1 +
+                (
+                  successorDriverTokens
+                    .size >
+                  priorDriverTokens.size
+                    ? 0.15
+                    : 0
+                )
+              );
+
+            const lossSignal =
+              Math.min(
+                1,
+                removedDrivers.length *
+                  0.15 +
+                retiredAssumptions.length *
+                  0.12
+              );
+
+            const classification = [];
+
+            if (
+              opportunitySignal >= 0.55
+            ) {
+              classification.push(
+                "newly-positionable"
+              );
+            }
+
+            if (
+              temporalPressure >= 0.75
+            ) {
+              classification.push(
+                "more-urgent"
+              );
+            }
+
+            if (
+              uncertaintyPressure >=
+              0.55
+            ) {
+              classification.push(
+                "requires-investigation"
+              );
+            }
+
+            if (lossSignal >= 0.45) {
+              classification.push(
+                "possibly-less-viable"
+              );
+            }
+
+            if (
+              classification.length ===
+              0
+            ) {
+              classification.push(
+                "materially-changed"
+              );
+            }
+
+            const attentionScore =
+              Math.round(
+                (
+                  temporalPressure *
+                    0.35 +
+                  opportunitySignal *
+                    0.3 +
+                  uncertaintyPressure *
+                    0.25 +
+                  lossSignal * 0.1
+                ) *
+                  100
+              ) / 100;
+
+            return {
+              deltaId:
+                this.id(
+                  "future-delta"
+                ),
+              subject:
+                successor.subject ||
+                prior.subject,
+              priorSimulationId:
+                prior.id,
+              successorSimulationId:
+                successor.id,
+              lineageId:
+                successor
+                  ?.temporalRevision
+                  ?.lineageId ||
+                temporalResimulation
+                  ?.resimulationId ||
+                null,
+              changedRealitySubject:
+                successor
+                  ?.temporalRevision
+                  ?.changedRealitySubject ||
+                temporalResimulation
+                  ?.subject ||
+                null,
+              changes: {
+                newDrivers,
+                removedDrivers,
+                newAssumptions,
+                retiredAssumptions,
+                newUnknowns
+              },
+              classification,
+              signals: {
+                temporalPressure,
+                opportunitySignal,
+                uncertaintyPressure,
+                lossSignal,
+                attentionScore
+              },
+              executiveMeaning: {
+                newlyPossible:
+                  classification.includes(
+                    "newly-positionable"
+                  ),
+                newlyImpossible:
+                  classification.includes(
+                    "possibly-less-viable"
+                  ),
+                moreUrgent:
+                  classification.includes(
+                    "more-urgent"
+                  ),
+                investigationRequired:
+                  classification.includes(
+                    "requires-investigation"
+                  ),
+                positioningCandidate:
+                  classification.includes(
+                    "newly-positionable"
+                  ) &&
+                  attentionScore >= 0.6
+              },
+              truthBoundary: {
+                observedChange:
+                  changedRealityAdded,
+                strategicDeltaIsJudgment:
+                  true,
+                futureIsPrediction:
+                  false,
+                futureIsFact: false
+              }
+            };
+          })
+          .filter(Boolean);
+
+      const positioningCandidates =
+        deltas
+          .filter(
+            delta =>
+              delta.executiveMeaning
+                .positioningCandidate ===
+              true
+          )
+          .map(delta => ({
+            id:
+              `temporal-positioning-${
+                delta.deltaId
+              }`,
+            subject: delta.subject,
+            origin:
+              "temporal-strategic-delta",
+            reason:
+              "A changed future trajectory creates a potentially valuable positioning window.",
+            consequence:
+              delta.signals
+                .attentionScore,
+            urgency:
+              delta.signals
+                .temporalPressure,
+            leverage:
+              delta.signals
+                .opportunitySignal,
+            uncertainty:
+              delta.signals
+                .uncertaintyPressure,
+            reversibility: 0.75,
+            evidence: [{
+              type:
+                "synthetic-future-lineage",
+              priorSimulationId:
+                delta
+                  .priorSimulationId,
+              successorSimulationId:
+                delta
+                  .successorSimulationId,
+              lineageId:
+                delta.lineageId
+            }],
+            unknowns:
+              delta.changes
+                .newUnknowns,
+            externalAuthorityRequired:
+              false
+          }));
+
+      const result = {
+        schema:
+          "meos.maddy.temporal-strategic-delta-foresight.v1",
+        analysisId,
+        createdAt: now,
+        applied: apply,
+        sourceResimulationId:
+          temporalResimulation
+            ?.resimulationId ||
+          null,
+        subject:
+          temporalResimulation
+            ?.subject ||
+          null,
+        deltaCount:
+          deltas.length,
+        deltas,
+        positioningCandidates,
+        summary: {
+          newlyPositionable:
+            deltas.filter(
+              item =>
+                item.executiveMeaning
+                  .newlyPossible
+            ).length,
+          possiblyLessViable:
+            deltas.filter(
+              item =>
+                item.executiveMeaning
+                  .newlyImpossible
+            ).length,
+          moreUrgent:
+            deltas.filter(
+              item =>
+                item.executiveMeaning
+                  .moreUrgent
+            ).length,
+          investigationRequired:
+            deltas.filter(
+              item =>
+                item.executiveMeaning
+                  .investigationRequired
+            ).length
+        },
+        authority: {
+          executiveAttentionCandidateAuthorized:
+            apply,
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      if (
+        apply &&
+        positioningCandidates.length > 0
+      ) {
+        const existingIds =
+          new Set(
+            (this.executivePriorityPortfolio || [])
+              .map(item => item?.id)
+              .filter(Boolean)
+          );
+
+        positioningCandidates
+          .filter(
+            item =>
+              !existingIds.has(item.id)
+          )
+          .forEach(item => {
+            this.executivePriorityPortfolio.push({
+              ...this.clone(item),
+              status: "candidate",
+              createdAt: now,
+              updatedAt: now
+            });
+          });
+
+        this.executivePriorityPortfolio =
+          this.executivePriorityPortfolio.slice(
+            0,
+            this.configuration
+              .priorityPortfolioLimit
+          );
+      }
+
+      this.temporalStrategicDeltaState.count +=
+        1;
+      this.temporalStrategicDeltaState.lastAt =
+        now;
+      this.temporalStrategicDeltaState.last =
+        this.clone(result);
+      this.temporalStrategicDeltaState.history.unshift(
+        this.clone(result)
+      );
+      this.temporalStrategicDeltaState.history =
+        this.temporalStrategicDeltaState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.temporal-strategic-delta",
+        result
+      );
+
+      this.emit(
+        "brain:temporal-strategic-delta",
+        this.clone(result)
+      );
+
+      return result;
+    },
+
+    getTemporalStrategicDeltaStatus() {
+      return {
+        commission: "006.017D7T6",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.temporal-strategic-delta-foresight.v1",
+        ...this.clone(
+          this.temporalStrategicDeltaState
+        ),
+        authority: {
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
     getTemporalResimulationStatus() {
       return {
         commission: "006.017D7T5",
@@ -10120,6 +10624,14 @@
           }
         );
 
+      const temporalStrategicDelta =
+        this.analyzeTemporalStrategicDelta(
+          temporalResimulation,
+          {
+            apply: true
+          }
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -10195,6 +10707,10 @@
         temporalResimulation:
           this.clone(
             temporalResimulation
+          ),
+        temporalStrategicDelta:
+          this.clone(
+            temporalStrategicDelta
           ),
         causalInvestigation:
           causalInvestigation
@@ -16146,6 +16662,338 @@
       } finally {
         this.cognitiveIntentions = original;
         await this.flushPersistence();
+      }
+    },
+
+    async runTemporalStrategicDeltaAcceptanceTest() {
+      const original = {
+        portfolio:
+          this.clone(
+            this.executivePriorityPortfolio
+          ),
+        state:
+          this.clone(
+            this.temporalStrategicDeltaState
+          )
+      };
+
+      try {
+        this.executivePriorityPortfolio =
+          [];
+
+        const prior = {
+          id:
+            "d7t6-prior-future",
+          subject:
+            "County funding eligibility deadline",
+          evidenceClass:
+            "synthetic-future-simulation",
+          drivers: [
+            "county eligibility rules"
+          ],
+          assumptions: [
+            "partner participation remains stable",
+            "application window remains open"
+          ],
+          uncertainties: [
+            "final eligibility interpretation"
+          ],
+          governance: {
+            simulationNeverBecomesHistoricalFact:
+              true
+          }
+        };
+
+        const successor = {
+          id:
+            "d7t6-successor-future",
+          subject:
+            "County funding eligibility deadline",
+          evidenceClass:
+            "synthetic-future-simulation",
+          drivers: [
+            "county eligibility rules",
+            {
+              type:
+                "material-world-model-change",
+              subject:
+                "County funding eligibility deadline",
+              sourceCognitiveRevision:
+                "d7t6-cognitive-revision"
+            },
+            "new partner pathway"
+          ],
+          assumptions: [
+            "partner participation remains stable",
+            "application window remains open"
+          ],
+          uncertainties: [
+            "final eligibility interpretation",
+            {
+              question:
+                "How does the materially changed world state alter this future trajectory?"
+            }
+          ],
+          temporalRevision: {
+            lineageId:
+              "d7t6-lineage",
+            supersedes:
+              prior.id,
+            changedRealitySubject:
+              "County funding eligibility deadline"
+          },
+          governance: {
+            simulationNeverBecomesHistoricalFact:
+              true
+          }
+        };
+
+        const resimulation = {
+          schema:
+            "meos.maddy.selective-temporal-consequence-resimulation.v1",
+          resimulationId:
+            "d7t6-lineage",
+          applied: true,
+          selected: true,
+          subject:
+            "County funding eligibility deadline",
+          revisions: [{
+            priorSimulationId:
+              prior.id,
+            applied: true,
+            prior,
+            successorSimulation:
+              successor
+          }]
+        };
+
+        const preview =
+          this.analyzeTemporalStrategicDelta(
+            resimulation,
+            {
+              apply: false
+            }
+          );
+
+        const portfolioAfterPreview =
+          this.clone(
+            this.executivePriorityPortfolio
+          );
+
+        const applied =
+          this.analyzeTemporalStrategicDelta(
+            resimulation,
+            {
+              apply: true
+            }
+          );
+
+        const delta =
+          applied?.deltas?.[0] ||
+          null;
+
+        const candidate =
+          applied
+            ?.positioningCandidates?.[0] ||
+          null;
+
+        const portfolioCandidate =
+          this.executivePriorityPortfolio
+            .find(
+              item =>
+                item?.id ===
+                candidate?.id
+            );
+
+        const checks = [
+          {
+            name:
+              "Temporal strategic delta compares prior and successor synthetic futures",
+            passed:
+              applied?.deltaCount === 1 &&
+              delta
+                ?.priorSimulationId ===
+                prior.id &&
+              delta
+                ?.successorSimulationId ===
+                successor.id
+          },
+          {
+            name:
+              "New future drivers are detected",
+            passed:
+              delta?.changes
+                ?.newDrivers?.length >= 2
+          },
+          {
+            name:
+              "New temporal uncertainty is detected",
+            passed:
+              delta?.changes
+                ?.newUnknowns?.length >= 1
+          },
+          {
+            name:
+              "Changed reality raises temporal urgency",
+            passed:
+              delta?.executiveMeaning
+                ?.moreUrgent === true
+          },
+          {
+            name:
+              "Changed future can become newly positionable",
+            passed:
+              delta?.executiveMeaning
+                ?.newlyPossible === true
+          },
+          {
+            name:
+              "New uncertainty can require investigation",
+            passed:
+              delta?.executiveMeaning
+                ?.investigationRequired ===
+                true
+          },
+          {
+            name:
+              "Positioning candidacy requires meaningful attention score",
+            passed:
+              delta?.executiveMeaning
+                ?.positioningCandidate ===
+                true &&
+              delta?.signals
+                ?.attentionScore >= 0.6
+          },
+          {
+            name:
+              "Preview performs strategic analysis without changing priority state",
+            passed:
+              preview?.applied === false &&
+              portfolioAfterPreview
+                .length === 0
+          },
+          {
+            name:
+              "Applied strategic delta enters existing executive priority portfolio as candidate",
+            passed:
+              portfolioCandidate
+                ?.origin ===
+                "temporal-strategic-delta" &&
+              portfolioCandidate
+                ?.status ===
+                "candidate"
+          },
+          {
+            name:
+              "Temporal candidate preserves future lineage as evidence",
+            passed:
+              portfolioCandidate
+                ?.evidence?.[0]
+                ?.lineageId ===
+                "d7t6-lineage" &&
+              portfolioCandidate
+                ?.evidence?.[0]
+                ?.priorSimulationId ===
+                prior.id &&
+              portfolioCandidate
+                ?.evidence?.[0]
+                ?.successorSimulationId ===
+                successor.id
+          },
+          {
+            name:
+              "Strategic delta remains judgment rather than prediction or fact",
+            passed:
+              delta?.truthBoundary
+                ?.strategicDeltaIsJudgment ===
+                true &&
+              delta?.truthBoundary
+                ?.futureIsPrediction ===
+                false &&
+              delta?.truthBoundary
+                ?.futureIsFact === false
+          },
+          {
+            name:
+              "Existing priority organ is reused rather than creating a foresight queue",
+            passed:
+              Array.isArray(
+                this.executivePriorityPortfolio
+              ) &&
+              typeof this
+                .runExecutiveJudgmentCycle ===
+                "function"
+          },
+          {
+            name:
+              "Meaningful-change path carries temporal strategic delta into cognitive re-entry",
+            passed:
+              /analyzeTemporalStrategicDelta/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /temporalStrategicDelta/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /scheduleCognitiveReentry/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              )
+          },
+          {
+            name:
+              "Temporal foresight grants no planning execution, Hallway dispatch, or external-action authority",
+            passed:
+              applied?.authority
+                ?.planningExecutionAuthorized ===
+                false &&
+              applied?.authority
+                ?.hallwayDispatchAuthorized ===
+                false &&
+              applied?.authority
+                ?.externalActionAuthorized ===
+                false &&
+              applied?.authority
+                ?.humanAuthorityPreserved ===
+                true
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7T6 Temporal Strategic Delta Foresight: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:
+            "006.017D7T6",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          preview,
+          applied,
+          delta,
+          candidate:
+            portfolioCandidate ||
+            candidate,
+          authority:
+            applied?.authority
+        };
+      } finally {
+        this.executivePriorityPortfolio =
+          original.portfolio;
+        this.temporalStrategicDeltaState =
+          original.state;
       }
     },
 
