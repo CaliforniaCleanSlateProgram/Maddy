@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.29.0";
-  const BUILD_ID = "EB1290-CONSEQUENCE-DRIVEN-PLAN-MONITORING-REVISION-20260809-A";
+  const VERSION = "1.29.1";
+  const BUILD_ID = "EB1291-PLAN-IDENTITY-MONITORING-ISOLATION-REPAIR-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -9171,14 +9171,39 @@
                 .split(/[^a-z0-9]+/i)
                 .filter(
                   token =>
-                    token.length >= 5
+                    token.length >= 5 &&
+                    ![
+                      "fixture",
+                      "acceptance",
+                      "test",
+                      "d7t4"
+                    ].includes(token)
                 );
 
-            return (
-              text.includes(subject) ||
-              tokens.some(token =>
+            if (text.includes(subject)) {
+              return true;
+            }
+
+            if (tokens.length === 0) {
+              return false;
+            }
+
+            const matchedTokens =
+              tokens.filter(token =>
                 text.includes(token)
-              )
+              );
+
+            const requiredMatches =
+              tokens.length === 1
+                ? 1
+                : Math.min(
+                    2,
+                    tokens.length
+                  );
+
+            return (
+              matchedTokens.length >=
+              requiredMatches
             );
           }
         );
@@ -9258,13 +9283,6 @@
                         this.clone(before)
                     });
 
-                  plan.status =
-                    "reconsideration-required";
-                  plan.updatedAt = now;
-                  plan.metadata
-                    .lastCognitiveRevisionId =
-                    revisionId;
-
                   if (
                     typeof planning
                       ?.recalculatePlan ===
@@ -9276,6 +9294,13 @@
                       )
                     );
                   }
+
+                  plan.status =
+                    "reconsideration-required";
+                  plan.updatedAt = now;
+                  plan.metadata
+                    .lastCognitiveRevisionId =
+                    revisionId;
                 }
 
                 return {
@@ -9491,7 +9516,7 @@
 
     getPlanMonitoringRevisionStatus() {
       return {
-        commission: "006.017D7T4",
+        commission: "006.017D7T4A",
         version: this.version,
         buildId: this.buildId,
         schema:
@@ -15727,8 +15752,14 @@
           }
         );
 
-      const planRecord =
+      const planCreated =
         plan?.plan || plan;
+
+      const planRecord =
+        planning?.getPlanById?.(
+          planCreated?.id
+        ) ||
+        planCreated;
 
       const unrelatedPlan =
         planning?.createPlan?.(
@@ -15743,9 +15774,15 @@
           }
         );
 
-      const unrelatedPlanRecord =
+      const unrelatedPlanCreated =
         unrelatedPlan?.plan ||
         unrelatedPlan;
+
+      const unrelatedPlanRecord =
+        planning?.getPlanById?.(
+          unrelatedPlanCreated?.id
+        ) ||
+        unrelatedPlanCreated;
 
       const monitoringAlert =
         monitoring?.upsertAlert?.({
@@ -15757,7 +15794,7 @@
           severity: 3,
           status: "open",
           source:
-            "006.017D7T4-acceptance"
+            "006.017D7T4A-acceptance"
         });
 
       const alertRecord =
@@ -15775,7 +15812,7 @@
           severity: 1,
           status: "open",
           source:
-            "006.017D7T4-acceptance"
+            "006.017D7T4A-acceptance"
         });
 
       const unrelatedAlertRecord =
@@ -16058,11 +16095,11 @@
 
       console.table(checks);
       console.info(
-        `[MEOS ${this.version}] Commission 006.017D7T4 Consequence-Driven Plan + Monitoring Revision: ${passed ? "PASS" : "FAIL"}.`
+        `[MEOS ${this.version}] Commission 006.017D7T4A Plan Identity + Monitoring Isolation Repair: ${passed ? "PASS" : "FAIL"}.`
       );
 
       return {
-        commission: "006.017D7T4",
+        commission: "006.017D7T4A",
         version: this.version,
         buildId: this.buildId,
         passed,
