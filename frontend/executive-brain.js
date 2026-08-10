@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.36.1";
-  const BUILD_ID = "EB1361-DYNAMIC-ATTENTION-SURPRISE-PROPAGATION-20260810-A";
+  const VERSION = "1.37.1";
+  const BUILD_ID = "EB1371-ATTENTION-DEFERRED-REENTRY-CONTINUITY-20260810-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -373,6 +373,13 @@
     currentExecutivePriority: null,
     dynamicAttentionState: {
       cycleCount: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
+    attentionGovernedCognitionState: {
+      selectionCount: 0,
+      deferredCount: 0,
       lastAt: null,
       last: null,
       history: []
@@ -2070,16 +2077,353 @@
       };
     },
 
+    selectNextCognitiveSubject(
+      requestedSubject,
+      triggers = [],
+      options = {}
+    ) {
+      const normalizedRequested =
+        String(
+          requestedSubject || ""
+        ).trim();
+
+      const triggerSurprise =
+        (Array.isArray(triggers)
+          ? triggers
+          : []
+        ).reduce(
+          (highest, trigger) =>
+            Math.max(
+              highest,
+              Number(
+                trigger?.surprise ??
+                trigger
+                  ?.unexpectedChange ??
+                0
+              )
+            ),
+          0
+        );
+
+      const triggerConsequence =
+        (Array.isArray(triggers)
+          ? triggers
+          : []
+        ).reduce(
+          (highest, trigger) =>
+            Math.max(
+              highest,
+              Number(
+                trigger
+                  ?.missionConsequence ??
+                trigger
+                  ?.consequence ??
+                0
+              )
+            ),
+          0
+        );
+
+      const attention =
+        this.runDynamicExecutiveAttentionCycle({
+          materialChange:
+            options.materialChange ===
+              true ||
+            triggerSurprise >= 0.8,
+          humanDirection:
+            normalizedRequested
+              ? {
+                  id:
+                    `continuous-cognition-${
+                      this.fingerprintCognitiveDispatch(
+                        {
+                          subject:
+                            normalizedRequested,
+                          triggers
+                        }
+                      )
+                    }`,
+                  subject:
+                    normalizedRequested,
+                  reason:
+                    "Continuous cognition reentry candidate.",
+                  missionConsequence:
+                    Math.max(
+                      0.65,
+                      triggerConsequence
+                    ),
+                  urgency:
+                    Number(
+                      options.urgency ??
+                      0.62
+                    ),
+                  irreversibility:
+                    Number(
+                      options
+                        .irreversibility ??
+                      0.35
+                    ),
+                  leverage:
+                    Number(
+                      options.leverage ??
+                      0.72
+                    ),
+                  informationValue:
+                    Number(
+                      options
+                        .informationValue ??
+                      0.78
+                    ),
+                  dependencyPressure:
+                    Number(
+                      options
+                        .dependencyPressure ??
+                      0.55
+                    ),
+                  surprise:
+                    triggerSurprise,
+                  unexpectedChange:
+                    triggerSurprise,
+                  cognitiveLoad:
+                    Number(
+                      options
+                        .cognitiveLoad ??
+                      0.25
+                    ),
+                  externalAuthorityRequired:
+                    false
+                }
+              : null
+        });
+
+      const selected =
+        attention?.selected ||
+        null;
+
+      const requestedCandidateId =
+        normalizedRequested
+          ? `continuous-cognition-${
+              this.fingerprintCognitiveDispatch(
+                {
+                  subject:
+                    normalizedRequested,
+                  triggers
+                }
+              )
+            }`
+          : null;
+
+      const requestedSelected =
+        selected?.id ===
+          requestedCandidateId ||
+        (
+          selected?.subject &&
+          this.normalize(
+            selected.subject
+          ) ===
+            this.normalize(
+              normalizedRequested
+            )
+        );
+
+      const selectedSubject =
+        String(
+          selected?.subject ||
+          normalizedRequested ||
+          ""
+        ).trim();
+
+      const decision = {
+        schema:
+          "meos.maddy.attention-governed-continuous-cognition.v1",
+        decisionId:
+          this.id(
+            "attention-governed-cognition"
+          ),
+        createdAt:
+          new Date().toISOString(),
+        requestedSubject:
+          normalizedRequested ||
+          null,
+        requestedCandidateId,
+        selectedSubject:
+          selectedSubject ||
+          null,
+        selectedPriorityId:
+          selected?.id || null,
+        requestedSelected,
+        displacedRequestedSubject:
+          Boolean(
+            normalizedRequested &&
+            selectedSubject &&
+            !requestedSelected
+          ),
+        attentionCycleNumber:
+          attention?.cycleNumber ||
+          null,
+        attentionJudgment:
+          attention?.arbitration
+            ?.judgment ||
+          null,
+        attention,
+        truthBoundary: {
+          selectionIsObjectiveTruth:
+            false,
+          deferredSubjectIsUnimportant:
+            false,
+          displacedSubjectIsForgotten:
+            false,
+          selectionIsReversible:
+            true
+        },
+        authority: {
+          internalCognitiveSelectionAuthorized:
+            true,
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      this.attentionGovernedCognitionState
+        .selectionCount += 1;
+
+      if (
+        decision
+          .displacedRequestedSubject
+      ) {
+        this.attentionGovernedCognitionState
+          .deferredCount += 1;
+      }
+
+      this.attentionGovernedCognitionState
+        .lastAt =
+        decision.createdAt;
+      this.attentionGovernedCognitionState
+        .last =
+        this.clone(decision);
+      this.attentionGovernedCognitionState
+        .history.unshift(
+          this.clone(decision)
+        );
+      this.attentionGovernedCognitionState
+        .history =
+        this.attentionGovernedCognitionState
+          .history.slice(
+            0,
+            120
+          );
+
+      this.record(
+        "cognition.attention-governed-selection",
+        decision
+      );
+
+      this.emit(
+        "brain:attention-governed-cognition",
+        this.clone(decision)
+      );
+
+      return decision;
+    },
+
     async executeCognitiveReentry(
       subject,
       triggers = [],
       options = {}
     ) {
-      const key = this.normalize(subject);
+      const requestedSubject =
+        String(subject || "").trim();
+
+      const requestedKey =
+        this.normalize(
+          requestedSubject
+        );
 
       this.cognitiveReentryTimers.delete(
-        key
+        requestedKey
       );
+
+      const attentionSelection =
+        options
+          .bypassAttentionSelection ===
+        true
+          ? {
+              requestedSubject,
+              selectedSubject:
+                requestedSubject,
+              requestedSelected:
+                true,
+              displacedRequestedSubject:
+                false,
+              authority: {
+                externalActionAuthorized:
+                  false,
+                humanAuthorityPreserved:
+                  true
+              }
+            }
+          : this.selectNextCognitiveSubject(
+              requestedSubject,
+              triggers,
+              options
+            );
+
+      const subjectToThinkAbout =
+        String(
+          attentionSelection
+            ?.selectedSubject ||
+          requestedSubject
+        ).trim();
+
+      const key =
+        this.normalize(
+          subjectToThinkAbout
+        );
+
+      if (
+        attentionSelection
+          ?.displacedRequestedSubject ===
+        true
+      ) {
+        const requestedIntention =
+          this.upsertCognitiveIntention(
+            requestedSubject,
+            triggers,
+            {
+              status: "pending"
+            }
+          );
+
+        if (requestedIntention) {
+          requestedIntention
+            .lastAttentionDeferralAt =
+            new Date().toISOString();
+          requestedIntention
+            .lastAttentionSelection =
+            this.clone(
+              attentionSelection
+            );
+        }
+
+        this.record(
+          "cognition.reentry-attention-deferred",
+          {
+            requestedSubject,
+            selectedSubject:
+              subjectToThinkAbout,
+            attentionSelection
+          }
+        );
+      }
+
+      subject =
+        subjectToThinkAbout;
 
       if (
         this.cognitiveReentryInFlight.has(
@@ -2110,6 +2454,13 @@
           }),
         triggers:
           this.clone(triggers),
+        attentionSelection:
+          this.clone(
+            attentionSelection
+          ),
+        requestedSubject:
+          requestedSubject ||
+          subject,
         status: "running",
         startedAt:
           new Date().toISOString(),
@@ -2263,8 +2614,55 @@
         const unresolvedIntention = (this.cognitiveIntentions || []).find(item => item.key === key && item.status !== "completed");
         if (unresolvedIntention) this.scheduleCognitiveIntentionRetry(unresolvedIntention, entry.error || entry.status);
 
+        if (
+          requestedKey &&
+          requestedKey !== key
+        ) {
+          const deferredRequestedIntention =
+            (this.cognitiveIntentions || [])
+              .find(
+                item =>
+                  item.key ===
+                    requestedKey &&
+                  item.status !==
+                    "completed"
+              );
+
+          if (
+            deferredRequestedIntention
+          ) {
+            this.scheduleCognitiveIntentionRetry(
+              deferredRequestedIntention,
+              "attention-deferred-reentry"
+            );
+          }
+        }
+
         this.persist();
       }
+    },
+
+    getAttentionGovernedContinuousCognitionStatus() {
+      return {
+        commission:
+          "006.017D7T12",
+        version:
+          this.version,
+        buildId:
+          this.buildId,
+        schema:
+          "meos.maddy.attention-governed-continuous-cognition.v1",
+        ...this.clone(
+          this
+            .attentionGovernedCognitionState
+        ),
+        authority: {
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
     },
 
     getContinuousCognitionStatus() {
@@ -16508,6 +16906,410 @@
     runExecutiveJudgmentCycle(options = {}) {
       const demands=this.collectExecutivePriorityDemands(options);
       return this.arbitrateExecutivePriorities(demands,options);
+    },
+
+    async runAttentionGovernedContinuousCognitionAcceptanceTest() {
+      const original = {
+        portfolio:
+          this.clone(
+            this.executivePriorityPortfolio
+          ),
+        current:
+          this.clone(
+            this.currentExecutivePriority
+          ),
+        arbitration:
+          this.clone(
+            this.lastPriorityArbitration
+          ),
+        arbitrationCount:
+          this.priorityArbitrationCount,
+        attention:
+          this.clone(
+            this.dynamicAttentionState
+          ),
+        governed:
+          this.clone(
+            this
+              .attentionGovernedCognitionState
+          ),
+        intentions:
+          this.clone(
+            this.cognitiveIntentions
+          ),
+        reentry:
+          this.executeCognitiveReentry
+      };
+
+      try {
+        this.executivePriorityPortfolio =
+          [];
+        this.currentExecutivePriority =
+          null;
+        this.cognitiveIntentions =
+          [];
+
+        const baseline =
+          this.selectNextCognitiveSubject(
+            "Routine positioning review",
+            [{
+              event:
+                "world-model-change",
+              consequence:
+                0.66
+            }]
+          );
+
+        this.executivePriorityPortfolio.push({
+          id:
+            "continuous-high-unknown",
+          subject:
+            "Resolve high-consequence eligibility unknown",
+          origin:
+            "cross-office-simulation",
+          reason:
+            "This unresolved condition can change organizational viability.",
+          consequence:
+            0.96,
+          urgency: 0.94,
+          leverage: 0.96,
+          informationValue:
+            1,
+          uncertainty: 1,
+          dependencyPressure:
+            0.95,
+          capacityFit: 0.9,
+          reversibility: 0.98,
+          unknowns: [
+            "What authoritative evidence resolves eligibility?"
+          ],
+          evidence: [],
+          status:
+            "candidate"
+        });
+
+        const governed =
+          this.selectNextCognitiveSubject(
+            "Routine low-consequence follow-up",
+            [{
+              event:
+                "knowledge-change",
+              consequence:
+                0.2
+            }],
+            {
+              urgency: 0.15,
+              leverage: 0.2,
+              informationValue:
+                0.2
+            }
+          );
+
+        const surprise =
+          this.selectNextCognitiveSubject(
+            "Unexpected material change",
+            [{
+              event:
+                "verified-world-change",
+              consequence: 1,
+              surprise: 1,
+              unexpectedChange: 1
+            }],
+            {
+              urgency: 1,
+              leverage: 1,
+              informationValue: 1,
+              dependencyPressure: 1
+            }
+          );
+
+        let capturedSubject = null;
+        let capturedSelection = null;
+
+        const originalPositioning =
+          this
+            .runPositioningCognitionAndDispatch;
+
+        const originalRefresh =
+          this.refresh;
+
+        const originalPersist =
+          this.persist;
+
+        this.refresh = () => ({
+          success: true
+        });
+        this.persist = () => ({
+          success: true
+        });
+
+        this.runPositioningCognitionAndDispatch =
+          async (
+            selectedSubject,
+            options
+          ) => {
+            capturedSubject =
+              selectedSubject;
+            capturedSelection =
+              this.clone(
+                this
+                  .attentionGovernedCognitionState
+                  .last
+              );
+            return {
+              success: true,
+              positioningFingerprint:
+                "d7t12-positioning",
+              plan: null,
+              summary: {
+                proposedMoves: 0,
+                dispatched: 0,
+                reusedExistingWork: 0,
+                awaitingReview: 0,
+                failed: 0
+              }
+            };
+          };
+
+        this.currentExecutivePriority =
+          null;
+        this.executivePriorityPortfolio =
+          [];
+        this.cognitiveIntentions =
+          [];
+
+        await this.executeCognitiveReentry(
+          "Attention governed reentry fixture",
+          [{
+            event:
+              "meaningful-world-model-change",
+            consequence:
+              0.82
+          }],
+          {
+            bypassAttentionSelection:
+              false
+          }
+        );
+
+        this
+          .runPositioningCognitionAndDispatch =
+          originalPositioning;
+        this.refresh =
+          originalRefresh;
+        this.persist =
+          originalPersist;
+
+        const checks = [
+          {
+            name:
+              "Continuous cognition now consumes Dynamic Executive Attention before choosing thought",
+            passed:
+              baseline
+                ?.schema ===
+                "meos.maddy.attention-governed-continuous-cognition.v1" &&
+              baseline
+                ?.attention
+                ?.schema ===
+                "meos.maddy.dynamic-executive-attention.v1"
+          },
+          {
+            name:
+              "A world-model-triggered subject becomes an attention candidate rather than automatic foreground cognition",
+            passed:
+              Boolean(
+                baseline
+                  ?.requestedCandidateId
+              )
+          },
+          {
+            name:
+              "Existing high-consequence uncertainty can defeat a newly requested low-value thought",
+            passed:
+              governed
+                ?.selectedSubject ===
+                "Resolve high-consequence eligibility unknown" &&
+              governed
+                ?.displacedRequestedSubject ===
+                true
+          },
+          {
+            name:
+              "Displaced requested cognition is explicitly deferred and remains retry-eligible rather than declared unimportant",
+            passed:
+              governed
+                ?.truthBoundary
+                ?.deferredSubjectIsUnimportant ===
+                false &&
+              typeof this
+                .scheduleCognitiveIntentionRetry ===
+                "function"
+          },
+          {
+            name:
+              "Displaced cognition is not treated as forgotten",
+            passed:
+              governed
+                ?.truthBoundary
+                ?.displacedSubjectIsForgotten ===
+                false
+          },
+          {
+            name:
+              "Material surprise participates in next-thought selection",
+            passed:
+              surprise
+                ?.selectedSubject ===
+                "Unexpected material change" &&
+              surprise
+                ?.attention
+                ?.selected?.subject ===
+                "Unexpected material change"
+          },
+          {
+            name:
+              "Material surprise can preempt prior foreground attention through existing arbitration",
+            passed:
+              surprise
+                ?.attention
+                ?.arbitration
+                ?.preempted ===
+                true ||
+              surprise
+                ?.attention
+                ?.selected?.subject ===
+                "Unexpected material change"
+          },
+          {
+            name:
+              "Attention selection remains one executive cognition rather than a new engine",
+            passed:
+              typeof this
+                .selectNextCognitiveSubject ===
+                "function" &&
+              this
+                .attentionGovernedCognitionState
+                .selectionCount >= 3
+          },
+          {
+            name:
+              "Selected thought is passed into the existing positioning cognition path",
+            passed:
+              capturedSubject ===
+                capturedSelection
+                  ?.selectedSubject
+          },
+          {
+            name:
+              "Existing positioning cognition remains the downstream reasoning path",
+            passed:
+              capturedSubject ===
+                "Attention governed reentry fixture"
+          },
+          {
+            name:
+              "Attention-governed selection is recorded as lineage on cognitive reentry",
+            passed:
+              this
+                .cognitiveReentryHistory
+                ?.some(
+                  item =>
+                    item
+                      ?.attentionSelection
+                      ?.schema ===
+                      "meos.maddy.attention-governed-continuous-cognition.v1"
+                ) === true
+          },
+          {
+            name:
+              "Selection is reversible judgment rather than objective truth",
+            passed:
+              governed
+                ?.truthBoundary
+                ?.selectionIsObjectiveTruth ===
+                false &&
+              governed
+                ?.truthBoundary
+                ?.selectionIsReversible ===
+                true
+          },
+          {
+            name:
+              "Foreground cognition remains capacity-limited through existing Dynamic Attention policy",
+            passed:
+              governed
+                ?.attention
+                ?.cognitionPolicy
+                ?.foregroundCapacity ===
+                1
+          },
+          {
+            name:
+              "Attention-governed continuous cognition grants no planning, Hallway, or external-action authority",
+            passed:
+              governed
+                ?.authority
+                ?.planningExecutionAuthorized ===
+                false &&
+              governed
+                ?.authority
+                ?.hallwayDispatchAuthorized ===
+                false &&
+              governed
+                ?.authority
+                ?.externalActionAuthorized ===
+                false &&
+              governed
+                ?.authority
+                ?.humanAuthorityPreserved ===
+                true
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7T12 Attention-Governed Continuous Cognition: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:
+            "006.017D7T12",
+          version:
+            this.version,
+          buildId:
+            this.buildId,
+          passed,
+          checks,
+          baseline,
+          governed,
+          surprise,
+          capturedSubject,
+          capturedSelection,
+          authority:
+            governed.authority
+        };
+      } finally {
+        this.executivePriorityPortfolio =
+          original.portfolio;
+        this.currentExecutivePriority =
+          original.current;
+        this.lastPriorityArbitration =
+          original.arbitration;
+        this.priorityArbitrationCount =
+          original.arbitrationCount;
+        this.dynamicAttentionState =
+          original.attention;
+        this
+          .attentionGovernedCognitionState =
+          original.governed;
+        this.cognitiveIntentions =
+          original.intentions;
+      }
     },
 
     async runDynamicExecutiveAttentionAcceptanceTest() {
