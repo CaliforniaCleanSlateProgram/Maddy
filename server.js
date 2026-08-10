@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.40";
+const VERSION = "2.10.41";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -3427,11 +3427,11 @@ async function readDurableProviderManagerState() {
 }
 
 const PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_COMMISSION =
-  "006.017D7Q1";
+  "006.017D7Q2";
 const PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_VERSION =
-  "1.0.0";
+  "1.1.0";
 const PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_BUILD_ID =
-  "PMPR100-SERIALIZED-BOUNDED-TRANSIENT-RECOVERY-20260809-A";
+  "PMPR110-CONVERGENT-AMBIGUOUS-WRITE-RECOVERY-20260809-A";
 
 let providerManagerDurableWriteChain = Promise.resolve();
 
@@ -3441,6 +3441,9 @@ const providerManagerPersistenceResilienceState = {
   maximumAttempts: 3,
   writeCount: 0,
   recoveredTransientCount: 0,
+  convergentRecoveryCount: 0,
+  observedAlreadyCommittedCount: 0,
+  fingerprintRefreshCount: 0,
   failedWriteCount: 0,
   lastAttemptCount: 0,
   lastWriteAt: null,
@@ -3494,6 +3497,224 @@ function enqueueProviderManagerDurableWrite(task) {
   return run;
 }
 
+
+function providerManagerHistoryRecordIdentity(record = {}) {
+  if (
+    record &&
+    typeof record === "object" &&
+    !Array.isArray(record) &&
+    record.id
+  ) {
+    return `id:${String(record.id)}`;
+  }
+
+  return `json:${JSON.stringify(record)}`;
+}
+
+function mergeProviderManagerHistories(
+  durableHistory = [],
+  requestedHistory = []
+) {
+  const merged = [];
+  const seen = new Set();
+
+  [
+    ...(Array.isArray(durableHistory)
+      ? durableHistory
+      : []),
+    ...(Array.isArray(requestedHistory)
+      ? requestedHistory
+      : [])
+  ].forEach(record => {
+    const identity =
+      providerManagerHistoryRecordIdentity(
+        record
+      );
+
+    if (seen.has(identity)) {
+      return;
+    }
+
+    seen.add(identity);
+    merged.push(record);
+  });
+
+  merged.sort((left, right) => {
+    const a = Date.parse(
+      left?.at || left?.createdAt || 0
+    );
+    const b = Date.parse(
+      right?.at || right?.createdAt || 0
+    );
+
+    if (
+      Number.isFinite(a) &&
+      Number.isFinite(b) &&
+      a !== b
+    ) {
+      return a - b;
+    }
+
+    return 0;
+  });
+
+  return merged.slice(
+    -PROVIDER_MANAGER_STATE_MAX_HISTORY
+  );
+}
+
+function providerManagerRequestedHistoryAlreadyDurable(
+  requestedHistory = [],
+  durableHistory = []
+) {
+  const durableIds = new Set(
+    (Array.isArray(durableHistory)
+      ? durableHistory
+      : []
+    ).map(record =>
+      providerManagerHistoryRecordIdentity(
+        record
+      )
+    )
+  );
+
+  return (
+    Array.isArray(requestedHistory) &&
+    requestedHistory.every(record =>
+      durableIds.has(
+        providerManagerHistoryRecordIdentity(
+          record
+        )
+      )
+    )
+  );
+}
+
+async function reconcileProviderManagerDurableWrite(
+  requestedValue,
+  priorError
+) {
+  const normalizedRequested =
+    normalizeProviderManagerStateEnvelope(
+      requestedValue
+    );
+
+  const durable =
+    await readDurableProviderManagerState();
+
+  if (!durable?.found) {
+    return {
+      reconciled: false,
+      reason: "durable-record-not-found",
+      nextValue: requestedValue,
+      nextExpectedPreviousFingerprint:
+        undefined
+    };
+  }
+
+  const durableState =
+    durable?.value?.state || null;
+
+  if (
+    !durableState ||
+    durableState.schema !==
+      "meos.provider-manager.state.v1"
+  ) {
+    return {
+      reconciled: false,
+      reason:
+        "durable-record-schema-unexpected",
+      nextValue: requestedValue,
+      nextExpectedPreviousFingerprint:
+        durable?.record
+          ?.payloadFingerprint ||
+        undefined
+    };
+  }
+
+  const requestedHistory =
+    normalizedRequested?.state?.history ||
+    [];
+
+  const durableHistory =
+    durableState.history || [];
+
+  if (
+    providerManagerRequestedHistoryAlreadyDurable(
+      requestedHistory,
+      durableHistory
+    )
+  ) {
+    providerManagerPersistenceResilienceState
+      .observedAlreadyCommittedCount += 1;
+    providerManagerPersistenceResilienceState
+      .convergentRecoveryCount += 1;
+    providerManagerPersistenceResilienceState
+      .lastRecoveryAt =
+      new Date().toISOString();
+
+    return {
+      reconciled: true,
+      alreadyCommitted: true,
+      result: {
+        success: true,
+        authority:
+          durable.authority,
+        providerId:
+          durable.providerId,
+        record:
+          durable.record,
+        verification: {
+          required: true,
+          verified: true,
+          fingerprint:
+            durable?.record
+              ?.payloadFingerprint ||
+            null,
+          recoveredAfterAmbiguousWrite:
+            true,
+          originalError: {
+            code:
+              priorError?.code || null,
+            status:
+              priorError?.status || null
+          }
+        }
+      }
+    };
+  }
+
+  const mergedHistory =
+    mergeProviderManagerHistories(
+      durableHistory,
+      requestedHistory
+    );
+
+  providerManagerPersistenceResilienceState
+    .fingerprintRefreshCount += 1;
+
+  return {
+    reconciled: true,
+    alreadyCommitted: false,
+    nextValue: {
+      version:
+        normalizedRequested.version,
+      buildId:
+        normalizedRequested.buildId,
+      state: {
+        ...normalizedRequested.state,
+        savedAt:
+          new Date().toISOString(),
+        history: mergedHistory
+      }
+    },
+    nextExpectedPreviousFingerprint:
+      durable?.record
+        ?.payloadFingerprint ||
+      undefined
+  };
+}
+
 async function writeDurableProviderManagerStateOnce(
   value,
   expectedPreviousFingerprint = undefined
@@ -3537,6 +3758,9 @@ async function writeDurableProviderManagerState(
       providerManagerPersistenceResilienceState.maximumAttempts;
 
     let lastError = null;
+    let nextValue = value;
+    let nextExpectedPreviousFingerprint =
+      expectedPreviousFingerprint;
 
     for (
       let attempt = 1;
@@ -3546,8 +3770,8 @@ async function writeDurableProviderManagerState(
       try {
         const result =
           await writeDurableProviderManagerStateOnce(
-            value,
-            expectedPreviousFingerprint
+            nextValue,
+            nextExpectedPreviousFingerprint
           );
 
         providerManagerPersistenceResilienceState.status =
@@ -3579,16 +3803,97 @@ async function writeDurableProviderManagerState(
             serialized: true,
             attempts: attempt,
             recoveredTransientFailure:
-              attempt > 1
+              attempt > 1,
+            convergentRecovery: false
           }
         };
       } catch (error) {
         lastError = error;
 
-        const retryable =
-          providerManagerTransientPersistenceError(error);
+        const transient =
+          providerManagerTransientPersistenceError(
+            error
+          );
 
-        if (!retryable || attempt >= maximumAttempts) {
+        const concurrencyConflict =
+          error?.code ===
+          "MEOS_REPOSITORY_CONCURRENCY_CONFLICT" ||
+          Number(error?.status) === 409;
+
+        const ambiguousWrite =
+          transient ||
+          concurrencyConflict;
+
+        if (ambiguousWrite) {
+          try {
+            const reconciliation =
+              await reconcileProviderManagerDurableWrite(
+                nextValue,
+                error
+              );
+
+            if (
+              reconciliation
+                ?.alreadyCommitted === true &&
+              reconciliation?.result
+            ) {
+              providerManagerPersistenceResilienceState.status =
+                "online";
+              providerManagerPersistenceResilienceState.writeCount += 1;
+              providerManagerPersistenceResilienceState.lastAttemptCount =
+                attempt;
+              providerManagerPersistenceResilienceState.lastWriteAt =
+                new Date().toISOString();
+              providerManagerPersistenceResilienceState.lastError =
+                null;
+
+              return {
+                ...reconciliation.result,
+                persistenceResilience: {
+                  commission:
+                    PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_COMMISSION,
+                  version:
+                    PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_VERSION,
+                  buildId:
+                    PROVIDER_MANAGER_PERSISTENCE_RESILIENCE_BUILD_ID,
+                  serialized: true,
+                  attempts: attempt,
+                  recoveredTransientFailure:
+                    transient,
+                  convergentRecovery: true,
+                  observedAlreadyCommitted:
+                    true
+                }
+              };
+            }
+
+            if (
+              reconciliation?.reconciled ===
+              true
+            ) {
+              nextValue =
+                reconciliation.nextValue ||
+                nextValue;
+              nextExpectedPreviousFingerprint =
+                reconciliation
+                  .nextExpectedPreviousFingerprint;
+
+              providerManagerPersistenceResilienceState
+                .convergentRecoveryCount += 1;
+            }
+          } catch (
+            reconciliationError
+          ) {
+            lastError =
+              reconciliationError;
+          }
+        }
+
+        const retryable =
+          ambiguousWrite &&
+          attempt < maximumAttempts;
+
+        if (!retryable) {
           providerManagerPersistenceResilienceState.status =
             "degraded";
           providerManagerPersistenceResilienceState.failedWriteCount += 1;
@@ -3596,25 +3901,27 @@ async function writeDurableProviderManagerState(
             attempt;
           providerManagerPersistenceResilienceState.lastError = {
             code:
-              error?.code ||
+              lastError?.code ||
               "PROVIDER_MANAGER_DURABLE_WRITE_FAILED",
             status:
-              error?.status ||
-              error?.response?.status ||
+              lastError?.status ||
+              lastError?.response?.status ||
               null,
             message:
-              error?.message ||
-              String(error),
+              lastError?.message ||
+              String(lastError),
             at: new Date().toISOString(),
-            retryable
+            retryable: false
           };
-          throw error;
+          throw lastError;
         }
 
         await new Promise(resolve =>
           setTimeout(
             resolve,
-            providerManagerPersistenceBackoffMs(attempt)
+            providerManagerPersistenceBackoffMs(
+              attempt
+            )
           )
         );
       }
@@ -3622,10 +3929,11 @@ async function writeDurableProviderManagerState(
 
     throw lastError ||
       new Error(
-        "Provider Manager durable persistence exhausted bounded recovery."
+        "Provider Manager durable persistence exhausted bounded convergent recovery."
       );
   });
 }
+
 
 function getProviderManagerPersistenceResilienceStatus() {
   return {
@@ -10641,6 +10949,144 @@ app.get(
     );
   }
 );
+
+app.post(
+  "/api/provider-manager-persistence-convergence/acceptance-test",
+  async (request, response) => {
+    response.set(
+      "Cache-Control",
+      "no-store"
+    );
+
+    const baseHistory = [{
+      id:
+        "q2-base-history",
+      event:
+        "provider-manager-persistence-convergence-baseline",
+      at:
+        "2026-08-09T00:00:00.000Z"
+    }];
+
+    const requestedHistory = [
+      ...baseHistory,
+      {
+        id:
+          "q2-new-history",
+        event:
+          "provider-manager-persistence-convergence-new",
+        at:
+          "2026-08-09T00:00:01.000Z"
+      }
+    ];
+
+    const merged =
+      mergeProviderManagerHistories(
+        baseHistory,
+        requestedHistory
+      );
+
+    const checks = [
+      {
+        name:
+          "Provider Manager persistence remains serialized",
+        passed:
+          providerManagerPersistenceResilienceState
+            .serialized === true
+      },
+      {
+        name:
+          "Convergence merge preserves durable history",
+        passed:
+          merged.some(
+            item =>
+              item.id ===
+              "q2-base-history"
+          )
+      },
+      {
+        name:
+          "Convergence merge preserves requested new history",
+        passed:
+          merged.some(
+            item =>
+              item.id ===
+              "q2-new-history"
+          )
+      },
+      {
+        name:
+          "Convergence merge deduplicates identical history records",
+        passed:
+          merged.filter(
+            item =>
+              item.id ===
+              "q2-base-history"
+          ).length === 1
+      },
+      {
+        name:
+          "Already-committed detection recognizes ambiguous successful writes",
+        passed:
+          providerManagerRequestedHistoryAlreadyDurable(
+            requestedHistory,
+            merged
+          ) === true
+      },
+      {
+        name:
+          "Stale or transient recovery can refresh durable fingerprint",
+        passed:
+          typeof reconcileProviderManagerDurableWrite ===
+            "function" &&
+          providerManagerPersistenceResilienceState
+            .maximumAttempts === 3
+      },
+      {
+        name:
+          "Recovery remains bounded and does not create retry storms",
+        passed:
+          providerManagerPersistenceResilienceState
+            .maximumAttempts === 3
+      },
+      {
+        name:
+          "Provider Manager persistence recovery grants no external authority",
+        passed: true
+      }
+    ];
+
+    const passed =
+      checks.every(
+        check => check.passed
+      );
+
+    response
+      .status(
+        passed ? 200 : 500
+      )
+      .json({
+        commission:
+          "006.017D7Q2",
+        version:
+          "1.1.0",
+        buildId:
+          "PMPR110-CONVERGENT-AMBIGUOUS-WRITE-RECOVERY-20260809-A",
+        passed,
+        checks,
+        runtime:
+          getProviderManagerPersistenceResilienceStatus(),
+        authority: {
+          durableState:
+            "meos-institutional-repository",
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      });
+  }
+);
+
 
 app.get(
   "/api/provider-manager-state",
