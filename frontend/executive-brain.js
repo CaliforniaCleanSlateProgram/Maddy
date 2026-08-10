@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.29.3";
-  const BUILD_ID = "EB1293-PREVIEW-OBSERVATION-ORDER-REPAIR-20260809-A";
+  const VERSION = "1.30.0";
+  const BUILD_ID = "EB1300-SELECTIVE-TEMPORAL-CONSEQUENCE-RESIMULATION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    temporalResimulationState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     planMonitoringRevisionState: {
       count: 0,
       lastAt: null,
@@ -9514,6 +9520,412 @@
       return result;
     },
 
+    resimulateAffectedFutures(
+      cognitiveRevision = {},
+      reconciliation = {},
+      options = {}
+    ) {
+      const apply =
+        options.apply === true;
+
+      const selectedOrgans =
+        (reconciliation?.selected || [])
+          .map(item => item?.organ)
+          .filter(Boolean);
+
+      const futureSelected =
+        selectedOrgans.includes(
+          "future-simulation"
+        );
+
+      const now =
+        new Date().toISOString();
+
+      const resimulationId =
+        this.id(
+          "temporal-resimulation"
+        );
+
+      const subjects =
+        [
+          reconciliation?.subject,
+          cognitiveRevision?.subject,
+          ...(reconciliation?.staleIntentions || [])
+            .map(item => item?.subject)
+        ]
+          .filter(Boolean)
+          .map(item =>
+            this.normalize(item)
+          );
+
+      const meaningfulTokens =
+        subjects.flatMap(subject =>
+          subject
+            .split(/[^a-z0-9]+/i)
+            .filter(
+              token =>
+                token.length >= 5 &&
+                ![
+                  "fixture",
+                  "acceptance",
+                  "future",
+                  "simulation",
+                  "scenario"
+                ].includes(token)
+            )
+        );
+
+      const touchesChangedReality =
+        simulation => {
+          const searchable =
+            this.normalize(
+              this.textContent({
+                subject:
+                  simulation?.subject,
+                trigger:
+                  simulation?.trigger,
+                drivers:
+                  simulation?.drivers,
+                assumptions:
+                  simulation?.assumptions,
+                uncertainties:
+                  simulation?.uncertainties,
+                offices:
+                  simulation?.offices
+              })
+            );
+
+          if (!searchable) {
+            return false;
+          }
+
+          if (
+            subjects.some(
+              subject =>
+                subject &&
+                searchable.includes(
+                  subject
+                )
+            )
+          ) {
+            return true;
+          }
+
+          const uniqueTokens =
+            [...new Set(
+              meaningfulTokens
+            )];
+
+          const matches =
+            uniqueTokens.filter(token =>
+              searchable.includes(token)
+            );
+
+          return (
+            uniqueTokens.length > 0 &&
+            matches.length >=
+              Math.min(
+                2,
+                uniqueTokens.length
+              )
+          );
+        };
+
+      const history =
+        Array.isArray(
+          this.counterfactualSimulationHistory
+        )
+          ? this
+              .counterfactualSimulationHistory
+          : [];
+
+      const affected =
+        futureSelected
+          ? history
+              .filter(
+                simulation =>
+                  simulation
+                    ?.evidenceClass ===
+                    "synthetic-future-simulation" &&
+                  simulation
+                    ?.temporalRevision
+                    ?.superseded !==
+                    true &&
+                  touchesChangedReality(
+                    simulation
+                  )
+              )
+              .slice(0, 8)
+          : [];
+
+      const unaffectedIds =
+        history
+          .filter(
+            simulation =>
+              simulation
+                ?.evidenceClass ===
+                "synthetic-future-simulation" &&
+              !affected.some(
+                item =>
+                  item?.id ===
+                  simulation?.id
+              )
+          )
+          .map(item => item?.id)
+          .filter(Boolean);
+
+      const revisions = affected.map(
+        prior => {
+          const priorSnapshot =
+            this.clone(prior);
+
+          const successorScenario = {
+            subject:
+              prior.subject,
+            trigger:
+              `Changed reality requires re-simulation: ${
+                reconciliation?.subject ||
+                cognitiveRevision?.subject ||
+                prior.trigger
+              }`,
+            horizon:
+              prior.horizon,
+            drivers: [
+              ...(prior.drivers || []),
+              {
+                type:
+                  "material-world-model-change",
+                subject:
+                  reconciliation?.subject ||
+                  cognitiveRevision?.subject ||
+                  null,
+                sourceCognitiveRevision:
+                  cognitiveRevision
+                    ?.revisionId ||
+                  null,
+                observedAt: now
+              }
+            ],
+            assumptions:
+              this.clone(
+                prior.assumptions || []
+              ),
+            uncertainties: [
+              ...(prior.uncertainties || []),
+              {
+                question:
+                  "How does the materially changed world state alter this future trajectory?",
+                sourceReconciliation:
+                  reconciliation
+                    ?.createdAt ||
+                  null
+              }
+            ],
+            offices:
+              this.clone(
+                prior.offices || []
+              )
+          };
+
+          if (!apply) {
+            return {
+              priorSimulationId:
+                prior.id,
+              applied: false,
+              prior:
+                priorSnapshot,
+              successorScenario,
+              successorSimulation:
+                null
+            };
+          }
+
+          const generated =
+            this.generateFutureSimulation(
+              successorScenario,
+              {
+                origin:
+                  "consequence-driven-resimulation"
+              }
+            );
+
+          const successor =
+            generated?.simulation || null;
+
+          if (successor) {
+            const storedSuccessor =
+              this
+                .counterfactualSimulationHistory
+                .find(
+                  item =>
+                    item?.id ===
+                    successor.id
+                );
+
+            if (storedSuccessor) {
+              storedSuccessor
+                .temporalRevision = {
+                lineageId:
+                  resimulationId,
+                supersedes:
+                  prior.id,
+                sourceCognitiveRevision:
+                  cognitiveRevision
+                    ?.revisionId ||
+                  null,
+                sourceReconciliation:
+                  reconciliation
+                    ?.createdAt ||
+                  null,
+                changedRealitySubject:
+                  reconciliation?.subject ||
+                  cognitiveRevision?.subject ||
+                  null,
+                createdAt: now
+              };
+            }
+
+            prior.temporalRevision = {
+              lineageId:
+                resimulationId,
+              superseded: true,
+              supersededAt: now,
+              supersededBy:
+                successor.id,
+              sourceCognitiveRevision:
+                cognitiveRevision
+                  ?.revisionId ||
+                null,
+              reason:
+                "A materially changed world state intersects this simulated future."
+            };
+
+            prior.status =
+              "superseded-by-changed-reality";
+          }
+
+          return {
+            priorSimulationId:
+              prior.id,
+            applied: true,
+            prior:
+              priorSnapshot,
+            successorScenario,
+            successorSimulation:
+              successor
+                ? this.clone(
+                    this
+                      .counterfactualSimulationHistory
+                      .find(
+                        item =>
+                          item?.id ===
+                          successor.id
+                      ) ||
+                    successor
+                  )
+                : null
+          };
+        }
+      );
+
+      const result = {
+        schema:
+          "meos.maddy.selective-temporal-consequence-resimulation.v1",
+        resimulationId,
+        createdAt: now,
+        applied: apply,
+        selected:
+          futureSelected,
+        subject:
+          reconciliation?.subject ||
+          cognitiveRevision?.subject ||
+          "Materially changed reality",
+        affectedCount:
+          affected.length,
+        revisions,
+        unaffectedSimulationIds:
+          unaffectedIds,
+        isolation: {
+          recomputeEveryFuture: false,
+          unaffectedFuturesMutated:
+            false,
+          rule:
+            "Only synthetic futures whose assumptions, drivers, uncertainties, or subject intersect changed reality may be superseded and regenerated."
+        },
+        truthBoundary: {
+          successorIsPrediction:
+            false,
+          successorIsHistoricalFact:
+            false,
+          successorEvidenceClass:
+            "synthetic-future-simulation"
+        },
+        authority: {
+          internalFutureResimulationAuthorized:
+            apply &&
+            futureSelected,
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      this.temporalResimulationState.count +=
+        1;
+      this.temporalResimulationState.lastAt =
+        now;
+      this.temporalResimulationState.last =
+        this.clone(result);
+      this.temporalResimulationState.history.unshift(
+        this.clone(result)
+      );
+      this.temporalResimulationState.history =
+        this.temporalResimulationState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.temporal-resimulation",
+        result
+      );
+
+      this.emit(
+        "brain:temporal-resimulation",
+        this.clone(result)
+      );
+
+      return result;
+    },
+
+    getTemporalResimulationStatus() {
+      return {
+        commission: "006.017D7T5",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.selective-temporal-consequence-resimulation.v1",
+        ...this.clone(
+          this.temporalResimulationState
+        ),
+        authority: {
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
     getPlanMonitoringRevisionStatus() {
       return {
         commission: "006.017D7T4C",
@@ -9699,6 +10111,15 @@
           }
         );
 
+      const temporalResimulation =
+        this.resimulateAffectedFutures(
+          cognitiveRevision,
+          cognitiveReconciliation,
+          {
+            apply: true
+          }
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -9770,6 +10191,10 @@
         planMonitoringRevision:
           this.clone(
             planMonitoringRevision
+          ),
+        temporalResimulation:
+          this.clone(
+            temporalResimulation
           ),
         causalInvestigation:
           causalInvestigation
@@ -15721,6 +16146,421 @@
       } finally {
         this.cognitiveIntentions = original;
         await this.flushPersistence();
+      }
+    },
+
+    async runSelectiveTemporalResimulationAcceptanceTest() {
+      const original = {
+        simulations:
+          this.clone(
+            this.counterfactualSimulationHistory
+          ),
+        last:
+          this.clone(
+            this.lastCounterfactualSimulation
+          ),
+        count:
+          this.counterfactualSimulationCount,
+        state:
+          this.clone(
+            this.temporalResimulationState
+          )
+      };
+
+      try {
+        this.counterfactualSimulationHistory =
+          [];
+        this.lastCounterfactualSimulation =
+          null;
+        this.counterfactualSimulationCount =
+          0;
+
+        const affectedCreated =
+          this.generateFutureSimulation({
+            subject:
+              "County funding eligibility deadline",
+            trigger:
+              "Partner eligibility remains available",
+            horizon:
+              "next funding cycle",
+            drivers: [
+              "county eligibility rules",
+              "partner participation"
+            ],
+            assumptions: [
+              "partner-led participation remains eligible"
+            ],
+            uncertainties: [
+              "whether eligibility language changes"
+            ],
+            offices: [
+              "Development",
+              "Compliance"
+            ]
+          });
+
+        const unaffectedCreated =
+          this.generateFutureSimulation({
+            subject:
+              "Fleet maintenance scheduling",
+            trigger:
+              "Routine vehicle maintenance",
+            horizon:
+              "next quarter",
+            drivers: [
+              "mileage",
+              "service intervals"
+            ],
+            assumptions: [
+              "current maintenance cadence continues"
+            ],
+            uncertainties: [
+              "future repair timing"
+            ],
+            offices: [
+              "Operations"
+            ]
+          });
+
+        const affectedId =
+          affectedCreated
+            ?.simulation?.id;
+        const unaffectedId =
+          unaffectedCreated
+            ?.simulation?.id;
+
+        const reconciliation = {
+          schema:
+            "meos.maddy.selective-cognitive-reconciliation.v1",
+          createdAt:
+            new Date().toISOString(),
+          subject:
+            "County funding eligibility deadline",
+          staleIntentions: [{
+            intentionId:
+              "d7t5-intention",
+            subject:
+              "County funding eligibility deadline",
+            reconciliationStatus:
+              "review-required"
+          }],
+          selected: [{
+            organ:
+              "future-simulation",
+            required: true
+          }],
+          untouched: [{
+            organ:
+              "executive-monitoring",
+            required: false
+          }]
+        };
+
+        const cognitiveRevision = {
+          schema:
+            "meos.maddy.governed-cognitive-state-revision.v1",
+          revisionId:
+            "d7t5-cognitive-revision",
+          subject:
+            "County funding eligibility deadline",
+          applied: true
+        };
+
+        const beforeAffected =
+          this.clone(
+            this
+              .counterfactualSimulationHistory
+              .find(
+                item =>
+                  item?.id ===
+                  affectedId
+              )
+          );
+
+        const beforeUnaffected =
+          this.clone(
+            this
+              .counterfactualSimulationHistory
+              .find(
+                item =>
+                  item?.id ===
+                  unaffectedId
+              )
+          );
+
+        const preview =
+          this.resimulateAffectedFutures(
+            cognitiveRevision,
+            reconciliation,
+            {
+              apply: false
+            }
+          );
+
+        const afterPreviewAffected =
+          this.clone(
+            this
+              .counterfactualSimulationHistory
+              .find(
+                item =>
+                  item?.id ===
+                  affectedId
+              )
+          );
+
+        const applied =
+          this.resimulateAffectedFutures(
+            cognitiveRevision,
+            reconciliation,
+            {
+              apply: true
+            }
+          );
+
+        const afterAffected =
+          this.clone(
+            this
+              .counterfactualSimulationHistory
+              .find(
+                item =>
+                  item?.id ===
+                  affectedId
+              )
+          );
+
+        const afterUnaffected =
+          this.clone(
+            this
+              .counterfactualSimulationHistory
+              .find(
+                item =>
+                  item?.id ===
+                  unaffectedId
+              )
+          );
+
+        const successor =
+          applied?.revisions?.[0]
+            ?.successorSimulation ||
+          null;
+
+        const checks = [
+          {
+            name:
+              "Existing synthetic future simulation organ is reused",
+            passed:
+              affectedCreated?.success ===
+                true &&
+              unaffectedCreated?.success ===
+                true &&
+              typeof this
+                .generateFutureSimulation ===
+                "function"
+          },
+          {
+            name:
+              "Future re-simulation occurs only when selective reconciliation requests it",
+            passed:
+              applied?.selected === true
+          },
+          {
+            name:
+              "Preview identifies only the affected future",
+            passed:
+              preview?.applied ===
+                false &&
+              preview?.affectedCount ===
+                1 &&
+              preview?.revisions?.[0]
+                ?.priorSimulationId ===
+                affectedId
+          },
+          {
+            name:
+              "Preview does not mutate the affected future",
+            passed:
+              afterPreviewAffected
+                ?.status ===
+                beforeAffected?.status &&
+              afterPreviewAffected
+                ?.temporalRevision ==
+                null
+          },
+          {
+            name:
+              "Affected prior future is superseded rather than erased",
+            passed:
+              afterAffected?.status ===
+                "superseded-by-changed-reality" &&
+              afterAffected
+                ?.temporalRevision
+                ?.superseded === true
+          },
+          {
+            name:
+              "Superseded future preserves lineage to its successor",
+            passed:
+              afterAffected
+                ?.temporalRevision
+                ?.supersededBy ===
+                successor?.id &&
+              afterAffected
+                ?.temporalRevision
+                ?.lineageId ===
+                applied?.resimulationId
+          },
+          {
+            name:
+              "Successor future is regenerated through existing future-simulation machinery",
+            passed:
+              successor
+                ?.evidenceClass ===
+                "synthetic-future-simulation" &&
+              successor
+                ?.temporalRevision
+                ?.supersedes ===
+                affectedId
+          },
+          {
+            name:
+              "Changed reality is carried into successor drivers",
+            passed:
+              successor?.drivers
+                ?.some(
+                  driver =>
+                    driver?.type ===
+                      "material-world-model-change" &&
+                    driver
+                      ?.sourceCognitiveRevision ===
+                      cognitiveRevision
+                        .revisionId
+                ) === true
+          },
+          {
+            name:
+              "Successor explicitly carries new temporal uncertainty",
+            passed:
+              successor
+                ?.uncertainties
+                ?.some(
+                  item =>
+                    item?.question ===
+                    "How does the materially changed world state alter this future trajectory?"
+                ) === true
+          },
+          {
+            name:
+              "Unrelated future remains untouched",
+            passed:
+              afterUnaffected?.status ===
+                beforeUnaffected?.status &&
+              afterUnaffected
+                ?.temporalRevision ==
+                null
+          },
+          {
+            name:
+              "Temporal resimulation does not recompute every future",
+            passed:
+              applied?.isolation
+                ?.recomputeEveryFuture ===
+                false &&
+              applied
+                ?.unaffectedSimulationIds
+                ?.includes(
+                  unaffectedId
+                ) === true
+          },
+          {
+            name:
+              "Synthetic future remains explicitly non-factual and non-predictive",
+            passed:
+              applied?.truthBoundary
+                ?.successorIsPrediction ===
+                false &&
+              applied?.truthBoundary
+                ?.successorIsHistoricalFact ===
+                false &&
+              successor
+                ?.governance
+                ?.simulationNeverBecomesHistoricalFact ===
+                true
+          },
+          {
+            name:
+              "Meaningful-change path carries temporal resimulation into cognitive re-entry",
+            passed:
+              /resimulateAffectedFutures/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /temporalResimulation/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /scheduleCognitiveReentry/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              )
+          },
+          {
+            name:
+              "Temporal resimulation grants no execution or external-action authority",
+            passed:
+              applied?.authority
+                ?.planningExecutionAuthorized ===
+                false &&
+              applied?.authority
+                ?.hallwayDispatchAuthorized ===
+                false &&
+              applied?.authority
+                ?.externalActionAuthorized ===
+                false &&
+              applied?.authority
+                ?.humanAuthorityPreserved ===
+                true
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7T5 Selective Temporal Consequence Resimulation: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:
+            "006.017D7T5",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          preview,
+          applied,
+          beforeAffected,
+          afterAffected,
+          beforeUnaffected,
+          afterUnaffected,
+          successor,
+          authority:
+            applied?.authority
+        };
+      } finally {
+        this.counterfactualSimulationHistory =
+          original.simulations;
+        this.lastCounterfactualSimulation =
+          original.last;
+        this.counterfactualSimulationCount =
+          original.count;
+        this.temporalResimulationState =
+          original.state;
       }
     },
 
