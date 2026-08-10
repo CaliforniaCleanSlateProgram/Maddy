@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.27.0";
-  const BUILD_ID = "EB1270-SELECTIVE-COGNITIVE-RECONCILIATION-20260809-A";
+  const VERSION = "1.28.0";
+  const BUILD_ID = "EB1280-GOVERNED-COGNITIVE-STATE-REVISION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    cognitiveRevisionState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     cognitiveReconciliationState: {
       count: 0,
       lastAt: null,
@@ -8882,6 +8888,233 @@
       return reconciliation;
     },
 
+    reviseCognitiveStateFromReconciliation(
+      reconciliation = {},
+      options = {}
+    ) {
+      const apply =
+        options.apply === true;
+
+      const revisionId =
+        this.id("cognitive-revision");
+
+      const now =
+        new Date().toISOString();
+
+      const intentionRevisions =
+        (reconciliation?.staleIntentions || [])
+          .map(stale => {
+            const intention =
+              (this.cognitiveIntentions || [])
+                .find(item =>
+                  item?.intentionId ===
+                    stale?.intentionId
+                );
+
+            if (!intention) {
+              return {
+                intentionId:
+                  stale?.intentionId || null,
+                found: false,
+                applied: false,
+                reason:
+                  "Dependent intention is not present in active Executive Brain cognitive state."
+              };
+            }
+
+            const before =
+              this.clone(intention);
+
+            const revision = {
+              revisionId,
+              revisedAt: now,
+              reason:
+                stale?.reason ||
+                "Materially changed world state requires cognitive reconsideration.",
+              priorStatus:
+                intention.status || null,
+              sourceReconciliation:
+                reconciliation?.createdAt ||
+                null
+            };
+
+            if (apply) {
+              intention.revisionHistory =
+                Array.isArray(
+                  intention.revisionHistory
+                )
+                  ? intention.revisionHistory
+                  : [];
+
+              intention.revisionHistory.push({
+                ...revision,
+                prior:
+                  this.clone(before)
+              });
+
+              intention.status =
+                "reconsideration-required";
+              intention.updatedAt = now;
+              intention.lastRevisionId =
+                revisionId;
+              intention.lastRevisionReason =
+                revision.reason;
+            }
+
+            return {
+              intentionId:
+                intention.intentionId,
+              found: true,
+              applied: apply,
+              before,
+              after:
+                apply
+                  ? this.clone(intention)
+                  : null,
+              revision
+            };
+          });
+
+      const selectedOrgans =
+        (reconciliation?.selected || [])
+          .map(item => item?.organ)
+          .filter(Boolean);
+
+      const governedRefresh = {
+        causalCounterfactual:
+          selectedOrgans.includes(
+            "causal-counterfactual-reasoning"
+          ),
+        planningReview:
+          selectedOrgans.includes(
+            "executive-planning"
+          ),
+        monitoringRefresh:
+          selectedOrgans.includes(
+            "executive-monitoring"
+          ),
+        priorityRearbitration:
+          selectedOrgans.includes(
+            "executive-priority-arbitration"
+          ),
+        futureResimulation:
+          selectedOrgans.includes(
+            "future-simulation"
+          )
+      };
+
+      const revision = {
+        schema:
+          "meos.maddy.governed-cognitive-state-revision.v1",
+        revisionId,
+        createdAt: now,
+        applied: apply,
+        subject:
+          reconciliation?.subject ||
+          "Selective cognitive reconciliation",
+        sourceReconciliation:
+          reconciliation?.createdAt || null,
+        intentionRevisions,
+        governedRefresh,
+        preservedHistory:
+          intentionRevisions
+            .filter(item =>
+              item?.found === true
+            )
+            .every(item =>
+              item?.before != null
+            ),
+        rule:
+          "Revision may change Maddy's internal cognitive commitments when governed reconciliation warrants it, but prior state and provenance must remain inspectable.",
+        authority: {
+          cognitiveStateRevisionAuthorized:
+            apply,
+          planContentMutationAuthorized:
+            false,
+          monitoringContentMutationAuthorized:
+            false,
+          hallwayDispatchAuthorized: false,
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
+
+      if (apply) {
+        this.cognitiveIntentions =
+          (this.cognitiveIntentions || [])
+            .slice(
+              0,
+              this.configuration
+                .maximumCognitiveIntentions
+            );
+
+        this.persist();
+
+        if (
+          brainPersistence.hydrated === true
+        ) {
+          this.projectSelfModel({
+            reason:
+              "governed-cognitive-state-revision",
+            persist: false
+          });
+          this.projectWorkingAwareness({
+            reason:
+              "governed-cognitive-state-revision",
+            persist: false
+          });
+        }
+      }
+
+      this.cognitiveRevisionState.count += 1;
+      this.cognitiveRevisionState.lastAt =
+        now;
+      this.cognitiveRevisionState.last =
+        this.clone(revision);
+      this.cognitiveRevisionState.history.unshift(
+        this.clone(revision)
+      );
+      this.cognitiveRevisionState.history =
+        this.cognitiveRevisionState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.governed-state-revision",
+        revision
+      );
+
+      this.emit(
+        "brain:cognitive-state-revised",
+        this.clone(revision)
+      );
+
+      return revision;
+    },
+
+    getCognitiveRevisionStatus() {
+      return {
+        commission: "006.017D7T3",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.governed-cognitive-state-revision.v1",
+        ...this.clone(
+          this.cognitiveRevisionState
+        ),
+        authority: {
+          planContentMutationAuthorized:
+            false,
+          monitoringContentMutationAuthorized:
+            false,
+          hallwayDispatchAuthorized: false,
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
+    },
+
     getCognitiveReconciliationStatus() {
       return {
         commission: "006.017D7T2",
@@ -9003,6 +9236,16 @@
           current
         );
 
+      const cognitiveRevision =
+        this.reviseCognitiveStateFromReconciliation(
+          cognitiveReconciliation,
+          {
+            apply: true,
+            reason:
+              "meaningful-world-model-change"
+          }
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -9066,6 +9309,10 @@
         cognitiveReconciliation:
           this.clone(
             cognitiveReconciliation
+          ),
+        cognitiveRevision:
+          this.clone(
+            cognitiveRevision
           ),
         causalInvestigation:
           causalInvestigation
@@ -15018,6 +15265,263 @@
         this.cognitiveIntentions = original;
         await this.flushPersistence();
       }
+    },
+
+    async runGovernedCognitiveStateRevisionAcceptanceTest() {
+      const hydration =
+        await this.hydrateResearchKnowledgeBeforeCognition();
+
+      const subject =
+        "D7T3 governed revision fixture";
+
+      const fixture =
+        this.upsertCognitiveIntention(
+          subject,
+          [{
+            source:
+              "006.017D7T3-acceptance",
+            event:
+              "material-belief-change"
+          }],
+          {
+            status: "pending",
+            persist: false
+          }
+        );
+
+      const before =
+        this.clone(fixture);
+
+      const reconciliation = {
+        schema:
+          "meos.maddy.selective-cognitive-reconciliation.v1",
+        createdAt:
+          new Date().toISOString(),
+        subject,
+        staleIntentions: [{
+          intentionId:
+            fixture?.intentionId,
+          subject,
+          priorStatus:
+            fixture?.status,
+          reconciliationStatus:
+            "review-required",
+          mutationPerformed: false,
+          reason:
+            "Acceptance fixture materially changed."
+        }],
+        selected: [
+          {
+            organ:
+              "causal-counterfactual-reasoning",
+            required: true
+          },
+          {
+            organ:
+              "executive-planning",
+            required: true
+          },
+          {
+            organ:
+              "executive-priority-arbitration",
+            required: true
+          }
+        ],
+        untouched: [
+          {
+            organ:
+              "executive-monitoring",
+            required: false
+          },
+          {
+            organ:
+              "future-simulation",
+            required: false
+          }
+        ]
+      };
+
+      const preview =
+        this.reviseCognitiveStateFromReconciliation(
+          reconciliation,
+          {
+            apply: false
+          }
+        );
+
+      const afterPreview =
+        this.clone(
+          this.cognitiveIntentions.find(
+            item =>
+              item?.intentionId ===
+                fixture?.intentionId
+          )
+        );
+
+      const applied =
+        this.reviseCognitiveStateFromReconciliation(
+          reconciliation,
+          {
+            apply: true
+          }
+        );
+
+      const after =
+        this.clone(
+          this.cognitiveIntentions.find(
+            item =>
+              item?.intentionId ===
+                fixture?.intentionId
+          )
+        );
+
+      const checks = [
+        {
+          name:
+            "Commissioned research-knowledge hydration remains ready",
+          passed:
+            hydration?.success === true
+        },
+        {
+          name:
+            "Existing cognitive-intention organ is used rather than a duplicate state store",
+          passed:
+            fixture?.intentionId != null &&
+            this.cognitiveIntentions
+              .some(
+                item =>
+                  item?.intentionId ===
+                  fixture.intentionId
+              )
+        },
+        {
+          name:
+            "Revision preview is non-mutating",
+          passed:
+            preview?.applied === false &&
+            afterPreview?.status ===
+              before?.status
+        },
+        {
+          name:
+            "Governed revision changes the affected internal cognitive commitment",
+          passed:
+            applied?.applied === true &&
+            after?.status ===
+              "reconsideration-required"
+        },
+        {
+          name:
+            "Prior cognitive state is preserved before revision",
+          passed:
+            after?.revisionHistory
+              ?.some(
+                item =>
+                  item?.prior?.status ===
+                    before?.status
+              ) === true
+        },
+        {
+          name:
+            "Revision provenance is attached to the changed intention",
+          passed:
+            after?.lastRevisionId ===
+              applied?.revisionId &&
+            after?.lastRevisionReason != null
+        },
+        {
+          name:
+            "Affected causal reasoning remains selected for refresh",
+          passed:
+            applied?.governedRefresh
+              ?.causalCounterfactual === true
+        },
+        {
+          name:
+            "Affected planning is selected for review without plan-content mutation authority",
+          passed:
+            applied?.governedRefresh
+              ?.planningReview === true &&
+            applied?.authority
+              ?.planContentMutationAuthorized === false
+        },
+        {
+          name:
+            "Affected priorities are selected for re-arbitration",
+          passed:
+            applied?.governedRefresh
+              ?.priorityRearbitration === true
+        },
+        {
+          name:
+            "Unaffected monitoring remains untouched",
+          passed:
+            applied?.governedRefresh
+              ?.monitoringRefresh === false &&
+            applied?.authority
+              ?.monitoringContentMutationAuthorized === false
+        },
+        {
+          name:
+            "Unaffected future simulation remains untouched",
+          passed:
+            applied?.governedRefresh
+              ?.futureResimulation === false
+        },
+        {
+          name:
+            "Existing meaningful-change path now performs governed cognitive revision",
+          passed:
+            /reviseCognitiveStateFromReconciliation/.test(
+              this.attendToWorldModelChange.toString()
+            ) &&
+            /cognitiveRevision/.test(
+              this.attendToWorldModelChange.toString()
+            )
+        },
+        {
+          name:
+            "Internal revision persists through existing Executive Brain persistence",
+          passed:
+            /this\.persist\(\)/.test(
+              this.reviseCognitiveStateFromReconciliation.toString()
+            )
+        },
+        {
+          name:
+            "No Hallway dispatch or external-action authority is created",
+          passed:
+            applied?.authority
+              ?.hallwayDispatchAuthorized === false &&
+            applied?.authority
+              ?.externalActionAuthorized === false &&
+            applied?.authority
+              ?.humanAuthorityPreserved === true
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7T3 Governed Cognitive State Revision: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7T3",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        hydration,
+        before,
+        preview,
+        applied,
+        after,
+        authority:
+          applied?.authority
+      };
     },
 
     async runSelectiveCognitiveReconciliationAcceptanceTest() {
