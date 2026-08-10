@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.29.2";
-  const BUILD_ID = "EB1292-MONITORING-IDENTITY-MATCH-REPAIR-20260809-A";
+  const VERSION = "1.29.3";
+  const BUILD_ID = "EB1293-PREVIEW-OBSERVATION-ORDER-REPAIR-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -9516,7 +9516,7 @@
 
     getPlanMonitoringRevisionStatus() {
       return {
-        commission: "006.017D7T4B",
+        commission: "006.017D7T4C",
         version: this.version,
         buildId: this.buildId,
         schema:
@@ -15894,6 +15894,23 @@
           }
         );
 
+      const afterPreviewPlan =
+        this.clone(
+          planning?.getPlanById?.(
+            planRecord?.id
+          ) ||
+          planRecord
+        );
+
+      const afterPreviewAlert =
+        this.clone(
+          monitoring?.getAlertById?.(
+            alertRecord?.id ||
+            alertRecord?.alertId
+          ) ||
+          alertRecord
+        );
+
       const applied =
         this.reviseAffectedPlanAndMonitoringState(
           cognitiveRevision,
@@ -15976,10 +15993,18 @@
               ?.matchedCount >= 1 &&
             preview?.monitoring
               ?.matchedCount >= 1 &&
-            planRecord?.status ===
+            afterPreviewPlan?.status ===
               beforePlan?.status &&
-            alertRecord?.status ===
-              beforeAlert?.status
+            afterPreviewAlert?.status ===
+              beforeAlert?.status &&
+            afterPreviewPlan?.metadata
+              ?.lastCognitiveRevisionId ==
+              beforePlan?.metadata
+                ?.lastCognitiveRevisionId &&
+            afterPreviewAlert?.metadata
+              ?.lastCognitiveRevisionId ==
+              beforeAlert?.metadata
+                ?.lastCognitiveRevisionId
         },
         {
           name:
@@ -16106,17 +16131,19 @@
 
       console.table(checks);
       console.info(
-        `[MEOS ${this.version}] Commission 006.017D7T4B Monitoring Identity Match Repair: ${passed ? "PASS" : "FAIL"}.`
+        `[MEOS ${this.version}] Commission 006.017D7T4C Preview Observation Order Repair: ${passed ? "PASS" : "FAIL"}.`
       );
 
       return {
-        commission: "006.017D7T4B",
+        commission: "006.017D7T4C",
         version: this.version,
         buildId: this.buildId,
         passed,
         checks,
         hydration,
         preview,
+        afterPreviewPlan,
+        afterPreviewAlert,
         applied,
         authority:
           applied?.authority
