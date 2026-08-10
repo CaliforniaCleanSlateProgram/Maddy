@@ -26,11 +26,18 @@
 
     const STORAGE_KEY = "meos.knowledge-memory.v1";
     const SCHEMA = "meos-knowledge-memory";
-    const VERSION = "1.1.2";
+    const VERSION = "1.2.0";
     const EXECUTIVE_MEMORY_COLLECTION = "investigation-history";
     const EXECUTIVE_MEMORY_ENDPOINT = "/api/executive-memory";
     const EXECUTIVE_MEMORY_MANIFEST_ID = "knowledge-memory-manifest-v1";
     const EXECUTIVE_MEMORY_SHARD_TARGET_BYTES = 320000;
+
+    const RESEARCH_LEARNING_INGESTION_COMMISSION =
+        "006.017D7R2";
+    const RESEARCH_LEARNING_INGESTION_BUILD_ID =
+        "KM120-DURABLE-RESEARCH-TO-ACTIVE-KNOWLEDGE-20260809-A";
+    const RESEARCH_LEARNING_RECORD_SCHEMA =
+        "meos.research-learning.record.v1";
 
     const KnowledgeMemory = {
         name: "MEOS Knowledge Memory",
@@ -52,6 +59,11 @@
             persistenceDebounceMs: 450,
             persistenceMaximumAttempts: 3,
             persistenceRetryDelayMs: 125,
+
+            durableResearchLearningIngestion: true,
+            researchLearningCollection:
+                EXECUTIVE_MEMORY_COLLECTION,
+            researchLearningMaximumRecords: 250,
 
             defaultChunkSize: 1200,
             defaultChunkOverlap: 180,
@@ -97,6 +109,15 @@
         executiveMemoryManifestKnownMissing: false,
         executiveMemoryManifestBootstrapAt: null,
 
+        researchLearningSyncInFlight: null,
+        researchLearningLastSyncAt: null,
+        researchLearningLastError: null,
+        researchLearningDurableRecordCount: 0,
+        researchLearningIngestedCount: 0,
+        researchLearningUpdatedCount: 0,
+        researchLearningDuplicateCount: 0,
+        researchLearningSkippedCount: 0,
+
         initialize(options = {}) {
             this.configuration = {
                 ...this.configuration,
@@ -136,6 +157,25 @@
             this.initializedAt = new Date().toISOString();
 
             this.registerSystemKnowledge();
+
+            if (
+                this.configuration
+                    .durableResearchLearningIngestion
+            ) {
+                void this.restorePromise
+                    .then(() =>
+                        this.syncDurableResearchLearning()
+                    )
+                    .catch((error) => {
+                        this.researchLearningLastError =
+                            error?.message || String(error);
+
+                        console.warn(
+                            "[MEOS Knowledge Memory] Durable research learning sync deferred:",
+                            error
+                        );
+                    });
+            }
 
             this.logActivity("memory.initialized", {
                 version: this.version,
@@ -3423,6 +3463,29 @@
                     this.persistenceConvergedWriteCount,
                 lastPersistenceAttempts:
                     this.lastPersistenceAttempts,
+                researchLearningIngestion: {
+                    commission:
+                        RESEARCH_LEARNING_INGESTION_COMMISSION,
+                    buildId:
+                        RESEARCH_LEARNING_INGESTION_BUILD_ID,
+                    enabled:
+                        this.configuration
+                            .durableResearchLearningIngestion,
+                    durableRecordCount:
+                        this.researchLearningDurableRecordCount,
+                    ingestedCount:
+                        this.researchLearningIngestedCount,
+                    updatedCount:
+                        this.researchLearningUpdatedCount,
+                    duplicateCount:
+                        this.researchLearningDuplicateCount,
+                    skippedCount:
+                        this.researchLearningSkippedCount,
+                    lastSyncAt:
+                        this.researchLearningLastSyncAt,
+                    lastError:
+                        this.researchLearningLastError
+                },
                 documentCount:
                     this.documents.length,
                 currentDocumentCount:
@@ -3572,6 +3635,599 @@
             return {
                 success: true,
                 status: this.getStatus()
+            };
+        },
+
+        buildResearchLearningKnowledgeRecord(
+            durableRecord
+        ) {
+            const subject = String(
+                durableRecord?.subject || ""
+            ).trim();
+
+            const supportedFacts =
+                Array.isArray(
+                    durableRecord?.supportedFacts
+                )
+                    ? durableRecord.supportedFacts
+                    : [];
+
+            const inferences =
+                Array.isArray(
+                    durableRecord?.inferences
+                )
+                    ? durableRecord.inferences
+                    : [];
+
+            const conflicts =
+                Array.isArray(
+                    durableRecord?.conflicts
+                )
+                    ? durableRecord.conflicts
+                    : [];
+
+            const unknowns =
+                Array.isArray(
+                    durableRecord?.unknowns
+                )
+                    ? durableRecord.unknowns
+                    : [];
+
+            const evidence =
+                Array.isArray(
+                    durableRecord?.evidence
+                )
+                    ? durableRecord.evidence
+                    : [];
+
+            const evidenceQuality =
+                String(
+                    durableRecord?.evidenceQuality ||
+                        "none"
+                );
+
+            const epistemicStatus =
+                String(
+                    durableRecord?.epistemicStatus ||
+                        "research-learning-with-open-uncertainty"
+                );
+
+            const fingerprint = this.hashText(
+                JSON.stringify({
+                    subject,
+                    supportedFacts,
+                    inferences,
+                    conflicts,
+                    unknowns,
+                    evidence: evidence.map(
+                        (item) => ({
+                            source:
+                                item?.source || "",
+                            authoritative:
+                                item?.authoritative === true,
+                            evidenceStatus:
+                                item?.evidenceStatus || ""
+                        })
+                    ),
+                    evidenceQuality,
+                    epistemicStatus
+                })
+            );
+
+            const sourceIds = [];
+
+            evidence.forEach((item) => {
+                const url = String(
+                    item?.source || ""
+                ).trim();
+
+                if (!url) {
+                    return;
+                }
+
+                const sourceId =
+                    `research-source-${this.hashText(
+                        url
+                    ).slice(0, 20)}`;
+
+                const sourceResult =
+                    this.connectedEngine.registerSource({
+                        id: sourceId,
+                        name:
+                            item?.title ||
+                            url,
+                        sourceType:
+                            "public-research-source",
+                        authority:
+                            item?.authoritative === true
+                                ? "authoritative"
+                                : "external",
+                        url,
+                        accessedAt:
+                            item?.retrievedAt ||
+                            durableRecord?.learnedAt ||
+                            new Date().toISOString(),
+                        description:
+                            `Evidence source used in durable research learning about ${subject}.`,
+                        metadata: {
+                            researchLearningRecordId:
+                                durableRecord.id,
+                            evidenceStatus:
+                                item?.evidenceStatus ||
+                                "retrieved-public-source",
+                            researchLearningIngestion:
+                                true
+                        }
+                    });
+
+                if (sourceResult?.success) {
+                    sourceIds.push(
+                        sourceResult.source?.id ||
+                            sourceId
+                    );
+                } else if (
+                    this.connectedEngine
+                        .getSourceById(sourceId)
+                ) {
+                    sourceIds.push(sourceId);
+                }
+            });
+
+            const factStatements =
+                supportedFacts
+                    .map((item) =>
+                        typeof item === "string"
+                            ? item
+                            : item?.claim
+                    )
+                    .filter(Boolean);
+
+            const inferenceStatements =
+                inferences
+                    .map((item) =>
+                        typeof item === "string"
+                            ? item
+                            : item?.claim
+                    )
+                    .filter(Boolean);
+
+            const summary =
+                factStatements.length > 0
+                    ? factStatements
+                          .slice(0, 3)
+                          .join(" ")
+                    : inferenceStatements.length > 0
+                      ? `Research remains inferential: ${inferenceStatements
+                            .slice(0, 2)
+                            .join(" ")}`
+                      : `Durable research learning about ${subject} remains unresolved and should not be treated as verified fact.`;
+
+            return {
+                id:
+                    `knowledge-${durableRecord.id}`,
+                recordType:
+                    "research-learning",
+                title:
+                    subject ||
+                    "Durable Research Learning",
+                summary:
+                    this.summarizeText(
+                        summary,
+                        500
+                    ),
+                content: {
+                    supportedFacts,
+                    inferences,
+                    conflicts,
+                    unknowns,
+                    evidenceQuality,
+                    epistemicStatus,
+                    requiresFurtherInvestigation:
+                        durableRecord
+                            ?.requiresFurtherInvestigation ===
+                        true,
+                    evidence: evidence.map(
+                        (item) => ({
+                            source:
+                                item?.source || null,
+                            title:
+                                item?.title || null,
+                            authoritative:
+                                item?.authoritative === true,
+                            retrievedAt:
+                                item?.retrievedAt || null,
+                            evidenceStatus:
+                                item?.evidenceStatus || null
+                        })
+                    )
+                },
+                tags: this.uniqueStrings([
+                    "research-learning",
+                    "durable-learning",
+                    epistemicStatus,
+                    evidenceQuality
+                ]),
+                topics:
+                    this.uniqueStrings([
+                        subject,
+                        ...this.extractKeywords(
+                            [
+                                subject,
+                                ...factStatements,
+                                ...inferenceStatements,
+                                ...unknowns
+                            ].join(" "),
+                            18
+                        )
+                    ]),
+                sourceIds:
+                    this.uniqueStrings(
+                        sourceIds
+                    ),
+                relatedRecordIds: [],
+                officeAccess: ["all"],
+                sensitivity: "internal",
+                authority:
+                    evidenceQuality === "strong"
+                        ? "evidence-backed-research"
+                        : "research-with-open-uncertainty",
+                confidence:
+                    evidenceQuality === "strong"
+                        ? 0.86
+                        : evidenceQuality === "mixed"
+                          ? 0.66
+                          : 0.42,
+                createdBy:
+                    "MEOS Knowledge Memory / Durable Research Learning",
+                allowDuplicate: true,
+                metadata: {
+                    durableResearchLearning: true,
+                    researchLearningRecordId:
+                        durableRecord.id,
+                    researchLearningSchema:
+                        durableRecord.schema,
+                    researchLearningFingerprint:
+                        fingerprint,
+                    researchCommission:
+                        durableRecord
+                            .researchCommission ||
+                        null,
+                    researchBuildId:
+                        durableRecord
+                            .researchBuildId ||
+                        null,
+                    learnedAt:
+                        durableRecord.learnedAt ||
+                        null,
+                    evidenceCount:
+                        Number(
+                            durableRecord
+                                .evidenceCount ||
+                                evidence.length
+                        ),
+                    evidenceQuality,
+                    epistemicStatus,
+                    requiresFurtherInvestigation:
+                        durableRecord
+                            ?.requiresFurtherInvestigation ===
+                        true,
+                    knowledgeMemoryVersion:
+                        this.version,
+                    ingestionCommission:
+                        RESEARCH_LEARNING_INGESTION_COMMISSION,
+                    ingestionBuildId:
+                        RESEARCH_LEARNING_INGESTION_BUILD_ID
+                },
+                timelineEvent: {
+                    title:
+                        `${subject || "Research learning"} entered active knowledge`,
+                    eventType:
+                        "research-learning-ingested",
+                    occurredAt:
+                        durableRecord.learnedAt ||
+                        new Date().toISOString(),
+                    description:
+                        "Durable evidence-backed research learning became available to MEOS Knowledge Engine search and recall."
+                }
+            };
+        },
+
+        ingestDurableResearchLearningRecord(
+            durableRecord
+        ) {
+            const connection =
+                this.ensureConnected();
+
+            if (!connection.success) {
+                return connection;
+            }
+
+            if (
+                !durableRecord ||
+                durableRecord.schema !==
+                    RESEARCH_LEARNING_RECORD_SCHEMA ||
+                durableRecord.recordType !==
+                    "research-learning"
+            ) {
+                this.researchLearningSkippedCount += 1;
+
+                return {
+                    success: false,
+                    skipped: true,
+                    reason:
+                        "not-a-durable-research-learning-record"
+                };
+            }
+
+            const knowledgeRecord =
+                this.buildResearchLearningKnowledgeRecord(
+                    durableRecord
+                );
+
+            const existing =
+                this.connectedEngine.getRecordById(
+                    knowledgeRecord.id
+                );
+
+            if (
+                existing?.metadata
+                    ?.researchLearningFingerprint ===
+                knowledgeRecord.metadata
+                    .researchLearningFingerprint
+            ) {
+                this.researchLearningDuplicateCount += 1;
+
+                return {
+                    success: true,
+                    duplicate: true,
+                    updated: false,
+                    record: existing
+                };
+            }
+
+            if (existing) {
+                const update = {
+                    ...knowledgeRecord
+                };
+                delete update.id;
+
+                const result =
+                    this.connectedEngine.updateRecord(
+                        existing.id,
+                        update,
+                        "MEOS Knowledge Memory / Durable Research Learning"
+                    );
+
+                if (result?.success) {
+                    this.researchLearningUpdatedCount += 1;
+                }
+
+                return {
+                    ...result,
+                    duplicate: false,
+                    updated: result?.success === true
+                };
+            }
+
+            const result =
+                this.connectedEngine.createRecord(
+                    knowledgeRecord
+                );
+
+            if (result?.success) {
+                this.researchLearningIngestedCount += 1;
+            }
+
+            return {
+                ...result,
+                duplicate: false,
+                updated: false
+            };
+        },
+
+        async syncDurableResearchLearning(
+            options = {}
+        ) {
+            if (
+                this.configuration
+                    .durableResearchLearningIngestion !==
+                true
+            ) {
+                return {
+                    success: false,
+                    disabled: true
+                };
+            }
+
+            if (this.researchLearningSyncInFlight) {
+                return this.researchLearningSyncInFlight;
+            }
+
+            this.researchLearningSyncInFlight =
+                (async () => {
+                    const payload =
+                        await this.executiveMemoryRequest(
+                            "GET",
+                            null
+                        );
+
+                    const records =
+                        Array.isArray(
+                            payload?.records
+                        )
+                            ? payload.records
+                            : [];
+
+                    const durableResearch =
+                        records
+                            .filter(
+                                (record) =>
+                                    record?.schema ===
+                                        RESEARCH_LEARNING_RECORD_SCHEMA &&
+                                    record?.recordType ===
+                                        "research-learning"
+                            )
+                            .slice(
+                                -Math.max(
+                                    1,
+                                    Number(
+                                        options.limit ||
+                                            this.configuration
+                                                .researchLearningMaximumRecords
+                                    )
+                                )
+                            );
+
+                    this.researchLearningDurableRecordCount =
+                        durableResearch.length;
+
+                    const results =
+                        durableResearch.map(
+                            (record) =>
+                                this.ingestDurableResearchLearningRecord(
+                                    record
+                                )
+                        );
+
+                    const failures =
+                        results.filter(
+                            (result) =>
+                                result?.success !== true &&
+                                result?.skipped !== true
+                        );
+
+                    if (
+                        typeof this.connectedEngine
+                            ?.persistIfEnabled ===
+                        "function"
+                    ) {
+                        this.connectedEngine.persistIfEnabled();
+                    }
+
+                    this.researchLearningLastSyncAt =
+                        new Date().toISOString();
+
+                    this.researchLearningLastError =
+                        failures.length > 0
+                            ? `${failures.length} durable research-learning record(s) failed active Knowledge Engine ingestion.`
+                            : null;
+
+                    this.logActivity(
+                        "research-learning.synced",
+                        {
+                            durableRecordCount:
+                                durableResearch.length,
+                            successCount:
+                                results.filter(
+                                    (result) =>
+                                        result?.success ===
+                                        true
+                                ).length,
+                            failureCount:
+                                failures.length,
+                            ingestedCount:
+                                this.researchLearningIngestedCount,
+                            updatedCount:
+                                this.researchLearningUpdatedCount,
+                            duplicateCount:
+                                this.researchLearningDuplicateCount
+                        }
+                    );
+
+                    this.emit(
+                        "research-learning:synced",
+                        {
+                            durableRecords:
+                                durableResearch,
+                            results
+                        }
+                    );
+
+                    return {
+                        success:
+                            failures.length === 0,
+                        commission:
+                            RESEARCH_LEARNING_INGESTION_COMMISSION,
+                        buildId:
+                            RESEARCH_LEARNING_INGESTION_BUILD_ID,
+                        durableRecordCount:
+                            durableResearch.length,
+                        results,
+                        ingestedCount:
+                            this.researchLearningIngestedCount,
+                        updatedCount:
+                            this.researchLearningUpdatedCount,
+                        duplicateCount:
+                            this.researchLearningDuplicateCount,
+                        skippedCount:
+                            this.researchLearningSkippedCount,
+                        lastSyncAt:
+                            this.researchLearningLastSyncAt,
+                        lastError:
+                            this.researchLearningLastError
+                    };
+                })()
+                    .catch((error) => {
+                        this.researchLearningLastError =
+                            error?.message ||
+                            String(error);
+
+                        return {
+                            success: false,
+                            commission:
+                                RESEARCH_LEARNING_INGESTION_COMMISSION,
+                            buildId:
+                                RESEARCH_LEARNING_INGESTION_BUILD_ID,
+                            error:
+                                this.researchLearningLastError,
+                            code:
+                                error?.code ||
+                                null
+                        };
+                    })
+                    .finally(() => {
+                        this.researchLearningSyncInFlight =
+                            null;
+                    });
+
+            return this.researchLearningSyncInFlight;
+        },
+
+        getResearchLearningIngestionStatus() {
+            return {
+                commission:
+                    RESEARCH_LEARNING_INGESTION_COMMISSION,
+                version:
+                    this.version,
+                buildId:
+                    RESEARCH_LEARNING_INGESTION_BUILD_ID,
+                enabled:
+                    this.configuration
+                        .durableResearchLearningIngestion,
+                durableRecordCount:
+                    this.researchLearningDurableRecordCount,
+                ingestedCount:
+                    this.researchLearningIngestedCount,
+                updatedCount:
+                    this.researchLearningUpdatedCount,
+                duplicateCount:
+                    this.researchLearningDuplicateCount,
+                skippedCount:
+                    this.researchLearningSkippedCount,
+                lastSyncAt:
+                    this.researchLearningLastSyncAt,
+                lastError:
+                    this.researchLearningLastError,
+                authority: {
+                    durableSource:
+                        "executive-memory/investigation-history",
+                    activeKnowledge:
+                        "MEOS Knowledge Engine",
+                    worldModelIntegrationRequired:
+                        true,
+                    externalActionAuthorized:
+                        false
+                }
             };
         },
 
