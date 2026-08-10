@@ -1,7 +1,7 @@
 /*
  * MEOS Institutional Reasoning Engine
- * Version: 1.1.1
- * Build: IR111-REASONING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A
+ * Version: 1.1.2
+ * Build: IR112-POSITIONING-TARGET-ACQUISITION-GUARD-20260810-A
  *
  * Mission:
  * Turn supported institutional evidence into explainable executive analysis,
@@ -40,8 +40,8 @@
 
     const InstitutionalReasoning = {
         name: "MEOS Institutional Reasoning Engine",
-        version: "1.1.1",
-        buildId: "IR111-REASONING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A",
+        version: "1.1.2",
+        buildId: "IR112-POSITIONING-TARGET-ACQUISITION-GUARD-20260810-A",
         status: "initializing",
         operatingMode: "evidence-grounded-reasoning",
 
@@ -339,13 +339,38 @@
                     subject
                 );
 
+            /*
+             * Commission 006.018E1 — Positioning Target Acquisition Guard
+             *
+             * Counterfactual positioning is opportunity-specific cognition. A
+             * generic salience sentence (for example "Monitoring evidence
+             * changed") must never fall through to the first Opportunity Case
+             * returned by recall. That behavior silently substituted an
+             * unrelated target and allowed unchanged reality to manufacture new
+             * investigate/monitor Missions.
+             *
+             * Require a positively resolved Opportunity Case, or a direct raw
+             * Opportunity Case object supplied by the caller. Unknown target =
+             * no positioning, no Plan, no Hallway work.
+             */
+            const directCaseContent =
+                this.extractDirectOpportunityCaseContent(subject);
+
+            if (!recalledCase && !directCaseContent) {
+                return {
+                    success: false,
+                    status: "positioning-target-unresolved",
+                    error:
+                        "Counterfactual positioning requires a positively identified Executive Opportunity Case; generic cognitive salience cannot select an arbitrary opportunity.",
+                    subject: query,
+                    targetResolved: false
+                };
+            }
+
             const caseContent =
                 recalledCase?.content ||
-                (
-                    typeof subject === "object"
-                        ? subject
-                        : {}
-                );
+                directCaseContent ||
+                {};
 
             const opportunity =
                 this.extractOpportunityPositioningState(
@@ -457,6 +482,127 @@
             return response;
         },
 
+        extractDirectOpportunityCaseContent(subject) {
+            if (!subject || typeof subject !== "object") {
+                return null;
+            }
+
+            const content =
+                subject?.content &&
+                typeof subject.content === "object"
+                    ? subject.content
+                    : subject;
+
+            const recordType =
+                String(subject?.recordType || "")
+                    .trim()
+                    .toLowerCase();
+            const schema =
+                String(content?.schema || subject?.schema || "")
+                    .trim()
+                    .toLowerCase();
+
+            const explicitlyOpportunityCase =
+                recordType === "executive-opportunity-case" ||
+                schema === "meos.executive-opportunity-case.v1";
+
+            const structurallyOpportunityCase =
+                Boolean(content?.source) &&
+                Boolean(content?.opportunityIntelligence) &&
+                (
+                    Boolean(content?.disposition) ||
+                    Array.isArray(content?.unknowns) ||
+                    Boolean(content?.evidence)
+                );
+
+            return explicitlyOpportunityCase || structurallyOpportunityCase
+                ? content
+                : null;
+        },
+
+        isOpportunityCaseRecord(record) {
+            if (!record || typeof record !== "object") {
+                return false;
+            }
+
+            return (
+                String(record.recordType || "")
+                    .trim()
+                    .toLowerCase() ===
+                    "executive-opportunity-case" ||
+                String(record?.content?.schema || record?.schema || "")
+                    .trim()
+                    .toLowerCase() ===
+                    "meos.executive-opportunity-case.v1"
+            );
+        },
+
+        opportunityCaseMatchesSubject(record, subject) {
+            if (!this.isOpportunityCaseRecord(record)) {
+                return false;
+            }
+
+            const directId =
+                typeof subject === "object"
+                    ? subject?.id ||
+                      subject?.recordId ||
+                      subject?.source?.id ||
+                      null
+                    : null;
+
+            if (
+                directId &&
+                [
+                    record?.id,
+                    record?.recordId,
+                    record?.metadata?.opportunitySourceId,
+                    record?.content?.source?.id
+                ]
+                    .filter(Boolean)
+                    .some(value =>
+                        String(value) === String(directId)
+                    )
+            ) {
+                return true;
+            }
+
+            const query =
+                this.normalizeText(
+                    typeof subject === "string"
+                        ? subject
+                        : subject?.source?.title ||
+                          subject?.title ||
+                          subject?.summary ||
+                          ""
+                );
+
+            if (!query) {
+                return false;
+            }
+
+            const identities = [
+                record?.id,
+                record?.recordId,
+                record?.metadata?.opportunitySourceId,
+                record?.title
+                    ?.replace(
+                        /^Executive Opportunity Case\s*[—-]\s*/i,
+                        ""
+                    ),
+                record?.content?.source?.title,
+                record?.content?.source?.id,
+                record?.content?.source?.url
+            ]
+                .map(value => this.normalizeText(value))
+                .filter(value => value.length >= 8);
+
+            return identities.some(identity =>
+                query === identity ||
+                (query.length >= 12 && identity.includes(query)) ||
+                (identity.length >= 12 && query.includes(identity))
+            );
+        },
+
         findOpportunityCaseInRecall(base, subject) {
             const directId =
                 typeof subject === "object"
@@ -464,12 +610,6 @@
                       subject?.recordId ||
                       subject?.source?.id
                     : null;
-
-            const candidates = [
-                ...(base?.sourceRecall?.records || []),
-                ...(base?.evidence || []),
-                ...(base?.findings || [])
-            ];
 
             const knowledge =
                 global.MEOSKnowledgeEngine ||
@@ -484,69 +624,47 @@
                 const direct =
                     knowledge.getRecordById(directId);
 
-                if (direct) {
+                if (
+                    direct &&
+                    this.isOpportunityCaseRecord(direct)
+                ) {
                     return direct;
                 }
             }
 
-            if (
-                knowledge &&
-                Array.isArray(knowledge.records)
-            ) {
-                const normalized =
-                    this.normalizeText(
-                        typeof subject === "string"
-                            ? subject
-                            : subject?.source?.title ||
-                              subject?.title ||
-                              ""
-                    );
+            const candidates = [
+                ...(base?.sourceRecall?.records || []),
+                ...(base?.evidence || []),
+                ...(base?.findings || []),
+                ...(Array.isArray(knowledge?.records)
+                    ? knowledge.records
+                    : [])
+            ]
+                .filter(item =>
+                    this.isOpportunityCaseRecord(item)
+                );
 
-                const match =
-                    knowledge.records.find((record) => {
-                        if (
-                            record.recordType !==
-                            "executive-opportunity-case"
-                        ) {
-                            return false;
-                        }
+            const seen = new Set();
+            const unique = candidates.filter(item => {
+                const key =
+                    item?.id ||
+                    item?.recordId ||
+                    item?.content?.source?.id ||
+                    item?.content?.source?.title ||
+                    item?.title ||
+                    null;
+                if (!key) return true;
+                const normalizedKey = String(key);
+                if (seen.has(normalizedKey)) return false;
+                seen.add(normalizedKey);
+                return true;
+            });
 
-                        const haystack =
-                            this.normalizeText(
-                                [
-                                    record.title,
-                                    record.summary,
-                                    record.metadata
-                                        ?.opportunitySourceId,
-                                    record.content?.source
-                                        ?.title
-                                ].join(" ")
-                            );
-
-                        return (
-                            normalized &&
-                            (
-                                haystack.includes(
-                                    normalized
-                                ) ||
-                                normalized.includes(
-                                    haystack
-                                )
-                            )
-                        );
-                    });
-
-                if (match) {
-                    return match;
-                }
-            }
-
-            return candidates.find(
-                (item) =>
-                    item?.recordType ===
-                        "executive-opportunity-case" ||
-                    item?.metadata?.evidenceClass ===
-                        "working-executive-analysis"
+            return unique.find(item =>
+                this.opportunityCaseMatchesSubject(
+                    item,
+                    subject
+                )
             ) || null;
         },
 
@@ -1248,6 +1366,215 @@
                 passed,
                 checks
             };
+        },
+
+        runPositioningTargetAcquisitionAcceptanceTest() {
+            const originalKnowledge =
+                global.MEOSKnowledgeEngine;
+            const originalAnalyzeStrategy =
+                this.analyzeStrategy;
+            const originalRecordAnalysis =
+                this.recordAnalysis;
+            const originalEmit =
+                this.emit;
+
+            const caseA = {
+                id: "opportunity-case-a",
+                recordType: "executive-opportunity-case",
+                title:
+                    "Executive Opportunity Case — Community Foundation Santa Cruz County",
+                metadata: {
+                    opportunitySourceId: "cf-santa-cruz"
+                },
+                content: {
+                    schema:
+                        "meos.executive-opportunity-case.v1",
+                    source: {
+                        id: "cf-santa-cruz",
+                        title:
+                            "Community Foundation Santa Cruz County",
+                        url:
+                            "https://example.test/community-foundation"
+                    },
+                    opportunityIntelligence: {
+                        cycle: {
+                            status: "current-cycle-complete",
+                            explicitlyOpen: false
+                        }
+                    },
+                    evidence: { checks: {} },
+                    unknowns: [
+                        "Explicit applicant eligibility"
+                    ],
+                    disposition: {
+                        disposition: "monitor-next-cycle"
+                    }
+                }
+            };
+
+            const caseB = {
+                id: "opportunity-case-b",
+                recordType: "executive-opportunity-case",
+                title:
+                    "Executive Opportunity Case — Monterey Bay Future Fund",
+                metadata: {
+                    opportunitySourceId: "monterey-future-fund"
+                },
+                content: {
+                    schema:
+                        "meos.executive-opportunity-case.v1",
+                    source: {
+                        id: "monterey-future-fund",
+                        title: "Monterey Bay Future Fund"
+                    },
+                    opportunityIntelligence: {
+                        cycle: {
+                            status: "future-cycle",
+                            explicitlyOpen: false
+                        }
+                    },
+                    evidence: { checks: {} },
+                    unknowns: [],
+                    disposition: {
+                        disposition: "watching"
+                    }
+                }
+            };
+
+            const base = {
+                sourceRecall: {
+                    records: [caseA, caseB]
+                },
+                evidence: [],
+                findings: []
+            };
+
+            try {
+                global.MEOSKnowledgeEngine = {
+                    records: [caseA, caseB],
+                    getRecordById(id) {
+                        return [caseA, caseB].find(
+                            item => item.id === id
+                        ) || null;
+                    }
+                };
+
+                this.analyzeStrategy = () =>
+                    this.clone(base);
+                this.recordAnalysis = () => true;
+                this.emit = () => true;
+
+                const generic =
+                    this.findOpportunityCaseInRecall(
+                        base,
+                        "Monitoring evidence changed."
+                    );
+                const exact =
+                    this.findOpportunityCaseInRecall(
+                        base,
+                        "Community Foundation Santa Cruz County"
+                    );
+                const second =
+                    this.findOpportunityCaseInRecall(
+                        base,
+                        "Monterey Bay Future Fund"
+                    );
+                const directId =
+                    this.findOpportunityCaseInRecall(
+                        base,
+                        {
+                            recordId: "opportunity-case-a"
+                        }
+                    );
+                const unresolved =
+                    this.analyzePositioning(
+                        "Monitoring evidence changed.",
+                        { evidenceLimit: 10 }
+                    );
+                const resolved =
+                    this.analyzePositioning(
+                        "Community Foundation Santa Cruz County",
+                        { evidenceLimit: 10 }
+                    );
+                const rawDirect =
+                    this.extractDirectOpportunityCaseContent(
+                        caseB.content
+                    );
+
+                const checks = [
+                    {
+                        name:
+                            "Generic salience cannot bind the first recalled Opportunity Case",
+                        passed: generic === null
+                    },
+                    {
+                        name:
+                            "Exact opportunity title resolves the intended Opportunity Case",
+                        passed: exact?.id === caseA.id
+                    },
+                    {
+                        name:
+                            "Multiple recalled cases do not cross-target one another",
+                        passed: second?.id === caseB.id
+                    },
+                    {
+                        name:
+                            "Direct durable Opportunity Case identity resolves deterministically",
+                        passed: directId?.id === caseA.id
+                    },
+                    {
+                        name:
+                            "Unresolved target hard-stops positioning before work can be produced",
+                        passed:
+                            unresolved?.success === false &&
+                            unresolved?.status ===
+                                "positioning-target-unresolved"
+                    },
+                    {
+                        name:
+                            "Verified target still reaches counterfactual positioning cognition",
+                        passed:
+                            resolved?.success === true &&
+                            resolved?.opportunity?.recordId ===
+                                caseA.id
+                    },
+                    {
+                        name:
+                            "Direct raw Opportunity Case content remains a valid governed target",
+                        passed:
+                            rawDirect?.source?.title ===
+                            caseB.content.source.title
+                    }
+                ];
+
+                const passed =
+                    checks.every(item => item.passed);
+
+                console.table(checks);
+                console.info(
+                    `[MEOS ${this.version}] Commission 006.018E1 Positioning Target Acquisition Guard: ${passed ? "PASS" : "FAIL"}.`
+                );
+
+                return {
+                    commission: "006.018E1",
+                    version: this.version,
+                    buildId: this.buildId,
+                    passed,
+                    checks
+                };
+            } finally {
+                this.analyzeStrategy =
+                    originalAnalyzeStrategy;
+                this.recordAnalysis =
+                    originalRecordAnalysis;
+                this.emit = originalEmit;
+                if (originalKnowledge === undefined) {
+                    delete global.MEOSKnowledgeEngine;
+                } else {
+                    global.MEOSKnowledgeEngine =
+                        originalKnowledge;
+                }
+            }
         },
 
         analyzeDecision(question, options = {}) {
