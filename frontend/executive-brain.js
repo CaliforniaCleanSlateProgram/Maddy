@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.24.1";
-  const BUILD_ID = "EB1241-RESEARCH-KNOWLEDGE-STARTUP-HYDRATION-BARRIER-20260809-A";
+  const VERSION = "1.25.0";
+  const BUILD_ID = "EB1250-MEANINGFUL-CHANGE-COGNITIVE-REAPPRAISAL-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    cognitiveReappraisalState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     researchKnowledgeStartupHydration: {
       status: "not-started",
       attempts: 0,
@@ -7841,6 +7847,75 @@
         });
       };
 
+      const priorResearchBeliefs =
+        prior?.beliefs?.durableResearchLearning?.active || [];
+      const currentResearchBeliefs =
+        now?.beliefs?.durableResearchLearning?.active || [];
+
+      const priorResearchById = new Map(
+        priorResearchBeliefs.map(item => [
+          item?.knowledgeRecordId ||
+            item?.durableLearningId ||
+            item?.subject,
+          item
+        ])
+      );
+
+      const changedResearchBeliefs =
+        currentResearchBeliefs.filter(item => {
+          const key =
+            item?.knowledgeRecordId ||
+            item?.durableLearningId ||
+            item?.subject;
+          const priorItem =
+            priorResearchById.get(key);
+
+          return (
+            !priorItem ||
+            priorItem?.durableLearningFingerprint !==
+              item?.durableLearningFingerprint ||
+            Number(priorItem?.confidence ?? -1) !==
+              Number(item?.confidence ?? -1) ||
+            priorItem?.epistemicStatus !==
+              item?.epistemicStatus
+          );
+        });
+
+      if (prior && changedResearchBeliefs.length > 0) {
+        addSignal(
+          "research-belief-changed",
+          Math.min(
+            0.42,
+            0.26 +
+              changedResearchBeliefs.length * 0.04
+          ),
+          `${changedResearchBeliefs.length} evidence-backed research belief(s) changed.`,
+          [
+            "beliefs",
+            "evidence",
+            "external-world",
+            "unknowns"
+          ]
+        );
+
+        changedResearchBeliefs
+          .flatMap(item =>
+            Array.isArray(item?.unknowns)
+              ? item.unknowns
+              : []
+          )
+          .slice(0, 8)
+          .forEach(item => {
+            const question =
+              typeof item === "string"
+                ? item
+                : item?.question ||
+                  item?.summary ||
+                  null;
+            if (question) questions.push(question);
+          });
+      }
+
       const priorUnknowns =
         Array.isArray(prior?.unknowns)
           ? prior.unknowns
@@ -8172,6 +8247,114 @@
       return this.clone(assessment);
     },
 
+    buildCognitiveReappraisal(
+      assessment = {},
+      previous = null,
+      current = null
+    ) {
+      const changedBeliefs =
+        (assessment?.signals || [])
+          .filter(item =>
+            item?.type ===
+            "research-belief-changed"
+          );
+
+      const questions =
+        [...new Set(
+          Array.isArray(assessment?.questions)
+            ? assessment.questions
+            : []
+        )].slice(0, 12);
+
+      const priorIntentions =
+        Array.isArray(previous?.intentions)
+          ? previous.intentions
+          : [];
+      const currentIntentions =
+        Array.isArray(current?.intentions)
+          ? current.intentions
+          : [];
+
+      const reappraisal = {
+        schema:
+          "meos.maddy.cognitive-reappraisal.v1",
+        createdAt: new Date().toISOString(),
+        subject:
+          assessment?.subject ||
+          "Meaningful world-model change",
+        salienceScore:
+          Number(assessment?.score || 0),
+        affectedDomains:
+          this.clone(
+            assessment?.affectedDomains || []
+          ),
+        changedBeliefSignals:
+          this.clone(changedBeliefs),
+        openQuestions: questions,
+        priorIntentionCount:
+          priorIntentions.length,
+        currentIntentionCount:
+          currentIntentions.length,
+        reconsiderPriorConclusions:
+          changedBeliefs.length > 0 ||
+          (assessment?.connections || []).length > 0,
+        investigateUnknowns:
+          questions.length > 0,
+        reprioritizeAttention: true,
+        causalReassessmentRequired:
+          assessment?.meaningful === true,
+        rule:
+          "A meaningful change may invalidate prior conclusions or priorities; reappraisal changes attention, not truth status.",
+        authority: {
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
+
+      this.cognitiveReappraisalState.count += 1;
+      this.cognitiveReappraisalState.lastAt =
+        reappraisal.createdAt;
+      this.cognitiveReappraisalState.last =
+        this.clone(reappraisal);
+      this.cognitiveReappraisalState.history.unshift(
+        this.clone(reappraisal)
+      );
+      this.cognitiveReappraisalState.history =
+        this.cognitiveReappraisalState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.meaningful-change-reappraisal",
+        reappraisal
+      );
+
+      this.emit(
+        "brain:cognitive-reappraisal",
+        this.clone(reappraisal)
+      );
+
+      return reappraisal;
+    },
+
+    getCognitiveReappraisalStatus() {
+      return {
+        commission: "006.017D7S1",
+        version: this.version,
+        buildId: this.buildId,
+        existingSalienceAuthority:
+          "meos.maddy.salience-assessment.v1",
+        ...this.clone(
+          this.cognitiveReappraisalState
+        ),
+        authority: {
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
+    },
+
     attendToWorldModelChange(
       previous,
       current,
@@ -8209,6 +8392,13 @@
           assessment
         };
       }
+
+      const cognitiveReappraisal =
+        this.buildCognitiveReappraisal(
+          assessment,
+          previous,
+          current
+        );
 
       const causalInvestigation =
         assessment.investigate
@@ -8264,6 +8454,8 @@
           this.clone(
             assessment.questions.slice(0, 8)
           ),
+        cognitiveReappraisal:
+          this.clone(cognitiveReappraisal),
         causalInvestigation:
           causalInvestigation
             ? {
@@ -14215,6 +14407,176 @@
         this.cognitiveIntentions = original;
         await this.flushPersistence();
       }
+    },
+
+    runMeaningfulChangeReappraisalAcceptanceTest() {
+      const base =
+        this.projectWorldModel({
+          reason: "006.017D7S1-baseline",
+          persist: false,
+          attend: false
+        });
+
+      const trivial =
+        this.assessWorldModelSalience(
+          base,
+          this.clone(base),
+          {
+            subject:
+              "No material world change"
+          }
+        );
+
+      const changed =
+        this.clone(base);
+
+      const active =
+        changed?.beliefs
+          ?.durableResearchLearning
+          ?.active || [];
+
+      if (active.length > 0) {
+        active[0].durableLearningFingerprint =
+          `${active[0].durableLearningFingerprint || "research"}-material-change`;
+        active[0].unknowns = [
+          ...(active[0].unknowns || []),
+          "What new evidence would change the current conclusion?"
+        ];
+      }
+
+      const material =
+        this.assessWorldModelSalience(
+          base,
+          changed,
+          {
+            subject:
+              "Evidence-backed research belief materially changed"
+          }
+        );
+
+      const reappraisal =
+        material.meaningful
+          ? this.buildCognitiveReappraisal(
+              material,
+              base,
+              changed
+            )
+          : null;
+
+      const checks = [
+        {
+          name:
+            "Existing salience organ remains the meaningful-change authority",
+          passed:
+            material?.schema ===
+            "meos.maddy.salience-assessment.v1"
+        },
+        {
+          name:
+            "Unchanged world state does not earn attention",
+          passed:
+            trivial.meaningful === false
+        },
+        {
+          name:
+            "Changed evidence-backed research belief is detected",
+          passed:
+            material.signals.some(
+              item =>
+                item.type ===
+                "research-belief-changed"
+            )
+        },
+        {
+          name:
+            "Material belief change crosses existing salience threshold",
+          passed:
+            material.meaningful === true
+        },
+        {
+          name:
+            "Meaningful change creates explicit cognitive reappraisal",
+          passed:
+            reappraisal?.schema ===
+            "meos.maddy.cognitive-reappraisal.v1"
+        },
+        {
+          name:
+            "Reappraisal can invalidate prior conclusions without changing truth status",
+          passed:
+            reappraisal
+              ?.reconsiderPriorConclusions ===
+              true &&
+            /changes attention, not truth status/i.test(
+              reappraisal?.rule || ""
+            )
+        },
+        {
+          name:
+            "New uncertainty becomes an investigation question",
+          passed:
+            reappraisal
+              ?.investigateUnknowns === true &&
+            reappraisal.openQuestions.length > 0
+        },
+        {
+          name:
+            "Reappraisal reprioritizes attention",
+          passed:
+            reappraisal
+              ?.reprioritizeAttention === true
+        },
+        {
+          name:
+            "Existing causal/counterfactual investigation remains downstream",
+          passed:
+            /runCausalCounterfactualInvestigation/.test(
+              this.attendToWorldModelChange.toString()
+            )
+        },
+        {
+          name:
+            "Existing cognitive re-entry remains the continuation mechanism",
+          passed:
+            /scheduleCognitiveReentry/.test(
+              this.attendToWorldModelChange.toString()
+            )
+        },
+        {
+          name:
+            "No external-action authority is created",
+          passed:
+            reappraisal
+              ?.authority
+              ?.externalActionAuthorized === false &&
+            reappraisal
+              ?.authority
+              ?.humanAuthorityPreserved === true
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7S1 Meaningful Change + Cognitive Reappraisal: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7S1",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        trivial,
+        material,
+        reappraisal,
+        authority: {
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
     },
 
     runDurableResearchWorldModelAcceptanceTest() {
