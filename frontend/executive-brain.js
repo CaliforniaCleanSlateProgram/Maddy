@@ -16,14 +16,16 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.35.0";
-  const BUILD_ID = "EB1350-INTEGRATED-CROSS-OFFICE-SIMULATION-20260809-A";
+  const VERSION = "1.35.1";
+  const BUILD_ID = "EB1351-BOUNDED-DURABLE-COGNITION-TRANSPORT-20260810-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
   const INDEXED_DB_STORE = "engine-state";
   const INDEXED_DB_RECORD_ID = "executive-brain-state";
   const PERSISTENCE_DEBOUNCE_MS = 150;
+  const DURABLE_PERSISTENCE_TARGET_BYTES = 6 * 1024 * 1024;
+  const DURABLE_PERSISTENCE_HARD_CEILING_BYTES = 7 * 1024 * 1024;
   const DURABLE_STATE_ENDPOINT = "/api/executive-brain-state";
 
   const brainPersistence = {
@@ -45,6 +47,8 @@
     suspended: false,
     lastPersistedAt: null,
     lastRestoredAt: null,
+    lastPayloadBytes: 0,
+    lastCompaction: null,
     lastError: null
   };
 
@@ -18388,8 +18392,350 @@
       };
     },
 
-    buildPersistenceSnapshot() {
+
+    persistencePayloadBytes(value) {
+      try {
+        return new TextEncoder()
+          .encode(JSON.stringify(value))
+          .byteLength;
+      } catch {
+        return Number.POSITIVE_INFINITY;
+      }
+    },
+
+    compactPersistenceSnapshot(snapshot, options = {}) {
+      const targetBytes = Number(
+        options.targetBytes ||
+        DURABLE_PERSISTENCE_TARGET_BYTES
+      );
+      const hardCeilingBytes = Number(
+        options.hardCeilingBytes ||
+        DURABLE_PERSISTENCE_HARD_CEILING_BYTES
+      );
+
+      const beforeBytes =
+        this.persistencePayloadBytes(snapshot);
+
+      if (
+        Number.isFinite(beforeBytes) &&
+        beforeBytes <= targetBytes
+      ) {
+        return {
+          snapshot,
+          compacted: false,
+          beforeBytes,
+          afterBytes: beforeBytes,
+          targetBytes,
+          hardCeilingBytes,
+          reductions: []
+        };
+      }
+
+      const compacted = this.clone(snapshot);
+      const reductions = [];
+
+      /*
+       * Current cognition stays intact. Only oldest entries from already
+       * bounded historical surfaces may be reduced for transport safety.
+       * Unresolved intentions retain a larger floor because they are active
+       * continuity obligations, not ordinary history.
+       */
+      const retentionPolicy = [
+        ["history", 8],
+        ["cognitionHistory", 12],
+        ["cognitiveDispatchHistory", 12],
+        ["cognitiveReentryHistory", 12],
+        ["cognitiveIntentions", 32],
+        ["selfModelHistory", 8],
+        ["workingAwarenessHistory", 8],
+        ["autobiographicalMemory", 12],
+        ["metacognitiveReflections", 12],
+        ["temporalContinuityHistory", 8],
+        ["worldModelHistory", 12],
+        ["relationshipHistory", 8],
+        ["salienceHistory", 12],
+        ["causalInvestigationHistory", 8],
+        ["autonomousInvestigationHistory", 8],
+        ["evidenceAssimilationHistory", 8],
+        ["developmentalDriveHistory", 8],
+        ["developmentalPracticeHistory", 12],
+        ["developmentalRetrospectives", 8],
+        ["intentReconstructionHistory", 12],
+        ["investigativeIntentions", 16],
+        ["deliberateExperienceHistory", 12],
+        ["counterfactualSimulationHistory", 12],
+        ["preparednessInsights", 12],
+        ["anticipatoryInitiatives", 12],
+        ["executivePriorityPortfolio", 16],
+        ["cognitiveThreads", 16],
+        ["productiveIdleHistory", 12]
+      ];
+
+      const shrinkField = (field, minimum) => {
+        const values = Array.isArray(compacted[field])
+          ? compacted[field]
+          : null;
+
+        if (!values || values.length <= minimum) {
+          return false;
+        }
+
+        const priorLength = values.length;
+        const nextLength = Math.max(
+          minimum,
+          Math.ceil(priorLength * 0.5)
+        );
+
+        compacted[field] = values.slice(0, nextLength);
+
+        reductions.push({
+          field,
+          from: priorLength,
+          to: nextLength
+        });
+
+        return true;
+      };
+
+      let afterBytes =
+        this.persistencePayloadBytes(compacted);
+
+      for (
+        let pass = 0;
+        pass < 6 && afterBytes > targetBytes;
+        pass += 1
+      ) {
+        let changed = false;
+
+        for (const [field, minimum] of retentionPolicy) {
+          if (afterBytes <= targetBytes) break;
+
+          const reduced = shrinkField(field, minimum);
+          changed = reduced || changed;
+
+          if (reduced) {
+            afterBytes =
+              this.persistencePayloadBytes(compacted);
+          }
+        }
+
+        if (!changed) break;
+      }
+
+      compacted.persistenceCompaction = {
+        schema:
+          "meos.executive-brain.persistence-compaction.v1",
+        compactedAt:
+          new Date().toISOString(),
+        beforeBytes,
+        afterBytes,
+        targetBytes,
+        hardCeilingBytes,
+        reductions:
+          this.clone(reductions),
+        rule:
+          "Only oldest bounded historical entries may be reduced for durable transport. Current World Model, current self, current awareness, temporal continuity, unresolved intentions, current priority, and authority remain intact."
+      };
+
+      afterBytes =
+        this.persistencePayloadBytes(compacted);
+
       return {
+        snapshot: compacted,
+        compacted: true,
+        beforeBytes,
+        afterBytes,
+        targetBytes,
+        hardCeilingBytes,
+        reductions
+      };
+    },
+
+    runBoundedDurableCognitionTransportAcceptanceTest() {
+      const largeText = "x".repeat(180000);
+
+      const raw = {
+        schema:
+          "meos.executive-brain.state.v1",
+        version:
+          this.version,
+        savedAt:
+          new Date().toISOString(),
+        history:
+          Array.from({ length: 100 }, (_, index) => ({
+            id: `transport-history-${index}`,
+            details: { largeText }
+          })),
+        cognitionHistory:
+          Array.from({ length: 120 }, (_, index) => ({
+            cognitionId: `transport-cognition-${index}`,
+            details: { largeText }
+          })),
+        cognitiveDispatchHistory: [],
+        cognitiveReentryHistory: [],
+        cognitiveIntentions: [],
+        selfModel:
+          this.selfModel
+            ? this.clone(this.selfModel)
+            : null,
+        selfModelHistory: [],
+        workingAwareness:
+          this.workingAwareness
+            ? this.clone(this.workingAwareness)
+            : null,
+        workingAwarenessHistory: [],
+        autobiographicalMemory:
+          Array.from({ length: 100 }, (_, index) => ({
+            episodeId: `transport-episode-${index}`,
+            summary: largeText
+          })),
+        metacognitiveReflections: [],
+        temporalContinuity:
+          this.clone(this.temporalContinuity),
+        temporalContinuityHistory: [],
+        worldModel:
+          this.worldModel
+            ? this.clone(this.worldModel)
+            : null,
+        worldModelHistory: [],
+        relationshipModels: {},
+        relationshipHistory: [],
+        salienceHistory: [],
+        causalInvestigationHistory: [],
+        autonomousInvestigationHistory: [],
+        evidenceAssimilationHistory: [],
+        developmentalDriveHistory: [],
+        developmentalGoals: [],
+        developmentalPracticeHistory: [],
+        deferredCapabilities: [],
+        developmentalRetrospectives: [],
+        intentReconstructionHistory: [],
+        investigativeIntentions: [],
+        deliberateExperienceHistory: [],
+        counterfactualSimulationHistory: [],
+        preparednessInsights: [],
+        anticipatoryInitiatives: [],
+        executivePriorityPortfolio: [],
+        currentExecutivePriority: null,
+        lastPriorityArbitration: null,
+        priorityArbitrationCount: 0,
+        cognitiveThreads: [],
+        activeCognitiveThreadId: null,
+        lastCognitiveThreadEvent: null,
+        cognitiveThreadEventCount: 0,
+        continuousCognitionState: null,
+        continuousCognitionCycleCount: 0,
+        lastContinuousCognitionCycle: null,
+        productiveIdleHistory: [],
+        lastProductiveIdleAction: null,
+        productiveIdleConsecutiveSameSubject: 0
+      };
+
+      const rawBytes =
+        this.persistencePayloadBytes(raw);
+      const compacted =
+        this.compactPersistenceSnapshot(raw);
+
+      const checks = [
+        {
+          name:
+            "Synthetic cognition fixture exceeds the old server 8 MB parser boundary",
+          passed:
+            rawBytes >
+            8 * 1024 * 1024
+        },
+        {
+          name:
+            "Bounded compaction brings oversized cognition below the 6 MB target",
+          passed:
+            compacted.afterBytes <=
+            DURABLE_PERSISTENCE_TARGET_BYTES
+        },
+        {
+          name:
+            "Compacted request remains below the 7 MB client hard ceiling",
+          passed:
+            compacted.afterBytes <=
+            DURABLE_PERSISTENCE_HARD_CEILING_BYTES
+        },
+        {
+          name:
+            "Compaction reduces historical surfaces instead of changing cognition schema",
+          passed:
+            compacted.snapshot?.schema ===
+              "meos.executive-brain.state.v1" &&
+            compacted.reductions.length > 0
+        },
+        {
+          name:
+            "Current World Model survives compaction unchanged",
+          passed:
+            JSON.stringify(compacted.snapshot?.worldModel) ===
+            JSON.stringify(raw.worldModel)
+        },
+        {
+          name:
+            "Current temporal continuity survives compaction unchanged",
+          passed:
+            JSON.stringify(compacted.snapshot?.temporalContinuity) ===
+            JSON.stringify(raw.temporalContinuity)
+        },
+        {
+          name:
+            "Compaction creates explicit audit evidence of historical reductions",
+          passed:
+            compacted.snapshot
+              ?.persistenceCompaction
+              ?.schema ===
+              "meos.executive-brain.persistence-compaction.v1" &&
+            compacted.snapshot
+              ?.persistenceCompaction
+              ?.reductions
+              ?.length > 0
+        },
+        {
+          name:
+            "Transport repair grants no new external-action authority",
+          passed:
+            this.configuration
+              .requireHumanApprovalForExternalAction ===
+            true
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7T10R1 Bounded Durable Cognition Transport: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission:
+          "006.017D7T10R1",
+        version:
+          this.version,
+        buildId:
+          this.buildId,
+        passed,
+        checks,
+        rawBytes,
+        compactedBytes:
+          compacted.afterBytes,
+        reductionCount:
+          compacted.reductions.length,
+        authority: {
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
+    buildPersistenceSnapshot() {
+      const snapshot = {
         schema: "meos.executive-brain.state.v1",
         version: this.version,
         savedAt: new Date().toISOString(),
@@ -18464,6 +18810,28 @@
         lastProductiveIdleAction: this.lastProductiveIdleAction ? this.clone(this.lastProductiveIdleAction) : null,
         productiveIdleConsecutiveSameSubject: Number(this.productiveIdleConsecutiveSameSubject || 0)
       };
+
+      const compacted =
+        this.compactPersistenceSnapshot(snapshot);
+
+      brainPersistence.lastPayloadBytes =
+        compacted.afterBytes;
+
+      brainPersistence.lastCompaction =
+        compacted.compacted
+          ? {
+              at:
+                new Date().toISOString(),
+              beforeBytes:
+                compacted.beforeBytes,
+              afterBytes:
+                compacted.afterBytes,
+              reductionCount:
+                compacted.reductions.length
+            }
+          : null;
+
+      return compacted.snapshot;
     },
 
     applyPersistenceSnapshot(saved) {
@@ -18682,9 +19050,36 @@
       brainPersistence.writeInFlight = true;
       const snapshot = this.buildPersistenceSnapshot();
       try {
+        const requestEnvelope = {
+          version: this.version,
+          buildId: this.buildId,
+          state: snapshot
+        };
+        const requestBody =
+          JSON.stringify(requestEnvelope);
+        const payloadBytes =
+          new TextEncoder()
+            .encode(requestBody)
+            .byteLength;
+
+        brainPersistence.lastPayloadBytes =
+          payloadBytes;
+
+        if (
+          payloadBytes >
+          DURABLE_PERSISTENCE_HARD_CEILING_BYTES
+        ) {
+          const error = new Error(
+            `Executive Brain durable payload remained ${payloadBytes} bytes after bounded compaction; transport ceiling is ${DURABLE_PERSISTENCE_HARD_CEILING_BYTES} bytes.`
+          );
+          error.code =
+            "EXECUTIVE_BRAIN_DURABLE_PAYLOAD_TOO_LARGE";
+          throw error;
+        }
+
         const headers = { "Content-Type": "application/json", Accept: "application/json" };
         if (brainPersistence.durableFingerprint) headers["If-MEOS-Previous-Fingerprint"] = brainPersistence.durableFingerprint;
-        const response = await fetch(DURABLE_STATE_ENDPOINT, { method: "PUT", headers, body: JSON.stringify({ version: this.version, buildId: this.buildId, state: snapshot }) });
+        const response = await fetch(DURABLE_STATE_ENDPOINT, { method: "PUT", headers, body: requestBody });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload?.error || `Executive Brain durable write failed (${response.status}).`);
         brainPersistence.durableFingerprint = payload?.record?.fingerprint || payload?.verification?.fingerprint || null;
