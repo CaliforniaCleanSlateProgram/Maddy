@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.0";
-  const BUILD_ID = "EB1250-MEANINGFUL-CHANGE-COGNITIVE-REAPPRAISAL-20260809-A";
+  const VERSION = "1.25.1";
+  const BUILD_ID = "EB1251-REAPPRAISAL-ACCEPTANCE-HYDRATION-BARRIER-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -14409,7 +14409,10 @@
       }
     },
 
-    runMeaningfulChangeReappraisalAcceptanceTest() {
+    async runMeaningfulChangeReappraisalAcceptanceTest() {
+      const hydration =
+        await this.hydrateResearchKnowledgeBeforeCognition();
+
       const base =
         this.projectWorldModel({
           reason: "006.017D7S1-baseline",
@@ -14464,6 +14467,20 @@
           : null;
 
       const checks = [
+        {
+          name:
+            "Commissioned research-knowledge hydration barrier is ready",
+          passed:
+            hydration?.success === true &&
+            this.researchKnowledgeStartupHydration
+              ?.status === "ready"
+        },
+        {
+          name:
+            "Acceptance fixture uses a real active durable research belief",
+          passed:
+            active.length > 0
+        },
         {
           name:
             "Existing salience organ remains the meaningful-change authority",
@@ -14560,15 +14577,18 @@
 
       console.table(checks);
       console.info(
-        `[MEOS ${this.version}] Commission 006.017D7S1 Meaningful Change + Cognitive Reappraisal: ${passed ? "PASS" : "FAIL"}.`
+        `[MEOS ${this.version}] Commission 006.017D7S1A Meaningful Change + Cognitive Reappraisal Hydration Repair: ${passed ? "PASS" : "FAIL"}.`
       );
 
       return {
-        commission: "006.017D7S1",
+        commission: "006.017D7S1A",
         version: this.version,
         buildId: this.buildId,
         passed,
         checks,
+        hydration,
+        activeResearchBeliefCount:
+          active.length,
         trivial,
         material,
         reappraisal,
