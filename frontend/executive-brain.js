@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.23.1";
-  const BUILD_ID = "EB1231-HEAD-ON-A-SWIVEL-OPEN-DOMAIN-CURIOSITY-20260809-A";
+  const VERSION = "1.24.0";
+  const BUILD_ID = "EB1240-DURABLE-RESEARCH-LIVING-WORLD-MODEL-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -196,6 +196,8 @@
       metacognitiveRecallLimit: 12,
       maximumTemporalContinuityHistory: 180,
       maximumWorldModelHistory: 160,
+      maximumResearchLearningBeliefs: 24,
+      maximumResearchLearningUnknowns: 48,
       maximumRelationshipHistory: 120,
       maximumSalienceHistory: 180,
       salienceAttentionThreshold: 0.58,
@@ -910,6 +912,37 @@
         }
       }
 
+      const knowledgeMemory =
+        global.KnowledgeMemory ||
+        global.MEOSKnowledgeMemory;
+
+      if (knowledgeMemory?.on) {
+        const handler = payload =>
+          this.handleResearchLearningKnowledgeChange(
+            payload
+          );
+
+        const result = knowledgeMemory.on(
+          "research-learning:synced",
+          handler
+        );
+
+        if (result !== false) {
+          this.continuousCognitionSubscriptions.push({
+            source: "knowledge-memory",
+            event: "research-learning:synced",
+            detach: () =>
+              knowledgeMemory.off?.(
+                "research-learning:synced",
+                handler
+              )
+          });
+          connectedSources.push(
+            "knowledge-memory"
+          );
+        }
+      }
+
       const hallway =
         global.MEOSExecutiveHallway;
 
@@ -1060,6 +1093,212 @@
             payload.ingestedAt || null
         }
       );
+    },
+
+    handleResearchLearningKnowledgeChange(payload = {}) {
+      const records =
+        Array.isArray(payload?.durableRecords)
+          ? payload.durableRecords
+          : [];
+
+      const worldModel = this.projectWorldModel({
+        reason: "durable-research-learning-synced",
+        persist: true,
+        attend: true
+      });
+
+      const subjects = records
+        .map(record => String(record?.subject || "").trim())
+        .filter(Boolean);
+
+      subjects.slice(0, 8).forEach(subject => {
+        this.scheduleCognitiveReentry(
+          subject,
+          {
+            source: "knowledge-memory",
+            event: "research-learning:synced",
+            worldFingerprint:
+              worldModel?.fingerprint || null
+          }
+        );
+      });
+
+      this.record(
+        "world-model.research-learning-integrated",
+        {
+          recordCount: records.length,
+          subjects: subjects.slice(0, 8),
+          worldFingerprint:
+            worldModel?.fingerprint || null
+        }
+      );
+
+      return {
+        success: true,
+        integrated: true,
+        recordCount: records.length,
+        subjects,
+        worldFingerprint:
+          worldModel?.fingerprint || null
+      };
+    },
+
+    collectActiveResearchLearning(options = {}) {
+      const engine =
+        global.MEOSKnowledgeEngine ||
+        global.KnowledgeEngine;
+
+      if (!engine) {
+        return {
+          available: false,
+          records: [],
+          beliefs: [],
+          unknowns: []
+        };
+      }
+
+      let records = [];
+
+      if (Array.isArray(engine.records)) {
+        records = engine.records;
+      } else if (typeof engine.listRecords === "function") {
+        const listed = this.safe(
+          () => engine.listRecords(),
+          []
+        );
+        records = Array.isArray(listed)
+          ? listed
+          : Array.isArray(listed?.records)
+            ? listed.records
+            : [];
+      } else if (typeof engine.search === "function") {
+        const result = this.safe(
+          () =>
+            engine.search("research-learning", {
+              limit:
+                options.limit ||
+                this.configuration
+                  .maximumResearchLearningBeliefs
+            }),
+          null
+        );
+        records = Array.isArray(result)
+          ? result
+          : Array.isArray(result?.results)
+            ? result.results
+            : [];
+      }
+
+      const active = records
+        .filter(record =>
+          record?.recordType === "research-learning" ||
+          record?.metadata?.durableResearchLearning === true
+        )
+        .slice(
+          0,
+          options.limit ||
+            this.configuration
+              .maximumResearchLearningBeliefs
+        );
+
+      const beliefs = active.map(record => {
+        const content =
+          record?.content &&
+          typeof record.content === "object"
+            ? record.content
+            : {};
+
+        return {
+          knowledgeRecordId: record.id || null,
+          subject:
+            record.title ||
+            record.metadata?.subject ||
+            null,
+          summary: record.summary || null,
+          evidenceQuality:
+            content.evidenceQuality ||
+            record.metadata?.evidenceQuality ||
+            "unknown",
+          epistemicStatus:
+            content.epistemicStatus ||
+            record.metadata?.epistemicStatus ||
+            "research-learning-with-open-uncertainty",
+          confidence:
+            Number.isFinite(Number(record.confidence))
+              ? Number(record.confidence)
+              : null,
+          authority: record.authority || null,
+          supportedFacts:
+            Array.isArray(content.supportedFacts)
+              ? this.clone(content.supportedFacts)
+              : [],
+          inferences:
+            Array.isArray(content.inferences)
+              ? this.clone(content.inferences)
+              : [],
+          conflicts:
+            Array.isArray(content.conflicts)
+              ? this.clone(content.conflicts)
+              : [],
+          unknowns:
+            Array.isArray(content.unknowns)
+              ? this.clone(content.unknowns)
+              : [],
+          evidence:
+            Array.isArray(content.evidence)
+              ? this.clone(content.evidence)
+              : [],
+          requiresFurtherInvestigation:
+            content.requiresFurtherInvestigation === true ||
+            record.metadata
+              ?.requiresFurtherInvestigation === true,
+          durableLearningId:
+            record.metadata
+              ?.researchLearningRecordId ||
+            null,
+          durableLearningFingerprint:
+            record.metadata
+              ?.researchLearningFingerprint ||
+            null,
+          learnedAt:
+            record.metadata?.learnedAt ||
+            record.createdAt ||
+            null,
+          rule:
+            "Supported facts, inferences, conflicts, and unknowns retain their evidence class. Research learning may influence reasoning but does not silently become verified institutional fact."
+        };
+      });
+
+      const unknowns = beliefs
+        .flatMap(belief =>
+          (belief.unknowns || []).map(item => ({
+            domain: "research-learning",
+            subject: belief.subject,
+            question:
+              typeof item === "string"
+                ? item
+                : item?.question ||
+                  item?.summary ||
+                  String(item),
+            reason:
+              "durable-research-learning-open-uncertainty",
+            knowledgeRecordId:
+              belief.knowledgeRecordId
+          }))
+        )
+        .slice(
+          0,
+          this.configuration
+            .maximumResearchLearningUnknowns
+        );
+
+      return {
+        available: true,
+        recordCount: active.length,
+        records: this.clone(active),
+        beliefs,
+        unknowns
+      };
     },
 
     handleHallwayMeaningfulChange(work = {}) {
@@ -11866,6 +12105,8 @@
       });
       const founder = this.resolveFounderProfile();
       const epistemology = this.buildEpistemicLayers();
+      const researchLearning =
+        this.collectActiveResearchLearning();
 
       const relationshipModels = [];
       if (founder) {
@@ -11912,6 +12153,9 @@
             reason: "component-unavailable"
           });
         });
+
+      (researchLearning.unknowns || [])
+        .forEach(item => unknowns.push(item));
 
       const priorFingerprint =
         this.worldModel?.fingerprint || null;
@@ -11968,7 +12212,19 @@
         beliefs: {
           rule:
             "Beliefs and inferences require provenance, confidence, and evidence class before they may influence action.",
-          verifiedFactsAreNotInferences: true
+          verifiedFactsAreNotInferences: true,
+          durableResearchLearning: {
+            available:
+              researchLearning.available === true,
+            recordCount:
+              researchLearning.recordCount || 0,
+            active:
+              this.clone(
+                researchLearning.beliefs || []
+              ),
+            rule:
+              "Durable research learning is active reasoning context, not automatic verified fact. Provenance, confidence, evidence quality, conflicts, falsifiers, and open uncertainty remain visible."
+          }
         },
 
         unknowns,
@@ -12101,7 +12357,11 @@
         relationshipCount:
           relationshipModels.length,
         intentionCount:
-          intentions.length
+          intentions.length,
+        researchLearningCount:
+          researchLearning.recordCount || 0,
+        researchLearningUnknownCount:
+          researchLearning.unknowns?.length || 0
       });
       this.worldModelHistory =
         this.worldModelHistory.slice(
@@ -13818,6 +14078,154 @@
         this.cognitiveIntentions = original;
         await this.flushPersistence();
       }
+    },
+
+    runDurableResearchWorldModelAcceptanceTest() {
+      const research =
+        this.collectActiveResearchLearning({
+          limit: 50
+        });
+
+      const world = this.projectWorldModel({
+        reason:
+          "006.017D7R3-acceptance",
+        persist: false,
+        attend: false
+      });
+
+      const active =
+        world?.beliefs
+          ?.durableResearchLearning
+          ?.active || [];
+
+      const irukandji = active.find(item =>
+        /irukandji/i.test(
+          `${item?.subject || ""} ${item?.summary || ""}`
+        )
+      );
+
+      const checks = [
+        {
+          name:
+            "Existing Living World Model is extended rather than replaced",
+          passed:
+            world?.schema ===
+            "meos.maddy.spooky-world-model.v1"
+        },
+        {
+          name:
+            "Active Knowledge Engine research-learning records are discoverable",
+          passed:
+            research.available === true &&
+            research.recordCount > 0
+        },
+        {
+          name:
+            "Durable research learning is present in World Model beliefs",
+          passed:
+            active.length > 0
+        },
+        {
+          name:
+            "Irukandji learning crosses from active knowledge into the Living World Model",
+          passed: Boolean(irukandji)
+        },
+        {
+          name:
+            "Evidence quality and epistemic status survive World Model integration",
+          passed:
+            !irukandji ||
+            Boolean(
+              irukandji.evidenceQuality &&
+              irukandji.epistemicStatus
+            )
+        },
+        {
+          name:
+            "Supported facts and inferences remain distinct",
+          passed:
+            !irukandji ||
+            (
+              Array.isArray(
+                irukandji.supportedFacts
+              ) &&
+              Array.isArray(
+                irukandji.inferences
+              )
+            )
+        },
+        {
+          name:
+            "Open research uncertainty remains live in the World Model",
+          passed:
+            Array.isArray(world?.unknowns) &&
+            (
+              !irukandji ||
+              irukandji.unknowns.length === 0 ||
+              world.unknowns.some(
+                item =>
+                  item.domain ===
+                  "research-learning"
+              )
+            )
+        },
+        {
+          name:
+            "Research learning participates in the World Model fingerprint",
+          passed:
+            /durableResearchLearning/.test(
+              this.projectWorldModel.toString()
+            ) &&
+            Boolean(world?.fingerprint)
+        },
+        {
+          name:
+            "Knowledge Memory sync can wake the existing continuous cognition path",
+          passed:
+            /research-learning:synced/.test(
+              this.attachContinuousCognitionListeners.toString()
+            ) &&
+            /scheduleCognitiveReentry/.test(
+              this.handleResearchLearningKnowledgeChange.toString()
+            )
+        },
+        {
+          name:
+            "Research learning does not create external-action authority",
+          passed:
+            this.configuration
+              .requireHumanApprovalForExternalAction ===
+            true &&
+            world?.authority
+              ?.humanAuthorityPreserved === true
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7R3 durable research -> Living World Model: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7R3",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        researchLearningCount:
+          research.recordCount,
+        irukandjiFound:
+          Boolean(irukandji),
+        worldFingerprint:
+          world?.fingerprint || null,
+        authority: {
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
     },
 
     async runLaptopPersistenceAcceptanceTest() {
