@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.31.1";
-  const BUILD_ID = "EB1311-TEMPORAL-UNCERTAINTY-INVESTIGATION-REPAIR-20260809-A";
+  const VERSION = "1.32.0";
+  const BUILD_ID = "EB1320-BACKWARD-POSITIONING-OPTION-VALUE-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    backwardPositioningState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     temporalStrategicDeltaState: {
       count: 0,
       lastAt: null,
@@ -10389,6 +10395,482 @@
       return result;
     },
 
+    reasonBackwardFromFuturePosition(
+      temporalStrategicDelta = {},
+      options = {}
+    ) {
+      const apply =
+        options.apply === true;
+
+      const now =
+        new Date().toISOString();
+
+      const positioningId =
+        this.id(
+          "backward-positioning"
+        );
+
+      const candidates =
+        Array.isArray(
+          temporalStrategicDelta
+            ?.positioningCandidates
+        )
+          ? temporalStrategicDelta
+              .positioningCandidates
+          : [];
+
+      const horizons = [
+        {
+          key: "t-minus-12-months",
+          label: "12 months before",
+          horizonDays: 365,
+          purpose:
+            "Eligibility, capability, relationships, authority, and foundational assets should already exist."
+        },
+        {
+          key: "t-minus-6-months",
+          label: "6 months before",
+          horizonDays: 180,
+          purpose:
+            "Evidence, partner readiness, resource pathways, and competitive positioning should be materially advanced."
+        },
+        {
+          key: "t-minus-90-days",
+          label: "90 days before",
+          horizonDays: 90,
+          purpose:
+            "Decision-critical unknowns should be reduced and execution-ready prerequisites should be assembled."
+        },
+        {
+          key: "today",
+          label: "today",
+          horizonDays: 0,
+          purpose:
+            "Take only low-regret, reversible internal moves that preserve or increase future option value."
+        }
+      ];
+
+      const plans =
+        candidates.map(candidate => {
+          const delta =
+            (temporalStrategicDelta
+              ?.deltas || [])
+              .find(
+                item =>
+                  item?.deltaId &&
+                  candidate?.id?.includes(
+                    item.deltaId
+                  )
+              ) ||
+            (temporalStrategicDelta
+              ?.deltas || [])[0] ||
+            null;
+
+          const unknowns =
+            [
+              ...(candidate?.unknowns || []),
+              ...(delta?.changes
+                ?.newUnknowns || [])
+            ]
+              .map(item =>
+                this.textContent(item)
+              )
+              .filter(Boolean);
+
+          const changedDrivers =
+            [
+              ...(delta?.changes
+                ?.newDrivers || [])
+            ]
+              .map(item =>
+                this.textContent(item)
+              )
+              .filter(Boolean);
+
+          const requirements = [
+            {
+              id:
+                `${positioningId}-eligibility`,
+              category:
+                "eligibility-and-authority",
+              requiredBy:
+                "t-minus-12-months",
+              statement:
+                "Required eligibility, organizational standing, permissions, and authority conditions are verified rather than assumed.",
+              evidenceNeeded: [
+                "authoritative eligibility criteria",
+                "current organizational standing",
+                "required registrations or permissions"
+              ]
+            },
+            {
+              id:
+                `${positioningId}-relationships`,
+              category:
+                "relationships-and-access",
+              requiredBy:
+                "t-minus-6-months",
+              statement:
+                "Critical partners, decision pathways, and access relationships needed for the future position are identified and sufficiently developed.",
+              evidenceNeeded: [
+                "partner requirements",
+                "decision-maker or channel map",
+                "dependency commitments where appropriate"
+              ]
+            },
+            {
+              id:
+                `${positioningId}-evidence`,
+              category:
+                "evidence-and-competitive-readiness",
+              requiredBy:
+                "t-minus-6-months",
+              statement:
+                "The organization can demonstrate the evidence, capability, and credibility the future position is likely to require.",
+              evidenceNeeded: [
+                "performance evidence",
+                "capability gaps",
+                "competitive criteria"
+              ]
+            },
+            {
+              id:
+                `${positioningId}-unknowns`,
+              category:
+                "decision-critical-unknowns",
+              requiredBy:
+                "t-minus-90-days",
+              statement:
+                "Unknowns capable of invalidating the future position are investigated before irreversible commitment.",
+              evidenceNeeded:
+                unknowns.length
+                  ? unknowns
+                  : [
+                      "future-state falsifiers",
+                      "changed assumptions"
+                    ]
+            }
+          ];
+
+          const moves = [
+            {
+              moveId:
+                `${positioningId}-verify`,
+              action:
+                "verify-positioning-prerequisites",
+              timing: "today",
+              rationale:
+                "Resolve authoritative eligibility and prerequisite facts before committing resources.",
+              reversibility: 0.98,
+              optionValue:
+                0.92,
+              commitmentCost: 0.08,
+              informationValue: 0.95,
+              internalOnly: true,
+              externalAuthorityRequired:
+                false
+            },
+            {
+              moveId:
+                `${positioningId}-investigate`,
+              action:
+                "investigate-future-falsifiers",
+              timing: "today",
+              rationale:
+                "Attack the unknowns most capable of making the desired future unavailable or unattractive.",
+              reversibility: 0.96,
+              optionValue:
+                0.9,
+              commitmentCost: 0.1,
+              informationValue: 0.97,
+              internalOnly: true,
+              externalAuthorityRequired:
+                false
+            },
+            {
+              moveId:
+                `${positioningId}-map`,
+              action:
+                "map-capability-and-relationship-gaps",
+              timing: "today",
+              rationale:
+                "Identify what must exist before the future window without prematurely executing external commitments.",
+              reversibility: 0.94,
+              optionValue:
+                0.88,
+              commitmentCost: 0.12,
+              informationValue: 0.9,
+              internalOnly: true,
+              externalAuthorityRequired:
+                false
+            }
+          ];
+
+          const rankedMoves =
+            moves
+              .map(move => ({
+                ...move,
+                lowRegretScore:
+                  Number(
+                    (
+                      move.reversibility *
+                        0.3 +
+                      move.optionValue *
+                        0.3 +
+                      move.informationValue *
+                        0.3 +
+                      (
+                        1 -
+                        move.commitmentCost
+                      ) *
+                        0.1
+                    ).toFixed(3)
+                  )
+              }))
+              .sort(
+                (a, b) =>
+                  b.lowRegretScore -
+                  a.lowRegretScore
+              );
+
+          const minimumReversibleMoves =
+            rankedMoves.filter(
+              move =>
+                move.reversibility >=
+                  0.9 &&
+                move.optionValue >=
+                  0.85 &&
+                move.commitmentCost <=
+                  0.15
+            );
+
+          return {
+            planId:
+              this.id(
+                "future-position-plan"
+              ),
+            subject:
+              candidate.subject,
+            sourceCandidateId:
+              candidate.id,
+            sourceTemporalDeltaId:
+              delta?.deltaId || null,
+            desiredFuturePosition: {
+              subject:
+                candidate.subject,
+              reason:
+                candidate.reason,
+              changedDrivers,
+              lineageEvidence:
+                this.clone(
+                  candidate.evidence || []
+                )
+            },
+            backwardHorizon: horizons.map(
+              horizon => ({
+                ...horizon,
+                requirements:
+                  requirements.filter(
+                    requirement =>
+                      requirement
+                        .requiredBy ===
+                      horizon.key
+                  )
+              })
+            ),
+            requirements,
+            minimumReversibleMoves,
+            deferredCommitments: [
+              {
+                action:
+                  "external-partner-commitment",
+                reason:
+                  "Preserve option value until evidence and authority justify commitment."
+              },
+              {
+                action:
+                  "resource-obligation",
+                reason:
+                  "Do not spend or obligate organizational resources solely because a synthetic future became attractive."
+              },
+              {
+                action:
+                  "application-or-submission",
+                reason:
+                  "Future positioning cognition does not itself authorize external execution."
+              }
+            ],
+            falsifiers:
+              unknowns,
+            truthBoundary: {
+              desiredFutureIsPrediction:
+                false,
+              backwardRequirementsAreJudgment:
+                true,
+              prerequisitesRequireVerification:
+                true
+            }
+          };
+        });
+
+      const portfolioCandidates =
+        plans
+          .flatMap(plan =>
+            plan.minimumReversibleMoves
+              .map(move => ({
+                id:
+                  `backward-positioning-${
+                    plan.planId
+                  }-${move.moveId}`,
+                subject:
+                  `${plan.subject}: ${move.action}`,
+                origin:
+                  "backward-positioning",
+                reason:
+                  move.rationale,
+                evidence:
+                  plan
+                    .desiredFuturePosition
+                    .lineageEvidence,
+                unknowns:
+                  plan.falsifiers,
+                urgency: 0.62,
+                consequence: 0.78,
+                leverage:
+                  move.optionValue,
+                reversibility:
+                  move.reversibility,
+                informationValue:
+                  move.informationValue,
+                horizonDays: 30,
+                proposedInternalMove:
+                  move.action,
+                externalAuthorityRequired:
+                  false,
+                sourceFuturePositionPlanId:
+                  plan.planId
+              }))
+          );
+
+      const result = {
+        schema:
+          "meos.maddy.backward-positioning-option-value.v1",
+        positioningId,
+        createdAt: now,
+        applied: apply,
+        sourceTemporalAnalysisId:
+          temporalStrategicDelta
+            ?.analysisId ||
+          null,
+        planCount: plans.length,
+        plans,
+        portfolioCandidates,
+        principle: {
+          optimizeFor:
+            "future option value",
+          avoid:
+            "premature irreversible commitment",
+          presentMoveRule:
+            "Prefer the smallest reversible internal move that increases information, preparedness, or future access."
+        },
+        authority: {
+          internalPositioningCognitionAuthorized:
+            apply,
+          externalRelationshipActionAuthorized:
+            false,
+          spendingAuthorized: false,
+          submissionAuthorized: false,
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      if (
+        apply &&
+        portfolioCandidates.length > 0
+      ) {
+        const existingIds =
+          new Set(
+            (this.executivePriorityPortfolio || [])
+              .map(item => item?.id)
+              .filter(Boolean)
+          );
+
+        portfolioCandidates
+          .filter(
+            item =>
+              !existingIds.has(item.id)
+          )
+          .forEach(item => {
+            this.executivePriorityPortfolio.push({
+              ...this.clone(item),
+              status: "candidate",
+              createdAt: now,
+              updatedAt: now
+            });
+          });
+
+        this.executivePriorityPortfolio =
+          this.executivePriorityPortfolio.slice(
+            0,
+            this.configuration
+              .priorityPortfolioLimit
+          );
+      }
+
+      this.backwardPositioningState.count +=
+        1;
+      this.backwardPositioningState.lastAt =
+        now;
+      this.backwardPositioningState.last =
+        this.clone(result);
+      this.backwardPositioningState.history.unshift(
+        this.clone(result)
+      );
+      this.backwardPositioningState.history =
+        this.backwardPositioningState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.backward-positioning",
+        result
+      );
+
+      this.emit(
+        "brain:backward-positioning",
+        this.clone(result)
+      );
+
+      return result;
+    },
+
+    getBackwardPositioningStatus() {
+      return {
+        commission: "006.017D7T7",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.backward-positioning-option-value.v1",
+        ...this.clone(
+          this.backwardPositioningState
+        ),
+        authority: {
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
     getTemporalStrategicDeltaStatus() {
       return {
         commission: "006.017D7T6A",
@@ -10637,6 +11119,14 @@
           }
         );
 
+      const backwardPositioning =
+        this.reasonBackwardFromFuturePosition(
+          temporalStrategicDelta,
+          {
+            apply: true
+          }
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -10716,6 +11206,10 @@
         temporalStrategicDelta:
           this.clone(
             temporalStrategicDelta
+          ),
+        backwardPositioning:
+          this.clone(
+            backwardPositioning
           ),
         causalInvestigation:
           causalInvestigation
@@ -16667,6 +17161,341 @@
       } finally {
         this.cognitiveIntentions = original;
         await this.flushPersistence();
+      }
+    },
+
+    async runBackwardPositioningAcceptanceTest() {
+      const original = {
+        portfolio:
+          this.clone(
+            this.executivePriorityPortfolio
+          ),
+        state:
+          this.clone(
+            this.backwardPositioningState
+          )
+      };
+
+      try {
+        this.executivePriorityPortfolio =
+          [];
+
+        const delta = {
+          deltaId:
+            "d7t7-delta",
+          subject:
+            "Future county funding window",
+          changes: {
+            newDrivers: [
+              "new partner pathway",
+              "changed eligibility timing"
+            ],
+            newUnknowns: [
+              "final partner eligibility interpretation"
+            ]
+          }
+        };
+
+        const strategic = {
+          schema:
+            "meos.maddy.temporal-strategic-delta-foresight.v1",
+          analysisId:
+            "d7t7-analysis",
+          applied: true,
+          deltas: [delta],
+          positioningCandidates: [{
+            id:
+              "temporal-positioning-d7t7-delta",
+            subject:
+              "Future county funding window",
+            origin:
+              "temporal-strategic-delta",
+            reason:
+              "Changed future creates a positioning window.",
+            evidence: [{
+              type:
+                "synthetic-future-lineage",
+              priorSimulationId:
+                "d7t7-prior",
+              successorSimulationId:
+                "d7t7-successor",
+              lineageId:
+                "d7t7-lineage"
+            }],
+            unknowns: [
+              "final partner eligibility interpretation"
+            ],
+            reversibility: 0.75,
+            externalAuthorityRequired:
+              false
+          }]
+        };
+
+        const preview =
+          this.reasonBackwardFromFuturePosition(
+            strategic,
+            {
+              apply: false
+            }
+          );
+
+        const afterPreview =
+          this.clone(
+            this.executivePriorityPortfolio
+          );
+
+        const applied =
+          this.reasonBackwardFromFuturePosition(
+            strategic,
+            {
+              apply: true
+            }
+          );
+
+        const plan =
+          applied?.plans?.[0] ||
+          null;
+
+        const moves =
+          plan?.minimumReversibleMoves ||
+          [];
+
+        const inserted =
+          this.executivePriorityPortfolio
+            .filter(
+              item =>
+                item?.origin ===
+                "backward-positioning"
+            );
+
+        const checks = [
+          {
+            name:
+              "Positioning cognition begins from an existing strategic future candidate",
+            passed:
+              applied?.planCount === 1 &&
+              plan?.sourceCandidateId ===
+                strategic
+                  .positioningCandidates[0]
+                  .id
+          },
+          {
+            name:
+              "Desired future preserves synthetic future lineage evidence",
+            passed:
+              plan
+                ?.desiredFuturePosition
+                ?.lineageEvidence?.[0]
+                ?.lineageId ===
+                "d7t7-lineage"
+          },
+          {
+            name:
+              "Backward horizon explicitly reasons from 12 months to today",
+            passed:
+              plan?.backwardHorizon
+                ?.map(item => item.key)
+                .join("|") ===
+                "t-minus-12-months|t-minus-6-months|t-minus-90-days|today"
+          },
+          {
+            name:
+              "Long-range positioning requires verified eligibility and authority conditions",
+            passed:
+              plan?.requirements
+                ?.some(
+                  item =>
+                    item.category ===
+                      "eligibility-and-authority" &&
+                    item.requiredBy ===
+                      "t-minus-12-months"
+                ) === true
+          },
+          {
+            name:
+              "Mid-range positioning includes relationships and competitive readiness",
+            passed:
+              plan?.requirements
+                ?.filter(
+                  item =>
+                    item.requiredBy ===
+                      "t-minus-6-months"
+                ).length >= 2
+          },
+          {
+            name:
+              "Near-window positioning attacks decision-critical unknowns before commitment",
+            passed:
+              plan?.requirements
+                ?.some(
+                  item =>
+                    item.category ===
+                      "decision-critical-unknowns" &&
+                    item.requiredBy ===
+                      "t-minus-90-days"
+                ) === true
+          },
+          {
+            name:
+              "Today's moves are minimum reversible option-value moves",
+            passed:
+              moves.length >= 3 &&
+              moves.every(
+                move =>
+                  move.reversibility >=
+                    0.9 &&
+                  move.optionValue >=
+                    0.85 &&
+                  move.commitmentCost <=
+                    0.15
+              )
+          },
+          {
+            name:
+              "Today's moves prioritize information and preparedness rather than premature execution",
+            passed:
+              moves.every(
+                move =>
+                  move.internalOnly ===
+                    true &&
+                  move
+                    .externalAuthorityRequired ===
+                    false &&
+                  move.informationValue >=
+                    0.9
+              )
+          },
+          {
+            name:
+              "Irreversible external commitments are explicitly deferred",
+            passed:
+              plan?.deferredCommitments
+                ?.some(
+                  item =>
+                    item.action ===
+                      "external-partner-commitment"
+                ) &&
+              plan?.deferredCommitments
+                ?.some(
+                  item =>
+                    item.action ===
+                      "resource-obligation"
+                ) &&
+              plan?.deferredCommitments
+                ?.some(
+                  item =>
+                    item.action ===
+                      "application-or-submission"
+                )
+          },
+          {
+            name:
+              "Preview does not mutate executive priority state",
+            passed:
+              preview?.applied ===
+                false &&
+              afterPreview.length === 0
+          },
+          {
+            name:
+              "Applied low-regret moves reuse existing Executive Priority Portfolio",
+            passed:
+              inserted.length ===
+                applied
+                  ?.portfolioCandidates
+                  ?.length &&
+              inserted.length >= 3
+          },
+          {
+            name:
+              "Backward positioning remains judgment rather than prediction",
+            passed:
+              plan?.truthBoundary
+                ?.desiredFutureIsPrediction ===
+                false &&
+              plan?.truthBoundary
+                ?.backwardRequirementsAreJudgment ===
+                true &&
+              plan?.truthBoundary
+                ?.prerequisitesRequireVerification ===
+                true
+          },
+          {
+            name:
+              "Meaningful-change path carries backward positioning into cognitive re-entry",
+            passed:
+              /reasonBackwardFromFuturePosition/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /backwardPositioning/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              ) &&
+              /scheduleCognitiveReentry/.test(
+                this
+                  .attendToWorldModelChange
+                  .toString()
+              )
+          },
+          {
+            name:
+              "Backward positioning grants no spending, submission, Hallway, planning execution, or external-action authority",
+            passed:
+              applied?.authority
+                ?.spendingAuthorized ===
+                false &&
+              applied?.authority
+                ?.submissionAuthorized ===
+                false &&
+              applied?.authority
+                ?.planningExecutionAuthorized ===
+                false &&
+              applied?.authority
+                ?.hallwayDispatchAuthorized ===
+                false &&
+              applied?.authority
+                ?.externalActionAuthorized ===
+                false &&
+              applied?.authority
+                ?.humanAuthorityPreserved ===
+                true
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7T7 Backward Positioning + Option Value: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:
+            "006.017D7T7",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          preview,
+          applied,
+          plan,
+          moves,
+          portfolioCandidates:
+            inserted,
+          authority:
+            applied?.authority
+        };
+      } finally {
+        this.executivePriorityPortfolio =
+          original.portfolio;
+        this.backwardPositioningState =
+          original.state;
       }
     },
 
