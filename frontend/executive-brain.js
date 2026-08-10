@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.35.0";
-  const BUILD_ID = "EB1350-INTEGRATED-CROSS-OFFICE-SIMULATION-20260809-A";
+  const VERSION = "1.36.0";
+  const BUILD_ID = "EB1360-DYNAMIC-EXECUTIVE-ATTENTION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -371,6 +371,12 @@
     anticipatorySweepCount: 0,
     executivePriorityPortfolio: [],
     currentExecutivePriority: null,
+    dynamicAttentionState: {
+      cycleCount: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     lastPriorityArbitration: null,
     priorityArbitrationCount: 0,
     cognitiveThreads: [],
@@ -15938,9 +15944,915 @@
       return demands;
     },
 
+    deriveDynamicAttentionDemands(
+      options = {}
+    ) {
+      const nowMs = Date.now();
+      const demands =
+        this.collectExecutivePriorityDemands(
+          options
+        );
+
+      const existingIds =
+        new Set(
+          demands
+            .map(item => item?.id)
+            .filter(Boolean)
+        );
+
+      (this.executivePriorityPortfolio || [])
+        .filter(
+          item =>
+            item &&
+            item.status !== "completed"
+        )
+        .forEach(item => {
+          if (
+            existingIds.has(item.id)
+          ) {
+            return;
+          }
+
+          demands.push({
+            id: item.id,
+            subject: item.subject,
+            origin:
+              item.origin ||
+              "executive-priority-portfolio",
+            reason:
+              item.reason ||
+              "Existing executive priority remains cognitively relevant.",
+            missionConsequence:
+              item.dimensions
+                ?.missionConsequence ??
+              item.consequence ??
+              0.5,
+            urgency:
+              item.dimensions
+                ?.urgency ??
+              item.urgency ??
+              0.4,
+            irreversibility:
+              item.dimensions
+                ?.irreversibility ??
+              (1 -
+                Number(
+                  item.reversibility ??
+                  0.5
+                )),
+            leverage:
+              item.dimensions
+                ?.leverage ??
+              item.leverage ??
+              0.5,
+            dependencyPressure:
+              item.dimensions
+                ?.dependencyPressure ??
+              item.dependencyPressure ??
+              0.3,
+            informationValue:
+              item.dimensions
+                ?.informationValue ??
+              item.informationValue ??
+              item.uncertainty ??
+              0.4,
+            commitmentStrength:
+              item.dimensions
+                ?.commitmentStrength ??
+              0.3,
+            capacityFit:
+              item.dimensions
+                ?.capacityFit ??
+              item.capacityFit ??
+              0.7,
+            evidence:
+              this.clone(
+                item.evidence || []
+              ),
+            unknowns:
+              this.clone(
+                item.unknowns || []
+              ),
+            externalAuthorityRequired:
+              item
+                .externalAuthorityRequired ===
+              true,
+            createdAt:
+              item.createdAt ||
+              null,
+            updatedAt:
+              item.updatedAt ||
+              null
+          });
+        });
+
+      return demands.map(
+        (demand, index) => {
+          const unknownCount =
+            Array.isArray(
+              demand.unknowns
+            )
+              ? demand.unknowns.length
+              : 0;
+
+          const evidenceCount =
+            Array.isArray(
+              demand.evidence
+            )
+              ? demand.evidence.length
+              : 0;
+
+          const ageAnchor =
+            Date.parse(
+              demand.updatedAt ||
+              demand.createdAt ||
+              ""
+            );
+
+          const ageHours =
+            Number.isFinite(ageAnchor)
+              ? Math.max(
+                  0,
+                  (nowMs - ageAnchor) /
+                    3600000
+                )
+              : 0;
+
+          const uncertaintyPressure =
+            Math.max(
+              Number(
+                demand
+                  .informationValue ??
+                demand.uncertainty ??
+                0
+              ),
+              Math.min(
+                1,
+                unknownCount * 0.12
+              )
+            );
+
+          const evidenceDeficit =
+            Math.min(
+              1,
+              Math.max(
+                0,
+                unknownCount -
+                  evidenceCount
+              ) * 0.1
+            );
+
+          const timePressure =
+            Math.min(
+              1,
+              Number(
+                demand.urgency ??
+                0
+              ) +
+                Math.min(
+                  0.18,
+                  ageHours / 240
+                )
+            );
+
+          const surprisePressure =
+            Math.max(
+              0,
+              Math.min(
+                1,
+                Number(
+                  demand
+                    .surprise ??
+                  demand
+                    .unexpectedChange ??
+                  0
+                )
+              )
+            );
+
+          const cognitiveLoadCost =
+            Math.max(
+              0,
+              Math.min(
+                1,
+                Number(
+                  demand
+                    .cognitiveLoad ??
+                  0.25
+                )
+              )
+            );
+
+          const attentionSalience =
+            Number(
+              (
+                Number(
+                  demand
+                    .missionConsequence ??
+                  demand.consequence ??
+                  0.5
+                ) *
+                  0.23 +
+                timePressure * 0.18 +
+                uncertaintyPressure *
+                  0.16 +
+                Number(
+                  demand.leverage ??
+                  0.5
+                ) *
+                  0.14 +
+                Number(
+                  demand
+                    .dependencyPressure ??
+                  0.3
+                ) *
+                  0.1 +
+                surprisePressure *
+                  0.09 +
+                evidenceDeficit *
+                  0.06 +
+                (1 -
+                  cognitiveLoadCost) *
+                  0.04
+              ).toFixed(3)
+            );
+
+          return {
+            ...this.clone(demand),
+            id:
+              demand.id ||
+              `attention-${
+                this.fingerprintCognitiveDispatch(
+                  {
+                    demand,
+                    index
+                  }
+                )
+              }`,
+            attentionSignals: {
+              uncertaintyPressure,
+              evidenceDeficit,
+              timePressure,
+              surprisePressure,
+              cognitiveLoadCost,
+              attentionSalience
+            }
+          };
+        }
+      );
+    },
+
+    runDynamicExecutiveAttentionCycle(
+      options = {}
+    ) {
+      const now =
+        new Date().toISOString();
+
+      const demands =
+        this.deriveDynamicAttentionDemands(
+          options
+        );
+
+      const arbitrationInput =
+        demands.map(demand => ({
+          ...this.clone(demand),
+          missionConsequence:
+            demand
+              .missionConsequence ??
+            demand.consequence ??
+            0.5,
+          urgency:
+            Math.max(
+              Number(
+                demand.urgency ??
+                0
+              ),
+              Number(
+                demand
+                  .attentionSignals
+                  ?.timePressure ??
+                0
+              )
+            ),
+          informationValue:
+            Math.max(
+              Number(
+                demand
+                  .informationValue ??
+                demand.uncertainty ??
+                0
+              ),
+              Number(
+                demand
+                  .attentionSignals
+                  ?.uncertaintyPressure ??
+                0
+              )
+            ),
+          leverage:
+            Number(
+              demand.leverage ??
+              0.5
+            ),
+          capacityFit:
+            Math.max(
+              0,
+              Math.min(
+                1,
+                Number(
+                  demand.capacityFit ??
+                  0.7
+                ) -
+                  Number(
+                    demand
+                      .attentionSignals
+                      ?.cognitiveLoadCost ??
+                    0
+                  ) *
+                    0.15
+              )
+            )
+        }));
+
+      const arbitration =
+        this.arbitrateExecutivePriorities(
+          arbitrationInput,
+          {
+            materialChange:
+              options.materialChange ===
+                true ||
+              arbitrationInput.some(
+                demand =>
+                  Number(
+                    demand
+                      .attentionSignals
+                      ?.surprisePressure ??
+                    0
+                  ) >= 0.8
+              )
+          }
+        );
+
+      const selected =
+        arbitration
+          ?.arbitration
+          ?.selected ||
+        null;
+
+      const dispositions =
+        (arbitration?.portfolio || [])
+          .map(item => {
+            const source =
+              demands.find(
+                demand =>
+                  demand.id === item.id
+              );
+
+            const salience =
+              Number(
+                source
+                  ?.attentionSignals
+                  ?.attentionSalience ??
+                item.score ??
+                0
+              );
+
+            let disposition =
+              "defer";
+
+            if (
+              selected?.id ===
+              item.id
+            ) {
+              disposition =
+                "foreground";
+            } else if (
+              salience < 0.28 &&
+              Number(
+                item.dimensions
+                  ?.urgency ??
+                0
+              ) < 0.3 &&
+              Number(
+                item.dimensions
+                  ?.missionConsequence ??
+                0
+              ) < 0.4
+            ) {
+              disposition =
+                "release-attention";
+            } else if (
+              Number(
+                item.dimensions
+                  ?.informationValue ??
+                0
+              ) >= 0.6
+            ) {
+              disposition =
+                "investigate-when-capacity-allows";
+            } else if (
+              Number(
+                item.dimensions
+                  ?.urgency ??
+                0
+              ) >= 0.6
+            ) {
+              disposition =
+                "monitor-for-preemption";
+            }
+
+            return {
+              id: item.id,
+              subject:
+                item.subject,
+              score:
+                item.score,
+              salience,
+              disposition,
+              why:
+                selected?.id ===
+                item.id
+                  ? arbitration
+                      .arbitration
+                      .judgment
+                  : disposition ===
+                    "release-attention"
+                    ? "Low current consequence, urgency, and salience do not justify scarce executive attention."
+                    : "Retained outside foreground cognition because another demand currently has stronger executive claim."
+            };
+          });
+
+      const result = {
+        schema:
+          "meos.maddy.dynamic-executive-attention.v1",
+        cycleNumber:
+          Number(
+            this.dynamicAttentionState
+              .cycleCount || 0
+          ) + 1,
+        createdAt: now,
+        demandCount:
+          demands.length,
+        selected:
+          this.clone(selected),
+        displaced:
+          this.clone(
+            arbitration
+              ?.arbitration
+              ?.preempted
+              ? arbitration
+                  .arbitration
+                  .incumbent
+              : null
+          ),
+        dispositions,
+        arbitration:
+          this.clone(
+            arbitration.arbitration
+          ),
+        cognitionPolicy: {
+          foregroundCapacity: 1,
+          attentionIsScarce: true,
+          switchingHasCost: true,
+          lowSalienceCanBeReleased:
+            true,
+          uncertaintyCanEarnAttention:
+            true,
+          surpriseCanTriggerReconsideration:
+            true
+        },
+        truthBoundary: {
+          salienceIsObjectiveImportance:
+            false,
+          deferredMeansUnimportant:
+            false,
+          releasedMeansForgotten:
+            false,
+          attentionSelectionIsReversibleJudgment:
+            true
+        },
+        authority: {
+          internalAttentionAllocationAuthorized:
+            true,
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      this.dynamicAttentionState
+        .cycleCount =
+        result.cycleNumber;
+      this.dynamicAttentionState
+        .lastAt = now;
+      this.dynamicAttentionState
+        .last =
+        this.clone(result);
+      this.dynamicAttentionState
+        .history.unshift(
+          this.clone(result)
+        );
+      this.dynamicAttentionState
+        .history =
+        this.dynamicAttentionState
+          .history.slice(
+            0,
+            120
+          );
+
+      this.record(
+        "cognition.dynamic-attention",
+        result
+      );
+
+      this.emit(
+        "brain:dynamic-attention",
+        this.clone(result)
+      );
+
+      return result;
+    },
+
+    getDynamicExecutiveAttentionStatus() {
+      return {
+        commission:
+          "006.017D7T11",
+        version:
+          this.version,
+        buildId:
+          this.buildId,
+        schema:
+          "meos.maddy.dynamic-executive-attention.v1",
+        ...this.clone(
+          this.dynamicAttentionState
+        ),
+        authority: {
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
     runExecutiveJudgmentCycle(options = {}) {
       const demands=this.collectExecutivePriorityDemands(options);
       return this.arbitrateExecutivePriorities(demands,options);
+    },
+
+    async runDynamicExecutiveAttentionAcceptanceTest() {
+      const original = {
+        portfolio:
+          this.clone(
+            this.executivePriorityPortfolio
+          ),
+        current:
+          this.clone(
+            this.currentExecutivePriority
+          ),
+        arbitration:
+          this.clone(
+            this.lastPriorityArbitration
+          ),
+        arbitrationCount:
+          this.priorityArbitrationCount,
+        attention:
+          this.clone(
+            this.dynamicAttentionState
+          )
+      };
+
+      try {
+        this.executivePriorityPortfolio =
+          [];
+        this.currentExecutivePriority =
+          null;
+
+        const first =
+          this.runDynamicExecutiveAttentionCycle({
+            humanDirection: {
+              id:
+                "attention-human",
+              subject:
+                "Prepare current executive decision",
+              reason:
+                "Explicit executive direction.",
+              missionConsequence:
+                0.82,
+              urgency: 0.72,
+              irreversibility:
+                0.45,
+              leverage: 0.72
+            }
+          });
+
+        this.executivePriorityPortfolio.push(
+          {
+            id:
+              "attention-unknown",
+            subject:
+              "Unresolved high-value eligibility unknown",
+            origin:
+              "cross-office-simulation",
+            reason:
+              "Material uncertainty could change strategic viability.",
+            consequence:
+              0.84,
+            urgency: 0.62,
+            leverage: 0.9,
+            informationValue:
+              0.92,
+            uncertainty: 0.92,
+            capacityFit: 0.82,
+            reversibility: 0.96,
+            unknowns: [
+              "Is the organization eligible?",
+              "What authoritative evidence resolves eligibility?"
+            ],
+            evidence: [],
+            status:
+              "candidate",
+            createdAt:
+              new Date(
+                Date.now() -
+                  12 * 3600000
+              ).toISOString()
+          },
+          {
+            id:
+              "attention-low",
+            subject:
+              "Low-value stale curiosity",
+            origin:
+              "cognitive-demand",
+            reason:
+              "Interesting but currently low consequence.",
+            consequence:
+              0.12,
+            urgency: 0.08,
+            leverage: 0.15,
+            informationValue:
+              0.1,
+            capacityFit: 0.4,
+            reversibility: 0.99,
+            unknowns: [],
+            evidence: [],
+            status:
+              "candidate"
+          }
+        );
+
+        const second =
+          this.runDynamicExecutiveAttentionCycle({
+            materialChange: false
+          });
+
+        const incumbentBeforeSurprise =
+          this.clone(
+            this.currentExecutivePriority
+          );
+
+        const surprise =
+          this.runDynamicExecutiveAttentionCycle({
+            humanDirection: {
+              id:
+                "attention-surprise",
+              subject:
+                "Unexpected material external change",
+              reason:
+                "A new verified change may invalidate current assumptions.",
+              missionConsequence:
+                1,
+              urgency: 1,
+              irreversibility:
+                1,
+              leverage: 1,
+              unexpectedChange:
+                1,
+              surprise: 1,
+              informationValue:
+                1,
+              dependencyPressure:
+                1
+            }
+          });
+
+        const lowDisposition =
+          second.dispositions.find(
+            item =>
+              item.id ===
+              "attention-low"
+          );
+
+        const unknownDemand =
+          this.deriveDynamicAttentionDemands()
+            .find(
+              item =>
+                item.id ===
+                "attention-unknown"
+            );
+
+        const checks = [
+          {
+            name:
+              "Dynamic attention composes existing Executive Judgment instead of replacing it",
+            passed:
+              typeof this
+                .arbitrateExecutivePriorities ===
+                "function" &&
+              first
+                ?.arbitration
+                ?.schema ===
+                "meos.maddy.priority-arbitration.v1"
+          },
+          {
+            name:
+              "Executive attention treats foreground cognition as scarce",
+            passed:
+              first
+                ?.cognitionPolicy
+                ?.foregroundCapacity ===
+                1 &&
+              first
+                ?.cognitionPolicy
+                ?.attentionIsScarce ===
+                true
+          },
+          {
+            name:
+              "Mission consequence contributes to emergent attention salience",
+            passed:
+              typeof unknownDemand
+                ?.attentionSignals
+                ?.attentionSalience ===
+                "number"
+          },
+          {
+            name:
+              "Unresolved unknowns create uncertainty pressure rather than disappearing from cognition",
+            passed:
+              unknownDemand
+                ?.attentionSignals
+                ?.uncertaintyPressure >=
+                0.9
+          },
+          {
+            name:
+              "Evidence deficit can increase the claim on future attention",
+            passed:
+              unknownDemand
+                ?.attentionSignals
+                ?.evidenceDeficit >
+                0
+          },
+          {
+            name:
+              "Time pressure participates in attention allocation",
+            passed:
+              unknownDemand
+                ?.attentionSignals
+                ?.timePressure >=
+                0.62
+          },
+          {
+            name:
+              "Cognitive load is represented as a cost rather than ignored",
+            passed:
+              typeof unknownDemand
+                ?.attentionSignals
+                ?.cognitiveLoadCost ===
+                "number"
+          },
+          {
+            name:
+              "Current attention is protected from ordinary thrashing",
+            passed:
+              second
+                ?.arbitration
+                ?.judgment ===
+                "protect-current-attention-switching-cost-not-justified" ||
+              second
+                ?.selected?.id ===
+                incumbentBeforeSurprise?.id
+          },
+          {
+            name:
+              "Material surprise can force executive reconsideration",
+            passed:
+              surprise
+                ?.selected?.id ===
+                "attention-surprise"
+          },
+          {
+            name:
+              "Material surprise can displace prior foreground cognition when preemption math clears",
+            passed:
+              surprise
+                ?.displaced?.id ===
+                incumbentBeforeSurprise?.id ||
+              surprise
+                ?.arbitration
+                ?.preempted === true
+          },
+          {
+            name:
+              "Low-value low-salience cognition can release scarce attention without erasing memory",
+            passed:
+              lowDisposition
+                ?.disposition ===
+                "release-attention" &&
+              second
+                ?.truthBoundary
+                ?.releasedMeansForgotten ===
+                false
+          },
+          {
+            name:
+              "Deferred work is explicitly not declared unimportant",
+            passed:
+              second
+                ?.truthBoundary
+                ?.deferredMeansUnimportant ===
+                false
+          },
+          {
+            name:
+              "Attention selection remains reversible executive judgment rather than objective truth",
+            passed:
+              second
+                ?.truthBoundary
+                ?.salienceIsObjectiveImportance ===
+                false &&
+              second
+                ?.truthBoundary
+                ?.attentionSelectionIsReversibleJudgment ===
+                true
+          },
+          {
+            name:
+              "Dynamic attention grants no planning, Hallway, or external-action authority",
+            passed:
+              surprise
+                ?.authority
+                ?.planningExecutionAuthorized ===
+                false &&
+              surprise
+                ?.authority
+                ?.hallwayDispatchAuthorized ===
+                false &&
+              surprise
+                ?.authority
+                ?.externalActionAuthorized ===
+                false &&
+              surprise
+                ?.authority
+                ?.humanAuthorityPreserved ===
+                true
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7T11 Dynamic Executive Attention: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:
+            "006.017D7T11",
+          version:
+            this.version,
+          buildId:
+            this.buildId,
+          passed,
+          checks,
+          first,
+          second,
+          surprise,
+          authority:
+            surprise.authority
+        };
+      } finally {
+        this.executivePriorityPortfolio =
+          original.portfolio;
+        this.currentExecutivePriority =
+          original.current;
+        this.lastPriorityArbitration =
+          original.arbitration;
+        this.priorityArbitrationCount =
+          original.arbitrationCount;
+        this.dynamicAttentionState =
+          original.attention;
+      }
     },
 
     async runExecutiveJudgmentAcceptanceTest() {
