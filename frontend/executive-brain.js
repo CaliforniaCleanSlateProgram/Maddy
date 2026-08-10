@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.24.0
- * Build: EB1240-ONE-SHOT-ONE-KILL-20260810-A
+ * Version: 1.24.1
+ * Build: EB1241-TEMPORAL-ORIENTATION-AUTHORITY-20260810-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.24.0";
-  const BUILD_ID = "EB1240-ONE-SHOT-ONE-KILL-20260810-A";
+  const VERSION = "1.24.1";
+  const BUILD_ID = "EB1241-TEMPORAL-ORIENTATION-AUTHORITY-20260810-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -1496,7 +1496,10 @@
 
     resumeUnresolvedCognitiveIntentions(options = {}) {
       if (this.configuration.continuousCognitionEnabled !== true) return { success: true, resumedCount: 0 };
-      const unresolved = (this.cognitiveIntentions || []).filter(item => item && item.status !== "completed" && item.subject);
+      this.retireTemporalOrientationArtifacts({ reason: options.reason || "runtime-reentry" });
+      const unresolved = (this.cognitiveIntentions || []).filter(item =>
+        item && item.status !== "completed" && item.subject && !this.isTemporalOrientationSubject(item.subject)
+      );
       let resumedCount = 0;
       unresolved.forEach(intention => {
         const key = this.normalize(intention.subject);
@@ -1687,6 +1690,12 @@
       options = {}
     ) {
       const key = this.normalize(subject);
+
+      if (this.isTemporalOrientationSubject(subject)) {
+        this.cognitiveReentryTimers.delete(key);
+        this.retireTemporalOrientationArtifacts({ reason: "blocked-before-positioning" });
+        return { success: true, skipped: true, orientationOnly: true, reason: "temporal-orientation-is-not-positioning-subject" };
+      }
 
       this.cognitiveReentryTimers.delete(
         key
@@ -4247,6 +4256,36 @@
       };
     },
 
+    isTemporalOrientationSubject(subject) {
+      const normalized = this.normalize(subject);
+      return normalized === this.normalize("Reconstruct temporal continuity and determine what requires attention after return");
+    },
+
+    retireTemporalOrientationArtifacts(options = {}) {
+      const now = new Date().toISOString();
+      let retiredIntentions = 0;
+      (this.cognitiveIntentions || []).forEach(item => {
+        if (item?.status !== "completed" && this.isTemporalOrientationSubject(item?.subject)) {
+          item.status = "completed";
+          item.updatedAt = now;
+          item.completedAt = now;
+          item.lastError = null;
+          item.resolution = "orientation-only-not-positioning-work";
+          retiredIntentions += 1;
+        }
+      });
+      if (this.isTemporalOrientationSubject(this.currentExecutivePriority?.subject)) {
+        this.currentExecutivePriority = null;
+      }
+      this.executivePriorityPortfolio = (this.executivePriorityPortfolio || []).filter(
+        item => !this.isTemporalOrientationSubject(item?.subject)
+      );
+      if (retiredIntentions > 0) this.record("continuity.orientation-artifacts-retired", {
+        retiredIntentions, reason: options.reason || "orientation-complete"
+      });
+      return { success: true, retiredIntentions };
+    },
+
     resumeTemporalContinuity(options = {}) {
       const prior = this.temporalContinuity?.lastCheckpoint ||
         this.temporalContinuityHistory?.[0] ||
@@ -4288,11 +4327,13 @@
       };
 
       if (shouldOrient && options.dryRun !== true) {
+        // Temporal return is an orientation event, never an opportunity. Re-enter
+        // positioning only when continuity recovers a concrete prior subject.
         const subject = wasDoing?.subject ||
           comparison.newlyOverdue?.[0]?.subject ||
           comparison.unresolvedStillOpen?.[0]?.subject ||
-          "Reconstruct temporal continuity and determine what requires attention after return";
-        this.scheduleCognitiveReentry(
+          null;
+        if (subject && !this.isTemporalOrientationSubject(subject)) this.scheduleCognitiveReentry(
           subject,
           {
             source: "executive-brain",
@@ -4303,6 +4344,7 @@
           },
           { immediate: true, preserveIntention: true }
         );
+        this.retireTemporalOrientationArtifacts({ reason: "temporal-continuity-oriented" });
       }
 
       if (options.dryRun !== true) {
@@ -6603,6 +6645,10 @@
 
     collectCurrentWork() {
       const missions = this.mergeArrays([
+        // Mission Engine deliberately keeps its durable state private. Its public
+        // runtime authority is getActiveMissions(); do not infer absence from
+        // non-public .missions/.state properties.
+        this.safe(() => global.MEOSMissionEngine?.getActiveMissions?.(), []),
         global.MEOSMissionEngine?.missions,
         global.MEOSMissionEngine?.state?.missions,
         this.safe(() => global.MEOSMissionEngine?.getAllMissions?.(), [])
@@ -7158,9 +7204,50 @@
       ).trim();
     },
 
+    runTemporalOrientationAuthorityAcceptanceTest() {
+      const original = {
+        intentions: this.clone(this.cognitiveIntentions),
+        priority: this.clone(this.currentExecutivePriority),
+        portfolio: this.clone(this.executivePriorityPortfolio)
+      };
+      const priorMissionEngine = global.MEOSMissionEngine;
+      try {
+        const synthetic = "Reconstruct temporal continuity and determine what requires attention after return";
+        this.cognitiveIntentions = [{ intentionId: "fixture-orientation", key: this.normalize(synthetic), subject: synthetic, status: "pending", attempts: 1 }];
+        this.currentExecutivePriority = { id: "fixture-orientation", subject: synthetic, score: 0.449, status: "selected" };
+        this.executivePriorityPortfolio = [this.clone(this.currentExecutivePriority)];
+        global.MEOSMissionEngine = {
+          getActiveMissions: () => [
+            { id: "MIS-QUEUED", title: "Queued mission", status: "queued" },
+            { id: "MIS-ACTIVE", title: "Active mission", status: "active" }
+          ]
+        };
+        const work = this.collectCurrentWork();
+        const retired = this.retireTemporalOrientationArtifacts({ reason: "acceptance-test" });
+        const demands = this.collectExecutivePriorityDemands();
+        const checks = [
+          { name: "Mission Engine public runtime authority feeds current work", passed: work.summary.activeMissionCount === 2 },
+          { name: "Queued durable missions are visible as active executive work", passed: work.activeMissions.some(item => item.id === "MIS-QUEUED") },
+          { name: "Temporal orientation artifacts terminate after reconstruction", passed: retired.retiredIntentions === 1 && this.cognitiveIntentions[0].status === "completed" },
+          { name: "Temporal orientation cannot remain executive priority", passed: this.currentExecutivePriority === null },
+          { name: "Temporal orientation cannot compete as substantive cognitive demand", passed: !demands.some(item => this.isTemporalOrientationSubject(item.subject)) },
+          { name: "Positioning reentry contains a hard temporal-orientation guard", passed: /temporal-orientation-is-not-positioning-subject/.test(this.executeCognitiveReentry.toString()) }
+        ];
+        const passed = checks.every(item => item.passed);
+        console.table(checks);
+        console.info(`[MEOS ${this.version}] Temporal Orientation + Mission Authority: ${passed ? "PASS" : "FAIL"}.`);
+        return { commission: "006.018D", version: this.version, buildId: this.buildId, passed, checks };
+      } finally {
+        global.MEOSMissionEngine = priorMissionEngine;
+        this.cognitiveIntentions = original.intentions;
+        this.currentExecutivePriority = original.priority;
+        this.executivePriorityPortfolio = original.portfolio;
+      }
+    },
+
     activeStatus(status) {
       return [
-        "active", "in-progress", "assigned", "pending",
+        "active", "in-progress", "assigned", "pending", "queued",
         "ready", "blocked", "paused", "awaiting-approval"
       ].includes(String(status || "").toLowerCase());
     },
@@ -10950,7 +11037,10 @@
       });
 
       const challenger=scored[0] || null;
-      const incumbent=this.currentExecutivePriority ? this.clone(this.currentExecutivePriority) : null;
+      const priorIncumbent=this.currentExecutivePriority ? this.clone(this.currentExecutivePriority) : null;
+      const incumbent=priorIncumbent && scored.some(item => item.id === priorIncumbent.id)
+        ? priorIncumbent
+        : null;
       let selected=challenger;
       let preempted=false;
       let judgment="select-highest-value-demand";
@@ -11008,7 +11098,9 @@
         evidence:x.evidence,unknowns:x.unknowns,
         externalAuthorityRequired:x.authority?.externalAuthorityRequired===true
       }));
-      (this.cognitiveIntentions || []).filter(x=>x.status!=="completed").forEach(x=>demands.push({
+      (this.cognitiveIntentions || []).filter(x=>
+        x.status!=="completed" && !this.isTemporalOrientationSubject(x.subject)
+      ).forEach(x=>demands.push({
         id:x.intentionId,subject:x.subject,origin:"cognitive-intention",
         reason:"Existing cognitive commitment remains unresolved.",
         missionConsequence:0.66,urgency:x.status==="blocked"?0.72:0.5,
