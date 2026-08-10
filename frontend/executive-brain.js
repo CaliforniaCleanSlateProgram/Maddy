@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.33.0";
-  const BUILD_ID = "EB1330-CROSS-FUTURE-PORTFOLIO-ROBUSTNESS-20260809-A";
+  const VERSION = "1.34.0";
+  const BUILD_ID = "EB1340-CROSS-FUTURE-INTERACTION-EMERGENCE-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    crossFutureInteractionState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     crossFuturePortfolioState: {
       count: 0,
       lastAt: null,
@@ -11473,6 +11479,539 @@
       return result;
     },
 
+    reasonAcrossFutureInteractions(
+      crossFuturePortfolio = {},
+      options = {}
+    ) {
+      const apply =
+        options.apply === true;
+
+      const now =
+        new Date().toISOString();
+
+      const interactionId =
+        this.id(
+          "cross-future-interaction"
+        );
+
+      const futures =
+        Array.isArray(
+          crossFuturePortfolio?.futures
+        )
+          ? crossFuturePortfolio.futures
+          : [];
+
+      const normalizeTokens = value =>
+        new Set(
+          this.normalize(
+            this.textContent(value)
+          )
+            .split(/[^a-z0-9]+/i)
+            .filter(
+              token =>
+                token.length >= 5
+            )
+        );
+
+      const overlap = (left, right) =>
+        [...left].filter(
+          token => right.has(token)
+        );
+
+      const interactions = [];
+
+      for (
+        let i = 0;
+        i < futures.length;
+        i += 1
+      ) {
+        for (
+          let j = i + 1;
+          j < futures.length;
+          j += 1
+        ) {
+          const left = futures[i];
+          const right = futures[j];
+
+          const leftMoveTokens =
+            normalizeTokens(
+              left.moves || []
+            );
+          const rightMoveTokens =
+            normalizeTokens(
+              right.moves || []
+            );
+          const leftResourceTokens =
+            new Set(
+              (left.resourceClaims || [])
+                .map(
+                  item =>
+                    item.resource
+                )
+            );
+          const rightResourceTokens =
+            new Set(
+              (right.resourceClaims || [])
+                .map(
+                  item =>
+                    item.resource
+                )
+            );
+
+          const sharedMoveSignals =
+            overlap(
+              leftMoveTokens,
+              rightMoveTokens
+            );
+          const sharedResources =
+            overlap(
+              leftResourceTokens,
+              rightResourceTokens
+            );
+
+          const enablementEvidence =
+            sharedMoveSignals.filter(
+              token =>
+                [
+                  "verify",
+                  "eligibility",
+                  "evidence",
+                  "relationship",
+                  "capability",
+                  "investigate",
+                  "prerequisite"
+                ].includes(token)
+            );
+
+          const dependencyEvidence =
+            sharedResources.filter(
+              resource =>
+                [
+                  "relationship-capacity",
+                  "compliance-capacity",
+                  "evidence-capacity"
+                ].includes(resource)
+            );
+
+          const interferenceEvidence =
+            (crossFuturePortfolio
+              ?.pairwiseConflicts || [])
+              .filter(
+                conflict =>
+                  (
+                    conflict.leftPlanId ===
+                      left.planId &&
+                    conflict.rightPlanId ===
+                      right.planId
+                  ) ||
+                  (
+                    conflict.leftPlanId ===
+                      right.planId &&
+                    conflict.rightPlanId ===
+                      left.planId
+                  )
+              );
+
+          const enablementStrength =
+            Math.min(
+              1,
+              enablementEvidence.length *
+                0.18
+            );
+
+          const dependencyStrength =
+            Math.min(
+              1,
+              dependencyEvidence.length *
+                0.22
+            );
+
+          const interferenceStrength =
+            Math.min(
+              1,
+              interferenceEvidence.length *
+                0.35
+            );
+
+          const sequencingRequired =
+            enablementStrength >= 0.36 ||
+            dependencyStrength >= 0.44;
+
+          const interactionTypes = [];
+
+          if (
+            enablementStrength >= 0.36
+          ) {
+            interactionTypes.push(
+              "potential-enablement"
+            );
+          }
+
+          if (
+            dependencyStrength >= 0.44
+          ) {
+            interactionTypes.push(
+              "potential-dependency"
+            );
+          }
+
+          if (
+            interferenceStrength >= 0.35
+          ) {
+            interactionTypes.push(
+              "potential-interference"
+            );
+          }
+
+          if (sequencingRequired) {
+            interactionTypes.push(
+              "sequencing-matters"
+            );
+          }
+
+          if (
+            interactionTypes.length === 0
+          ) {
+            interactionTypes.push(
+              "interaction-unproven"
+            );
+          }
+
+          interactions.push({
+            interactionId:
+              this.id(
+                "future-interaction"
+              ),
+            leftPlanId:
+              left.planId,
+            rightPlanId:
+              right.planId,
+            leftSubject:
+              left.subject,
+            rightSubject:
+              right.subject,
+            interactionTypes,
+            signals: {
+              enablementStrength,
+              dependencyStrength,
+              interferenceStrength
+            },
+            evidence: {
+              sharedMoveSignals,
+              sharedResources,
+              enablementEvidence,
+              dependencyEvidence,
+              potentialConflictIds:
+                interferenceEvidence.map(
+                  item =>
+                    item.conflictId
+                )
+            },
+            sequencing: {
+              required:
+                sequencingRequired,
+              preferredOrder:
+                sequencingRequired
+                  ? [
+                      "resolve shared prerequisites and falsifiers",
+                      "verify finite capacity",
+                      "preserve both futures while evidence improves",
+                      "commit only after dependency and interference evidence is sufficient"
+                    ]
+                  : [],
+              irreversibleOrderChosen:
+                false
+            },
+            truthBoundary: {
+              causalEnablementProven:
+                false,
+              dependencyProven:
+                false,
+              destructiveInterferenceProven:
+                false,
+              sequencingIsJudgment:
+                sequencingRequired
+            }
+          });
+        }
+      }
+
+      const emergentCombinations =
+        interactions
+          .filter(
+            item =>
+              item.interactionTypes
+                .includes(
+                  "potential-enablement"
+                ) &&
+              item.interactionTypes
+                .includes(
+                  "potential-dependency"
+                )
+          )
+          .map(item => ({
+            emergenceId:
+              this.id(
+                "emergent-combination"
+              ),
+            sourceInteractionId:
+              item.interactionId,
+            sourceFuturePlanIds: [
+              item.leftPlanId,
+              item.rightPlanId
+            ],
+            sourceSubjects: [
+              item.leftSubject,
+              item.rightSubject
+            ],
+            hypothesis:
+              `${item.leftSubject} + ${item.rightSubject} may create a strategically distinct combined position that neither future represents alone.`,
+            emergenceClass:
+              "novel-combination-hypothesis",
+            evidence: {
+              sharedMoveSignals:
+                item.evidence
+                  .sharedMoveSignals,
+              sharedResources:
+                item.evidence
+                  .sharedResources,
+              lineageEvidence:
+                futures
+                  .filter(
+                    future =>
+                      [
+                        item.leftPlanId,
+                        item.rightPlanId
+                      ].includes(
+                        future.planId
+                      )
+                  )
+                  .flatMap(
+                    future =>
+                      future
+                        .lineageEvidence ||
+                      []
+                  )
+            },
+            investigationQuestions: [
+              "Does pursuing the shared prerequisite materially improve access to both future positions?",
+              "Does the combination create a capability, relationship, eligibility, or timing advantage unavailable to either future alone?",
+              "What evidence would falsify the combined-position hypothesis?",
+              "Would the combination consume capacity that makes either source future materially worse?"
+            ],
+            novelOpportunityEstablished:
+              false,
+            investigationRequired:
+              true,
+            externalAuthorityRequired:
+              false
+          }));
+
+      const interactionCandidates =
+        emergentCombinations.map(
+          emergence => ({
+            id:
+              `emergence-${
+                emergence.emergenceId
+              }`,
+            subject:
+              `Investigate emergent combination: ${emergence.sourceSubjects.join(" + ")}`,
+            origin:
+              "cross-future-interaction",
+            reason:
+              "Two plausible futures share enough prerequisite and dependency structure to justify testing whether their combination creates a new strategic position.",
+            evidence:
+              emergence.evidence
+                .lineageEvidence,
+            unknowns:
+              emergence
+                .investigationQuestions,
+            urgency: 0.55,
+            consequence: 0.84,
+            leverage: 0.88,
+            reversibility: 0.97,
+            informationValue: 0.98,
+            capacityFit: 0.7,
+            horizonDays: 30,
+            proposedInternalMove:
+              "investigate-emergent-combination",
+            externalAuthorityRequired:
+              false,
+            emergenceId:
+              emergence.emergenceId
+          })
+        );
+
+      const result = {
+        schema:
+          "meos.maddy.cross-future-interaction-emergence.v1",
+        interactionId,
+        createdAt: now,
+        applied: apply,
+        sourcePortfolioId:
+          crossFuturePortfolio
+            ?.portfolioId ||
+          null,
+        futureCount:
+          futures.length,
+        interactionCount:
+          interactions.length,
+        interactions,
+        emergentCombinationCount:
+          emergentCombinations.length,
+        emergentCombinations,
+        interactionCandidates,
+        judgment: {
+          enablementSignals:
+            interactions.filter(
+              item =>
+                item.interactionTypes
+                  .includes(
+                    "potential-enablement"
+                  )
+            ).length,
+          dependencySignals:
+            interactions.filter(
+              item =>
+                item.interactionTypes
+                  .includes(
+                    "potential-dependency"
+                  )
+            ).length,
+          interferenceSignals:
+            interactions.filter(
+              item =>
+                item.interactionTypes
+                  .includes(
+                    "potential-interference"
+                  )
+            ).length,
+          sequencingSignals:
+            interactions.filter(
+              item =>
+                item.interactionTypes
+                  .includes(
+                    "sequencing-matters"
+                  )
+            ).length,
+          emergentHypotheses:
+            emergentCombinations.length
+        },
+        truthBoundary: {
+          interactionSignalsAreCausalFacts:
+            false,
+          emergentCombinationIsEstablishedOpportunity:
+            false,
+          sequencingPreferenceIsFact:
+            false,
+          investigationBeforeCommitment:
+            true
+        },
+        authority: {
+          internalInteractionCognitionAuthorized:
+            apply,
+          emergentOpportunityExecutionAuthorized:
+            false,
+          resourceAllocationAuthorized:
+            false,
+          spendingAuthorized: false,
+          externalRelationshipActionAuthorized:
+            false,
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      if (
+        apply &&
+        interactionCandidates.length > 0
+      ) {
+        const existingIds =
+          new Set(
+            (this.executivePriorityPortfolio || [])
+              .map(item => item?.id)
+              .filter(Boolean)
+          );
+
+        interactionCandidates
+          .filter(
+            item =>
+              !existingIds.has(
+                item.id
+              )
+          )
+          .forEach(item => {
+            this.executivePriorityPortfolio.push({
+              ...this.clone(item),
+              status: "candidate",
+              createdAt: now,
+              updatedAt: now
+            });
+          });
+
+        this.executivePriorityPortfolio =
+          this.executivePriorityPortfolio.slice(
+            0,
+            this.configuration
+              .priorityPortfolioLimit
+          );
+      }
+
+      this.crossFutureInteractionState.count +=
+        1;
+      this.crossFutureInteractionState.lastAt =
+        now;
+      this.crossFutureInteractionState.last =
+        this.clone(result);
+      this.crossFutureInteractionState.history.unshift(
+        this.clone(result)
+      );
+      this.crossFutureInteractionState.history =
+        this.crossFutureInteractionState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.cross-future-interaction",
+        result
+      );
+
+      this.emit(
+        "brain:cross-future-interaction",
+        this.clone(result)
+      );
+
+      return result;
+    },
+
+    getCrossFutureInteractionStatus() {
+      return {
+        commission: "006.017D7T9",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.cross-future-interaction-emergence.v1",
+        ...this.clone(
+          this.crossFutureInteractionState
+        ),
+        authority: {
+          emergentOpportunityExecutionAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
     getCrossFuturePortfolioStatus() {
       return {
         commission: "006.017D7T8",
@@ -11777,6 +12316,14 @@
           }
         );
 
+      const crossFutureInteraction =
+        this.reasonAcrossFutureInteractions(
+          crossFuturePortfolio,
+          {
+            apply: true
+          }
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -11864,6 +12411,10 @@
         crossFuturePortfolio:
           this.clone(
             crossFuturePortfolio
+          ),
+        crossFutureInteraction:
+          this.clone(
+            crossFutureInteraction
           ),
         causalInvestigation:
           causalInvestigation
@@ -17815,6 +18366,380 @@
       } finally {
         this.cognitiveIntentions = original;
         await this.flushPersistence();
+      }
+    },
+
+    async runCrossFutureInteractionAcceptanceTest() {
+      const original = {
+        portfolio:
+          this.clone(
+            this.executivePriorityPortfolio
+          ),
+        state:
+          this.clone(
+            this.crossFutureInteractionState
+          )
+      };
+
+      try {
+        this.executivePriorityPortfolio =
+          [];
+
+        const commonMoves = [
+          {
+            action:
+              "verify-eligibility-prerequisite",
+            reversibility: 0.98,
+            optionValue: 0.92,
+            informationValue: 0.95,
+            externalAuthorityRequired:
+              false
+          },
+          {
+            action:
+              "investigate-partner-relationship-capability",
+            reversibility: 0.96,
+            optionValue: 0.9,
+            informationValue: 0.97,
+            externalAuthorityRequired:
+              false
+          }
+        ];
+
+        const portfolio = {
+          schema:
+            "meos.maddy.cross-future-portfolio-robustness.v1",
+          portfolioId:
+            "d7t9-portfolio",
+          futures: [
+            {
+              planId:
+                "d7t9-future-a",
+              subject:
+                "County eligibility pathway",
+              lineageEvidence: [{
+                type:
+                  "synthetic-future-lineage",
+                lineageId:
+                  "d7t9-lineage-a"
+              }],
+              moves:
+                this.clone(
+                  commonMoves
+                ),
+              resourceClaims: [
+                {
+                  resource:
+                    "relationship-capacity",
+                  demand: 0.55
+                },
+                {
+                  resource:
+                    "compliance-capacity",
+                  demand: 0.55
+                },
+                {
+                  resource:
+                    "evidence-capacity",
+                  demand: 0.55
+                }
+              ]
+            },
+            {
+              planId:
+                "d7t9-future-b",
+              subject:
+                "Regional partnership pathway",
+              lineageEvidence: [{
+                type:
+                  "synthetic-future-lineage",
+                lineageId:
+                  "d7t9-lineage-b"
+              }],
+              moves:
+                this.clone(
+                  commonMoves
+                ),
+              resourceClaims: [
+                {
+                  resource:
+                    "relationship-capacity",
+                  demand: 0.55
+                },
+                {
+                  resource:
+                    "compliance-capacity",
+                  demand: 0.55
+                },
+                {
+                  resource:
+                    "evidence-capacity",
+                  demand: 0.55
+                }
+              ]
+            }
+          ],
+          pairwiseConflicts: [{
+            conflictId:
+              "d7t9-conflict",
+            leftPlanId:
+              "d7t9-future-a",
+            rightPlanId:
+              "d7t9-future-b",
+            sharedResources: [
+              "relationship-capacity"
+            ],
+            destructiveTradeoffProven:
+              false
+          }]
+        };
+
+        const preview =
+          this.reasonAcrossFutureInteractions(
+            portfolio,
+            {
+              apply: false
+            }
+          );
+
+        const afterPreview =
+          this.clone(
+            this.executivePriorityPortfolio
+          );
+
+        const applied =
+          this.reasonAcrossFutureInteractions(
+            portfolio,
+            {
+              apply: true
+            }
+          );
+
+        const interaction =
+          applied
+            ?.interactions?.[0] ||
+          null;
+
+        const emergence =
+          applied
+            ?.emergentCombinations?.[0] ||
+          null;
+
+        const inserted =
+          this.executivePriorityPortfolio
+            .filter(
+              item =>
+                item?.origin ===
+                "cross-future-interaction"
+            );
+
+        const checks = [
+          {
+            name:
+              "Cross-future cognition evaluates future pairs rather than isolated rows",
+            passed:
+              applied?.futureCount === 2 &&
+              applied
+                ?.interactionCount === 1
+          },
+          {
+            name:
+              "Shared prerequisite structure produces an enablement signal",
+            passed:
+              interaction
+                ?.interactionTypes
+                ?.includes(
+                  "potential-enablement"
+                ) === true
+          },
+          {
+            name:
+              "Shared organizational requirements produce a dependency signal",
+            passed:
+              interaction
+                ?.interactionTypes
+                ?.includes(
+                  "potential-dependency"
+                ) === true
+          },
+          {
+            name:
+              "Existing portfolio conflict evidence produces an interference signal",
+            passed:
+              interaction
+                ?.interactionTypes
+                ?.includes(
+                  "potential-interference"
+                ) === true
+          },
+          {
+            name:
+              "Interaction cognition recognizes when sequencing matters",
+            passed:
+              interaction
+                ?.interactionTypes
+                ?.includes(
+                  "sequencing-matters"
+                ) === true &&
+              interaction
+                ?.sequencing
+                ?.required === true
+          },
+          {
+            name:
+              "Sequencing preserves optionality before irreversible commitment",
+            passed:
+              interaction
+                ?.sequencing
+                ?.irreversibleOrderChosen ===
+                false &&
+              interaction
+                ?.sequencing
+                ?.preferredOrder
+                ?.some(
+                  item =>
+                    item.includes(
+                      "preserve both futures"
+                    )
+                ) === true
+          },
+          {
+            name:
+              "Enablement, dependency, and interference remain hypotheses rather than invented causal facts",
+            passed:
+              interaction
+                ?.truthBoundary
+                ?.causalEnablementProven ===
+                false &&
+              interaction
+                ?.truthBoundary
+                ?.dependencyProven ===
+                false &&
+              interaction
+                ?.truthBoundary
+                ?.destructiveInterferenceProven ===
+                false
+          },
+          {
+            name:
+              "Compatible future interaction can generate a novel combined-position hypothesis",
+            passed:
+              applied
+                ?.emergentCombinationCount >=
+                1 &&
+              emergence
+                ?.emergenceClass ===
+                "novel-combination-hypothesis"
+          },
+          {
+            name:
+              "Emergent combination preserves source future lineage evidence",
+            passed:
+              emergence
+                ?.evidence
+                ?.lineageEvidence
+                ?.length === 2
+          },
+          {
+            name:
+              "Emergent combination generates falsifiable investigation questions",
+            passed:
+              emergence
+                ?.investigationQuestions
+                ?.length >= 4 &&
+              emergence
+                ?.investigationRequired ===
+                true
+          },
+          {
+            name:
+              "Emergent hypothesis is not falsely promoted to an established opportunity",
+            passed:
+              emergence
+                ?.novelOpportunityEstablished ===
+                false &&
+              applied
+                ?.truthBoundary
+                ?.emergentCombinationIsEstablishedOpportunity ===
+                false
+          },
+          {
+            name:
+              "Preview performs interaction cognition without mutating executive priority state",
+            passed:
+              preview?.applied ===
+                false &&
+              afterPreview.length === 0
+          },
+          {
+            name:
+              "Applied emergent investigation reuses existing Executive Priority Portfolio",
+            passed:
+              inserted.length >= 1 &&
+              inserted.length ===
+                applied
+                  ?.interactionCandidates
+                  ?.length
+          },
+          {
+            name:
+              "Interaction cognition grants no emergent execution, resource allocation, spending, Hallway, planning, or external-action authority",
+            passed:
+              applied?.authority
+                ?.emergentOpportunityExecutionAuthorized ===
+                false &&
+              applied?.authority
+                ?.resourceAllocationAuthorized ===
+                false &&
+              applied?.authority
+                ?.spendingAuthorized ===
+                false &&
+              applied?.authority
+                ?.planningExecutionAuthorized ===
+                false &&
+              applied?.authority
+                ?.hallwayDispatchAuthorized ===
+                false &&
+              applied?.authority
+                ?.externalActionAuthorized ===
+                false &&
+              applied?.authority
+                ?.humanAuthorityPreserved ===
+                true
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7T9 Cross-Future Interaction + Emergence: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:
+            "006.017D7T9",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          preview,
+          applied,
+          interaction,
+          emergence,
+          portfolioCandidates:
+            inserted,
+          authority:
+            applied?.authority
+        };
+      } finally {
+        this.executivePriorityPortfolio =
+          original.portfolio;
+        this.crossFutureInteractionState =
+          original.state;
       }
     },
 
