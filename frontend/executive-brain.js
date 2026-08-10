@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.24.1";
-  const BUILD_ID = "EB1241-TEMPORAL-ORIENTATION-AUTHORITY-20260810-A";
+  const VERSION = "1.24.2";
+  const BUILD_ID = "EB1242-CAUSAL-WORK-METABOLISM-20260810-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -2727,8 +2727,23 @@
         "observedAt",
         "startedAt",
         "completedAt",
+        "recordedAt",
+        "retrievedAt",
+        "fetchedAt",
+        "checkedAt",
+        "lastCheckedAt",
+        "lastSeenAt",
+        "timestamp",
         "durationMs",
-        "order"
+        "order",
+        "runId",
+        "requestId",
+        "analysisId",
+        "dispatchId",
+        "planId",
+        "missionId",
+        "fingerprint",
+        "revision"
       ]);
 
       if (volatileKeys.has(key)) return undefined;
@@ -2739,7 +2754,12 @@
       if (Array.isArray(value)) {
         return value
           .map(item => this.sanitizeCognitiveSemanticValue(item))
-          .filter(item => item !== undefined);
+          .filter(item => item !== undefined)
+          .sort((left, right) => {
+            const a = JSON.stringify(left ?? null);
+            const b = JSON.stringify(right ?? null);
+            return a.localeCompare(b);
+          });
       }
 
       const result = {};
@@ -2776,7 +2796,13 @@
           unknowns: opportunity.unknowns || [],
           disposition: opportunity.disposition || {},
           nextAction: opportunity.nextAction || null,
-          readiness: positioning.readiness || {}
+          readiness: {
+            state: positioning.readiness?.state || null,
+            blockingConditionCount:
+              Number(positioning.readiness?.blockingConditionCount || 0),
+            consequentialUnknownCount:
+              Number(positioning.readiness?.consequentialUnknownCount || 0)
+          }
         })
       };
     },
@@ -7204,6 +7230,145 @@
       ).trim();
     },
 
+    runCausalWorkStateMetabolismAcceptanceTest() {
+      const cognitiveMission = {
+        id: "018e-cognitive-mission",
+        status: "in_progress",
+        createdBy: "Maddy / Executive Hallway",
+        sourceReference: "cognitive-dispatch:cognitive-fixture",
+        tags: ["cognitive-dispatch"]
+      };
+      const cognitiveMissionNext = {
+        ...cognitiveMission,
+        id: "018e-cognitive-mission-2",
+        sourceReference: "cognitive-dispatch:cognitive-fixture-2"
+      };
+      const prior = {
+        fingerprint: "018e-prior",
+        unknowns: [],
+        intentions: [],
+        relationships: [],
+        world: {
+          currentWork: {
+            activeMissions: [cognitiveMission],
+            openWorkflows: [],
+            activePlans: [],
+            pendingApprovals: [],
+            summary: { activeMissionCount: 1 }
+          },
+          monitoring: {},
+          capabilities: []
+        }
+      };
+      const current = this.clone(prior);
+      current.fingerprint = "018e-current";
+      current.world.currentWork.activeMissions.push(cognitiveMissionNext);
+      current.world.currentWork.summary.activeMissionCount = 2;
+
+      const selfEchoAssessment = this.assessWorldModelSalience(
+        prior,
+        current,
+        { subject: "Self-generated work echo" }
+      );
+
+      const blocked = this.clone(current);
+      blocked.fingerprint = "018e-blocked";
+      blocked.world.currentWork.activeMissions[1].status = "blocked";
+      blocked.world.currentWork.activeMissions[1].blockedReason =
+        "Authoritative source unavailable";
+      const blockedAssessment = this.assessWorldModelSalience(
+        current,
+        blocked,
+        { subject: "Material work blocker" }
+      );
+
+      const semanticA = {
+        subject: "Fixture Opportunity",
+        opportunity: {
+          recordId: "OPP-1",
+          source: { title: "Fixture", checkedAt: "2026-08-10T01:00:00Z" },
+          eligibilityEvidence: [
+            { id: "E-1", text: "Eligibility remains unverified", observedAt: "2026-08-10T01:00:00Z" }
+          ],
+          evidence: { checks: { eligibilityVerified: false } },
+          unknowns: ["Applicant eligibility"],
+          disposition: { disposition: "monitor-next-cycle" }
+        },
+        readiness: {
+          state: "not-yet-positioned",
+          score: 44,
+          blockingConditionCount: 2,
+          consequentialUnknownCount: 1
+        }
+      };
+      const semanticB = this.clone(semanticA);
+      semanticB.opportunity.source.checkedAt = "2026-08-10T02:00:00Z";
+      semanticB.opportunity.eligibilityEvidence[0].id = "E-999";
+      semanticB.opportunity.eligibilityEvidence[0].observedAt = "2026-08-10T02:00:00Z";
+      semanticB.readiness.score = 43;
+      semanticB.opportunity.eligibilityEvidence.reverse();
+
+      const sameA = this.fingerprintCognitiveDispatch(
+        this.buildPositioningSemanticIdentity(semanticA)
+      );
+      const sameB = this.fingerprintCognitiveDispatch(
+        this.buildPositioningSemanticIdentity(semanticB)
+      );
+
+      const changed = this.clone(semanticB);
+      changed.opportunity.evidence.checks.eligibilityVerified = true;
+      const changedFingerprint = this.fingerprintCognitiveDispatch(
+        this.buildPositioningSemanticIdentity(changed)
+      );
+
+      const checks = [
+        {
+          name: "Self-generated cognitive Mission creation does not become fresh world salience",
+          passed:
+            selfEchoAssessment.meaningful === false &&
+            selfEchoAssessment.selfGeneratedWorkEchoSuppressed === true
+        },
+        {
+          name: "Self-generated work remains visible in the full World Model work state",
+          passed:
+            current.world.currentWork.summary.activeMissionCount === 2
+        },
+        {
+          name: "A real blocker remains salient",
+          passed:
+            blockedAssessment.signals.some(
+              item => item.type === "work-state-changed"
+            )
+        },
+        {
+          name: "Transient evidence IDs and observation timestamps do not change positioning identity",
+          passed: sameA === sameB
+        },
+        {
+          name: "Material eligibility evidence change creates a new positioning identity",
+          passed: changedFingerprint !== sameA
+        },
+        {
+          name: "Causal work metabolism preserves external-action authority boundary",
+          passed:
+            this.configuration.requireHumanApprovalForExternalAction === true
+        }
+      ];
+
+      const passed = checks.every(item => item.passed);
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.018E Causal Work-State Metabolism: ${passed ? "PASS" : "FAIL"}.`
+      );
+      return {
+        commission: "006.018E",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks
+      };
+    },
+
     runTemporalOrientationAuthorityAcceptanceTest() {
       const original = {
         intentions: this.clone(this.cognitiveIntentions),
@@ -7655,6 +7820,120 @@
     },
 
     /*
+     * Commission 006.018E — Causal Work-State Metabolism
+     *
+     * The living World Model must see Maddy's work without mistaking the
+     * bookkeeping consequences of her own dispatches for changes in the world.
+     * A cognition-generated Mission/Plan/Workflow in an ordinary internal state
+     * stays visible to awareness and priority, but is excluded from the salience
+     * fingerprint that decides whether the world changed enough to wake another
+     * cognition. Human/external outcomes, approval transitions, blockers and
+     * failures remain salient.
+     */
+    isSelfGeneratedCognitiveWork(item = {}) {
+      const sourceReference = String(
+        item?.sourceReference || item?.context?.sourceReference || ""
+      ).trim().toLowerCase();
+      const createdBy = String(item?.createdBy || "").trim().toLowerCase();
+      const source = String(item?.source || "").trim().toLowerCase();
+      const tags = Array.isArray(item?.tags)
+        ? item.tags.map(tag => String(tag || "").toLowerCase())
+        : [];
+      const cognitionType = String(
+        item?.metadata?.cognitionType ||
+        item?.context?.cognitionType ||
+        ""
+      ).trim().toLowerCase();
+
+      return (
+        item?.context?.cognitiveDispatch === true ||
+        sourceReference.startsWith("cognitive-dispatch:") ||
+        tags.includes("cognitive-dispatch") ||
+        createdBy.includes("maddy / executive hallway") ||
+        source === "executive-brain-cognition" ||
+        cognitionType === "counterfactual-positioning"
+      );
+    },
+
+    isMaterialCognitiveWorkOutcome(item = {}) {
+      const status = String(item?.status || item?.state || "")
+        .trim()
+        .toLowerCase();
+      const approval = String(item?.approval?.status || "")
+        .trim()
+        .toLowerCase();
+
+      return (
+        [
+          "blocked",
+          "failed",
+          "error",
+          "rejected",
+          "declined",
+          "cancelled",
+          "canceled",
+          "awaiting_approval",
+          "awaiting-approval",
+          "pending_approval",
+          "pending-approval"
+        ].includes(status) ||
+        [
+          "approved",
+          "rejected",
+          "declined",
+          "changes_requested",
+          "changes-requested"
+        ].includes(approval) ||
+        item?.outcome?.verified === true ||
+        item?.outcome?.success === false ||
+        Boolean(item?.error)
+      );
+    },
+
+    buildCognitiveWorkSalienceProjection(currentWork = {}) {
+      const project = items =>
+        (Array.isArray(items) ? items : [])
+          .filter(item =>
+            !this.isSelfGeneratedCognitiveWork(item) ||
+            this.isMaterialCognitiveWorkOutcome(item)
+          )
+          .map(item => ({
+            id: item?.id || null,
+            status: item?.status || item?.state || null,
+            approvalStatus: item?.approval?.status || null,
+            sourceReference: item?.sourceReference || null,
+            blockedReason: item?.blockedReason || item?.error || null,
+            outcome: item?.outcome
+              ? {
+                  verified: item.outcome.verified ?? null,
+                  success: item.outcome.success ?? null
+                }
+              : null
+          }))
+          .sort((a, b) =>
+            JSON.stringify(a).localeCompare(JSON.stringify(b))
+          );
+
+      const activeMissions = project(currentWork?.activeMissions);
+      const openWorkflows = project(currentWork?.openWorkflows);
+      const activePlans = project(currentWork?.activePlans);
+      const pendingApprovals = project(currentWork?.pendingApprovals);
+
+      return {
+        activeMissions,
+        openWorkflows,
+        activePlans,
+        pendingApprovals,
+        summary: {
+          salientMissionCount: activeMissions.length,
+          salientWorkflowCount: openWorkflows.length,
+          salientPlanCount: activePlans.length,
+          pendingApprovalCount: pendingApprovals.length
+        }
+      };
+    },
+
+    /*
      * Commission 006.017D7B — Salience + Emergent Attention
      *
      * This is the bridge from "Maddy has a model of reality" to "Maddy notices
@@ -7729,14 +8008,33 @@
           ? now.relationships
           : [];
 
+      const priorWorkSalienceProjection =
+        this.buildCognitiveWorkSalienceProjection(
+          prior?.world?.currentWork || {}
+        );
+      const currentWorkSalienceProjection =
+        this.buildCognitiveWorkSalienceProjection(
+          now?.world?.currentWork || {}
+        );
       const priorWorkFingerprint =
         this.fingerprintCognitiveDispatch(
-          prior?.world?.currentWork || null
+          priorWorkSalienceProjection
         );
       const currentWorkFingerprint =
         this.fingerprintCognitiveDispatch(
+          currentWorkSalienceProjection
+        );
+      const rawPriorWorkFingerprint =
+        this.fingerprintCognitiveDispatch(
+          prior?.world?.currentWork || null
+        );
+      const rawCurrentWorkFingerprint =
+        this.fingerprintCognitiveDispatch(
           now?.world?.currentWork || null
         );
+      const selfGeneratedWorkEchoSuppressed =
+        rawPriorWorkFingerprint !== rawCurrentWorkFingerprint &&
+        priorWorkFingerprint === currentWorkFingerprint;
 
       const priorMonitoringFingerprint =
         this.fingerprintCognitiveDispatch(
@@ -8008,6 +8306,7 @@
         affectedDomains:
           finalAffectedDomains,
         subject,
+        selfGeneratedWorkEchoSuppressed,
         epistemicRule:
           "Salience is a reason to investigate or think, never proof that an inference is true."
       };
@@ -8046,9 +8345,18 @@
         );
 
       if (!assessment.meaningful) {
+        if (assessment.selfGeneratedWorkEchoSuppressed === true) {
+          this.record("cognition.self-generated-work-echo-suppressed", {
+            reason: options.reason || null,
+            priorWorldFingerprint: previous?.fingerprint || null,
+            currentWorldFingerprint: current?.fingerprint || null
+          });
+        }
         return {
           success: true,
           attended: false,
+          selfGeneratedWorkEchoSuppressed:
+            assessment.selfGeneratedWorkEchoSuppressed === true,
           assessment
         };
       }
