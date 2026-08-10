@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.34.0";
-  const BUILD_ID = "EB1340-CROSS-FUTURE-INTERACTION-EMERGENCE-20260809-A";
+  const VERSION = "1.35.0";
+  const BUILD_ID = "EB1350-INTEGRATED-CROSS-OFFICE-SIMULATION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    crossOfficeSimulationState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     crossFutureInteractionState: {
       count: 0,
       lastAt: null,
@@ -11991,6 +11997,515 @@
       return result;
     },
 
+    simulateAcrossExecutiveOffices(
+      crossFutureInteraction = {},
+      options = {}
+    ) {
+      const apply =
+        options.apply === true;
+
+      const now =
+        new Date().toISOString();
+
+      const simulationId =
+        this.id(
+          "cross-office-simulation"
+        );
+
+      const emergent =
+        Array.isArray(
+          crossFutureInteraction
+            ?.emergentCombinations
+        )
+          ? crossFutureInteraction
+              .emergentCombinations
+          : [];
+
+      const officeLenses = [
+        {
+          office:
+            "Finance",
+          lens:
+            "financial-capacity",
+          questions: [
+            "What resources could this position require before value is realized?",
+            "What commitments could reduce liquidity or close other options?",
+            "What financial evidence is missing?"
+          ]
+        },
+        {
+          office:
+            "Operations",
+          lens:
+            "operational-capacity",
+          questions: [
+            "What people, systems, facilities, logistics, or sequencing would this position require?",
+            "What operational bottleneck could invalidate the position?",
+            "What capability could be built reversibly now?"
+          ]
+        },
+        {
+          office:
+            "Compliance",
+          lens:
+            "eligibility-governance",
+          questions: [
+            "What eligibility, legal, policy, registration, or authority conditions must be true?",
+            "What claim would require authoritative verification?",
+            "What governance boundary could block execution?"
+          ]
+        },
+        {
+          office:
+            "Development",
+          lens:
+            "resource-development",
+          questions: [
+            "What funding, partnership, donor, contract, or in-kind pathways could this position unlock?",
+            "What relationship would need development before the window arrives?",
+            "What evidence would make the position competitive?"
+          ]
+        },
+        {
+          office:
+            "Communications",
+          lens:
+            "narrative-reputation",
+          questions: [
+            "How could this position change external understanding of the organization?",
+            "What claims would be premature or unsupported?",
+            "What stakeholder communication would eventually become necessary?"
+          ]
+        },
+        {
+          office:
+            "Human Resources",
+          lens:
+            "people-capability",
+          questions: [
+            "What skills, staffing, volunteer, leadership, or role capacity could this position require?",
+            "What people dependency could become a bottleneck?",
+            "What capability can be developed without premature hiring?"
+          ]
+        },
+        {
+          office:
+            "Community Relations",
+          lens:
+            "stakeholder-legitimacy",
+          questions: [
+            "Which communities, partners, institutions, or beneficiaries could be affected?",
+            "What legitimacy or trust dependency could determine success?",
+            "What stakeholder consequence requires investigation before commitment?"
+          ]
+        },
+        {
+          office:
+            "Grant Office",
+          lens:
+            "funding-eligibility-readiness",
+          questions: [
+            "Could the combined position alter future grant eligibility or competitiveness?",
+            "What readiness evidence would need to exist before a funding cycle?",
+            "What funding assumption must not be treated as fact?"
+          ]
+        }
+      ];
+
+      const simulations =
+        emergent.map(emergence => {
+          const sourceEvidence =
+            emergence?.evidence || {};
+
+          const perspectives =
+            officeLenses.map(lens => ({
+              office:
+                lens.office,
+              lens:
+                lens.lens,
+              simulationClass:
+                "executive-perspective-hypothesis",
+              questions:
+                this.clone(
+                  lens.questions
+                ),
+              sourceEmergenceId:
+                emergence.emergenceId,
+              sourceFuturePlanIds:
+                this.clone(
+                  emergence
+                    .sourceFuturePlanIds ||
+                  []
+                ),
+              evidenceAvailable: {
+                sharedMoveSignals:
+                  this.clone(
+                    sourceEvidence
+                      .sharedMoveSignals ||
+                    []
+                  ),
+                sharedResources:
+                  this.clone(
+                    sourceEvidence
+                      .sharedResources ||
+                    []
+                  ),
+                lineageEvidence:
+                  this.clone(
+                    sourceEvidence
+                      .lineageEvidence ||
+                    []
+                  )
+              },
+              consequenceEstablished:
+                false,
+              requiresOfficeEvidence:
+                true
+            }));
+
+          const integratedQuestions =
+            perspectives.flatMap(
+              perspective =>
+                perspective.questions.map(
+                  question => ({
+                    office:
+                      perspective.office,
+                    lens:
+                      perspective.lens,
+                    question
+                  })
+                )
+            );
+
+          const sharedResourceSignals =
+            new Set(
+              sourceEvidence
+                .sharedResources ||
+              []
+            );
+
+          const tensions = [];
+
+          if (
+            sharedResourceSignals.has(
+              "relationship-capacity"
+            )
+          ) {
+            tensions.push({
+              type:
+                "relationship-capacity-tension",
+              offices: [
+                "Development",
+                "Community Relations",
+                "Communications"
+              ],
+              hypothesis:
+                "The same relationship capacity may simultaneously affect resource access, stakeholder legitimacy, and external narrative.",
+              proven: false,
+              evidenceNeeded:
+                "Verified relationship ownership, stakeholder expectations, and available engagement capacity."
+            });
+          }
+
+          if (
+            sharedResourceSignals.has(
+              "compliance-capacity"
+            )
+          ) {
+            tensions.push({
+              type:
+                "compliance-sequencing-tension",
+              offices: [
+                "Compliance",
+                "Grant Office",
+                "Operations"
+              ],
+              hypothesis:
+                "Eligibility or governance requirements may need resolution before operational or funding commitments become rational.",
+              proven: false,
+              evidenceNeeded:
+                "Authoritative eligibility, governance, and execution prerequisites."
+            });
+          }
+
+          if (
+            sharedResourceSignals.has(
+              "evidence-capacity"
+            )
+          ) {
+            tensions.push({
+              type:
+                "evidence-credibility-tension",
+              offices: [
+                "Development",
+                "Communications",
+                "Grant Office"
+              ],
+              hypothesis:
+                "Competitive positioning and external narrative may depend on the same underlying performance evidence.",
+              proven: false,
+              evidenceNeeded:
+                "Verified performance, outcome, and capability evidence."
+            });
+          }
+
+          const synthesis = {
+            synthesisId:
+              this.id(
+                "integrated-office-synthesis"
+              ),
+            subject:
+              emergence
+                .sourceSubjects
+                ?.join(" + ") ||
+              "emergent strategic position",
+            emergenceId:
+              emergence.emergenceId,
+            perspectiveCount:
+              perspectives.length,
+            integratedQuestions,
+            tensions,
+            wholeOrganizationJudgment: {
+              class:
+                "investigate-before-organizational-commitment",
+              reason:
+                "The emergent position has consequences spanning multiple executive domains. Maddy should reduce cross-office uncertainty before treating the position as organizationally viable.",
+              nextInternalMove:
+                "investigate-cross-office-consequences",
+              reversible: true,
+              informationSeeking:
+                true
+            },
+            truthBoundary: {
+              perspectivesAreIndependentAgents:
+                false,
+              officeQuestionsAreEstablishedConsequences:
+                false,
+              integratedSynthesisIsPrediction:
+                false,
+              organizationWideViabilityEstablished:
+                false
+            }
+          };
+
+          return {
+            simulationId:
+              this.id(
+                "emergent-office-simulation"
+              ),
+            emergenceId:
+              emergence.emergenceId,
+            sourceFuturePlanIds:
+              this.clone(
+                emergence
+                  .sourceFuturePlanIds ||
+                []
+              ),
+            sourceLineageEvidence:
+              this.clone(
+                sourceEvidence
+                  .lineageEvidence ||
+                []
+              ),
+            perspectives,
+            synthesis
+          };
+        });
+
+      const investigationCandidates =
+        simulations.map(simulation => ({
+          id:
+            `cross-office-${
+              simulation.simulationId
+            }`,
+          subject:
+            `Cross-office consequence investigation: ${simulation.synthesis.subject}`,
+          origin:
+            "cross-office-simulation",
+          reason:
+            simulation
+              .synthesis
+              .wholeOrganizationJudgment
+              .reason,
+          evidence:
+            this.clone(
+              simulation
+                .sourceLineageEvidence
+            ),
+          unknowns:
+            simulation
+              .synthesis
+              .integratedQuestions
+              .map(
+                item =>
+                  `${item.office}: ${item.question}`
+              ),
+          urgency: 0.57,
+          consequence: 0.9,
+          leverage: 0.89,
+          reversibility: 0.98,
+          informationValue: 0.99,
+          capacityFit: 0.68,
+          horizonDays: 30,
+          proposedInternalMove:
+            "investigate-cross-office-consequences",
+          sourceEmergenceId:
+            simulation.emergenceId,
+          externalAuthorityRequired:
+            false
+        }));
+
+      const result = {
+        schema:
+          "meos.maddy.integrated-cross-office-simulation.v1",
+        simulationId,
+        createdAt: now,
+        applied: apply,
+        sourceInteractionId:
+          crossFutureInteraction
+            ?.interactionId ||
+          null,
+        emergentPositionCount:
+          emergent.length,
+        simulationCount:
+          simulations.length,
+        simulations,
+        investigationCandidates,
+        integratedExecutiveModel: {
+          mode:
+            "one-executive-cognition-multiple-office-lenses",
+          officeLensCount:
+            officeLenses.length,
+          officeLenses:
+            officeLenses.map(
+              item => ({
+                office:
+                  item.office,
+                lens:
+                  item.lens
+              })
+            ),
+          aggregationMethod:
+            "integrated-consequence-synthesis-not-agent-voting"
+        },
+        truthBoundary: {
+          officeLensesAreSeparateMinds:
+            false,
+          simulatedConsequencesAreFacts:
+            false,
+          crossOfficeTensionsAreProven:
+            false,
+          synthesisRequiresEvidence:
+            true
+        },
+        authority: {
+          internalCrossOfficeSimulationAuthorized:
+            apply,
+          officeExecutionAuthorized:
+            false,
+          resourceAllocationAuthorized:
+            false,
+          spendingAuthorized: false,
+          hiringAuthorized: false,
+          publishingAuthorized: false,
+          externalRelationshipActionAuthorized:
+            false,
+          planningExecutionAuthorized:
+            false,
+          hallwayDispatchAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+
+      if (
+        apply &&
+        investigationCandidates.length >
+          0
+      ) {
+        const existingIds =
+          new Set(
+            (this.executivePriorityPortfolio || [])
+              .map(item => item?.id)
+              .filter(Boolean)
+          );
+
+        investigationCandidates
+          .filter(
+            item =>
+              !existingIds.has(
+                item.id
+              )
+          )
+          .forEach(item => {
+            this.executivePriorityPortfolio.push({
+              ...this.clone(item),
+              status: "candidate",
+              createdAt: now,
+              updatedAt: now
+            });
+          });
+
+        this.executivePriorityPortfolio =
+          this.executivePriorityPortfolio.slice(
+            0,
+            this.configuration
+              .priorityPortfolioLimit
+          );
+      }
+
+      this.crossOfficeSimulationState.count +=
+        1;
+      this.crossOfficeSimulationState.lastAt =
+        now;
+      this.crossOfficeSimulationState.last =
+        this.clone(result);
+      this.crossOfficeSimulationState.history.unshift(
+        this.clone(result)
+      );
+      this.crossOfficeSimulationState.history =
+        this.crossOfficeSimulationState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.cross-office-simulation",
+        result
+      );
+
+      this.emit(
+        "brain:cross-office-simulation",
+        this.clone(result)
+      );
+
+      return result;
+    },
+
+    getCrossOfficeSimulationStatus() {
+      return {
+        commission: "006.017D7T10",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.integrated-cross-office-simulation.v1",
+        ...this.clone(
+          this.crossOfficeSimulationState
+        ),
+        authority: {
+          officeExecutionAuthorized:
+            false,
+          externalActionAuthorized:
+            false,
+          humanAuthorityPreserved:
+            true
+        }
+      };
+    },
+
     getCrossFutureInteractionStatus() {
       return {
         commission: "006.017D7T9",
@@ -12324,6 +12839,14 @@
           }
         );
 
+      const crossOfficeSimulation =
+        this.simulateAcrossExecutiveOffices(
+          crossFutureInteraction,
+          {
+            apply: true
+          }
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -12415,6 +12938,10 @@
         crossFutureInteraction:
           this.clone(
             crossFutureInteraction
+          ),
+        crossOfficeSimulation:
+          this.clone(
+            crossOfficeSimulation
           ),
         causalInvestigation:
           causalInvestigation
@@ -18366,6 +18893,329 @@
       } finally {
         this.cognitiveIntentions = original;
         await this.flushPersistence();
+      }
+    },
+
+    async runCrossOfficeSimulationAcceptanceTest() {
+      const original = {
+        portfolio:
+          this.clone(
+            this.executivePriorityPortfolio
+          ),
+        state:
+          this.clone(
+            this.crossOfficeSimulationState
+          )
+      };
+
+      try {
+        this.executivePriorityPortfolio =
+          [];
+
+        const interaction = {
+          schema:
+            "meos.maddy.cross-future-interaction-emergence.v1",
+          interactionId:
+            "d7t10-interaction",
+          emergentCombinations: [{
+            emergenceId:
+              "d7t10-emergence",
+            sourceFuturePlanIds: [
+              "future-a",
+              "future-b"
+            ],
+            sourceSubjects: [
+              "County pathway",
+              "Regional partnership"
+            ],
+            evidence: {
+              sharedMoveSignals: [
+                "eligibility",
+                "relationship",
+                "evidence"
+              ],
+              sharedResources: [
+                "relationship-capacity",
+                "compliance-capacity",
+                "evidence-capacity"
+              ],
+              lineageEvidence: [
+                {
+                  lineageId:
+                    "lineage-a"
+                },
+                {
+                  lineageId:
+                    "lineage-b"
+                }
+              ]
+            },
+            novelOpportunityEstablished:
+              false,
+            investigationRequired:
+              true
+          }]
+        };
+
+        const preview =
+          this.simulateAcrossExecutiveOffices(
+            interaction,
+            {
+              apply: false
+            }
+          );
+
+        const afterPreview =
+          this.clone(
+            this.executivePriorityPortfolio
+          );
+
+        const applied =
+          this.simulateAcrossExecutiveOffices(
+            interaction,
+            {
+              apply: true
+            }
+          );
+
+        const simulation =
+          applied
+            ?.simulations?.[0] ||
+          null;
+
+        const synthesis =
+          simulation?.synthesis ||
+          null;
+
+        const inserted =
+          this.executivePriorityPortfolio
+            .filter(
+              item =>
+                item?.origin ===
+                "cross-office-simulation"
+            );
+
+        const officeNames =
+          simulation
+            ?.perspectives
+            ?.map(
+              item => item.office
+            ) ||
+          [];
+
+        const checks = [
+          {
+            name:
+              "Emergent strategic position enters organization-wide simulation",
+            passed:
+              applied
+                ?.emergentPositionCount ===
+                1 &&
+              applied
+                ?.simulationCount === 1
+          },
+          {
+            name:
+              "Finance consequence lens participates in unified cognition",
+            passed:
+              officeNames.includes(
+                "Finance"
+              )
+          },
+          {
+            name:
+              "Operations consequence lens participates in unified cognition",
+            passed:
+              officeNames.includes(
+                "Operations"
+              )
+          },
+          {
+            name:
+              "Compliance consequence lens participates in unified cognition",
+            passed:
+              officeNames.includes(
+                "Compliance"
+              )
+          },
+          {
+            name:
+              "Development consequence lens participates in unified cognition",
+            passed:
+              officeNames.includes(
+                "Development"
+              )
+          },
+          {
+            name:
+              "Communications consequence lens participates in unified cognition",
+            passed:
+              officeNames.includes(
+                "Communications"
+              )
+          },
+          {
+            name:
+              "People, community, and grant consequences participate in unified cognition",
+            passed:
+              officeNames.includes(
+                "Human Resources"
+              ) &&
+              officeNames.includes(
+                "Community Relations"
+              ) &&
+              officeNames.includes(
+                "Grant Office"
+              )
+          },
+          {
+            name:
+              "Cross-office tensions connect consequences that span multiple executive domains",
+            passed:
+              synthesis
+                ?.tensions?.length >=
+                3 &&
+              synthesis
+                ?.tensions
+                ?.every(
+                  item =>
+                    item.offices
+                      ?.length >= 3
+                ) === true
+          },
+          {
+            name:
+              "Office lenses are integrated perspectives rather than independent agent votes",
+            passed:
+              applied
+                ?.integratedExecutiveModel
+                ?.mode ===
+                "one-executive-cognition-multiple-office-lenses" &&
+              applied
+                ?.integratedExecutiveModel
+                ?.aggregationMethod ===
+                "integrated-consequence-synthesis-not-agent-voting" &&
+              synthesis
+                ?.truthBoundary
+                ?.perspectivesAreIndependentAgents ===
+                false
+          },
+          {
+            name:
+              "Simulated office consequences remain questions until evidence establishes them",
+            passed:
+              simulation
+                ?.perspectives
+                ?.every(
+                  item =>
+                    item
+                      .consequenceEstablished ===
+                      false &&
+                    item
+                      .requiresOfficeEvidence ===
+                      true
+                ) === true
+          },
+          {
+            name:
+              "Whole-organization synthesis requests investigation before commitment",
+            passed:
+              synthesis
+                ?.wholeOrganizationJudgment
+                ?.class ===
+                "investigate-before-organizational-commitment" &&
+              synthesis
+                ?.wholeOrganizationJudgment
+                ?.reversible ===
+                true &&
+              synthesis
+                ?.wholeOrganizationJudgment
+                ?.informationSeeking ===
+                true
+          },
+          {
+            name:
+              "Preview does not mutate Executive Priority Portfolio",
+            passed:
+              preview?.applied ===
+                false &&
+              afterPreview.length === 0
+          },
+          {
+            name:
+              "Applied cross-office uncertainty reuses existing Executive Priority Portfolio",
+            passed:
+              inserted.length === 1 &&
+              inserted.length ===
+                applied
+                  ?.investigationCandidates
+                  ?.length
+          },
+          {
+            name:
+              "Cross-office simulation grants no office execution, allocation, spending, hiring, publishing, Hallway, planning, or external-action authority",
+            passed:
+              applied?.authority
+                ?.officeExecutionAuthorized ===
+                false &&
+              applied?.authority
+                ?.resourceAllocationAuthorized ===
+                false &&
+              applied?.authority
+                ?.spendingAuthorized ===
+                false &&
+              applied?.authority
+                ?.hiringAuthorized ===
+                false &&
+              applied?.authority
+                ?.publishingAuthorized ===
+                false &&
+              applied?.authority
+                ?.planningExecutionAuthorized ===
+                false &&
+              applied?.authority
+                ?.hallwayDispatchAuthorized ===
+                false &&
+              applied?.authority
+                ?.externalActionAuthorized ===
+                false &&
+              applied?.authority
+                ?.humanAuthorityPreserved ===
+                true
+          }
+        ];
+
+        const passed =
+          checks.every(
+            item => item.passed
+          );
+
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7T10 Integrated Cross-Office Simulation: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:
+            "006.017D7T10",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          preview,
+          applied,
+          simulation,
+          synthesis,
+          portfolioCandidates:
+            inserted,
+          authority:
+            applied?.authority
+        };
+      } finally {
+        this.executivePriorityPortfolio =
+          original.portfolio;
+        this.crossOfficeSimulationState =
+          original.state;
       }
     },
 
