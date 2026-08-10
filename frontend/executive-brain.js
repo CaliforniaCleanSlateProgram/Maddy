@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.36.0";
-  const BUILD_ID = "EB1360-DYNAMIC-EXECUTIVE-ATTENTION-20260809-A";
+  const VERSION = "1.36.1";
+  const BUILD_ID = "EB1361-DYNAMIC-ATTENTION-SURPRISE-PROPAGATION-20260810-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -15939,6 +15939,11 @@
         urgency:Number(options.humanDirection.urgency??0.7),
         irreversibility:Number(options.humanDirection.irreversibility??0.4),
         leverage:Number(options.humanDirection.leverage??0.6),
+        informationValue:Number(options.humanDirection.informationValue??options.humanDirection.uncertainty??0.4),
+        dependencyPressure:Number(options.humanDirection.dependencyPressure??0.3),
+        surprise:Number(options.humanDirection.surprise??0),
+        unexpectedChange:Number(options.humanDirection.unexpectedChange??0),
+        cognitiveLoad:Number(options.humanDirection.cognitiveLoad??0.25),
         externalAuthorityRequired:options.humanDirection.externalAuthorityRequired===true
       });
       return demands;
@@ -16657,6 +16662,33 @@
                 "attention-unknown"
             );
 
+        const surpriseDemand =
+          this.deriveDynamicAttentionDemands({
+            humanDirection: {
+              id:
+                "attention-surprise-propagation-proof",
+              subject:
+                "Unexpected verified change",
+              missionConsequence:
+                1,
+              urgency: 1,
+              irreversibility:
+                1,
+              leverage: 1,
+              surprise: 1,
+              unexpectedChange:
+                1,
+              informationValue:
+                1,
+              dependencyPressure:
+                1
+            }
+          }).find(
+            item =>
+              item.id ===
+              "attention-surprise-propagation-proof"
+          );
+
         const checks = [
           {
             name:
@@ -16742,8 +16774,12 @@
           },
           {
             name:
-              "Material surprise can force executive reconsideration",
+              "Material surprise propagates into attention salience and can force executive reconsideration",
             passed:
+              surpriseDemand
+                ?.attentionSignals
+                ?.surprisePressure ===
+                1 &&
               surprise
                 ?.selected?.id ===
                 "attention-surprise"
