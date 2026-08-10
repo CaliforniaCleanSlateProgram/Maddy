@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.24.1
- * Build: EB1241-TEMPORAL-ORIENTATION-AUTHORITY-20260810-A
+ * Version: 1.25.0
+ * Build: EB1250-COGNITIVE-PROMOTION-JUDGMENT-20260810-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.24.2";
-  const BUILD_ID = "EB1242-CAUSAL-WORK-METABOLISM-20260810-A";
+  const VERSION = "1.25.0";
+  const BUILD_ID = "EB1250-COGNITIVE-PROMOTION-JUDGMENT-20260810-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -2201,10 +2201,29 @@
         ? positioning.positioningMoves.filter(
             move =>
               move &&
-              String(move.action || "").trim() &&
-              move.status !== "discarded"
+              String(move.action || "").trim()
           )
         : [];
+
+      /*
+       * Commission 006.018F — Cognitive Promotion Judgment / Catch & Release
+       *
+       * A valid thought is not automatically durable executive work. Maddy
+       * first decides whether the move deserves organizational resources now,
+       * belongs in continued internal cognition, should be revisited when a
+       * material condition changes, or should be released.
+       */
+      const promotionDecisions = moves.map(move => ({
+        move: this.clone(move),
+        judgment: this.assessCognitiveMovePromotion(
+          positioning,
+          move,
+          options
+        )
+      }));
+      const promotedMoves = promotionDecisions
+        .filter(item => item.judgment?.disposition === "promote")
+        .map(item => item.move);
 
       /*
        * Commission 006.018C — One Shot, One Kill
@@ -2221,25 +2240,38 @@
           )
         );
 
-      const planResult = this.createOrReusePositioningPlan(
-        positioning,
-        positioningFingerprint,
-        options
-      );
+      let planResult = {
+        success: true,
+        created: false,
+        reused: false,
+        plan: null
+      };
 
-      if (planResult?.success !== true) {
-        return {
-          success: false,
-          status: "positioning-plan-failed",
-          positioning: this.clone(positioning),
-          plan: this.clone(planResult)
-        };
+      if (promotedMoves.length > 0) {
+        planResult = this.createOrReusePositioningPlan(
+          {
+            ...positioning,
+            positioningMoves: promotedMoves
+          },
+          positioningFingerprint,
+          options
+        );
+
+        if (planResult?.success !== true) {
+          return {
+            success: false,
+            status: "positioning-plan-failed",
+            positioning: this.clone(positioning),
+            promotionDecisions: this.clone(promotionDecisions),
+            plan: this.clone(planResult)
+          };
+        }
       }
 
       const plan = planResult.plan;
       const dispatches = [];
 
-      for (const move of moves) {
+      for (const move of promotedMoves) {
         const dispatchKey =
           this.buildCognitiveMoveSemanticKey(
             positioningFingerprint,
@@ -2336,6 +2368,7 @@
         subject: positioning.subject,
         positioningFingerprint,
         positioning: this.clone(positioning),
+        promotionDecisions: this.clone(promotionDecisions),
         plan: {
           created: planResult.created === true,
           reused: planResult.reused === true,
@@ -2346,6 +2379,10 @@
         dispatches,
         summary: {
           proposedMoves: moves.length,
+          promoted: promotedMoves.length,
+          think: promotionDecisions.filter(item => item.judgment?.disposition === "think").length,
+          revisit: promotionDecisions.filter(item => item.judgment?.disposition === "revisit").length,
+          released: promotionDecisions.filter(item => item.judgment?.disposition === "release").length,
           dispatched:
             dispatches.filter(
               item =>
@@ -2376,6 +2413,9 @@
           hallwayOnly: true,
           directExternalExecution: false,
           authorityClassifiedPerMove: true,
+          promotionJudgmentBeforePlanning: true,
+          revisitCreatesMission: false,
+          releaseErasesRecognitionMemory: false,
           externalActionAlwaysReviewRequired: true
         },
         startedAt,
@@ -2620,6 +2660,106 @@
         ...result,
         created: result?.success === true,
         reused: false
+      };
+    },
+
+    assessCognitiveMovePromotion(positioning = {}, move = {}, options = {}) {
+      const action = String(move.action || "").trim();
+      const type = String(move.type || "").trim().toLowerCase();
+      const status = String(move.status || "").trim().toLowerCase();
+      const whyNow = String(move.whyNow || "").trim();
+      const readiness = positioning.readiness || {};
+      const opportunity = positioning.opportunity || {};
+      const cycleOpen = opportunity.cycle?.explicitlyOpen === true;
+      const blockers = Number(readiness.blockingConditionCount || 0);
+      const unknowns = Number(readiness.consequentialUnknownCount || 0);
+      const authority = this.classifyCognitiveMoveAuthority(move, options);
+
+      if (!action || status === "discarded" || type === "discard") {
+        return {
+          disposition: "release",
+          reason: "The move has no live executive action or has already been discarded.",
+          durableWork: false,
+          recognitionRetained: true
+        };
+      }
+
+      if (authority.class === "external-action") {
+        return {
+          disposition: "promote",
+          reason: "A consequential external action deserves governed durable work and human review.",
+          durableWork: true,
+          reviewRequired: true
+        };
+      }
+
+      if (type === "monitor" && cycleOpen !== true) {
+        return {
+          disposition: "revisit",
+          reason: "The opportunity is not open; preserve a lightweight revisit condition instead of carrying a standing Mission.",
+          durableWork: false,
+          revisit: {
+            when: "material-source-change",
+            conditions: [
+              "cycle-opens",
+              "eligibility-changes",
+              "deadline-published-or-changed",
+              "application-instructions-change"
+            ]
+          }
+        };
+      }
+
+      if (type === "investigate") {
+        if (cycleOpen || /urgent|immediate|deadline|time[- ]sensitive/i.test(whyNow)) {
+          return {
+            disposition: "promote",
+            reason: "A time-sensitive consequential unknown requires durable executive work now.",
+            durableWork: true,
+            reviewRequired: authority.reviewRequired === true
+          };
+        }
+
+        return {
+          disposition: "think",
+          reason: unknowns > 0 || blockers > 0
+            ? "The unknown matters, but it should remain inside cognition until evidence or timing justifies organizational work."
+            : "Investigation can continue internally without creating durable work yet.",
+          durableWork: false
+        };
+      }
+
+      if (type === "strategic-positioning") {
+        if (blockers > 0 || readiness.state === "not-yet-positioned") {
+          return {
+            disposition: "think",
+            reason: "Strategic positioning remains cognitively useful, but blocking conditions must be reduced before durable work is promoted.",
+            durableWork: false
+          };
+        }
+
+        return {
+          disposition: "promote",
+          reason: "Evidence supports legitimate positioning work that can improve organizational readiness now.",
+          durableWork: true,
+          reviewRequired: authority.reviewRequired === true
+        };
+      }
+
+      if (!whyNow) {
+        return {
+          disposition: "release",
+          reason: "No material reason exists to spend executive attention or organizational resources on this move now.",
+          durableWork: false,
+          recognitionRetained: true
+        };
+      }
+
+      return {
+        disposition: "promote",
+        reason: "The move has a current material executive rationale and is not better handled as internal thought or conditional revisit.",
+        durableWork: true,
+        reviewRequired: authority.reviewRequired === true
       };
     },
 
@@ -7228,6 +7368,75 @@
         input?.prompt ||
         ""
       ).trim();
+    },
+
+    runCognitivePromotionJudgmentAcceptanceTest() {
+      const base = {
+        subject: "006.018F Fixture Opportunity",
+        opportunity: {
+          recordId: "OPP-018F",
+          cycle: { explicitlyOpen: false }
+        },
+        readiness: {
+          state: "not-yet-positioned",
+          blockingConditionCount: 1,
+          consequentialUnknownCount: 1
+        }
+      };
+
+      const think = this.assessCognitiveMovePromotion(base, {
+        type: "investigate",
+        action: "Verify controlling applicant eligibility.",
+        whyNow: "Resolve a consequential unknown before claiming readiness.",
+        authority: "within-existing-research-authority",
+        status: "proposed"
+      });
+      const revisit = this.assessCognitiveMovePromotion(base, {
+        type: "monitor",
+        action: "Monitor the authoritative source for the next cycle.",
+        whyNow: "The next cycle is not open.",
+        authority: "within-existing-monitoring-authority",
+        status: "proposed"
+      });
+      const release = this.assessCognitiveMovePromotion(base, {
+        type: "observe",
+        action: "Keep this low-value observation around.",
+        whyNow: "",
+        status: "proposed"
+      });
+      const promotable = this.clone(base);
+      promotable.opportunity.cycle.explicitlyOpen = true;
+      const promote = this.assessCognitiveMovePromotion(promotable, {
+        type: "investigate",
+        action: "Verify the open-cycle eligibility requirement before the deadline.",
+        whyNow: "The application cycle is open and the deadline is time-sensitive.",
+        authority: "within-existing-research-authority",
+        status: "proposed"
+      });
+
+      const source = this.runPositioningCognitionAndDispatch.toString();
+      const checks = [
+        { name: "Consequential but non-urgent unknown stays in internal cognition", passed: think.disposition === "think" && think.durableWork === false },
+        { name: "Closed-cycle monitoring becomes a lightweight revisit rather than a Mission", passed: revisit.disposition === "revisit" && revisit.durableWork === false && revisit.revisit?.when === "material-source-change" },
+        { name: "Low-value cognition is released while recognition is retained", passed: release.disposition === "release" && release.recognitionRetained === true },
+        { name: "Time-sensitive actionable cognition is promoted", passed: promote.disposition === "promote" && promote.durableWork === true },
+        { name: "Promotion judgment occurs before positioning Plan creation", passed: source.indexOf("promotionDecisions") >= 0 && source.indexOf("promotionDecisions") < source.indexOf("createOrReusePositioningPlan") },
+        { name: "Only promoted moves enter Hallway dispatch loop", passed: /for\s*\(const move of promotedMoves\)/.test(source) },
+        { name: "Revisit and release do not create Missions", passed: /if \(promotedMoves\.length > 0\)/.test(source) },
+        { name: "External-action authority boundary remains governed", passed: this.classifyCognitiveMoveAuthority({ type: "strategic-positioning", action: "Submit application" }).reviewRequired === true }
+      ];
+
+      const passed = checks.every(item => item.passed);
+      console.table(checks);
+      console.log(`[MEOS ${this.version}] Commission 006.018F Cognitive Promotion Judgment / Catch & Release: ${passed ? "PASS" : "FAIL"}.`);
+      return {
+        commission: "006.018F",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        dispositions: { think, revisit, release, promote }
+      };
     },
 
     runCausalWorkStateMetabolismAcceptanceTest() {
