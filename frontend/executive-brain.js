@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.29.1";
-  const BUILD_ID = "EB1291-PLAN-IDENTITY-MONITORING-ISOLATION-REPAIR-20260809-A";
+  const VERSION = "1.29.2";
+  const BUILD_ID = "EB1292-MONITORING-IDENTITY-MATCH-REPAIR-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -9394,8 +9394,8 @@
 
                 return {
                   alertId:
-                    alert?.alertId ||
                     alert?.id ||
+                    alert?.alertId ||
                     null,
                   found: true,
                   applied: apply,
@@ -9516,7 +9516,7 @@
 
     getPlanMonitoringRevisionStatus() {
       return {
-        commission: "006.017D7T4A",
+        commission: "006.017D7T4B",
         version: this.version,
         buildId: this.buildId,
         schema:
@@ -15786,15 +15786,20 @@
 
       const monitoringAlert =
         monitoring?.upsertAlert?.({
-          type:
-            "d7t4-cognitive-watch",
+          key:
+            "d7t4b-cognitive-watch",
+          category:
+            "cognitive-revision",
           title: subject,
-          summary:
+          message:
             "Existing monitoring condition depends on changed reality.",
           severity: 3,
-          status: "open",
-          source:
-            "006.017D7T4A-acceptance"
+          recommendedAction:
+            "Reconsider this monitoring condition against the changed world state.",
+          metadata: {
+            source:
+              "006.017D7T4B-acceptance"
+          }
         });
 
       const alertRecord =
@@ -15803,16 +15808,21 @@
 
       const unrelatedAlert =
         monitoring?.upsertAlert?.({
-          type:
-            "d7t4-unrelated-watch",
+          key:
+            "d7t4b-unrelated-watch",
+          category:
+            "acceptance-isolation",
           title:
-            "D7T4 unrelated monitoring fixture",
-          summary:
+            "D7T4B unrelated monitoring control",
+          message:
             "Must remain untouched.",
           severity: 1,
-          status: "open",
-          source:
-            "006.017D7T4A-acceptance"
+          recommendedAction:
+            "None.",
+          metadata: {
+            source:
+              "006.017D7T4B-acceptance"
+          }
         });
 
       const unrelatedAlertRecord =
@@ -15905,8 +15915,8 @@
       const afterAlert =
         this.clone(
           monitoring?.getAlertById?.(
-            alertRecord?.alertId ||
-            alertRecord?.id
+            alertRecord?.id ||
+            alertRecord?.alertId
           ) ||
           alertRecord
         );
@@ -15925,8 +15935,9 @@
         this.clone(
           monitoring?.getAlertById?.(
             unrelatedAlertRecord
-              ?.alertId ||
-            unrelatedAlertRecord?.id
+              ?.id ||
+            unrelatedAlertRecord
+              ?.alertId
           ) ||
           unrelatedAlertRecord
         );
@@ -16095,11 +16106,11 @@
 
       console.table(checks);
       console.info(
-        `[MEOS ${this.version}] Commission 006.017D7T4A Plan Identity + Monitoring Isolation Repair: ${passed ? "PASS" : "FAIL"}.`
+        `[MEOS ${this.version}] Commission 006.017D7T4B Monitoring Identity Match Repair: ${passed ? "PASS" : "FAIL"}.`
       );
 
       return {
-        commission: "006.017D7T4A",
+        commission: "006.017D7T4B",
         version: this.version,
         buildId: this.buildId,
         passed,
