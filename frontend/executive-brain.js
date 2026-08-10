@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.24.0";
-  const BUILD_ID = "EB1240-DURABLE-RESEARCH-LIVING-WORLD-MODEL-20260809-A";
+  const VERSION = "1.24.1";
+  const BUILD_ID = "EB1241-RESEARCH-KNOWLEDGE-STARTUP-HYDRATION-BARRIER-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -198,6 +198,8 @@
       maximumWorldModelHistory: 160,
       maximumResearchLearningBeliefs: 24,
       maximumResearchLearningUnknowns: 48,
+      researchKnowledgeStartupMaximumAttempts: 4,
+      researchKnowledgeStartupRetryDelayMs: 250,
       maximumRelationshipHistory: 120,
       maximumSalienceHistory: 180,
       salienceAttentionThreshold: 0.58,
@@ -224,6 +226,15 @@
 
     initializedAt: null,
     refreshedAt: null,
+    researchKnowledgeStartupHydration: {
+      status: "not-started",
+      attempts: 0,
+      startedAt: null,
+      completedAt: null,
+      lastError: null,
+      durableRecordCount: 0,
+      worldFingerprint: null
+    },
     startupCache: null,
     startupCachedAt: 0,
     requestCache: new Map(),
@@ -326,19 +337,28 @@
       };
 
       this.restore();
-      this.cognitiveHydrationPromise = this.hydrateLaptopPersistence().then(result => {
+      this.cognitiveHydrationPromise = this.hydrateLaptopPersistence().then(async result => {
         this.cognitiveContinuity.hydrated = true;
+
+        const researchKnowledgeHydration =
+          await this.hydrateResearchKnowledgeBeforeCognition({
+            cognitiveHydration: result
+          });
+
         const temporalResume = this.resumeTemporalContinuity({
-          reason: "durable-cognition-hydrated"
+          reason: "durable-cognition-and-research-knowledge-hydrated",
+          researchKnowledgeHydration
         });
-        const resumed = this.resumeUnresolvedCognitiveIntentions({ reason: "durable-cognition-hydrated" });
+        const resumed = this.resumeUnresolvedCognitiveIntentions({
+          reason: "durable-cognition-and-research-knowledge-hydrated"
+        });
         this.cognitiveContinuity.resumedAt = new Date().toISOString();
         this.cognitiveContinuity.lastResumeCount = resumed.resumedCount || 0;
         this.temporalContinuity.status = "continuous";
         this.temporalContinuity.currentIntervalStartedAt = new Date().toISOString();
         this.temporalContinuity.lastResume = this.clone(temporalResume);
         this.projectSelfModel({
-          reason: "durable-cognition-hydrated",
+          reason: "durable-cognition-and-research-knowledge-hydrated",
           persist: true
         });
         this.projectWorkingAwareness({
@@ -346,10 +366,13 @@
           persist: false
         });
         this.projectWorldModel({
-          reason: "durable-cognition-hydrated",
+          reason: "durable-cognition-and-research-knowledge-hydrated",
           persist: true
         });
-        return result;
+        return {
+          ...result,
+          researchKnowledgeHydration
+        };
       });
 
       this.profiles.maddy =
@@ -1093,6 +1116,120 @@
             payload.ingestedAt || null
         }
       );
+    },
+
+    async hydrateResearchKnowledgeBeforeCognition() {
+      const state = this.researchKnowledgeStartupHydration;
+
+      if (state.status === "ready") {
+        return { success: true, ...this.clone(state) };
+      }
+
+      state.status = "waiting";
+      state.startedAt = state.startedAt || new Date().toISOString();
+      state.lastError = null;
+
+      const maximumAttempts = Math.max(
+        1,
+        Number(this.configuration.researchKnowledgeStartupMaximumAttempts || 4)
+      );
+      const delayMs = Math.max(
+        0,
+        Number(this.configuration.researchKnowledgeStartupRetryDelayMs || 250)
+      );
+
+      for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+        state.attempts = attempt;
+
+        const knowledgeMemory =
+          global.KnowledgeMemory ||
+          global.MEOSKnowledgeMemory;
+
+        if (
+          knowledgeMemory &&
+          typeof knowledgeMemory.syncDurableResearchLearning === "function"
+        ) {
+          try {
+            state.status = "hydrating";
+            const result =
+              await knowledgeMemory.syncDurableResearchLearning();
+
+            if (result?.success === true) {
+              state.durableRecordCount =
+                Number(result.durableRecordCount || 0);
+
+              const world = this.projectWorldModel({
+                reason: "startup-research-knowledge-hydration",
+                persist: true,
+                attend: false
+              });
+
+              state.worldFingerprint = world?.fingerprint || null;
+              state.status = "ready";
+              state.completedAt = new Date().toISOString();
+              state.lastError = null;
+
+              this.record(
+                "research-knowledge.startup-hydration.ready",
+                {
+                  attempt,
+                  durableRecordCount: state.durableRecordCount,
+                  worldFingerprint: state.worldFingerprint
+                }
+              );
+
+              return { success: true, ...this.clone(state) };
+            }
+
+            state.lastError =
+              result?.error ||
+              result?.lastError ||
+              "Durable research-learning sync did not report success.";
+          } catch (error) {
+            state.lastError = error?.message || String(error);
+          }
+        } else {
+          state.lastError =
+            "Knowledge Memory durable research-learning sync is not ready.";
+        }
+
+        if (attempt < maximumAttempts) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+
+      state.status = "degraded";
+      state.completedAt = new Date().toISOString();
+
+      this.record(
+        "research-knowledge.startup-hydration.degraded",
+        {
+          attempts: state.attempts,
+          lastError: state.lastError
+        }
+      );
+
+      return {
+        success: false,
+        degraded: true,
+        ...this.clone(state)
+      };
+    },
+
+    getResearchKnowledgeStartupHydrationStatus() {
+      return {
+        commission: "006.017D7R3A",
+        version: this.version,
+        buildId: this.buildId,
+        ...this.clone(this.researchKnowledgeStartupHydration),
+        authority: {
+          durableSource: "executive-memory/investigation-history",
+          activeKnowledge: "MEOS Knowledge Engine",
+          livingWorldModel: "meos.maddy.spooky-world-model.v1",
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
     },
 
     handleResearchLearningKnowledgeChange(payload = {}) {
@@ -14107,6 +14244,13 @@
       const checks = [
         {
           name:
+            "Research knowledge startup hydration barrier completed before temporal cognition resumed",
+          passed:
+            this.researchKnowledgeStartupHydration.status === "ready" &&
+            Boolean(this.researchKnowledgeStartupHydration.completedAt)
+        },
+        {
+          name:
             "Existing Living World Model is extended rather than replaced",
           passed:
             world?.schema ===
@@ -14206,11 +14350,11 @@
 
       console.table(checks);
       console.info(
-        `[MEOS ${this.version}] Commission 006.017D7R3 durable research -> Living World Model: ${passed ? "PASS" : "FAIL"}.`
+        `[MEOS ${this.version}] Commission 006.017D7R3A startup hydration + durable research -> Living World Model: ${passed ? "PASS" : "FAIL"}.`
       );
 
       return {
-        commission: "006.017D7R3",
+        commission: "006.017D7R3A",
         version: this.version,
         buildId: this.buildId,
         passed,
