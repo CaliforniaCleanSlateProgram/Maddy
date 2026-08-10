@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.0";
-  const BUILD_ID = "EB1260-AUTONOMOUS-CONSEQUENCE-PROPAGATION-20260809-A";
+  const VERSION = "1.27.0";
+  const BUILD_ID = "EB1270-SELECTIVE-COGNITIVE-RECONCILIATION-20260809-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -226,6 +226,12 @@
 
     initializedAt: null,
     refreshedAt: null,
+    cognitiveReconciliationState: {
+      count: 0,
+      lastAt: null,
+      last: null,
+      history: []
+    },
     consequencePropagationState: {
       count: 0,
       lastAt: null,
@@ -8697,6 +8703,208 @@
       return propagation;
     },
 
+    reconcileCognitiveConsequences(
+      propagation = {},
+      reappraisal = {},
+      assessment = {},
+      previous = null,
+      current = null,
+      options = {}
+    ) {
+      const rerun =
+        propagation?.rerun || {};
+
+      const affected =
+        propagation?.affected || {};
+
+      const selected = [];
+      const untouched = [];
+
+      const select = (
+        organ,
+        required,
+        reason,
+        payload = {}
+      ) => {
+        const entry = {
+          organ,
+          required: required === true,
+          reason,
+          ...payload
+        };
+
+        if (entry.required) {
+          selected.push(entry);
+        } else {
+          untouched.push(entry);
+        }
+
+        return entry;
+      };
+
+      select(
+        "causal-counterfactual-reasoning",
+        rerun.causalCounterfactual === true,
+        rerun.causalCounterfactual === true
+          ? "Changed reality may invalidate a prior causal conclusion."
+          : "No propagated causal dependency requires recomputation."
+      );
+
+      select(
+        "executive-planning",
+        rerun.planning === true,
+        rerun.planning === true
+          ? "One or more intentions or planning assumptions intersect the changed reality."
+          : "No affected plan or intention was identified.",
+        {
+          affectedIntentionIds:
+            (affected.intentions || [])
+              .map(item => item?.id)
+              .filter(Boolean)
+        }
+      );
+
+      select(
+        "executive-monitoring",
+        rerun.monitoring === true,
+        rerun.monitoring === true
+          ? "Open uncertainty or watch conditions require refresh."
+          : "Existing monitoring is outside the propagated blast radius."
+      );
+
+      select(
+        "executive-priority-arbitration",
+        rerun.priorityArbitration === true,
+        rerun.priorityArbitration === true
+          ? "Changed reality may alter executive attention value."
+          : "No affected executive priority was identified."
+      );
+
+      select(
+        "future-simulation",
+        rerun.futureSimulation === true,
+        rerun.futureSimulation === true
+          ? "Future assumptions may no longer hold under the changed reality."
+          : "Existing future simulations remain outside the blast radius."
+      );
+
+      const staleIntentions =
+        (affected.intentions || []).map(item => ({
+          intentionId: item?.id || null,
+          subject: item?.subject || null,
+          priorStatus: item?.status || null,
+          reconciliationStatus:
+            "review-required",
+          mutationPerformed: false,
+          reason:
+            "Dependent intention intersects a materially changed belief or world state."
+        }));
+
+      const officeAttention =
+        [...new Set(
+          (affected.offices || [])
+            .filter(Boolean)
+        )].map(office => ({
+          office,
+          attention:
+            "affected-by-world-change",
+          dispatchPerformed: false
+        }));
+
+      const reconciliation = {
+        schema:
+          "meos.maddy.selective-cognitive-reconciliation.v1",
+        createdAt: new Date().toISOString(),
+        sourcePropagation:
+          propagation?.createdAt || null,
+        subject:
+          propagation?.subject ||
+          reappraisal?.subject ||
+          assessment?.subject ||
+          "Meaningful world-model change",
+        selected,
+        untouched,
+        staleIntentions,
+        officeAttention,
+        isolation: {
+          selectedCount: selected.length,
+          untouchedCount: untouched.length,
+          recomputeEverything: false,
+          rule:
+            "Only cognition inside the propagated blast radius earns recomputation."
+        },
+        governedMutations: {
+          intentionStatusMutationPerformed:
+            false,
+          planMutationPerformed: false,
+          monitoringMutationPerformed: false,
+          priorityMutationPerformed: false,
+          hallwayDispatchPerformed: false
+        },
+        nextCognition:
+          selected.map(item => item.organ),
+        authority: {
+          cognitiveRecomputationAuthorized:
+            true,
+          durableStateMutationAuthorized:
+            false,
+          planMutationAuthorized: false,
+          hallwayDispatchAuthorized: false,
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
+
+      this.cognitiveReconciliationState.count += 1;
+      this.cognitiveReconciliationState.lastAt =
+        reconciliation.createdAt;
+      this.cognitiveReconciliationState.last =
+        this.clone(reconciliation);
+      this.cognitiveReconciliationState.history.unshift(
+        this.clone(reconciliation)
+      );
+      this.cognitiveReconciliationState.history =
+        this.cognitiveReconciliationState.history.slice(
+          0,
+          120
+        );
+
+      this.record(
+        "cognition.selective-reconciliation",
+        reconciliation
+      );
+
+      this.emit(
+        "brain:cognitive-reconciliation",
+        this.clone(reconciliation)
+      );
+
+      return reconciliation;
+    },
+
+    getCognitiveReconciliationStatus() {
+      return {
+        commission: "006.017D7T2",
+        version: this.version,
+        buildId: this.buildId,
+        schema:
+          "meos.maddy.selective-cognitive-reconciliation.v1",
+        ...this.clone(
+          this.cognitiveReconciliationState
+        ),
+        authority: {
+          cognitiveRecomputationAuthorized:
+            true,
+          durableStateMutationAuthorized:
+            false,
+          planMutationAuthorized: false,
+          hallwayDispatchAuthorized: false,
+          externalActionAuthorized: false,
+          humanAuthorityPreserved: true
+        }
+      };
+    },
+
     getConsequencePropagationStatus() {
       return {
         commission: "006.017D7T1",
@@ -8786,6 +8994,15 @@
           current
         );
 
+      const cognitiveReconciliation =
+        this.reconcileCognitiveConsequences(
+          consequencePropagation,
+          cognitiveReappraisal,
+          assessment,
+          previous,
+          current
+        );
+
       const causalInvestigation =
         assessment.investigate
           ? this.runCausalCounterfactualInvestigation(
@@ -8845,6 +9062,10 @@
         consequencePropagation:
           this.clone(
             consequencePropagation
+          ),
+        cognitiveReconciliation:
+          this.clone(
+            cognitiveReconciliation
           ),
         causalInvestigation:
           causalInvestigation
@@ -14797,6 +15018,252 @@
         this.cognitiveIntentions = original;
         await this.flushPersistence();
       }
+    },
+
+    async runSelectiveCognitiveReconciliationAcceptanceTest() {
+      const hydration =
+        await this.hydrateResearchKnowledgeBeforeCognition();
+
+      const base =
+        this.projectWorldModel({
+          reason:
+            "006.017D7T2-baseline",
+          persist: false,
+          attend: false
+        });
+
+      const active =
+        base?.beliefs
+          ?.durableResearchLearning
+          ?.active || [];
+
+      const propagation = {
+        schema:
+          "meos.maddy.consequence-propagation.v1",
+        createdAt: new Date().toISOString(),
+        subject:
+          active[0]?.subject ||
+          "Research-dependent strategy",
+        affected: {
+          intentions: [{
+            type: "intention",
+            id:
+              "d7t2-affected-intention",
+            subject:
+              active[0]?.subject ||
+              "Affected intention",
+            status: "active"
+          }],
+          currentWork: [],
+          monitoring: [],
+          relationships: [],
+          priorities: [],
+          planning: [{
+            available: true,
+            mutationPerformed: false
+          }],
+          offices: [
+            "Executive Office"
+          ]
+        },
+        rerun: {
+          causalCounterfactual: true,
+          planning: true,
+          monitoring: false,
+          priorityArbitration: true,
+          futureSimulation: false
+        }
+      };
+
+      const reconciliation =
+        this.reconcileCognitiveConsequences(
+          propagation,
+          {
+            subject:
+              propagation.subject,
+            reconsiderPriorConclusions:
+              true
+          },
+          {
+            meaningful: true
+          },
+          base,
+          base
+        );
+
+      const selectedNames =
+        reconciliation.selected.map(
+          item => item.organ
+        );
+
+      const untouchedNames =
+        reconciliation.untouched.map(
+          item => item.organ
+        );
+
+      const checks = [
+        {
+          name:
+            "Commissioned research-knowledge hydration remains ready",
+          passed:
+            hydration?.success === true
+        },
+        {
+          name:
+            "Selective reconciliation uses the existing consequence map",
+          passed:
+            reconciliation?.schema ===
+            "meos.maddy.selective-cognitive-reconciliation.v1"
+        },
+        {
+          name:
+            "Affected causal reasoning is selected for recomputation",
+          passed:
+            selectedNames.includes(
+              "causal-counterfactual-reasoning"
+            )
+        },
+        {
+          name:
+            "Affected planning is selected for review",
+          passed:
+            selectedNames.includes(
+              "executive-planning"
+            )
+        },
+        {
+          name:
+            "Affected priority arbitration is selected",
+          passed:
+            selectedNames.includes(
+              "executive-priority-arbitration"
+            )
+        },
+        {
+          name:
+            "Unaffected monitoring is explicitly left alone",
+          passed:
+            untouchedNames.includes(
+              "executive-monitoring"
+            )
+        },
+        {
+          name:
+            "Unaffected future simulation is explicitly left alone",
+          passed:
+            untouchedNames.includes(
+              "future-simulation"
+            )
+        },
+        {
+          name:
+            "Reconciliation does not recompute everything",
+          passed:
+            reconciliation?.isolation
+              ?.recomputeEverything === false &&
+            reconciliation?.isolation
+              ?.selectedCount === 3 &&
+            reconciliation?.isolation
+              ?.untouchedCount === 2
+        },
+        {
+          name:
+            "Dependent intention is marked review-required without silent mutation",
+          passed:
+            reconciliation
+              ?.staleIntentions
+              ?.some(
+                item =>
+                  item.intentionId ===
+                    "d7t2-affected-intention" &&
+                  item.reconciliationStatus ===
+                    "review-required" &&
+                  item.mutationPerformed ===
+                    false
+              ) === true
+        },
+        {
+          name:
+            "Affected office receives cognitive attention without Hallway dispatch",
+          passed:
+            reconciliation
+              ?.officeAttention
+              ?.some(
+                item =>
+                  item.office ===
+                    "Executive Office" &&
+                  item.dispatchPerformed ===
+                    false
+              ) === true
+        },
+        {
+          name:
+            "Existing meaningful-change path carries selective reconciliation into cognitive re-entry",
+          passed:
+            /reconcileCognitiveConsequences/.test(
+              this.attendToWorldModelChange.toString()
+            ) &&
+            /cognitiveReconciliation/.test(
+              this.attendToWorldModelChange.toString()
+            ) &&
+            /scheduleCognitiveReentry/.test(
+              this.attendToWorldModelChange.toString()
+            )
+        },
+        {
+          name:
+            "Cognitive recomputation is allowed without durable state mutation",
+          passed:
+            reconciliation?.authority
+              ?.cognitiveRecomputationAuthorized === true &&
+            reconciliation?.authority
+              ?.durableStateMutationAuthorized === false
+        },
+        {
+          name:
+            "Plans are not silently mutated",
+          passed:
+            reconciliation
+              ?.governedMutations
+              ?.planMutationPerformed === false &&
+            reconciliation?.authority
+              ?.planMutationAuthorized === false
+        },
+        {
+          name:
+            "No Hallway dispatch or external-action authority is created",
+          passed:
+            reconciliation
+              ?.governedMutations
+              ?.hallwayDispatchPerformed === false &&
+            reconciliation?.authority
+              ?.hallwayDispatchAuthorized === false &&
+            reconciliation?.authority
+              ?.externalActionAuthorized === false &&
+            reconciliation?.authority
+              ?.humanAuthorityPreserved === true
+        }
+      ];
+
+      const passed =
+        checks.every(item => item.passed);
+
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.017D7T2 Selective Cognitive Reconciliation: ${passed ? "PASS" : "FAIL"}.`
+      );
+
+      return {
+        commission: "006.017D7T2",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        checks,
+        hydration,
+        reconciliation,
+        authority:
+          reconciliation.authority
+      };
     },
 
     async runConsequencePropagationAcceptanceTest() {
