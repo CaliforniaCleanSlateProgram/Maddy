@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.3.3";
-  const BUILD_ID = "EH133-EXPLICIT-LOCAL-GEOGRAPHY-20260807-A";
+  const VERSION = "1.4.0";
+  const BUILD_ID = "EH140-COGNITIVE-METABOLISM-LIFECYCLE-20260810-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -446,6 +446,10 @@
     transition(work, "planning");
     registerMissionMirror(work);
 
+    if (work.recognition?.recognized === true) {
+      return releaseRecognizedWork(work);
+    }
+
     if (work.authority.reviewRequired && !work.authority.authorized) {
       work.options = ["take-it", "request-revisions", "cancel"];
       return transition(work, "awaiting-review", {
@@ -489,23 +493,175 @@
     return capabilities.some(capability => String(capability).startsWith("workspace."));
   }
 
+  /*
+   * Commission 006.018B — Cognitive Metabolism / Recognition Before Creation
+   *
+   * Hallway is the boundary where cognition becomes durable executive work.
+   * Before creating another Mission mirror, recognize a previously-seen
+   * cognitive dispatch through durable Mission State. Unchanged cognition
+   * does not earn another durable Mission ID, another provider execution, or
+   * another ruck on the Executive Director's desk.
+   */
+  function missionMirrorReference(work) {
+    const context = work?.context || {};
+
+    if (context.parentFeedbackId && context.parentWorkId) {
+      const rejectedFileIds = Array.isArray(context.rejectedFileIds)
+        ? [...context.rejectedFileIds]
+            .map(value => String(value || "").trim())
+            .filter(Boolean)
+            .sort()
+        : [];
+
+      return [
+        "hallway-feedback-revision",
+        String(context.parentWorkId),
+        rejectedFileIds.join(",") || "no-file"
+      ].join(":");
+    }
+
+    const cognitiveDispatchKey =
+      String(context.cognitiveDispatchKey || "").trim();
+
+    if (cognitiveDispatchKey) {
+      return `cognitive-dispatch:${cognitiveDispatchKey}`;
+    }
+
+    return `hallway-work:${work.id}`;
+  }
+
+  function missionRecords(engine) {
+    const groups = [
+      engine?.getActiveMissions?.(),
+      engine?.getCompletedMissions?.(),
+      engine?.getArchivedMissions?.()
+    ];
+
+    return groups
+      .flatMap(group => Array.isArray(group) ? group : [])
+      .filter(Boolean);
+  }
+
+  function findMissionMirrorByReference(engine, sourceReference) {
+    if (!engine || !sourceReference) return null;
+
+    return (
+      missionRecords(engine).find(
+        mission =>
+          String(mission?.sourceReference || "") ===
+          String(sourceReference)
+      ) || null
+    );
+  }
+
   function registerMissionMirror(work) {
     const engine = missionEngine();
     if (!engine?.createMissionFromIntake) return null;
 
+    const sourceReference =
+      missionMirrorReference(work);
+
     try {
+      const existing =
+        findMissionMirrorByReference(
+          engine,
+          sourceReference
+        );
+
+      if (existing) {
+        work.mission = {
+          engine: "mission-engine",
+          id: existing.id,
+          status: existing.status,
+          sourceReference
+        };
+
+        work.recognition = {
+          schema:
+            "meos.executive-hallway.recognition.v1",
+          recognized: true,
+          unchanged: true,
+          disposition:
+            "skip-existing-work",
+          sourceReference,
+          missionId:
+            existing.id,
+          missionStatus:
+            existing.status || null,
+          recognizedAt: now()
+        };
+
+        work.evidence.push({
+          type:
+            "durable-work-recognition",
+          source:
+            "mission-engine",
+          sourceReference,
+          missionId:
+            existing.id,
+          missionStatus:
+            existing.status || null,
+          message:
+            "Previously-seen unchanged executive work was recognized before Mission creation.",
+          at: now()
+        });
+
+        record(
+          "work.recognized-before-creation",
+          {
+            workId: work.id,
+            missionId:
+              existing.id,
+            missionStatus:
+              existing.status || null,
+            sourceReference
+          }
+        );
+
+        return existing;
+      }
+
       const mission = engine.createMissionFromIntake({
         missionTitle: work.title,
         description: work.instruction,
         objective: work.instruction,
         source: "executive-intake",
+        intakeId: sourceReference,
         approvalRequired: work.authority.reviewRequired,
         assignedOffices: work.owner ? [work.owner] : [],
         leadOffice: work.owner || null,
-        tags: ["executive-hallway", work.route || "unrouted"],
+        tags: [
+          "executive-hallway",
+          work.route || "unrouted",
+          work.context?.cognitiveDispatchKey
+            ? "cognitive-dispatch"
+            : "executive-work"
+        ],
         createdBy: "Maddy / Executive Hallway"
       });
-      work.mission = { engine: "mission-engine", id: mission.id, status: mission.status };
+
+      work.mission = {
+        engine: "mission-engine",
+        id: mission.id,
+        status: mission.status,
+        sourceReference
+      };
+
+      work.recognition = {
+        schema:
+          "meos.executive-hallway.recognition.v1",
+        recognized: false,
+        unchanged: false,
+        disposition:
+          "promoted-new-work",
+        sourceReference,
+        missionId:
+          mission.id,
+        missionStatus:
+          mission.status || null,
+        recognizedAt: now()
+      };
+
       return mission;
     } catch (error) {
       work.evidence.push({
@@ -514,6 +670,197 @@
         message: error?.message || String(error),
         at: now()
       });
+      return null;
+    }
+  }
+
+  function releaseRecognizedWork(work) {
+    if (
+      work?.recognition?.recognized !== true ||
+      work?.recognition?.unchanged !== true
+    ) {
+      return null;
+    }
+
+    work.options = [
+      "view-existing",
+      "release"
+    ];
+
+    return transition(
+      work,
+      "done",
+      {
+        lifecycle: {
+          schema:
+            "meos.executive-hallway.lifecycle.v1",
+          terminal: true,
+          disposition:
+            "released-unchanged",
+          reason:
+            "Previously-seen work is unchanged and does not earn another execution.",
+          releasedAt: now(),
+          missionId:
+            work.mission?.id || null
+        },
+        outcome: {
+          success: true,
+          verified: true,
+          skipped: true,
+          reason:
+            "recognized-unchanged-work",
+          missionId:
+            work.mission?.id || null,
+          sourceReference:
+            work.mission?.sourceReference || null
+        }
+      }
+    );
+  }
+
+  function applyMissionDisposition(
+    work,
+    feedback
+  ) {
+    const engine = missionEngine();
+    const missionId =
+      work?.mission?.id || null;
+
+    if (
+      !engine ||
+      !missionId ||
+      !feedback
+    ) {
+      return null;
+    }
+
+    try {
+      let mission =
+        engine.getMission?.(missionId) ||
+        null;
+
+      if (!mission) {
+        return null;
+      }
+
+      if (
+        feedback.signal === "accepted"
+      ) {
+        if (
+          mission.approval?.required ===
+            true &&
+          mission.approval?.status !==
+            "approved" &&
+          typeof engine.approveMission ===
+            "function"
+        ) {
+          mission =
+            engine.approveMission(
+              missionId,
+              {
+                reviewedBy:
+                  feedback.actor,
+                notes:
+                  feedback.reason ||
+                  "Accepted from the Maddy HUD."
+              }
+            );
+        }
+
+        if (
+          typeof engine.completeMission ===
+          "function"
+        ) {
+          mission =
+            engine.completeMission(
+              missionId,
+              {
+                completedBy:
+                  feedback.actor,
+                summary:
+                  "Executive Director accepted the returned Hallway result.",
+                notes:
+                  feedback.reason || ""
+              }
+            );
+        }
+
+        work.lifecycle = {
+          schema:
+            "meos.executive-hallway.lifecycle.v1",
+          terminal: true,
+          disposition:
+            "resolved-accepted",
+          missionId,
+          resolvedAt: now()
+        };
+      } else if (
+        feedback.signal === "not-this"
+      ) {
+        if (
+          typeof engine.archiveMission ===
+          "function"
+        ) {
+          mission =
+            engine.archiveMission(
+              missionId,
+              "Executive Director — Not This"
+            );
+        }
+
+        work.lifecycle = {
+          schema:
+            "meos.executive-hallway.lifecycle.v1",
+          terminal: true,
+          disposition:
+            "released-not-this",
+          missionId,
+          resolvedAt: now()
+        };
+      }
+
+      if (mission) {
+        work.mission = {
+          ...work.mission,
+          status:
+            mission.status ||
+            work.mission?.status ||
+            null
+        };
+      }
+
+      record(
+        "work.lifecycle-disposition",
+        {
+          workId: work.id,
+          missionId,
+          signal:
+            feedback.signal,
+          lifecycleDisposition:
+            work.lifecycle
+              ?.disposition ||
+            null,
+          missionStatus:
+            work.mission
+              ?.status ||
+            null
+        }
+      );
+
+      return clone(
+        work.lifecycle || null
+      );
+    } catch (error) {
+      work.evidence.push({
+        type:
+          "coordination-warning",
+        source:
+          "mission-engine",
+        message:
+          `Terminal Mission disposition failed: ${error?.message || String(error)}`,
+        at: now()
+      });
+
       return null;
     }
   }
@@ -747,6 +1094,10 @@
     work.execution = { workspaceMissionId: prepared.id };
     registerMissionMirror(work);
 
+    if (work.recognition?.recognized === true) {
+      return releaseRecognizedWork(work);
+    }
+
     if (!prepared.readiness?.ready) {
       work.options = ["retry", "connect-capability", "reassign"];
       return transition(work, "blocked", {
@@ -807,6 +1158,11 @@
     work.owner = "maddy";
     work.route = "executive-router";
     registerMissionMirror(work);
+
+    if (work.recognition?.recognized === true) {
+      return releaseRecognizedWork(work);
+    }
+
     transition(work, "understanding");
     transition(work, "executing");
 
@@ -1104,6 +1460,15 @@
       deliverableId: feedback.deliverableId,
       reason: feedback.reason
     });
+    const lifecycle =
+      applyMissionDisposition(
+        work,
+        feedback
+      );
+
+    feedback.lifecycle =
+      clone(lifecycle);
+
     emit("feedback-recorded", feedback);
     emit("work-updated", work);
 
@@ -1134,6 +1499,15 @@
 
   function listWork(filter = {}) {
     let items = [...state.work.values()];
+
+    if (filter.includeTerminal !== true) {
+      items = items.filter(
+        item =>
+          item?.lifecycle?.terminal !==
+          true
+      );
+    }
+
     if (filter.state) items = items.filter(item => item.state === filter.state);
     if (filter.owner) items = items.filter(item => item.owner === filter.owner);
     return freeze(items.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
@@ -1145,6 +1519,21 @@
 
   function listDeliverables(filter = {}) {
     let items = [...state.deliverables.values()];
+
+    if (filter.includeTerminal !== true) {
+      items = items.filter(item => {
+        const work =
+          state.work.get(
+            item.workId
+          );
+
+        return (
+          work?.lifecycle
+            ?.terminal !== true
+        );
+      });
+    }
+
     if (filter.workId) items = items.filter(item => item.workId === filter.workId);
     return freeze(items.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))));
   }
@@ -1228,6 +1617,574 @@
     }).catch(error => {
       console.error(`[MEOS] ${NAME} could not complete Maddy request.`, error);
     });
+  }
+
+  function runCognitiveMetabolismAcceptanceTest() {
+    const assertions = [];
+    const check = (
+      name,
+      passed,
+      details = {}
+    ) => assertions.push({
+      name,
+      passed:
+        Boolean(passed),
+      details
+    });
+
+    const previousMissionEngine =
+      global.MEOSMissionEngine;
+
+    const active = [];
+    const completed = [];
+    const archived = [];
+
+    let createCount = 0;
+
+    const removeById = (
+      collection,
+      idValue
+    ) => {
+      const index =
+        collection.findIndex(
+          item =>
+            item.id === idValue
+        );
+
+      if (index >= 0) {
+        return collection.splice(
+          index,
+          1
+        )[0];
+      }
+
+      return null;
+    };
+
+    const mockEngine = {
+      createMissionFromIntake(
+        intake = {}
+      ) {
+        createCount += 1;
+
+        const mission = {
+          id:
+            `METABOLISM-${createCount}`,
+          title:
+            intake.missionTitle,
+          description:
+            intake.description,
+          objective:
+            intake.objective,
+          sourceReference:
+            intake.intakeId ||
+            null,
+          status:
+            "queued",
+          approval: {
+            required:
+              Boolean(
+                intake.approvalRequired
+              ),
+            status:
+              intake.approvalRequired
+                ? "not-submitted"
+                : "not-required"
+          }
+        };
+
+        active.push(mission);
+        return clone(mission);
+      },
+
+      getActiveMissions() {
+        return clone(active);
+      },
+
+      getCompletedMissions() {
+        return clone(completed);
+      },
+
+      getArchivedMissions() {
+        return clone(archived);
+      },
+
+      getMission(missionId) {
+        return clone(
+          [...active, ...completed, ...archived]
+            .find(
+              item =>
+                item.id === missionId
+            ) || null
+        );
+      },
+
+      approveMission(
+        missionId
+      ) {
+        const mission =
+          active.find(
+            item =>
+              item.id === missionId
+          );
+
+        if (mission) {
+          mission.status =
+            "approved";
+          mission.approval.status =
+            "approved";
+        }
+
+        return clone(mission);
+      },
+
+      completeMission(
+        missionId
+      ) {
+        const mission =
+          removeById(
+            active,
+            missionId
+          );
+
+        if (!mission) {
+          return null;
+        }
+
+        mission.status =
+          "completed";
+        completed.unshift(
+          mission
+        );
+
+        return clone(mission);
+      },
+
+      archiveMission(
+        missionId
+      ) {
+        const mission =
+          removeById(
+            active,
+            missionId
+          ) ||
+          removeById(
+            completed,
+            missionId
+          );
+
+        if (!mission) {
+          return null;
+        }
+
+        mission.status =
+          "archived";
+        archived.unshift(
+          mission
+        );
+
+        return clone(mission);
+      }
+    };
+
+    const createdWorkIds = [];
+
+    try {
+      global.MEOSMissionEngine =
+        mockEngine;
+
+      const first =
+        createWork({
+          id:
+            "metabolism-first",
+          instruction:
+            "Investigate the same known opportunity.",
+          title:
+            "Positioning — investigate",
+          reviewRequired:
+            false,
+          authorized:
+            true,
+          context: {
+            cognitiveDispatchKey:
+              "cognitive-known-fish"
+          }
+        });
+
+      createdWorkIds.push(
+        first.id
+      );
+
+      first.owner =
+        "executive-workspace-office";
+      first.route =
+        "workspace";
+
+      const firstMission =
+        registerMissionMirror(
+          first
+        );
+
+      check(
+        "First meaningful cognition is promoted to one durable Mission",
+        createCount === 1 &&
+        firstMission?.id ===
+          "METABOLISM-1" &&
+        first.recognition
+          ?.disposition ===
+          "promoted-new-work",
+        {
+          createCount,
+          firstMission,
+          recognition:
+            first.recognition
+        }
+      );
+
+      const duplicate =
+        createWork({
+          id:
+            "metabolism-duplicate",
+          instruction:
+            "Investigate the same known opportunity.",
+          title:
+            "Positioning — investigate",
+          reviewRequired:
+            false,
+          authorized:
+            true,
+          context: {
+            cognitiveDispatchKey:
+              "cognitive-known-fish"
+          }
+        });
+
+      createdWorkIds.push(
+        duplicate.id
+      );
+
+      duplicate.owner =
+        "executive-workspace-office";
+      duplicate.route =
+        "workspace";
+
+      const reusedMission =
+        registerMissionMirror(
+          duplicate
+        );
+
+      check(
+        "Previously-seen unchanged cognition reuses durable Mission identity",
+        createCount === 1 &&
+        reusedMission?.id ===
+          firstMission?.id &&
+        duplicate.recognition
+          ?.recognized === true,
+        {
+          createCount,
+          reusedMission,
+          recognition:
+            duplicate.recognition
+        }
+      );
+
+      releaseRecognizedWork(
+        duplicate
+      );
+
+      check(
+        "Recognized unchanged work is released without another provider execution",
+        duplicate.lifecycle
+          ?.terminal === true &&
+        duplicate.lifecycle
+          ?.disposition ===
+          "released-unchanged" &&
+        duplicate.outcome
+          ?.skipped === true,
+        {
+          lifecycle:
+            duplicate.lifecycle,
+          outcome:
+            duplicate.outcome
+        }
+      );
+
+      transition(
+        first,
+        "done",
+        {
+          outcome: {
+            success: true,
+            verified: true
+          }
+        }
+      );
+
+      const acceptedFeedback = {
+        signal:
+          "accepted",
+        actor:
+          "executive-director",
+        reason:
+          null
+      };
+
+      const acceptedLifecycle =
+        applyMissionDisposition(
+          first,
+          acceptedFeedback
+        );
+
+      check(
+        "Accepted returned work leaves active Mission state",
+        active.length === 0 &&
+        completed.length === 1 &&
+        completed[0]
+          ?.id ===
+          firstMission?.id &&
+        acceptedLifecycle
+          ?.disposition ===
+          "resolved-accepted",
+        {
+          active:
+            clone(active),
+          completed:
+            clone(completed),
+          lifecycle:
+            acceptedLifecycle
+        }
+      );
+
+      check(
+        "Terminal Hallway work is removed from the live corridor but remains explicitly retrievable for audit",
+        !listWork()
+          .some(
+            item =>
+              item.id ===
+              first.id
+          ) &&
+        Boolean(
+          getWork(first.id)
+        ),
+        {
+          liveWorkIds:
+            listWork().map(
+              item => item.id
+            ),
+          retained:
+            Boolean(
+              getWork(first.id)
+            )
+        }
+      );
+
+      const revisionParent =
+        createWork({
+          id:
+            "metabolism-revision",
+          instruction:
+            "Find the correct file.",
+          reviewRequired:
+            false,
+          authorized:
+            true,
+          context: {
+            cognitiveDispatchKey:
+              "cognitive-revision-fish"
+          }
+        });
+
+      createdWorkIds.push(
+        revisionParent.id
+      );
+
+      revisionParent.owner =
+        "executive-workspace-office";
+      revisionParent.route =
+        "workspace";
+
+      const revisionMission =
+        registerMissionMirror(
+          revisionParent
+        );
+
+      const rejectedLifecycle =
+        applyMissionDisposition(
+          revisionParent,
+          {
+            signal:
+              "not-this",
+            actor:
+              "executive-director",
+            reason:
+              "Wrong file."
+          }
+        );
+
+      check(
+        "Not This releases the rejected Mission from active operations before any replacement patrol",
+        active.every(
+          item =>
+            item.id !==
+            revisionMission?.id
+        ) &&
+        archived.some(
+          item =>
+            item.id ===
+            revisionMission?.id
+        ) &&
+        rejectedLifecycle
+          ?.disposition ===
+          "released-not-this",
+        {
+          active:
+            clone(active),
+          archived:
+            clone(archived),
+          lifecycle:
+            rejectedLifecycle
+        }
+      );
+
+      const changed =
+        createWork({
+          id:
+            "metabolism-changed",
+          instruction:
+            "Investigate after meaningful evidence changed.",
+          reviewRequired:
+            false,
+          authorized:
+            true,
+          context: {
+            cognitiveDispatchKey:
+              "cognitive-grown-fish"
+          }
+        });
+
+      createdWorkIds.push(
+        changed.id
+      );
+
+      changed.owner =
+        "executive-workspace-office";
+      changed.route =
+        "workspace";
+
+      registerMissionMirror(
+        changed
+      );
+
+      check(
+        "Meaningfully changed cognition with a new dispatch identity can still be promoted",
+        createCount === 3 &&
+        changed.recognition
+          ?.recognized === false &&
+        changed.recognition
+          ?.disposition ===
+          "promoted-new-work",
+        {
+          createCount,
+          recognition:
+            changed.recognition
+        }
+      );
+
+      check(
+        "Recognition uses durable Mission sourceReference rather than browser-only Hallway identity",
+        first.mission
+          ?.sourceReference ===
+          "cognitive-dispatch:cognitive-known-fish" &&
+        active
+          .concat(
+            completed,
+            archived
+          )
+          .some(
+            mission =>
+              mission
+                .sourceReference ===
+              "cognitive-dispatch:cognitive-known-fish"
+          ),
+        {
+          sourceReference:
+            first.mission
+              ?.sourceReference
+        }
+      );
+
+      check(
+        "Metabolism changes no external-action authority",
+        first.authority
+          ?.authorized === true &&
+        duplicate.authority
+          ?.authorized === true,
+        {
+          firstAuthority:
+            first.authority,
+          duplicateAuthority:
+            duplicate.authority
+        }
+      );
+    } finally {
+      global.MEOSMissionEngine =
+        previousMissionEngine;
+
+      for (
+        const workId
+        of createdWorkIds
+      ) {
+        state.work.delete(
+          workId
+        );
+      }
+    }
+
+    const passed =
+      assertions.filter(
+        item => item.passed
+      ).length;
+
+    const result = freeze({
+      success:
+        passed ===
+        assertions.length,
+      commission:
+        "006.018B",
+      schema:
+        "meos.executive-hallway.cognitive-metabolism-acceptance.v1",
+      version:
+        VERSION,
+      buildId:
+        BUILD_ID,
+      passed,
+      total:
+        assertions.length,
+      assertions,
+      authority: {
+        externalActionAuthorized:
+          false,
+        humanAuthorityPreserved:
+          true
+      }
+    });
+
+    console.table(
+      assertions.map(
+        item => ({
+          name:
+            item.name,
+          passed:
+            item.passed
+        })
+      )
+    );
+
+    console.info(
+      `[MEOS ${VERSION}] Commission 006.018B Cognitive Metabolism / Recognition Before Creation: ${result.success ? "PASS" : "FAIL"} (${passed}/${assertions.length}).`
+    );
+
+    return result;
   }
 
   function runSelfTest() {
@@ -1343,6 +2300,9 @@
     check("Provider-neutral Workspace doorway exists", typeof workspaceOffice === "function");
     check("Executive Router fallback exists", typeof executiveRouter === "function");
     check("Mission Engine mirror exists", typeof registerMissionMirror === "function");
+    check("Durable cognition recognition exists", typeof findMissionMirrorByReference === "function" && typeof missionMirrorReference === "function");
+    check("Recognized unchanged work release exists", typeof releaseRecognizedWork === "function");
+    check("Terminal Mission disposition exists", typeof applyMissionDisposition === "function");
     check("Executive State extension registration exists", typeof registerExecutiveStateSource === "function");
     check("Dashboard event bridge exists", typeof handleMaddyRequest === "function");
 
@@ -1435,6 +2395,7 @@
     getSnapshot,
     getStatus,
     runSelfTest,
+    runCognitiveMetabolismAcceptanceTest,
     addEventListener: (...args) => state.listeners.addEventListener(...args),
     removeEventListener: (...args) => state.listeners.removeEventListener(...args)
   });
