@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 MEOS Maddy Local Perception Substrate
-Version: 1.3.0
-Commission: 006.017D7N5
-Build: MLP130-INTENT-BOUNDED-INVESTIGATION-20260811-A
+Version: 1.4.0
+Commission: 006.017D7N7
+Build: MLP140-EXECUTIVE-BRAIN-HANDOFF-CONSUMER-20260811-A
 
 Purpose:
 - Give Maddy a provider-neutral, local-first public-web perception substrate.
@@ -36,8 +36,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-VERSION = "1.3.0"
-BUILD_ID = "MLP130-INTENT-BOUNDED-INVESTIGATION-20260811-A"
+VERSION = "1.4.0"
+BUILD_ID = "MLP140-EXECUTIVE-BRAIN-HANDOFF-CONSUMER-20260811-A"
 DEFAULT_DB = Path.home() / ".meos" / "maddy-perception.sqlite3"
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
@@ -268,6 +268,130 @@ def observe(db: sqlite3.Connection, url: str, timeout: int, max_bytes: int) -> P
     )
 
 
+
+
+def validate_executive_brain_handoff(handoff: dict) -> dict:
+    """
+    Validate the exact Executive Brain v1 local-perception handoff contract.
+    Local perception may consume the Brain's intent and budget, but it may not
+    widen that intent, increase the budget, or inherit cognitive/action authority.
+    """
+    if not isinstance(handoff, dict):
+        raise ValueError("Executive Brain handoff must be a JSON object.")
+    if handoff.get("schema") != "meos.maddy.local-perception-handoff.v1":
+        raise ValueError("Unsupported local-perception handoff schema.")
+
+    intent_id = " ".join(str(handoff.get("intentId") or "").split()).strip()[:160]
+    query = " ".join(str(handoff.get("query") or "").split()).strip()
+    if not intent_id or not query:
+        raise ValueError("Executive Brain handoff requires intentId and query.")
+
+    authority = handoff.get("authority") or {}
+    epistemic = handoff.get("epistemicContract") or {}
+    budget = handoff.get("perceptionBudget") or {}
+
+    if authority.get("investigationOnly") is not True:
+        raise ValueError("Handoff must be investigation-only.")
+    if authority.get("paidCognitionAuthorized") is not False:
+        raise ValueError("Local perception cannot receive paid-cognition authority.")
+    if authority.get("externalActionAuthorized") is not False:
+        raise ValueError("Local perception cannot receive external-action authority.")
+    if authority.get("consequentialActionAuthorized") is not False:
+        raise ValueError("Local perception cannot receive consequential-action authority.")
+
+    if epistemic.get("perceptionIsNotBelief") is not True:
+        raise ValueError("Handoff must preserve perception-is-not-belief.")
+    if epistemic.get("semanticConclusionAuthorized") is not False:
+        raise ValueError("Local perception cannot receive semantic-conclusion authority.")
+    if epistemic.get("sufficiencyJudgmentAuthorized") is not False:
+        raise ValueError("Local perception cannot receive sufficiency-judgment authority.")
+    if epistemic.get("institutionalTruthPromotionAuthorized") is not False:
+        raise ValueError("Local perception cannot receive truth-promotion authority.")
+
+    max_results = max(1, min(50, int(budget.get("maxResults") or 10)))
+    max_observations = max(
+        1,
+        min(20, max_results, int(budget.get("maxObservations") or 5)),
+    )
+    max_total_bytes = max(
+        1024,
+        min(64 * 1024 * 1024, int(budget.get("maxTotalBytes") or 16 * 1024 * 1024)),
+    )
+
+    return {
+        "schema": handoff["schema"],
+        "intentId": intent_id,
+        "query": query,
+        "origin": handoff.get("origin"),
+        "subject": handoff.get("subject"),
+        "objective": handoff.get("objective"),
+        "perceptionBudget": {
+            "maxResults": max_results,
+            "maxObservations": max_observations,
+            "maxTotalBytes": max_total_bytes,
+        },
+        "authority": {
+            "investigationOnly": True,
+            "paidCognitionAuthorized": False,
+            "externalActionAuthorized": False,
+            "consequentialActionAuthorized": False,
+        },
+        "epistemicContract": {
+            "perceptionIsNotBelief": True,
+            "semanticConclusionAuthorized": False,
+            "sufficiencyJudgmentAuthorized": False,
+            "institutionalTruthPromotionAuthorized": False,
+        },
+    }
+
+
+def execute_executive_brain_handoff(
+    db: sqlite3.Connection,
+    handoff: dict,
+    timeout: int,
+) -> dict:
+    accepted = validate_executive_brain_handoff(handoff)
+    budget = accepted["perceptionBudget"]
+
+    result = investigate_intent(
+        db=db,
+        intent_id=accepted["intentId"],
+        query=accepted["query"],
+        timeout=max(1, timeout),
+        max_results=budget["maxResults"],
+        max_observations=budget["maxObservations"],
+        max_total_bytes=budget["maxTotalBytes"],
+    )
+
+    # Preserve exact cognitive lineage and return only perception evidence.
+    result["handoffSchema"] = accepted["schema"]
+    result["handoffAccepted"] = True
+    result["origin"] = accepted.get("origin")
+    result["subject"] = accepted.get("subject")
+    result["objective"] = accepted.get("objective")
+    result["perceptionBudget"] = budget
+    result["epistemicContract"] = accepted["epistemicContract"]
+    result["authority"] = accepted["authority"]
+    result["semanticConclusion"] = None
+    result["sufficiencyJudgment"] = None
+    result["institutionalTruthAuthority"] = False
+    result["paidCognitionAuthorized"] = False
+    result["externalActionAuthorized"] = False
+    return result
+
+
+def load_handoff_json(path: str) -> dict:
+    if path == "-":
+        raw = sys.stdin.read()
+    else:
+        raw = Path(path).read_text(encoding="utf-8")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid Executive Brain handoff JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("Executive Brain handoff JSON must contain one object.")
+    return parsed
 
 
 def investigate_intent(
@@ -511,6 +635,16 @@ def main() -> int:
     investigate_cmd.add_argument("--max-observations", type=int, default=5)
     investigate_cmd.add_argument("--max-total-bytes", type=int, default=16 * 1024 * 1024)
 
+    handoff_cmd = sub.add_parser(
+        "handoff",
+        help="Consume an Executive Brain local-perception handoff JSON contract.",
+    )
+    handoff_cmd.add_argument(
+        "handoff_json",
+        help="Path to handoff JSON, or - to read one JSON object from stdin.",
+    )
+    handoff_cmd.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+
     sub.add_parser("status", help="Show local perception evidence.")
     args = parser.parse_args()
 
@@ -534,6 +668,13 @@ def main() -> int:
                 db, args.intent_id, args.query, args.timeout, args.max_results,
                 args.max_observations, args.max_total_bytes
             ), indent=2, sort_keys=True))
+        elif args.command == "handoff":
+            handoff = load_handoff_json(args.handoff_json)
+            print(json.dumps(
+                execute_executive_brain_handoff(db, handoff, args.timeout),
+                indent=2,
+                sort_keys=True,
+            ))
         else:
             print(json.dumps(status(db), indent=2, sort_keys=True))
         return 0
