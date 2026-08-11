@@ -1,14 +1,16 @@
 /*
  * MEOS Document Classification Engine
- * Version: 1.0.0
+ * Version: 1.1.0
  *
  * Mission:
  * Classify cataloged documents using explainable, organization-neutral rules.
  *
  * Brick boundary:
  * This engine determines likely document type, department routing, sensitivity,
- * authority level, and review requirements. It does not ingest files, replace
- * official policy, or silently promote documents into institutional memory.
+ * authority level, review requirements, and whether a document represents
+ * executable office work. It does not ingest files, mutate forms, sign,
+ * certify, submit, replace official policy, or silently promote documents
+ * into institutional memory.
  */
 
 (function initializeDocumentClassifier(global) {
@@ -82,9 +84,30 @@
         HIGHLY_RESTRICTED: "highly-restricted"
     };
 
+    const DOCUMENT_WORK_KINDS = {
+        EVIDENCE_ONLY: "evidence-only",
+        REVIEW: "review",
+        DATA_ENTRY: "data-entry",
+        APPLICATION: "application",
+        CERTIFICATION: "certification",
+        SIGNATURE: "signature",
+        SUBMISSION: "submission",
+        AGREEMENT: "agreement",
+        UNKNOWN: "unknown"
+    };
+
+    const HUMAN_AUTHORITY_KINDS = {
+        NONE: "none",
+        REVIEW: "human-review",
+        CERTIFICATION: "human-certification",
+        SIGNATURE: "human-signature",
+        EXECUTION: "human-execution"
+    };
+
+
     const DocumentClassifier = {
         name: "MEOS Document Classification Engine",
-        version: "1.0.0",
+        version: "1.1.0",
         status: "initializing",
         operatingMode: "explainable-classification",
 
@@ -864,6 +887,13 @@
                 matches[1] || null
             );
 
+            const workIntelligence =
+                this.analyzeDocumentWork(
+                    document,
+                    evidenceText,
+                    topMatch
+                );
+
             const result = {
                 id: this.createId("classification-result"),
                 documentId: document.id,
@@ -890,6 +920,7 @@
                 requiresExecutiveReview:
                     this.requiresExecutiveReview(topMatch, confidence),
                 reviewReason: this.buildReviewReason(topMatch, confidence),
+                workIntelligence,
                 classifiedAt: new Date().toISOString(),
                 classifiedBy: this.name,
                 metadata: {
@@ -897,7 +928,19 @@
                     mimeType: document.mimeType || "",
                     originalAuthority: document.authority || null,
                     originalSensitivity: document.sensitivity || null,
-                    queueStatus: document.queueStatus || null
+                    queueStatus: document.queueStatus || null,
+                    investigationId:
+                        document.metadata?.investigationId || null,
+                    contentSha256:
+                        document.metadata?.contentSha256 ||
+                        document.contentFingerprint ||
+                        null,
+                    sourceProvider:
+                        document.sourceProvider || null,
+                    sourceLocation:
+                        document.sourceLocation || null,
+                    epistemicStatus:
+                        document.metadata?.epistemicStatus || null
                 }
             };
 
@@ -994,6 +1037,243 @@
                 processed: results.length,
                 results,
                 status: this.getStatus()
+            };
+        },
+
+        analyzeDocumentWork(document, evidenceText, topMatch = {}) {
+            const text = String(evidenceText || "");
+            const type = topMatch.type || DOCUMENT_TYPES.UNKNOWN;
+            const signals = [];
+            const requiredHumanAuthority = new Set();
+            const requiredCapabilities = new Set();
+            const fieldHints = [];
+
+            const addSignal = (id, label, evidence) => {
+                if (signals.some((item) => item.id === id)) return;
+                signals.push({ id, label, evidence });
+            };
+
+            const matchesAny = (patterns = []) =>
+                patterns.some((pattern) => pattern.test(text));
+
+            if (
+                [DOCUMENT_TYPES.FORM, DOCUMENT_TYPES.GRANT_APPLICATION]
+                    .includes(type) ||
+                matchesAny([
+                    /\bapplication form\b/,
+                    /\bcomplete (?:this|the) form\b/,
+                    /\bplease complete\b/,
+                    /\bapplicant information\b/,
+                    /\brequired fields?\b/
+                ])
+            ) {
+                addSignal(
+                    "fillable-document",
+                    "Document contains data-entry work",
+                    "Form/application language indicates information must be supplied."
+                );
+                requiredCapabilities.add("document-field-mapping");
+                requiredCapabilities.add("verified-fact-retrieval");
+            }
+
+            if (
+                type === DOCUMENT_TYPES.GRANT_APPLICATION ||
+                matchesAny([
+                    /\bgrant application\b/,
+                    /\bapplication narrative\b/,
+                    /\bproject narrative\b/,
+                    /\bstatement of need\b/,
+                    /\bbudget narrative\b/,
+                    /\bamount requested\b/
+                ])
+            ) {
+                addSignal(
+                    "application-work",
+                    "Document is application work",
+                    "Application language indicates an executable package rather than passive evidence."
+                );
+                requiredCapabilities.add("application-preparation");
+                requiredCapabilities.add("evidence-grounded-drafting");
+            }
+
+            if (
+                matchesAny([
+                    /\bsignature\b/,
+                    /\bsigned by\b/,
+                    /\bauthorized signatory\b/,
+                    /\bauthorized representative\b/,
+                    /\bdate signed\b/,
+                    /\belectronic signature\b/
+                ])
+            ) {
+                addSignal(
+                    "signature-required",
+                    "Human signature appears required",
+                    "Signature or authorized-signatory language was observed."
+                );
+                requiredHumanAuthority.add(
+                    HUMAN_AUTHORITY_KINDS.SIGNATURE
+                );
+                requiredCapabilities.add("signature-routing");
+            }
+
+            if (
+                matchesAny([
+                    /\bi certify\b/,
+                    /\bcertify that\b/,
+                    /\bcertification\b/,
+                    /\bunder penalty of perjury\b/,
+                    /\battest\b/,
+                    /\battestation\b/
+                ])
+            ) {
+                addSignal(
+                    "certification-required",
+                    "Human certification or attestation appears required",
+                    "Certification or attestation language was observed."
+                );
+                requiredHumanAuthority.add(
+                    HUMAN_AUTHORITY_KINDS.CERTIFICATION
+                );
+                requiredCapabilities.add("certification-routing");
+            }
+
+            if (
+                [
+                    DOCUMENT_TYPES.CONTRACT,
+                    DOCUMENT_TYPES.MOU,
+                    DOCUMENT_TYPES.LEASE
+                ].includes(type) ||
+                matchesAny([
+                    /\bagreement between\b/,
+                    /\bterms and conditions\b/,
+                    /\bparty agrees\b/,
+                    /\bexecute(?:d| this agreement)\b/
+                ])
+            ) {
+                addSignal(
+                    "agreement-execution",
+                    "Agreement may require authorized execution",
+                    "Agreement or contract language indicates consequential execution."
+                );
+                requiredHumanAuthority.add(
+                    HUMAN_AUTHORITY_KINDS.EXECUTION
+                );
+                requiredCapabilities.add("agreement-review");
+                requiredCapabilities.add("authorized-execution-routing");
+            }
+
+            if (
+                matchesAny([
+                    /\bsubmit(?:ted|tal| this form)?\b/,
+                    /\bsubmission deadline\b/,
+                    /\bdue date\b/,
+                    /\bmust be received by\b/,
+                    /\bupload\b/,
+                    /\battach(?:ment|ed)?\b/
+                ])
+            ) {
+                addSignal(
+                    "submission-work",
+                    "Document appears connected to submission work",
+                    "Submission, deadline, upload, or attachment language was observed."
+                );
+                requiredCapabilities.add("submission-package-assembly");
+            }
+
+            [
+                ["legal-name", /\blegal name\b/],
+                ["address", /\bmailing address\b|\bphysical address\b/],
+                ["ein", /\bein\b|\bemployer identification number\b/],
+                ["uei", /\buei\b|\bunique entity identifier\b/],
+                ["contact", /\bcontact (?:name|person|information)\b/],
+                ["budget", /\bbudget\b|\bamount requested\b/],
+                ["date", /\bdate\b/]
+            ].forEach(([field, pattern]) => {
+                if (pattern.test(text)) fieldHints.push(field);
+            });
+
+            if (
+                requiredHumanAuthority.size > 0 ||
+                type === DOCUMENT_TYPES.UNKNOWN ||
+                signals.some(
+                    (signal) =>
+                        [
+                            "fillable-document",
+                            "agreement-execution"
+                        ].includes(signal.id)
+                )
+            ) {
+                requiredHumanAuthority.add(
+                    HUMAN_AUTHORITY_KINDS.REVIEW
+                );
+            }
+
+            let workKind = DOCUMENT_WORK_KINDS.EVIDENCE_ONLY;
+
+            if (
+                requiredHumanAuthority.has(
+                    HUMAN_AUTHORITY_KINDS.SIGNATURE
+                )
+            ) {
+                workKind = DOCUMENT_WORK_KINDS.SIGNATURE;
+            } else if (
+                requiredHumanAuthority.has(
+                    HUMAN_AUTHORITY_KINDS.CERTIFICATION
+                )
+            ) {
+                workKind = DOCUMENT_WORK_KINDS.CERTIFICATION;
+            } else if (
+                signals.some((signal) => signal.id === "agreement-execution")
+            ) {
+                workKind = DOCUMENT_WORK_KINDS.AGREEMENT;
+            } else if (
+                signals.some((signal) => signal.id === "application-work")
+            ) {
+                workKind = DOCUMENT_WORK_KINDS.APPLICATION;
+            } else if (
+                signals.some((signal) => signal.id === "fillable-document")
+            ) {
+                workKind = DOCUMENT_WORK_KINDS.DATA_ENTRY;
+            } else if (
+                signals.some((signal) => signal.id === "submission-work")
+            ) {
+                workKind = DOCUMENT_WORK_KINDS.SUBMISSION;
+            } else if (type === DOCUMENT_TYPES.UNKNOWN) {
+                workKind = DOCUMENT_WORK_KINDS.UNKNOWN;
+            }
+
+            return {
+                workKind,
+                executable:
+                    ![
+                        DOCUMENT_WORK_KINDS.EVIDENCE_ONLY,
+                        DOCUMENT_WORK_KINDS.UNKNOWN
+                    ].includes(workKind),
+                signals,
+                fieldHints: this.uniqueStrings(fieldHints),
+                requiredCapabilities:
+                    this.uniqueStrings(Array.from(requiredCapabilities)),
+                requiredHumanAuthority:
+                    this.uniqueStrings(Array.from(requiredHumanAuthority)),
+                canAutoFill: false,
+                canAutoSign: false,
+                canAutoCertify: false,
+                canAutoSubmit: false,
+                preparationAuthorized: false,
+                mutationAuthorized: false,
+                signatureAuthorized: false,
+                certificationAuthorized: false,
+                submissionAuthorized: false,
+                epistemicStatus:
+                    document.metadata?.epistemicStatus ||
+                    "classification-inference",
+                investigationId:
+                    document.metadata?.investigationId || null,
+                sourceFingerprint:
+                    document.metadata?.contentSha256 ||
+                    document.contentFingerprint ||
+                    null
             };
         },
 
@@ -1366,6 +1646,19 @@
                 approvedBy: result.approvedBy || null
             };
 
+            document.workIntelligence =
+                this.clone(
+                    result.workIntelligence || {
+                        workKind: DOCUMENT_WORK_KINDS.UNKNOWN,
+                        executable: false,
+                        preparationAuthorized: false,
+                        mutationAuthorized: false,
+                        signatureAuthorized: false,
+                        certificationAuthorized: false,
+                        submissionAuthorized: false
+                    }
+                );
+
             document.recommendedOffice =
                 result.recommendedOffice;
             document.authority =
@@ -1458,6 +1751,14 @@
                         result.recommendedOffice,
                     requiresExecutiveReview:
                         result.requiresExecutiveReview,
+                    workIntelligence:
+                        this.clone(result.workIntelligence || null),
+                    investigationId:
+                        result.metadata?.investigationId || null,
+                    contentSha256:
+                        result.metadata?.contentSha256 || null,
+                    epistemicStatus:
+                        result.metadata?.epistemicStatus || null,
                     approvedBy:
                         result.approvedBy || null,
                     actor:
@@ -1777,7 +2078,7 @@
                 summary:
                     "Explainable, organization-neutral document classification with executive review controls.",
                 content:
-                    "The classifier recommends document type, office routing, authority, sensitivity, and review requirements. It never silently promotes a document into official institutional knowledge.",
+                    "The classifier recommends document type, office routing, authority, sensitivity, review requirements, and bounded document-work intelligence. It never mutates, signs, certifies, submits, or silently promotes a document into official institutional knowledge.",
                 tags: [
                     "meos-core",
                     "document-classification",
@@ -1798,7 +2099,7 @@
                     componentVersion: this.version,
                     organizationNeutralCore: true,
                     brickBoundary:
-                        "Classification only; no file ingestion or silent policy promotion."
+                        "Classification and document-work recognition only; no file ingestion, document mutation, signature, certification, submission, or silent policy promotion."
                 },
                 createdBy: this.name
             });
@@ -1821,6 +2122,25 @@
                     (rule) => rule.active
                 ).length,
                 classificationCount: this.results.length,
+                executableWorkCount:
+                    this.results.filter(
+                        (result) =>
+                            result.workIntelligence?.executable === true
+                    ).length,
+                signatureRequiredCount:
+                    this.results.filter(
+                        (result) =>
+                            result.workIntelligence
+                                ?.requiredHumanAuthority
+                                ?.includes("human-signature")
+                    ).length,
+                certificationRequiredCount:
+                    this.results.filter(
+                        (result) =>
+                            result.workIntelligence
+                                ?.requiredHumanAuthority
+                                ?.includes("human-certification")
+                    ).length,
                 pendingReviewCount: this.reviewQueue.filter(
                     (item) => item.status === "pending"
                 ).length,
