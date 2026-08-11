@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.5.4
+ * Version: 4.6.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.5.4";
+  const DASHBOARD_VERSION = "4.6.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5438,6 +5438,137 @@ document
     return renderMaddyExecutiveWorkspace(snapshot, getMaddyWorkPackage(snapshot));
   }
 
+  function deriveExecutiveOutcome(snapshot) {
+    const urgentFunding = [...(snapshot.fundingUrgent || [])]
+      .sort((a, b) => {
+        const aDeadline = Date.parse(getFundingDeadline(a) || "") || Number.MAX_SAFE_INTEGER;
+        const bDeadline = Date.parse(getFundingDeadline(b) || "") || Number.MAX_SAFE_INTEGER;
+        return aDeadline - bDeadline;
+      })[0] || null;
+    const approval = (snapshot.pendingApprovals || [])[0] || null;
+    const deliverable = (snapshot.hallwayDeliverables || [])[0] || null;
+    const blocked = (snapshot.blocked || [])[0] || null;
+    const activeWork = (snapshot.hallwayWork || []).find((item) => !["done", "cancelled"].includes(item.state)) || null;
+
+    if (urgentFunding) {
+      return {
+        kind: "funding",
+        eyebrow: "MADDY'S HIGHEST-VALUE MOVE",
+        title: urgentFunding.title || "Time-sensitive funding opportunity",
+        why: `A verified funding deadline is inside the 14-day attention window. ${getFundingRecommendation(urgentFunding) || "Executive review is warranted now."}`,
+        value: getFundingAmount(urgentFunding) || "Funding value not verified",
+        evidence: `Resource Development · deadline ${getFundingDeadline(urgentFunding) || "unknown"}`,
+        action: "Open Funding Intelligence",
+        record: urgentFunding
+      };
+    }
+    if (approval) {
+      return {
+        kind: "approval",
+        eyebrow: "MADDY NEEDS YOUR AUTHORITY",
+        title: approval.title || "Executive decision ready",
+        why: "Work has reached an authority boundary. Maddy can continue immediately after the required executive decision.",
+        value: "Removes an execution blocker",
+        evidence: `Executive Hallway · ${approval.officeName || approval.owner || "executive work"}`,
+        action: "Review Decision",
+        record: approval
+      };
+    }
+    if (deliverable) {
+      return {
+        kind: "deliverable",
+        eyebrow: "VALUE RETURNED",
+        title: deliverable.title || deliverable.name || "Executive work package returned",
+        why: "Maddy has completed work ready for executive use. Inspecting the result converts background work into an organizational outcome.",
+        value: "Completed executive work",
+        evidence: `Executive Hallway · ${deliverable.source || deliverable.provider || "deliverable"}`,
+        action: "Open Work Package",
+        record: deliverable
+      };
+    }
+    if (blocked) {
+      return {
+        kind: "blocked",
+        eyebrow: "MADDY FOUND FRICTION",
+        title: blocked.title || "Executive work is blocked",
+        why: `This work cannot advance in ${blocked.officeName || "the responsible office"} until the blocker is resolved.`,
+        value: "Protects execution velocity",
+        evidence: `Task runtime · ${blocked.id || "recorded blocker"}`,
+        action: "Inspect Blocker",
+        record: blocked
+      };
+    }
+    if (activeWork) {
+      const dispatch = getMaddyDispatchPresentation(activeWork);
+      return {
+        kind: "work",
+        eyebrow: "MADDY IS ADVANCING",
+        title: activeWork.title || activeWork.instruction || "Executive work in progress",
+        why: `${dispatch.detail || "Maddy is coordinating active executive work."} This is the highest-priority live Hallway work visible to Headquarters.`,
+        value: "Active organizational progress",
+        evidence: `Executive Hallway · ${dispatch.label || activeWork.state || "active"}`,
+        action: "Open Live Work",
+        record: activeWork
+      };
+    }
+    return {
+      kind: "watch",
+      eyebrow: "MADDY IS WATCHING THE ORGANIZATION",
+      title: "No executive intervention is justified right now",
+      why: `Maddy is holding attention on ${(snapshot.fundingRecords || []).length} funding records and ${(snapshot.tasks || []).length} office tasks. She will surface a move when evidence crosses an action threshold.`,
+      value: "No manufactured busywork",
+      evidence: `Headquarters snapshot · ${snapshot.computedAt || new Date().toISOString()}`,
+      action: "Inspect Live Evidence",
+      record: null
+    };
+  }
+
+  function executeExecutiveOutcome(outcome, snapshot) {
+    if (!outcome) return;
+    if (outcome.kind === "funding") {
+      if (outcome.record) openFundingIntelligenceBrowser(outcome.record);
+      else openFundingIntelligenceBrowser();
+      return;
+    }
+    if (outcome.kind === "approval") {
+      openRealtimeEvidence("approvals", outcome.record?.id || null);
+      return;
+    }
+    if (outcome.kind === "deliverable") {
+      const packageState = getMaddyWorkPackage(snapshot);
+      if (packageState?.selected) renderMaddyExecutiveBrief(packageState.selected);
+      else openMaddyExecutiveWorkspace();
+      return;
+    }
+    if (outcome.kind === "blocked") {
+      openRealtimeEvidence("task", outcome.record?.id || null);
+      return;
+    }
+    if (outcome.kind === "work") {
+      openRealtimeEvidence("work", outcome.record?.id || null);
+      return;
+    }
+    openOfficeActivityBrowser("all");
+  }
+
+  function renderExecutiveOutcome(snapshot) {
+    const briefing = document.getElementById("meosLiveBriefing");
+    if (!briefing) return null;
+    const outcome = deriveExecutiveOutcome(snapshot);
+    briefing.dataset.outcomeKind = outcome.kind;
+    briefing.innerHTML = `
+      <div class="meos-muted" style="font-size:.7rem;font-weight:800;letter-spacing:.12em;margin-bottom:.42rem;">${escapeHtml(outcome.eyebrow)}</div>
+      <p style="font-size:.94rem;line-height:1.35;margin:.1rem 0 .48rem;"><strong>${escapeHtml(outcome.title)}</strong></p>
+      <p style="font-size:.82rem;line-height:1.5;margin:.2rem 0 .58rem;">${escapeHtml(outcome.why)}</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin:.5rem 0 .7rem;">
+        <div class="meos-evidence-field"><span>VALUE</span><strong>${escapeHtml(outcome.value)}</strong></div>
+        <div class="meos-evidence-field"><span>EVIDENCE</span><strong>${escapeHtml(outcome.evidence)}</strong></div>
+      </div>
+      <button id="meosExecutiveOutcomeAction" class="meos-action-button" type="button">${escapeHtml(outcome.action)}</button>`;
+    document.getElementById("meosExecutiveOutcomeAction")?.addEventListener("click", () => executeExecutiveOutcome(outcome, snapshot));
+    return outcome;
+  }
+
   function renderMaddyExecutiveDesk(snapshot) {
     const activeWork = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || null;
     const latestWork = activeWork || snapshot.hallwayWork[0] || null;
@@ -5595,9 +5726,7 @@ document
     const prioritiesEl = document.getElementById("meosLivePriorities");
     if (prioritiesEl) prioritiesEl.innerHTML = priorities.length ? priorities.map((task,index) => `<li data-meos-evidence="priority" data-evidence-id="${escapeHtml(task.id || "")}" role="button" tabindex="0"><span>${index+1}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.priority === "high" ? "high" : "medium"}">${escapeHtml(task.priority || "normal")}</span></li>`).join("") : `<li data-meos-evidence="today" role="button" tabindex="0"><span>✓</span><span>No executive priorities are currently queued.</span><span class="meos-priority">Clear</span></li>`;
 
-    const briefing = document.getElementById("meosLiveBriefing");
-    if (briefing) briefing.innerHTML = `<p style="font-size:.86rem;line-height:1.55;">Maddy is managing <strong>${snapshot.fundingRecords.length}</strong> preserved funding records, <strong>${snapshot.active.length}</strong> active tasks, <strong>${snapshot.pendingApprovals.length}</strong> executive decisions, and <strong>${snapshot.hallwayDeliverables.length}</strong> returned deliverables.</p><p class="meos-muted" style="font-size:.82rem;">${snapshot.blocked.length ? `${snapshot.blocked.length} blocked task${snapshot.blocked.length===1?"":"s"} need resolution.` : "No blocked office tasks are recorded."}</p><button id="meosBriefingPeek" class="meos-action-button" type="button">Peek Behind the Curtain</button>`;
-    document.getElementById("meosBriefingPeek")?.addEventListener("click", () => openOfficeActivityBrowser("all"));
+    renderExecutiveOutcome(snapshot);
 
     const risks = document.getElementById("meosLiveRisks");
     if (risks) {
@@ -5676,6 +5805,10 @@ document
       ["Automatic welcome performance remains disabled until genuine actor media exists", getMaddyTelepresenceDirector()?.getSnapshot?.()?.config?.autoRunOncePerPage === false],
       ["Maddy Presence Engine is connected to Living Headquarters", document.getElementById("meosLivingPresence")?.dataset.presenceConnected === "true"],
       ["Living Headquarters state is driven by Maddy Presence Engine", document.getElementById("meosLivingPresence")?.dataset.presenceState === getMaddyPresenceEngine()?.getStatus?.()?.state],
+      ["Executive Briefing compresses runtime into one evidence-ranked executive outcome", typeof deriveExecutiveOutcome === "function" && Boolean(document.getElementById("meosLiveBriefing")?.dataset.outcomeKind)],
+      ["Executive outcome always exposes an evidence-backed value statement", Boolean(document.querySelector("#meosLiveBriefing .meos-evidence-field"))],
+      ["Executive outcome provides a direct next action instead of passive telemetry", Boolean(document.getElementById("meosExecutiveOutcomeAction"))],
+      ["Executive outcome refuses manufactured busywork when no action threshold is crossed", deriveExecutiveOutcome({ ...snapshot, fundingUrgent: [], pendingApprovals: [], hallwayDeliverables: [], blocked: [], hallwayWork: [] }).kind === "watch"],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
     return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v4.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
