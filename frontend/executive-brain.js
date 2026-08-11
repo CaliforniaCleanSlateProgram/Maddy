@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.1
- * Build: EB1251-COGNITIVE-REVISIT-MEMORY-20260810-A
+ * Version: 1.25.4
+ * Build: EB1254-LOCAL-PERCEPTION-HANDOFF-20260811-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.3";
-  const BUILD_ID = "EB1253-ADAPTIVE-QUIET-METABOLISM-20260811-A";
+  const VERSION = "1.25.4";
+  const BUILD_ID = "EB1254-LOCAL-PERCEPTION-HANDOFF-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10532,6 +10532,138 @@
       return this.clone(intention);
     },
 
+    buildLocalPerceptionHandoff(intention = {}, query = "", options = {}) {
+      if (intention?.schema !== "meos.maddy.investigative-intention.v1" || !intention?.id) {
+        return {
+          success:false,
+          blocked:true,
+          reason:"valid-investigative-intention-required"
+        };
+      }
+
+      if (intention.authority !== "investigation-only" || intention.consequentialActionAuthorized === true) {
+        return {
+          success:false,
+          blocked:true,
+          reason:"investigative-authority-boundary-invalid"
+        };
+      }
+
+      const normalizedQuery = String(query || "").trim();
+      if (!normalizedQuery) {
+        return {
+          success:false,
+          blocked:true,
+          reason:"local-perception-query-required"
+        };
+      }
+
+      const maxResults = Math.max(1,Math.min(50,Number(options.maxResults || 10)));
+      const maxObservations = Math.max(1,Math.min(20,maxResults,Number(options.maxObservations || 5)));
+      const maxTotalBytes = Math.max(1024,Math.min(64 * 1024 * 1024,Number(options.maxTotalBytes || 16 * 1024 * 1024)));
+
+      return {
+        success:true,
+        schema:"meos.maddy.local-perception-handoff.v1",
+        createdAt:new Date().toISOString(),
+        intentId:intention.id,
+        origin:intention.origin || null,
+        subject:intention.subject || null,
+        objective:intention.objective || "Reduce material uncertainty.",
+        query:normalizedQuery,
+        perceptionBudget:{
+          maxResults,
+          maxObservations,
+          maxTotalBytes
+        },
+        epistemicContract:{
+          perceptionIsNotBelief:true,
+          semanticConclusionAuthorized:false,
+          sufficiencyJudgmentAuthorized:false,
+          institutionalTruthPromotionAuthorized:false
+        },
+        authority:{
+          investigationOnly:true,
+          paidCognitionAuthorized:false,
+          externalActionAuthorized:false,
+          consequentialActionAuthorized:false
+        }
+      };
+    },
+
+    assimilateLocalPerceptionResult(handoff = {}, result = {}, options = {}) {
+      if (handoff?.schema !== "meos.maddy.local-perception-handoff.v1" || !handoff?.intentId) {
+        return {
+          success:false,
+          blocked:true,
+          reason:"valid-local-perception-handoff-required"
+        };
+      }
+
+      if (result?.intentId && String(result.intentId) !== String(handoff.intentId)) {
+        return {
+          success:false,
+          blocked:true,
+          reason:"local-perception-intent-lineage-mismatch"
+        };
+      }
+
+      const stored = this.investigativeIntentions.find(item => item.id === handoff.intentId);
+      if (!stored) {
+        return {
+          success:false,
+          blocked:true,
+          reason:"investigative-intention-not-found"
+        };
+      }
+
+      const evidence = {
+        schema:"meos.maddy.local-perception-evidence.v1",
+        investigationId:handoff.intentId,
+        receivedAt:new Date().toISOString(),
+        source:"maddy-local-perception",
+        status:String(result?.status || "perception-complete"),
+        sourcesDiscovered:Number(result?.sourcesDiscovered || 0),
+        sourcesObserved:Number(result?.sourcesObserved || 0),
+        changedSources:Number(result?.changedSources || 0),
+        unchangedSources:Number(result?.unchangedSources || 0),
+        bytesObservedLocally:Number(result?.bytesObservedLocally || 0),
+        stopReason:result?.stopReason || null,
+        observations:Array.isArray(result?.observations)
+          ? this.clone(result.observations).slice(0,20)
+          : [],
+        epistemicStatus:"uninterpreted-perception-evidence",
+        semanticConclusion:null,
+        sufficiencyJudgment:null,
+        institutionalTruthPromoted:false,
+        paidCognitionAuthorized:false,
+        externalActionAuthorized:false,
+        consequentialActionTaken:false
+      };
+
+      stored.status = "perception-returned";
+      stored.lastPerceptionEvidence = this.clone(evidence);
+      stored.awaitingCognitiveAssimilation = true;
+
+      this.record("cognition.local-perception-returned",{
+        investigationId:handoff.intentId,
+        sourcesObserved:evidence.sourcesObserved,
+        changedSources:evidence.changedSources,
+        bytesObservedLocally:evidence.bytesObservedLocally,
+        awaitingCognitiveAssimilation:true
+      });
+
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+
+      return {
+        success:true,
+        investigationId:handoff.intentId,
+        evidence:this.clone(evidence),
+        awaitingCognitiveAssimilation:true,
+        resolved:false
+      };
+    },
+
     async investigateReconstructedIntent(input = {}, options = {}) {
       const reconstruction = input?.schema === "meos.maddy.intent-reconstruction.v1"
         ? input
@@ -10557,7 +10689,38 @@
       let result = null;
       let executor = null;
 
-      if (typeof options.researchExecutor === "function") {
+      if (typeof options.localPerceptionExecutor === "function") {
+        const handoff = this.buildLocalPerceptionHandoff(
+          intention,
+          query,
+          options.localPerceptionBudget || {}
+        );
+        if (handoff.success !== true) {
+          return {
+            success:false,
+            blocked:true,
+            reason:handoff.reason || "local-perception-handoff-failed",
+            reconstruction:this.clone(reconstruction),
+            intention:this.clone(intention)
+          };
+        }
+
+        executor = "maddy-local-perception";
+        const perceptionResult = await options.localPerceptionExecutor(
+          this.clone(handoff)
+        );
+        const assimilated = this.assimilateLocalPerceptionResult(
+          handoff,
+          perceptionResult || {},
+          {persist:false}
+        );
+        result = {
+          success:assimilated.success === true,
+          handoff:this.clone(handoff),
+          perception:this.clone(perceptionResult),
+          assimilation:this.clone(assimilated)
+        };
+      } else if (typeof options.researchExecutor === "function") {
         executor = "caller-injected-research-executor";
         result = await options.researchExecutor({
           reconstruction:this.clone(reconstruction),
@@ -10637,6 +10800,81 @@
         intention:this.clone(intention),
         evidence:this.clone(evidence)
       };
+    },
+
+    async runLocalPerceptionHandoffAcceptanceTest() {
+      const originalIntentions = this.clone(this.investigativeIntentions || []);
+      const priorHydrated = brainPersistence.hydrated;
+      brainPersistence.hydrated = false;
+
+      try {
+        const intention = {
+          schema:"meos.maddy.investigative-intention.v1",
+          id:`local-perception-acceptance-${Date.now()}`,
+          createdAt:new Date().toISOString(),
+          origin:"acceptance-test",
+          subject:"public evidence",
+          objective:"Resolve a bounded material unknown.",
+          status:"active",
+          authority:"investigation-only",
+          consequentialActionAuthorized:false
+        };
+        this.investigativeIntentions.unshift(this.clone(intention));
+
+        const handoff = this.buildLocalPerceptionHandoff(
+          intention,
+          "authoritative evidence for bounded unknown",
+          {maxResults:12,maxObservations:5,maxTotalBytes:2 * 1024 * 1024}
+        );
+
+        const assimilated = this.assimilateLocalPerceptionResult(
+          handoff,
+          {
+            intentId:intention.id,
+            status:"perception-complete",
+            sourcesDiscovered:8,
+            sourcesObserved:5,
+            changedSources:2,
+            unchangedSources:3,
+            bytesObservedLocally:524288,
+            stopReason:"observation-budget-reached",
+            observations:[
+              {url:"https://example.gov/a",changed:true,contentSha256:"a".repeat(64)},
+              {url:"https://example.gov/b",changed:false,contentSha256:"b".repeat(64)}
+            ]
+          },
+          {persist:false}
+        );
+
+        const mismatch = this.assimilateLocalPerceptionResult(
+          handoff,
+          {intentId:"different-intent"},
+          {persist:false}
+        );
+
+        const checks = [
+          {name:"Local perception requires an existing investigative intention",passed:handoff.success===true&&handoff.intentId===intention.id},
+          {name:"Perception handoff is bounded before local acquisition begins",passed:handoff.perceptionBudget.maxResults===12&&handoff.perceptionBudget.maxObservations===5&&handoff.perceptionBudget.maxTotalBytes===2*1024*1024},
+          {name:"Perception is explicitly not authorized to become belief or institutional truth",passed:handoff.epistemicContract.perceptionIsNotBelief===true&&handoff.epistemicContract.semanticConclusionAuthorized===false&&handoff.epistemicContract.institutionalTruthPromotionAuthorized===false},
+          {name:"Local perception cannot authorize paid cognition or external action",passed:handoff.authority.paidCognitionAuthorized===false&&handoff.authority.externalActionAuthorized===false},
+          {name:"Returned local evidence remains uninterpreted pending Executive Brain assimilation",passed:assimilated.success===true&&assimilated.evidence.epistemicStatus==="uninterpreted-perception-evidence"&&assimilated.awaitingCognitiveAssimilation===true&&assimilated.resolved===false},
+          {name:"Investigation lineage mismatch is rejected",passed:mismatch.success===false&&mismatch.reason==="local-perception-intent-lineage-mismatch"}
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(checks);
+        console.log(`[MEOS ${VERSION}] Commission 006.017D7N6 Local Perception Handoff: ${passed ? "PASS" : "FAIL"}.`);
+        return {
+          commission:"006.017D7N6",
+          version:VERSION,
+          buildId:BUILD_ID,
+          passed,
+          checks
+        };
+      } finally {
+        this.investigativeIntentions = originalIntentions;
+        brainPersistence.hydrated = priorHydrated;
+      }
     },
 
     learnCommunicationPattern(example = {}, options = {}) {
