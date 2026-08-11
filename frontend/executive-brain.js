@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.2";
-  const BUILD_ID = "EB1252-ECONOMIC-COGNITIVE-CADENCE-20260811-A";
+  const VERSION = "1.25.3";
+  const BUILD_ID = "EB1253-ADAPTIVE-QUIET-METABOLISM-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -169,6 +169,7 @@
       cognitiveThreadDiminishingReturnFloor: 0.08,
       continuousCognitionCycleBudget: 6,
       continuousCognitionIdleBackoffMs: 300000,
+      continuousCognitionIdleMaxBackoffMs: 1800000,
       continuousCognitionActiveBackoffMs: 30000,
       continuousCognitionUrgentBackoffMs: 5000,
       productiveIdleCognitionEnabled: true,
@@ -12499,12 +12500,26 @@
         };
       }
 
+      const baseIdleMs=Number(this.configuration.continuousCognitionIdleBackoffMs || 300000);
+      const maxIdleMs=Math.max(baseIdleMs,Number(this.configuration.continuousCognitionIdleMaxBackoffMs || 1800000));
+      const priorCycle=this.lastContinuousCognitionCycle || null;
+      const currentWorldFingerprint=this.worldModel?.fingerprint || null;
+      const priorWorldFingerprint=priorCycle?.worldModelFingerprint || null;
+      const priorQuietStreak=Number(priorCycle?.economicMetabolism?.quietStreak || 0);
+      const realityUnchanged=Boolean(currentWorldFingerprint && priorWorldFingerprint && currentWorldFingerprint===priorWorldFingerprint);
+      const quietStreak=realityUnchanged ? Math.min(priorQuietStreak+1,32) : 0;
+      const adaptiveIdleMs=Math.min(maxIdleMs,baseIdleMs*Math.pow(2,Math.min(quietStreak,8)));
+
       return {
         mode:"governed-rest",
-        backoffMs:Number(this.configuration.continuousCognitionIdleBackoffMs || 300000),
-        reason:"no-active-thread-or-material-change",
+        backoffMs:adaptiveIdleMs,
+        baseBackoffMs:baseIdleMs,
+        maximumBackoffMs:maxIdleMs,
+        quietStreak,
+        realityUnchanged,
+        reason:realityUnchanged?"unchanged-reality-progressive-rest":"no-active-thread-or-material-change",
         paidCognitionJustified:false,
-        truthRule:"Continuous existence does not require continuous computation; quiet reality should be cheap."
+        truthRule:"Continuous existence does not require continuous computation; repeated unchanged reality should become progressively cheaper without erasing identity or wake intent."
       };
     },
 
@@ -12605,6 +12620,13 @@
         priorityArbitrationFingerprint:judgment.arbitration?.fingerprint || null,
         threadAction:this.clone(threadAction),
         handoff:this.clone(handoff),
+        economicMetabolism:{
+          mode:handoff.economicCadence?.mode || null,
+          quietStreak:Number(handoff.economicCadence?.quietStreak || 0),
+          realityUnchanged:handoff.economicCadence?.realityUnchanged===true,
+          requestedBackoffMs:Number(handoff.economicCadence?.backoffMs || 0),
+          paidCognitionJustified:handoff.economicCadence?.paidCognitionJustified===true
+        },
         authorityUnchanged:true,
         browserIndependentExecutionClaimed:false
       };
@@ -12707,6 +12729,9 @@
           {name:"Governed rest requests a materially slower wake cadence than active thought",passed:this.determineContinuousCognitionCadence({}).backoffMs>this.configuration.continuousCognitionActiveBackoffMs},
           {name:"Human direction can immediately restore urgent cognition cadence",passed:this.determineContinuousCognitionCadence({humanDirection:{subject:"fixture"}}).mode==="urgent-attention"},
           {name:"Economic cadence never self-authorizes paid cognition",passed:firstHandoff.economicCadence?.paidCognitionJustified===false},
+          {name:"Governed rest carries an explicit bounded maximum backoff",passed:Number(firstHandoff.economicCadence?.maximumBackoffMs || this.configuration.continuousCognitionIdleMaxBackoffMs)>=Number(this.configuration.continuousCognitionIdleBackoffMs)},
+          {name:"Adaptive quiet metabolism is persisted as cycle evidence",passed:Boolean(first.cycle?.economicMetabolism)&&first.cycle.economicMetabolism.paidCognitionJustified===false},
+          {name:"Adaptive quiet metabolism cannot exceed its configured maximum",passed:Number(this.determineContinuousCognitionCadence({}).backoffMs)<=Number(this.configuration.continuousCognitionIdleMaxBackoffMs)},
           {name:"The handoff carries a bounded cycle budget",passed:firstHandoff.requestedCycleBudget===this.configuration.continuousCognitionCycleBudget},
           {name:"The handoff never grants external authority",passed:firstHandoff.authority.externalActionAuthorized===false},
           {name:"The handoff explicitly requires a durable server runtime owner",passed:firstHandoff.authority.serverRuntimeOwnerRequired===true},
