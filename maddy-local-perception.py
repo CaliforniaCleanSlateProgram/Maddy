@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 MEOS Maddy Local Perception Substrate
-Version: 1.4.0
-Commission: 006.017D7N7
-Build: MLP140-EXECUTIVE-BRAIN-HANDOFF-CONSUMER-20260811-A
+Version: 1.5.0
+Commission: 006.017D7N9
+Build: MLP150-AUTOMATIC-RESULT-RETURN-20260811-A
 
 Purpose:
 - Give Maddy a provider-neutral, local-first public-web perception substrate.
@@ -36,8 +36,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-VERSION = "1.4.0"
-BUILD_ID = "MLP140-EXECUTIVE-BRAIN-HANDOFF-CONSUMER-20260811-A"
+VERSION = "1.5.0"
+BUILD_ID = "MLP150-AUTOMATIC-RESULT-RETURN-20260811-A"
 DEFAULT_DB = Path.home() / ".meos" / "maddy-perception.sqlite3"
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
@@ -345,10 +345,94 @@ def validate_executive_brain_handoff(handoff: dict) -> dict:
     }
 
 
+def return_investigation_result(
+    result_url: str,
+    bridge_secret: str,
+    result: dict,
+    timeout: int = DEFAULT_BRIDGE_TIMEOUT_SECONDS,
+) -> dict:
+    """Return bounded perception evidence to Server v2.10.48 without bulk content."""
+    if not result_url or not bridge_secret:
+        return {
+            "success": True,
+            "sent": False,
+            "reason": "result-return-not-configured-local-evidence-retained",
+            "bulkContentTransferred": False,
+        }
+
+    parsed = urllib.parse.urlparse(result_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Result return URL requires HTTP(S).")
+
+    allowed_observation_keys = {
+        "url", "finalUrl", "observed", "changed", "contentSha256",
+        "bytesObservedLocally", "error"
+    }
+    observations = []
+    for item in (result.get("observations") or [])[:20]:
+        if not isinstance(item, dict):
+            continue
+        observations.append({
+            key: item.get(key)
+            for key in allowed_observation_keys
+            if key in item
+        })
+
+    payload_object = {
+        "handoffSchema": result.get("handoffSchema"),
+        "handoffAccepted": result.get("handoffAccepted") is True,
+        "intentId": result.get("intentId"),
+        "status": result.get("status"),
+        "sourcesDiscovered": result.get("sourcesDiscovered", 0),
+        "sourcesObserved": result.get("sourcesObserved", 0),
+        "changedSources": result.get("changedSources", 0),
+        "unchangedSources": result.get("unchangedSources", 0),
+        "bytesObservedLocally": result.get("bytesObservedLocally", 0),
+        "stopReason": result.get("stopReason"),
+        "observations": observations,
+        "semanticConclusion": None,
+        "sufficiencyJudgment": None,
+        "institutionalTruthAuthority": False,
+        "paidCognitionAuthorized": False,
+        "externalActionAuthorized": False,
+    }
+    payload = json.dumps(payload_object, separators=(",", ":")).encode("utf-8")
+
+    # Stay below the server's independent 32 KB ceiling.
+    if len(payload) > 24 * 1024:
+        raise ValueError("Compact investigation result exceeded 24 KB.")
+
+    request = urllib.request.Request(
+        result_url,
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {bridge_secret}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": BRIDGE_USER_AGENT,
+        },
+    )
+    with urllib.request.urlopen(request, timeout=max(1, timeout)) as response:
+        body = response.read(8192)
+        decoded = json.loads(body.decode("utf-8")) if body else {}
+        return {
+            "success": 200 <= int(getattr(response, "status", 200)) < 300,
+            "sent": True,
+            "status": int(getattr(response, "status", 200)),
+            "evidenceBytesTransferred": len(payload),
+            "bulkContentTransferred": False,
+            "response": decoded,
+        }
+
+
 def execute_executive_brain_handoff(
     db: sqlite3.Connection,
     handoff: dict,
     timeout: int,
+    result_url: str = "",
+    bridge_secret: str = "",
+    result_timeout: int = DEFAULT_BRIDGE_TIMEOUT_SECONDS,
 ) -> dict:
     accepted = validate_executive_brain_handoff(handoff)
     budget = accepted["perceptionBudget"]
@@ -377,6 +461,12 @@ def execute_executive_brain_handoff(
     result["institutionalTruthAuthority"] = False
     result["paidCognitionAuthorized"] = False
     result["externalActionAuthorized"] = False
+    result["resultReturn"] = return_investigation_result(
+        result_url,
+        bridge_secret,
+        result,
+        max(1, result_timeout),
+    )
     return result
 
 
@@ -644,6 +734,21 @@ def main() -> int:
         help="Path to handoff JSON, or - to read one JSON object from stdin.",
     )
     handoff_cmd.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    handoff_cmd.add_argument(
+        "--result-url",
+        default="",
+        help="Server v2.10.48 authenticated local-perception result endpoint.",
+    )
+    handoff_cmd.add_argument(
+        "--bridge-secret",
+        default="",
+        help="Dedicated local perception bridge secret.",
+    )
+    handoff_cmd.add_argument(
+        "--result-timeout",
+        type=int,
+        default=DEFAULT_BRIDGE_TIMEOUT_SECONDS,
+    )
 
     sub.add_parser("status", help="Show local perception evidence.")
     args = parser.parse_args()
@@ -671,7 +776,14 @@ def main() -> int:
         elif args.command == "handoff":
             handoff = load_handoff_json(args.handoff_json)
             print(json.dumps(
-                execute_executive_brain_handoff(db, handoff, args.timeout),
+                execute_executive_brain_handoff(
+                    db,
+                    handoff,
+                    args.timeout,
+                    args.result_url,
+                    args.bridge_secret,
+                    args.result_timeout,
+                ),
                 indent=2,
                 sort_keys=True,
             ))
