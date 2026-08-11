@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.44";
+const VERSION = "2.10.45";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2957,10 +2957,10 @@ function getHeadlessResearchStatus() {
  * Authority invariant: this runtime may think, investigate internally, and
  * preserve cognition. It does not grant external-action authority.
  */
-const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M2";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.5";
+const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M3";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.6";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR105-ADAPTIVE-QUIET-METABOLISM-HONOR-20260811-A";
+  "CCR106-EVENT-DRIVEN-COGNITIVE-REENTRY-20260811-A";
 const AUTONOMOUS_RUNTIME_ENABLED =
   String(process.env.MEOS_AUTONOMOUS_RUNTIME_ENABLED || "false")
     .trim()
@@ -3013,6 +3013,10 @@ const continuousCognitionRuntimeState = {
   lastDurableCheckpointReason: null,
   hotBrainHydratedAt: null,
   hotBrainReuseCount: 0,
+  eventWakeCount: 0,
+  lastEventWakeAt: null,
+  lastEventWakeReason: null,
+  lastEventWakeSource: null,
   inFlight: false,
   timer: null,
   lastError: null
@@ -3227,6 +3231,52 @@ function scheduleContinuousCognitionWake(nextWakeAt) {
   return scheduledAt;
 }
 
+/*
+ * Meaningful-event re-entry seam.
+ *
+ * This is intentionally an in-process capability, not a public HTTP endpoint.
+ * Existing MEOS organs may call it when they have already determined that a
+ * material event deserves cognition. It cancels a long governed-rest timer and
+ * schedules an immediate bounded wake without granting paid cognition or
+ * external-action authority.
+ */
+function requestContinuousCognitionReentry(event = {}) {
+  if (!CONTINUOUS_COGNITION_RUNTIME_ENABLED) {
+    return {
+      accepted: false,
+      reason: "continuous-cognition-disabled",
+      runtime: getContinuousCognitionRuntimeStatus()
+    };
+  }
+
+  const reason = String(event.reason || "").trim();
+  const source = String(event.source || "meos-runtime").trim() || "meos-runtime";
+  if (!reason) {
+    return {
+      accepted: false,
+      reason: "meaningful-event-reason-required",
+      runtime: getContinuousCognitionRuntimeStatus()
+    };
+  }
+
+  continuousCognitionRuntimeState.eventWakeCount += 1;
+  continuousCognitionRuntimeState.lastEventWakeAt = new Date().toISOString();
+  continuousCognitionRuntimeState.lastEventWakeReason = reason.slice(0, 240);
+  continuousCognitionRuntimeState.lastEventWakeSource = source.slice(0, 120);
+
+  const scheduledAt = scheduleContinuousCognitionWake(
+    new Date(Date.now() + CONTINUOUS_COGNITION_MIN_WAKE_MS).toISOString()
+  );
+
+  return {
+    accepted: true,
+    reason: "meaningful-event-reentry-scheduled",
+    scheduledAt,
+    paidCognitionAuthorized: false,
+    externalActionAuthorized: false
+  };
+}
+
 async function runContinuousCognitionHeartbeat() {
   if (!CONTINUOUS_COGNITION_RUNTIME_ENABLED) {
     continuousCognitionRuntimeState.status = "disabled";
@@ -3335,6 +3385,13 @@ function getContinuousCognitionRuntimeStatus() {
     failedWakeCount: continuousCognitionRuntimeState.failedWakeCount,
     hotBrainHydratedAt: continuousCognitionRuntimeState.hotBrainHydratedAt,
     hotBrainReuseCount: continuousCognitionRuntimeState.hotBrainReuseCount,
+    eventWakeCount: continuousCognitionRuntimeState.eventWakeCount,
+    lastEventWakeAt: continuousCognitionRuntimeState.lastEventWakeAt,
+    lastEventWakeReason: continuousCognitionRuntimeState.lastEventWakeReason,
+    lastEventWakeSource: continuousCognitionRuntimeState.lastEventWakeSource,
+    eventReentryMode: "in-process-meaningful-event-only",
+    eventReentryPaidCognitionAuthorized: false,
+    eventReentryExternalActionAuthorized: false,
     durableCheckpointMs: CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS,
     durableCheckpointCount:
       continuousCognitionRuntimeState.durableCheckpointCount,
