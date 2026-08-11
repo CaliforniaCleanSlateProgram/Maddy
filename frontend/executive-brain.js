@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.4
- * Build: EB1254-LOCAL-PERCEPTION-HANDOFF-20260811-A
+ * Version: 1.25.5
+ * Build: EB1255-AUTOMATIC-CHEAP-INTERNET-PERCEPTION-20260811-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.4";
-  const BUILD_ID = "EB1254-LOCAL-PERCEPTION-HANDOFF-20260811-A";
+  const VERSION = "1.25.5";
+  const BUILD_ID = "EB1255-AUTOMATIC-CHEAP-INTERNET-PERCEPTION-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10532,6 +10532,53 @@
       return this.clone(intention);
     },
 
+    resolveLocalPerceptionCapability(options = {}) {
+      if (typeof options.localPerceptionExecutor === "function") {
+        return {
+          available:true,
+          source:"caller-injected-local-perception",
+          status:{enabled:true,mode:"caller-injected"},
+          execute:handoff =>
+            options.localPerceptionExecutor(this.clone(handoff))
+        };
+      }
+
+      const capability =
+        global.MEOSLocalPerception ||
+        global.MaddyLocalPerception ||
+        null;
+
+      if (!capability || typeof capability.execute !== "function") {
+        return {
+          available:false,
+          source:null,
+          status:null,
+          reason:"local-perception-capability-unavailable"
+        };
+      }
+
+      const status =
+        typeof capability.getStatus === "function"
+          ? this.safe(() => capability.getStatus(), null)
+          : null;
+
+      if (status?.enabled === false) {
+        return {
+          available:false,
+          source:"MEOSLocalPerception",
+          status:this.clone(status),
+          reason:"local-perception-capability-disabled"
+        };
+      }
+
+      return {
+        available:true,
+        source:"MEOSLocalPerception",
+        status:this.clone(status),
+        execute:handoff => capability.execute(this.clone(handoff))
+      };
+    },
+
     buildLocalPerceptionHandoff(intention = {}, query = "", options = {}) {
       if (intention?.schema !== "meos.maddy.investigative-intention.v1" || !intention?.id) {
         return {
@@ -10689,7 +10736,15 @@
       let result = null;
       let executor = null;
 
-      if (typeof options.localPerceptionExecutor === "function") {
+      const localPerception =
+        options.disableAutomaticLocalPerception === true
+          ? {
+              available:false,
+              reason:"automatic-local-perception-disabled"
+            }
+          : this.resolveLocalPerceptionCapability(options);
+
+      if (localPerception.available === true) {
         const handoff = this.buildLocalPerceptionHandoff(
           intention,
           query,
@@ -10705,31 +10760,62 @@
           };
         }
 
-        executor = "maddy-local-perception";
-        const perceptionResult = await options.localPerceptionExecutor(
+        executor =
+          localPerception.source === "caller-injected-local-perception"
+            ? "caller-injected-local-perception"
+            : "MEOSLocalPerception";
+
+        const perceptionResult = await localPerception.execute(
           this.clone(handoff)
         );
-        const assimilated = this.assimilateLocalPerceptionResult(
-          handoff,
-          perceptionResult || {},
-          {persist:false}
-        );
-        result = {
-          success:assimilated.success === true,
-          handoff:this.clone(handoff),
-          perception:this.clone(perceptionResult),
-          assimilation:this.clone(assimilated)
-        };
-      } else if (typeof options.researchExecutor === "function") {
+
+        if (perceptionResult?.success !== false) {
+          const assimilated = this.assimilateLocalPerceptionResult(
+            handoff,
+            perceptionResult || {},
+            {persist:false}
+          );
+
+          result = {
+            success:assimilated.success === true,
+            handoff:this.clone(handoff),
+            perception:this.clone(perceptionResult),
+            assimilation:this.clone(assimilated),
+            economicPath:{
+              perceptionSubstrate:
+                localPerception.status?.mode ||
+                "local-perception-capability",
+              networkHopRequired:
+                localPerception.status?.networkHopRequired ?? null,
+              paidProviderUsed:
+                localPerception.status?.paidProviderUsed === true ||
+                perceptionResult?.paidProviderUsed === true,
+              paidCognitionAuthorized:false,
+              externalActionAuthorized:false
+            }
+          };
+        } else {
+          this.record("cognition.local-perception-unavailable",{
+            investigationId:intention.id,
+            reason:
+              perceptionResult?.reason ||
+              "local-perception-execution-failed",
+            source:localPerception.source || null,
+            fallbackPreserved:true
+          });
+        }
+      }
+
+      if (result == null && typeof options.researchExecutor === "function") {
         executor = "caller-injected-research-executor";
         result = await options.researchExecutor({
           reconstruction:this.clone(reconstruction),
           intention:this.clone(intention),
           query
         });
-      } else if (window.ProviderManager && typeof window.ProviderManager.request === "function") {
+      } else if (result == null && global.ProviderManager && typeof global.ProviderManager.request === "function") {
         executor = "ProviderManager";
-        result = await window.ProviderManager.request(
+        result = await global.ProviderManager.request(
           {
             capabilities:["current-web-research"],
             allowMultiProvider:true,
@@ -10749,10 +10835,10 @@
             requestedBy:"MEOS Executive Brain Intent Reconstruction"
           }
         );
-      } else if (window.MEOSExecutiveSearch && typeof window.MEOSExecutiveSearch.executiveQuery === "function") {
+      } else if (result == null && global.MEOSExecutiveSearch && typeof global.MEOSExecutiveSearch.executiveQuery === "function") {
         executor = "MEOSExecutiveSearch";
-        result = await window.MEOSExecutiveSearch.executiveQuery(query);
-      } else {
+        result = await global.MEOSExecutiveSearch.executiveQuery(query);
+      } else if (result == null) {
         intention.status = "blocked";
         intention.blockedReason = "no-authorized-research-means";
         return {
@@ -10800,6 +10886,157 @@
         intention:this.clone(intention),
         evidence:this.clone(evidence)
       };
+    },
+
+    async runAutomaticCheapInternetPerceptionAcceptanceTest() {
+      const originalIntentions = this.clone(this.investigativeIntentions || []);
+      const originalCapability = global.MEOSLocalPerception;
+      const priorHydrated = brainPersistence.hydrated;
+      brainPersistence.hydrated = false;
+
+      try {
+        let executions = 0;
+        let capturedHandoff = null;
+
+        global.MEOSLocalPerception = {
+          name:"Acceptance Local Perception",
+          version:"fixture",
+          getStatus() {
+            return {
+              enabled:true,
+              mode:"co-resident-zero-network-process-adapter",
+              networkHopRequired:false,
+              paidProviderUsed:false,
+              paidCognitionAuthorized:false,
+              externalActionAuthorized:false
+            };
+          },
+          async execute(handoff) {
+            executions += 1;
+            capturedHandoff = handoff;
+            return {
+              success:true,
+              handoffSchema:handoff.schema,
+              handoffAccepted:true,
+              intentId:handoff.intentId,
+              status:"perception-complete",
+              sourcesDiscovered:4,
+              sourcesObserved:2,
+              changedSources:1,
+              unchangedSources:1,
+              bytesObservedLocally:4096,
+              stopReason:"observation-budget-reached",
+              observations:[
+                {
+                  url:"https://example.gov/a",
+                  observed:true,
+                  changed:true,
+                  contentSha256:"a".repeat(64),
+                  bytesObservedLocally:2048
+                },
+                {
+                  url:"https://example.gov/b",
+                  observed:true,
+                  changed:false,
+                  contentSha256:"b".repeat(64),
+                  bytesObservedLocally:2048
+                }
+              ],
+              semanticConclusion:null,
+              sufficiencyJudgment:null,
+              institutionalTruthAuthority:false,
+              paidProviderUsed:false,
+              paidCognitionAuthorized:false,
+              externalActionAuthorized:false
+            };
+          }
+        };
+
+        const reconstruction = this.reconstructIntent({
+          utterance:"Go investigate whether the public requirements changed.",
+          subject:"public opportunity requirements",
+          activeMission:{
+            title:"Future positioning",
+            objective:"Determine whether current public evidence changes positioning."
+          },
+          unresolvedQuestions:[
+            {
+              subject:"public opportunity requirements",
+              question:"Did authoritative public requirements materially change?"
+            }
+          ],
+          attention:["requirements","eligibility","future positioning"]
+        });
+
+        const result = await this.investigateReconstructedIntent(
+          reconstruction,
+          {
+            persist:false,
+            origin:"acceptance-test",
+            localPerceptionBudget:{
+              maxResults:4,
+              maxObservations:2,
+              maxTotalBytes:1024 * 1024
+            }
+          }
+        );
+
+        const checks = [
+          {
+            name:"Executive Brain discovers local perception without caller injection",
+            passed:executions === 1 && capturedHandoff != null
+          },
+          {
+            name:"Automatic cheap perception preserves the commissioned handoff schema and intent lineage",
+            passed:
+              capturedHandoff?.schema === "meos.maddy.local-perception-handoff.v1" &&
+              result?.evidence?.investigationId === capturedHandoff?.intentId
+          },
+          {
+            name:"Cheap internet perception is attempted before provider research",
+            passed:
+              result?.evidence?.executor === "MEOSLocalPerception" &&
+              result?.evidence?.result?.economicPath?.paidProviderUsed === false
+          },
+          {
+            name:"Local perception remains perception rather than belief",
+            passed:
+              result?.evidence?.result?.assimilation?.evidence?.epistemicStatus ===
+                "uninterpreted-perception-evidence" &&
+              result?.evidence?.result?.assimilation?.resolved === false
+          },
+          {
+            name:"Cheap perception cannot authorize paid cognition or external action",
+            passed:
+              result?.evidence?.result?.economicPath?.paidCognitionAuthorized === false &&
+              result?.evidence?.result?.economicPath?.externalActionAuthorized === false
+          },
+          {
+            name:"Observed bytes may be large locally while cognition receives bounded evidence",
+            passed:
+              result?.evidence?.result?.perception?.bytesObservedLocally === 4096 &&
+              Array.isArray(result?.evidence?.result?.assimilation?.evidence?.observations)
+          }
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7N10 automatic cheap internet perception: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:"006.017D7N10",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          checks
+        };
+      } finally {
+        this.investigativeIntentions = originalIntentions;
+        global.MEOSLocalPerception = originalCapability;
+        brainPersistence.hydrated = priorHydrated;
+      }
     },
 
     async runLocalPerceptionHandoffAcceptanceTest() {
