@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 MEOS Maddy Local Perception Substrate
-Version: 1.0.0
-Commission: 006.017D7N1
-Build: MLP100-LOCAL-FIRST-PERCEPTION-20260811-A
+Version: 1.1.0
+Commission: 006.017D7N3
+Build: MLP110-CHANGE-EVIDENCE-EMITTER-20260811-A
 
 Purpose:
 - Give Maddy a provider-neutral, local-first public-web perception substrate.
@@ -34,12 +34,15 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-VERSION = "1.0.0"
-BUILD_ID = "MLP100-LOCAL-FIRST-PERCEPTION-20260811-A"
+VERSION = "1.1.0"
+BUILD_ID = "MLP110-CHANGE-EVIDENCE-EMITTER-20260811-A"
 DEFAULT_DB = Path.home() / ".meos" / "maddy-perception.sqlite3"
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
 USER_AGENT = "MEOS-Maddy-Local-Perception/1.0 (+provider-neutral-public-web)"
+BRIDGE_USER_AGENT = "MEOS-Maddy-Local-Perception-Bridge/1.1"
+DEFAULT_BRIDGE_TIMEOUT_SECONDS = 8
+
 
 
 @dataclass(frozen=True)
@@ -193,6 +196,77 @@ def observe(db: sqlite3.Connection, url: str, timeout: int, max_bytes: int) -> P
     )
 
 
+
+def emit_change_evidence(
+    bridge_url: str,
+    bridge_secret: str,
+    result: PerceptionResult,
+    timeout: int = DEFAULT_BRIDGE_TIMEOUT_SECONDS,
+) -> dict:
+    """
+    Send only compact change evidence to Maddy's authenticated cognition bridge.
+    The retrieved body never crosses this bridge.
+    """
+    if not result.changed:
+        return {
+            "success": True,
+            "sent": False,
+            "reason": "unchanged-local-perception-no-bridge-transfer",
+            "bulkContentTransferred": False,
+        }
+
+    if not bridge_url or not bridge_secret:
+        return {
+            "success": True,
+            "sent": False,
+            "reason": "bridge-not-configured-local-evidence-retained",
+            "bulkContentTransferred": False,
+        }
+
+    parsed = urllib.parse.urlparse(bridge_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Bridge URL requires HTTP(S).")
+
+    payload = json.dumps(
+        {
+            "changed": True,
+            "url": result.url,
+            "finalUrl": result.final_url,
+            "contentSha256": result.content_sha256,
+            "observedAt": result.observed_at,
+            "bytesObservedLocally": result.bytes_read,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    # The server hard-limits this bridge to 8 KB. Keep the local side tighter.
+    if len(payload) > 4096:
+        raise ValueError("Compact perception evidence exceeded 4 KB.")
+
+    request = urllib.request.Request(
+        bridge_url,
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {bridge_secret}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": BRIDGE_USER_AGENT,
+        },
+    )
+
+    with urllib.request.urlopen(request, timeout=max(1, timeout)) as response:
+        body = response.read(8192)
+        decoded = json.loads(body.decode("utf-8")) if body else {}
+        return {
+            "success": 200 <= int(getattr(response, "status", 200)) < 300,
+            "sent": True,
+            "status": int(getattr(response, "status", 200)),
+            "response": decoded,
+            "evidenceBytesTransferred": len(payload),
+            "bulkContentTransferred": False,
+        }
+
 def status(db: sqlite3.Connection) -> dict:
     counters = db.execute(
         "SELECT observations, changed, unchanged, bytes_downloaded FROM perception_counters WHERE id = 1"
@@ -224,6 +298,21 @@ def main() -> int:
     observe_cmd.add_argument("url")
     observe_cmd.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
     observe_cmd.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
+    observe_cmd.add_argument(
+        "--bridge-url",
+        default="",
+        help="Authenticated MEOS local perception bridge endpoint.",
+    )
+    observe_cmd.add_argument(
+        "--bridge-secret",
+        default="",
+        help="Dedicated local perception bridge secret.",
+    )
+    observe_cmd.add_argument(
+        "--bridge-timeout",
+        type=int,
+        default=DEFAULT_BRIDGE_TIMEOUT_SECONDS,
+    )
 
     sub.add_parser("status", help="Show local perception evidence.")
     args = parser.parse_args()
@@ -232,7 +321,15 @@ def main() -> int:
     try:
         if args.command == "observe":
             result = observe(db, args.url, max(1, args.timeout), max(1024, args.max_bytes))
-            print(json.dumps(asdict(result), indent=2, sort_keys=True))
+            bridge = emit_change_evidence(
+                args.bridge_url,
+                args.bridge_secret,
+                result,
+                max(1, args.bridge_timeout),
+            )
+            output = asdict(result)
+            output["bridge"] = bridge
+            print(json.dumps(output, indent=2, sort_keys=True))
         else:
             print(json.dumps(status(db), indent=2, sort_keys=True))
         return 0
