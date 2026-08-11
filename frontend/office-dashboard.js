@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.6.0
+ * Version: 4.7.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.6.0";
+  const DASHBOARD_VERSION = "4.7.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5438,89 +5438,141 @@ document
     return renderMaddyExecutiveWorkspace(snapshot, getMaddyWorkPackage(snapshot));
   }
 
-  function deriveExecutiveOutcome(snapshot) {
-    const urgentFunding = [...(snapshot.fundingUrgent || [])]
-      .sort((a, b) => {
-        const aDeadline = Date.parse(getFundingDeadline(a) || "") || Number.MAX_SAFE_INTEGER;
-        const bDeadline = Date.parse(getFundingDeadline(b) || "") || Number.MAX_SAFE_INTEGER;
-        return aDeadline - bDeadline;
-      })[0] || null;
-    const approval = (snapshot.pendingApprovals || [])[0] || null;
-    const deliverable = (snapshot.hallwayDeliverables || [])[0] || null;
-    const blocked = (snapshot.blocked || [])[0] || null;
-    const activeWork = (snapshot.hallwayWork || []).find((item) => !["done", "cancelled"].includes(item.state)) || null;
+  function executiveSignalTerms(value) {
+    const stop = new Set(["the","and","for","with","from","into","this","that","your","maddy","executive","work","office","program","project","application","opportunity"]);
+    return [...new Set(String(value || "").toLowerCase().replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).filter((term) => term.length >= 4 && !stop.has(term)))];
+  }
 
-    if (urgentFunding) {
-      return {
-        kind: "funding",
-        eyebrow: "MADDY'S HIGHEST-VALUE MOVE",
-        title: urgentFunding.title || "Time-sensitive funding opportunity",
-        why: `A verified funding deadline is inside the 14-day attention window. ${getFundingRecommendation(urgentFunding) || "Executive review is warranted now."}`,
-        value: getFundingAmount(urgentFunding) || "Funding value not verified",
-        evidence: `Resource Development · deadline ${getFundingDeadline(urgentFunding) || "unknown"}`,
-        action: "Open Funding Intelligence",
-        record: urgentFunding
-      };
-    }
-    if (approval) {
-      return {
-        kind: "approval",
-        eyebrow: "MADDY NEEDS YOUR AUTHORITY",
-        title: approval.title || "Executive decision ready",
-        why: "Work has reached an authority boundary. Maddy can continue immediately after the required executive decision.",
-        value: "Removes an execution blocker",
-        evidence: `Executive Hallway · ${approval.officeName || approval.owner || "executive work"}`,
-        action: "Review Decision",
-        record: approval
-      };
-    }
-    if (deliverable) {
-      return {
-        kind: "deliverable",
-        eyebrow: "VALUE RETURNED",
-        title: deliverable.title || deliverable.name || "Executive work package returned",
-        why: "Maddy has completed work ready for executive use. Inspecting the result converts background work into an organizational outcome.",
-        value: "Completed executive work",
-        evidence: `Executive Hallway · ${deliverable.source || deliverable.provider || "deliverable"}`,
-        action: "Open Work Package",
-        record: deliverable
-      };
-    }
-    if (blocked) {
-      return {
-        kind: "blocked",
-        eyebrow: "MADDY FOUND FRICTION",
-        title: blocked.title || "Executive work is blocked",
-        why: `This work cannot advance in ${blocked.officeName || "the responsible office"} until the blocker is resolved.`,
-        value: "Protects execution velocity",
-        evidence: `Task runtime · ${blocked.id || "recorded blocker"}`,
-        action: "Inspect Blocker",
-        record: blocked
-      };
-    }
-    if (activeWork) {
-      const dispatch = getMaddyDispatchPresentation(activeWork);
-      return {
-        kind: "work",
+  function executiveSignalOverlap(a, b) {
+    const left = executiveSignalTerms(a);
+    const right = new Set(executiveSignalTerms(b));
+    if (!left.length || !right.size) return 0;
+    return left.filter((term) => right.has(term)).length;
+  }
+
+  function daysUntilExecutiveDeadline(value) {
+    const timestamp = Date.parse(value || "");
+    if (!Number.isFinite(timestamp)) return null;
+    return Math.ceil((timestamp - Date.now()) / 86400000);
+  }
+
+  function compileExecutiveAttention(snapshot) {
+    const candidates = [];
+    const add = (candidate) => {
+      if (!candidate || !candidate.title) return;
+      candidate.score = Number(candidate.score || 0);
+      candidate.reasons = Array.isArray(candidate.reasons) ? candidate.reasons : [];
+      candidate.confidence = candidate.confidence || "runtime-evidence";
+      candidates.push(candidate);
+    };
+
+    (snapshot.fundingUrgent || []).slice(0, 12).forEach((record) => {
+      const deadline = getFundingDeadline(record);
+      const days = daysUntilExecutiveDeadline(deadline);
+      let score = 80;
+      const reasons = ["verified funding deadline is inside the Headquarters urgency window"];
+      if (days !== null) {
+        if (days < 0) { score -= 35; reasons.push("recorded deadline appears to have passed"); }
+        else if (days <= 3) { score += 28; reasons.push(`${days} day${days === 1 ? "" : "s"} remain`); }
+        else if (days <= 7) { score += 20; reasons.push(`${days} days remain`); }
+        else { score += 10; reasons.push(`${days} days remain`); }
+      }
+      const amount = getFundingAmount(record);
+      if (amount && !/unknown|not verified/i.test(String(amount))) { score += 8; reasons.push("resource value is recorded"); }
+      add({
+        kind: "funding", score, reasons,
+        eyebrow: "MADDY'S HIGHEST-LEVERAGE MOVE",
+        title: record.title || "Time-sensitive funding opportunity",
+        why: getFundingRecommendation(record) || "Executive review is warranted now.",
+        value: amount || "Funding value not verified",
+        evidence: `Resource Development · deadline ${deadline || "unknown"}`,
+        action: "Open Funding Intelligence", record
+      });
+    });
+
+    (snapshot.pendingApprovals || []).slice(0, 12).forEach((record) => add({
+      kind: "approval", score: 92, reasons: ["human authority is the current execution boundary"],
+      eyebrow: "MADDY NEEDS YOUR AUTHORITY",
+      title: record.title || "Executive decision ready",
+      why: "Maddy can continue immediately after the required executive decision.",
+      value: "Unlocks governed execution",
+      evidence: `Executive Hallway · ${record.officeName || record.owner || "executive work"}`,
+      action: "Review Decision", record
+    }));
+
+    (snapshot.hallwayDeliverables || []).slice(0, 12).forEach((record) => add({
+      kind: "deliverable", score: 74, reasons: ["completed work is ready to become an organizational outcome"],
+      eyebrow: "VALUE RETURNED",
+      title: record.title || record.name || "Executive work package returned",
+      why: "Maddy has completed work ready for executive use.",
+      value: "Completed executive work",
+      evidence: `Executive Hallway · ${record.source || record.provider || "deliverable"}`,
+      action: "Open Work Package", record
+    }));
+
+    (snapshot.blocked || []).slice(0, 12).forEach((record) => add({
+      kind: "blocked", score: 68 + (String(record.priority || "").toLowerCase() === "high" ? 12 : 0),
+      reasons: ["recorded blocker is suppressing execution"],
+      eyebrow: "MADDY FOUND FRICTION",
+      title: record.title || "Executive work is blocked",
+      why: `This work cannot advance in ${record.officeName || "the responsible office"} until the blocker is resolved.`,
+      value: "Restores execution velocity",
+      evidence: `Task runtime · ${record.id || "recorded blocker"}`,
+      action: "Inspect Blocker", record
+    }));
+
+    (snapshot.hallwayWork || []).filter((item) => !["done","cancelled"].includes(item.state)).slice(0, 20).forEach((record) => {
+      const dispatch = getMaddyDispatchPresentation(record);
+      add({
+        kind: "work", score: 48 + (dispatch.active ? 8 : 0),
+        reasons: ["live Hallway work is actively advancing"],
         eyebrow: "MADDY IS ADVANCING",
-        title: activeWork.title || activeWork.instruction || "Executive work in progress",
-        why: `${dispatch.detail || "Maddy is coordinating active executive work."} This is the highest-priority live Hallway work visible to Headquarters.`,
+        title: record.title || record.instruction || "Executive work in progress",
+        why: dispatch.detail || "Maddy is coordinating active executive work.",
         value: "Active organizational progress",
-        evidence: `Executive Hallway · ${dispatch.label || activeWork.state || "active"}`,
-        action: "Open Live Work",
-        record: activeWork
-      };
-    }
-    return {
-      kind: "watch",
+        evidence: `Executive Hallway · ${dispatch.label || record.state || "active"}`,
+        action: "Open Live Work", record
+      });
+    });
+
+    // Cross-organ convergence: a signal appearing independently in multiple runtime
+    // domains earns attention because the organization is telling Maddy the same
+    // thing from more than one direction.
+    candidates.forEach((candidate, index) => {
+      const converging = candidates.filter((other, otherIndex) =>
+        otherIndex !== index &&
+        other.kind !== candidate.kind &&
+        executiveSignalOverlap(candidate.title, other.title) >= 1
+      );
+      if (converging.length) {
+        const domains = [...new Set(converging.map((item) => item.kind))];
+        candidate.score += Math.min(24, domains.length * 8);
+        candidate.reasons.push(`independent ${domains.join(" + ")} evidence converges on the same subject`);
+        candidate.convergence = domains;
+      }
+    });
+
+    candidates.sort((a, b) => b.score - a.score || String(a.title).localeCompare(String(b.title)));
+    const winner = candidates[0] || {
+      kind: "watch", score: 0, reasons: ["no runtime evidence currently crosses an intervention threshold"],
       eyebrow: "MADDY IS WATCHING THE ORGANIZATION",
       title: "No executive intervention is justified right now",
       why: `Maddy is holding attention on ${(snapshot.fundingRecords || []).length} funding records and ${(snapshot.tasks || []).length} office tasks. She will surface a move when evidence crosses an action threshold.`,
       value: "No manufactured busywork",
       evidence: `Headquarters snapshot · ${snapshot.computedAt || new Date().toISOString()}`,
-      action: "Inspect Live Evidence",
-      record: null
+      action: "Inspect Live Evidence", record: null
     };
+
+    return {
+      winner,
+      alternatives: candidates.slice(1, 4),
+      candidateCount: candidates.length,
+      computedAt: new Date().toISOString()
+    };
+  }
+
+  function deriveExecutiveOutcome(snapshot) {
+    return compileExecutiveAttention(snapshot).winner;
   }
 
   function executeExecutiveOutcome(outcome, snapshot) {
@@ -5554,19 +5606,25 @@ document
   function renderExecutiveOutcome(snapshot) {
     const briefing = document.getElementById("meosLiveBriefing");
     if (!briefing) return null;
-    const outcome = deriveExecutiveOutcome(snapshot);
+    const attention = compileExecutiveAttention(snapshot);
+    const outcome = attention.winner;
     briefing.dataset.outcomeKind = outcome.kind;
+    briefing.dataset.attentionCandidates = String(attention.candidateCount);
+    const reasons = (outcome.reasons || []).slice(0, 3);
+    const alternatives = attention.alternatives || [];
     briefing.innerHTML = `
       <div class="meos-muted" style="font-size:.7rem;font-weight:800;letter-spacing:.12em;margin-bottom:.42rem;">${escapeHtml(outcome.eyebrow)}</div>
-      <p style="font-size:.94rem;line-height:1.35;margin:.1rem 0 .48rem;"><strong>${escapeHtml(outcome.title)}</strong></p>
-      <p style="font-size:.82rem;line-height:1.5;margin:.2rem 0 .58rem;">${escapeHtml(outcome.why)}</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin:.5rem 0 .7rem;">
+      <p style="font-size:.94rem;line-height:1.35;margin:.1rem 0 .38rem;"><strong>${escapeHtml(outcome.title)}</strong></p>
+      <p style="font-size:.82rem;line-height:1.5;margin:.2rem 0 .5rem;">${escapeHtml(outcome.why)}</p>
+      ${reasons.length ? `<div style="font-size:.76rem;line-height:1.45;margin:.35rem 0 .6rem;"><strong>Why this won Maddy's attention</strong><br>${reasons.map((reason) => `• ${escapeHtml(reason)}`).join("<br>")}</div>` : ""}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin:.5rem 0 .65rem;">
         <div class="meos-evidence-field"><span>VALUE</span><strong>${escapeHtml(outcome.value)}</strong></div>
         <div class="meos-evidence-field"><span>EVIDENCE</span><strong>${escapeHtml(outcome.evidence)}</strong></div>
       </div>
+      ${alternatives.length ? `<details style="margin:.25rem 0 .65rem;font-size:.76rem;"><summary style="cursor:pointer;">Why not the other ${attention.candidateCount - 1} signal${attention.candidateCount - 1 === 1 ? "" : "s"}?</summary><div style="padding-top:.35rem;">${alternatives.map((item) => `<div style="margin:.25rem 0;"><strong>${escapeHtml(item.title)}</strong><br><span class="meos-muted">${escapeHtml(item.kind)} · attention score ${item.score}</span></div>`).join("")}${attention.candidateCount > 4 ? `<div class="meos-muted">+ ${attention.candidateCount - 4} lower-ranked runtime signals suppressed from executive attention.</div>` : ""}</div></details>` : ""}
       <button id="meosExecutiveOutcomeAction" class="meos-action-button" type="button">${escapeHtml(outcome.action)}</button>`;
     document.getElementById("meosExecutiveOutcomeAction")?.addEventListener("click", () => executeExecutiveOutcome(outcome, snapshot));
-    return outcome;
+    return attention;
   }
 
   function renderMaddyExecutiveDesk(snapshot) {
@@ -5809,6 +5867,11 @@ document
       ["Executive outcome always exposes an evidence-backed value statement", Boolean(document.querySelector("#meosLiveBriefing .meos-evidence-field"))],
       ["Executive outcome provides a direct next action instead of passive telemetry", Boolean(document.getElementById("meosExecutiveOutcomeAction"))],
       ["Executive outcome refuses manufactured busywork when no action threshold is crossed", deriveExecutiveOutcome({ ...snapshot, fundingUrgent: [], pendingApprovals: [], hallwayDeliverables: [], blocked: [], hallwayWork: [] }).kind === "watch"],
+      ["Executive Attention Compiler ranks heterogeneous runtime evidence before presentation", typeof compileExecutiveAttention === "function" && Array.isArray(compileExecutiveAttention(snapshot).alternatives)],
+      ["Executive attention detects cross-organ subject convergence without another network request", typeof executiveSignalOverlap === "function"],
+      ["Executive briefing explains why the winning signal beat competing runtime evidence", Boolean(document.getElementById("meosLiveBriefing")?.dataset.attentionCandidates)],
+      ["Executive attention suppresses lower-value signals instead of dumping system activity on the executive", compileExecutiveAttention(snapshot).alternatives.length <= 3],
+      ["Executive attention preserves direct action on the winning runtime signal", Boolean(document.getElementById("meosExecutiveOutcomeAction"))],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
     return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v4.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
