@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.8.0
+ * Version: 4.9.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.8.0";
+  const DASHBOARD_VERSION = "4.9.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -2896,7 +2896,10 @@ document
         <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Tasks Due</h2><span id="meosTasksStage" class="meos-priority medium">72% live</span></div><ul id="meosLiveTasks" class="meos-list"><li><span>—</span><span>Loading mission and office tasks…</span><span></span></li></ul></div>
       `,
       "mission-impact": `
-        <div class="meos-widget-inner"><div class="meos-widget-header"><h2 class="meos-widget-title">Mission Impact</h2><span class="meos-priority medium">10% planned</span></div><div class="meos-alert info"><strong>Impact reporting preserved</strong><span class="meos-muted">No verified service-delivery dataset is connected. This widget will remain honest until program records are commissioned.</span></div></div>
+        <div class="meos-widget-inner">
+          <div class="meos-widget-header"><h2 class="meos-widget-title">Mission Impact</h2><span id="meosMissionImpactState" class="meos-priority medium">Evidence only</span></div>
+          <div id="meosMissionImpactEvidence" aria-live="polite"><div class="meos-alert info"><strong>Reading verified organizational consequences…</strong><span class="meos-muted">MEOS will not convert opportunity size, activity, or unverified claims into impact.</span></div></div>
+        </div>
       `,
     };
 
@@ -5826,6 +5829,92 @@ document
     }
   }
 
+  function hasVerifiedResourceRealization(record = {}) {
+    const states = [
+      record?.resourceDevelopment?.acquisitionStatus,
+      record?.resourceDevelopment?.workQueue?.acquisition?.status,
+      record?.acquisitionStatus,
+      record?.awardStatus,
+      record?.status
+    ].map((value) => String(value || "").toLowerCase());
+    return states.some((value) => ["awarded","received","acquired","funded","secured","closed-won","complete","completed"].includes(value));
+  }
+
+  function compileMissionImpact(snapshot) {
+    const work = Array.isArray(snapshot?.hallwayWork) ? snapshot.hallwayWork : [];
+    const feedback = Array.isArray(snapshot?.hallwayFeedback) ? snapshot.hallwayFeedback : [];
+    const funding = Array.isArray(snapshot?.fundingRecords) ? snapshot.fundingRecords : [];
+
+    const completed = work.filter((item) => String(item?.state || "").toLowerCase() === "done");
+    const acceptedFeedback = feedback.filter((item) => String(item?.signal || "").toLowerCase() === "accepted");
+    const acceptedWorkIds = new Set(acceptedFeedback.map((item) => String(item?.workId || "")).filter(Boolean));
+    const acceptedCompleted = completed.filter((item) => acceptedWorkIds.has(String(item?.id || "")));
+    const realizedResources = funding.filter(hasVerifiedResourceRealization);
+
+    const completedWithVerification = completed.filter((item) =>
+      item?.verification?.verified === true ||
+      item?.verification?.success === true ||
+      item?.verified === true ||
+      item?.result?.verified === true ||
+      item?.outcome?.verified === true
+    );
+
+    // Do not infer "resolved risk" merely because a blocker disappeared from the
+    // current snapshot. That requires explicit durable outcome evidence.
+    const explicitlyResolved = completed.filter((item) => {
+      const resolution = String(firstDefined(item?.outcome?.type, item?.result?.type, item?.resolution?.status, "")).toLowerCase();
+      return ["risk-resolved","blocker-resolved","resolved"].includes(resolution);
+    });
+
+    return {
+      completedCount: completed.length,
+      verifiedCompletedCount: completedWithVerification.length,
+      acceptedCount: acceptedCompleted.length,
+      realizedResourceCount: realizedResources.length,
+      resolvedRiskCount: explicitlyResolved.length,
+      financialValueKnown: false,
+      financialValue: null,
+      proof: {
+        completedWorkIds: completed.map((item) => item.id).filter(Boolean),
+        verifiedWorkIds: completedWithVerification.map((item) => item.id).filter(Boolean),
+        acceptedWorkIds: acceptedCompleted.map((item) => item.id).filter(Boolean),
+        realizedResourceIds: realizedResources.map((item) => item.id || item.opportunityId).filter(Boolean),
+        resolvedRiskIds: explicitlyResolved.map((item) => item.id).filter(Boolean)
+      }
+    };
+  }
+
+  function renderMissionImpact(snapshot) {
+    const container = document.getElementById("meosMissionImpactEvidence");
+    const stateLabel = document.getElementById("meosMissionImpactState");
+    if (!container || !stateLabel) return null;
+    const impact = compileMissionImpact(snapshot);
+    const strongest = impact.realizedResourceCount
+      ? `${impact.realizedResourceCount} resource acquisition${impact.realizedResourceCount === 1 ? "" : "s"} have explicit realized-state evidence.`
+      : impact.acceptedCount
+        ? `${impact.acceptedCount} completed outcome${impact.acceptedCount === 1 ? "" : "s"} have been accepted by the Executive Director.`
+        : impact.verifiedCompletedCount
+          ? `${impact.verifiedCompletedCount} completed outcome${impact.verifiedCompletedCount === 1 ? "" : "s"} carry explicit verification evidence.`
+          : impact.completedCount
+            ? `${impact.completedCount} Hallway work item${impact.completedCount === 1 ? "" : "s"} reached done; stronger consequence evidence has not yet been recorded.`
+            : "No completed organizational outcome is currently evidenced.";
+
+    stateLabel.textContent = impact.realizedResourceCount || impact.acceptedCount || impact.verifiedCompletedCount ? "Verified consequence" : "Evidence only";
+    container.dataset.completed = String(impact.completedCount);
+    container.dataset.accepted = String(impact.acceptedCount);
+    container.dataset.realizedResources = String(impact.realizedResourceCount);
+    container.innerHTML = `
+      <div class="meos-alert ${impact.realizedResourceCount || impact.acceptedCount || impact.verifiedCompletedCount ? "success" : "info"}">
+        <strong>${escapeHtml(strongest)}</strong>
+        <span class="meos-muted">Completed work ${impact.completedCount} · explicitly verified ${impact.verifiedCompletedCount} · accepted ${impact.acceptedCount} · resources realized ${impact.realizedResourceCount} · risks explicitly resolved ${impact.resolvedRiskCount}</span>
+      </div>
+      <div class="meos-alert info">
+        <strong>Financial value: unknown until realized-value evidence exists.</strong>
+        <span class="meos-muted">Opportunity size is not revenue. Discovery is not acquisition. Activity is not impact. MEOS will not inflate organizational value from potential funding or unverified outcomes.</span>
+      </div>`;
+    return impact;
+  }
+
   function renderLiveHeadquarters() {
     const snapshot = collectHeadquartersSnapshot();
     // Keep the original top dashboard gauge as the single authoritative completion display.
@@ -5888,6 +5977,7 @@ document
     if (prioritiesEl) prioritiesEl.innerHTML = priorities.length ? priorities.map((task,index) => `<li data-meos-evidence="priority" data-evidence-id="${escapeHtml(task.id || "")}" role="button" tabindex="0"><span>${index+1}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.priority === "high" ? "high" : "medium"}">${escapeHtml(task.priority || "normal")}</span></li>`).join("") : `<li data-meos-evidence="today" role="button" tabindex="0"><span>✓</span><span>No executive priorities are currently queued.</span><span class="meos-priority">Clear</span></li>`;
 
     renderExecutiveOutcome(snapshot);
+    renderMissionImpact(snapshot);
 
     const risks = document.getElementById("meosLiveRisks");
     if (risks) {
@@ -5981,6 +6071,12 @@ document
       ["Executive Outcome dispatch explicitly preserves external-action authority boundaries", executiveOutcomeInstruction({ kind:"funding", title:"Acceptance Test" }).includes("without required human authority")],
       ["Executive Outcome routing stores source evidence and source value lineage in Hallway context", String(advanceExecutiveOutcome).includes("sourceEvidence") && String(advanceExecutiveOutcome).includes("sourceValue")],
       ["Executive HUD exposes Put Maddy On It only when an actionable signal exists", deriveExecutiveOutcome({ ...snapshot, fundingUrgent: [], pendingApprovals: [], hallwayDeliverables: [], blocked: [], hallwayWork: [] }).kind === "watch" && !document.querySelector("#meosExecutiveOutcomeAdvance") ? true : deriveExecutiveOutcome(snapshot).kind !== "watch"],
+      ["Mission Impact compiles consequence evidence from existing Hallway and resource runtime", typeof compileMissionImpact === "function" && Boolean(document.getElementById("meosMissionImpactEvidence"))],
+      ["Mission Impact distinguishes completed work from explicitly verified work", compileMissionImpact(snapshot).verifiedCompletedCount <= compileMissionImpact(snapshot).completedCount],
+      ["Mission Impact counts accepted value only when completed work has Executive Director acceptance evidence", compileMissionImpact(snapshot).acceptedCount <= compileMissionImpact(snapshot).completedCount],
+      ["Mission Impact refuses to count potential funding as realized resources", compileMissionImpact({ ...snapshot, fundingRecords: [{ id:"test-potential", awardAmount:500000, status:"open" }] }).realizedResourceCount === 0],
+      ["Mission Impact refuses to invent financial value without realized-value evidence", compileMissionImpact(snapshot).financialValueKnown === false && compileMissionImpact(snapshot).financialValue === null],
+      ["Mission Impact requires explicit evidence before claiming a blocker or risk was resolved", compileMissionImpact({ ...snapshot, hallwayWork: [{ id:"test-blocker", state:"done" }] }).resolvedRiskCount === 0],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
     return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v4.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
