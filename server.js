@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.47";
+const VERSION = "2.10.48";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2957,10 +2957,10 @@ function getHeadlessResearchStatus() {
  * Authority invariant: this runtime may think, investigate internally, and
  * preserve cognition. It does not grant external-action authority.
  */
-const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7N2";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.8";
+const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7N8";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.9";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR108-AUTHENTICATED-LOCAL-PERCEPTION-BRIDGE-20260811-A";
+  "CCR109-LOCAL-PERCEPTION-RESULT-RETURN-20260811-A";
 const AUTONOMOUS_RUNTIME_ENABLED =
   String(process.env.MEOS_AUTONOMOUS_RUNTIME_ENABLED || "false")
     .trim()
@@ -2993,6 +2993,7 @@ const LOCAL_PERCEPTION_BRIDGE_SECRET = String(
   process.env.MEOS_LOCAL_PERCEPTION_BRIDGE_SECRET || ""
 ).trim();
 const LOCAL_PERCEPTION_BRIDGE_MAX_BODY = "8kb";
+const LOCAL_PERCEPTION_RESULT_MAX_BODY = "32kb";
 const CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS = Math.max(
   60_000,
   Number(
@@ -3035,6 +3036,11 @@ const continuousCognitionRuntimeState = {
   localPerceptionBridgeAcceptedCount: 0,
   localPerceptionBridgeRejectedCount: 0,
   lastLocalPerceptionBridgeAt: null,
+  localPerceptionResultAcceptedCount: 0,
+  localPerceptionResultRejectedCount: 0,
+  localPerceptionResultBytesReceived: 0,
+  lastLocalPerceptionResultAt: null,
+  lastLocalPerceptionResultIntentId: null,
   inFlight: false,
   timer: null,
   lastError: null
@@ -3266,6 +3272,43 @@ async function checkpointContinuousCognition(brain, cycleResult, reason) {
     writeResult,
     expectedHandoffFingerprint
   };
+}
+
+async function checkpointLocalPerceptionAssimilation(brain) {
+  const snapshotAfter = brain.buildPersistenceSnapshot();
+  const writeResult = await commitCanonicalExecutiveBrainState(
+    snapshotAfter,
+    {
+      source: "local-perception-result",
+      observedFingerprint:
+        continuousCognitionObservedDurableFingerprint || undefined
+    }
+  );
+
+  if (
+    writeResult?.success !== true ||
+    writeResult?.verification?.verified !== true
+  ) {
+    const error = new Error(
+      "Local perception assimilation was not durably verified by Repository Authority."
+    );
+    error.code = "LOCAL_PERCEPTION_DURABLE_VERIFY_FAILED";
+    throw error;
+  }
+
+  continuousCognitionObservedDurableFingerprint =
+    writeResult?.record?.payloadFingerprint ||
+    continuousCognitionObservedDurableFingerprint ||
+    null;
+  continuousCognitionRuntimeState.durableFingerprint =
+    continuousCognitionObservedDurableFingerprint;
+  continuousCognitionRuntimeState.lastDurableCheckpointAt =
+    new Date().toISOString();
+  continuousCognitionRuntimeState.lastDurableCheckpointReason =
+    "local-perception-result";
+  continuousCognitionRuntimeState.durableCheckpointCount += 1;
+
+  return writeResult;
 }
 
 function scheduleContinuousCognitionWake(nextWakeAt) {
@@ -3523,6 +3566,18 @@ function getContinuousCognitionRuntimeStatus() {
     lastLocalPerceptionBridgeAt:
       continuousCognitionRuntimeState.lastLocalPerceptionBridgeAt,
     localPerceptionBridgeMode: "authenticated-compact-change-evidence-only",
+    localPerceptionResultAcceptedCount:
+      continuousCognitionRuntimeState.localPerceptionResultAcceptedCount,
+    localPerceptionResultRejectedCount:
+      continuousCognitionRuntimeState.localPerceptionResultRejectedCount,
+    localPerceptionResultBytesReceived:
+      continuousCognitionRuntimeState.localPerceptionResultBytesReceived,
+    lastLocalPerceptionResultAt:
+      continuousCognitionRuntimeState.lastLocalPerceptionResultAt,
+    lastLocalPerceptionResultIntentId:
+      continuousCognitionRuntimeState.lastLocalPerceptionResultIntentId,
+    localPerceptionResultMode:
+      "authenticated-bounded-evidence-return-verified-checkpoint",
     eventReentryMode: "in-process-recognition-before-interruption",
     eventReentryPaidCognitionAuthorized: false,
     eventReentryExternalActionAuthorized: false,
@@ -13481,6 +13536,191 @@ app.post(
       paidCognitionAuthorized: false,
       externalActionAuthorized: false
     });
+  }
+);
+
+/*
+ * Commission 006.017D7N8 — Local Perception Result Return
+ *
+ * Returns a bounded investigation result to the resident Executive Brain.
+ * The route accepts evidence metadata only: no downloaded page bodies,
+ * document bytes, HTML, or arbitrary model conclusions.
+ */
+app.post(
+  "/api/local-perception-result",
+  express.json({ limit: LOCAL_PERCEPTION_RESULT_MAX_BODY, strict: true }),
+  async (request, response) => {
+    if (!verifyLocalPerceptionBridgeSecret(request)) {
+      continuousCognitionRuntimeState.localPerceptionResultRejectedCount += 1;
+      response.status(401).json({
+        success: false,
+        accepted: false,
+        reason: "local-perception-result-unauthorized"
+      });
+      return;
+    }
+
+    const body = request.body || {};
+    const intentId = String(body.intentId || "").trim();
+    const handoffSchema = String(body.handoffSchema || "").trim();
+
+    if (
+      handoffSchema !== "meos.maddy.local-perception-handoff.v1" ||
+      !intentId ||
+      body.handoffAccepted !== true
+    ) {
+      continuousCognitionRuntimeState.localPerceptionResultRejectedCount += 1;
+      response.status(400).json({
+        success: false,
+        accepted: false,
+        reason: "local-perception-result-lineage-invalid"
+      });
+      return;
+    }
+
+    if (
+      body.semanticConclusion != null ||
+      body.sufficiencyJudgment != null ||
+      body.institutionalTruthAuthority === true ||
+      body.paidCognitionAuthorized === true ||
+      body.externalActionAuthorized === true
+    ) {
+      continuousCognitionRuntimeState.localPerceptionResultRejectedCount += 1;
+      response.status(400).json({
+        success: false,
+        accepted: false,
+        reason: "local-perception-result-authority-boundary-invalid"
+      });
+      return;
+    }
+
+    const observations = Array.isArray(body.observations)
+      ? body.observations.slice(0, 20)
+      : [];
+
+    const forbiddenBulkField = observations.some(item =>
+      item &&
+      typeof item === "object" &&
+      ["body", "content", "html", "text", "documentBytes", "raw"].some(
+        key => Object.prototype.hasOwnProperty.call(item, key)
+      )
+    );
+
+    if (forbiddenBulkField) {
+      continuousCognitionRuntimeState.localPerceptionResultRejectedCount += 1;
+      response.status(413).json({
+        success: false,
+        accepted: false,
+        reason: "local-perception-result-bulk-content-rejected"
+      });
+      return;
+    }
+
+    try {
+      const brain = await getResidentContinuousCognitionBrain();
+
+      if (typeof brain.assimilateLocalPerceptionResult !== "function") {
+        const error = new Error(
+          "Executive Brain does not expose the commissioned local perception assimilation contract."
+        );
+        error.code = "LOCAL_PERCEPTION_BRAIN_CONTRACT_MISSING";
+        throw error;
+      }
+
+      const boundedResult = {
+        intentId,
+        status: String(body.status || "perception-complete").slice(0, 80),
+        sourcesDiscovered: Math.max(0, Number(body.sourcesDiscovered || 0)),
+        sourcesObserved: Math.max(0, Number(body.sourcesObserved || 0)),
+        changedSources: Math.max(0, Number(body.changedSources || 0)),
+        unchangedSources: Math.max(0, Number(body.unchangedSources || 0)),
+        bytesObservedLocally: Math.max(0, Number(body.bytesObservedLocally || 0)),
+        stopReason: String(body.stopReason || "").slice(0, 160) || null,
+        observations: observations.map(item => ({
+          url: String(item?.url || "").slice(0, 1500),
+          finalUrl: String(item?.finalUrl || "").slice(0, 1500) || null,
+          observed: item?.observed === true,
+          changed: item?.changed === true,
+          contentSha256: String(item?.contentSha256 || "").slice(0, 128) || null,
+          bytesObservedLocally: Math.max(
+            0,
+            Number(item?.bytesObservedLocally || 0)
+          ),
+          error: item?.error ? String(item.error).slice(0, 300) : null
+        }))
+      };
+
+      const assimilation = brain.assimilateLocalPerceptionResult(
+        {
+          schema: handoffSchema,
+          intentId
+        },
+        boundedResult,
+        { persist: false }
+      );
+
+      if (assimilation?.success !== true) {
+        continuousCognitionRuntimeState.localPerceptionResultRejectedCount += 1;
+        response.status(409).json({
+          success: false,
+          accepted: false,
+          reason: assimilation?.reason || "local-perception-assimilation-rejected"
+        });
+        return;
+      }
+
+      await checkpointLocalPerceptionAssimilation(brain);
+
+      const compactBytes = Buffer.byteLength(
+        JSON.stringify(boundedResult),
+        "utf8"
+      );
+      continuousCognitionRuntimeState.localPerceptionResultAcceptedCount += 1;
+      continuousCognitionRuntimeState.localPerceptionResultBytesReceived +=
+        compactBytes;
+      continuousCognitionRuntimeState.lastLocalPerceptionResultAt =
+        new Date().toISOString();
+      continuousCognitionRuntimeState.lastLocalPerceptionResultIntentId =
+        intentId.slice(0, 160);
+
+      const reentry = requestContinuousCognitionReentry({
+        source: "maddy-local-perception",
+        reason: "bounded-investigation-evidence-returned",
+        subject: intentId.slice(0, 180),
+        changeFingerprint: crypto
+          .createHash("sha256")
+          .update(JSON.stringify({
+            intentId,
+            changedSources: boundedResult.changedSources,
+            sourcesObserved: boundedResult.sourcesObserved,
+            stopReason: boundedResult.stopReason
+          }))
+          .digest("hex")
+      });
+
+      response.status(202).json({
+        success: true,
+        accepted: true,
+        intentId,
+        evidenceBytesReceived: compactBytes,
+        bulkContentTransferred: false,
+        durableCheckpointVerified: true,
+        awaitingCognitiveAssimilation:
+          assimilation.awaitingCognitiveAssimilation === true,
+        cognition: reentry,
+        paidCognitionAuthorized: false,
+        externalActionAuthorized: false,
+        institutionalTruthPromoted: false
+      });
+    } catch (error) {
+      continuousCognitionRuntimeState.localPerceptionResultRejectedCount += 1;
+      response.status(503).json({
+        success: false,
+        accepted: false,
+        reason: error?.code || "local-perception-result-return-failed",
+        message: error?.message || String(error)
+      });
+    }
   }
 );
 
