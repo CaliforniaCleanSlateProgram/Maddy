@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 MEOS Maddy Local Perception Substrate
-Version: 1.6.0
-Commission: 006.017D7N11
-Build: MLP160-BOUNDED-EVIDENCE-CAPSULES-20260811-A
+Version: 1.7.0
+Commission: 006.017D7N12
+Build: MLP170-CHEAP-PDF-DOCUMENT-PERCEPTION-20260811-A
 
 Purpose:
 - Give Maddy a provider-neutral, local-first public-web perception substrate.
@@ -24,9 +24,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import html
+import os
 import re
 import json
 import sqlite3
+import subprocess
+import tempfile
 import sys
 import time
 import urllib.error
@@ -36,14 +39,39 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-VERSION = "1.6.0"
-BUILD_ID = "MLP160-BOUNDED-EVIDENCE-CAPSULES-20260811-A"
+VERSION = "1.7.0"
+BUILD_ID = "MLP170-CHEAP-PDF-DOCUMENT-PERCEPTION-20260811-A"
 DEFAULT_DB = Path.home() / ".meos" / "maddy-perception.sqlite3"
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
 DEFAULT_EVIDENCE_CAPTURE_BYTES = 128 * 1024
 DEFAULT_EVIDENCE_EXCERPT_CHARS = 2400
 DEFAULT_INVESTIGATION_EVIDENCE_CHARS = 12_000
+DEFAULT_PDF_TEXT_LIMIT_CHARS = 24_000
+DEFAULT_PDF_PARSE_TIMEOUT_SECONDS = 20
+PDF_PARSE_NODE_SCRIPT = r'''
+import fs from "fs";
+import pdfParse from "pdf-parse";
+const file = process.argv[1];
+const maxChars = Number(process.argv[2] || 24000);
+const buffer = fs.readFileSync(file);
+const parsed = await pdfParse(buffer);
+const text = String(parsed?.text || "")
+  .replace(/\r/g, "")
+  .replace(/\n{3,}/g, "\n\n")
+  .trim();
+process.stdout.write(JSON.stringify({
+  text: text.slice(0, maxChars),
+  pages: Number(parsed?.numpages || 0) || null,
+  info: parsed?.info && typeof parsed.info === "object"
+    ? {
+        title: parsed.info.Title || null,
+        author: parsed.info.Author || null,
+        subject: parsed.info.Subject || null
+      }
+    : null
+}));
+'''
 USER_AGENT = "MEOS-Maddy-Local-Perception/1.0 (+provider-neutral-public-web)"
 BRIDGE_USER_AGENT = "MEOS-Maddy-Local-Perception-Bridge/1.1"
 DEFAULT_BRIDGE_TIMEOUT_SECONDS = 8
@@ -64,6 +92,8 @@ class PerceptionResult:
     evidence_title: Optional[str] = None
     evidence_excerpt: Optional[str] = None
     extraction_status: str = "not-extracted"
+    document_type: Optional[str] = None
+    page_count: Optional[int] = None
     paid_provider_used: bool = False
     paid_cognition_authorized: bool = False
     external_action_authorized: bool = False
@@ -143,6 +173,106 @@ def validate_public_url(raw: str) -> str:
     return urllib.parse.urlunparse(parsed)
 
 
+def extract_pdf_evidence_capsule(
+    pdf_bytes: bytes,
+    max_chars: int = DEFAULT_EVIDENCE_EXCERPT_CHARS,
+) -> dict:
+    """
+    Reuse MEOS's already-installed pdf-parse organ through the local Node runtime.
+    Python remains transport/perception only: extraction is bounded and creates
+    no semantic conclusion, sufficiency judgment, or institutional truth.
+    """
+    if not pdf_bytes:
+        return {
+            "title": None,
+            "excerpt": None,
+            "status": "pdf-empty",
+            "documentType": "pdf",
+            "pageCount": None,
+        }
+
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix="meos-perception-",
+            suffix=".pdf",
+            delete=False,
+        ) as handle:
+            handle.write(pdf_bytes)
+            temp_path = handle.name
+
+        completed = subprocess.run(
+            [
+                "node",
+                "--input-type=module",
+                "-e",
+                PDF_PARSE_NODE_SCRIPT,
+                temp_path,
+                str(DEFAULT_PDF_TEXT_LIMIT_CHARS),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=DEFAULT_PDF_PARSE_TIMEOUT_SECONDS,
+            check=False,
+        )
+
+        if completed.returncode != 0:
+            return {
+                "title": None,
+                "excerpt": None,
+                "status": "pdf-parser-unavailable-or-failed",
+                "documentType": "pdf",
+                "pageCount": None,
+                "parserError": " ".join((completed.stderr or "").split())[:500] or None,
+            }
+
+        parsed = json.loads(completed.stdout or "{}")
+        text = " ".join(str(parsed.get("text") or "").split())
+        info = parsed.get("info") if isinstance(parsed.get("info"), dict) else {}
+        title = " ".join(str(info.get("title") or "").split())[:300] or None
+
+        if not text:
+            return {
+                "title": title,
+                "excerpt": None,
+                "status": "pdf-text-empty-or-image-only",
+                "documentType": "pdf",
+                "pageCount": parsed.get("pages"),
+            }
+
+        return {
+            "title": title,
+            "excerpt": text[: max(256, int(max_chars))],
+            "status": "bounded-local-pdf-text-extracted",
+            "documentType": "pdf",
+            "pageCount": parsed.get("pages"),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "title": None,
+            "excerpt": None,
+            "status": "pdf-parse-timeout",
+            "documentType": "pdf",
+            "pageCount": None,
+        }
+    except Exception as error:
+        return {
+            "title": None,
+            "excerpt": None,
+            "status": "pdf-parse-failed",
+            "documentType": "pdf",
+            "pageCount": None,
+            "parserError": str(error)[:500],
+        }
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
 def extract_evidence_capsule(
     content_type: str,
     preview: bytes,
@@ -159,6 +289,9 @@ def extract_evidence_capsule(
             "excerpt": None,
             "status": "empty-preview",
         }
+
+    if "application/pdf" in content_type or preview.startswith(b"%PDF-"):
+        return extract_pdf_evidence_capsule(preview, max_chars=max_chars)
 
     textual = (
         content_type.startswith("text/")
@@ -230,6 +363,12 @@ def retrieve(url: str, timeout: int, max_bytes: int) -> tuple:
         digest = hashlib.sha256()
         total = 0
         preview = bytearray()
+        response_content_type = response.headers.get_content_type() or "application/octet-stream"
+        evidence_capture_limit = (
+            max_bytes
+            if response_content_type == "application/pdf"
+            else DEFAULT_EVIDENCE_CAPTURE_BYTES
+        )
         while True:
             chunk = response.read(min(65536, max_bytes - total + 1))
             if not chunk:
@@ -238,14 +377,14 @@ def retrieve(url: str, timeout: int, max_bytes: int) -> tuple:
             if total > max_bytes:
                 raise ValueError("Public resource exceeds local perception byte limit.")
             digest.update(chunk)
-            if len(preview) < DEFAULT_EVIDENCE_CAPTURE_BYTES:
-                remaining_preview = DEFAULT_EVIDENCE_CAPTURE_BYTES - len(preview)
+            if len(preview) < evidence_capture_limit:
+                remaining_preview = evidence_capture_limit - len(preview)
                 preview.extend(chunk[:remaining_preview])
 
         return (
             int(getattr(response, "status", 200)),
             response.geturl(),
-            response.headers.get_content_type() or "application/octet-stream",
+            response_content_type,
             total,
             digest.hexdigest(),
             bytes(preview),
@@ -350,6 +489,8 @@ def observe(db: sqlite3.Connection, url: str, timeout: int, max_bytes: int) -> P
         evidence_title=capsule.get("title"),
         evidence_excerpt=capsule.get("excerpt"),
         extraction_status=capsule.get("status") or "not-extracted",
+        document_type=capsule.get("documentType"),
+        page_count=capsule.get("pageCount"),
     )
 
 
@@ -452,7 +593,7 @@ def return_investigation_result(
     allowed_observation_keys = {
         "url", "finalUrl", "observed", "changed", "contentSha256",
         "bytesObservedLocally", "evidenceTitle", "evidenceExcerpt",
-        "extractionStatus", "error"
+        "extractionStatus", "documentType", "pageCount", "error"
     }
     observations = []
     for item in (result.get("observations") or [])[:20]:
@@ -655,6 +796,8 @@ def investigate_intent(
             "evidenceTitle": result.evidence_title,
             "evidenceExcerpt": bounded_excerpt or None,
             "extractionStatus": result.extraction_status,
+            "documentType": result.document_type,
+            "pageCount": result.page_count,
         })
 
     changed_count = sum(1 for x in observations if x.get("observed") and x.get("changed"))
@@ -783,6 +926,15 @@ def status(db: sqlite3.Connection) -> dict:
         "evidenceCaptureBytesPerResource": DEFAULT_EVIDENCE_CAPTURE_BYTES,
         "evidenceExcerptCharsPerResource": DEFAULT_EVIDENCE_EXCERPT_CHARS,
         "investigationEvidenceCharacterLimit": DEFAULT_INVESTIGATION_EVIDENCE_CHARS,
+        "pdfPerception": {
+            "enabled": True,
+            "parser": "existing-node-pdf-parse",
+            "textLimitChars": DEFAULT_PDF_TEXT_LIMIT_CHARS,
+            "timeoutSeconds": DEFAULT_PDF_PARSE_TIMEOUT_SECONDS,
+            "semanticConclusionAuthorized": False,
+            "documentMutationAuthorized": False,
+            "signatureAuthorized": False,
+        },
         "paidProviderUsed": False,
         "paidCognitionAuthorized": False,
         "externalActionAuthorized": False,
