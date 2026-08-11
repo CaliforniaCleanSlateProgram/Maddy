@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.42";
+const VERSION = "2.10.43";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2958,9 +2958,9 @@ function getHeadlessResearchStatus() {
  * preserve cognition. It does not grant external-action authority.
  */
 const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.3";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.4";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR103-DURABLE-FINGERPRINT-OBSERVABILITY-REPAIR-20260809-A";
+  "CCR104-ECONOMIC-CADENCE-HONOR-20260811-A";
 const AUTONOMOUS_RUNTIME_ENABLED =
   String(process.env.MEOS_AUTONOMOUS_RUNTIME_ENABLED || "false")
     .trim()
@@ -2976,7 +2976,7 @@ const CONTINUOUS_COGNITION_MIN_WAKE_MS = Math.max(
 );
 const CONTINUOUS_COGNITION_MAX_WAKE_MS = Math.max(
   CONTINUOUS_COGNITION_MIN_WAKE_MS,
-  Number(process.env.MEOS_CONTINUOUS_COGNITION_MAX_WAKE_MS || 60_000)
+  Number(process.env.MEOS_CONTINUOUS_COGNITION_MAX_WAKE_MS || 5 * 60_000)
 );
 const CONTINUOUS_COGNITION_RETRY_MS = Math.max(
   5000,
@@ -2997,6 +2997,10 @@ const continuousCognitionRuntimeState = {
   lastWakeAt: null,
   lastCompletedAt: null,
   nextWakeAt: null,
+  requestedNextWakeAt: null,
+  requestedWakeDelayMs: null,
+  scheduledWakeDelayMs: null,
+  wakeClampReason: null,
   cycleNumber: null,
   handoffFingerprint: null,
   durableFingerprint: null,
@@ -3199,6 +3203,16 @@ function scheduleContinuousCognitionWake(nextWakeAt) {
     Math.max(CONTINUOUS_COGNITION_MIN_WAKE_MS, requestedDelay)
   );
   const scheduledAt = new Date(Date.now() + delay).toISOString();
+  continuousCognitionRuntimeState.requestedNextWakeAt =
+    Number.isFinite(targetMs) ? new Date(targetMs).toISOString() : null;
+  continuousCognitionRuntimeState.requestedWakeDelayMs = requestedDelay;
+  continuousCognitionRuntimeState.scheduledWakeDelayMs = delay;
+  continuousCognitionRuntimeState.wakeClampReason =
+    requestedDelay < CONTINUOUS_COGNITION_MIN_WAKE_MS
+      ? "minimum-runtime-safety-bound"
+      : requestedDelay > CONTINUOUS_COGNITION_MAX_WAKE_MS
+        ? "maximum-runtime-safety-bound"
+        : "brain-cadence-honored";
   continuousCognitionRuntimeState.nextWakeAt = scheduledAt;
   continuousCognitionRuntimeState.timer = setTimeout(() => {
     continuousCognitionRuntimeState.timer = null;
@@ -3305,6 +3319,14 @@ function getContinuousCognitionRuntimeStatus() {
     lastWakeAt: continuousCognitionRuntimeState.lastWakeAt,
     lastCompletedAt: continuousCognitionRuntimeState.lastCompletedAt,
     nextWakeAt: continuousCognitionRuntimeState.nextWakeAt,
+    requestedNextWakeAt: continuousCognitionRuntimeState.requestedNextWakeAt,
+    requestedWakeDelayMs: continuousCognitionRuntimeState.requestedWakeDelayMs,
+    scheduledWakeDelayMs: continuousCognitionRuntimeState.scheduledWakeDelayMs,
+    wakeClampReason: continuousCognitionRuntimeState.wakeClampReason,
+    wakeBounds: {
+      minMs: CONTINUOUS_COGNITION_MIN_WAKE_MS,
+      maxMs: CONTINUOUS_COGNITION_MAX_WAKE_MS
+    },
     cycleNumber: continuousCognitionRuntimeState.cycleNumber,
     handoffFingerprint: continuousCognitionRuntimeState.handoffFingerprint,
     durableFingerprint: continuousCognitionRuntimeState.durableFingerprint,
