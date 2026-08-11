@@ -24,6 +24,7 @@ import dns from "dns/promises";
 import net from "net";
 import fs from "fs/promises";
 import vm from "vm";
+import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import pdfParse from "pdf-parse";
 import ResourceDiscoveryNetwork from "./resource-discovery-network.js";
@@ -36,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.48";
+const VERSION = "2.10.49";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2994,6 +2995,27 @@ const LOCAL_PERCEPTION_BRIDGE_SECRET = String(
 ).trim();
 const LOCAL_PERCEPTION_BRIDGE_MAX_BODY = "8kb";
 const LOCAL_PERCEPTION_RESULT_MAX_BODY = "32kb";
+const LOCAL_PERCEPTION_PROCESS_ENABLED =
+  String(process.env.MEOS_LOCAL_PERCEPTION_PROCESS_ENABLED || "")
+    .trim()
+    .toLowerCase() === "true";
+const LOCAL_PERCEPTION_PYTHON_EXECUTABLE = String(
+  process.env.MEOS_LOCAL_PERCEPTION_PYTHON_EXECUTABLE ||
+    (process.platform === "win32" ? "python" : "python3")
+).trim();
+const LOCAL_PERCEPTION_PROCESS_TIMEOUT_MS = Math.max(
+  5000,
+  Math.min(
+    5 * 60_000,
+    Number(process.env.MEOS_LOCAL_PERCEPTION_PROCESS_TIMEOUT_MS || 90_000)
+  )
+);
+const LOCAL_PERCEPTION_PROCESS_MAX_STDOUT_BYTES = 64 * 1024;
+const LOCAL_PERCEPTION_PROCESS_MAX_STDERR_BYTES = 16 * 1024;
+const LOCAL_PERCEPTION_SCRIPT_PATH = path.join(
+  __dirname,
+  "maddy-local-perception.py"
+);
 const CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS = Math.max(
   60_000,
   Number(
@@ -3041,6 +3063,12 @@ const continuousCognitionRuntimeState = {
   localPerceptionResultBytesReceived: 0,
   lastLocalPerceptionResultAt: null,
   lastLocalPerceptionResultIntentId: null,
+  localPerceptionProcessExecutionCount: 0,
+  localPerceptionProcessFailureCount: 0,
+  localPerceptionProcessBytesReturned: 0,
+  lastLocalPerceptionProcessAt: null,
+  lastLocalPerceptionProcessIntentId: null,
+  lastLocalPerceptionProcessError: null,
   inFlight: false,
   timer: null,
   lastError: null
@@ -3134,6 +3162,248 @@ function unwrapDurableExecutiveBrainSnapshot(readResult) {
   return null;
 }
 
+function getLocalPerceptionProcessStatus() {
+  return {
+    enabled: LOCAL_PERCEPTION_PROCESS_ENABLED,
+    mode: "co-resident-zero-network-process-adapter",
+    pythonExecutable: LOCAL_PERCEPTION_PYTHON_EXECUTABLE,
+    scriptPath: LOCAL_PERCEPTION_SCRIPT_PATH,
+    timeoutMs: LOCAL_PERCEPTION_PROCESS_TIMEOUT_MS,
+    maxStdoutBytes: LOCAL_PERCEPTION_PROCESS_MAX_STDOUT_BYTES,
+    executionCount:
+      continuousCognitionRuntimeState.localPerceptionProcessExecutionCount,
+    failureCount:
+      continuousCognitionRuntimeState.localPerceptionProcessFailureCount,
+    bytesReturned:
+      continuousCognitionRuntimeState.localPerceptionProcessBytesReturned,
+    lastExecutedAt:
+      continuousCognitionRuntimeState.lastLocalPerceptionProcessAt,
+    lastIntentId:
+      continuousCognitionRuntimeState.lastLocalPerceptionProcessIntentId,
+    lastError:
+      continuousCognitionRuntimeState.lastLocalPerceptionProcessError,
+    paidProviderUsed: false,
+    networkHopRequired: false,
+    paidCognitionAuthorized: false,
+    externalActionAuthorized: false
+  };
+}
+
+async function executeLocalPerceptionHandoff(handoff = {}) {
+  if (!LOCAL_PERCEPTION_PROCESS_ENABLED) {
+    return {
+      success: false,
+      blocked: true,
+      reason: "local-perception-process-disabled",
+      capability: getLocalPerceptionProcessStatus(),
+      paidCognitionAuthorized: false,
+      externalActionAuthorized: false
+    };
+  }
+
+  if (
+    handoff?.schema !== "meos.maddy.local-perception-handoff.v1" ||
+    !String(handoff?.intentId || "").trim() ||
+    !String(handoff?.query || "").trim()
+  ) {
+    return {
+      success: false,
+      blocked: true,
+      reason: "local-perception-handoff-invalid",
+      paidCognitionAuthorized: false,
+      externalActionAuthorized: false
+    };
+  }
+
+  const authority = handoff.authority || {};
+  const epistemic = handoff.epistemicContract || {};
+  if (
+    authority.investigationOnly !== true ||
+    authority.paidCognitionAuthorized !== false ||
+    authority.externalActionAuthorized !== false ||
+    authority.consequentialActionAuthorized !== false ||
+    epistemic.perceptionIsNotBelief !== true ||
+    epistemic.semanticConclusionAuthorized !== false ||
+    epistemic.sufficiencyJudgmentAuthorized !== false ||
+    epistemic.institutionalTruthPromotionAuthorized !== false
+  ) {
+    return {
+      success: false,
+      blocked: true,
+      reason: "local-perception-handoff-authority-invalid",
+      paidCognitionAuthorized: false,
+      externalActionAuthorized: false
+    };
+  }
+
+  const encoded = JSON.stringify(handoff);
+  if (Buffer.byteLength(encoded, "utf8") > 24 * 1024) {
+    return {
+      success: false,
+      blocked: true,
+      reason: "local-perception-handoff-too-large",
+      paidCognitionAuthorized: false,
+      externalActionAuthorized: false
+    };
+  }
+
+  continuousCognitionRuntimeState.localPerceptionProcessExecutionCount += 1;
+  continuousCognitionRuntimeState.lastLocalPerceptionProcessAt =
+    new Date().toISOString();
+  continuousCognitionRuntimeState.lastLocalPerceptionProcessIntentId =
+    String(handoff.intentId).slice(0, 160);
+  continuousCognitionRuntimeState.lastLocalPerceptionProcessError = null;
+
+  return await new Promise(resolve => {
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    const stdout = [];
+    const stderr = [];
+    let settled = false;
+
+    const child = spawn(
+      LOCAL_PERCEPTION_PYTHON_EXECUTABLE,
+      [LOCAL_PERCEPTION_SCRIPT_PATH, "handoff", "-"],
+      {
+        cwd: __dirname,
+        env: process.env,
+        shell: false,
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true
+      }
+    );
+
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+
+    const fail = (code, message) => {
+      continuousCognitionRuntimeState.localPerceptionProcessFailureCount += 1;
+      continuousCognitionRuntimeState.lastLocalPerceptionProcessError = {
+        code,
+        message: String(message || code).slice(0, 500),
+        at: new Date().toISOString()
+      };
+      finish({
+        success: false,
+        blocked: true,
+        reason: code,
+        error: String(message || code).slice(0, 500),
+        paidCognitionAuthorized: false,
+        externalActionAuthorized: false
+      });
+    };
+
+    const timeout = setTimeout(() => {
+      child.kill();
+      fail(
+        "local-perception-process-timeout",
+        "Local perception exceeded its bounded execution window."
+      );
+    }, LOCAL_PERCEPTION_PROCESS_TIMEOUT_MS);
+    timeout.unref?.();
+
+    child.on("error", error => {
+      fail(
+        "local-perception-process-start-failed",
+        error?.message || String(error)
+      );
+    });
+
+    child.stdout.on("data", chunk => {
+      if (settled) return;
+      const buffer = Buffer.from(chunk);
+      stdoutBytes += buffer.length;
+      if (stdoutBytes > LOCAL_PERCEPTION_PROCESS_MAX_STDOUT_BYTES) {
+        child.kill();
+        fail(
+          "local-perception-process-stdout-limit",
+          "Local perception returned more evidence than the bounded stdout envelope."
+        );
+        return;
+      }
+      stdout.push(buffer);
+    });
+
+    child.stderr.on("data", chunk => {
+      if (settled) return;
+      const buffer = Buffer.from(chunk);
+      stderrBytes += buffer.length;
+      if (stderrBytes <= LOCAL_PERCEPTION_PROCESS_MAX_STDERR_BYTES) {
+        stderr.push(buffer);
+      }
+    });
+
+    child.on("close", code => {
+      if (settled) return;
+
+      const stderrText = Buffer.concat(stderr).toString("utf8").trim();
+      if (code !== 0) {
+        fail(
+          "local-perception-process-failed",
+          stderrText || `Local perception exited with code ${code}.`
+        );
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(
+          Buffer.concat(stdout).toString("utf8")
+        );
+
+        if (
+          parsed?.intentId !== handoff.intentId ||
+          parsed?.handoffSchema !== handoff.schema ||
+          parsed?.handoffAccepted !== true
+        ) {
+          fail(
+            "local-perception-result-lineage-invalid",
+            "Local perception result did not preserve the originating cognitive handoff."
+          );
+          return;
+        }
+
+        if (
+          parsed?.semanticConclusion != null ||
+          parsed?.sufficiencyJudgment != null ||
+          parsed?.institutionalTruthAuthority === true ||
+          parsed?.paidCognitionAuthorized === true ||
+          parsed?.externalActionAuthorized === true
+        ) {
+          fail(
+            "local-perception-result-authority-invalid",
+            "Local perception result attempted to cross a cognitive authority boundary."
+          );
+          return;
+        }
+
+        continuousCognitionRuntimeState.localPerceptionProcessBytesReturned +=
+          stdoutBytes;
+
+        finish({
+          ...parsed,
+          success: parsed?.success !== false,
+          executionTransport: "co-resident-local-process",
+          networkHopRequired: false,
+          paidProviderUsed: false,
+          paidCognitionAuthorized: false,
+          externalActionAuthorized: false
+        });
+      } catch (error) {
+        fail(
+          "local-perception-result-json-invalid",
+          error?.message || String(error)
+        );
+      }
+    });
+
+    child.stdin.end(encoded);
+  });
+}
+
 async function createHeadlessContinuousCognitionBrain(snapshot = null) {
   const { source, brainPath } = await loadContinuousCognitionBrainSource();
   const headlessWindow = {
@@ -3151,6 +3421,12 @@ async function createHeadlessContinuousCognitionBrain(snapshot = null) {
         "Headless continuous cognition does not use browser fetch; durable authority is injected by the server runtime."
       );
     }
+  };
+  headlessWindow.MEOSLocalPerception = {
+    name: "MEOS Local Perception Process Adapter",
+    version: "1.0.0",
+    getStatus: () => getLocalPerceptionProcessStatus(),
+    execute: handoff => executeLocalPerceptionHandoff(handoff)
   };
   headlessWindow.window = headlessWindow;
 
@@ -3578,6 +3854,7 @@ function getContinuousCognitionRuntimeStatus() {
       continuousCognitionRuntimeState.lastLocalPerceptionResultIntentId,
     localPerceptionResultMode:
       "authenticated-bounded-evidence-return-verified-checkpoint",
+    localPerceptionProcess: getLocalPerceptionProcessStatus(),
     eventReentryMode: "in-process-recognition-before-interruption",
     eventReentryPaidCognitionAuthorized: false,
     eventReentryExternalActionAuthorized: false,
