@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.5.3
+ * Version: 4.5.4
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,9 +20,11 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.5.3";
+  const DASHBOARD_VERSION = "4.5.4";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
+  const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
+  const COGNITION_RUNTIME_REFRESH_FLOOR_MS = 10000;
   const FUNDING_CARD_LIMIT = 3;
   const ROOT_ID = "executive-office";
   const STYLE_ID = "meosExecutiveDashboardStyles";
@@ -100,6 +102,13 @@
       completion: 0,
       officePortfolio: [],
       liveSignals: {}
+    },
+    cognitionRuntime: {
+      status: "unread",
+      data: null,
+      lastLoadedAt: null,
+      error: null,
+      inFlight: null
     },
     maddyPresence: {
       connected: false,
@@ -2806,6 +2815,8 @@ document
               </div>
               <div class="meos-maddy-desk-glance">
                 <span id="meosMaddyDeskWork" class="meos-maddy-desk-chip" data-meos-evidence="maddy-work" role="button" tabindex="0">No active Hallway work</span>
+                <span id="meosMaddyDeskMissions" class="meos-maddy-desk-chip" data-meos-evidence="mission-runtime" role="button" tabindex="0">Missions · reading</span>
+                <span id="meosMaddyDeskCognition" class="meos-maddy-desk-chip" data-meos-evidence="cognition-runtime" role="button" tabindex="0">Cognition · unread</span>
                 <span id="meosMaddyDeskApprovals" class="meos-maddy-desk-chip" data-meos-evidence="approvals" role="button" tabindex="0">0 need you</span>
                 <span id="meosMaddyDeskDeliverables" class="meos-maddy-desk-chip" data-meos-evidence="deliverables" role="button" tabindex="0">0 deliverables</span>
               </div>
@@ -4708,7 +4719,7 @@ document
     return `<div class="meos-evidence-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? "Not recorded")}</strong></div>`;
   }
 
-  function openRealtimeEvidence(kind, id = null) {
+  async function openRealtimeEvidence(kind, id = null) {
     document.getElementById("meosRealtimeEvidence")?.remove();
     const snapshot = collectHeadquartersSnapshot();
     const computedAt = state.headquarters.lastComputedAt || new Date().toISOString();
@@ -4727,6 +4738,20 @@ document
         ["Work ID", record.id], ["State", record.state], ["Owner", record.owner || "Maddy"], ["Title", record.title || record.instruction],
         ["Updated", record.updatedAt || record.createdAt], ["Authority", briefText(record.authority, "No authority metadata recorded")]
       ] : [["Hallway work records", snapshot.hallwayWork.length]];
+    } else if (kind === "mission-runtime") {
+      const counts = snapshot.missionCounts || missionRuntimeCounts(snapshot.mission);
+      const dispatcher = snapshot.dispatcher || {};
+      title = "Mission Runtime · Evidence";
+      source = "Mission Engine + Mission Dispatcher getStatus()";
+      summary = "Live mission inventory and dispatcher metabolism. This exposes what is actually queued and how frequently the dispatcher is scanning.";
+      fields = [["Active missions", counts.active], ["Awaiting approval", counts.pendingApproval], ["Completed", counts.completed], ["Archived", counts.archived], ["Dispatcher", dispatcher.running === true ? "running" : dispatcher.running === false ? "stopped" : "unknown"], ["Scan interval", Number.isFinite(Number(dispatcher.scanInterval)) ? `${Number(dispatcher.scanInterval).toLocaleString()} ms` : "Not reported"], ["Dispatched mission IDs", dispatcher.dispatchedMissionCount ?? "Not reported"], ["Dispatch records", dispatcher.dispatchRecordCount ?? "Not reported"], ["Dispatcher updated", dispatcher.updatedAt || "Not recorded"]];
+    } else if (kind === "cognition-runtime") {
+      await refreshCognitionRuntime({ force: true });
+      const runtime = state.cognitionRuntime.data;
+      title = "Maddy · Cognitive Presence Evidence";
+      source = "GET /api/continuous-cognition-runtime";
+      summary = runtime ? "Fresh server evidence from Maddy's browser-independent Executive Brain cognition runtime. This fetch happens on demand and is deduplicated; the 15-second dashboard render does not poll the endpoint." : "The cognition runtime endpoint did not return evidence. The HUD reports that honestly rather than inventing a cognitive state.";
+      fields = runtime ? [["Runtime", runtime.status], ["Enabled", runtime.enabled === true ? "yes" : runtime.enabled === false ? "no" : "unknown"], ["In flight now", runtime.inFlight === true ? "yes" : "no"], ["Wake count", runtime.wakeCount ?? 0], ["Failed wakes", runtime.failedWakeCount ?? 0], ["Cycle", runtime.cycleNumber ?? "Not recorded"], ["Active thread", runtime.activeThreadId || "None reported"], ["Last wake", runtime.lastWakeAt || "Not recorded"], ["Last completed", runtime.lastCompletedAt || "Not recorded"], ["Next wake", runtime.nextWakeAt || "Not scheduled"], ["Hot brain reuse", runtime.hotBrainReuseCount ?? 0], ["Durable checkpoints", runtime.durableCheckpointCount ?? 0], ["Skipped checkpoints", runtime.skippedDurableCheckpointCount ?? 0], ["Persistence", runtime.persistenceMode || "Not reported"], ["External action authority", runtime.authority?.externalActionAuthorized === true ? "AUTHORIZED" : "not authorized"], ["Human authority preserved", runtime.authority?.humanAuthorityPreserved === true ? "yes" : "not reported"]] : [["Runtime evidence", state.cognitionRuntime.error || "Unavailable"]];
     } else if (kind === "approvals") {
       title = "Executive Decisions · Runtime Evidence";
       source = "Executive Hallway + Executive Office recommendations";
@@ -4908,6 +4933,54 @@ document
     }
   }
 
+  function getMissionDispatcherStatus() {
+    const dispatcher = window.MEOSMissionDispatcher || window.MissionDispatcher || null;
+    try { return dispatcher?.getStatus?.() || {}; } catch (_) { return {}; }
+  }
+
+  function missionRuntimeCounts(mission = {}) {
+    const active = Number(firstDefined(mission.totalActive, mission.missions?.length, 0)) || 0;
+    const pendingApproval = Number(firstDefined(mission.pendingApproval, mission.approvalQueue?.length, 0)) || 0;
+    const completed = Number(firstDefined(mission.completed, mission.completedMissions?.length, 0)) || 0;
+    const archived = Number(firstDefined(mission.archived, mission.archivedMissions?.length, 0)) || 0;
+    return { active, pendingApproval, completed, archived };
+  }
+
+  function renderCognitionRuntimeChip() {
+    const chip = document.getElementById("meosMaddyDeskCognition");
+    if (!chip) return;
+    const runtime = state.cognitionRuntime.data;
+    if (state.cognitionRuntime.status === "loading") { chip.textContent = "Cognition · checking"; return; }
+    if (!runtime) { chip.textContent = state.cognitionRuntime.error ? "Cognition · unavailable" : "Cognition · unread"; return; }
+    const posture = runtime.enabled === false ? "off" : runtime.inFlight ? "thinking" : runtime.status === "online" ? "aware" : runtime.status || "unknown";
+    chip.textContent = `Cognition · ${posture}`;
+    chip.title = `Server cognition · wakes ${Number(runtime.wakeCount || 0).toLocaleString()} · last ${runtime.lastCompletedAt || runtime.lastWakeAt || "not recorded"}`;
+  }
+
+  async function refreshCognitionRuntime(options = {}) {
+    const force = options.force === true;
+    const loadedMs = Date.parse(state.cognitionRuntime.lastLoadedAt || "");
+    const freshEnough = state.cognitionRuntime.data && Number.isFinite(loadedMs) && Date.now() - loadedMs < COGNITION_RUNTIME_REFRESH_FLOOR_MS;
+    // Even an explicit evidence refresh respects the request floor. Repeated clicks
+    // must never turn the HUD into another high-frequency cognition poller.
+    if (freshEnough) return state.cognitionRuntime.data;
+    if (state.cognitionRuntime.inFlight) return state.cognitionRuntime.inFlight;
+    state.cognitionRuntime.status = "loading"; state.cognitionRuntime.error = null; renderCognitionRuntimeChip();
+    const request = fetch(COGNITION_RUNTIME_API_URL, { headers: { Accept: "application/json" }, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Cognition runtime HTTP ${response.status}`);
+        const data = await response.json();
+        state.cognitionRuntime.data = data && typeof data === "object" ? data : null;
+        state.cognitionRuntime.status = state.cognitionRuntime.data ? "ready" : "unavailable";
+        state.cognitionRuntime.lastLoadedAt = new Date().toISOString();
+        return state.cognitionRuntime.data;
+      })
+      .catch((error) => { state.cognitionRuntime.status = "unavailable"; state.cognitionRuntime.error = error?.message || String(error); return null; })
+      .finally(() => { state.cognitionRuntime.inFlight = null; renderCognitionRuntimeChip(); });
+    state.cognitionRuntime.inFlight = request;
+    return request;
+  }
+
   function getHallwaySnapshot() {
     const hallway = getExecutiveHallway();
     try {
@@ -4956,6 +5029,7 @@ document
   function collectHeadquartersSnapshot() {
     const offices = getCabinetOffices();
     const mission = getMissionSnapshot();
+    const dispatcher = getMissionDispatcherStatus();
     const hallway = getHallwaySnapshot();
     const hallwayWork = Array.isArray(hallway.work) ? hallway.work : [];
     const hallwayTasks = hallwayWork.map(normalizeHallwayTask);
@@ -5001,7 +5075,8 @@ document
       ? Math.round(offices.reduce((sum, office) => sum + Number(office.operationalState?.health || 0), 0) / offices.length)
       : 0;
     const missionPulse = Math.round((officeHealth * 0.45) + ((100 - Math.min(100, blocked.length * 10)) * 0.2) + (completion * 0.35));
-    const snapshot = { offices, mission, hallway, hallwayWork, hallwayDeliverables, hallwayFeedback, hallwayHistory, tasks, recommendations, activities, completion, blocked, active, pending, pendingApprovals, fundingRecords, fundingUrgent, officeHealth, missionPulse };
+    const missionCounts = missionRuntimeCounts(mission);
+    const snapshot = { offices, mission, missionCounts, dispatcher, hallway, hallwayWork, hallwayDeliverables, hallwayFeedback, hallwayHistory, tasks, recommendations, activities, completion, blocked, active, pending, pendingApprovals, fundingRecords, fundingUrgent, officeHealth, missionPulse };
     state.headquarters = { ...state.headquarters, ...snapshot, officePortfolio: offices.map((office) => ({ id: office.id, office: office.office, ...(office.implementation || {}) })), lastComputedAt: new Date().toISOString() };
     return snapshot;
   }
@@ -5493,6 +5568,13 @@ document
     setText("meosMaddyWorkStatus", maddyStatus);
     setText("meosMaddyWorkDetail", maddyDetail);
     renderMaddyExecutiveDesk(snapshot);
+    const missionChip = document.getElementById("meosMaddyDeskMissions");
+    if (missionChip) {
+      const counts = snapshot.missionCounts || missionRuntimeCounts(snapshot.mission);
+      missionChip.textContent = `${counts.active.toLocaleString()} mission${counts.active === 1 ? "" : "s"} · ${snapshot.dispatcher?.running === true ? "routing" : snapshot.dispatcher?.running === false ? "stopped" : "status unknown"}`;
+      missionChip.title = `Mission Engine active=${counts.active} · dispatcher interval=${snapshot.dispatcher?.scanInterval ?? "unknown"}ms`;
+    }
+    renderCognitionRuntimeChip();
 
     const today = document.getElementById("meosTodayLiveList");
     if (today) today.innerHTML = [
@@ -5558,6 +5640,10 @@ document
       ["Maddy at Work is the primary Executive Desk command surface", Boolean(document.getElementById("meosMaddyDeskInput") && document.getElementById("meosMaddyDeskSend"))],
       ["Maddy Executive Desk exposes Hallway work approvals and deliverables at a glance", Boolean(document.getElementById("meosMaddyDeskWork") && document.getElementById("meosMaddyDeskApprovals") && document.getElementById("meosMaddyDeskDeliverables"))],
       ["Maddy HUD glance chips expose realtime evidence drill-down", ["meosMaddyDeskWork","meosMaddyDeskApprovals","meosMaddyDeskDeliverables"].every((id) => Boolean(document.getElementById(id)?.dataset.meosEvidence))],
+      ["Maddy HUD exposes live Mission Engine and Dispatcher evidence", document.getElementById("meosMaddyDeskMissions")?.dataset.meosEvidence === "mission-runtime"],
+      ["Maddy HUD exposes browser-independent cognition evidence", document.getElementById("meosMaddyDeskCognition")?.dataset.meosEvidence === "cognition-runtime"],
+      ["Mission runtime snapshot includes dispatcher status", Boolean(snapshot.dispatcher && typeof snapshot.dispatcher === "object")],
+      ["Cognition evidence is on-demand rather than tied to the 15-second render loop", typeof refreshCognitionRuntime === "function" && COGNITION_RUNTIME_REFRESH_FLOOR_MS >= 10000],
       ["Mission Pulse exposes realtime evidence drill-down", document.querySelector(".meos-mission-ring")?.dataset.meosEvidence === "mission-pulse"],
       ["Executive priorities expose underlying task evidence", document.querySelectorAll("#meosLivePriorities [data-meos-evidence]").length > 0],
       ["Risk Center alerts expose underlying runtime evidence", document.querySelectorAll("#meosLiveRisks [data-meos-evidence]").length > 0],
@@ -6802,6 +6888,7 @@ document
     void loadFundingIntelligence().finally(renderLiveHeadquarters);
     void loadOfficeActivity().finally(renderLiveHeadquarters);
     renderLiveHeadquarters();
+    refreshCognitionRuntime().catch(() => null);
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
