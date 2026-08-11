@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.45";
+const VERSION = "2.10.46";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2957,10 +2957,10 @@ function getHeadlessResearchStatus() {
  * Authority invariant: this runtime may think, investigate internally, and
  * preserve cognition. It does not grant external-action authority.
  */
-const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M3";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.6";
+const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M4";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.7";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR106-EVENT-DRIVEN-COGNITIVE-REENTRY-20260811-A";
+  "CCR107-RECOGNITION-BEFORE-INTERRUPTION-20260811-A";
 const AUTONOMOUS_RUNTIME_ENABLED =
   String(process.env.MEOS_AUTONOMOUS_RUNTIME_ENABLED || "false")
     .trim()
@@ -2981,6 +2981,13 @@ const CONTINUOUS_COGNITION_MAX_WAKE_MS = Math.max(
 const CONTINUOUS_COGNITION_RETRY_MS = Math.max(
   5000,
   Number(process.env.MEOS_CONTINUOUS_COGNITION_RETRY_MS || 30_000)
+);
+const CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS = Math.max(
+  1000,
+  Number(
+    process.env.MEOS_CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS ||
+      5 * 60_000
+  )
 );
 const CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS = Math.max(
   60_000,
@@ -3014,9 +3021,13 @@ const continuousCognitionRuntimeState = {
   hotBrainHydratedAt: null,
   hotBrainReuseCount: 0,
   eventWakeCount: 0,
+  suppressedDuplicateEventCount: 0,
   lastEventWakeAt: null,
   lastEventWakeReason: null,
   lastEventWakeSource: null,
+  lastEventFingerprint: null,
+  lastSuppressedEventAt: null,
+  lastSuppressedEventFingerprint: null,
   inFlight: false,
   timer: null,
   lastError: null
@@ -3025,6 +3036,64 @@ const continuousCognitionRuntimeState = {
 let continuousCognitionBrainSourcePromise = null;
 let continuousCognitionHotBrain = null;
 let continuousCognitionObservedDurableFingerprint = null;
+const continuousCognitionRecentEventFingerprints = new Map();
+
+function normalizeContinuousCognitionEventText(value, maxLength) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, maxLength);
+}
+
+function fingerprintContinuousCognitionEvent(event = {}) {
+  const source = normalizeContinuousCognitionEventText(
+    event.source || "meos-runtime",
+    120
+  );
+  const reason = normalizeContinuousCognitionEventText(event.reason, 240);
+  const subject = normalizeContinuousCognitionEventText(
+    event.subject || event.entityId || event.missionId || event.key || "",
+    180
+  );
+  const change = normalizeContinuousCognitionEventText(
+    event.change || event.changeFingerprint || event.version || "",
+    240
+  );
+
+  return crypto
+    .createHash("sha256")
+    .update([source, reason, subject, change].join("|"))
+    .digest("hex");
+}
+
+function recognizeContinuousCognitionEvent(event = {}, nowMs = Date.now()) {
+  const fingerprint = fingerprintContinuousCognitionEvent(event);
+  const previousSeenAt =
+    continuousCognitionRecentEventFingerprints.get(fingerprint) || 0;
+  const ageMs = previousSeenAt ? Math.max(0, nowMs - previousSeenAt) : null;
+  const duplicate =
+    previousSeenAt > 0 &&
+    ageMs < CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS;
+
+  // Keep the cache bounded to the active recognition horizon.
+  for (const [knownFingerprint, seenAt] of continuousCognitionRecentEventFingerprints) {
+    if (nowMs - seenAt >= CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS) {
+      continuousCognitionRecentEventFingerprints.delete(knownFingerprint);
+    }
+  }
+
+  if (!duplicate) {
+    continuousCognitionRecentEventFingerprints.set(fingerprint, nowMs);
+  }
+
+  return {
+    fingerprint,
+    duplicate,
+    ageMs,
+    recognitionWindowMs: CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS
+  };
+}
 
 async function loadContinuousCognitionBrainSource() {
   if (!continuousCognitionBrainSourcePromise) {
@@ -3259,10 +3328,30 @@ function requestContinuousCognitionReentry(event = {}) {
     };
   }
 
+  const recognition = recognizeContinuousCognitionEvent(event);
+  if (recognition.duplicate) {
+    continuousCognitionRuntimeState.suppressedDuplicateEventCount += 1;
+    continuousCognitionRuntimeState.lastSuppressedEventAt =
+      new Date().toISOString();
+    continuousCognitionRuntimeState.lastSuppressedEventFingerprint =
+      recognition.fingerprint;
+
+    return {
+      accepted: false,
+      reason: "duplicate-event-recognized-no-reentry",
+      fingerprint: recognition.fingerprint,
+      ageMs: recognition.ageMs,
+      recognitionWindowMs: recognition.recognitionWindowMs,
+      paidCognitionAuthorized: false,
+      externalActionAuthorized: false
+    };
+  }
+
   continuousCognitionRuntimeState.eventWakeCount += 1;
   continuousCognitionRuntimeState.lastEventWakeAt = new Date().toISOString();
   continuousCognitionRuntimeState.lastEventWakeReason = reason.slice(0, 240);
   continuousCognitionRuntimeState.lastEventWakeSource = source.slice(0, 120);
+  continuousCognitionRuntimeState.lastEventFingerprint = recognition.fingerprint;
 
   const scheduledAt = scheduleContinuousCognitionWake(
     new Date(Date.now() + CONTINUOUS_COGNITION_MIN_WAKE_MS).toISOString()
@@ -3270,7 +3359,8 @@ function requestContinuousCognitionReentry(event = {}) {
 
   return {
     accepted: true,
-    reason: "meaningful-event-reentry-scheduled",
+    reason: "novel-meaningful-event-reentry-scheduled",
+    fingerprint: recognition.fingerprint,
     scheduledAt,
     paidCognitionAuthorized: false,
     externalActionAuthorized: false
@@ -3386,10 +3476,20 @@ function getContinuousCognitionRuntimeStatus() {
     hotBrainHydratedAt: continuousCognitionRuntimeState.hotBrainHydratedAt,
     hotBrainReuseCount: continuousCognitionRuntimeState.hotBrainReuseCount,
     eventWakeCount: continuousCognitionRuntimeState.eventWakeCount,
+    suppressedDuplicateEventCount:
+      continuousCognitionRuntimeState.suppressedDuplicateEventCount,
     lastEventWakeAt: continuousCognitionRuntimeState.lastEventWakeAt,
     lastEventWakeReason: continuousCognitionRuntimeState.lastEventWakeReason,
     lastEventWakeSource: continuousCognitionRuntimeState.lastEventWakeSource,
-    eventReentryMode: "in-process-meaningful-event-only",
+    lastEventFingerprint: continuousCognitionRuntimeState.lastEventFingerprint,
+    lastSuppressedEventAt:
+      continuousCognitionRuntimeState.lastSuppressedEventAt,
+    lastSuppressedEventFingerprint:
+      continuousCognitionRuntimeState.lastSuppressedEventFingerprint,
+    eventRecognitionWindowMs:
+      CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS,
+    eventRecognitionMode: "bounded-resident-fingerprint-dedupe",
+    eventReentryMode: "in-process-recognition-before-interruption",
     eventReentryPaidCognitionAuthorized: false,
     eventReentryExternalActionAuthorized: false,
     durableCheckpointMs: CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS,
