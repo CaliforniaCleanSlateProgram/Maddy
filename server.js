@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.43";
+const VERSION = "2.10.44";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2957,10 +2957,10 @@ function getHeadlessResearchStatus() {
  * Authority invariant: this runtime may think, investigate internally, and
  * preserve cognition. It does not grant external-action authority.
  */
-const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.4";
+const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M2";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.5";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR104-ECONOMIC-CADENCE-HONOR-20260811-A";
+  "CCR105-ADAPTIVE-QUIET-METABOLISM-HONOR-20260811-A";
 const AUTONOMOUS_RUNTIME_ENABLED =
   String(process.env.MEOS_AUTONOMOUS_RUNTIME_ENABLED || "false")
     .trim()
@@ -2976,7 +2976,7 @@ const CONTINUOUS_COGNITION_MIN_WAKE_MS = Math.max(
 );
 const CONTINUOUS_COGNITION_MAX_WAKE_MS = Math.max(
   CONTINUOUS_COGNITION_MIN_WAKE_MS,
-  Number(process.env.MEOS_CONTINUOUS_COGNITION_MAX_WAKE_MS || 5 * 60_000)
+  Number(process.env.MEOS_CONTINUOUS_COGNITION_MAX_WAKE_MS || 30 * 60_000)
 );
 const CONTINUOUS_COGNITION_RETRY_MS = Math.max(
   5000,
