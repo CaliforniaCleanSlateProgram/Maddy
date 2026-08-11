@@ -1,10 +1,12 @@
 /*
  * MEOS Document Ingestion Engine
- * Version: 1.0.0
+ * Version: 1.1.0
  *
  * Mission:
  * Discover, catalog, fingerprint, de-duplicate, and queue documents for
  * later classification without hard-coding any organization into MEOS.
+ * Accept bounded local-perception evidence while preserving source, content,
+ * fingerprint, and investigative lineage for downstream cognition.
  *
  * Brick boundary:
  * This engine catalogs documents. It does not decide what they mean.
@@ -18,7 +20,7 @@
 
     const DocumentIngestion = {
         name: "MEOS Document Ingestion Engine",
-        version: "1.0.0",
+        version: "1.1.0",
         status: "initializing",
         operatingMode: "controlled-ingestion",
 
@@ -264,7 +266,11 @@
                     ingestionBatchId:
                         options.batchId || null,
                     ingestionBatchIndex:
-                        options.batchIndex ?? null
+                        options.batchIndex ?? null,
+                    extractedText:
+                        typeof normalized.text === "string"
+                            ? normalized.text
+                            : normalized.metadata?.extractedText || null
                 }
             };
 
@@ -344,6 +350,288 @@
             }
 
             return result;
+        },
+
+        async ingestLocalPerceptionEvidence(perception, options = {}) {
+            const evidence =
+                perception?.evidence &&
+                typeof perception.evidence === "object"
+                    ? perception.evidence
+                    : perception;
+
+            const observations =
+                Array.isArray(evidence?.observations)
+                    ? evidence.observations
+                    : [];
+
+            const investigationId =
+                evidence?.investigationId ||
+                perception?.investigationId ||
+                perception?.intentId ||
+                options.investigationId ||
+                null;
+
+            if (!investigationId) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "local-perception-investigation-lineage-required"
+                };
+            }
+
+            const observed = observations.filter(
+                (observation) =>
+                    observation &&
+                    observation.observed === true &&
+                    (
+                        observation.finalUrl ||
+                        observation.url ||
+                        observation.contentSha256 ||
+                        observation.evidenceExcerpt
+                    )
+            );
+
+            if (observed.length === 0) {
+                return {
+                    success: true,
+                    investigationId,
+                    ingested: 0,
+                    classified: 0,
+                    memoryHandoffs: 0,
+                    results: []
+                };
+            }
+
+            const documents = observed.map((observation, index) => {
+                const sourceUrl =
+                    observation.finalUrl ||
+                    observation.url ||
+                    "";
+                const title =
+                    String(
+                        observation.evidenceTitle ||
+                        this.deriveNameFromSourceLocation(sourceUrl) ||
+                        `Local perception evidence ${index + 1}`
+                    ).trim();
+                const excerpt =
+                    typeof observation.evidenceExcerpt === "string"
+                        ? observation.evidenceExcerpt
+                        : "";
+
+                return {
+                    name: title,
+                    sourceType: "local-perception-evidence",
+                    sourceProvider: "maddy-local-perception",
+                    sourceLocation: sourceUrl,
+                    url: sourceUrl,
+                    contentFingerprint:
+                        observation.contentSha256 || null,
+                    checksum:
+                        observation.contentSha256 || null,
+                    sizeBytes:
+                        this.normalizeNumber(
+                            observation.bytesObservedLocally
+                        ),
+                    mimeType:
+                        observation.documentType === "pdf"
+                            ? "application/pdf"
+                            : undefined,
+                    extension:
+                        observation.documentType === "pdf"
+                            ? "pdf"
+                            : undefined,
+                    extractedText: excerpt || null,
+                    authority: "unreviewed",
+                    sensitivity:
+                        options.sensitivity || "internal",
+                    officeAccess:
+                        Array.isArray(options.officeAccess)
+                            ? options.officeAccess
+                            : ["all"],
+                    tags: this.uniqueStrings([
+                        "local-perception",
+                        "investigation-evidence",
+                        observation.documentType
+                            ? `document-type:${observation.documentType}`
+                            : null,
+                        ...(Array.isArray(options.tags)
+                            ? options.tags
+                            : [])
+                    ].filter(Boolean)),
+                    metadata: {
+                        investigationId,
+                        localPerceptionSchema:
+                            evidence?.schema ||
+                            perception?.schema ||
+                            "meos.maddy.local-perception-evidence.v1",
+                        evidenceTitle:
+                            observation.evidenceTitle || null,
+                        extractedText: excerpt || null,
+                        evidenceExcerpt: excerpt || null,
+                        extractionStatus:
+                            observation.extractionStatus || null,
+                        documentType:
+                            observation.documentType || null,
+                        pageCount:
+                            this.normalizeNullableNumber(
+                                observation.pageCount
+                            ),
+                        changed:
+                            observation.changed === true,
+                        observed: true,
+                        contentSha256:
+                            observation.contentSha256 || null,
+                        originalUrl:
+                            observation.url || null,
+                        finalUrl:
+                            observation.finalUrl || null,
+                        bytesObservedLocally:
+                            this.normalizeNumber(
+                                observation.bytesObservedLocally
+                            ),
+                        epistemicStatus:
+                            evidence?.epistemicStatus ||
+                            "uninterpreted-perception-evidence",
+                        institutionalTruthPromoted: false
+                    }
+                };
+            });
+
+            const batchResult = await this.ingest(documents, {
+                ...options,
+                sourceProvider: "maddy-local-perception",
+                handoffToKnowledgeMemory:
+                    options.handoffToKnowledgeMemory !== false,
+                metadata: {
+                    ...(options.metadata || {}),
+                    investigationId,
+                    source: "maddy-local-perception"
+                }
+            });
+
+            const downstream = [];
+
+            for (const item of batchResult.results || []) {
+                const document = item?.document || null;
+                if (!item?.success || !document) {
+                    downstream.push({
+                        documentId: document?.id || null,
+                        classified: false,
+                        reason: item?.error || "ingestion-failed"
+                    });
+                    continue;
+                }
+
+                if (
+                    options.classify !== false &&
+                    global.DocumentClassifier &&
+                    typeof global.DocumentClassifier.classifyDocument ===
+                        "function"
+                ) {
+                    const classification =
+                        global.DocumentClassifier.classifyDocument(
+                            document.id,
+                            {
+                                actor: this.name,
+                                text:
+                                    document.metadata?.extractedText ||
+                                    "",
+                                source: "local-perception-evidence"
+                            }
+                        );
+
+                    downstream.push({
+                        documentId: document.id,
+                        classified:
+                            classification?.success === true,
+                        classification
+                    });
+                } else {
+                    downstream.push({
+                        documentId: document.id,
+                        classified: false,
+                        reason:
+                            options.classify === false
+                                ? "classification-disabled"
+                                : "document-classifier-unavailable"
+                    });
+                }
+            }
+
+            const result = {
+                success: batchResult.success,
+                investigationId,
+                ingested:
+                    (batchResult.results || []).filter(
+                        (item) =>
+                            item?.success === true &&
+                            item?.added === true
+                    ).length,
+                duplicates:
+                    (batchResult.results || []).filter(
+                        (item) =>
+                            item?.success === true &&
+                            item?.duplicate === true
+                    ).length,
+                classified:
+                    downstream.filter(
+                        (item) => item.classified === true
+                    ).length,
+                memoryHandoffs:
+                    (batchResult.results || []).filter(
+                        (item) =>
+                            item?.memoryResult?.success === true
+                    ).length,
+                batch: batchResult.batch,
+                results: batchResult.results,
+                downstream
+            };
+
+            this.logActivity(
+                "local-perception.evidence-ingested",
+                {
+                    investigationId,
+                    observed: observed.length,
+                    ingested: result.ingested,
+                    duplicates: result.duplicates,
+                    classified: result.classified,
+                    memoryHandoffs: result.memoryHandoffs
+                }
+            );
+
+            this.emit(
+                "local-perception:evidence-ingested",
+                this.clone(result)
+            );
+
+            return result;
+        },
+
+        deriveNameFromSourceLocation(value) {
+            const source = String(value || "").trim();
+            if (!source) {
+                return "";
+            }
+
+            try {
+                const url = new URL(source);
+                const pathName =
+                    decodeURIComponent(url.pathname || "")
+                        .split("/")
+                        .filter(Boolean)
+                        .pop();
+
+                return pathName || url.hostname || source;
+            } catch (error) {
+                return (
+                    source
+                        .replace(/[?#].*$/, "")
+                        .split("/")
+                        .filter(Boolean)
+                        .pop() ||
+                    source
+                );
+            }
         },
 
         normalizeBatchInput(input) {
@@ -1065,7 +1353,21 @@
                     sensitivity: document.sensitivity,
                     sourceProvider: document.sourceProvider,
                     sourceLocation: document.sourceLocation,
-                    logicalDocumentId: document.logicalDocumentId
+                    logicalDocumentId: document.logicalDocumentId,
+                    investigationId:
+                        document.metadata?.investigationId || null,
+                    contentSha256:
+                        document.metadata?.contentSha256 ||
+                        document.contentFingerprint ||
+                        null,
+                    documentType:
+                        document.metadata?.documentType || null,
+                    pageCount:
+                        document.metadata?.pageCount ?? null,
+                    extractionStatus:
+                        document.metadata?.extractionStatus || null,
+                    epistemicStatus:
+                        document.metadata?.epistemicStatus || null
                 }
             });
         },
@@ -1109,7 +1411,23 @@
                             document.mimeType,
                         originalSizeBytes:
                             document.sizeBytes,
-                        classificationPending: true
+                        classificationPending: true,
+                        investigationId:
+                            document.metadata?.investigationId || null,
+                        contentSha256:
+                            document.metadata?.contentSha256 ||
+                            document.contentFingerprint ||
+                            null,
+                        documentType:
+                            document.metadata?.documentType || null,
+                        pageCount:
+                            document.metadata?.pageCount ?? null,
+                        extractionStatus:
+                            document.metadata?.extractionStatus || null,
+                        epistemicStatus:
+                            document.metadata?.epistemicStatus ||
+                            "uninterpreted-perception-evidence",
+                        institutionalTruthPromoted: false
                     }
                 },
                 {
@@ -1941,6 +2259,21 @@
             return Number.isNaN(date.getTime())
                 ? null
                 : date.toISOString();
+        },
+
+        normalizeNullableNumber(value) {
+            if (
+                value === null ||
+                value === undefined ||
+                value === ""
+            ) {
+                return null;
+            }
+
+            const number = Number(value);
+            return Number.isFinite(number)
+                ? number
+                : null;
         },
 
         normalizeNumber(value) {
