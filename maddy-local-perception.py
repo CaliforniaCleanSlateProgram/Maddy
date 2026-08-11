@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 MEOS Maddy Local Perception Substrate
-Version: 1.1.0
-Commission: 006.017D7N3
-Build: MLP110-CHANGE-EVIDENCE-EMITTER-20260811-A
+Version: 1.2.0
+Commission: 006.017D7N4
+Build: MLP120-CHEAP-PUBLIC-DISCOVERY-20260811-A
 
 Purpose:
 - Give Maddy a provider-neutral, local-first public-web perception substrate.
@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
+import re
 import json
 import sqlite3
 import sys
@@ -34,8 +36,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-VERSION = "1.1.0"
-BUILD_ID = "MLP110-CHANGE-EVIDENCE-EMITTER-20260811-A"
+VERSION = "1.2.0"
+BUILD_ID = "MLP120-CHEAP-PUBLIC-DISCOVERY-20260811-A"
 DEFAULT_DB = Path.home() / ".meos" / "maddy-perception.sqlite3"
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
@@ -77,6 +79,18 @@ def open_db(path: Path) -> sqlite3.Connection:
             first_seen_at INTEGER NOT NULL,
             last_seen_at INTEGER NOT NULL,
             changed_at INTEGER NOT NULL
+        )
+        """
+    )
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discovery_state (
+            query TEXT NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            first_seen_at INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL,
+            PRIMARY KEY(query, url)
         )
         """
     )
@@ -140,6 +154,48 @@ def retrieve(url: str, timeout: int, max_bytes: int) -> tuple:
             digest.hexdigest(),
         )
 
+
+def discover_public_web(db: sqlite3.Connection, query: str, timeout: int, max_results: int) -> dict:
+    """Cheap public discovery only; no semantic judgment or truth promotion."""
+    query = " ".join(str(query or "").split()).strip()
+    if not query:
+        raise ValueError("Discovery query is required.")
+    endpoint = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
+    request = urllib.request.Request(endpoint, headers={"User-Agent": USER_AGENT, "Accept": "text/html"}, method="GET")
+    with urllib.request.urlopen(request, timeout=max(1, timeout)) as response:
+        body = response.read(1024 * 1024 + 1)
+        if len(body) > 1024 * 1024:
+            raise ValueError("Discovery response exceeded 1 MB local limit.")
+    text = body.decode("utf-8", errors="replace")
+    pattern = re.compile(r'<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.I | re.S)
+    strip_tags = re.compile(r"<[^>]+>")
+    now=int(time.time()); results=[]; seen=set()
+    for href, raw_title in pattern.findall(text):
+        href=html.unescape(href)
+        p=urllib.parse.urlparse(href)
+        if p.netloc.endswith("duckduckgo.com") and p.path.startswith("/l/"):
+            target=urllib.parse.parse_qs(p.query).get("uddg",[""])[0]
+            if target: href=urllib.parse.unquote(target)
+        p=urllib.parse.urlparse(href)
+        if p.scheme not in {"http","https"} or not p.hostname or p.hostname.endswith("duckduckgo.com"):
+            continue
+        canonical=urllib.parse.urlunparse((p.scheme,p.netloc,p.path or "/","",p.query,""))
+        if canonical in seen: continue
+        seen.add(canonical)
+        title=" ".join(html.unescape(strip_tags.sub("",raw_title)).split())[:300]
+        prior=db.execute("SELECT first_seen_at FROM discovery_state WHERE query=? AND url=?",(query,canonical)).fetchone()
+        first_seen=prior[0] if prior else now
+        db.execute("""INSERT INTO discovery_state(query,url,title,first_seen_at,last_seen_at)
+                      VALUES(?,?,?,?,?)
+                      ON CONFLICT(query,url) DO UPDATE SET title=excluded.title,last_seen_at=excluded.last_seen_at""",
+                   (query,canonical,title,first_seen,now))
+        results.append({"url":canonical,"title":title,"newForQuery":prior is None})
+        if len(results)>=max(1,min(max_results,50)): break
+    db.commit()
+    return {"query":query,"results":results,"resultCount":len(results),
+            "newResultCount":sum(1 for x in results if x["newForQuery"]),
+            "paidSearchProviderUsed":False,"paidCognitionAuthorized":False,
+            "externalActionAuthorized":False,"institutionalTruthAuthority":False}
 
 def observe(db: sqlite3.Connection, url: str, timeout: int, max_bytes: int) -> PerceptionResult:
     now = int(time.time())
@@ -272,12 +328,14 @@ def status(db: sqlite3.Connection) -> dict:
         "SELECT observations, changed, unchanged, bytes_downloaded FROM perception_counters WHERE id = 1"
     ).fetchone()
     resources = db.execute("SELECT COUNT(*) FROM resource_state").fetchone()[0]
+    discovered = db.execute("SELECT COUNT(*) FROM discovery_state").fetchone()[0]
     return {
         "name": "MEOS Maddy Local Perception Substrate",
         "version": VERSION,
         "buildId": BUILD_ID,
         "mode": "local-first-cheap-perception",
         "resourcesKnown": resources,
+        "discoveredResourcesKnown": discovered,
         "observations": counters[0],
         "changedObservations": counters[1],
         "unchangedObservationsSuppressedFromEscalation": counters[2],
@@ -314,6 +372,11 @@ def main() -> int:
         default=DEFAULT_BRIDGE_TIMEOUT_SECONDS,
     )
 
+    discover_cmd = sub.add_parser("discover", help="Discover public-web resources locally without a paid search provider.")
+    discover_cmd.add_argument("query")
+    discover_cmd.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    discover_cmd.add_argument("--max-results", type=int, default=10)
+
     sub.add_parser("status", help="Show local perception evidence.")
     args = parser.parse_args()
 
@@ -330,6 +393,8 @@ def main() -> int:
             output = asdict(result)
             output["bridge"] = bridge
             print(json.dumps(output, indent=2, sort_keys=True))
+        elif args.command == "discover":
+            print(json.dumps(discover_public_web(db, args.query, args.timeout, args.max_results), indent=2, sort_keys=True))
         else:
             print(json.dumps(status(db), indent=2, sort_keys=True))
         return 0
