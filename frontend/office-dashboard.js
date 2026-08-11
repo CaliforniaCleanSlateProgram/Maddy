@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.4.1
+ * Version: 4.5.3
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.5.2";
+  const DASHBOARD_VERSION = "4.5.3";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const FUNDING_CARD_LIMIT = 3;
@@ -1130,6 +1130,14 @@
       .meos-workspace-judgment{margin-top:14px;padding:13px;border:1px solid rgba(105,220,255,.19);border-radius:12px;background:rgba(8,31,51,.64)}.meos-workspace-judgment strong{display:block;font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;color:#78dff4}.meos-workspace-judgment p{margin:6px 0 0;font-size:.78rem;line-height:1.5;color:#d6e9f0}
       .meos-workspace-presence{position:relative;padding:18px 14px;border-left:1px solid rgba(105,220,255,.14);background:radial-gradient(circle at 50% 28%,rgba(76,202,255,.15),transparent 42%),rgba(3,15,29,.82);overflow:auto;display:flex;flex-direction:column;min-width:0}.meos-workspace-maddy{min-height:330px;flex:1;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;position:relative}.meos-workspace-maddy img{width:min(100%,320px);max-height:430px;object-fit:contain;object-position:center bottom;filter:contrast(1.04) brightness(.9);transform-origin:center bottom;translate:0 18px}.meos-workspace-presence h3{margin:8px 0 0;text-align:center;font-size:.95rem;color:#f3fcff}.meos-workspace-presence p{margin:7px 0 0;font-size:.7rem;line-height:1.5;color:#9fc0d0;text-align:center}.meos-workspace-presence-state{margin-top:12px;padding:9px 10px;border:1px solid rgba(105,220,255,.15);border-radius:11px;background:rgba(8,31,51,.58);font-size:.66rem;line-height:1.45;color:#b8d9e7}
       .meos-workspace-actions{margin-top:12px}.meos-workspace-action{width:100%;margin:0 0 8px;border:1px solid rgba(105,220,255,.28);border-radius:10px;background:rgba(13,48,75,.7);color:#e9fbff;cursor:pointer;padding:10px 11px;text-align:left;font-size:.72rem}.meos-workspace-action:hover{border-color:rgba(105,220,255,.65);background:rgba(20,70,102,.76)}.meos-workspace-action.primary{border-color:rgba(99,226,170,.42);background:rgba(16,79,63,.66);font-weight:800}.meos-workspace-action:disabled{opacity:.42;cursor:default}.meos-workspace-source-note{margin-top:8px;font-size:.6rem;line-height:1.4;color:#7799a8}
+      .meos-evidence-overlay{position:fixed;inset:0;z-index:10070;display:grid;place-items:center;padding:22px;background:rgba(1,7,15,.78);backdrop-filter:blur(8px)}
+      .meos-evidence-panel{width:min(920px,96vw);max-height:88vh;overflow:auto;border:1px solid rgba(105,220,255,.32);border-radius:18px;background:linear-gradient(145deg,rgba(3,15,29,.99),rgba(8,27,46,.99));box-shadow:0 28px 90px rgba(0,0,0,.62);color:#eafaff}
+      .meos-evidence-head{position:sticky;top:0;z-index:2;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid rgba(105,220,255,.16);background:rgba(3,15,29,.96)}
+      .meos-evidence-kicker{font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;color:#74dff5}.meos-evidence-title{margin:4px 0 0;font-size:1.08rem;color:#f5fdff}.meos-evidence-close{border:1px solid rgba(105,220,255,.25);border-radius:9px;background:rgba(12,42,65,.72);color:#eafaff;cursor:pointer;padding:7px 10px}
+      .meos-evidence-body{padding:17px 18px 20px}.meos-evidence-summary{margin:0 0 14px;font-size:.8rem;line-height:1.55;color:#bdd8e3}.meos-evidence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.meos-evidence-field{padding:10px 11px;border:1px solid rgba(105,220,255,.13);border-radius:10px;background:rgba(5,23,40,.64)}.meos-evidence-field span{display:block;font-size:.56rem;letter-spacing:.1em;text-transform:uppercase;color:#739aab}.meos-evidence-field strong{display:block;margin-top:4px;font-size:.72rem;line-height:1.42;color:#e4f7fc;word-break:break-word}
+      .meos-evidence-proof{margin-top:14px;padding:12px;border:1px solid rgba(99,226,170,.18);border-radius:11px;background:rgba(10,51,44,.32)}.meos-evidence-proof strong{font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:#76e6b9}.meos-evidence-proof p{margin:6px 0 0;font-size:.72rem;line-height:1.5;color:#c9e9dd}
+      [data-meos-evidence]{cursor:pointer}.meos-maddy-desk-chip[data-meos-evidence]{border-color:rgba(105,220,255,.28)}.meos-list [data-meos-evidence]:hover,.meos-maddy-desk-chip[data-meos-evidence]:hover{filter:brightness(1.14)}
+      @media(max-width:680px){.meos-evidence-grid{grid-template-columns:1fr}.meos-evidence-overlay{padding:8px}}
       body.meos-workspace-open{overflow:hidden}
       @media(max-width:1050px){.meos-executive-workspace{inset:8px;grid-template-columns:230px 1fr}.meos-workspace-presence{grid-column:1/-1;min-height:190px;border-left:0;border-top:1px solid rgba(105,220,255,.14);display:grid;grid-template-columns:180px 1fr;gap:10px}.meos-workspace-maddy{min-height:170px;grid-row:1/5}.meos-workspace-maddy img{max-height:190px}.meos-workspace-presence h3,.meos-workspace-presence p{text-align:left}}
       @media(max-width:720px){.meos-executive-workspace{grid-template-columns:1fr}.meos-workspace-package{max-height:190px;border-right:0;border-bottom:1px solid rgba(105,220,255,.14)}.meos-workspace-main{grid-column:1}.meos-workspace-presence{display:none}.meos-workspace-grid{grid-template-columns:1fr}}
@@ -2797,9 +2805,9 @@ document
                 <button id="meosMaddyDeskSend" class="meos-maddy-desk-send" type="button">Send</button>
               </div>
               <div class="meos-maddy-desk-glance">
-                <span id="meosMaddyDeskWork" class="meos-maddy-desk-chip">No active Hallway work</span>
-                <span id="meosMaddyDeskApprovals" class="meos-maddy-desk-chip">0 need you</span>
-                <span id="meosMaddyDeskDeliverables" class="meos-maddy-desk-chip">0 deliverables</span>
+                <span id="meosMaddyDeskWork" class="meos-maddy-desk-chip" data-meos-evidence="maddy-work" role="button" tabindex="0">No active Hallway work</span>
+                <span id="meosMaddyDeskApprovals" class="meos-maddy-desk-chip" data-meos-evidence="approvals" role="button" tabindex="0">0 need you</span>
+                <span id="meosMaddyDeskDeliverables" class="meos-maddy-desk-chip" data-meos-evidence="deliverables" role="button" tabindex="0">0 deliverables</span>
               </div>
               <div id="meosMaddyDeskActions" class="meos-maddy-desk-actions"></div>
               <div id="meosMaddyWorkPackage" class="meos-maddy-work-package" data-open="false" aria-live="polite"></div>
@@ -2842,7 +2850,7 @@ document
       "mission-pulse": `
         <div class="meos-widget-inner">
           <div class="meos-widget-header"><h2 class="meos-widget-title">Mission Pulse</h2><span id="meosMissionPulseStage" class="meos-priority medium">Live</span></div>
-          <div class="meos-mission-ring"><strong id="meosMissionPulseValue">—</strong></div>
+          <div class="meos-mission-ring" data-meos-evidence="mission-pulse" role="button" tabindex="0"><strong id="meosMissionPulseValue">—</strong></div>
           <div style="text-align:center;"><strong id="meosMissionPulseLabel">Calculating</strong><p id="meosMissionPulseDetail" class="meos-muted" style="margin:10px 0 0;font-size:.82rem;">Reading mission, office, and funding state.</p></div>
         </div>
       `,
@@ -4696,6 +4704,119 @@ document
     };
   }
 
+  function evidenceField(label, value) {
+    return `<div class="meos-evidence-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? "Not recorded")}</strong></div>`;
+  }
+
+  function openRealtimeEvidence(kind, id = null) {
+    document.getElementById("meosRealtimeEvidence")?.remove();
+    const snapshot = collectHeadquartersSnapshot();
+    const computedAt = state.headquarters.lastComputedAt || new Date().toISOString();
+    let title = "Runtime Evidence";
+    let summary = "This dashboard state is derived from the current MEOS runtime snapshot.";
+    let source = "MEOS Headquarters runtime";
+    let record = null;
+    let fields = [];
+
+    if (kind === "maddy-work") {
+      record = snapshot.hallwayWork.find((item) => !["done", "cancelled"].includes(item.state)) || snapshot.hallwayWork[0] || null;
+      title = "Maddy · Current Work Evidence";
+      source = "Executive Hallway getSnapshot()";
+      summary = record ? "The HUD work state is projected directly from the latest Executive Hallway work record." : "No active Executive Hallway work record exists in the current runtime snapshot.";
+      fields = record ? [
+        ["Work ID", record.id], ["State", record.state], ["Owner", record.owner || "Maddy"], ["Title", record.title || record.instruction],
+        ["Updated", record.updatedAt || record.createdAt], ["Authority", briefText(record.authority, "No authority metadata recorded")]
+      ] : [["Hallway work records", snapshot.hallwayWork.length]];
+    } else if (kind === "approvals") {
+      title = "Executive Decisions · Runtime Evidence";
+      source = "Executive Hallway + Executive Office recommendations";
+      summary = `${snapshot.pendingApprovals.length} item${snapshot.pendingApprovals.length === 1 ? "" : "s"} currently require executive review.`;
+      fields = snapshot.pendingApprovals.slice(0,8).map((item, index) => [`${index + 1}. ${item.officeName || "MEOS"}`, item.title || item.id]);
+      if (!fields.length) fields = [["Pending approvals", 0]];
+    } else if (kind === "deliverables") {
+      title = "Returned Deliverables · Runtime Evidence";
+      source = "Executive Hallway deliverables";
+      summary = `${snapshot.hallwayDeliverables.length} deliverable${snapshot.hallwayDeliverables.length === 1 ? "" : "s"} are present in the Hallway snapshot.`;
+      fields = snapshot.hallwayDeliverables.slice(0,8).map((item, index) => [`${index + 1}. ${item.source || item.provider || "Deliverable"}`, item.title || item.name || item.id]);
+      if (!fields.length) fields = [["Deliverables", 0]];
+    } else if (kind === "mission-pulse") {
+      title = "Mission Pulse · Evidence";
+      source = "Cabinet office health + blockers + Headquarters completion";
+      summary = "Mission Pulse is computed from live office health, blocked work, and Headquarters completion—not a static percentage.";
+      fields = [["Mission Pulse", `${snapshot.missionPulse}%`], ["Office health", `${snapshot.officeHealth}%`], ["Headquarters completion", `${snapshot.completion}%`], ["Blocked tasks", snapshot.blocked.length], ["Active tasks", snapshot.active.length], ["Funding records", snapshot.fundingRecords.length]];
+    } else if (["task", "priority"].includes(kind)) {
+      record = snapshot.tasks.find((item) => String(item.id || "") === String(id || "")) || null;
+      title = kind === "priority" ? "Executive Priority · Evidence" : "Task · Evidence";
+      source = record?.source === "executive-hallway" ? "Executive Hallway" : "Executive Office registry";
+      summary = record ? "This row is projected from a live MEOS task record." : "The selected task is no longer present in the current runtime snapshot.";
+      fields = record ? [["Task ID", record.id], ["Title", record.title], ["Status", record.status], ["Runtime state", record.hallwayState || record.status], ["Owner", record.officeName], ["Priority", record.priority || "normal"], ["Updated", record.updatedAt || "Not recorded"]] : [["Record", "No longer present"]];
+    } else if (kind === "journal") {
+      record = snapshot.activities.find((item) => String(item.id || item.workId || item.createdAt || "") === String(id || "")) || null;
+      title = "Executive Journal · Evidence";
+      source = record?.source === "executive-hallway" ? "Executive Hallway history" : "Executive Office activity history";
+      summary = record ? "This journal line is backed by the recorded runtime activity shown below." : "The selected activity is no longer present in the current snapshot.";
+      fields = record ? [["Event", record.message || record.type], ["Office", record.officeName], ["Source", record.source], ["Work ID", record.workId || record.id || "Not recorded"], ["Recorded", record.createdAt || "Not recorded"]] : [["Record", "No longer present"]];
+    } else if (kind === "risk") {
+      const task = snapshot.blocked.find((item) => String(item.id || "") === String(id || ""));
+      const funding = snapshot.fundingUrgent.find((item) => String(item.id || "") === String(id || ""));
+      record = task || funding || null;
+      title = "Risk & Alert · Evidence";
+      source = task ? "MEOS task state" : funding ? "Resource Development desk" : "MEOS runtime";
+      summary = task ? "This alert exists because the underlying task is currently blocked." : funding ? "This alert exists because the verified funding deadline is within the dashboard urgency window." : "The selected alert is no longer active.";
+      fields = task ? [["Task", task.title], ["State", task.status], ["Office", task.officeName], ["Task ID", task.id]] : funding ? [["Opportunity", funding.title || funding.id], ["Opportunity ID", funding.id], ["Deadline", getFundingDeadline(funding)], ["Resource", getFundingAmount(funding)], ["Recommendation", getFundingRecommendation(funding)]] : [["Alert", "No longer active"]];
+    } else if (kind === "today") {
+      title = "Today at a Glance · Evidence";
+      source = "Current Headquarters snapshot";
+      summary = "Every count in Today at a Glance is recalculated from the current task, approval, risk, and funding state.";
+      fields = [["Active office tasks", snapshot.active.length], ["Queued tasks", snapshot.pending.length], ["Executive decisions", snapshot.pendingApprovals.length], ["Blocked tasks", snapshot.blocked.length], ["Urgent funding", snapshot.fundingUrgent.length]];
+    } else {
+      title = "Dashboard · Runtime Evidence";
+      fields = [["Active tasks", snapshot.active.length], ["Pending tasks", snapshot.pending.length], ["Approvals", snapshot.pendingApprovals.length], ["Deliverables", snapshot.hallwayDeliverables.length]];
+    }
+
+    const overlay = document.createElement("div");
+    overlay.id = "meosRealtimeEvidence";
+    overlay.className = "meos-evidence-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.innerHTML = `
+      <section class="meos-evidence-panel">
+        <div class="meos-evidence-head">
+          <div><div class="meos-evidence-kicker">REALTIME EVIDENCE</div><h2 class="meos-evidence-title">${escapeHtml(title)}</h2></div>
+          <button class="meos-evidence-close" type="button" aria-label="Close evidence">×</button>
+        </div>
+        <div class="meos-evidence-body">
+          <p class="meos-evidence-summary">${escapeHtml(summary)}</p>
+          <div class="meos-evidence-grid">${fields.map(([label, value]) => evidenceField(label, value)).join("")}</div>
+          <div class="meos-evidence-proof"><strong>Evidence provenance</strong><p>Source: ${escapeHtml(source)} · Snapshot computed: ${escapeHtml(computedAt)} · Dashboard v${escapeHtml(DASHBOARD_VERSION)}</p></div>
+        </div>
+      </section>`;
+    overlay.querySelector(".meos-evidence-close")?.addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    overlay.querySelector(".meos-evidence-close")?.focus();
+    return { kind, id, source, record, snapshotComputedAt: computedAt };
+  }
+
+  function bindRealtimeEvidenceTargets() {
+    const root = document.getElementById(ROOT_ID);
+    if (!root || root.dataset.evidenceBound === "true") return;
+    root.dataset.evidenceBound = "true";
+    const activate = (target) => openRealtimeEvidence(target.dataset.meosEvidence, target.dataset.evidenceId || null);
+    root.addEventListener("click", (event) => {
+      const target = event.target.closest?.("[data-meos-evidence]");
+      if (!target) return;
+      activate(target);
+    });
+    root.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) return;
+      const target = event.target.closest?.("[data-meos-evidence]");
+      if (!target) return;
+      event.preventDefault();
+      activate(target);
+    });
+  }
+
   function bindDashboardEvents() {
     const submitMaddyDeskCommand = () => {
       const input = document.getElementById("meosMaddyDeskInput");
@@ -5379,7 +5500,7 @@ document
       [snapshot.pending.length, "Queued tasks", "Queued"],
       [snapshot.pendingApprovals.length, "Executive decisions", "Review"],
       [snapshot.blocked.length + snapshot.fundingUrgent.length, "Risks requiring attention", "Watch"]
-    ].map(([count,label,status]) => `<li><span>${count}</span><span>${escapeHtml(label)}</span><span class="meos-priority medium">${escapeHtml(status)}</span></li>`).join("");
+    ].map(([count,label,status]) => `<li data-meos-evidence="today" role="button" tabindex="0"><span>${count}</span><span>${escapeHtml(label)}</span><span class="meos-priority medium">${escapeHtml(status)}</span></li>`).join("");
 
     document.documentElement.style.setProperty("--meos-mission-pulse", `${snapshot.missionPulse}%`);
     setText("meosHeroMissionPulse", `${snapshot.missionPulse}%`);
@@ -5390,7 +5511,7 @@ document
 
     const priorities = [...snapshot.active, ...snapshot.pending].sort((a,b) => ({high:3,urgent:4,normal:2,low:1}[b.priority]||0)-({high:3,urgent:4,normal:2,low:1}[a.priority]||0)).slice(0,4);
     const prioritiesEl = document.getElementById("meosLivePriorities");
-    if (prioritiesEl) prioritiesEl.innerHTML = priorities.length ? priorities.map((task,index) => `<li><span>${index+1}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.priority === "high" ? "high" : "medium"}">${escapeHtml(task.priority || "normal")}</span></li>`).join("") : `<li><span>✓</span><span>No executive priorities are currently queued.</span><span class="meos-priority">Clear</span></li>`;
+    if (prioritiesEl) prioritiesEl.innerHTML = priorities.length ? priorities.map((task,index) => `<li data-meos-evidence="priority" data-evidence-id="${escapeHtml(task.id || "")}" role="button" tabindex="0"><span>${index+1}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.priority === "high" ? "high" : "medium"}">${escapeHtml(task.priority || "normal")}</span></li>`).join("") : `<li data-meos-evidence="today" role="button" tabindex="0"><span>✓</span><span>No executive priorities are currently queued.</span><span class="meos-priority">Clear</span></li>`;
 
     const briefing = document.getElementById("meosLiveBriefing");
     if (briefing) briefing.innerHTML = `<p style="font-size:.86rem;line-height:1.55;">Maddy is managing <strong>${snapshot.fundingRecords.length}</strong> preserved funding records, <strong>${snapshot.active.length}</strong> active tasks, <strong>${snapshot.pendingApprovals.length}</strong> executive decisions, and <strong>${snapshot.hallwayDeliverables.length}</strong> returned deliverables.</p><p class="meos-muted" style="font-size:.82rem;">${snapshot.blocked.length ? `${snapshot.blocked.length} blocked task${snapshot.blocked.length===1?"":"s"} need resolution.` : "No blocked office tasks are recorded."}</p><button id="meosBriefingPeek" class="meos-action-button" type="button">Peek Behind the Curtain</button>`;
@@ -5399,17 +5520,17 @@ document
     const risks = document.getElementById("meosLiveRisks");
     if (risks) {
       const rows = [
-        ...snapshot.blocked.slice(0,2).map((task) => ({ level:"danger", title:task.title, detail:`Blocked in ${task.officeName}` })),
-        ...snapshot.fundingUrgent.slice(0,2).map((record) => ({ level:"warning", title:record.title || "Funding deadline", detail:"Deadline is within 14 days." }))
+        ...snapshot.blocked.slice(0,2).map((task) => ({ id:task.id, level:"danger", title:task.title, detail:`Blocked in ${task.officeName}` })),
+        ...snapshot.fundingUrgent.slice(0,2).map((record) => ({ id:record.id, level:"warning", title:record.title || "Funding deadline", detail:"Deadline is within 14 days." }))
       ];
-      risks.innerHTML = rows.length ? rows.map((row) => `<div class="meos-alert ${row.level}"><strong>${escapeHtml(row.title)}</strong><span class="meos-muted">${escapeHtml(row.detail)}</span></div>`).join("") : `<div class="meos-alert info"><strong>No critical live risk found</strong><span class="meos-muted">Compliance Office remains ${getCabinetOffices().find((o)=>o.id==="justice")?.implementation?.progress || 0}% commissioned.</span></div>`;
+      risks.innerHTML = rows.length ? rows.map((row) => `<div class="meos-alert ${row.level}" data-meos-evidence="risk" data-evidence-id="${escapeHtml(row.id || "")}" role="button" tabindex="0"><strong>${escapeHtml(row.title)}</strong><span class="meos-muted">${escapeHtml(row.detail)}</span></div>`).join("") : `<div class="meos-alert info" data-meos-evidence="today" role="button" tabindex="0"><strong>No critical live risk found</strong><span class="meos-muted">Compliance Office remains ${getCabinetOffices().find((o)=>o.id==="justice")?.implementation?.progress || 0}% commissioned.</span></div>`;
     }
 
     const journal = document.getElementById("meosLiveJournal");
-    if (journal) journal.innerHTML = snapshot.activities.length ? snapshot.activities.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,4).map((item)=>`<li><span>${escapeHtml(formatLastActivity(item.createdAt))}</span><span>${escapeHtml(item.message || item.type)}<br><small class="meos-muted">${escapeHtml(item.officeName)}</small></span><span></span></li>`).join("") : `<li><span>—</span><span>No office activity has been recorded in this browser session.</span><span></span></li>`;
+    if (journal) journal.innerHTML = snapshot.activities.length ? snapshot.activities.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,4).map((item)=>`<li data-meos-evidence="journal" data-evidence-id="${escapeHtml(item.id || item.workId || item.createdAt || "")}" role="button" tabindex="0"><span>${escapeHtml(formatLastActivity(item.createdAt))}</span><span>${escapeHtml(item.message || item.type)}<br><small class="meos-muted">${escapeHtml(item.officeName)}</small></span><span></span></li>`).join("") : `<li data-meos-evidence="today" role="button" tabindex="0"><span>—</span><span>No office activity has been recorded in this browser session.</span><span></span></li>`;
 
     const tasks = document.getElementById("meosLiveTasks");
-    if (tasks) tasks.innerHTML = [...snapshot.active, ...snapshot.pending, ...snapshot.blocked].slice(0,5).map((task)=>`<li><span>${task.status === "blocked" ? "!" : task.status === "active" ? "▶" : "□"}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.status === "blocked" ? "high" : "medium"}">${escapeHtml(task.status)}</span></li>`).join("") || `<li><span>✓</span><span>No office tasks are currently recorded.</span><span></span></li>`;
+    if (tasks) tasks.innerHTML = [...snapshot.active, ...snapshot.pending, ...snapshot.blocked].slice(0,5).map((task)=>`<li data-meos-evidence="task" data-evidence-id="${escapeHtml(task.id || "")}" role="button" tabindex="0"><span>${task.status === "blocked" ? "!" : task.status === "active" ? "▶" : "□"}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.status === "blocked" ? "high" : "medium"}">${escapeHtml(task.status)}</span></li>`).join("") || `<li data-meos-evidence="today" role="button" tabindex="0"><span>✓</span><span>No office tasks are currently recorded.</span><span></span></li>`;
 
     dispatchMEOS("meos:headquarters-live-state", snapshot);
     return snapshot;
@@ -5436,6 +5557,13 @@ document
       ["Maddy at Work exposes live status and completion telemetry", Boolean(document.getElementById("meosMaddyWorkStatus") && document.getElementById("meosMaddyCompletion"))],
       ["Maddy at Work is the primary Executive Desk command surface", Boolean(document.getElementById("meosMaddyDeskInput") && document.getElementById("meosMaddyDeskSend"))],
       ["Maddy Executive Desk exposes Hallway work approvals and deliverables at a glance", Boolean(document.getElementById("meosMaddyDeskWork") && document.getElementById("meosMaddyDeskApprovals") && document.getElementById("meosMaddyDeskDeliverables"))],
+      ["Maddy HUD glance chips expose realtime evidence drill-down", ["meosMaddyDeskWork","meosMaddyDeskApprovals","meosMaddyDeskDeliverables"].every((id) => Boolean(document.getElementById(id)?.dataset.meosEvidence))],
+      ["Mission Pulse exposes realtime evidence drill-down", document.querySelector(".meos-mission-ring")?.dataset.meosEvidence === "mission-pulse"],
+      ["Executive priorities expose underlying task evidence", document.querySelectorAll("#meosLivePriorities [data-meos-evidence]").length > 0],
+      ["Risk Center alerts expose underlying runtime evidence", document.querySelectorAll("#meosLiveRisks [data-meos-evidence]").length > 0],
+      ["Executive Journal rows expose recorded event evidence", document.querySelectorAll("#meosLiveJournal [data-meos-evidence]").length > 0],
+      ["Tasks Due rows expose underlying task evidence", document.querySelectorAll("#meosLiveTasks [data-meos-evidence]").length > 0],
+      ["Realtime evidence renderer is installed", typeof openRealtimeEvidence === "function"],
       ["Maddy Executive Desk exposes governed Hallway action surface", Boolean(document.getElementById("meosMaddyDeskActions"))],
       ["Maddy Executive Desk has an in-HUD Executive Brief reading surface", Boolean(document.getElementById("meosMaddyDeskBrief"))],
       ["Maddy Executive Desk has a multi-deliverable Work Package surface", Boolean(document.getElementById("meosMaddyWorkPackage"))],
@@ -6659,6 +6787,7 @@ document
 
   function initialize() {
     createDashboardShell();
+    bindRealtimeEvidenceTargets();
     connectPresenceEngine();
 
     void initializeDigitalActorRenderer({
