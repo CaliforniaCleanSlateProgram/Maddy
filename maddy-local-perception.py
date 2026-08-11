@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 MEOS Maddy Local Perception Substrate
-Version: 1.5.0
-Commission: 006.017D7N9
-Build: MLP150-AUTOMATIC-RESULT-RETURN-20260811-A
+Version: 1.6.0
+Commission: 006.017D7N11
+Build: MLP160-BOUNDED-EVIDENCE-CAPSULES-20260811-A
 
 Purpose:
 - Give Maddy a provider-neutral, local-first public-web perception substrate.
@@ -36,11 +36,14 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-VERSION = "1.5.0"
-BUILD_ID = "MLP150-AUTOMATIC-RESULT-RETURN-20260811-A"
+VERSION = "1.6.0"
+BUILD_ID = "MLP160-BOUNDED-EVIDENCE-CAPSULES-20260811-A"
 DEFAULT_DB = Path.home() / ".meos" / "maddy-perception.sqlite3"
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
+DEFAULT_EVIDENCE_CAPTURE_BYTES = 128 * 1024
+DEFAULT_EVIDENCE_EXCERPT_CHARS = 2400
+DEFAULT_INVESTIGATION_EVIDENCE_CHARS = 12_000
 USER_AGENT = "MEOS-Maddy-Local-Perception/1.0 (+provider-neutral-public-web)"
 BRIDGE_USER_AGENT = "MEOS-Maddy-Local-Perception-Bridge/1.1"
 DEFAULT_BRIDGE_TIMEOUT_SECONDS = 8
@@ -58,6 +61,9 @@ class PerceptionResult:
     changed: bool
     previous_sha256: Optional[str]
     observed_at: int
+    evidence_title: Optional[str] = None
+    evidence_excerpt: Optional[str] = None
+    extraction_status: str = "not-extracted"
     paid_provider_used: bool = False
     paid_cognition_authorized: bool = False
     external_action_authorized: bool = False
@@ -137,6 +143,76 @@ def validate_public_url(raw: str) -> str:
     return urllib.parse.urlunparse(parsed)
 
 
+def extract_evidence_capsule(
+    content_type: str,
+    preview: bytes,
+    max_chars: int = DEFAULT_EVIDENCE_EXCERPT_CHARS,
+) -> dict:
+    """
+    Convert a bounded local preview into a compact sensory evidence capsule.
+    This performs no truth judgment, summarization model call, or semantic conclusion.
+    """
+    content_type = str(content_type or "").lower()
+    if not preview:
+        return {
+            "title": None,
+            "excerpt": None,
+            "status": "empty-preview",
+        }
+
+    textual = (
+        content_type.startswith("text/")
+        or "json" in content_type
+        or "xml" in content_type
+        or "javascript" in content_type
+        or "html" in content_type
+    )
+    if not textual:
+        return {
+            "title": None,
+            "excerpt": None,
+            "status": "binary-content-not-text-extracted",
+        }
+
+    decoded = preview.decode("utf-8", errors="replace")
+    title = None
+
+    if "html" in content_type:
+        title_match = re.search(
+            r"<title[^>]*>(.*?)</title>",
+            decoded,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if title_match:
+            title = " ".join(
+                html.unescape(re.sub(r"<[^>]+>", " ", title_match.group(1))).split()
+            )[:300] or None
+
+        cleaned = re.sub(
+            r"<(script|style|noscript|svg)\b[^>]*>.*?</\1>",
+            " ",
+            decoded,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        cleaned = re.sub(r"<!--.*?-->", " ", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        decoded = html.unescape(cleaned)
+
+    excerpt = " ".join(decoded.split())
+    if not excerpt:
+        return {
+            "title": title,
+            "excerpt": None,
+            "status": "textual-content-empty-after-normalization",
+        }
+
+    return {
+        "title": title,
+        "excerpt": excerpt[: max(256, int(max_chars))],
+        "status": "bounded-local-text-extracted",
+    }
+
+
 def retrieve(url: str, timeout: int, max_bytes: int) -> tuple:
     request = urllib.request.Request(
         validate_public_url(url),
@@ -153,6 +229,7 @@ def retrieve(url: str, timeout: int, max_bytes: int) -> tuple:
 
         digest = hashlib.sha256()
         total = 0
+        preview = bytearray()
         while True:
             chunk = response.read(min(65536, max_bytes - total + 1))
             if not chunk:
@@ -161,6 +238,9 @@ def retrieve(url: str, timeout: int, max_bytes: int) -> tuple:
             if total > max_bytes:
                 raise ValueError("Public resource exceeds local perception byte limit.")
             digest.update(chunk)
+            if len(preview) < DEFAULT_EVIDENCE_CAPTURE_BYTES:
+                remaining_preview = DEFAULT_EVIDENCE_CAPTURE_BYTES - len(preview)
+                preview.extend(chunk[:remaining_preview])
 
         return (
             int(getattr(response, "status", 200)),
@@ -168,6 +248,7 @@ def retrieve(url: str, timeout: int, max_bytes: int) -> tuple:
             response.headers.get_content_type() or "application/octet-stream",
             total,
             digest.hexdigest(),
+            bytes(preview),
         )
 
 
@@ -215,7 +296,8 @@ def discover_public_web(db: sqlite3.Connection, query: str, timeout: int, max_re
 
 def observe(db: sqlite3.Connection, url: str, timeout: int, max_bytes: int) -> PerceptionResult:
     now = int(time.time())
-    status, final_url, content_type, size, digest = retrieve(url, timeout, max_bytes)
+    status, final_url, content_type, size, digest, preview = retrieve(url, timeout, max_bytes)
+    capsule = extract_evidence_capsule(content_type, preview)
     prior = db.execute(
         "SELECT content_sha256, first_seen_at, changed_at FROM resource_state WHERE url = ?",
         (url,),
@@ -265,6 +347,9 @@ def observe(db: sqlite3.Connection, url: str, timeout: int, max_bytes: int) -> P
         changed=changed,
         previous_sha256=previous_sha,
         observed_at=now,
+        evidence_title=capsule.get("title"),
+        evidence_excerpt=capsule.get("excerpt"),
+        extraction_status=capsule.get("status") or "not-extracted",
     )
 
 
@@ -366,7 +451,8 @@ def return_investigation_result(
 
     allowed_observation_keys = {
         "url", "finalUrl", "observed", "changed", "contentSha256",
-        "bytesObservedLocally", "error"
+        "bytesObservedLocally", "evidenceTitle", "evidenceExcerpt",
+        "extractionStatus", "error"
     }
     observations = []
     for item in (result.get("observations") or [])[:20]:
@@ -521,6 +607,7 @@ def investigate_intent(
     discovery = discover_public_web(db, query, timeout, max_results)
     observations = []
     bytes_observed = 0
+    evidence_chars = 0
     stop_reason = "candidate-sources-exhausted"
 
     for candidate in discovery["results"]:
@@ -547,6 +634,17 @@ def investigate_intent(
             continue
 
         bytes_observed += result.bytes_read
+        remaining_evidence_chars = max(
+            0,
+            DEFAULT_INVESTIGATION_EVIDENCE_CHARS - evidence_chars,
+        )
+        bounded_excerpt = (
+            (result.evidence_excerpt or "")[:remaining_evidence_chars]
+            if remaining_evidence_chars > 0
+            else ""
+        )
+        evidence_chars += len(bounded_excerpt)
+
         observations.append({
             "url": result.url,
             "finalUrl": result.final_url,
@@ -554,6 +652,9 @@ def investigate_intent(
             "changed": result.changed,
             "contentSha256": result.content_sha256,
             "bytesObservedLocally": result.bytes_read,
+            "evidenceTitle": result.evidence_title,
+            "evidenceExcerpt": bounded_excerpt or None,
+            "extractionStatus": result.extraction_status,
         })
 
     changed_count = sum(1 for x in observations if x.get("observed") and x.get("changed"))
@@ -578,6 +679,8 @@ def investigate_intent(
         "changedSources": changed_count,
         "unchangedSources": unchanged_count,
         "bytesObservedLocally": bytes_observed,
+        "evidenceCharsReturned": evidence_chars,
+        "evidenceCharacterLimit": DEFAULT_INVESTIGATION_EVIDENCE_CHARS,
         "stopReason": stop_reason,
         "observations": observations,
         "semanticConclusion": None,
@@ -677,6 +780,9 @@ def status(db: sqlite3.Connection) -> dict:
         "changedObservations": counters[1],
         "unchangedObservationsSuppressedFromEscalation": counters[2],
         "bytesDownloadedLocally": counters[3],
+        "evidenceCaptureBytesPerResource": DEFAULT_EVIDENCE_CAPTURE_BYTES,
+        "evidenceExcerptCharsPerResource": DEFAULT_EVIDENCE_EXCERPT_CHARS,
+        "investigationEvidenceCharacterLimit": DEFAULT_INVESTIGATION_EVIDENCE_CHARS,
         "paidProviderUsed": False,
         "paidCognitionAuthorized": False,
         "externalActionAuthorized": False,
