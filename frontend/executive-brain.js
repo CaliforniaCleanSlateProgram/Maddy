@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.5
- * Build: EB1255-AUTOMATIC-CHEAP-INTERNET-PERCEPTION-20260811-A
+ * Version: 1.25.6
+ * Build: EB1256-AUTONOMOUS-DOCUMENT-COGNITIVE-CONTINUATION-20260811-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.5";
-  const BUILD_ID = "EB1255-AUTOMATIC-CHEAP-INTERNET-PERCEPTION-20260811-A";
+  const VERSION = "1.25.6";
+  const BUILD_ID = "EB1256-AUTONOMOUS-DOCUMENT-COGNITIVE-CONTINUATION-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -10711,6 +10711,395 @@
       };
     },
 
+    async continueDocumentCognitionFromPerception(
+      assimilation = {},
+      options = {}
+    ) {
+      const evidence =
+        assimilation?.evidence &&
+        typeof assimilation.evidence === "object"
+          ? assimilation.evidence
+          : assimilation;
+
+      const observations = Array.isArray(evidence?.observations)
+        ? evidence.observations
+        : [];
+
+      const documentObservations = observations.filter(observation =>
+        observation &&
+        observation.observed === true &&
+        (
+          observation.documentType ||
+          observation.evidenceExcerpt ||
+          observation.contentSha256
+        )
+      );
+
+      if (documentObservations.length === 0) {
+        return {
+          success:true,
+          continued:false,
+          reason:"no-document-evidence-to-continue",
+          documentCount:0,
+          workflowsCreated:0,
+          humanQueue:[]
+        };
+      }
+
+      const ingestion = global.DocumentIngestion;
+      const classifier = global.DocumentClassifier;
+      const workflow = global.ExecutiveWorkflow;
+
+      if (
+        !ingestion ||
+        typeof ingestion.ingestLocalPerceptionEvidence !== "function" ||
+        !classifier ||
+        typeof classifier.getResultForDocument !== "function" ||
+        !workflow ||
+        typeof workflow.resolveDocumentWork !== "function" ||
+        typeof workflow.createFromDocumentWork !== "function"
+      ) {
+        return {
+          success:true,
+          continued:false,
+          reason:"document-cognition-organs-not-all-available",
+          documentCount:documentObservations.length,
+          workflowsCreated:0,
+          humanQueue:[]
+        };
+      }
+
+      const ingestionResult =
+        await ingestion.ingestLocalPerceptionEvidence(
+          {
+            ...this.clone(evidence),
+            observations:this.clone(documentObservations)
+          },
+          {
+            actor:"MEOS Executive Brain",
+            source:"autonomous-document-cognitive-continuation",
+            handoffToKnowledgeMemory:true,
+            classify:true
+          }
+        );
+
+      if (ingestionResult?.success !== true) {
+        return {
+          success:false,
+          continued:false,
+          reason:
+            ingestionResult?.reason ||
+            ingestionResult?.error ||
+            "document-evidence-ingestion-failed",
+          ingestion:this.clone(ingestionResult),
+          documentCount:documentObservations.length,
+          workflowsCreated:0,
+          humanQueue:[]
+        };
+      }
+
+      const results = [];
+      const humanQueue = [];
+      let workflowsCreated = 0;
+      let machineResolvedRequirements = 0;
+
+      for (const ingested of ingestionResult.results || []) {
+        const document = ingested?.document || null;
+
+        if (!ingested?.success || !document?.id) {
+          continue;
+        }
+
+        const classification =
+          classifier.getResultForDocument(document.id);
+
+        if (!classification) {
+          results.push({
+            documentId:document.id,
+            documentName:document.name || null,
+            status:"classification-unavailable",
+            workflowCreated:false
+          });
+          continue;
+        }
+
+        const work =
+          classification.workIntelligence || {};
+
+        if (work.executable !== true) {
+          results.push({
+            documentId:document.id,
+            documentName:document.name || null,
+            classificationId:classification.id || null,
+            status:"evidence-only",
+            workKind:work.workKind || "evidence-only",
+            workflowCreated:false
+          });
+          continue;
+        }
+
+        if (classification.requiresExecutiveReview === true) {
+          const subject =
+            `Review document classification: ${
+              document.name || classification.label || document.id
+            }`;
+
+          this.upsertCognitiveIntention(
+            subject,
+            [{
+              type:"document-classification-review-required",
+              sourceDocumentId:document.id,
+              classificationId:classification.id || null,
+              sourceFingerprint:
+                work.sourceFingerprint ||
+                classification.metadata?.contentSha256 ||
+                document.contentFingerprint ||
+                null
+            }],
+            {
+              status:"pending",
+              kind:"document-governance-gate",
+              sourceId:classification.id || document.id,
+              persist:false
+            }
+          );
+
+          humanQueue.push({
+            type:"classification-review",
+            documentId:document.id,
+            documentName:document.name || null,
+            classificationId:classification.id || null,
+            reason:
+              classification.reviewReason ||
+              "Document classification requires executive review."
+          });
+
+          results.push({
+            documentId:document.id,
+            documentName:document.name || null,
+            classificationId:classification.id || null,
+            status:"awaiting-classification-review",
+            workKind:work.workKind || null,
+            workflowCreated:false
+          });
+          continue;
+        }
+
+        /*
+         * A classification that explicitly requires no executive review may
+         * proceed through cognitive resolution without fabricating an approval.
+         * The override is scoped only to that already-governed classifier
+         * decision. The workflow itself remains approval-controlled.
+         */
+        const resolution =
+          await workflow.resolveDocumentWork(
+            document.id,
+            {
+              classification,
+              overrideClassificationApproval:true,
+              maximumResearchQuestions:
+                Math.max(
+                  0,
+                  Math.min(
+                    3,
+                    Number(
+                      options.maximumDocumentResearchQuestions ?? 2
+                    )
+                  )
+                )
+            }
+          );
+
+        if (resolution?.success !== true) {
+          humanQueue.push({
+            type:"document-resolution-blocked",
+            documentId:document.id,
+            documentName:document.name || null,
+            classificationId:classification.id || null,
+            reason:
+              resolution?.reason ||
+              resolution?.error ||
+              "Document cognitive resolution could not continue."
+          });
+
+          results.push({
+            documentId:document.id,
+            documentName:document.name || null,
+            classificationId:classification.id || null,
+            status:"resolution-blocked",
+            workKind:work.workKind || null,
+            resolution:this.clone(resolution),
+            workflowCreated:false
+          });
+          continue;
+        }
+
+        machineResolvedRequirements +=
+          Number(resolution.resolvedWithoutHuman || 0);
+
+        const created =
+          await workflow.createFromDocumentWork(
+            document.id,
+            {
+              classification,
+              resolution,
+              actor:"Maddy",
+              priority:
+                Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    Number(options.documentWorkflowPriority || 90)
+                  )
+                )
+            }
+          );
+
+        if (created?.success === true && created?.workflow?.id) {
+          workflowsCreated += 1;
+
+          const subject =
+            `Complete document work: ${
+              document.name || classification.label || document.id
+            }`;
+
+          this.upsertCognitiveIntention(
+            subject,
+            [{
+              type:"autonomous-document-work-created",
+              workflowId:created.workflow.id,
+              sourceDocumentId:document.id,
+              classificationId:classification.id || null,
+              sourceInvestigationId:
+                evidence.investigationId || null,
+              sourceFingerprint:
+                resolution.sourceFingerprint || null
+            }],
+            {
+              status:"pending",
+              kind:"document-work-continuation",
+              sourceId:created.workflow.id,
+              persist:false
+            }
+          );
+
+          for (const humanNeed of resolution.humanQueue || []) {
+            humanQueue.push({
+              ...this.clone(humanNeed),
+              documentId:document.id,
+              documentName:document.name || null,
+              workflowId:created.workflow.id
+            });
+          }
+
+          this.formAutobiographicalEpisode({
+            eventType:"autonomous-document-cognitive-continuation",
+            subject:
+              document.name ||
+              classification.label ||
+              "document work",
+            sourceId:created.workflow.id,
+            perception:{
+              investigationId:
+                evidence.investigationId || null,
+              sourceFingerprint:
+                resolution.sourceFingerprint || null,
+              classification:
+                classification.label || classification.type || null
+            },
+            intention:{
+              type:"continue-perceived-document-work",
+              objective:
+                "Resolve machine-solvable document requirements before asking a human."
+            },
+            action:{
+              type:"cognitive-document-resolution",
+              resolvedWithoutHuman:
+                Number(resolution.resolvedWithoutHuman || 0),
+              humanQueueCount:
+                Number((resolution.humanQueue || []).length)
+            },
+            outcome:{
+              success:true,
+              workflowId:created.workflow.id,
+              externalActionTaken:false
+            },
+            learning:{
+              rule:
+                "A perceived document that represents real work should continue into governed preparation without waiting for another human prompt; human attention is reserved for conflicts, judgment, and authority."
+            }
+          });
+
+          results.push({
+            documentId:document.id,
+            documentName:document.name || null,
+            classificationId:classification.id || null,
+            status:"cognitive-work-created",
+            workKind:work.workKind || null,
+            resolvedWithoutHuman:
+              Number(resolution.resolvedWithoutHuman || 0),
+            humanQueueCount:
+              Number((resolution.humanQueue || []).length),
+            workflowCreated:true,
+            workflowId:created.workflow.id
+          });
+        } else {
+          results.push({
+            documentId:document.id,
+            documentName:document.name || null,
+            classificationId:classification.id || null,
+            status:"workflow-creation-failed",
+            workKind:work.workKind || null,
+            workflowCreated:false,
+            reason:
+              created?.reason ||
+              created?.error ||
+              "governed-document-workflow-not-created"
+          });
+        }
+      }
+
+      const continuation = {
+        success:true,
+        continued:true,
+        schema:"meos.maddy.autonomous-document-cognition.v1",
+        investigationId:evidence.investigationId || null,
+        documentsConsidered:results.length,
+        workflowsCreated,
+        machineResolvedRequirements,
+        humanQueue,
+        results,
+        paidCognitionAuthorized:false,
+        documentMutationAuthorized:false,
+        signatureAuthorized:false,
+        certificationAuthorized:false,
+        submissionAuthorized:false,
+        externalActionAuthorized:false,
+        continuedAt:new Date().toISOString()
+      };
+
+      this.record(
+        "cognition.autonomous-document-continuation",
+        {
+          investigationId:continuation.investigationId,
+          documentsConsidered:continuation.documentsConsidered,
+          workflowsCreated,
+          machineResolvedRequirements,
+          humanQueueCount:humanQueue.length,
+          externalActionAuthorized:false
+        }
+      );
+
+      if (
+        brainPersistence.hydrated === true &&
+        options.persist !== false
+      ) {
+        this.persist();
+      }
+
+      return this.clone(continuation);
+    },
+
     async investigateReconstructedIntent(input = {}, options = {}) {
       const reconstruction = input?.schema === "meos.maddy.intent-reconstruction.v1"
         ? input
@@ -10776,11 +11165,33 @@
             {persist:false}
           );
 
+          let documentCognition = null;
+
+          if (
+            assimilated.success === true &&
+            options.disableDocumentCognitionContinuation !== true &&
+            input?.source !==
+              "executive-workflow-document-resolution"
+          ) {
+            documentCognition =
+              await this.continueDocumentCognitionFromPerception(
+                assimilated,
+                {
+                  persist:false,
+                  maximumDocumentResearchQuestions:
+                    options.maximumDocumentResearchQuestions,
+                  documentWorkflowPriority:
+                    options.documentWorkflowPriority
+                }
+              );
+          }
+
           result = {
             success:assimilated.success === true,
             handoff:this.clone(handoff),
             perception:this.clone(perceptionResult),
             assimilation:this.clone(assimilated),
+            documentCognition:this.clone(documentCognition),
             economicPath:{
               perceptionSubstrate:
                 localPerception.status?.mode ||
@@ -10886,6 +11297,375 @@
         intention:this.clone(intention),
         evidence:this.clone(evidence)
       };
+    },
+
+    async runAutonomousDocumentCognitionAcceptanceTest() {
+      const original = {
+        ingestion:global.DocumentIngestion,
+        classifier:global.DocumentClassifier,
+        workflow:global.ExecutiveWorkflow,
+        intentions:this.clone(this.cognitiveIntentions || []),
+        autobiography:this.clone(this.autobiographicalMemory || [])
+      };
+      const priorHydrated = brainPersistence.hydrated;
+      brainPersistence.hydrated = false;
+
+      try {
+        this.cognitiveIntentions = [];
+        this.autobiographicalMemory = [];
+
+        const docs = [
+          {
+            id:"doc-auto",
+            name:"Startup Registration Application.pdf",
+            contentFingerprint:"sha-auto",
+            metadata:{
+              investigationId:"investigation-auto-doc",
+              contentSha256:"sha-auto"
+            }
+          },
+          {
+            id:"doc-review",
+            name:"Ambiguous Agreement.pdf",
+            contentFingerprint:"sha-review",
+            metadata:{
+              investigationId:"investigation-auto-doc",
+              contentSha256:"sha-review"
+            }
+          }
+        ];
+
+        global.DocumentIngestion = {
+          async ingestLocalPerceptionEvidence() {
+            return {
+              success:true,
+              results:docs.map(document => ({
+                success:true,
+                added:true,
+                document
+              }))
+            };
+          }
+        };
+
+        global.DocumentClassifier = {
+          getResultForDocument(id) {
+            if (id === "doc-review") {
+              return {
+                id:"classification-review",
+                status:"suggested",
+                requiresExecutiveReview:true,
+                reviewReason:"Classification is materially ambiguous.",
+                label:"Agreement",
+                workIntelligence:{
+                  executable:true,
+                  workKind:"agreement",
+                  sourceFingerprint:"sha-review"
+                },
+                metadata:{
+                  investigationId:"investigation-auto-doc",
+                  contentSha256:"sha-review"
+                }
+              };
+            }
+
+            return {
+              id:"classification-auto",
+              status:"classified",
+              requiresExecutiveReview:false,
+              label:"Application",
+              recommendedOffice:"Operations",
+              workIntelligence:{
+                executable:true,
+                workKind:"application",
+                sourceFingerprint:"sha-auto",
+                requiredCapabilities:[
+                  "verified-fact-retrieval",
+                  "document-field-mapping"
+                ],
+                requiredHumanAuthority:[
+                  "human-signature"
+                ]
+              },
+              metadata:{
+                investigationId:"investigation-auto-doc",
+                contentSha256:"sha-auto"
+              }
+            };
+          }
+        };
+
+        let resolutionCalls = 0;
+        let workflowCalls = 0;
+
+        global.ExecutiveWorkflow = {
+          async resolveDocumentWork(id, options = {}) {
+            resolutionCalls += 1;
+
+            return {
+              success:true,
+              documentId:id,
+              investigationId:"investigation-auto-doc",
+              sourceFingerprint:"sha-auto",
+              resolvedWithoutHuman:7,
+              humanQueue:[
+                {
+                  type:"authority",
+                  authority:"human-signature",
+                  reason:"Signature is reserved for an authorized human."
+                }
+              ],
+              summary:{
+                total:8,
+                verifiedFacts:5,
+                reasonedAnswers:1,
+                researchResolutions:1,
+                conflicts:0,
+                humanJudgments:0,
+                humanAuthorityRequirements:1
+              },
+              overrideWasScoped:
+                options.overrideClassificationApproval === true
+            };
+          },
+          async createFromDocumentWork(id, options = {}) {
+            workflowCalls += 1;
+
+            return {
+              success:true,
+              workflow:{
+                id:"workflow-auto-doc",
+                status:"draft",
+                sourceDocumentId:id,
+                sourceFingerprint:
+                  options.resolution?.sourceFingerprint || null,
+                approvals:[
+                  {
+                    type:"workflow-approval",
+                    status:"pending"
+                  }
+                ],
+                metadata:{
+                  submissionAuthorized:false,
+                  externalActionAuthorized:false
+                }
+              }
+            };
+          }
+        };
+
+        const assimilation = {
+          success:true,
+          evidence:{
+            schema:"meos.maddy.local-perception-evidence.v1",
+            investigationId:"investigation-auto-doc",
+            epistemicStatus:
+              "uninterpreted-perception-evidence",
+            observations:[
+              {
+                url:"https://example.gov/startup.pdf",
+                observed:true,
+                changed:true,
+                contentSha256:"sha-auto",
+                evidenceTitle:
+                  "Startup Registration Application",
+                evidenceExcerpt:
+                  "Legal name. EIN. Authorized representative signature.",
+                extractionStatus:
+                  "bounded-local-pdf-text-extracted",
+                documentType:"pdf",
+                pageCount:6
+              },
+              {
+                url:"https://example.gov/agreement.pdf",
+                observed:true,
+                changed:true,
+                contentSha256:"sha-review",
+                evidenceTitle:"Ambiguous Agreement",
+                evidenceExcerpt:
+                  "Agreement requiring executive interpretation.",
+                extractionStatus:
+                  "bounded-local-pdf-text-extracted",
+                documentType:"pdf",
+                pageCount:9
+              }
+            ]
+          }
+        };
+
+        const continuation =
+          await this.continueDocumentCognitionFromPerception(
+            assimilation,
+            {persist:false}
+          );
+
+        const checks = [
+          {
+            name:"Perceived documents automatically continue into cognition without another human prompt",
+            passed:
+              continuation.success === true &&
+              continuation.continued === true
+          },
+          {
+            name:"High-confidence governed classification continues without fabricating executive approval",
+            passed:
+              resolutionCalls === 1 &&
+              continuation.results.some(
+                item =>
+                  item.documentId === "doc-auto" &&
+                  item.status === "cognitive-work-created"
+              )
+          },
+          {
+            name:"Ambiguous classification stops at the existing human governance gate",
+            passed:
+              continuation.results.some(
+                item =>
+                  item.documentId === "doc-review" &&
+                  item.status ===
+                    "awaiting-classification-review"
+              ) &&
+              continuation.humanQueue.some(
+                item =>
+                  item.type === "classification-review"
+              )
+          },
+          {
+            name:"Maddy resolves machine-solvable requirements before creating human work",
+            passed:
+              continuation.machineResolvedRequirements === 7
+          },
+          {
+            name:"Human queue preserves only unresolved governance or authority needs",
+            passed:
+              continuation.humanQueue.some(
+                item =>
+                  item.authority === "human-signature"
+              ) &&
+              continuation.humanQueue.some(
+                item =>
+                  item.type === "classification-review"
+              )
+          },
+          {
+            name:"Governed document workflow is created autonomously as draft work",
+            passed:
+              workflowCalls === 1 &&
+              continuation.workflowsCreated === 1
+          },
+          {
+            name:"Autonomous document work becomes a resumable cognitive intention",
+            passed:
+              this.cognitiveIntentions.some(
+                item =>
+                  /Complete document work:/.test(
+                    item.subject
+                  ) &&
+                  item.temporal?.sourceId ===
+                    "workflow-auto-doc"
+              )
+          },
+          {
+            name:"Blocked document governance also becomes a resumable cognitive intention",
+            passed:
+              this.cognitiveIntentions.some(
+                item =>
+                  /Review document classification:/.test(
+                    item.subject
+                  )
+              )
+          },
+          {
+            name:"Document continuation becomes autobiographical experience",
+            passed:
+              this.autobiographicalMemory.some(
+                item =>
+                  item.eventType ===
+                    "autonomous-document-cognitive-continuation"
+              )
+          },
+          {
+            name:"No paid cognition authority is granted",
+            passed:
+              continuation.paidCognitionAuthorized === false
+          },
+          {
+            name:"No document mutation authority is granted",
+            passed:
+              continuation.documentMutationAuthorized === false
+          },
+          {
+            name:"No signature authority is granted",
+            passed:
+              continuation.signatureAuthorized === false
+          },
+          {
+            name:"No certification authority is granted",
+            passed:
+              continuation.certificationAuthorized === false
+          },
+          {
+            name:"No submission authority is granted",
+            passed:
+              continuation.submissionAuthorized === false
+          },
+          {
+            name:"No external action authority is granted",
+            passed:
+              continuation.externalActionAuthorized === false
+          },
+          {
+            name:"Source investigation and fingerprint lineage survive into continuation",
+            passed:
+              continuation.investigationId ===
+                "investigation-auto-doc" &&
+              continuation.results.some(
+                item =>
+                  item.documentId === "doc-auto" &&
+                  item.workflowId ===
+                    "workflow-auto-doc"
+              )
+          },
+          {
+            name:"Workflow-originated field research is explicitly guarded against recursive document spawning",
+            passed:
+              /executive-workflow-document-resolution/.test(
+                this.investigateReconstructedIntent.toString()
+              ) &&
+              /disableDocumentCognitionContinuation/.test(
+                this.investigateReconstructedIntent.toString()
+              )
+          }
+        ];
+
+        const passed = checks.every(item => item.passed);
+
+        console.table(
+          checks.map(item => ({
+            name:item.name,
+            passed:item.passed
+          }))
+        );
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7N16 autonomous document cognitive continuation: ${passed ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+          commission:"006.017D7N16",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          checks,
+          continuation:this.clone(continuation)
+        };
+      } finally {
+        global.DocumentIngestion = original.ingestion;
+        global.DocumentClassifier = original.classifier;
+        global.ExecutiveWorkflow = original.workflow;
+        this.cognitiveIntentions = original.intentions;
+        this.autobiographicalMemory = original.autobiography;
+        brainPersistence.hydrated = priorHydrated;
+      }
     },
 
     async runAutomaticCheapInternetPerceptionAcceptanceTest() {
