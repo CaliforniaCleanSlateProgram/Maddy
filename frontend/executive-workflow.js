@@ -1,14 +1,18 @@
 /*
  * MEOS Executive Workflow Engine
- * Version: 1.0.0
+ * Version: 1.1.0
  *
  * Mission:
  * Turn approved executive plans into controlled, trackable workflows that move
  * through tasks, approvals, dependencies, escalations, and office handoffs.
  *
  * Brick boundary:
- * This engine manages workflow state. It does not autonomously approve decisions,
- * spend money, contact external parties, or bypass executive authority.
+ * This engine manages workflow state and converts approved document-work
+ * intelligence into evidence-resolved executive work. It may coordinate existing
+ * Recall, Institutional Reasoning, and Executive Brain research organs to resolve
+ * requirements cheaply before creating human work. It does not invent facts,
+ * mutate or sign documents, certify representations, submit forms, spend money,
+ * contact external parties, or bypass executive authority.
  */
 
 (function initializeExecutiveWorkflow(global) {
@@ -50,7 +54,7 @@
 
     const ExecutiveWorkflow = {
         name: "MEOS Executive Workflow Engine",
-        version: "1.0.0",
+        version: "1.1.0",
         status: "initializing",
         operatingMode: "controlled-workflow-orchestration",
 
@@ -170,6 +174,10 @@
                 sourceMissionId:
                     input.sourceMissionId ||
                     null,
+                sourceDocumentId: input.sourceDocumentId || null,
+                sourceClassificationId: input.sourceClassificationId || null,
+                sourceInvestigationId: input.sourceInvestigationId || null,
+                sourceFingerprint: input.sourceFingerprint || null,
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 approvedAt: null,
@@ -260,6 +268,548 @@
                 success: true,
                 workflow: this.clone(workflow)
             };
+        },
+
+        async resolveDocumentWork(documentOrId, options = {}) {
+            const ingestion = global.DocumentIngestion;
+            const classifier = global.DocumentClassifier;
+
+            if (!ingestion || !classifier) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "document-cognition-organs-unavailable"
+                };
+            }
+
+            const document =
+                typeof documentOrId === "string"
+                    ? ingestion.getDocumentById?.(documentOrId)
+                    : documentOrId;
+
+            if (!document) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "source-document-not-found"
+                };
+            }
+
+            const classification =
+                options.classification ||
+                classifier.getResultForDocument?.(document.id);
+
+            if (!classification) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "source-document-not-classified"
+                };
+            }
+
+            if (
+                classification.status !== "approved" &&
+                options.overrideClassificationApproval !== true
+            ) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "document-classification-approval-required",
+                    classificationId: classification.id,
+                    classificationStatus: classification.status
+                };
+            }
+
+            const work = classification.workIntelligence || {};
+            if (work.executable !== true) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "document-does-not-represent-executable-work"
+                };
+            }
+
+            const fingerprint =
+                work.sourceFingerprint ||
+                classification.metadata?.contentSha256 ||
+                document.contentFingerprint ||
+                null;
+            const investigationId =
+                work.investigationId ||
+                classification.metadata?.investigationId ||
+                document.metadata?.investigationId ||
+                null;
+
+            const requirements = this.uniqueStrings([
+                ...(work.fieldHints || []),
+                ...(options.requirements || [])
+            ]).map((key) => ({
+                key,
+                question:
+                    options.requirementQuestions?.[key] ||
+                    `What is the verified institutional value or answer for document requirement "${key}"?`,
+                status: "unresolved",
+                value: null,
+                confidence: 0,
+                evidence: [],
+                citations: [],
+                conflicts: [],
+                reasoning: null,
+                research: null,
+                humanNeeded: false,
+                humanReason: null
+            }));
+
+            const recall = global.ExecutiveRecall;
+            const reasoning = global.InstitutionalReasoning;
+            const brain = global.ExecutiveBrain;
+            const minimumConfidence =
+                Number.isFinite(Number(options.minimumVerifiedConfidence))
+                    ? Number(options.minimumVerifiedConfidence)
+                    : 0.72;
+            const maximumResearchQuestions =
+                Number.isFinite(Number(options.maximumResearchQuestions))
+                    ? Math.max(0, Number(options.maximumResearchQuestions))
+                    : 3;
+
+            let researchUsed = 0;
+
+            for (const requirement of requirements) {
+                let recalled = null;
+
+                if (recall && typeof recall.recall === "function") {
+                    recalled = recall.recall(requirement.question, {
+                        mode: "document",
+                        limit: 8,
+                        includeConflicts: true,
+                        includeCitations: true
+                    });
+                }
+
+                const evidence = Array.isArray(recalled?.evidence)
+                    ? recalled.evidence
+                    : [];
+                const conflicts = Array.isArray(recalled?.conflicts)
+                    ? recalled.conflicts
+                    : [];
+                const citations = Array.isArray(recalled?.citations)
+                    ? recalled.citations
+                    : [];
+
+                requirement.evidence = this.clone(evidence);
+                requirement.conflicts = this.clone(conflicts);
+                requirement.citations = this.clone(citations);
+                requirement.confidence = Number(recalled?.confidence || 0);
+
+                if (conflicts.length > 0) {
+                    requirement.status = "conflicting-fact";
+                    requirement.humanNeeded = true;
+                    requirement.humanReason =
+                        "Institutional sources conflict; Maddy will not choose a fact silently.";
+                    continue;
+                }
+
+                const strongest = evidence[0] || null;
+                if (
+                    strongest &&
+                    requirement.confidence >= minimumConfidence
+                ) {
+                    requirement.status = "verified-fact";
+                    requirement.value =
+                        strongest.value ??
+                        strongest.answer ??
+                        strongest.text ??
+                        strongest.title ??
+                        strongest.summary ??
+                        null;
+                    continue;
+                }
+
+                if (
+                    reasoning &&
+                    typeof reasoning.analyze === "function" &&
+                    evidence.length > 0
+                ) {
+                    const analysis = reasoning.analyze(
+                        requirement.question,
+                        {
+                            mode: "operations",
+                            evidenceLimit: 8,
+                            includeImplementation: false
+                        }
+                    );
+
+                    requirement.reasoning = this.clone(analysis);
+
+                    if (
+                        analysis?.success === true &&
+                        Number(
+                            analysis.evidenceAssessment?.confidence ??
+                            analysis.sourceRecall?.confidence ??
+                            0
+                        ) >= minimumConfidence &&
+                        (analysis.conflicts || []).length === 0
+                    ) {
+                        requirement.status = "reasoned-answer";
+                        requirement.value =
+                            analysis.recommendation?.summary ||
+                            analysis.recommendation?.recommendation ||
+                            analysis.executiveSummary ||
+                            null;
+                        requirement.confidence = Number(
+                            analysis.evidenceAssessment?.confidence ??
+                            analysis.sourceRecall?.confidence ??
+                            requirement.confidence
+                        );
+                        continue;
+                    }
+                }
+
+                if (
+                    researchUsed < maximumResearchQuestions &&
+                    brain &&
+                    typeof brain.investigateReconstructedIntent === "function"
+                ) {
+                    researchUsed += 1;
+
+                    const research =
+                        await brain.investigateReconstructedIntent(
+                            {
+                                utterance:
+                                    `Resolve this document requirement using authoritative evidence only: ${requirement.question}`,
+                                source: "executive-workflow-document-resolution"
+                            },
+                            {
+                                disableAutomaticLocalPerception:
+                                    options.disableAutomaticLocalPerception === true,
+                                researchExecutor: options.researchExecutor
+                            }
+                        );
+
+                    requirement.research = this.clone(research);
+
+                    if (research?.success === true) {
+                        requirement.status = "discoverable-unknown";
+                        requirement.humanNeeded = false;
+                        requirement.humanReason =
+                            "Research returned evidence; assimilation is required before the value may be treated as verified institutional fact.";
+                        continue;
+                    }
+                }
+
+                requirement.status = "human-judgment";
+                requirement.humanNeeded = true;
+                requirement.humanReason =
+                    "No sufficiently supported institutional fact or governed research resolution is available.";
+            }
+
+            const authorityRequirements =
+                this.uniqueStrings(work.requiredHumanAuthority || []);
+
+            const summary = {
+                total: requirements.length,
+                verifiedFacts:
+                    requirements.filter((item) => item.status === "verified-fact").length,
+                reasonedAnswers:
+                    requirements.filter((item) => item.status === "reasoned-answer").length,
+                researchResolutions:
+                    requirements.filter((item) => item.status === "discoverable-unknown").length,
+                conflicts:
+                    requirements.filter((item) => item.status === "conflicting-fact").length,
+                humanJudgments:
+                    requirements.filter((item) => item.status === "human-judgment").length,
+                humanAuthorityRequirements: authorityRequirements.length,
+                researchUsed
+            };
+
+            const humanQueue = [
+                ...requirements
+                    .filter((item) => item.humanNeeded === true)
+                    .map((item) => ({
+                        type: "document-requirement",
+                        key: item.key,
+                        reason: item.humanReason,
+                        status: item.status
+                    })),
+                ...authorityRequirements.map((authority) => ({
+                    type: "authority",
+                    authority,
+                    reason:
+                        `${authority} is explicitly reserved for an authorized human.`
+                }))
+            ];
+
+            const result = {
+                success: true,
+                schema: "meos.executive-workflow.document-resolution.v1",
+                documentId: document.id,
+                classificationId: classification.id,
+                investigationId,
+                sourceFingerprint: fingerprint,
+                workKind: work.workKind || null,
+                requirements,
+                summary,
+                humanQueue,
+                resolvedWithoutHuman:
+                    summary.verifiedFacts +
+                    summary.reasonedAnswers +
+                    summary.researchResolutions,
+                paidCognitionAuthorized: false,
+                documentMutationAuthorized: false,
+                signatureAuthorized: false,
+                certificationAuthorized: false,
+                submissionAuthorized: false,
+                externalActionAuthorized: false,
+                generatedAt: new Date().toISOString()
+            };
+
+            this.logHistory("workflow.document-work-resolved", {
+                documentId: document.id,
+                classificationId: classification.id,
+                sourceFingerprint: fingerprint,
+                summary: this.clone(summary),
+                humanQueueCount: humanQueue.length
+            });
+
+            this.emit(
+                "workflow:document-work-resolved",
+                this.clone(result)
+            );
+
+            return result;
+        },
+
+        async createFromDocumentWork(documentOrId, options = {}) {
+            const resolution =
+                options.resolution ||
+                await this.resolveDocumentWork(
+                    documentOrId,
+                    options
+                );
+
+            if (resolution?.success !== true) {
+                return resolution;
+            }
+
+            const ingestion = global.DocumentIngestion;
+            const classifier = global.DocumentClassifier;
+            const document =
+                typeof documentOrId === "string"
+                    ? ingestion.getDocumentById?.(documentOrId)
+                    : documentOrId;
+            const classification =
+                options.classification ||
+                classifier.getResultForDocument?.(document.id);
+            const work = classification.workIntelligence || {};
+
+            const steps = [];
+            let previous = null;
+            const add = (
+                title,
+                {
+                    office = classification.recommendedOffice || "Maddy",
+                    approvalRequired = false,
+                    deliverables = [],
+                    metadata = {}
+                } = {}
+            ) => {
+                const id = this.createId("document-work-step");
+                steps.push({
+                    id,
+                    title,
+                    office,
+                    priority: 85,
+                    approvalRequired,
+                    dependencies: previous ? [previous] : [],
+                    deliverables,
+                    metadata: {
+                        sourceDocumentId: document.id,
+                        sourceClassificationId: classification.id,
+                        sourceInvestigationId: resolution.investigationId,
+                        sourceFingerprint: resolution.sourceFingerprint,
+                        documentMutationAuthorized: false,
+                        signatureAuthorized: false,
+                        certificationAuthorized: false,
+                        submissionAuthorized: false,
+                        ...metadata
+                    }
+                });
+                previous = id;
+            };
+
+            add(
+                `Use resolved evidence for ${resolution.resolvedWithoutHuman} document requirements`,
+                {
+                    deliverables: [
+                        "Evidence-backed requirement map",
+                        "Source-linked preparation inputs"
+                    ],
+                    metadata: {
+                        machineResolvedRequirements:
+                            resolution.resolvedWithoutHuman
+                    }
+                }
+            );
+
+            if (resolution.summary.conflicts > 0) {
+                add(
+                    "Resolve conflicting institutional facts before document preparation",
+                    {
+                        office: "Maddy",
+                        approvalRequired: true,
+                        deliverables: [
+                            "Conflict decision",
+                            "Authoritative fact selection with provenance"
+                        ],
+                        metadata: {
+                            humanNeedType: "conflicting-fact"
+                        }
+                    }
+                );
+            }
+
+            if (resolution.summary.humanJudgments > 0) {
+                add(
+                    "Request only unresolved human judgment",
+                    {
+                        office: "Maddy",
+                        approvalRequired: true,
+                        deliverables: [
+                            "Minimal unresolved-question packet"
+                        ],
+                        metadata: {
+                            humanNeedType: "human-judgment"
+                        }
+                    }
+                );
+            }
+
+            if ((work.requiredCapabilities || []).includes("document-field-mapping")) {
+                add(
+                    "Map resolved evidence to document fields and expose remaining unknowns",
+                    {
+                        deliverables: [
+                            "Field-to-evidence map",
+                            "No-assumption validation",
+                            "Unresolved field register"
+                        ]
+                    }
+                );
+            }
+
+            if ((work.requiredCapabilities || []).includes("application-preparation")) {
+                add(
+                    "Prepare application content from verified evidence and governed reasoning",
+                    {
+                        deliverables: [
+                            "Prepared application content",
+                            "Evidence-grounded narrative set",
+                            "Claim-to-source audit"
+                        ]
+                    }
+                );
+            }
+
+            if ((work.requiredHumanAuthority || []).includes("human-certification")) {
+                add(
+                    "Present certification for authorized human decision",
+                    {
+                        office: "Maddy",
+                        approvalRequired: true,
+                        deliverables: ["Certification-ready packet"],
+                        metadata: {
+                            humanAuthority: "human-certification"
+                        }
+                    }
+                );
+            }
+
+            if ((work.requiredHumanAuthority || []).includes("human-signature")) {
+                add(
+                    "Present completed document for authorized human signature",
+                    {
+                        office: "Maddy",
+                        approvalRequired: true,
+                        deliverables: ["Signature-ready document"],
+                        metadata: {
+                            humanAuthority: "human-signature"
+                        }
+                    }
+                );
+            }
+
+            if ((work.requiredCapabilities || []).includes("submission-package-assembly")) {
+                add(
+                    "Assemble and validate the complete submission package",
+                    {
+                        deliverables: [
+                            "Submission-ready package",
+                            "Completeness audit",
+                            "Attachment audit"
+                        ]
+                    }
+                );
+            }
+
+            add(
+                "Present final package and exact remaining authority request",
+                {
+                    office: "Maddy",
+                    approvalRequired: true,
+                    deliverables: [
+                        "Completed work package",
+                        "Evidence audit",
+                        "Minimal human-action request"
+                    ]
+                }
+            );
+
+            const created = this.createWorkflow(
+                {
+                    title: `Cognitive Document Work — ${document.name || classification.label}`,
+                    objective:
+                        "Resolve everything Maddy can prove or research before asking a human, then prepare the document through explicit authority gates.",
+                    description:
+                        "Created after field-level institutional recall, conflict detection, bounded reasoning, and budgeted autonomous research. Human attention is reserved for unresolved judgment and legally or constitutionally reserved authority.",
+                    priority: options.priority || 90,
+                    sourceDocumentId: document.id,
+                    sourceClassificationId: classification.id,
+                    sourceInvestigationId: resolution.investigationId,
+                    sourceFingerprint: resolution.sourceFingerprint,
+                    steps,
+                    tags: this.uniqueStrings([
+                        "cognitive-document-work",
+                        `document-work:${work.workKind || "unknown"}`,
+                        ...(options.tags || [])
+                    ]),
+                    topics: [
+                        "document-resolution",
+                        "evidence-grounded-preparation"
+                    ],
+                    metadata: {
+                        createdFromDocumentWork: true,
+                        cognitiveResolution: this.clone(resolution.summary),
+                        humanQueue: this.clone(resolution.humanQueue),
+                        resolvedWithoutHuman: resolution.resolvedWithoutHuman,
+                        paidCognitionAuthorized: false,
+                        documentMutationAuthorized: false,
+                        signatureAuthorized: false,
+                        certificationAuthorized: false,
+                        submissionAuthorized: false,
+                        externalActionAuthorized: false
+                    }
+                },
+                {
+                    actor: options.actor || "Maddy",
+                    ...options
+                }
+            );
+
+            if (created.success) {
+                created.resolution = this.clone(resolution);
+            }
+
+            return created;
         },
 
         createFromPlan(planOrId, options = {}) {
