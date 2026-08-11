@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.7.0
+ * Version: 4.8.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.7.0";
+  const DASHBOARD_VERSION = "4.8.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5575,6 +5575,105 @@ document
     return compileExecutiveAttention(snapshot).winner;
   }
 
+  function executiveOutcomeFingerprint(outcome) {
+    const recordId = String(outcome?.record?.id || outcome?.record?.opportunityId || "").trim();
+    const identity = recordId || String(outcome?.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
+    return `hq-attention:${String(outcome?.kind || "unknown")}:${identity || "unidentified"}`;
+  }
+
+  function findExistingOutcomeWork(outcome, snapshot = collectHeadquartersSnapshot()) {
+    const fingerprint = executiveOutcomeFingerprint(outcome);
+    const liveWork = snapshot?.hallwayWork || [];
+    return liveWork.find((work) => {
+      if (work?.context?.attentionFingerprint === fingerprint) return true;
+      if (["done", "cancelled"].includes(String(work?.state || ""))) return false;
+      const sameRecord = outcome?.record?.id && String(work?.context?.sourceRecordId || "") === String(outcome.record.id);
+      return Boolean(sameRecord);
+    }) || null;
+  }
+
+  function executiveOutcomeInstruction(outcome) {
+    const title = String(outcome?.title || "the executive signal").trim();
+    if (outcome?.kind === "funding") {
+      return `Investigate and advance the funding opportunity "${title}". Verify current eligibility, deadline, requirements, strategic fit, resource value, risks, missing information, and the highest-leverage next step. Use existing MEOS evidence first, research consequential unknowns when needed, and return a verified executive recommendation. Do not submit, spend, sign, publish, contact externally, or create an external commitment without required human authority.`;
+    }
+    if (outcome?.kind === "blocked") {
+      return `Resolve the executive blocker "${title}". Determine the actual cause from evidence, identify the minimum viable resolution, coordinate the responsible MEOS office, and return the next executable step. Do not create external commitments without required human authority.`;
+    }
+    return `Advance the executive outcome "${title}". Verify the underlying evidence, determine the highest-leverage next step, coordinate the appropriate MEOS office or engine, and return a verified outcome or clearly stated blocker. Preserve all human authority boundaries.`;
+  }
+
+  async function advanceExecutiveOutcome(outcome, snapshot, button) {
+    if (!outcome || outcome.kind === "watch") {
+      executeExecutiveOutcome(outcome, snapshot);
+      return { success: false, reason: "watch-posture" };
+    }
+
+    const hallway = getExecutiveHallway();
+    if (!hallway?.submitWork) {
+      state.hallway.lastError = "Executive Hallway submitWork is unavailable.";
+      renderHallwayMini();
+      return { success: false, reason: "hallway-submit-unavailable" };
+    }
+
+    const currentSnapshot = collectHeadquartersSnapshot();
+    const existing = findExistingOutcomeWork(outcome, currentSnapshot);
+    if (existing) {
+      state.hallway.currentWorkId = existing.id;
+      state.hallway.currentState = existing.state || state.hallway.currentState;
+      state.hallway.currentTitle = existing.title || existing.instruction || outcome.title;
+      state.hallway.currentOwner = existing.owner || null;
+      state.hallway.currentOptions = Array.isArray(existing.options) ? [...existing.options] : [];
+      renderHallwayMini();
+      if (button) button.textContent = existing.state === "awaiting-review" ? "Already Routed · Review" : "Already In Motion";
+      openRealtimeEvidence("work", existing.id || null);
+      return { success: true, reused: true, work: existing };
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Routing to Maddy…";
+    }
+
+    const fingerprint = executiveOutcomeFingerprint(outcome);
+    try {
+      const work = await hallway.submitWork({
+        title: `Executive Outcome — ${outcome.title}`,
+        instruction: executiveOutcomeInstruction(outcome),
+        source: "maddy-executive-attention",
+        requestedBy: "executive-director",
+        reviewRequired: true,
+        authorized: false,
+        context: {
+          attentionFingerprint: fingerprint,
+          sourceRecordId: outcome.record?.id || null,
+          sourceKind: outcome.kind,
+          sourceEvidence: outcome.evidence || null,
+          sourceValue: outcome.value || null,
+          originatedFrom: "executive-headquarters-attention-compiler"
+        }
+      });
+
+      state.hallway.currentWorkId = work?.id || state.hallway.currentWorkId;
+      state.hallway.currentState = work?.state || state.hallway.currentState;
+      state.hallway.currentTitle = work?.title || outcome.title;
+      state.hallway.currentOwner = work?.owner || null;
+      state.hallway.currentOptions = Array.isArray(work?.options) ? [...work.options] : [];
+      state.hallway.lastError = null;
+      renderHallwayMini();
+      renderLiveHeadquarters();
+      return { success: true, reused: false, work };
+    } catch (error) {
+      state.hallway.lastError = error?.message || String(error);
+      renderHallwayMini();
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Put Maddy On It";
+      }
+      return { success: false, error: state.hallway.lastError };
+    }
+  }
+
   function executeExecutiveOutcome(outcome, snapshot) {
     if (!outcome) return;
     if (outcome.kind === "funding") {
@@ -5622,8 +5721,12 @@ document
         <div class="meos-evidence-field"><span>EVIDENCE</span><strong>${escapeHtml(outcome.evidence)}</strong></div>
       </div>
       ${alternatives.length ? `<details style="margin:.25rem 0 .65rem;font-size:.76rem;"><summary style="cursor:pointer;">Why not the other ${attention.candidateCount - 1} signal${attention.candidateCount - 1 === 1 ? "" : "s"}?</summary><div style="padding-top:.35rem;">${alternatives.map((item) => `<div style="margin:.25rem 0;"><strong>${escapeHtml(item.title)}</strong><br><span class="meos-muted">${escapeHtml(item.kind)} · attention score ${item.score}</span></div>`).join("")}${attention.candidateCount > 4 ? `<div class="meos-muted">+ ${attention.candidateCount - 4} lower-ranked runtime signals suppressed from executive attention.</div>` : ""}</div></details>` : ""}
-      <button id="meosExecutiveOutcomeAction" class="meos-action-button" type="button">${escapeHtml(outcome.action)}</button>`;
+      <div style="display:flex;gap:.45rem;flex-wrap:wrap;">
+        <button id="meosExecutiveOutcomeAction" class="meos-action-button" type="button">${escapeHtml(outcome.action)}</button>
+        ${outcome.kind !== "watch" ? `<button id="meosExecutiveOutcomeAdvance" class="meos-action-button" type="button">${findExistingOutcomeWork(outcome, snapshot) ? "Already In Motion" : "Put Maddy On It"}</button>` : ""}
+      </div>`;
     document.getElementById("meosExecutiveOutcomeAction")?.addEventListener("click", () => executeExecutiveOutcome(outcome, snapshot));
+    document.getElementById("meosExecutiveOutcomeAdvance")?.addEventListener("click", (event) => advanceExecutiveOutcome(outcome, snapshot, event.currentTarget));
     return attention;
   }
 
@@ -5872,6 +5975,12 @@ document
       ["Executive briefing explains why the winning signal beat competing runtime evidence", Boolean(document.getElementById("meosLiveBriefing")?.dataset.attentionCandidates)],
       ["Executive attention suppresses lower-value signals instead of dumping system activity on the executive", compileExecutiveAttention(snapshot).alternatives.length <= 3],
       ["Executive attention preserves direct action on the winning runtime signal", Boolean(document.getElementById("meosExecutiveOutcomeAction"))],
+      ["Executive Outcome can become governed Hallway work without bypassing authority", typeof advanceExecutiveOutcome === "function" && typeof getExecutiveHallway()?.submitWork === "function"],
+      ["Executive Outcome work carries a deterministic deduplication fingerprint", typeof executiveOutcomeFingerprint === "function" && executiveOutcomeFingerprint(deriveExecutiveOutcome(snapshot)).startsWith("hq-attention:")],
+      ["Repeated Executive Outcome routing reuses existing live work instead of manufacturing duplicates", typeof findExistingOutcomeWork === "function"],
+      ["Executive Outcome dispatch explicitly preserves external-action authority boundaries", executiveOutcomeInstruction({ kind:"funding", title:"Acceptance Test" }).includes("without required human authority")],
+      ["Executive Outcome routing stores source evidence and source value lineage in Hallway context", String(advanceExecutiveOutcome).includes("sourceEvidence") && String(advanceExecutiveOutcome).includes("sourceValue")],
+      ["Executive HUD exposes Put Maddy On It only when an actionable signal exists", deriveExecutiveOutcome({ ...snapshot, fundingUrgent: [], pendingApprovals: [], hallwayDeliverables: [], blocked: [], hallwayWork: [] }).kind === "watch" && !document.querySelector("#meosExecutiveOutcomeAdvance") ? true : deriveExecutiveOutcome(snapshot).kind !== "watch"],
       ["No planned office or widget was removed", snapshot.offices.length === 11]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
     return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v4.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
