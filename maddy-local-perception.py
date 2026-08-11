@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 MEOS Maddy Local Perception Substrate
-Version: 1.2.0
-Commission: 006.017D7N4
-Build: MLP120-CHEAP-PUBLIC-DISCOVERY-20260811-A
+Version: 1.3.0
+Commission: 006.017D7N5
+Build: MLP130-INTENT-BOUNDED-INVESTIGATION-20260811-A
 
 Purpose:
 - Give Maddy a provider-neutral, local-first public-web perception substrate.
@@ -36,8 +36,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-VERSION = "1.2.0"
-BUILD_ID = "MLP120-CHEAP-PUBLIC-DISCOVERY-20260811-A"
+VERSION = "1.3.0"
+BUILD_ID = "MLP130-INTENT-BOUNDED-INVESTIGATION-20260811-A"
 DEFAULT_DB = Path.home() / ".meos" / "maddy-perception.sqlite3"
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
@@ -91,6 +91,22 @@ def open_db(path: Path) -> sqlite3.Connection:
             first_seen_at INTEGER NOT NULL,
             last_seen_at INTEGER NOT NULL,
             PRIMARY KEY(query, url)
+        )
+        """
+    )
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS investigation_state (
+            intent_id TEXT PRIMARY KEY,
+            query TEXT NOT NULL,
+            started_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            sources_discovered INTEGER NOT NULL DEFAULT 0,
+            sources_observed INTEGER NOT NULL DEFAULT 0,
+            changed_sources INTEGER NOT NULL DEFAULT 0,
+            unchanged_sources INTEGER NOT NULL DEFAULT 0,
+            bytes_observed INTEGER NOT NULL DEFAULT 0,
+            stop_reason TEXT
         )
         """
     )
@@ -253,6 +269,111 @@ def observe(db: sqlite3.Connection, url: str, timeout: int, max_bytes: int) -> P
 
 
 
+
+def investigate_intent(
+    db: sqlite3.Connection,
+    intent_id: str,
+    query: str,
+    timeout: int,
+    max_results: int,
+    max_observations: int,
+    max_total_bytes: int,
+) -> dict:
+    """
+    Execute one bounded perception investigation for an already-existing
+    cognitive intent. This substrate cannot invent the intent or decide that
+    the answer is sufficient; it only gathers bounded change evidence.
+    """
+    intent_id = " ".join(str(intent_id or "").split()).strip()[:160]
+    query = " ".join(str(query or "").split()).strip()
+    if not intent_id or not query:
+        raise ValueError("Investigation requires an intent id and query.")
+
+    max_results = max(1, min(int(max_results), 50))
+    max_observations = max(1, min(int(max_observations), max_results, 20))
+    max_total_bytes = max(1024, min(int(max_total_bytes), 64 * 1024 * 1024))
+    started = int(time.time())
+
+    db.execute(
+        """INSERT INTO investigation_state(intent_id,query,started_at)
+           VALUES(?,?,?)
+           ON CONFLICT(intent_id) DO UPDATE SET query=excluded.query,started_at=excluded.started_at,
+             completed_at=NULL,sources_discovered=0,sources_observed=0,changed_sources=0,
+             unchanged_sources=0,bytes_observed=0,stop_reason=NULL""",
+        (intent_id, query, started),
+    )
+    db.commit()
+
+    discovery = discover_public_web(db, query, timeout, max_results)
+    observations = []
+    bytes_observed = 0
+    stop_reason = "candidate-sources-exhausted"
+
+    for candidate in discovery["results"]:
+        if len(observations) >= max_observations:
+            stop_reason = "observation-budget-reached"
+            break
+        remaining = max_total_bytes - bytes_observed
+        if remaining < 1024:
+            stop_reason = "byte-budget-reached"
+            break
+        try:
+            result = observe(
+                db,
+                candidate["url"],
+                timeout,
+                min(DEFAULT_MAX_BYTES, remaining),
+            )
+        except (ValueError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+            observations.append({
+                "url": candidate["url"],
+                "observed": False,
+                "error": str(exc)[:300],
+            })
+            continue
+
+        bytes_observed += result.bytes_read
+        observations.append({
+            "url": result.url,
+            "finalUrl": result.final_url,
+            "observed": True,
+            "changed": result.changed,
+            "contentSha256": result.content_sha256,
+            "bytesObservedLocally": result.bytes_read,
+        })
+
+    changed_count = sum(1 for x in observations if x.get("observed") and x.get("changed"))
+    unchanged_count = sum(1 for x in observations if x.get("observed") and not x.get("changed"))
+    observed_count = changed_count + unchanged_count
+    completed = int(time.time())
+
+    db.execute(
+        """UPDATE investigation_state SET completed_at=?,sources_discovered=?,sources_observed=?,
+           changed_sources=?,unchanged_sources=?,bytes_observed=?,stop_reason=? WHERE intent_id=?""",
+        (completed, discovery["resultCount"], observed_count, changed_count,
+         unchanged_count, bytes_observed, stop_reason, intent_id),
+    )
+    db.commit()
+
+    return {
+        "intentId": intent_id,
+        "query": query,
+        "status": "perception-complete",
+        "sourcesDiscovered": discovery["resultCount"],
+        "sourcesObserved": observed_count,
+        "changedSources": changed_count,
+        "unchangedSources": unchanged_count,
+        "bytesObservedLocally": bytes_observed,
+        "stopReason": stop_reason,
+        "observations": observations,
+        "semanticConclusion": None,
+        "sufficiencyJudgment": None,
+        "paidSearchProviderUsed": False,
+        "paidCognitionAuthorized": False,
+        "externalActionAuthorized": False,
+        "institutionalTruthAuthority": False,
+    }
+
 def emit_change_evidence(
     bridge_url: str,
     bridge_secret: str,
@@ -329,6 +450,7 @@ def status(db: sqlite3.Connection) -> dict:
     ).fetchone()
     resources = db.execute("SELECT COUNT(*) FROM resource_state").fetchone()[0]
     discovered = db.execute("SELECT COUNT(*) FROM discovery_state").fetchone()[0]
+    investigations = db.execute("SELECT COUNT(*) FROM investigation_state").fetchone()[0]
     return {
         "name": "MEOS Maddy Local Perception Substrate",
         "version": VERSION,
@@ -336,6 +458,7 @@ def status(db: sqlite3.Connection) -> dict:
         "mode": "local-first-cheap-perception",
         "resourcesKnown": resources,
         "discoveredResourcesKnown": discovered,
+        "boundedInvestigationsKnown": investigations,
         "observations": counters[0],
         "changedObservations": counters[1],
         "unchangedObservationsSuppressedFromEscalation": counters[2],
@@ -377,6 +500,17 @@ def main() -> int:
     discover_cmd.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
     discover_cmd.add_argument("--max-results", type=int, default=10)
 
+    investigate_cmd = sub.add_parser(
+        "investigate",
+        help="Run one bounded public-web perception investigation for an existing cognitive intent.",
+    )
+    investigate_cmd.add_argument("--intent-id", required=True)
+    investigate_cmd.add_argument("query")
+    investigate_cmd.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    investigate_cmd.add_argument("--max-results", type=int, default=10)
+    investigate_cmd.add_argument("--max-observations", type=int, default=5)
+    investigate_cmd.add_argument("--max-total-bytes", type=int, default=16 * 1024 * 1024)
+
     sub.add_parser("status", help="Show local perception evidence.")
     args = parser.parse_args()
 
@@ -395,6 +529,11 @@ def main() -> int:
             print(json.dumps(output, indent=2, sort_keys=True))
         elif args.command == "discover":
             print(json.dumps(discover_public_web(db, args.query, args.timeout, args.max_results), indent=2, sort_keys=True))
+        elif args.command == "investigate":
+            print(json.dumps(investigate_intent(
+                db, args.intent_id, args.query, args.timeout, args.max_results,
+                args.max_observations, args.max_total_bytes
+            ), indent=2, sort_keys=True))
         else:
             print(json.dumps(status(db), indent=2, sort_keys=True))
         return 0
