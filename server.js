@@ -36,7 +36,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.46";
+const VERSION = "2.10.47";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2957,10 +2957,10 @@ function getHeadlessResearchStatus() {
  * Authority invariant: this runtime may think, investigate internally, and
  * preserve cognition. It does not grant external-action authority.
  */
-const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7M4";
-const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.7";
+const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7N2";
+const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.8";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
-  "CCR107-RECOGNITION-BEFORE-INTERRUPTION-20260811-A";
+  "CCR108-AUTHENTICATED-LOCAL-PERCEPTION-BRIDGE-20260811-A";
 const AUTONOMOUS_RUNTIME_ENABLED =
   String(process.env.MEOS_AUTONOMOUS_RUNTIME_ENABLED || "false")
     .trim()
@@ -2989,6 +2989,10 @@ const CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS = Math.max(
       5 * 60_000
   )
 );
+const LOCAL_PERCEPTION_BRIDGE_SECRET = String(
+  process.env.MEOS_LOCAL_PERCEPTION_BRIDGE_SECRET || ""
+).trim();
+const LOCAL_PERCEPTION_BRIDGE_MAX_BODY = "8kb";
 const CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS = Math.max(
   60_000,
   Number(
@@ -3028,6 +3032,9 @@ const continuousCognitionRuntimeState = {
   lastEventFingerprint: null,
   lastSuppressedEventAt: null,
   lastSuppressedEventFingerprint: null,
+  localPerceptionBridgeAcceptedCount: 0,
+  localPerceptionBridgeRejectedCount: 0,
+  lastLocalPerceptionBridgeAt: null,
   inFlight: false,
   timer: null,
   lastError: null
@@ -3309,6 +3316,25 @@ function scheduleContinuousCognitionWake(nextWakeAt) {
  * schedules an immediate bounded wake without granting paid cognition or
  * external-action authority.
  */
+function verifyLocalPerceptionBridgeSecret(request) {
+  if (!LOCAL_PERCEPTION_BRIDGE_SECRET) return false;
+
+  const authorization = String(request.get("authorization") || "");
+  const supplied = authorization.startsWith("Bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
+  if (!supplied) return false;
+
+  const expectedBuffer = Buffer.from(LOCAL_PERCEPTION_BRIDGE_SECRET, "utf8");
+  const suppliedBuffer = Buffer.from(supplied, "utf8");
+
+  return (
+    expectedBuffer.length === suppliedBuffer.length &&
+    crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)
+  );
+}
+
 function requestContinuousCognitionReentry(event = {}) {
   if (!CONTINUOUS_COGNITION_RUNTIME_ENABLED) {
     return {
@@ -3489,6 +3515,14 @@ function getContinuousCognitionRuntimeStatus() {
     eventRecognitionWindowMs:
       CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS,
     eventRecognitionMode: "bounded-resident-fingerprint-dedupe",
+    localPerceptionBridgeConfigured: Boolean(LOCAL_PERCEPTION_BRIDGE_SECRET),
+    localPerceptionBridgeAcceptedCount:
+      continuousCognitionRuntimeState.localPerceptionBridgeAcceptedCount,
+    localPerceptionBridgeRejectedCount:
+      continuousCognitionRuntimeState.localPerceptionBridgeRejectedCount,
+    lastLocalPerceptionBridgeAt:
+      continuousCognitionRuntimeState.lastLocalPerceptionBridgeAt,
+    localPerceptionBridgeMode: "authenticated-compact-change-evidence-only",
     eventReentryMode: "in-process-recognition-before-interruption",
     eventReentryPaidCognitionAuthorized: false,
     eventReentryExternalActionAuthorized: false,
@@ -13376,6 +13410,79 @@ app.get(
   }
 );
 
+
+
+/*
+ * Commission 006.017D7N2 — Authenticated Local Perception Bridge
+ *
+ * Receives only compact change evidence from an external/local perception
+ * substrate. Bulk page bodies and downloaded documents do not cross this
+ * bridge. Authentication is mandatory and the bridge never grants paid
+ * cognition or external-action authority.
+ */
+app.post(
+  "/api/local-perception-event",
+  express.json({ limit: LOCAL_PERCEPTION_BRIDGE_MAX_BODY, strict: true }),
+  (request, response) => {
+    if (!verifyLocalPerceptionBridgeSecret(request)) {
+      continuousCognitionRuntimeState.localPerceptionBridgeRejectedCount += 1;
+      response.status(401).json({
+        success: false,
+        accepted: false,
+        reason: "local-perception-bridge-unauthorized"
+      });
+      return;
+    }
+
+    const body = request.body || {};
+    if (body.changed !== true) {
+      continuousCognitionRuntimeState.localPerceptionBridgeRejectedCount += 1;
+      response.status(202).json({
+        success: true,
+        accepted: false,
+        reason: "unchanged-local-perception-no-cognitive-reentry",
+        paidCognitionAuthorized: false,
+        externalActionAuthorized: false
+      });
+      return;
+    }
+
+    const sourceUrl = String(body.url || body.finalUrl || "").trim();
+    const contentFingerprint = String(
+      body.contentSha256 || body.content_sha256 || ""
+    ).trim();
+
+    if (!sourceUrl || !contentFingerprint) {
+      continuousCognitionRuntimeState.localPerceptionBridgeRejectedCount += 1;
+      response.status(400).json({
+        success: false,
+        accepted: false,
+        reason: "local-perception-change-evidence-incomplete"
+      });
+      return;
+    }
+
+    continuousCognitionRuntimeState.localPerceptionBridgeAcceptedCount += 1;
+    continuousCognitionRuntimeState.lastLocalPerceptionBridgeAt =
+      new Date().toISOString();
+
+    const reentry = requestContinuousCognitionReentry({
+      source: "maddy-local-perception",
+      reason: "public-reality-materially-changed",
+      subject: sourceUrl.slice(0, 180),
+      changeFingerprint: contentFingerprint.slice(0, 240)
+    });
+
+    response.status(202).json({
+      success: true,
+      bridgeAccepted: true,
+      cognition: reentry,
+      bulkContentTransferred: false,
+      paidCognitionAuthorized: false,
+      externalActionAuthorized: false
+    });
+  }
+);
 
 app.get("/health", async (request, response) => {
   pruneTtsCache();
