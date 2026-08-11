@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.49";
+const VERSION = "2.10.50";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -3013,7 +3013,7 @@ const LOCAL_PERCEPTION_PROCESS_TIMEOUT_MS = Math.max(
 const LOCAL_PERCEPTION_PROCESS_MAX_STDOUT_BYTES = 64 * 1024;
 const LOCAL_PERCEPTION_PROCESS_MAX_STDERR_BYTES = 16 * 1024;
 const LOCAL_PERCEPTION_SCRIPT_PATH = path.join(
-  __dirname,
+  currentDirectory,
   "maddy-local-perception.py"
 );
 const CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS = Math.max(
@@ -3265,7 +3265,7 @@ async function executeLocalPerceptionHandoff(handoff = {}) {
       LOCAL_PERCEPTION_PYTHON_EXECUTABLE,
       [LOCAL_PERCEPTION_SCRIPT_PATH, "handoff", "-"],
       {
-        cwd: __dirname,
+        cwd: currentDirectory,
         env: process.env,
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
