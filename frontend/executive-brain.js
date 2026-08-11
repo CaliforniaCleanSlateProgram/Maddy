@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.1";
-  const BUILD_ID = "EB1251-COGNITIVE-REVISIT-MEMORY-20260810-A";
+  const VERSION = "1.25.2";
+  const BUILD_ID = "EB1252-ECONOMIC-COGNITIVE-CADENCE-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -168,8 +168,9 @@
       cognitiveThreadStepLimit: 24,
       cognitiveThreadDiminishingReturnFloor: 0.08,
       continuousCognitionCycleBudget: 6,
-      continuousCognitionIdleBackoffMs: 15000,
-      continuousCognitionActiveBackoffMs: 5000,
+      continuousCognitionIdleBackoffMs: 300000,
+      continuousCognitionActiveBackoffMs: 30000,
+      continuousCognitionUrgentBackoffMs: 5000,
       productiveIdleCognitionEnabled: true,
       productiveIdleMinimumValue: 0.42,
       productiveIdleDiminishingReturnFloor: 0.12,
@@ -12472,6 +12473,41 @@
      * claim of 24/7 consciousness. The durable runtime can invoke the same cycle
      * after browser exit once the server-side owner is commissioned.
      */
+    determineContinuousCognitionCadence(options = {}) {
+      const activeThread=this.cognitiveThreads.find(thread=>thread.id===this.activeCognitiveThreadId) || null;
+      const materialChange=options.materialChange===true || Boolean(options.humanDirection);
+      const urgentPriority=Number(this.currentExecutivePriority?.urgency || 0)>=0.85 ||
+        Number(this.currentExecutivePriority?.missionConsequence || 0)>=0.9;
+
+      if (materialChange || urgentPriority) {
+        return {
+          mode:"urgent-attention",
+          backoffMs:Number(this.configuration.continuousCognitionUrgentBackoffMs || 5000),
+          reason:materialChange?"material-change-or-human-direction":"high-consequence-priority",
+          paidCognitionJustified:false,
+          truthRule:"Urgency changes wake cadence; it does not itself authorize paid cognition or external action."
+        };
+      }
+
+      if (activeThread) {
+        return {
+          mode:"active-thread",
+          backoffMs:Number(this.configuration.continuousCognitionActiveBackoffMs || 30000),
+          reason:"unfinished-cognitive-thread",
+          paidCognitionJustified:false,
+          truthRule:"An unfinished thought deserves continuity, not continuous computation."
+        };
+      }
+
+      return {
+        mode:"governed-rest",
+        backoffMs:Number(this.configuration.continuousCognitionIdleBackoffMs || 300000),
+        reason:"no-active-thread-or-material-change",
+        paidCognitionJustified:false,
+        truthRule:"Continuous existence does not require continuous computation; quiet reality should be cheap."
+      };
+    },
+
     buildContinuousCognitionHandoff(options = {}) {
       const now=new Date().toISOString();
       const openThreads=this.cognitiveThreads
@@ -12496,11 +12532,8 @@
         activeThreadId:this.activeCognitiveThreadId,
         openThreads,
         anticipatorySweep:this.clone(this.lastAnticipatorySweep),
-        nextWakeAt:new Date(Date.now()+Number(options.backoffMs || (
-          this.activeCognitiveThreadId
-            ? this.configuration.continuousCognitionActiveBackoffMs
-            : this.configuration.continuousCognitionIdleBackoffMs
-        ))).toISOString(),
+        economicCadence:this.clone(this.determineContinuousCognitionCadence(options)),
+        nextWakeAt:new Date(Date.now()+Number(options.backoffMs || this.determineContinuousCognitionCadence(options).backoffMs)).toISOString(),
         requestedCycleBudget:Number(options.cycleBudget || this.configuration.continuousCognitionCycleBudget),
         authority:{
           externalActionAuthorized:false,
@@ -12670,6 +12703,10 @@
           {name:"The handoff preserves unfinished cognitive threads",passed:firstHandoff.openThreads.some(thread=>thread.id===firstThreadId)},
           {name:"The handoff preserves the next intended cognitive move",passed:firstHandoff.openThreads.some(thread=>thread.id===firstThreadId&&Boolean(thread.nextIntendedMove))},
           {name:"The handoff contains an explicit next wake time for a durable runtime",passed:typeof firstHandoff.nextWakeAt==="string"&&!Number.isNaN(Date.parse(firstHandoff.nextWakeAt))},
+          {name:"Continuous cognition exposes an economic cadence decision",passed:Boolean(firstHandoff.economicCadence?.mode)&&Number(firstHandoff.economicCadence?.backoffMs)>0},
+          {name:"Governed rest requests a materially slower wake cadence than active thought",passed:this.determineContinuousCognitionCadence({}).backoffMs>this.configuration.continuousCognitionActiveBackoffMs},
+          {name:"Human direction can immediately restore urgent cognition cadence",passed:this.determineContinuousCognitionCadence({humanDirection:{subject:"fixture"}}).mode==="urgent-attention"},
+          {name:"Economic cadence never self-authorizes paid cognition",passed:firstHandoff.economicCadence?.paidCognitionJustified===false},
           {name:"The handoff carries a bounded cycle budget",passed:firstHandoff.requestedCycleBudget===this.configuration.continuousCognitionCycleBudget},
           {name:"The handoff never grants external authority",passed:firstHandoff.authority.externalActionAuthorized===false},
           {name:"The handoff explicitly requires a durable server runtime owner",passed:firstHandoff.authority.serverRuntimeOwnerRequired===true},
