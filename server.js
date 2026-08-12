@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.51";
+const VERSION = "2.10.52";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -3326,6 +3326,451 @@ const CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS = Math.max(
   )
 );
 
+
+/* ========================================================================== */
+/* Commission 006.017D7S4B — Autonomous Learning Internet Ignition            */
+/* ========================================================================== */
+
+/*
+ * Executive Brain v1.25.11 may choose what it wants to learn, but curiosity
+ * does not authorize spend. This bridge is the server-side ignition wire:
+ * a productive-idle research intent may use the already-commissioned public
+ * research stack exactly once inside a bounded cheap-first envelope.
+ *
+ * It does not create another research engine, another brain, or another
+ * persistence authority. Durable research learning continues through the
+ * existing Research Learning / Knowledge authority path.
+ */
+const AUTONOMOUS_LEARNING_IGNITION_COMMISSION = "006.017D7S4B";
+const AUTONOMOUS_LEARNING_IGNITION_VERSION = "1.0.0";
+const AUTONOMOUS_LEARNING_IGNITION_BUILD_ID =
+  "ALI100-ONE-INTENT-ONE-CHEAP-RESEARCH-20260811-A";
+
+const AUTONOMOUS_LEARNING_IGNITION_ENABLED =
+  AUTONOMOUS_RUNTIME_ENABLED &&
+  String(process.env.MEOS_AUTONOMOUS_LEARNING_ENABLED || "true")
+    .trim()
+    .toLowerCase() !== "false";
+
+const AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS = Math.max(
+  60 * 60_000,
+  Number(
+    process.env.MEOS_AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS ||
+      6 * 60 * 60_000
+  )
+);
+
+const AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT = Math.max(
+  1,
+  Math.min(
+    96,
+    Number(process.env.MEOS_AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT || 24)
+  )
+);
+
+const autonomousLearningIgnitionState = {
+  enabled: AUTONOMOUS_LEARNING_IGNITION_ENABLED,
+  researchIntentCount: 0,
+  executedCount: 0,
+  suppressedDuplicateCount: 0,
+  blockedEconomicAuthorityCount: 0,
+  failedCount: 0,
+  lastIntentAt: null,
+  lastExecutedAt: null,
+  lastSubject: null,
+  lastSubjectFingerprint: null,
+  lastResearchLearningId: null,
+  lastStopReason: null,
+  lastError: null
+};
+
+const autonomousLearningRecentSubjects = new Map();
+const autonomousLearningDailySubjects = new Map();
+
+function normalizeAutonomousLearningSubject(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, 500);
+}
+
+function fingerprintAutonomousLearningSubject(value = "") {
+  return crypto
+    .createHash("sha256")
+    .update(normalizeAutonomousLearningSubject(value))
+    .digest("hex");
+}
+
+function pruneAutonomousLearningRecognition(nowMs = Date.now()) {
+  for (const [fingerprint, seenAt] of autonomousLearningRecentSubjects) {
+    if (nowMs - seenAt >= AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS) {
+      autonomousLearningRecentSubjects.delete(fingerprint);
+    }
+  }
+
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  for (const day of autonomousLearningDailySubjects.keys()) {
+    if (day !== today) autonomousLearningDailySubjects.delete(day);
+  }
+}
+
+function recognizeAutonomousLearningIntent(request = {}, nowMs = Date.now()) {
+  pruneAutonomousLearningRecognition(nowMs);
+
+  const subject = String(request.subject || "").trim();
+  const fingerprint = fingerprintAutonomousLearningSubject(subject);
+  const previousSeenAt = autonomousLearningRecentSubjects.get(fingerprint) || 0;
+  const duplicate =
+    previousSeenAt > 0 &&
+    nowMs - previousSeenAt < AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS;
+
+  const day = new Date(nowMs).toISOString().slice(0, 10);
+  const daySet = autonomousLearningDailySubjects.get(day) || new Set();
+  const dailyLimitReached =
+    !daySet.has(fingerprint) &&
+    daySet.size >= AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT;
+
+  return {
+    subject,
+    fingerprint,
+    duplicate,
+    dailyLimitReached,
+    dailyNovelSubjectCount: daySet.size,
+    dailyNovelSubjectLimit: AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT,
+    cooldownMs: AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS,
+    day
+  };
+}
+
+function markAutonomousLearningIntentRecognized(recognition, nowMs = Date.now()) {
+  autonomousLearningRecentSubjects.set(recognition.fingerprint, nowMs);
+  const daySet =
+    autonomousLearningDailySubjects.get(recognition.day) || new Set();
+  daySet.add(recognition.fingerprint);
+  autonomousLearningDailySubjects.set(recognition.day, daySet);
+}
+
+function extractAutonomousLearningResearchRequest(cycleResult = {}) {
+  const threadAction = cycleResult?.threadAction || {};
+  if (threadAction.action !== "productive-idle") return null;
+
+  const productiveIdle = threadAction.productiveIdle || {};
+  const request = productiveIdle?.action?.researchRequest || null;
+  if (
+    request?.schema !== "meos.maddy.autonomous-learning-research-request.v1"
+  ) {
+    return null;
+  }
+  return request;
+}
+
+function validateAutonomousLearningEconomicAuthority(request = {}) {
+  const acquisition = request.acquisitionPolicy || {};
+  const authority = request.authority || {};
+
+  const valid =
+    authority.chooseSubjectAuthorized === true &&
+    authority.publicReadResearchAuthorized === true &&
+    authority.paidSpendAuthorized === false &&
+    authority.externalActionAuthorized === false &&
+    acquisition.cheapFirst === true &&
+    acquisition.paidModelAuthorized === false &&
+    acquisition.paidSearchAuthorized === false &&
+    acquisition.largeMediaProcessingAuthorized === false;
+
+  return {
+    valid,
+    reason: valid
+      ? "cheap-public-learning-authorized"
+      : "autonomous-learning-economic-authority-invalid"
+  };
+}
+
+async function executeAutonomousLearningFromCycle(brain, cycleResult = {}) {
+  if (!AUTONOMOUS_LEARNING_IGNITION_ENABLED) {
+    return {
+      executed: false,
+      reason: "autonomous-learning-ignition-disabled"
+    };
+  }
+
+  const request = extractAutonomousLearningResearchRequest(cycleResult);
+  if (!request) {
+    return {
+      executed: false,
+      reason: "no-autonomous-learning-research-intent"
+    };
+  }
+
+  autonomousLearningIgnitionState.researchIntentCount += 1;
+  autonomousLearningIgnitionState.lastIntentAt = new Date().toISOString();
+
+  const authority = validateAutonomousLearningEconomicAuthority(request);
+  if (!authority.valid) {
+    autonomousLearningIgnitionState.blockedEconomicAuthorityCount += 1;
+    autonomousLearningIgnitionState.lastStopReason = authority.reason;
+    return {
+      executed: false,
+      blocked: true,
+      reason: authority.reason
+    };
+  }
+
+  const recognition = recognizeAutonomousLearningIntent(request);
+  if (recognition.duplicate) {
+    autonomousLearningIgnitionState.suppressedDuplicateCount += 1;
+    autonomousLearningIgnitionState.lastStopReason =
+      "duplicate-learning-subject-cooldown";
+    return {
+      executed: false,
+      suppressed: true,
+      reason: "duplicate-learning-subject-cooldown",
+      recognition
+    };
+  }
+
+  if (recognition.dailyLimitReached) {
+    autonomousLearningIgnitionState.lastStopReason =
+      "daily-novel-learning-subject-budget-reached";
+    return {
+      executed: false,
+      blocked: true,
+      reason: "daily-novel-learning-subject-budget-reached",
+      recognition
+    };
+  }
+
+  /*
+   * Recognition is marked before network execution. A transient failure must
+   * not turn one curiosity into a rapid retry storm.
+   */
+  markAutonomousLearningIntentRecognized(recognition);
+
+  try {
+    const result = await executeHeadlessResearch({
+      subject: request.subject,
+      reason: request.objective || "Maddy autonomous world learning.",
+      unknowns: Array.isArray(request.questions)
+        ? request.questions.slice(0, 8)
+        : [],
+      maxSources: 8,
+      maxDepth: 2,
+      maxAdditionalPasses: 0,
+      preferredProviders: [
+        PUBLIC_WEB_ADAPTER_ID,
+        "public-web-retrieval-v1"
+      ]
+    });
+
+    autonomousLearningIgnitionState.executedCount += 1;
+    autonomousLearningIgnitionState.lastExecutedAt =
+      new Date().toISOString();
+    autonomousLearningIgnitionState.lastSubject = request.subject;
+    autonomousLearningIgnitionState.lastSubjectFingerprint =
+      recognition.fingerprint;
+    autonomousLearningIgnitionState.lastResearchLearningId =
+      result?.durableLearning?.record?.id ||
+      result?.durableLearning?.learningId ||
+      null;
+    autonomousLearningIgnitionState.lastStopReason =
+      result?.researchLoop?.closure?.stopReason ||
+      (result?.success ? "bounded-learning-complete" : "research-failed");
+    autonomousLearningIgnitionState.lastError = null;
+
+    /*
+     * Tell the same resident Brain what actually happened. This is a bounded
+     * autobiographical/economic receipt, not a promotion of research claims to
+     * verified institutional truth. The durable Research Learning bridge owns
+     * evidence persistence and Knowledge convergence.
+     */
+    if (brain?.lastProductiveIdleAction) {
+      brain.lastProductiveIdleAction.capability =
+        brain.lastProductiveIdleAction.capability || {};
+      brain.lastProductiveIdleAction.capability.externalResearchExecuted =
+        result?.success === true;
+      brain.lastProductiveIdleAction.capability.executionTransport =
+        "existing-headless-public-research";
+      brain.lastProductiveIdleAction.capability.paidSearchUsed = false;
+      brain.lastProductiveIdleAction.capability.paidModelUsed = false;
+      brain.lastProductiveIdleAction.learningReceipt = {
+        schema: "meos.maddy.autonomous-learning-receipt.v1",
+        completedAt: result?.completedAt || new Date().toISOString(),
+        subject: request.subject,
+        evidenceCount: Array.isArray(result?.evidence)
+          ? result.evidence.length
+          : 0,
+        evidenceQuality: result?.synthesis?.evidenceQuality || "none",
+        durableLearningPersisted:
+          result?.durableLearning?.persisted === true ||
+          result?.durableLearning?.success === true,
+        researchStopReason:
+          result?.researchLoop?.closure?.stopReason || null,
+        truthRule:
+          "This receipt proves bounded research execution, not that every retrieved claim is verified fact."
+      };
+    }
+
+    return {
+      executed: true,
+      success: result?.success === true,
+      subject: request.subject,
+      recognition,
+      evidenceCount: Array.isArray(result?.evidence)
+        ? result.evidence.length
+        : 0,
+      evidenceQuality: result?.synthesis?.evidenceQuality || "none",
+      durableLearning: result?.durableLearning || null,
+      closure: result?.researchLoop?.closure || null,
+      paidSearchUsed: false,
+      paidModelUsed: false,
+      externalActionAuthorized: false
+    };
+  } catch (error) {
+    autonomousLearningIgnitionState.failedCount += 1;
+    autonomousLearningIgnitionState.lastError = {
+      code: error?.code || "AUTONOMOUS_LEARNING_IGNITION_FAILED",
+      message: error?.message || String(error),
+      at: new Date().toISOString()
+    };
+    autonomousLearningIgnitionState.lastStopReason =
+      "autonomous-learning-execution-failed";
+    return {
+      executed: true,
+      success: false,
+      reason: "autonomous-learning-execution-failed",
+      error: autonomousLearningIgnitionState.lastError,
+      paidSearchUsed: false,
+      paidModelUsed: false,
+      externalActionAuthorized: false
+    };
+  }
+}
+
+function runAutonomousLearningIgnitionAcceptanceTest() {
+  const validRequest = {
+    schema: "meos.maddy.autonomous-learning-research-request.v1",
+    subject: "human psychology and ethical sales persuasion",
+    acquisitionPolicy: {
+      cheapFirst: true,
+      paidModelAuthorized: false,
+      paidSearchAuthorized: false,
+      largeMediaProcessingAuthorized: false
+    },
+    authority: {
+      chooseSubjectAuthorized: true,
+      publicReadResearchAuthorized: true,
+      paidSpendAuthorized: false,
+      externalActionAuthorized: false
+    }
+  };
+
+  const cycle = {
+    threadAction: {
+      action: "productive-idle",
+      productiveIdle: {
+        action: { researchRequest: validRequest }
+      }
+    }
+  };
+
+  const extracted = extractAutonomousLearningResearchRequest(cycle);
+  const authority = validateAutonomousLearningEconomicAuthority(extracted);
+  const first = recognizeAutonomousLearningIntent(validRequest, 1_000_000);
+  markAutonomousLearningIntentRecognized(first, 1_000_000);
+  const second = recognizeAutonomousLearningIntent(validRequest, 1_000_001);
+
+  const checks = [
+    {
+      name: "Only Executive Brain productive-idle research intents enter autonomous learning ignition",
+      passed:
+        extracted?.schema ===
+        "meos.maddy.autonomous-learning-research-request.v1"
+    },
+    {
+      name: "Cheap-public economic authority contract is required before network execution",
+      passed: authority.valid === true
+    },
+    {
+      name: "Same learning subject is recognized before a second network request",
+      passed: first.duplicate === false && second.duplicate === true
+    },
+    {
+      name: "Autonomous learning uses the already-commissioned Headless Research executor",
+      passed:
+        typeof executeHeadlessResearch === "function" &&
+        HEADLESS_RESEARCH_COMMISSION === "006.017D7P4"
+    },
+    {
+      name: "Autonomous learning keeps paid search and paid model authority false",
+      passed:
+        validRequest.acquisitionPolicy.paidSearchAuthorized === false &&
+        validRequest.acquisitionPolicy.paidModelAuthorized === false &&
+        validRequest.authority.paidSpendAuthorized === false
+    },
+    {
+      name: "Autonomous learning cannot authorize external action",
+      passed: validRequest.authority.externalActionAuthorized === false
+    },
+    {
+      name: "Research Learning remains the durable evidence-learning authority",
+      passed:
+        typeof persistDurableResearchLearning === "function" &&
+        typeof RESEARCH_LEARNING_COMMISSION === "string"
+    }
+  ];
+
+  autonomousLearningRecentSubjects.delete(first.fingerprint);
+  const daySet = autonomousLearningDailySubjects.get(first.day);
+  daySet?.delete(first.fingerprint);
+
+  return {
+    commission: AUTONOMOUS_LEARNING_IGNITION_COMMISSION,
+    version: AUTONOMOUS_LEARNING_IGNITION_VERSION,
+    buildId: AUTONOMOUS_LEARNING_IGNITION_BUILD_ID,
+    passed: checks.every(check => check.passed),
+    checks
+  };
+}
+
+function getAutonomousLearningIgnitionStatus() {
+  pruneAutonomousLearningRecognition();
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    commission: AUTONOMOUS_LEARNING_IGNITION_COMMISSION,
+    version: AUTONOMOUS_LEARNING_IGNITION_VERSION,
+    buildId: AUTONOMOUS_LEARNING_IGNITION_BUILD_ID,
+    ...autonomousLearningIgnitionState,
+    browserIndependent: true,
+    runtimeOwner: "meos-durable-server",
+    researchExecutor: HEADLESS_RESEARCH_COMMISSION,
+    researchLearningAuthority: RESEARCH_LEARNING_COMMISSION,
+    recognition: {
+      mode: "canonical-subject-cooldown-before-network",
+      recentSubjectCount: autonomousLearningRecentSubjects.size,
+      dailyNovelSubjectCount:
+        (autonomousLearningDailySubjects.get(today) || new Set()).size,
+      dailyNovelSubjectLimit: AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT,
+      subjectCooldownMs: AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS
+    },
+    economics: {
+      cheapPublicResearchOnly: true,
+      maxSourcesPerLearningIntent: 8,
+      maxDepth: 2,
+      maximumAdditionalPasses: 0,
+      paidSearchAuthorized: false,
+      paidModelAuthorized: false,
+      largeMediaProcessingAuthorized: false
+    },
+    authority: {
+      chooseLearningSubject: true,
+      publicReadResearch: true,
+      paidSpend: false,
+      externalAction: false
+    }
+  };
+}
+
 const continuousCognitionRuntimeState = {
   status: "initializing",
   enabled: CONTINUOUS_COGNITION_RUNTIME_ENABLED,
@@ -3371,6 +3816,10 @@ const continuousCognitionRuntimeState = {
   lastLocalPerceptionProcessAt: null,
   lastLocalPerceptionProcessIntentId: null,
   lastLocalPerceptionProcessError: null,
+  lastAutonomousLearningAt: null,
+  lastAutonomousLearningSubject: null,
+  lastAutonomousLearningExecuted: false,
+  lastAutonomousLearningReason: null,
   inFlight: false,
   timer: null,
   lastError: null
@@ -4031,6 +4480,24 @@ async function runContinuousCognitionHeartbeat() {
     const brain = await getResidentContinuousCognitionBrain();
     const cycleResult = brain.runContinuousCognitionCycle({});
 
+    const autonomousLearning =
+      await executeAutonomousLearningFromCycle(brain, cycleResult);
+    continuousCognitionRuntimeState.lastAutonomousLearningAt =
+      autonomousLearning?.executed === true
+        ? new Date().toISOString()
+        : continuousCognitionRuntimeState.lastAutonomousLearningAt;
+    continuousCognitionRuntimeState.lastAutonomousLearningSubject =
+      autonomousLearning?.subject ||
+      continuousCognitionRuntimeState.lastAutonomousLearningSubject;
+    continuousCognitionRuntimeState.lastAutonomousLearningExecuted =
+      autonomousLearning?.executed === true;
+    continuousCognitionRuntimeState.lastAutonomousLearningReason =
+      autonomousLearning?.reason ||
+      autonomousLearning?.closure?.stopReason ||
+      (autonomousLearning?.executed === true
+        ? "bounded-autonomous-learning-executed"
+        : "no-autonomous-learning-execution");
+
     if (
       cycleResult?.success !== true ||
       cycleResult?.cycle?.authorityUnchanged !== true ||
@@ -4157,6 +4624,15 @@ function getContinuousCognitionRuntimeStatus() {
     localPerceptionResultMode:
       "authenticated-bounded-evidence-return-verified-checkpoint",
     localPerceptionProcess: getLocalPerceptionProcessStatus(),
+    autonomousLearning: getAutonomousLearningIgnitionStatus(),
+    lastAutonomousLearningAt:
+      continuousCognitionRuntimeState.lastAutonomousLearningAt,
+    lastAutonomousLearningSubject:
+      continuousCognitionRuntimeState.lastAutonomousLearningSubject,
+    lastAutonomousLearningExecuted:
+      continuousCognitionRuntimeState.lastAutonomousLearningExecuted,
+    lastAutonomousLearningReason:
+      continuousCognitionRuntimeState.lastAutonomousLearningReason,
     eventReentryMode: "in-process-recognition-before-interruption",
     eventReentryPaidCognitionAuthorized: false,
     eventReentryExternalActionAuthorized: false,
@@ -10612,6 +11088,25 @@ app.post(
   }
 );
 
+
+app.get(
+  "/api/autonomous-learning-acceptance",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    const result = runAutonomousLearningIgnitionAcceptanceTest();
+    response.status(result.passed ? 200 : 500).json(result);
+  }
+);
+
+app.get(
+  "/api/autonomous-learning-runtime",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    response.status(200).json(
+      getAutonomousLearningIgnitionStatus()
+    );
+  }
+);
 
 app.get(
   "/api/continuous-cognition-runtime",
