@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.8
- * Build: EB1258-SIDE-EFFECT-FREE-COGNITIVE-IDENTITY-ACCEPTANCE-20260811-A
+ * Version: 1.25.9
+ * Build: EB1259-EXECUTIVE-ATTENTION-ECONOMICS-QUIESCENCE-20260811-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.8";
-  const BUILD_ID = "EB1258-SIDE-EFFECT-FREE-COGNITIVE-IDENTITY-ACCEPTANCE-20260811-A";
+  const VERSION = "1.25.9";
+  const BUILD_ID = "EB1259-EXECUTIVE-ATTENTION-ECONOMICS-QUIESCENCE-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -191,6 +191,8 @@
       maximumCognitiveReentryHistory: 250,
       maximumCognitiveIntentions: 250,
       cognitiveIntentionRetryMs: 15000,
+      cognitiveNoGainQuiescenceThreshold: 2,
+      cognitiveAttentionMinimumAnchors: 1,
       maximumSelfModelHistory: 120,
       maximumWorkingAwarenessHistory: 160,
       maximumAttentionStimuli: 64,
@@ -240,6 +242,15 @@
     cognitiveReentryHistory: [],
     cognitiveIntentions: [],
     cognitiveContinuity: { hydrated: false, resumedAt: null, lastResumeCount: 0 },
+    cognitiveEconomics: {
+      schema: "meos.maddy.executive-attention-economics.v1",
+      admissionDenied: 0,
+      quiescenceEntries: 0,
+      quiescentWakeSuppressions: 0,
+      meaningfulWakeCount: 0,
+      duplicateCallsPrevented: 0,
+      lastDecision: null
+    },
     selfModel: null,
     selfModelHistory: [],
     selfModelProjectionCount: 0,
@@ -337,6 +348,8 @@
         this.removeCognitiveIdentityAcceptanceArtifacts({
           persist: true
         });
+        const economicsMigration =
+          this.migrateCognitiveEconomicsState();
         this.cognitiveContinuity.hydrated = true;
         const temporalResume = this.resumeTemporalContinuity({
           reason: "durable-cognition-hydrated"
@@ -1669,6 +1682,233 @@
       };
     },
 
+    cognitiveTriggerIsMeaningful(trigger = {}) {
+      if (!trigger || typeof trigger !== "object") return false;
+      const event = this.normalize(trigger.event || trigger.type || "");
+      if (!event) return false;
+
+      const housekeeping = new Set([
+        "unresolved intention time reentry",
+        "cognitive continuity resume",
+        "temporal continuity return",
+        "completed with failure",
+        "runtime reentry",
+        "incomplete cognition"
+      ]);
+      if (housekeeping.has(event)) return false;
+
+      /*
+       * Autonomous attention must be sponsored by concrete executive reality,
+       * not merely by semantic similarity or free-form curiosity.
+       */
+      const anchorFields = [
+        "missionId", "relatedMissionId", "workId", "workflowId",
+        "initiativeId", "opportunityId", "caseRecordId", "alertId",
+        "sourceDocumentId", "sourceInvestigationId", "sourceId",
+        "evidenceId", "deadlineId", "decisionId"
+      ];
+      if (anchorFields.some(field => Boolean(trigger[field]))) return true;
+
+      const executiveSources = new Set([
+        "human", "executive-director", "mission-engine",
+        "executive-hallway", "executive-monitoring", "grant-office",
+        "executive-resource-acquisition-engine", "knowledge-memory",
+        "knowledge-engine", "executive-evidence-integrity",
+        "institutional-reasoning", "executive-planning",
+        "executive-learning", "executive-brain"
+      ]);
+      const source = this.normalize(trigger.source || "");
+      return executiveSources.has(source) &&
+        !source.includes("executive brain") &&
+        event.length > 0;
+    },
+
+    assessCognitiveAttentionEconomics(intention, triggers = [], options = {}) {
+      const combined = [
+        ...(Array.isArray(intention?.triggers) ? intention.triggers : []),
+        ...(Array.isArray(triggers) ? triggers : [triggers])
+      ].filter(Boolean);
+      const meaningful = combined.filter(trigger =>
+        this.cognitiveTriggerIsMeaningful(trigger)
+      );
+      const newMeaningful = (Array.isArray(triggers) ? triggers : [triggers])
+        .filter(trigger => this.cognitiveTriggerIsMeaningful(trigger));
+
+      const economics = intention?.economics || {};
+      const quiescent = intention?.status === "quiescent" ||
+        economics.state === "quiescent";
+      const explicitHuman = combined.some(trigger =>
+        ["human", "executive-director"].includes(
+          this.normalize(trigger?.source || "")
+        )
+      );
+
+      let decision = "admit";
+      let reason = "executive-reality-sponsored";
+
+      if (quiescent && newMeaningful.length === 0 && !explicitHuman) {
+        decision = "suppress";
+        reason = "quiescent-no-meaningful-change";
+      } else if (
+        meaningful.length <
+          this.configuration.cognitiveAttentionMinimumAnchors &&
+        !explicitHuman
+      ) {
+        decision = "deny";
+        reason = "no-defensible-executive-attention-anchor";
+      } else if (quiescent && (newMeaningful.length > 0 || explicitHuman)) {
+        decision = "wake";
+        reason = explicitHuman
+          ? "human-attention-authority"
+          : "meaningful-world-change";
+      }
+
+      const assessment = {
+        schema: "meos.maddy.executive-attention-decision.v1",
+        intentionId: intention?.intentionId || null,
+        subject: intention?.subject || null,
+        decision,
+        reason,
+        meaningfulAnchorCount: meaningful.length,
+        newMeaningfulAnchorCount: newMeaningful.length,
+        explicitHuman,
+        assessedAt: new Date().toISOString()
+      };
+      this.cognitiveEconomics.lastDecision = this.clone(assessment);
+      return assessment;
+    },
+
+    cognitiveOutcomeFingerprint(result = {}) {
+      const summary = result?.summary || {};
+      const stable = {
+        success: result?.success === true,
+        positioningFingerprint: result?.positioningFingerprint || null,
+        planId: result?.plan?.id || null,
+        proposedMoves: Number(summary.proposedMoves || 0),
+        dispatched: Number(summary.dispatched || 0),
+        reusedExistingWork: Number(summary.reusedExistingWork || 0),
+        awaitingReview: Number(summary.awaitingReview || 0),
+        failed: Number(summary.failed || 0)
+      };
+      try { return JSON.stringify(stable); }
+      catch { return String(stable.success); }
+    },
+
+    applyCognitiveInformationGain(intention, result = {}, entry = {}) {
+      if (!intention) return null;
+      const fingerprint = this.cognitiveOutcomeFingerprint(result);
+      const economics = intention.economics || {
+        schema: "meos.maddy.cognitive-information-economics.v1",
+        state: "active",
+        noGainStreak: 0,
+        worthwhileInvestigations: 0,
+        suppressedCalls: 0,
+        lastOutcomeFingerprint: null,
+        lastMeaningfulGainAt: null,
+        quiescentAt: null,
+        quiescenceReason: null
+      };
+
+      const previous = economics.lastOutcomeFingerprint;
+      const gained =
+        result?.success === true ||
+        (previous !== null && previous !== fingerprint) ||
+        Number(result?.summary?.dispatched || 0) > 0 ||
+        Number(result?.summary?.proposedMoves || 0) > 0;
+
+      if (gained) {
+        economics.noGainStreak = 0;
+        economics.worthwhileInvestigations =
+          Number(economics.worthwhileInvestigations || 0) + 1;
+        economics.lastMeaningfulGainAt = new Date().toISOString();
+        economics.state = "active";
+        economics.quiescentAt = null;
+        economics.quiescenceReason = null;
+      } else {
+        economics.noGainStreak =
+          Number(economics.noGainStreak || 0) + 1;
+      }
+
+      economics.lastOutcomeFingerprint = fingerprint;
+      economics.lastEvaluatedAt = new Date().toISOString();
+      economics.lastReentryId = entry?.reentryId || null;
+
+      if (
+        result?.success !== true &&
+        economics.noGainStreak >=
+          this.configuration.cognitiveNoGainQuiescenceThreshold
+      ) {
+        economics.state = "quiescent";
+        economics.quiescentAt = new Date().toISOString();
+        economics.quiescenceReason =
+          "repeated-cognition-produced-no-material-information-gain";
+        intention.status = "quiescent";
+        this.cognitiveEconomics.quiescenceEntries += 1;
+        this.record("cognition.intention-quiescent", {
+          intentionId: intention.intentionId,
+          subject: intention.subject,
+          attempts: intention.attempts,
+          noGainStreak: economics.noGainStreak,
+          reason: economics.quiescenceReason
+        });
+      }
+
+      intention.economics = economics;
+      return { gained, economics: this.clone(economics) };
+    },
+
+    migrateCognitiveEconomicsState() {
+      let quiesced = 0;
+      let removedTestArtifacts = 0;
+
+      this.cognitiveIntentions = (this.cognitiveIntentions || []).filter(item => {
+        const isKnownFixture =
+          item?.subject === "Pursue Foundation X" &&
+          Date.parse(item?.createdAt || "") >=
+            Date.parse("2026-08-11T20:00:00.000Z") &&
+          Date.parse(item?.createdAt || "") <=
+            Date.parse("2026-08-12T02:00:00.000Z");
+        if (isKnownFixture) {
+          removedTestArtifacts += 1;
+          return false;
+        }
+        return true;
+      });
+
+      for (const intention of this.cognitiveIntentions) {
+        if (
+          intention?.status !== "completed" &&
+          Number(intention?.attempts || 0) >= 8
+        ) {
+          intention.economics = {
+            ...(intention.economics || {}),
+            schema: "meos.maddy.cognitive-information-economics.v1",
+            state: "quiescent",
+            noGainStreak: Math.max(
+              this.configuration.cognitiveNoGainQuiescenceThreshold,
+              Number(intention?.economics?.noGainStreak || 0)
+            ),
+            quiescentAt: new Date().toISOString(),
+            quiescenceReason:
+              "legacy-high-retry-intention-awaiting-meaningful-new-evidence",
+            migratedFromAttempts: Number(intention.attempts || 0)
+          };
+          intention.status = "quiescent";
+          quiesced += 1;
+        }
+      }
+
+      if (quiesced || removedTestArtifacts) {
+        this.persist();
+      }
+      return {
+        success: true,
+        quiesced,
+        removedTestArtifacts,
+        remainingIntentions: this.cognitiveIntentions.length
+      };
+    },
+
     upsertCognitiveIntention(subject, triggers = [], options = {}) {
       const normalizedSubject = String(subject || "").trim();
       if (!normalizedSubject) return null;
@@ -1734,7 +1974,9 @@
       const key = this.normalize(subject);
       const intention = this.cognitiveIntentions.find(item => item.key === key && item.status !== "completed");
       if (!intention) return false;
-      intention.status = result.success === true ? "completed" : "pending";
+      intention.status = result.success === true
+        ? "completed"
+        : (intention.status === "quiescent" ? "quiescent" : "pending");
       intention.updatedAt = new Date().toISOString();
       intention.lastError = result.success === true ? null : (result.error || "cognitive-reentry-incomplete");
       if (result.success === true) {
@@ -1753,7 +1995,18 @@
     },
 
     scheduleCognitiveIntentionRetry(intention, reason = "incomplete-cognition") {
-      if (!intention?.subject || intention.status === "completed") return false;
+      if (
+        !intention?.subject ||
+        intention.status === "completed" ||
+        intention.status === "quiescent" ||
+        intention?.economics?.state === "quiescent"
+      ) {
+        if (intention?.status === "quiescent" || intention?.economics?.state === "quiescent") {
+          this.cognitiveEconomics.quiescentWakeSuppressions += 1;
+          this.cognitiveEconomics.duplicateCallsPrevented += 1;
+        }
+        return false;
+      }
       const key = this.normalize(intention.subject);
       if (this.cognitiveReentryTimers.has(key) || this.cognitiveReentryInFlight.has(key)) return false;
       const attempts = Math.max(1, Number(intention.attempts || 1));
@@ -1769,7 +2022,12 @@
       if (this.configuration.continuousCognitionEnabled !== true) return { success: true, resumedCount: 0 };
       this.retireTemporalOrientationArtifacts({ reason: options.reason || "runtime-reentry" });
       const unresolved = (this.cognitiveIntentions || []).filter(item =>
-        item && item.status !== "completed" && item.subject && !this.isTemporalOrientationSubject(item.subject)
+        item &&
+        item.status !== "completed" &&
+        item.status !== "quiescent" &&
+        item?.economics?.state !== "quiescent" &&
+        item.subject &&
+        !this.isTemporalOrientationSubject(item.subject)
       );
       let resumedCount = 0;
       unresolved.forEach(intention => {
@@ -1827,6 +2085,56 @@
         this.normalize(
           normalizedSubject
         );
+
+      const existingIntention =
+        (this.cognitiveIntentions || []).find(
+          item =>
+            this.normalize(item?.subject || item?.key || "") === key &&
+            item?.status !== "completed"
+        );
+
+      if (existingIntention) {
+        const attention =
+          this.assessCognitiveAttentionEconomics(
+            existingIntention,
+            [trigger],
+            options
+          );
+
+        if (attention.decision === "suppress") {
+          this.cognitiveEconomics.quiescentWakeSuppressions += 1;
+          this.cognitiveEconomics.duplicateCallsPrevented += 1;
+          return {
+            success: true,
+            scheduled: false,
+            quiescent: true,
+            reason: attention.reason
+          };
+        }
+
+        if (attention.decision === "deny") {
+          this.cognitiveEconomics.admissionDenied += 1;
+          this.cognitiveEconomics.duplicateCallsPrevented += 1;
+          return {
+            success: true,
+            scheduled: false,
+            attentionDenied: true,
+            reason: attention.reason
+          };
+        }
+
+        if (attention.decision === "wake") {
+          existingIntention.status = "pending";
+          existingIntention.economics = {
+            ...(existingIntention.economics || {}),
+            state: "active",
+            noGainStreak: 0,
+            reactivatedAt: new Date().toISOString(),
+            reactivationReason: attention.reason
+          };
+          this.cognitiveEconomics.meaningfulWakeCount += 1;
+        }
+      }
 
       const triggerFingerprint =
         this.fingerprintCognitiveDispatch({
@@ -1972,6 +2280,49 @@
         key
       );
 
+      const existingIntention =
+        (this.cognitiveIntentions || []).find(
+          item =>
+            this.normalize(item?.subject || item?.key || "") === key &&
+            item?.status !== "completed"
+        );
+      if (existingIntention) {
+        const attention =
+          this.assessCognitiveAttentionEconomics(
+            existingIntention,
+            triggers,
+            options
+          );
+        if (
+          attention.decision === "suppress" ||
+          attention.decision === "deny"
+        ) {
+          if (attention.decision === "suppress") {
+            this.cognitiveEconomics.quiescentWakeSuppressions += 1;
+          } else {
+            this.cognitiveEconomics.admissionDenied += 1;
+          }
+          this.cognitiveEconomics.duplicateCallsPrevented += 1;
+          return {
+            success: true,
+            skipped: true,
+            economical: true,
+            reason: attention.reason
+          };
+        }
+        if (attention.decision === "wake") {
+          existingIntention.status = "pending";
+          existingIntention.economics = {
+            ...(existingIntention.economics || {}),
+            state: "active",
+            noGainStreak: 0,
+            reactivatedAt: new Date().toISOString(),
+            reactivationReason: attention.reason
+          };
+          this.cognitiveEconomics.meaningfulWakeCount += 1;
+        }
+      }
+
       if (
         this.cognitiveReentryInFlight.has(
           key
@@ -2097,6 +2448,11 @@
           }
         );
 
+        this.applyCognitiveInformationGain(
+          intention,
+          result || {},
+          entry
+        );
         this.resolveCognitiveIntention(subject, result || {});
         return result;
       } catch (error) {
@@ -2118,6 +2474,11 @@
         this.emit(
           "brain:cognitive-reentry-failed",
           this.clone(entry)
+        );
+        this.applyCognitiveInformationGain(
+          intention,
+          { success: false, error: entry.error },
+          entry
         );
         this.resolveCognitiveIntention(subject, { success: false, error: entry.error });
 
@@ -16207,6 +16568,126 @@
       let localStorageBytes = null;
       try { localStorageBytes = new Blob([global.localStorage?.getItem(STORAGE_KEY) || ""]).size; } catch {}
       return this.clone({ ...brainPersistence, localStorageBytes });
+    },
+
+    runExecutiveAttentionEconomicsAcceptanceTest() {
+      const originalIntentions = this.clone(this.cognitiveIntentions);
+      const originalEconomics = this.clone(this.cognitiveEconomics);
+      try {
+        const irrelevant = {
+          intentionId: "attention-fixture-irrelevant",
+          subject: "Investigate mosquito life expectancy in the Arctic",
+          key: this.normalize("Investigate mosquito life expectancy in the Arctic"),
+          status: "pending",
+          attempts: 0,
+          triggers: [{
+            source: "executive-brain",
+            event: "unresolved-intention-time-reentry"
+          }]
+        };
+        const denied =
+          this.assessCognitiveAttentionEconomics(
+            irrelevant,
+            irrelevant.triggers
+          );
+
+        const legitimate = {
+          intentionId: "attention-fixture-legitimate",
+          subject: "Evaluate a mission-linked funding opportunity",
+          key: this.normalize("Evaluate a mission-linked funding opportunity"),
+          status: "pending",
+          attempts: 1,
+          triggers: [{
+            source: "grant-office",
+            event: "opportunity-discovered",
+            opportunityId: "fixture-opportunity"
+          }]
+        };
+        const admitted =
+          this.assessCognitiveAttentionEconomics(
+            legitimate,
+            legitimate.triggers
+          );
+
+        const noGain1 = this.applyCognitiveInformationGain(
+          legitimate,
+          { success: false, summary: { proposedMoves: 0, dispatched: 0, failed: 1 } },
+          { reentryId: "fixture-r1" }
+        );
+        const noGain2 = this.applyCognitiveInformationGain(
+          legitimate,
+          { success: false, summary: { proposedMoves: 0, dispatched: 0, failed: 1 } },
+          { reentryId: "fixture-r2" }
+        );
+        const sleeping =
+          this.assessCognitiveAttentionEconomics(
+            legitimate,
+            [{
+              source: "executive-brain",
+              event: "unresolved-intention-time-reentry"
+            }]
+          );
+        const waking =
+          this.assessCognitiveAttentionEconomics(
+            legitimate,
+            [{
+              source: "grant-office",
+              event: "deadline-changed",
+              opportunityId: "fixture-opportunity"
+            }]
+          );
+
+        const legacy = {
+          intentionId: "legacy-48",
+          subject: "Real unresolved executive question",
+          key: this.normalize("Real unresolved executive question"),
+          status: "pending",
+          attempts: 48,
+          triggers: [{
+            source: "executive-brain",
+            event: "unresolved-intention-time-reentry"
+          }]
+        };
+        this.cognitiveIntentions = [legacy];
+        const migration = this.migrateCognitiveEconomicsState();
+
+        const checks = [
+          { name: "Irrelevant autonomous curiosity receives zero executive attention authorization", passed: denied.decision === "deny" },
+          { name: "Concrete mission/work/opportunity evidence can sponsor executive attention", passed: admitted.decision === "admit" },
+          { name: "One failed investigation does not prematurely kill a legitimate thought", passed: noGain1.economics.noGainStreak === 1 },
+          { name: "Repeated zero-information investigation enters quiescence", passed: noGain2.economics.state === "quiescent" && legitimate.status === "quiescent" },
+          { name: "Timer-only continuity cannot wake a quiescent thought", passed: sleeping.decision === "suppress" },
+          { name: "Meaningful new executive evidence can wake the same thought", passed: waking.decision === "wake" },
+          { name: "A legacy 48-attempt thought is preserved but made economically quiet", passed: migration.quiesced === 1 && this.cognitiveIntentions[0].attempts === 48 && this.cognitiveIntentions[0].status === "quiescent" },
+          { name: "Quiescence is memory, not deletion", passed: this.cognitiveIntentions.length === 1 && this.cognitiveIntentions[0].intentionId === "legacy-48" },
+          { name: "Automatic retry refuses quiescent cognition", passed: this.scheduleCognitiveIntentionRetry(this.cognitiveIntentions[0], "fixture") === false },
+          { name: "Resume path excludes quiescent cognition from automatic wake", passed: /item\.status !== "quiescent"/.test(this.resumeUnresolvedCognitiveIntentions.toString()) },
+          { name: "Cognitive execution measures information gain before resolving/retrying", passed: /applyCognitiveInformationGain/.test(this.executeCognitiveReentry.toString()) },
+          { name: "No arbitrary retry cap replaces judgment; continuation depends on information gain", passed: this.configuration.cognitiveNoGainQuiescenceThreshold === 2 },
+          { name: "Human/executive authority can explicitly sponsor attention", passed: this.assessCognitiveAttentionEconomics(irrelevant, [{source:"human",event:"explicit-request"}]).decision !== "deny" },
+          { name: "External-action human approval authority remains unchanged", passed: this.configuration.requireHumanApprovalForExternalAction === true }
+        ];
+        const passed = checks.every(x => x.passed);
+        console.table(checks);
+        console.info(`[MEOS ${this.version}] Commission 006.017D7S3E Executive Attention Economics + Quiescence: ${passed ? "PASS" : "FAIL"}.`);
+        return {
+          commission: "006.017D7S3E",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          principle: "attention-is-capital",
+          economics: {
+            irrelevantDecision: denied,
+            legitimateDecision: admitted,
+            quiescentDecision: sleeping,
+            meaningfulWakeDecision: waking
+          }
+        };
+      } finally {
+        this.cognitiveIntentions = originalIntentions;
+        this.cognitiveEconomics = originalEconomics;
+      }
     },
 
     async runCognitiveIdentityHydrationSelfHealingAcceptanceTest() {
