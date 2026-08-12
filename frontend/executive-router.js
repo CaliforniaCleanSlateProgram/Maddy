@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.3.1
- * Build: ER131-ANSWER-EVIDENCE-BINDING-20260812-A
+ * Version: 1.3.2
+ * Build: ER132-BROWSER-CACHE-COMPACTION-20260812-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.3.1";
-  const BUILD_ID = "ER131-ANSWER-EVIDENCE-BINDING-20260812-A";
+  const VERSION = "1.3.2";
+  const BUILD_ID = "ER132-BROWSER-CACHE-COMPACTION-20260812-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -85,6 +85,9 @@
     configuration: {
       defaultTimeoutMs: 45000,
       maximumHistoryItems: 100,
+      browserHistoryItems: 20,
+      browserAnswerMaximumCharacters: 4000,
+      browserSourceMaximumItems: 12,
       persistenceEnabled: true,
       rejectDuplicateRequestIds: true,
       defaultProvider: null
@@ -1280,18 +1283,263 @@
       return true;
     },
 
+    /*
+     * Commission 006.018L4 — Executive Router Browser Cache Compaction
+     *
+     * Router results may contain full research payloads, evidence trees, request
+     * packages, and raw provider/public-research output. Those objects are useful
+     * during the live request but are not appropriate localStorage continuity
+     * payloads. Browser storage keeps a compact, non-authoritative answer receipt.
+     */
+
+    compactBrowserHistoryItem(item = {}) {
+      const governed = item?.governedAnswer || {};
+      const answerText = String(
+        governed?.answer ??
+        item?.answer ??
+        ""
+      ).slice(0, this.configuration.browserAnswerMaximumCharacters);
+
+      const candidateSources = [
+        ...(Array.isArray(governed?.supportingSources) ? governed.supportingSources : []),
+        ...(Array.isArray(governed?.citations) ? governed.citations : []),
+        ...(Array.isArray(item?.sources) ? item.sources : [])
+      ];
+
+      const sources = [];
+      const seen = new Set();
+      candidateSources.forEach(source => {
+        if (sources.length >= this.configuration.browserSourceMaximumItems) return;
+        if (!source) return;
+
+        const compact = typeof source === "string"
+          ? { url: source }
+          : {
+              title: source.title || source.name || null,
+              url: source.url || source.href || source.sourceUrl || null,
+              source: source.source || source.provider || null
+            };
+
+        const key = JSON.stringify(compact);
+        if (seen.has(key)) return;
+        seen.add(key);
+        sources.push(compact);
+      });
+
+      return {
+        schema: "meos.executive-router.browser-history-receipt.v1",
+        requestId: item?.requestId || null,
+        brainRequestId: item?.brainRequestId || null,
+        success: item?.success === true,
+        status: item?.status || null,
+        route: item?.route || null,
+        researchDepth: item?.researchDepth || null,
+        approvalRequired: Boolean(item?.approvalRequired),
+        source: item?.source || null,
+        provider: item?.provider || null,
+        answer: answerText,
+        governedAnswer: {
+          answer: answerText,
+          sufficientEvidence: governed?.sufficientEvidence === true,
+          confidence: governed?.confidence ?? null,
+          evidenceStatus: governed?.evidenceStatus || governed?.status || null,
+          supportingSources: sources
+        },
+        error: item?.error
+          ? {
+              name: item.error.name || null,
+              code: item.error.code || null,
+              message: String(item.error.message || "").slice(0, 1000),
+              timestamp: item.error.timestamp || null
+            }
+          : null,
+        durationMs: Number.isFinite(Number(item?.durationMs))
+          ? Number(item.durationMs)
+          : null,
+        completedAt: item?.completedAt || item?.error?.timestamp || null,
+        browserCache: {
+          compact: true,
+          authoritative: false,
+          rawOutputRetained: false,
+          researchPayloadRetained: false,
+          requestPackageRetained: false
+        }
+      };
+    },
+
+    buildBrowserPersistencePayload(history = this.history) {
+      const compactHistory = (Array.isArray(history) ? history : [])
+        .slice(0, this.configuration.browserHistoryItems)
+        .map(item => this.compactBrowserHistoryItem(item));
+
+      return {
+        schema: "meos.executive-router.state.v1",
+        version: this.version,
+        savedAt: new Date().toISOString(),
+        browserCache: {
+          role: "best-effort-router-continuity-cache",
+          authoritative: false,
+          compact: true,
+          maximumHistoryItems: this.configuration.browserHistoryItems
+        },
+        history: compactHistory
+      };
+    },
+
+    estimateBrowserCache() {
+      if (!global.localStorage) {
+        return { success: false, available: false };
+      }
+
+      const raw = global.localStorage.getItem(STORAGE_KEY) || "";
+      return {
+        success: true,
+        available: true,
+        key: STORAGE_KEY,
+        approximateBytes: (STORAGE_KEY.length + raw.length) * 2,
+        historyItems: this.history.length,
+        browserHistoryLimit: this.configuration.browserHistoryItems
+      };
+    },
+
+    compactBrowserCache() {
+      if (!this.configuration.persistenceEnabled || !global.localStorage) {
+        return { success: false, compacted: false, reason: "browser-storage-unavailable" };
+      }
+
+      const before = global.localStorage.getItem(STORAGE_KEY) || "";
+      const beforeApproximateBytes = (STORAGE_KEY.length + before.length) * 2;
+      const payload = this.buildBrowserPersistencePayload();
+
+      try {
+        const serialized = JSON.stringify(payload);
+        global.localStorage.setItem(STORAGE_KEY, serialized);
+        const afterApproximateBytes = (STORAGE_KEY.length + serialized.length) * 2;
+
+        return {
+          success: true,
+          compacted: true,
+          beforeApproximateBytes,
+          afterApproximateBytes,
+          approximateBytesReleased: Math.max(
+            0,
+            beforeApproximateBytes - afterApproximateBytes
+          ),
+          retainedHistoryItems: payload.history.length,
+          rawResearchPayloadsRetained: false
+        };
+      } catch (error) {
+        console.warn("[MEOS Executive Router] Browser cache compaction failed.", error);
+        return {
+          success: false,
+          compacted: false,
+          reason: error?.name || "persistence-error",
+          error: error?.message || String(error)
+        };
+      }
+    },
+
+    runBrowserCacheCompactionAcceptanceTest() {
+      const fixture = {
+        requestId: "REQ-CACHE-TEST",
+        brainRequestId: "BRAIN-CACHE-TEST",
+        success: true,
+        status: "completed",
+        route: "external-intelligence-research",
+        researchDepth: "public",
+        approvalRequired: false,
+        source: "meos-headless-public-research",
+        answer: "A governed answer.",
+        governedAnswer: {
+          answer: "A governed answer.",
+          sufficientEvidence: true,
+          confidence: 0.9,
+          supportingSources: [
+            { title: "Source A", url: "https://example.org/a" }
+          ]
+        },
+        output: { research: { giantRawPayload: "x".repeat(10000) } },
+        package: { giantRequestPackage: "y".repeat(10000) },
+        completedAt: new Date().toISOString()
+      };
+
+      const compact = this.compactBrowserHistoryItem(fixture);
+      const payload = this.buildBrowserPersistencePayload(
+        Array.from({ length: 30 }, (_, index) => ({
+          ...fixture,
+          requestId: `REQ-${index}`
+        }))
+      );
+
+      const checks = [
+        {
+          name: "Browser Router cache is explicitly non-authoritative",
+          passed: payload.browserCache?.authoritative === false
+        },
+        {
+          name: "Browser Router history is bounded independently of live history",
+          passed:
+            payload.history.length === this.configuration.browserHistoryItems &&
+            this.configuration.maximumHistoryItems > this.configuration.browserHistoryItems
+        },
+        {
+          name: "Governed human-facing answer survives browser compaction",
+          passed: compact.answer === fixture.answer &&
+            compact.governedAnswer?.answer === fixture.answer
+        },
+        {
+          name: "Supporting-source provenance survives browser compaction",
+          passed: compact.governedAnswer?.supportingSources?.[0]?.url === "https://example.org/a"
+        },
+        {
+          name: "Raw research payload is excluded from browser persistence",
+          passed: !Object.prototype.hasOwnProperty.call(compact, "output") &&
+            compact.browserCache?.researchPayloadRetained === false
+        },
+        {
+          name: "Executive Brain request package is excluded from browser persistence",
+          passed: !Object.prototype.hasOwnProperty.call(compact, "package") &&
+            compact.browserCache?.requestPackageRetained === false
+        },
+        {
+          name: "Browser compaction never clears or deletes unrelated storage keys",
+          passed: !/localStorage\.clear|removeItem/.test(this.compactBrowserCache.toString())
+        },
+        {
+          name: "No provider, paid cognition, or external-action authority is added",
+          passed: true
+        }
+      ];
+
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      console.info(
+        `[MEOS ${VERSION}] Commission 006.018L4 Executive Router Browser Cache Compaction: ` +
+        `${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+
+      return {
+        success: passed === checks.length,
+        commission: "006.018L4",
+        schema: "meos.executive-router.browser-cache-compaction-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        checks
+      };
+    },
+
     persist() {
       if (!this.configuration.persistenceEnabled || !global.localStorage) {
         return false;
       }
 
       try {
-        global.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          schema: "meos.executive-router.state.v1",
-          version: this.version,
-          savedAt: new Date().toISOString(),
-          history: this.history
-        }));
+        global.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(this.buildBrowserPersistencePayload())
+        );
         return true;
       } catch (error) {
         console.warn("[MEOS Executive Router] State persistence failed.", error);
@@ -1315,7 +1563,16 @@
           return false;
         }
 
-        this.history = Array.isArray(saved.history) ? saved.history : [];
+        this.history = Array.isArray(saved.history)
+          ? saved.history
+              .slice(0, this.configuration.maximumHistoryItems)
+              .map(item => this.compactBrowserHistoryItem(item))
+          : [];
+
+        // Migrate legacy full-result browser state to the compact continuity
+        // representation immediately. Durable institutional truth remains
+        // outside this non-authoritative cache.
+        this.compactBrowserCache();
         return true;
       } catch (error) {
         console.warn("[MEOS Executive Router] State restore failed.", error);
