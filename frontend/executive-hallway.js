@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.4.0";
-  const BUILD_ID = "EH140-COGNITIVE-METABOLISM-LIFECYCLE-20260810-A";
+  const VERSION = "1.4.1";
+  const BUILD_ID = "EH141-SEMANTIC-RESULT-INTEGRITY-20260811-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1009,13 +1009,47 @@
      * bestMatch.file is authoritative. Returning every candidate makes the
      * dashboard's latest-deliverable action open an unrelated search candidate.
      */
-    const fileObjects = isFileRetrieval && explicit.length
-      ? [explicit[0]]
+    // Commission 006.018C — Semantic Result Integrity
+    // File-shaped evidence is only eligible to become a deliverable when the
+    // mission itself is a file-retrieval mission. Research/executive results
+    // may legitimately contain Drive files as evidence; promoting those files
+    // to the primary deliverable silently replaces the requested answer.
+    const fileObjects = !isFileRetrieval
+      ? []
       : explicit.length
-        ? explicit
-        : generic;
+        ? [explicit[0]]
+        : generic.length
+          ? [generic[0]]
+          : [];
 
     return { fileObjects, isFileRetrieval };
+  }
+
+  function semanticResultValue(value, seen = new Set()) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "string") {
+      const text = value.trim();
+      return text && !/^https?:\/\//i.test(text) ? text : null;
+    }
+    if (typeof value !== "object" || seen.has(value)) return null;
+    seen.add(value);
+
+    const priorityKeys = [
+      "answer", "finding", "conclusion", "learnedFact",
+      "recommendation", "summary", "message"
+    ];
+    for (const key of priorityKeys) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      const candidate = semanticResultValue(value[key], seen);
+      if (candidate) return candidate;
+    }
+
+    const children = Array.isArray(value) ? value : Object.values(value);
+    for (const child of children) {
+      const candidate = semanticResultValue(child, seen);
+      if (candidate) return candidate;
+    }
+    return null;
   }
 
   function normalizeExecutionDeliverables(work, execution) {
@@ -1043,7 +1077,27 @@
       });
     });
 
-    if (!fileObjects.length) {
+    const retrieval = workspaceRetrievalMessage(root);
+
+    if (!isFileRetrieval && execution?.success !== false) {
+      const answer = semanticResultValue(root);
+      addDeliverable(work, {
+        title: work.title,
+        kind: "executive-result",
+        summary: answer || "MEOS returned structured executive work. Open Result Details to inspect the complete result.",
+        provider: execution?.providerId || execution?.provider || null,
+        source: work.owner || "MEOS",
+        data: {
+          answer: answer || null,
+          result: clone(root),
+          evidenceUrls: harvestUrls(root).slice(0, 10)
+        }
+      });
+    }
+
+    if (isFileRetrieval && !fileObjects.length) {
+      // Preserve URL-only fallback for genuine file retrievals without allowing
+      // arbitrary evidence URLs to become research deliverables.
       const urls = harvestUrls(root);
       urls.slice(0, 5).forEach((link, index) => addDeliverable(work, {
         title: index === 0 ? work.title : `${work.title} ${index + 1}`,
@@ -1052,18 +1106,6 @@
         provider: execution?.providerId || execution?.provider || null,
         data: { path: link.path }
       }));
-    }
-
-    const retrieval = workspaceRetrievalMessage(root);
-
-    if (!work.deliverables.length && execution?.success === true && !isFileRetrieval) {
-      addDeliverable(work, {
-        title: work.title,
-        kind: "result",
-        summary: "Verified MEOS work result",
-        provider: execution?.providerId || execution?.provider || null,
-        data: root
-      });
     }
 
     return {
@@ -2363,6 +2405,20 @@
         primarySelection.fileObjects[0]?.name === "02_Articles_of_Incorporation_30.00.pdf" &&
         !primarySelection.fileObjects.some(item => /grant vault/i.test(item.name || "")),
       primarySelection.fileObjects
+    );
+    const researchSelection = selectExecutionFileObjects(
+      { intent: "research", requiredCapabilities: ["research.public-web"] },
+      explicitFixtureFiles,
+      genericFixtureFiles
+    );
+    check(
+      "Research work cannot promote Workspace files into deliverables",
+      researchSelection.isFileRetrieval === false && researchSelection.fileObjects.length === 0,
+      researchSelection
+    );
+    check(
+      "Semantic research answer survives nested execution envelopes",
+      semanticResultValue({ execution: { result: { answer: "Wombat answer fixture" } } }) === "Wombat answer fixture"
     );
 
     const passed = assertions.filter(item => item.passed).length;
