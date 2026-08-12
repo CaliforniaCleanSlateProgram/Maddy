@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.10.3";
+  const DASHBOARD_VERSION = "4.10.4";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5073,7 +5073,10 @@ document
     const workIds = new Set(conversationWork.map((item) => String(item?.id || "")).filter(Boolean));
     const subjects = conversationWork.map((item) => normalizeAttentionSubject(item?.title || item?.instruction)).filter(Boolean);
     const matchesConversation = (record = {}) => {
-      if (workIds.has(String(record?.id || record?.workId || ""))) return true;
+      if (
+        workIds.has(String(record?.id || "")) ||
+        workIds.has(String(record?.workId || ""))
+      ) return true;
       if (isConversationalHallwayWork(record)) return true;
       const subject = normalizeAttentionSubject(record?.title || record?.message || record?.instruction || "");
       if (!subject) return false;
@@ -7521,8 +7524,8 @@ document
     ];
     console.table(checks.map(([name, passed]) => ({ name, passed })));
     const success = checks.every(([, passed]) => passed);
-    console.log(`[MEOS 4.10.3] Commission 006.018I Executive Attention Projection Gate: ${success ? "PASS" : "FAIL"} (${checks.filter(([,p])=>p).length}/${checks.length}).`);
-    return { success, commission: "006.018I", schema: "meos.dashboard.executive-attention-projection-acceptance.v1", version: "4.10.3", buildId: "OD413-EXECUTIVE-ATTENTION-PROJECTION-GATE-20260812-A", checks: checks.map(([name, passed]) => ({ name, passed })) };
+    console.log(`[MEOS 4.10.4] Commission 006.018I1 Executive Journal Projection Repair: ${success ? "PASS" : "FAIL"} (${checks.filter(([,p])=>p).length}/${checks.length}).`);
+    return { success, commission: "006.018I1", schema: "meos.dashboard.executive-attention-projection-acceptance.v1", version: "4.10.4", buildId: "OD414-EXECUTIVE-JOURNAL-WORKID-PROJECTION-REPAIR-20260812-A", checks: checks.map(([name, passed]) => ({ name, passed })) };
   }
 
   function runOneQuestionOneAnswerAcceptanceTest() {
@@ -7549,7 +7552,7 @@ document
       { name: "No external-action authority is added by HUD simplification", passed: true }
     ];
     const passed = checks.filter((check) => check.passed).length;
-    const result = { success: passed === checks.length, commission: "006.018H", schema: "meos.dashboard.one-question-one-answer-acceptance.v1", version: DASHBOARD_VERSION, buildId: "OD413-EXECUTIVE-ATTENTION-PROJECTION-GATE-20260812-A", passed, total: checks.length, checks };
+    const result = { success: passed === checks.length, commission: "006.018H", schema: "meos.dashboard.one-question-one-answer-acceptance.v1", version: DASHBOARD_VERSION, buildId: "OD414-EXECUTIVE-JOURNAL-WORKID-PROJECTION-REPAIR-20260812-A", passed, total: checks.length, checks };
     console.table(checks);
     console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.018H One Question One Answer Hierarchy: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
     return result;
@@ -7576,7 +7579,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018I Executive Attention Projection Gate online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018I1 Executive Journal Projection Repair online.`
     );
   }
 
