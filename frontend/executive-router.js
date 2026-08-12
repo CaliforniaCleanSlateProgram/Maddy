@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.2.0
- * Build: ER120-SEMANTIC-RELEVANCE-PUBLIC-RESEARCH-CONTINUATION-20260812-A
+ * Version: 1.2.1
+ * Build: ER121-SEMANTIC-RELEVANCE-NORMALIZATION-20260812-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.2.0";
-  const BUILD_ID = "ER120-SEMANTIC-RELEVANCE-PUBLIC-RESEARCH-CONTINUATION-20260812-A";
+  const VERSION = "1.2.1";
+  const BUILD_ID = "ER121-SEMANTIC-RELEVANCE-NORMALIZATION-20260812-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -498,11 +498,21 @@
         "there","these","they","this","to","us","was","we","were","what","when","where","which",
         "who","why","will","with","would","you","your"
       ]);
-      return [...new Set(String(value || "").toLowerCase()
+      const rawTerms = String(value || "").toLowerCase()
         .replace(/[^a-z0-9\s-]/g, " ")
         .split(/\s+/)
+        .flatMap(term => term.split("-"))
         .map(term => term.replace(/^-+|-+$/g, ""))
-        .filter(term => term.length >= 3 && !stop.has(term)))];
+        .filter(term => term.length >= 3 && !stop.has(term));
+
+      const normalizeMorphology = term => {
+        if (term.length > 4 && term.endsWith("ies")) return `${term.slice(0, -3)}y`;
+        if (term.length > 4 && term.endsWith("sses")) return term.slice(0, -2);
+        if (term.length > 4 && term.endsWith("s") && !term.endsWith("ss")) return term.slice(0, -1);
+        return term;
+      };
+
+      return [...new Set(rawTerms.map(normalizeMorphology).filter(Boolean))];
     },
 
     evidenceSemanticRelevance(question, evidence = []) {
