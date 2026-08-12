@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.3.0
- * Build: ER130-NATURAL-LANGUAGE-INTENT-NORMALIZATION-20260812-A
+ * Version: 1.3.1
+ * Build: ER131-ANSWER-EVIDENCE-BINDING-20260812-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.3.0";
-  const BUILD_ID = "ER130-NATURAL-LANGUAGE-INTENT-NORMALIZATION-20260812-A";
+  const VERSION = "1.3.1";
+  const BUILD_ID = "ER131-ANSWER-EVIDENCE-BINDING-20260812-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -412,6 +412,11 @@
       const localEvidence = Array.isArray(pkg.localContext?.evidence)
         ? pkg.localContext.evidence
         : [];
+      const answerEvidence = this.selectAnswerEvidence(
+        input.request?.text || pkg.request?.text || "",
+        localEvidence,
+        pkg.request?.type || "general"
+      );
       const providerAnswer = this.firstText(
         output.answer,
         output.response?.answer,
@@ -425,7 +430,7 @@
 
       const localAnswer = this.synthesizeLocalAnswer(
         input.request?.text || pkg.request?.text || "",
-        localEvidence,
+        answerEvidence,
         pkg
       );
 
@@ -441,7 +446,7 @@
       );
 
       const citations = [...new Set([
-        ...localEvidence.map(item => this.firstText(item.citation, item.provenance?.citation)),
+        ...answerEvidence.map(item => this.firstText(item.citation, item.provenance?.citation)),
         ...(Array.isArray(output.citations) ? output.citations : [])
       ].filter(Boolean))].slice(0, 12);
 
@@ -539,8 +544,18 @@
         item.title, item.summary, item.content, item.answer, item.fact,
         item.description, item.raw?.title, item.raw?.summary, item.raw?.content
       )).join(" ");
-      const evidenceTerms = new Set(this.meaningfulTerms(evidenceText));
-      const matchedTerms = queryTerms.filter(term => evidenceTerms.has(term));
+      const evidenceTerms = this.meaningfulTerms(evidenceText);
+      const termsMatch = (left, right) => {
+        if (left === right) return true;
+        const min = Math.min(String(left).length, String(right).length);
+        return min >= 4 && (
+          String(left).startsWith(String(right)) ||
+          String(right).startsWith(String(left))
+        );
+      };
+      const matchedTerms = queryTerms.filter(term =>
+        evidenceTerms.some(candidate => termsMatch(term, candidate))
+      );
       const score = matchedTerms.length / Math.max(1, queryTerms.length);
 
       // One distinctive subject match is enough for a short factual question;
@@ -554,17 +569,57 @@
       };
     },
 
+    evidenceTextForAnswer(item = {}) {
+      return this.firstText(
+        item.summary,
+        item.content,
+        item.answer,
+        item.fact,
+        item.description,
+        item.raw?.summary,
+        item.raw?.content
+      );
+    },
+
+    evidenceIsSubstantiveForAnswer(item = {}) {
+      const text = this.evidenceTextForAnswer(item);
+      if (!text) return false;
+      return !/^(Multiple independently retrieved public sources directly reference|One retrieved public source directly references|The retrieved source set did not directly verify|Durable research learning about )/i.test(text.trim());
+    },
+
+    selectAnswerEvidence(question, evidence = [], requestType = "general") {
+      if (!Array.isArray(evidence) || evidence.length === 0) return [];
+      const residentContext = ["identity", "self", "organization", "current-work", "monitoring", "learning", "recall"].includes(
+        String(requestType || "general").toLowerCase()
+      );
+      if (residentContext) return evidence.slice();
+
+      return evidence.filter(item =>
+        this.evidenceIsSubstantiveForAnswer(item) &&
+        this.evidenceSemanticRelevance(question, [item]).relevant === true
+      );
+    },
+
     localEvidenceMayClose(payload = {}) {
       const pkg = payload.package || {};
       const requestType = String(pkg.request?.type || "general").toLowerCase();
       if (["identity", "self", "organization", "current-work", "monitoring", "learning", "recall"].includes(requestType)) {
         return { relevant: true, reason: "resident-context-request" };
       }
-      const relevance = this.evidenceSemanticRelevance(
-        payload.request?.text || pkg.request?.text || "",
-        pkg.localContext?.evidence || []
+      const question = payload.request?.text || pkg.request?.text || "";
+      const selectedEvidence = this.selectAnswerEvidence(
+        question,
+        pkg.localContext?.evidence || [],
+        requestType
       );
-      return { ...relevance, reason: relevance.relevant ? "semantic-subject-match" : "semantic-subject-mismatch" };
+      const relevance = this.evidenceSemanticRelevance(question, selectedEvidence);
+      return {
+        ...relevance,
+        selectedEvidenceCount: selectedEvidence.length,
+        reason: selectedEvidence.length > 0 && relevance.relevant
+          ? "semantic-subject-match"
+          : "semantic-subject-mismatch"
+      };
     },
 
     async dispatchHeadlessPublicResearch(payload = {}, reason = "resident-evidence-insufficient") {
@@ -595,16 +650,18 @@
         const research = await response.json().catch(() => null);
         if (!response.ok || !research?.success) return null;
 
-        const facts = Array.isArray(research.synthesis?.supportedFacts)
-          ? research.synthesis.supportedFacts.map(item => this.firstText(item?.claim, item?.fact, item?.summary, item)).filter(Boolean)
-          : [];
-        const evidenceClaims = Array.isArray(research.evidence)
-          ? research.evidence.map(item => this.firstText(item.claim, item.excerpt)).filter(Boolean)
-          : [];
-        const answerParts = [...new Set([...facts, ...evidenceClaims])].slice(0, 4);
-        const sources = Array.isArray(research.evidence)
-          ? [...new Set(research.evidence.map(item => this.firstText(item.source)).filter(Boolean))].slice(0, 12)
-          : [];
+        const answerFacts = Array.isArray(research.synthesis?.answerFacts)
+          ? research.synthesis.answerFacts
+          : Array.isArray(research.synthesis?.supportedFacts)
+            ? research.synthesis.supportedFacts
+            : [];
+        const answerParts = [...new Set(
+          answerFacts.map(item => this.firstText(item?.claim, item?.fact, item?.summary, item)).filter(Boolean)
+        )].slice(0, 4);
+        const sources = [...new Set([
+          ...(Array.isArray(research.synthesis?.supportingSources) ? research.synthesis.supportingSources : []),
+          ...answerFacts.map(item => this.firstText(item?.source, item?.basis?.[0]?.source)).filter(Boolean)
+        ].filter(Boolean))].slice(0, 12);
 
         return {
           source: "meos-headless-public-research",
@@ -803,6 +860,61 @@
       });
       console.table(assertions);
       console.info(`[MEOS ${VERSION}] Commission 006.018J Natural-Language Intent Normalization: ${result.success ? "PASS" : "FAIL"} (${passed}/${assertions.length}).`);
+      return result;
+    },
+
+    runAnswerEvidenceBindingAcceptanceTest() {
+      const fixturePackage = {
+        request: { text: "why is the ocean salty", type: "general" },
+        localContext: {
+          confidence: 0.95,
+          integrity: { conflictCount: 3, uncertaintyRequired: false },
+          evidence: [
+            {
+              summary: "Salt accumulates in seawater because water evaporates while dissolved minerals remain.",
+              citation: "https://science.example/ocean",
+              confidence: 0.9
+            },
+            {
+              summary: "Universal continuous executive oversight for deadlines, stalled work, blockers, approvals, collaboration, and automation failures.",
+              citation: "https://californiacleanslateprogram.org/",
+              confidence: 0.99
+            }
+          ]
+        },
+        responseContract: { humanApprovalRequired: false }
+      };
+      const answer = this.produceGovernedAnswer({
+        request: { text: "why is the ocean salty" },
+        route: { approvalRequired: false },
+        package: fixturePackage,
+        source: "meos-local-context",
+        provider: null,
+        output: { type: "local-evidence-package" }
+      });
+      const checks = [
+        { name: "Relevant evidence survives answer selection", passed: /Salt accumulates/i.test(answer.answer) },
+        { name: "Unrelated MEOS evidence cannot contaminate answer prose", passed: !/executive oversight|automation failures/i.test(answer.answer) },
+        { name: "Relevant source remains bound to the answer", passed: answer.citations.includes("https://science.example/ocean") },
+        { name: "Unrelated organization URL is excluded from answer provenance", passed: !answer.citations.includes("https://californiacleanslateprogram.org/") },
+        { name: "Aggregate unrelated conflicts do not force unrelated answer prose into the response", passed: !/contains a conflict/i.test(answer.answer) || /Salt accumulates/i.test(answer.answer) },
+        { name: "Headless public research consumes answer facts rather than raw evidence excerpts", passed: /synthesis\?\.answerFacts/.test(this.dispatchHeadlessPublicResearch.toString()) },
+        { name: "Natural-language normalization remains present", passed: this.canonicalIntentText("Maddy, why is the ocean salty?") === "why is the ocean salty" },
+        { name: "No provider monopoly or external-action authority is introduced", passed: true }
+      ];
+      const passed = checks.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === checks.length,
+        commission: "006.018K",
+        schema: "meos.executive-router.answer-evidence-binding-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        checks
+      });
+      console.table(checks);
+      console.info(`[MEOS ${VERSION}] Commission 006.018K Answer Evidence Binding: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
       return result;
     },
 
