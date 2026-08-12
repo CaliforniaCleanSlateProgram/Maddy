@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.11
- * Build: EB12511-AUTONOMOUS-LEARNING-INTENT-ECONOMIC-STEWARDSHIP-20260811-A
+ * Version: 1.25.12
+ * Build: EB12512-VERIFIED-CONSEQUENCE-EXECUTIVE-LEARNING-CLOSURE-20260812-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.11";
-  const BUILD_ID = "EB12511-AUTONOMOUS-LEARNING-INTENT-ECONOMIC-STEWARDSHIP-20260811-A";
+  const VERSION = "1.25.12";
+  const BUILD_ID = "EB12512-VERIFIED-CONSEQUENCE-EXECUTIVE-LEARNING-CLOSURE-20260812-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -1103,6 +1103,195 @@
       );
     },
 
+    /*
+     * Commission 006.018M — Verified Consequence -> Executive Learning Closure
+     *
+     * A verified consequence of Maddy's own governed work is not fresh world
+     * evidence, but it is experience. Close that experience into the existing
+     * Executive Learning organ exactly once, preserve causal lineage in
+     * autobiographical memory, and let later cognition retrieve the governed
+     * lesson through collectLearning(). No provider call and no new authority.
+     */
+    closeVerifiedConsequenceIntoLearning(work = {}, intention = null, options = {}) {
+      const verified = work?.outcome?.verified === true;
+      if (!verified) {
+        return { success: true, learned: false, reason: "consequence-not-verified" };
+      }
+
+      const learning = global.ExecutiveLearning;
+      if (!learning || typeof learning.observe !== "function") {
+        return { success: true, learned: false, reason: "executive-learning-unavailable" };
+      }
+
+      const subject = String(
+        work?.context?.cognitionSubject || intention?.subject || work?.title || ""
+      ).trim();
+      const workId = String(work?.id || "").trim();
+      if (!subject || !workId) {
+        return { success: false, learned: false, reason: "verified-consequence-lineage-incomplete" };
+      }
+
+      const success = work?.outcome?.success === true && work?.state === "done";
+      const failure = work?.state === "failed" || work?.outcome?.success === false;
+      const outcomeType = success ? "success" : (failure ? "failure" : "partial-success");
+      const error = String(work?.error || work?.outcome?.error || "").trim();
+      const route = String(work?.route || "").trim();
+      const action = String(
+        work?.context?.cognitiveMove || work?.context?.action || route || "governed hallway work"
+      ).trim();
+      const expectedResult = String(
+        work?.context?.expectedResult || intention?.expectedResult || intention?.objective || subject
+      ).trim();
+      const actualResult = String(
+        work?.outcome?.summary || work?.outcome?.result || error || `${work.state || "terminal"} consequence`
+      ).trim();
+      const citations = Array.isArray(work?.outcome?.citations)
+        ? work.outcome.citations
+        : (Array.isArray(work?.citations) ? work.citations : []);
+
+      // Economic learning gate: equivalent verified consequences should reinforce
+      // one governed learning record rather than multiply hot records merely
+      // because another work ID reached the same material result. This is a
+      // deterministic, provider-free consolidation key; it does not pretend
+      // to solve broader semantic novelty or curiosity budgeting.
+      const informationGainBasis = [
+        outcomeType,
+        this.normalize(subject),
+        this.normalize(expectedResult),
+        this.normalize(actualResult),
+        this.normalize(action)
+      ].join("|");
+      let informationGainHash = 2166136261;
+      for (let index = 0; index < informationGainBasis.length; index += 1) {
+        informationGainHash ^= informationGainBasis.charCodeAt(index);
+        informationGainHash = Math.imul(informationGainHash, 16777619);
+      }
+      const informationGainFingerprint = `verified-consequence:${(informationGainHash >>> 0).toString(16)}`;
+
+      const priorEquivalentObservation = Array.isArray(learning.observations)
+        ? learning.observations.find(item =>
+            item?.sourceType === "executive-hallway-verified-consequence" &&
+            item?.metadata?.informationGainFingerprint === informationGainFingerprint
+          )
+        : null;
+
+      const priorEquivalentLessons = priorEquivalentObservation && Array.isArray(learning.lessons)
+        ? learning.lessons.filter(item =>
+            Array.isArray(item?.sourceObservationIds) &&
+            item.sourceObservationIds.includes(priorEquivalentObservation.id)
+          )
+        : [];
+
+      const observationResult = priorEquivalentObservation
+        ? {
+            success: true,
+            duplicate: true,
+            economicallyConsolidated: true,
+            observation: this.clone(priorEquivalentObservation),
+            lessons: this.clone(priorEquivalentLessons)
+          }
+        : learning.observe({
+        sourceType: "executive-hallway-verified-consequence",
+        sourceId: workId,
+        sourceTitle: subject,
+        outcomeType,
+        summary: `${subject}: ${actualResult}`,
+        objective: intention?.objective || subject,
+        result: actualResult,
+        expectedResult,
+        completedCriteria: success ? ["Verified governed work reached its intended terminal success state."] : [],
+        failedCriteria: failure ? ["Verified governed work did not reach its intended success state."] : [],
+        contributingFactors: success ? [action] : [],
+        blockingFactors: failure ? [error || `Terminal work state: ${work.state}`] : [],
+        decisions: Array.isArray(work?.context?.decisions) ? work.context.decisions : [],
+        actions: [action],
+        citations,
+        confidence: Number(work?.outcome?.confidence ?? 0.8),
+        office: work?.office || work?.context?.office || null,
+        owner: work?.owner || null,
+        metadata: {
+          commission: "006.018M",
+          cognitionSubject: subject,
+          cognitiveIntentionId: intention?.intentionId || null,
+          cognitiveReentryLineageId: work?.context?.cognitiveReentryLineageId || null,
+          workState: work?.state || null,
+          route: route || null,
+          verified: true,
+          providerCallRequired: false,
+          externalAuthorityAdded: false,
+          informationGainFingerprint,
+          economicLearningPolicy: "equivalent-consequence-consolidation"
+        }
+      }, { actor: "MEOS Executive Brain" });
+
+      if (observationResult?.success !== true) {
+        return {
+          success: false,
+          learned: false,
+          reason: "executive-learning-observation-failed",
+          error: observationResult?.error || null
+        };
+      }
+
+      const lessonIds = (observationResult.lessons || []).map(item => item?.id).filter(Boolean);
+      const episodeResult = this.formAutobiographicalEpisode({
+        eventType: "verified-consequence-learning",
+        subject,
+        sourceId: workId,
+        perception: {
+          verified: true,
+          workState: work?.state || null,
+          route: route || null,
+          citations: this.clone(citations)
+        },
+        beliefsBefore: {
+          expectedResult: expectedResult || null
+        },
+        intention: {
+          intentionId: intention?.intentionId || null,
+          objective: intention?.objective || subject,
+          lineageId: work?.context?.cognitiveReentryLineageId || null
+        },
+        action: {
+          type: action,
+          workId
+        },
+        outcome: {
+          success,
+          outcomeType,
+          actualResult
+        },
+        learning: {
+          executiveLearningObservationId: observationResult.observation?.id || null,
+          lessonIds,
+          duplicate: observationResult.duplicate === true
+        }
+      }, { persist: options.persist !== false });
+
+      this.record("cognition.verified-consequence-learned", {
+        subject,
+        workId,
+        intentionId: intention?.intentionId || null,
+        observationId: observationResult.observation?.id || null,
+        lessonIds,
+        duplicate: observationResult.duplicate === true
+      });
+
+      this.requestCache.clear();
+      this.startupCache = null;
+      this.startupCachedAt = 0;
+
+      return {
+        success: true,
+        learned: true,
+        duplicate: observationResult.duplicate === true,
+        economicallyConsolidated: observationResult.economicallyConsolidated === true,
+        observation: this.clone(observationResult.observation || null),
+        lessons: this.clone(observationResult.lessons || []),
+        episode: this.clone(episodeResult?.episode || null)
+      };
+    },
+
     handleHallwayMeaningfulChange(work = {}) {
       if (
         work?.context?.cognitiveDispatch !== true
@@ -1187,6 +1376,12 @@
           intention.updatedAt = new Date().toISOString();
         }
 
+        const learningClosure = this.closeVerifiedConsequenceIntoLearning(
+          work,
+          intention,
+          { persist: true }
+        );
+
         this.record("cognition.self-echo-absorbed", {
           lineageId: lineageId || null,
           subject,
@@ -1201,6 +1396,7 @@
           absorbed: true,
           selfEcho: true,
           lineageId: lineageId || null,
+          learningClosure: this.clone(learningClosure),
           reason: "self-generated-cognitive-outcome"
         };
       }
@@ -1284,6 +1480,12 @@
           intention.updatedAt = new Date().toISOString();
         }
 
+        const learningClosure = this.closeVerifiedConsequenceIntoLearning(
+          work,
+          intention,
+          { persist: true }
+        );
+
         this.record("cognition.lineage-outcome-absorbed", {
           lineageId,
           subject,
@@ -1297,6 +1499,7 @@
           scheduled: false,
           absorbed: true,
           lineageId,
+          learningClosure: this.clone(learningClosure),
           reason: "active-cognitive-lineage-outcome"
         };
       }
@@ -18067,7 +18270,113 @@
       console.table(checks);
       console.info(`[MEOS ${this.version}] Commission 006.017D4B Executive Brain durable cognition authority flip: ${passed ? "PASS" : "FAIL"}.`);
       return { commission: "006.017D4B", version: this.version, buildId: this.buildId, passed, checks, persistence: this.getPersistenceStatus() };
-    }
+    },
+
+    async runVerifiedConsequenceExecutiveLearningClosureAcceptanceTest() {
+      const originalLearning = global.ExecutiveLearning;
+      const originalMemory = this.clone(this.autobiographicalMemory || []);
+      const originalEpisodeCount = Number(this.autobiographicalEpisodeCount || 0);
+      const originalIntentions = this.clone(this.cognitiveIntentions || []);
+      const originalCache = this.startupCache;
+      const originalCachedAt = this.startupCachedAt;
+      const token = this.id("006018m");
+      const observations = [];
+      const lessons = [];
+
+      const learningStub = {
+        observations,
+        lessons,
+        observe: input => {
+          const duplicate = observations.find(item =>
+            item.sourceType === input.sourceType &&
+            item.sourceId === input.sourceId &&
+            item.outcomeType === input.outcomeType &&
+            item.summary === input.summary
+          );
+          if (duplicate) return { success: true, duplicate: true, observation: duplicate, lessons: [] };
+          const observation = { id: `${token}-observation`, ...this.clone(input), status: "observed", createdAt: new Date().toISOString() };
+          const lesson = {
+            id: `${token}-lesson`,
+            title: "Verified consequence lesson",
+            statement: `Future work should preserve the verified successful practice: ${input.actions?.[0] || "governed action"}.`,
+            lessonType: "successful-practice",
+            status: "draft",
+            confidence: input.confidence,
+            sourceObservationIds: [observation.id],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          observations.unshift(observation);
+          lessons.unshift(lesson);
+          return { success: true, observation, lessons: [lesson] };
+        }
+      };
+
+      try {
+        global.ExecutiveLearning = learningStub;
+        const subject = `Verified consequence ${token}`;
+        const intention = {
+          intentionId: `${token}-intention`,
+          key: this.normalize(subject),
+          subject,
+          objective: "Complete governed internal work and learn from the verified result.",
+          status: "running",
+          triggers: []
+        };
+        this.cognitiveIntentions = [intention];
+        const work = {
+          id: `${token}-work`,
+          state: "done",
+          route: "executive-router",
+          context: {
+            cognitiveDispatch: true,
+            cognitionSubject: subject,
+            cognitiveReentryLineageId: `${token}-lineage`,
+            cognitiveMove: "verify eligibility before deeper pursuit"
+          },
+          outcome: {
+            success: true,
+            verified: true,
+            summary: "Eligibility requirement was verified before deeper pursuit.",
+            citations: [{ source: "acceptance-fixture", evidence: "verified" }]
+          },
+          updatedAt: new Date().toISOString()
+        };
+
+        const first = this.closeVerifiedConsequenceIntoLearning(work, intention, { persist: false });
+        const second = this.closeVerifiedConsequenceIntoLearning(work, intention, { persist: false });
+        const equivalentWork = { ...this.clone(work), id: `${work.id}-equivalent` };
+        const equivalent = this.closeVerifiedConsequenceIntoLearning(equivalentWork, intention, { persist: false });
+        const recalled = this.collectLearning();
+        const episode = (this.autobiographicalMemory || []).find(item =>
+          item.eventType === "verified-consequence-learning" && item.sourceId === work.id
+        );
+
+        const checks = [
+          { name: "Verified Hallway consequence closes into existing Executive Learning", passed: first?.success === true && first?.learned === true && observations.length === 1 },
+          { name: "Exactly one evidence-bound lesson is created for the verified consequence", passed: lessons.length === 1 && Array.isArray(observations[0]?.citations) && observations[0].citations.length === 1 },
+          { name: "Duplicate consequence does not create duplicate institutional learning", passed: second?.duplicate === true && observations.length === 1 && lessons.length === 1 },
+          { name: "Equivalent consequence from a different work ID consolidates instead of multiplying learning records", passed: equivalent?.duplicate === true && equivalent?.economicallyConsolidated === true && observations.length === 1 && lessons.length === 1 },
+          { name: "Equivalent-consequence consolidation is deterministic and requires no provider call", passed: Boolean(first?.observation?.metadata?.informationGainFingerprint) && first.observation.metadata.informationGainFingerprint === equivalent?.observation?.metadata?.informationGainFingerprint && first?.observation?.metadata?.providerCallRequired === false },
+          { name: "Autobiographical memory preserves the same intention-work-learning lineage", passed: Boolean(episode) && episode?.intention?.intentionId === intention.intentionId && episode?.action?.workId === work.id && episode?.learning?.executiveLearningObservationId === observations[0]?.id },
+          { name: "Subsequent Executive Brain cognition can retrieve the new Executive Learning lesson", passed: recalled?.available === true && recalled.lessons.some(item => item.id === lessons[0].id) },
+          { name: "Unverified consequences are refused as institutional learning", passed: this.closeVerifiedConsequenceIntoLearning({ ...work, id: `${work.id}-unverified`, outcome: { ...work.outcome, verified: false } }, intention, { persist: false })?.learned === false },
+          { name: "Verified consequence learning requires no provider call", passed: first?.observation?.metadata?.providerCallRequired === false },
+          { name: "External-action authority remains unchanged", passed: this.configuration.requireHumanApprovalForExternalAction === true && first?.observation?.metadata?.externalAuthorityAdded === false }
+        ];
+        const passed = checks.every(item => item.passed);
+        console.table(checks);
+        console.info(`[MEOS ${this.version}] Commission 006.018M Verified Consequence -> Executive Learning Closure: ${passed ? "PASS" : "FAIL"} (${checks.filter(item => item.passed).length}/${checks.length}).`);
+        return { success: passed, commission: "006.018M", schema: "meos.executive-brain.verified-consequence-learning-acceptance.v2", version: this.version, buildId: this.buildId, passed: checks.filter(item => item.passed).length, total: checks.length, checks };
+      } finally {
+        global.ExecutiveLearning = originalLearning;
+        this.autobiographicalMemory = originalMemory;
+        this.autobiographicalEpisodeCount = originalEpisodeCount;
+        this.cognitiveIntentions = originalIntentions;
+        this.startupCache = originalCache;
+        this.startupCachedAt = originalCachedAt;
+      }
+    },
 
   };
 
