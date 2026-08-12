@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.2.1
- * Build: ER121-SEMANTIC-RELEVANCE-NORMALIZATION-20260812-A
+ * Version: 1.3.0
+ * Build: ER130-NATURAL-LANGUAGE-INTENT-NORMALIZATION-20260812-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.2.1";
-  const BUILD_ID = "ER121-SEMANTIC-RELEVANCE-NORMALIZATION-20260812-A";
+  const VERSION = "1.3.0";
+  const BUILD_ID = "ER130-NATURAL-LANGUAGE-INTENT-NORMALIZATION-20260812-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -490,6 +490,19 @@
      * share meaningful subject language with resident evidence before the
      * zero-cost local synthesis path is allowed to close the question.
      */
+    /*
+     * Commission 006.018J — Natural-Language Intent Normalization
+     * Invocation words and terminal punctuation must not change intent.
+     */
+    canonicalIntentText(text = "") {
+      return String(text || "")
+        .trim()
+        .replace(/^\s*(?:hey\s+)?maddy\s*[,;:!?.-]*\s*/i, "")
+        .replace(/[?!.]+\s*$/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    },
+
     meaningfulTerms(value) {
       const stop = new Set([
         "a","an","and","are","as","at","be","because","been","but","by","can","could",
@@ -516,7 +529,8 @@
     },
 
     evidenceSemanticRelevance(question, evidence = []) {
-      const queryTerms = this.meaningfulTerms(question);
+      const canonicalQuestion = this.canonicalIntentText(question);
+      const queryTerms = this.meaningfulTerms(canonicalQuestion);
       if (queryTerms.length === 0 || !Array.isArray(evidence) || evidence.length === 0) {
         return { relevant: false, score: 0, matchedTerms: [], queryTerms };
       }
@@ -554,7 +568,8 @@
     },
 
     async dispatchHeadlessPublicResearch(payload = {}, reason = "resident-evidence-insufficient") {
-      const subject = payload.request?.text || payload.package?.request?.text || "";
+      const rawSubject = payload.request?.text || payload.package?.request?.text || "";
+      const subject = this.canonicalIntentText(rawSubject);
       if (!subject) return null;
       if (typeof global.fetch !== "function") return null;
 
@@ -751,6 +766,43 @@
       });
       console.table(assertions);
       console.info(`[MEOS ${VERSION}] Commission 006.018F Semantic Relevance + Public Research Continuation: ${result.success ? "PASS" : "FAIL"} (${passed}/${assertions.length}).`);
+      return result;
+    },
+
+    runNaturalLanguageIntentNormalizationAcceptanceTest() {
+      const variants = [
+        "why is the ocean salty",
+        "why is the ocean salty?",
+        "Maddy why is the ocean salty",
+        "Maddy, why is the ocean salty?"
+      ];
+      const normalized = variants.map(value => this.canonicalIntentText(value));
+      const evidence = [{ summary: "Ocean water is salty because dissolved minerals and ions accumulate in seawater." }];
+      const relevance = variants.map(value => this.evidenceSemanticRelevance(value, evidence));
+      const assertions = [
+        { name: "All four natural-language variants normalize to one informational intent", passed: new Set(normalized).size === 1 },
+        { name: "Canonical intent removes Maddy invocation", passed: normalized.every(value => !/^maddy\b/i.test(value)) },
+        { name: "Canonical intent ignores terminal question punctuation", passed: normalized.every(value => !/[?!.]$/.test(value)) },
+        { name: "Bare factual query preserves its informational subject", passed: normalized[0] === "why is the ocean salty" },
+        { name: "Equivalent variants produce equivalent semantic relevance", passed: relevance.every(item => item.relevant === relevance[0].relevant && item.score === relevance[0].score) },
+        { name: "Maddy invocation cannot become a false semantic evidence match", passed: this.evidenceSemanticRelevance("Maddy why is the ocean salty?", [{ summary: "Maddy Executive Operating System coordinates executive offices." }]).relevant === false },
+        { name: "Public research continuation canonicalizes the research subject", passed: /canonicalIntentText\(rawSubject\)/.test(this.dispatchHeadlessPublicResearch.toString()) },
+        { name: "Normalization adds no provider monopoly", passed: !/openai|anthropic|claude|gemini/i.test(this.canonicalIntentText.toString()) }
+      ];
+      const passed = assertions.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === assertions.length,
+        commission: "006.018J",
+        schema: "meos.executive-router.natural-language-intent-normalization-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: assertions.length,
+        normalized,
+        assertions
+      });
+      console.table(assertions);
+      console.info(`[MEOS ${VERSION}] Commission 006.018J Natural-Language Intent Normalization: ${result.success ? "PASS" : "FAIL"} (${passed}/${assertions.length}).`);
       return result;
     },
 
