@@ -1,5 +1,5 @@
 /**
- * MEOS Executive Workspace Office v1.1.0
+ * MEOS Executive Workspace Office v1.2.0
  * Commission 005.004C
  *
  * Provider-neutral execution office for ordinary executive workspace work.
@@ -11,8 +11,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Workspace Office";
-  const VERSION = "1.1.0";
-  const BUILD_ID = "commission-005.004C";
+  const VERSION = "1.2.0";
+  const BUILD_ID = "EWO120-WORKSPACE-RELEVANCE-GATE-20260811-A";
   const SCHEMA = "meos.executive-workspace-office.v1";
   const OFFICE_ID = "executive-workspace-office";
 
@@ -134,62 +134,63 @@
     const value = String(text || "").toLowerCase();
 
     /*
-     * Commission 005.004C:
-     * Do NOT require humans to memorize retrieval verbs. This office receives
-     * work after it has already been routed into the workspace domain. It only
-     * identifies special operations that carry distinct authority or tooling.
-     * Everything else can safely fall through to runtime capability resolution.
+     * Commission 006.018D:
+     * Workspace must positively recognize workspace work before claiming it.
+     * Available provider capability is not evidence that an unrelated request
+     * belongs to this office.
      */
     const tests = [
       ["send-email", /\b(email|mail|message)\b.*\b(send|deliver|reply|forward)\b|\b(send|reply|forward)\b.*\b(email|mail|message)\b/],
       ["draft-email", /\b(email|mail|message)\b.*\b(draft|write|prepare)\b|\b(draft|write|prepare)\b.*\b(email|mail|message)\b/],
+      ["read-email", /\b(email|mail|message|inbox)\b.*\b(read|open|show|latest|recent)\b|\b(read|open|show)\b.*\b(email|mail|message|inbox)\b/],
+      ["search-email", /\b(email|mail|message|inbox)\b.*\b(find|search|look for|locate)\b|\b(find|search|look for|locate)\b.*\b(email|mail|message|inbox)\b/],
       ["schedule-meeting", /\b(meeting|appointment|calendar event|call)\b.*\b(schedule|book|arrange|set up)\b|\b(schedule|book|arrange|set up)\b.*\b(meeting|appointment|calendar event|call)\b/],
+      ["update-meeting", /\b(meeting|appointment|calendar event|call)\b.*\b(update|move|reschedule|change)\b|\b(update|move|reschedule|change)\b.*\b(meeting|appointment|calendar event|call)\b/],
+      ["cancel-meeting", /\b(meeting|appointment|calendar event|call)\b.*\b(cancel|delete|remove)\b|\b(cancel|delete|remove)\b.*\b(meeting|appointment|calendar event|call)\b/],
       ["check-calendar", /\b(calendar|availability|free time)\b/],
       ["list-files", /\b(files|documents|records|folders)\b.*\b(list|inventory|all)\b|\b(list|inventory)\b.*\b(files|documents|records|folders)\b/],
       ["organize-files", /\b(files|documents|records|folders)\b.*\b(organize|move|sort|rename)\b|\b(organize|move|sort|rename)\b.*\b(files|documents|records|folders)\b/],
       ["create-document", /\b(create|make|write|prepare)\b.*\b(document|doc|report|memo|letter|packet)\b/],
-      ["find-contact", /\b(contact|phone number|email address)\b/]
+      ["edit-document", /\b(edit|revise|update|change)\b.*\b(document|doc|report|memo|letter|packet)\b/],
+      ["find-contact", /\b(contact|phone number|email address)\b/],
+      ["manage-contact", /\b(contact)\b.*\b(add|save|update|edit|remove|delete)\b/],
+      ["find-file", /\b(find|locate|fetch|grab|get|bring|open|show|where(?:\s+the\s+hell)?\s+(?:is|are))\b.*\b(file|document|doc|folder|record|articles of incorporation|bylaws|policy|policies|agreement|contract|minutes|packet)\b/]
     ];
 
     const match = tests.find(([, regex]) => regex.test(value));
-    return match ? match[0] : "workspace-task";
+    return match ? match[0] : null;
   }
 
   function resolveRequirements(input) {
     const explicitIntent = input?.intent ? norm(input.intent) : "";
-    const inferredIntent = explicitIntent || inferIntent(input?.instruction || input?.title || "");
     const explicit = unique(input?.capabilities || []);
 
     if (explicit.length) {
-      return { intent: inferredIntent || "workspace-task", capabilities: explicit };
+      return {
+        intent: explicitIntent || "workspace-task",
+        capabilities: explicit,
+        workspaceRelevant: explicit.some(cap => String(cap).startsWith("workspace."))
+      };
     }
 
-    if (INTENT_ALIASES[inferredIntent]) {
-      return {
-        intent: inferredIntent,
-        capabilities: INTENT_ALIASES[inferredIntent]
-      };
+    if (explicitIntent && INTENT_ALIASES[explicitIntent]) {
+      return { intent: explicitIntent, capabilities: INTENT_ALIASES[explicitIntent], workspaceRelevant: true };
+    }
+
+    const inferredIntent = inferIntent(input?.instruction || input?.title || "");
+    if (inferredIntent && INTENT_ALIASES[inferredIntent]) {
+      return { intent: inferredIntent, capabilities: INTENT_ALIASES[inferredIntent], workspaceRelevant: true };
     }
 
     /*
-     * Provider-neutral natural-language fallback:
-     * Once a request is in the Workspace Office, an otherwise-unclassified
-     * read-only request becomes a search mission when a connected provider
-     * exposes workspace.file.search. This means "get me", "fetch", "grab",
-     * "where is", or new phrasing does not require a growing synonym list.
+     * Unknown natural language is deliberately NOT converted into file search.
+     * The upstream executive router can continue domain resolution instead of
+     * Workspace stealing unrelated research or reasoning work.
      */
-    const discovered = discoverCapabilities();
-
-    if (discovered.capabilityIds.includes("workspace.file.search")) {
-      return {
-        intent: "find-file",
-        capabilities: ["workspace.file.search"]
-      };
-    }
-
     return {
-      intent: inferredIntent || "workspace-task",
-      capabilities: ["executive-office-work"]
+      intent: explicitIntent || "workspace-task",
+      capabilities: ["executive-office-work"],
+      workspaceRelevant: false
     };
   }
 
@@ -209,6 +210,7 @@
         "",
       intent: requirements.intent,
       requiredCapabilities: [...requirements.capabilities],
+      workspaceRelevant: requirements.workspaceRelevant === true,
       providerNeutral: true,
       interpretedAt: now()
     });
@@ -368,32 +370,17 @@
     check("no fixed provider requirement", !JSON.stringify(INTENT_ALIASES).toLowerCase().includes("google"));
     check("human task intent mapping", resolveRequirements({ intent: "schedule-meeting" }).capabilities.includes("workspace.calendar.create"));
     check("list files maps to workspace.file.list", JSON.stringify(resolveRequirements({ intent: "list files" }).capabilities) === JSON.stringify(["workspace.file.list"]));
-
-    const availableCapabilities = discoverCapabilities().capabilityIds;
-    if (availableCapabilities.includes("workspace.file.search")) {
-      check(
-        "unclassified workspace language falls through to file search",
-        JSON.stringify(
-          resolveRequirements({
-            instruction: "Bring me our Articles of Incorporation."
-          }).capabilities
-        ) === JSON.stringify(["workspace.file.search"])
-      );
-      check(
-        "retrieval wording does not require a special verb alias",
-        resolveRequirements({
-          instruction: "Where the hell are our Articles of Incorporation?"
-        }).intent === "find-file"
-      );
-    } else {
-      check(
-        "search fallback remains runtime capability gated",
-        resolveRequirements({
-          instruction: "Bring me our Articles of Incorporation."
-        }).capabilities.includes("executive-office-work")
-      );
-    }
-
+    check("natural file retrieval remains workspace work", resolveRequirements({ instruction: "Bring me our Articles of Incorporation." }).intent === "find-file");
+    check("informal file retrieval remains workspace work", resolveRequirements({ instruction: "Where the hell are our Articles of Incorporation?" }).intent === "find-file");
+    const research = resolveRequirements({
+      instruction: "Maddy, find out why wombat poop is cube-shaped. Learn the answer from public evidence and tell me what you learned."
+    });
+    check(
+      "general public research is not hijacked by workspace file search",
+      research.workspaceRelevant === false &&
+        research.intent !== "find-file" &&
+        JSON.stringify(research.capabilities) === JSON.stringify(["executive-office-work"])
+    );
     check("natural-language interpreter exists", typeof interpretRequest === "function");
     check("review gate exists", WORK_STATES.includes("awaiting-review") && WORK_STATES.includes("authorized"));
     check("Take It execution protocol exists", typeof takeIt === "function");
@@ -414,6 +401,6 @@
   });
 
   global.MEOSExecutiveWorkspaceOffice = api;
-  console.info(`[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. Natural-language workspace intent resolves against runtime capabilities; no workspace provider is assumed.`);
+  console.info(`[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. Workspace relevance is positively gated before runtime capability resolution; no workspace provider is assumed.`);
   emit("online", getStatus());
 })(window);
