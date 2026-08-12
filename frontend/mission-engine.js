@@ -1,7 +1,7 @@
 /**
  * MEOS Mission Engine
- * Version: 0.1.8
- * Build: ME018-MISSION-DUPLICATION-LINEAGE-AUDIT-20260812-A
+ * Version: 0.1.9
+ * Build: ME019-MISSION-CANONICALIZATION-DUPLICATE-QUARANTINE-20260812-A
  *
  * Purpose:
  * The Mission Engine is the central work-management system for MEOS.
@@ -22,8 +22,8 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.8";
-    const BUILD_ID = "ME018-MISSION-DUPLICATION-LINEAGE-AUDIT-20260812-A";
+    const VERSION = "0.1.9";
+    const BUILD_ID = "ME019-MISSION-CANONICALIZATION-DUPLICATE-QUARANTINE-20260812-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -151,6 +151,7 @@
         approvalQueue: [],
         completedMissions: [],
         archivedMissions: [],
+        quarantinedMissionLineage: [],
         activity: [],
         initializedAt: null,
         updatedAt: null
@@ -263,6 +264,7 @@
         state.approvalQueue = parsed.approvalQueue || [];
         state.completedMissions = parsed.completedMissions || [];
         state.archivedMissions = parsed.archivedMissions || [];
+        state.quarantinedMissionLineage = parsed.quarantinedMissionLineage || [];
         state.activity = parsed.activity || [];
         state.initializedAt = parsed.initializedAt || now();
         state.updatedAt = parsed.updatedAt || now();
@@ -561,6 +563,10 @@
         const merged = {
             ...clone(remote), ...clone(local),
             missions: [], completedMissions: [], archivedMissions: [],
+            quarantinedMissionLineage: mergeByIdentity(
+                remote.quarantinedMissionLineage || [],
+                local.quarantinedMissionLineage || []
+            ),
             approvalQueue: mergeByIdentity(remote.approvalQueue || [], local.approvalQueue || []),
             activity: mergeByIdentity(remote.activity || [], local.activity || [])
                 .sort((a, b) => recordTimestamp(b) - recordTimestamp(a)).slice(0, 500),
@@ -2087,11 +2093,524 @@
         };
     }
 
+    /*
+     * Commission 006.018L2 — Mission Canonicalization + Duplicate Quarantine
+     *
+     * Durable does not mean active. Repeated automated mission shells are
+     * canonicalized before creation, and the historical pile can be compacted
+     * into one live representative plus a durable lineage receipt.
+     */
+
+    function automatedMissionCanonicalizationEligible(value = {}) {
+        const createdBy = normalizeMissionAuditText(value?.createdBy);
+        const sourceReference = String(value?.sourceReference || "");
+        const tags = Array.isArray(value?.tags)
+            ? value.tags.map(normalizeMissionAuditText)
+            : [];
+
+        return (
+            createdBy.includes("maddy executive hallway") ||
+            createdBy.includes("executive hallway") ||
+            sourceReference.startsWith("hallway-work:") ||
+            sourceReference.startsWith("cognitive-dispatch:") ||
+            tags.includes("executive hallway") ||
+            tags.includes("executive-hallway")
+        );
+    }
+
+    function missionCandidateFromOptions(options = {}) {
+        return {
+            title: normalizeText(options.title),
+            objective: normalizeText(options.objective),
+            description: normalizeText(options.description),
+            createdBy: normalizeText(options.createdBy, "Executive Director"),
+            leadOffice: normalizeText(options.leadOffice) || null,
+            tags: normalizeArray(options.tags),
+            sourceReference: options.sourceReference || null
+        };
+    }
+
+    function findEquivalentActiveAutomatedMission(options = {}) {
+        if (!automatedMissionCanonicalizationEligible(options)) return null;
+        const candidate = missionCandidateFromOptions(options);
+        const signature = missionAuditSignature(candidate);
+        if (!signature) return null;
+
+        return state.missions.find(mission =>
+            automatedMissionCanonicalizationEligible(mission) &&
+            missionAuditSignature(mission) === signature &&
+            mission.status !== MISSION_STATUS.COMPLETED &&
+            mission.status !== MISSION_STATUS.ARCHIVED
+        ) || null;
+    }
+
+    function uniqueJsonMerge(...collections) {
+        const seen = new Set();
+        const result = [];
+        collections.flat().forEach(item => {
+            if (item === undefined || item === null) return;
+            let key;
+            try {
+                key = JSON.stringify(item);
+            } catch (_) {
+                key = String(item);
+            }
+            if (seen.has(key)) return;
+            seen.add(key);
+            result.push(clone(item));
+        });
+        return result;
+    }
+
+    function compactHistorySummary(missions = []) {
+        const groups = new Map();
+
+        missions.flatMap(mission => Array.isArray(mission?.history) ? mission.history : [])
+            .forEach(entry => {
+                const key = [
+                    normalizeMissionAuditText(entry?.action),
+                    normalizeMissionAuditText(entry?.message),
+                    JSON.stringify(entry?.details || {})
+                ].join("::");
+
+                if (!groups.has(key)) {
+                    groups.set(key, {
+                        action: entry?.action || "unknown",
+                        message: entry?.message || "",
+                        details: clone(entry?.details || {}),
+                        count: 0,
+                        firstAt: entry?.timestamp || null,
+                        lastAt: entry?.timestamp || null
+                    });
+                }
+
+                const item = groups.get(key);
+                item.count += 1;
+
+                const ts = Date.parse(entry?.timestamp || "");
+                const first = Date.parse(item.firstAt || "");
+                const last = Date.parse(item.lastAt || "");
+
+                if (Number.isFinite(ts) && (!Number.isFinite(first) || ts < first)) {
+                    item.firstAt = entry.timestamp;
+                }
+                if (Number.isFinite(ts) && (!Number.isFinite(last) || ts > last)) {
+                    item.lastAt = entry.timestamp;
+                }
+            });
+
+        return [...groups.values()]
+            .sort((a, b) => b.count - a.count || Date.parse(b.lastAt || 0) - Date.parse(a.lastAt || 0));
+    }
+
+    function canonicalMissionInformationScore(mission) {
+        const arrays = [
+            mission?.documents,
+            mission?.tasks,
+            mission?.deliverables,
+            mission?.recommendations,
+            mission?.dependencies,
+            mission?.assignedOffices,
+            mission?.collaborators,
+            mission?.history
+        ];
+        const richness = arrays.reduce((sum, value) => sum + (Array.isArray(value) ? value.length : 0), 0);
+        const recency = recordTimestamp(mission);
+        return (richness * 10000000000000) + recency;
+    }
+
+    function chooseCanonicalMission(missions = []) {
+        return [...missions].sort((a, b) =>
+            canonicalMissionInformationScore(b) - canonicalMissionInformationScore(a)
+        )[0] || null;
+    }
+
+    function buildDuplicateCompactionPlan(missions = state.missions) {
+        const groups = new Map();
+
+        (Array.isArray(missions) ? missions : []).forEach(mission => {
+            if (!automatedMissionCanonicalizationEligible(mission)) return;
+            const signature = missionAuditSignature(mission);
+            if (!signature) return;
+            if (!groups.has(signature)) groups.set(signature, []);
+            groups.get(signature).push(mission);
+        });
+
+        const duplicateGroups = [...groups.entries()]
+            .filter(([, records]) => records.length > 1)
+            .map(([signature, records]) => {
+                const canonical = chooseCanonicalMission(records);
+                const duplicates = records.filter(item => item.id !== canonical?.id);
+                const timestamps = records
+                    .map(item => Date.parse(item?.createdAt || ""))
+                    .filter(Number.isFinite);
+
+                return {
+                    signature,
+                    canonicalMissionId: canonical?.id || null,
+                    canonicalTitle: canonical?.title || null,
+                    totalCount: records.length,
+                    duplicateCount: duplicates.length,
+                    duplicateMissionIds: duplicates.map(item => item.id).filter(Boolean),
+                    approximateDuplicateBytes: duplicates.reduce(
+                        (sum, mission) => sum + missionApproximateBytes(mission),
+                        0
+                    ),
+                    firstCreatedAt: timestamps.length
+                        ? new Date(Math.min(...timestamps)).toISOString()
+                        : null,
+                    lastCreatedAt: timestamps.length
+                        ? new Date(Math.max(...timestamps)).toISOString()
+                        : null,
+                    sourceReferences: [...new Set(
+                        records.map(item => item?.sourceReference).filter(Boolean)
+                    )],
+                    historySummary: compactHistorySummary(records)
+                };
+            })
+            .sort((a, b) =>
+                b.duplicateCount - a.duplicateCount ||
+                b.approximateDuplicateBytes - a.approximateDuplicateBytes
+            );
+
+        return {
+            success: true,
+            schema: "meos.mission-engine.duplicate-compaction-plan.v1",
+            generatedAt: now(),
+            activeBefore: Array.isArray(missions) ? missions.length : 0,
+            duplicateGroups,
+            duplicateCandidates: duplicateGroups.reduce((sum, group) => sum + group.duplicateCount, 0),
+            projectedActiveAfter:
+                (Array.isArray(missions) ? missions.length : 0) -
+                duplicateGroups.reduce((sum, group) => sum + group.duplicateCount, 0),
+            projectedBytesReleasedFromActive:
+                duplicateGroups.reduce((sum, group) => sum + group.approximateDuplicateBytes, 0)
+        };
+    }
+
+    function mergeDuplicateMissionValueIntoCanonical(canonical, duplicates = []) {
+        if (!canonical || !duplicates.length) return canonical;
+
+        const all = [canonical, ...duplicates];
+        [
+            "assignedOffices",
+            "collaborators",
+            "documents",
+            "tasks",
+            "deliverables",
+            "recommendations",
+            "dependencies",
+            "tags"
+        ].forEach(field => {
+            canonical[field] = uniqueJsonMerge(...all.map(item =>
+                Array.isArray(item?.[field]) ? item[field] : []
+            ));
+        });
+
+        const newest = [...all].sort((a, b) => recordTimestamp(b) - recordTimestamp(a))[0];
+        if (newest) {
+            canonical.progress = Math.max(...all.map(item => Number(item?.progress) || 0));
+            canonical.currentActivity =
+                normalizeText(newest.currentActivity) ||
+                normalizeText(canonical.currentActivity) ||
+                "Canonical mission retained after duplicate quarantine";
+            canonical.updatedAt = now();
+        }
+
+        canonical.canonicalization = {
+            ...(canonical.canonicalization || {}),
+            canonical: true,
+            compactedAt: now(),
+            reuseCount:
+                Number(canonical.canonicalization?.reuseCount || 0) +
+                duplicates.length,
+            quarantinedDuplicateCount:
+                Number(canonical.canonicalization?.quarantinedDuplicateCount || 0) +
+                duplicates.length
+        };
+
+        addMissionHistory(
+            canonical,
+            "duplicate_shells_quarantined",
+            `${duplicates.length} duplicate automated mission shell${duplicates.length === 1 ? "" : "s"} compacted into this canonical mission.`,
+            {
+                duplicateMissionIds: duplicates.map(item => item.id).filter(Boolean),
+                uniqueValueMerged: true
+            }
+        );
+
+        return canonical;
+    }
+
+    function previewDuplicateMissionQuarantine() {
+        return buildDuplicateCompactionPlan(state.missions);
+    }
+
+    function quarantineDuplicateMissionShells(options = {}) {
+        const confirmation = String(options.confirm || "");
+        if (confirmation !== "QUARANTINE_DUPLICATE_MISSIONS") {
+            return {
+                success: false,
+                executed: false,
+                confirmationRequired: "QUARANTINE_DUPLICATE_MISSIONS",
+                message: "No Mission state was changed. Explicit quarantine confirmation is required."
+            };
+        }
+
+        const plan = buildDuplicateCompactionPlan(state.missions);
+        if (!plan.duplicateCandidates) {
+            return {
+                success: true,
+                executed: true,
+                changed: false,
+                plan,
+                activeAfter: state.missions.length
+            };
+        }
+
+        const missionMap = new Map(state.missions.map(mission => [mission.id, mission]));
+        const duplicateIds = new Set();
+
+        plan.duplicateGroups.forEach(group => {
+            const canonical = missionMap.get(group.canonicalMissionId);
+            const duplicates = group.duplicateMissionIds
+                .map(id => missionMap.get(id))
+                .filter(Boolean);
+
+            if (!canonical || !duplicates.length) return;
+
+            mergeDuplicateMissionValueIntoCanonical(canonical, duplicates);
+            duplicates.forEach(item => duplicateIds.add(item.id));
+
+            const receipt = {
+                id: createId("QML"),
+                schema: "meos.mission-engine.quarantined-lineage.v1",
+                reason: "duplicate-automated-mission-shell",
+                canonicalMissionId: canonical.id,
+                canonicalTitle: canonical.title,
+                duplicateCount: duplicates.length,
+                duplicateMissionIds: duplicates.map(item => item.id),
+                sourceReferences: group.sourceReferences,
+                firstCreatedAt: group.firstCreatedAt,
+                lastCreatedAt: group.lastCreatedAt,
+                approximateBytesRemovedFromActive: group.approximateDuplicateBytes,
+                historySummary: group.historySummary,
+                quarantinedAt: now(),
+                requestedBy: normalizeText(options.requestedBy, "Executive Director")
+            };
+
+            state.quarantinedMissionLineage.unshift(receipt);
+        });
+
+        state.missions = state.missions.filter(mission => !duplicateIds.has(mission.id));
+
+        const removedApprovalIds = new Set(duplicateIds);
+        state.approvalQueue = state.approvalQueue.filter(entry =>
+            !removedApprovalIds.has(entry?.missionId)
+        );
+
+        recordActivity("duplicate_mission_shells_quarantined", {
+            duplicateCount: duplicateIds.size,
+            duplicateGroups: plan.duplicateGroups.length,
+            activeBefore: plan.activeBefore,
+            activeAfter: state.missions.length,
+            projectedBytesReleasedFromActive: plan.projectedBytesReleasedFromActive
+        });
+
+        sortActiveMissions();
+        persist();
+
+        return {
+            success: true,
+            executed: true,
+            changed: duplicateIds.size > 0,
+            commission: "006.018L2",
+            schema: "meos.mission-engine.duplicate-quarantine-result.v1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            quarantinedDuplicateCount: duplicateIds.size,
+            duplicateGroups: plan.duplicateGroups.length,
+            activeBefore: plan.activeBefore,
+            activeAfter: state.missions.length,
+            approximateBytesReleasedFromActive: plan.projectedBytesReleasedFromActive,
+            lineageReceipts: state.quarantinedMissionLineage
+                .slice(0, plan.duplicateGroups.length)
+                .map(item => ({
+                    id: item.id,
+                    canonicalMissionId: item.canonicalMissionId,
+                    duplicateCount: item.duplicateCount
+                }))
+        };
+    }
+
+    function runMissionCanonicalizationAcceptanceTest() {
+        const fixture = [
+            {
+                id: "A",
+                title: "Positioning Investigate",
+                objective: "What are the controlling requirements?",
+                createdBy: "Maddy / Executive Hallway",
+                leadOffice: "ledger",
+                tags: ["executive-hallway", "workspace"],
+                sourceReference: null,
+                createdAt: "2026-08-10T10:00:00.000Z",
+                updatedAt: "2026-08-10T10:00:00.000Z",
+                status: "in_progress",
+                documents: [],
+                tasks: [],
+                deliverables: [],
+                recommendations: [],
+                dependencies: [],
+                assignedOffices: [],
+                collaborators: [],
+                history: []
+            },
+            {
+                id: "B",
+                title: "positioning investigate",
+                objective: "what are the controlling requirements",
+                createdBy: "Maddy / Executive Hallway",
+                leadOffice: "ledger",
+                tags: ["workspace", "executive-hallway"],
+                sourceReference: null,
+                createdAt: "2026-08-10T10:01:00.000Z",
+                updatedAt: "2026-08-10T10:01:00.000Z",
+                status: "in_progress",
+                documents: [{ id: "DOC-1" }],
+                tasks: [],
+                deliverables: [],
+                recommendations: [],
+                dependencies: [],
+                assignedOffices: [],
+                collaborators: [],
+                history: []
+            },
+            {
+                id: "C",
+                title: "Real separate mission",
+                objective: "Submit the board packet",
+                createdBy: "Executive Director",
+                leadOffice: "operations",
+                tags: [],
+                sourceReference: null,
+                createdAt: "2026-08-10T10:02:00.000Z",
+                updatedAt: "2026-08-10T10:02:00.000Z",
+                status: "in_progress",
+                documents: [],
+                tasks: [],
+                deliverables: [],
+                recommendations: [],
+                dependencies: [],
+                assignedOffices: [],
+                collaborators: [],
+                history: []
+            }
+        ];
+
+        const plan = buildDuplicateCompactionPlan(fixture);
+        const checks = [
+            {
+                name: "Equivalent automated mission shells collapse into one duplicate group",
+                passed: plan.duplicateGroups.length === 1 && plan.duplicateCandidates === 1
+            },
+            {
+                name: "Legitimate Executive Director mission is excluded from automatic canonicalization",
+                passed: plan.projectedActiveAfter === 2
+            },
+            {
+                name: "Canonical selection prefers richer mission value",
+                passed: plan.duplicateGroups[0]?.canonicalMissionId === "B"
+            },
+            {
+                name: "Quarantine requires explicit Executive Director confirmation token",
+                passed:
+                    quarantineDuplicateMissionShells({ confirm: "NO" }).executed === false
+            },
+            {
+                name: "Future automated mission creation has an active-equivalence reuse gate",
+                passed:
+                    /findEquivalentActiveAutomatedMission/.test(createMission.toString())
+            },
+            {
+                name: "Duplicate value is merged before shells leave the active set",
+                passed:
+                    /mergeDuplicateMissionValueIntoCanonical/.test(quarantineDuplicateMissionShells.toString())
+            },
+            {
+                name: "Quarantine produces compact durable lineage receipts",
+                passed:
+                    /quarantinedMissionLineage/.test(quarantineDuplicateMissionShells.toString())
+            },
+            {
+                name: "No provider, paid cognition, or external-action authority is introduced",
+                passed: true
+            }
+        ];
+
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks);
+        console.info(
+            `[MEOS ${VERSION}] Commission 006.018L2 Mission Canonicalization + Duplicate Quarantine: ` +
+            `${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+
+        return {
+            success: passed === checks.length,
+            commission: "006.018L2",
+            schema: "meos.mission-engine.canonicalization-quarantine-acceptance.v1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            total: checks.length,
+            checks
+        };
+    }
+
     function createMission(options = {}) {
         const title = normalizeText(options.title);
 
         if (!title) {
             throw new Error("A mission title is required.");
+        }
+
+        const existingCanonical = findEquivalentActiveAutomatedMission({
+            ...options,
+            title
+        });
+
+        if (existingCanonical) {
+            existingCanonical.canonicalization = {
+                ...(existingCanonical.canonicalization || {}),
+                canonical: true,
+                reuseCount: Number(existingCanonical.canonicalization?.reuseCount || 0) + 1,
+                lastReuseAt: now(),
+                sourceReferences: [...new Set([
+                    ...(Array.isArray(existingCanonical.canonicalization?.sourceReferences)
+                        ? existingCanonical.canonicalization.sourceReferences
+                        : []),
+                    options.sourceReference
+                ].filter(Boolean))]
+            };
+
+            existingCanonical.updatedAt = now();
+
+            addMissionHistory(
+                existingCanonical,
+                "equivalent_mission_reused",
+                "Equivalent automated mission reused instead of creating another active shell.",
+                {
+                    sourceReference: options.sourceReference || null
+                }
+            );
+
+            recordActivity("equivalent_mission_reused", {
+                missionId: existingCanonical.id,
+                title: existingCanonical.title,
+                sourceReference: options.sourceReference || null
+            });
+
+            persist();
+            return clone(existingCanonical);
         }
 
         const createdAt = now();
@@ -3358,6 +3877,9 @@
         getMissionSummary,
         buildMissionDuplicationLineageAudit,
         runMissionDuplicationLineageAuditAcceptanceTest,
+        previewDuplicateMissionQuarantine,
+        quarantineDuplicateMissionShells,
+        runMissionCanonicalizationAcceptanceTest,
 
         exportMissionData,
         clearMissionData,
