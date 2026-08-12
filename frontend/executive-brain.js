@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.9
- * Build: EB1259-EXECUTIVE-ATTENTION-ECONOMICS-QUIESCENCE-20260811-A
+ * Version: 1.25.10
+ * Build: EB12510-PRE-SPEND-ATTENTION-FIREWALL-EVIDENCE-FRONTIER-20260811-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.9";
-  const BUILD_ID = "EB1259-EXECUTIVE-ATTENTION-ECONOMICS-QUIESCENCE-20260811-A";
+  const VERSION = "1.25.10";
+  const BUILD_ID = "EB12510-PRE-SPEND-ATTENTION-FIREWALL-EVIDENCE-FRONTIER-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -249,6 +249,11 @@
       quiescentWakeSuppressions: 0,
       meaningfulWakeCount: 0,
       duplicateCallsPrevented: 0,
+      preSpendDenied: 0,
+      preSpendInvestigationPrevented: 0,
+      evidenceFrontierSuppressions: 0,
+      selfGeneratedEchoSuppressions: 0,
+      lastPreSpendDecision: null,
       lastDecision: null
     },
     selfModel: null,
@@ -1682,63 +1687,205 @@
       };
     },
 
-    cognitiveTriggerIsMeaningful(trigger = {}) {
-      if (!trigger || typeof trigger !== "object") return false;
-      const event = this.normalize(trigger.event || trigger.type || "");
-      if (!event) return false;
+    canonicalizeCognitiveEvidence(value, depth = 0) {
+      if (depth > 8) return null;
+      if (value === null || value === undefined) return null;
 
-      const housekeeping = new Set([
+      if (Array.isArray(value)) {
+        return value
+          .map(item => this.canonicalizeCognitiveEvidence(item, depth + 1))
+          .filter(item => item !== null)
+          .sort((a, b) =>
+            JSON.stringify(a).localeCompare(JSON.stringify(b))
+          );
+      }
+
+      if (typeof value !== "object") {
+        if (typeof value === "string") return this.normalize(value);
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        if (typeof value === "boolean") return value;
+        return String(value);
+      }
+
+      const transientKeys = new Set([
+        "id", "intentionId", "reentryId", "dispatchId", "planId",
+        "workflowId", "investigationId", "assimilationNumber",
+        "investigationNumber", "assessmentNumber", "revision",
+        "generatedAt", "createdAt", "updatedAt", "completedAt",
+        "startedAt", "observedAt", "assessedAt", "healedAt",
+        "convergedAt", "reactivatedAt", "quiescentAt",
+        "fingerprint", "positioningFingerprint", "worldFingerprint",
+        "sourceFingerprint", "investigationFingerprint",
+        "assimilationFingerprint", "causalFingerprint",
+        "priorWorldFingerprint", "currentWorldFingerprint",
+        "priorCheckpointId"
+      ]);
+
+      const provenanceKeys = new Set([
+        "source", "provenance", "provider", "providerId",
+        "executor", "lineageId", "cognitiveReentryLineageId"
+      ]);
+
+      const out = {};
+      for (const key of Object.keys(value).sort()) {
+        if (transientKeys.has(key) || provenanceKeys.has(key)) continue;
+        const canonical =
+          this.canonicalizeCognitiveEvidence(value[key], depth + 1);
+        if (
+          canonical === null ||
+          canonical === "" ||
+          (Array.isArray(canonical) && canonical.length === 0) ||
+          (
+            canonical &&
+            typeof canonical === "object" &&
+            !Array.isArray(canonical) &&
+            Object.keys(canonical).length === 0
+          )
+        ) continue;
+        out[key] = canonical;
+      }
+      return out;
+    },
+
+    cognitiveEvidenceFingerprint(value = {}) {
+      const canonical = this.canonicalizeCognitiveEvidence(value);
+      try {
+        return this.fingerprintCognitiveDispatch(canonical);
+      } catch {
+        try { return JSON.stringify(canonical); }
+        catch { return String(canonical); }
+      }
+    },
+
+    cognitiveTriggerIsHousekeeping(trigger = {}) {
+      const event = this.normalize(trigger?.event || trigger?.type || "");
+      return new Set([
         "unresolved intention time reentry",
         "cognitive continuity resume",
         "temporal continuity return",
         "completed with failure",
         "runtime reentry",
         "incomplete cognition"
-      ]);
-      if (housekeeping.has(event)) return false;
+      ]).has(event);
+    },
+
+    cognitiveTriggerIsMeaningful(trigger = {}, intention = null) {
+      if (!trigger || typeof trigger !== "object") return false;
+      const event = this.normalize(trigger.event || trigger.type || "");
+      if (!event || this.cognitiveTriggerIsHousekeeping(trigger)) return false;
 
       /*
-       * Autonomous attention must be sponsored by concrete executive reality,
-       * not merely by semantic similarity or free-form curiosity.
+       * Evidence created by this same cognition lineage is knowledge to absorb,
+       * not a fresh reason to purchase another cognition cycle.
        */
+      if (
+        trigger.selfGeneratedCognitiveEvidence === true &&
+        (
+          !intention?.intentionId ||
+          trigger.originatingIntentionId === intention.intentionId
+        )
+      ) {
+        return false;
+      }
+
       const anchorFields = [
-        "missionId", "relatedMissionId", "workId", "workflowId",
+        "missionId", "relatedMissionId", "workId",
         "initiativeId", "opportunityId", "caseRecordId", "alertId",
         "sourceDocumentId", "sourceInvestigationId", "sourceId",
         "evidenceId", "deadlineId", "decisionId"
       ];
       if (anchorFields.some(field => Boolean(trigger[field]))) return true;
 
-      const executiveSources = new Set([
-        "human", "executive-director", "mission-engine",
-        "executive-hallway", "executive-monitoring", "grant-office",
-        "executive-resource-acquisition-engine", "knowledge-memory",
-        "knowledge-engine", "executive-evidence-integrity",
-        "institutional-reasoning", "executive-planning",
-        "executive-learning", "executive-brain"
-      ]);
       const source = this.normalize(trigger.source || "");
-      return executiveSources.has(source) &&
-        !source.includes("executive brain") &&
-        event.length > 0;
+      if (["human", "executive director"].includes(source)) return true;
+
+      const executiveSources = new Set([
+        "mission engine", "executive hallway", "executive monitoring",
+        "grant office", "executive resource acquisition engine",
+        "knowledge memory", "knowledge engine",
+        "executive evidence integrity", "institutional reasoning",
+        "executive planning", "executive learning"
+      ]);
+      return executiveSources.has(source) && event.length > 0;
+    },
+
+    getCognitiveEvidenceFrontier(intention = {}) {
+      const economics = intention?.economics || {};
+      const saved = Array.isArray(economics.evidenceFrontier)
+        ? economics.evidenceFrontier
+        : [];
+      if (saved.length > 0) return new Set(saved);
+
+      const derived = (intention?.triggers || [])
+        .filter(trigger => !this.cognitiveTriggerIsHousekeeping(trigger))
+        .map(trigger => this.cognitiveEvidenceFingerprint(trigger))
+        .filter(Boolean);
+      return new Set(derived);
+    },
+
+    snapshotCognitiveEvidenceFrontier(intention = {}) {
+      if (!intention) return [];
+      const frontier = [
+        ...new Set(
+          (intention.triggers || [])
+            .filter(trigger => !this.cognitiveTriggerIsHousekeeping(trigger))
+            .map(trigger => this.cognitiveEvidenceFingerprint(trigger))
+            .filter(Boolean)
+        )
+      ].slice(-100);
+
+      intention.economics = {
+        ...(intention.economics || {}),
+        evidenceFrontier: frontier,
+        evidenceFrontierCapturedAt: new Date().toISOString()
+      };
+      return frontier;
+    },
+
+    assessTriggerNovelty(intention, triggers = []) {
+      const list = (Array.isArray(triggers) ? triggers : [triggers])
+        .filter(Boolean);
+      const frontier = this.getCognitiveEvidenceFrontier(intention);
+      const meaningful = list.filter(trigger =>
+        this.cognitiveTriggerIsMeaningful(trigger, intention)
+      );
+
+      const novel = meaningful.filter(trigger => {
+        const fingerprint = this.cognitiveEvidenceFingerprint(trigger);
+        return fingerprint && !frontier.has(fingerprint);
+      });
+
+      const selfGeneratedEchoes = list.filter(trigger =>
+        trigger?.selfGeneratedCognitiveEvidence === true &&
+        trigger?.originatingIntentionId === intention?.intentionId
+      );
+
+      return {
+        meaningfulCount: meaningful.length,
+        novelCount: novel.length,
+        novelTriggers: this.clone(novel),
+        selfGeneratedEchoCount: selfGeneratedEchoes.length,
+        frontierSize: frontier.size
+      };
     },
 
     assessCognitiveAttentionEconomics(intention, triggers = [], options = {}) {
+      const list = (Array.isArray(triggers) ? triggers : [triggers])
+        .filter(Boolean);
       const combined = [
         ...(Array.isArray(intention?.triggers) ? intention.triggers : []),
-        ...(Array.isArray(triggers) ? triggers : [triggers])
-      ].filter(Boolean);
+        ...list
+      ];
       const meaningful = combined.filter(trigger =>
-        this.cognitiveTriggerIsMeaningful(trigger)
+        this.cognitiveTriggerIsMeaningful(trigger, intention)
       );
-      const newMeaningful = (Array.isArray(triggers) ? triggers : [triggers])
-        .filter(trigger => this.cognitiveTriggerIsMeaningful(trigger));
+      const novelty = this.assessTriggerNovelty(intention, list);
 
       const economics = intention?.economics || {};
       const quiescent = intention?.status === "quiescent" ||
         economics.state === "quiescent";
       const explicitHuman = combined.some(trigger =>
-        ["human", "executive-director"].includes(
+        ["human", "executive director"].includes(
           this.normalize(trigger?.source || "")
         )
       );
@@ -1746,9 +1893,16 @@
       let decision = "admit";
       let reason = "executive-reality-sponsored";
 
-      if (quiescent && newMeaningful.length === 0 && !explicitHuman) {
+      if (
+        novelty.selfGeneratedEchoCount > 0 &&
+        novelty.novelCount === 0 &&
+        !explicitHuman
+      ) {
         decision = "suppress";
-        reason = "quiescent-no-meaningful-change";
+        reason = "self-generated-evidence-echo";
+      } else if (quiescent && novelty.novelCount === 0 && !explicitHuman) {
+        decision = "suppress";
+        reason = "quiescent-no-materially-novel-evidence";
       } else if (
         meaningful.length <
           this.configuration.cognitiveAttentionMinimumAnchors &&
@@ -1756,21 +1910,23 @@
       ) {
         decision = "deny";
         reason = "no-defensible-executive-attention-anchor";
-      } else if (quiescent && (newMeaningful.length > 0 || explicitHuman)) {
+      } else if (quiescent && (novelty.novelCount > 0 || explicitHuman)) {
         decision = "wake";
         reason = explicitHuman
           ? "human-attention-authority"
-          : "meaningful-world-change";
+          : "materially-novel-executive-evidence";
       }
 
       const assessment = {
-        schema: "meos.maddy.executive-attention-decision.v1",
+        schema: "meos.maddy.executive-attention-decision.v2",
         intentionId: intention?.intentionId || null,
         subject: intention?.subject || null,
         decision,
         reason,
         meaningfulAnchorCount: meaningful.length,
-        newMeaningfulAnchorCount: newMeaningful.length,
+        novelMeaningfulAnchorCount: novelty.novelCount,
+        evidenceFrontierSize: novelty.frontierSize,
+        selfGeneratedEchoCount: novelty.selfGeneratedEchoCount,
         explicitHuman,
         assessedAt: new Date().toISOString()
       };
@@ -1778,20 +1934,152 @@
       return assessment;
     },
 
-    cognitiveOutcomeFingerprint(result = {}) {
-      const summary = result?.summary || {};
-      const stable = {
-        success: result?.success === true,
-        positioningFingerprint: result?.positioningFingerprint || null,
-        planId: result?.plan?.id || null,
-        proposedMoves: Number(summary.proposedMoves || 0),
-        dispatched: Number(summary.dispatched || 0),
-        reusedExistingWork: Number(summary.reusedExistingWork || 0),
-        awaitingReview: Number(summary.awaitingReview || 0),
-        failed: Number(summary.failed || 0)
+    worldModelAssessmentHasExecutiveConsequence(assessment = {}, current = {}) {
+      const signalTypes = new Set(
+        (assessment.signals || []).map(item => item?.type).filter(Boolean)
+      );
+      const consequentialSignals = [
+        "work-state-changed",
+        "monitoring-state-changed",
+        "future-positioning-implication"
+      ];
+      const hasConsequentialSignal =
+        consequentialSignals.some(type => signalTypes.has(type));
+
+      const currentWork =
+        this.buildCognitiveWorkSalienceProjection(
+          current?.world?.currentWork || {}
+        );
+      const hasActiveExecutiveWork =
+        Number(currentWork?.summary?.salientMissionCount || 0) > 0 ||
+        Number(currentWork?.summary?.salientWorkflowCount || 0) > 0 ||
+        Number(currentWork?.summary?.salientPlanCount || 0) > 0 ||
+        Number(currentWork?.summary?.pendingApprovalCount || 0) > 0;
+
+      const hasLiveIntention =
+        Array.isArray(current?.intentions) &&
+        current.intentions.some(item =>
+          item &&
+          item.status !== "completed" &&
+          item.status !== "quiescent"
+        );
+
+      return {
+        consequential:
+          hasConsequentialSignal ||
+          (
+            signalTypes.has("uncertainty-increased") &&
+            (hasActiveExecutiveWork || hasLiveIntention)
+          ),
+        signalTypes: Array.from(signalTypes),
+        hasActiveExecutiveWork,
+        hasLiveIntention
       };
-      try { return JSON.stringify(stable); }
-      catch { return String(stable.success); }
+    },
+
+    assessPreSpendExecutiveAttention(
+      assessment = {},
+      trigger = {},
+      existingIntention = null,
+      currentWorldModel = {}
+    ) {
+      const consequence =
+        this.worldModelAssessmentHasExecutiveConsequence(
+          assessment,
+          currentWorldModel
+        );
+
+      const explicitHuman =
+        ["human", "executive director"].includes(
+          this.normalize(trigger?.source || "")
+        );
+
+      const attention = existingIntention
+        ? this.assessCognitiveAttentionEconomics(
+            existingIntention,
+            [trigger],
+            { phase: "pre-spend" }
+          )
+        : null;
+
+      let allowCognition = true;
+      let allowInvestigation = assessment.investigate === true;
+      let reason = "executive-consequence-and-novelty-proven";
+
+      if (!consequence.consequential && !explicitHuman) {
+        allowCognition = false;
+        allowInvestigation = false;
+        reason = "no-demonstrated-executive-consequence";
+      } else if (
+        attention &&
+        ["deny", "suppress"].includes(attention.decision)
+      ) {
+        allowCognition = false;
+        allowInvestigation = false;
+        reason = attention.reason;
+      }
+
+      const decision = {
+        schema: "meos.maddy.pre-spend-executive-attention.v1",
+        subject: assessment.subject || existingIntention?.subject || null,
+        allowCognition,
+        allowInvestigation,
+        reason,
+        estimatedNetworkCallsAuthorized:
+          allowInvestigation ? 1 : 0,
+        consequence,
+        attention,
+        decidedAt: new Date().toISOString()
+      };
+
+      this.cognitiveEconomics.lastPreSpendDecision = this.clone(decision);
+      if (!allowCognition) this.cognitiveEconomics.preSpendDenied += 1;
+      if (assessment.investigate === true && !allowInvestigation) {
+        this.cognitiveEconomics.preSpendInvestigationPrevented += 1;
+        this.cognitiveEconomics.duplicateCallsPrevented += 1;
+      }
+      if (reason === "self-generated-evidence-echo") {
+        this.cognitiveEconomics.selfGeneratedEchoSuppressions += 1;
+      }
+      if (reason === "quiescent-no-materially-novel-evidence") {
+        this.cognitiveEconomics.evidenceFrontierSuppressions += 1;
+      }
+
+      return decision;
+    },
+
+    cognitiveOutcomeFingerprint(result = {}) {
+      /*
+       * Information gain is semantic. Success flags, generated IDs,
+       * timestamps, plan IDs, and provider provenance do not count as learning.
+       */
+      const substantive = {
+        evidence:
+          result?.evidence ||
+          result?.reasoning?.evidence ||
+          result?.positioning?.evidence ||
+          null,
+        unknowns:
+          result?.unknowns ||
+          result?.reasoning?.unknowns ||
+          result?.positioning?.unknowns ||
+          null,
+        conclusions:
+          result?.conclusions ||
+          result?.recommendation ||
+          result?.positioning?.recommendation ||
+          null,
+        proposedMoves:
+          result?.proposedMoves ||
+          result?.moves ||
+          result?.positioning?.proposedMoves ||
+          null,
+        unresolved:
+          result?.unresolved ||
+          result?.remainingUnknowns ||
+          null
+      };
+      return this.cognitiveEvidenceFingerprint(substantive);
     },
 
     applyCognitiveInformationGain(intention, result = {}, entry = {}) {
@@ -1806,15 +2094,15 @@
         lastOutcomeFingerprint: null,
         lastMeaningfulGainAt: null,
         quiescentAt: null,
-        quiescenceReason: null
+        quiescenceReason: null,
+        evidenceFrontier: []
       };
 
       const previous = economics.lastOutcomeFingerprint;
       const gained =
-        result?.success === true ||
-        (previous !== null && previous !== fingerprint) ||
-        Number(result?.summary?.dispatched || 0) > 0 ||
-        Number(result?.summary?.proposedMoves || 0) > 0;
+        Boolean(fingerprint) &&
+        previous !== null &&
+        previous !== fingerprint;
 
       if (gained) {
         economics.noGainStreak = 0;
@@ -1834,7 +2122,6 @@
       economics.lastReentryId = entry?.reentryId || null;
 
       if (
-        result?.success !== true &&
         economics.noGainStreak >=
           this.configuration.cognitiveNoGainQuiescenceThreshold
       ) {
@@ -1843,6 +2130,7 @@
         economics.quiescenceReason =
           "repeated-cognition-produced-no-material-information-gain";
         intention.status = "quiescent";
+        this.snapshotCognitiveEvidenceFrontier(intention);
         this.cognitiveEconomics.quiescenceEntries += 1;
         this.record("cognition.intention-quiescent", {
           intentionId: intention.intentionId,
@@ -1894,6 +2182,7 @@
             migratedFromAttempts: Number(intention.attempts || 0)
           };
           intention.status = "quiescent";
+          this.snapshotCognitiveEvidenceFrontier(intention);
           quiesced += 1;
         }
       }
@@ -9346,8 +9635,74 @@
         };
       }
 
+      /*
+       * PRE-SPEND FIREWALL
+       *
+       * The previous architecture could launch autonomous evidence research
+       * before economic authorization. That made the attention governor a
+       * post-spend accountant. Build the trigger first, prove executive
+       * consequence + novelty, and only then permit investigation.
+       */
+      const preliminaryTrigger = {
+        source: "executive-brain-world-model",
+        event: "emergent-meaningful-change",
+        salienceScore: assessment.score,
+        investigate: assessment.investigate,
+        signals: this.clone(assessment.signals.slice(0, 8)),
+        connections: this.clone(assessment.connections.slice(0, 6)),
+        questions: this.clone(assessment.questions.slice(0, 8)),
+        worldState: {
+          work:
+            this.buildCognitiveWorkSalienceProjection(
+              current?.world?.currentWork || {}
+            ),
+          monitoring:
+            this.clone(current?.world?.monitoring || null),
+          unknowns:
+            this.clone((current?.unknowns || []).slice(0, 12))
+        }
+      };
+
+      const existingIntention =
+        (this.cognitiveIntentions || []).find(item =>
+          item &&
+          item.status !== "completed" &&
+          this.normalize(item.subject || item.key || "") ===
+            this.normalize(assessment.subject || "")
+        ) || null;
+
+      const preSpend =
+        this.assessPreSpendExecutiveAttention(
+          assessment,
+          preliminaryTrigger,
+          existingIntention,
+          current
+        );
+
+      if (!preSpend.allowCognition) {
+        this.record(
+          "cognition.pre-spend-attention-denied",
+          {
+            subject: assessment.subject,
+            score: assessment.score,
+            investigate: assessment.investigate,
+            reason: preSpend.reason,
+            preventedInvestigation:
+              assessment.investigate === true
+          }
+        );
+
+        return {
+          success: true,
+          attended: false,
+          economical: true,
+          preSpend,
+          assessment
+        };
+      }
+
       const causalInvestigation =
-        assessment.investigate
+        assessment.investigate && preSpend.allowInvestigation
           ? this.runCausalCounterfactualInvestigation(
               assessment,
               {
@@ -9357,79 +9712,63 @@
             )
           : null;
 
+      const trigger = {
+        ...preliminaryTrigger,
+        causalInvestigation:
+          causalInvestigation
+            ? {
+                fingerprint: causalInvestigation.fingerprint,
+                hypotheses: this.clone(causalInvestigation.hypotheses),
+                counterfactuals: this.clone(causalInvestigation.counterfactuals),
+                nextInvestigation: this.clone(causalInvestigation.nextInvestigation)
+              }
+            : null,
+        worldFingerprint: current?.fingerprint || null
+      };
+
+      const intentionForLineage =
+        existingIntention ||
+        this.upsertCognitiveIntention(
+          assessment.subject,
+          [trigger],
+          {
+            status: "pending",
+            persist: false
+          }
+        );
+
       if (
         causalInvestigation &&
-        assessment.investigate === true
+        preSpend.allowInvestigation === true
       ) {
         Promise.resolve(
           this.runAutonomousEvidenceInvestigation(
             causalInvestigation,
-            {}
+            {
+              originatingIntentionId:
+                intentionForLineage?.intentionId || null,
+              preSpendAuthorized: true,
+              preSpendDecision:
+                this.clone(preSpend)
+            }
           )
         ).catch(error => {
           this.record(
             "cognition.autonomous-investigation-error",
             {
-              subject:
-                causalInvestigation.subject,
-              error:
-                error?.message ||
-                String(error)
+              subject: causalInvestigation.subject,
+              error: error?.message || String(error)
             }
           );
         });
       }
-
-      const trigger = {
-        source: "executive-brain-world-model",
-        event:
-          "emergent-meaningful-change",
-        salienceScore:
-          assessment.score,
-        investigate:
-          assessment.investigate,
-        signals:
-          this.clone(
-            assessment.signals.slice(0, 8)
-          ),
-        connections:
-          this.clone(
-            assessment.connections.slice(0, 6)
-          ),
-        questions:
-          this.clone(
-            assessment.questions.slice(0, 8)
-          ),
-        causalInvestigation:
-          causalInvestigation
-            ? {
-                fingerprint:
-                  causalInvestigation.fingerprint,
-                hypotheses:
-                  this.clone(
-                    causalInvestigation.hypotheses
-                  ),
-                counterfactuals:
-                  this.clone(
-                    causalInvestigation.counterfactuals
-                  ),
-                nextInvestigation:
-                  this.clone(
-                    causalInvestigation.nextInvestigation
-                  )
-              }
-            : null,
-        worldFingerprint:
-          current?.fingerprint || null
-      };
 
       const scheduled =
         this.scheduleCognitiveReentry(
           assessment.subject,
           trigger,
           {
-            immediate:
-              assessment.score >= 0.9
+            immediate: assessment.score >= 0.9
           }
         );
 
@@ -10172,6 +10511,23 @@
       causalInvestigation = {},
       context = {}
     ) {
+      if (context.preSpendAuthorized !== true) {
+        this.cognitiveEconomics.preSpendDenied += 1;
+        this.cognitiveEconomics.preSpendInvestigationPrevented += 1;
+        this.cognitiveEconomics.duplicateCallsPrevented += 1;
+        this.record("cognition.autonomous-investigation-blocked-pre-spend", {
+          subject: causalInvestigation?.subject || null,
+          reason: "explicit-pre-spend-authorization-required"
+        });
+        return {
+          success: true,
+          blocked: true,
+          economical: true,
+          stopReason: "explicit-pre-spend-authorization-required",
+          steps: []
+        };
+      }
+
       const generatedAt =
         new Date().toISOString();
       let hypotheses =
@@ -10426,7 +10782,13 @@
         }
       );
 
-      result.assimilation = this.assimilateAutonomousInvestigationEvidence(result, { persist: false });
+      result.assimilation = this.assimilateAutonomousInvestigationEvidence(
+        result,
+        {
+          persist: false,
+          originatingIntentionId: context.originatingIntentionId || null
+        }
+      );
 
       if (
         brainPersistence.hydrated === true
@@ -10460,7 +10822,7 @@
       assimilation.fingerprint=this.fingerprintCognitiveDispatch(assimilation);
       this.evidenceAssimilationCount=assimilation.assimilationNumber; this.lastEvidenceAssimilation=assimilation; this.evidenceAssimilationHistory.unshift(this.clone(assimilation)); this.evidenceAssimilationHistory=this.evidenceAssimilationHistory.slice(0,this.configuration.maximumEvidenceAssimilationHistory);
       const worldModel=this.projectWorldModel({reason:"autonomous-investigation-evidence-assimilated",persist:false,attend:false});
-      const trigger={source:"executive-brain-evidence-assimilation",event:"autonomous-investigation-evidence-assimilated",assimilationFingerprint:assimilation.fingerprint,investigationFingerprint:investigation.fingerprint||null,resolution:assimilation.resolution,resolved:assimilation.resolved,falsifiedHypothesisIds:falsified.map(x=>x.hypothesisId),survivingHypothesisIds:surviving.map(x=>x.hypothesisId),unknowns:unresolvedQuestions.slice(0,12),worldFingerprint:worldModel?.fingerprint||null};
+      const trigger={source:"executive-brain-evidence-assimilation",event:"autonomous-investigation-evidence-assimilated",selfGeneratedCognitiveEvidence:true,originatingIntentionId:options.originatingIntentionId||null,assimilationFingerprint:assimilation.fingerprint,investigationFingerprint:investigation.fingerprint||null,resolution:assimilation.resolution,resolved:assimilation.resolved,falsifiedHypothesisIds:falsified.map(x=>x.hypothesisId),survivingHypothesisIds:surviving.map(x=>x.hypothesisId),unknowns:unresolvedQuestions.slice(0,12),worldFingerprint:worldModel?.fingerprint||null};
       const existing=(this.cognitiveIntentions||[]).find(x=>x?.key===this.normalize(assimilation.subject)&&x?.status!=="completed");
       if(existing){ existing.triggers=Array.isArray(existing.triggers)?existing.triggers:[]; existing.triggers.push(this.clone(trigger)); existing.triggers=existing.triggers.slice(-50); existing.updatedAt=generatedAt; }
       else if(options.createIntention!==false) this.upsertCognitiveIntention(assimilation.subject,[trigger],{status:"pending",kind:"evidence-assimilation-follow-through",sourceId:assimilation.fingerprint,persist:false});
@@ -16573,115 +16935,237 @@
     runExecutiveAttentionEconomicsAcceptanceTest() {
       const originalIntentions = this.clone(this.cognitiveIntentions);
       const originalEconomics = this.clone(this.cognitiveEconomics);
-      try {
-        const irrelevant = {
-          intentionId: "attention-fixture-irrelevant",
-          subject: "Investigate mosquito life expectancy in the Arctic",
-          key: this.normalize("Investigate mosquito life expectancy in the Arctic"),
-          status: "pending",
-          attempts: 0,
-          triggers: [{
-            source: "executive-brain",
-            event: "unresolved-intention-time-reentry"
-          }]
-        };
-        const denied =
-          this.assessCognitiveAttentionEconomics(
-            irrelevant,
-            irrelevant.triggers
-          );
 
-        const legitimate = {
-          intentionId: "attention-fixture-legitimate",
-          subject: "Evaluate a mission-linked funding opportunity",
-          key: this.normalize("Evaluate a mission-linked funding opportunity"),
-          status: "pending",
-          attempts: 1,
+      try {
+        const subject = "Mission-linked funding eligibility";
+        const intention = {
+          intentionId: "attention-economics-fixture",
+          subject,
+          key: this.normalize(subject),
+          status: "quiescent",
+          attempts: 53,
           triggers: [{
             source: "grant-office",
             event: "opportunity-discovered",
-            opportunityId: "fixture-opportunity"
-          }]
+            opportunityId: "opp-1",
+            eligibility: "unknown"
+          }],
+          economics: {
+            schema: "meos.maddy.cognitive-information-economics.v1",
+            state: "quiescent",
+            noGainStreak: 2,
+            evidenceFrontier: []
+          }
         };
-        const admitted =
+        this.cognitiveIntentions = [intention];
+        this.snapshotCognitiveEvidenceFrontier(intention);
+
+        const repeatedFromAnotherOffice = {
+          source: "executive-monitoring",
+          event: "opportunity-discovered",
+          opportunityId: "opp-1",
+          eligibility: "unknown"
+        };
+        const sameEvidence =
           this.assessCognitiveAttentionEconomics(
-            legitimate,
-            legitimate.triggers
+            intention,
+            [repeatedFromAnotherOffice]
           );
 
-        const noGain1 = this.applyCognitiveInformationGain(
-          legitimate,
-          { success: false, summary: { proposedMoves: 0, dispatched: 0, failed: 1 } },
-          { reentryId: "fixture-r1" }
-        );
-        const noGain2 = this.applyCognitiveInformationGain(
-          legitimate,
-          { success: false, summary: { proposedMoves: 0, dispatched: 0, failed: 1 } },
-          { reentryId: "fixture-r2" }
-        );
-        const sleeping =
+        const novelEvidence = {
+          source: "grant-office",
+          event: "eligibility-updated",
+          opportunityId: "opp-1",
+          eligibility: "verified-eligible"
+        };
+        const wake =
           this.assessCognitiveAttentionEconomics(
-            legitimate,
-            [{
-              source: "executive-brain",
-              event: "unresolved-intention-time-reentry"
-            }]
-          );
-        const waking =
-          this.assessCognitiveAttentionEconomics(
-            legitimate,
-            [{
-              source: "grant-office",
-              event: "deadline-changed",
-              opportunityId: "fixture-opportunity"
-            }]
+            intention,
+            [novelEvidence]
           );
 
-        const legacy = {
-          intentionId: "legacy-48",
-          subject: "Real unresolved executive question",
-          key: this.normalize("Real unresolved executive question"),
-          status: "pending",
-          attempts: 48,
-          triggers: [{
-            source: "executive-brain",
-            event: "unresolved-intention-time-reentry"
-          }]
+        const selfEcho = {
+          source: "executive-brain-evidence-assimilation",
+          event: "autonomous-investigation-evidence-assimilated",
+          selfGeneratedCognitiveEvidence: true,
+          originatingIntentionId: intention.intentionId,
+          unknowns: ["eligibility"]
         };
-        this.cognitiveIntentions = [legacy];
-        const migration = this.migrateCognitiveEconomicsState();
+        const echoDecision =
+          this.assessCognitiveAttentionEconomics(
+            intention,
+            [selfEcho]
+          );
+
+        const mosquitoAssessment = {
+          subject: "Investigate mosquito life expectancy in the Arctic",
+          investigate: true,
+          score: 1,
+          signals: [{
+            type: "new-capability",
+            weight: 1,
+            detail: "A capability exists",
+            domains: ["capability"]
+          }],
+          connections: [],
+          questions: []
+        };
+        const mosquitoTrigger = {
+          source: "executive-brain-world-model",
+          event: "emergent-meaningful-change",
+          signals: mosquitoAssessment.signals
+        };
+        const mosquitoPreSpend =
+          this.assessPreSpendExecutiveAttention(
+            mosquitoAssessment,
+            mosquitoTrigger,
+            null,
+            {
+              intentions: [],
+              world: { currentWork: {} }
+            }
+          );
+
+        const realAssessment = {
+          subject,
+          investigate: true,
+          score: 1,
+          signals: [{
+            type: "monitoring-state-changed",
+            weight: 1,
+            detail: "Eligibility evidence changed",
+            domains: ["monitoring", "external-world"]
+          }],
+          connections: [],
+          questions: ["Are we eligible?"]
+        };
+        const realPreSpend =
+          this.assessPreSpendExecutiveAttention(
+            realAssessment,
+            novelEvidence,
+            intention,
+            {
+              intentions: [intention],
+              world: {
+                currentWork: {
+                  activeMissions: [{
+                    id: "mission-1",
+                    status: "active"
+                  }]
+                }
+              }
+            }
+          );
+
+        const semanticA = this.cognitiveOutcomeFingerprint({
+          success: true,
+          plan: { id: "plan-A" },
+          positioningFingerprint: "transient-A",
+          unknowns: ["Eligibility unknown"]
+        });
+        const semanticB = this.cognitiveOutcomeFingerprint({
+          success: true,
+          plan: { id: "plan-B" },
+          positioningFingerprint: "transient-B",
+          unknowns: ["Eligibility unknown"]
+        });
 
         const checks = [
-          { name: "Irrelevant autonomous curiosity receives zero executive attention authorization", passed: denied.decision === "deny" },
-          { name: "Concrete mission/work/opportunity evidence can sponsor executive attention", passed: admitted.decision === "admit" },
-          { name: "One failed investigation does not prematurely kill a legitimate thought", passed: noGain1.economics.noGainStreak === 1 },
-          { name: "Repeated zero-information investigation enters quiescence", passed: noGain2.economics.state === "quiescent" && legitimate.status === "quiescent" },
-          { name: "Timer-only continuity cannot wake a quiescent thought", passed: sleeping.decision === "suppress" },
-          { name: "Meaningful new executive evidence can wake the same thought", passed: waking.decision === "wake" },
-          { name: "A legacy 48-attempt thought is preserved but made economically quiet", passed: migration.quiesced === 1 && this.cognitiveIntentions[0].attempts === 48 && this.cognitiveIntentions[0].status === "quiescent" },
-          { name: "Quiescence is memory, not deletion", passed: this.cognitiveIntentions.length === 1 && this.cognitiveIntentions[0].intentionId === "legacy-48" },
-          { name: "Automatic retry refuses quiescent cognition", passed: this.scheduleCognitiveIntentionRetry(this.cognitiveIntentions[0], "fixture") === false },
-          { name: "Resume path excludes quiescent cognition from automatic wake", passed: /item\.status !== "quiescent"/.test(this.resumeUnresolvedCognitiveIntentions.toString()) },
-          { name: "Cognitive execution measures information gain before resolving/retrying", passed: /applyCognitiveInformationGain/.test(this.executeCognitiveReentry.toString()) },
-          { name: "No arbitrary retry cap replaces judgment; continuation depends on information gain", passed: this.configuration.cognitiveNoGainQuiescenceThreshold === 2 },
-          { name: "Human/executive authority can explicitly sponsor attention", passed: this.assessCognitiveAttentionEconomics(irrelevant, [{source:"human",event:"explicit-request"}]).decision !== "deny" },
-          { name: "External-action human approval authority remains unchanged", passed: this.configuration.requireHumanApprovalForExternalAction === true }
+          {
+            name: "Irrelevant salience cannot authorize even one autonomous investigation",
+            passed:
+              mosquitoPreSpend.allowCognition === false &&
+              mosquitoPreSpend.allowInvestigation === false
+          },
+          {
+            name: "Pre-spend firewall executes before autonomous evidence investigation in World Model attention",
+            passed:
+              this.attendToWorldModelChange.toString()
+                .indexOf("assessPreSpendExecutiveAttention") <
+              this.attendToWorldModelChange.toString()
+                .indexOf("runAutonomousEvidenceInvestigation")
+          },
+          {
+            name: "Direct autonomous investigation callers cannot bypass pre-spend authority",
+            passed:
+              /explicit-pre-spend-authorization-required/.test(
+                this.runAutonomousEvidenceInvestigation.toString()
+              )
+          },
+          {
+            name: "Same substantive evidence from another office does not wake a quiescent thought",
+            passed:
+              sameEvidence.decision === "suppress" &&
+              sameEvidence.novelMeaningfulAnchorCount === 0
+          },
+          {
+            name: "Materially changed evidence wakes the same quiescent intention",
+            passed:
+              wake.decision === "wake" &&
+              wake.novelMeaningfulAnchorCount === 1
+          },
+          {
+            name: "Maddy cannot treat her own investigation exhaust as a new sponsor",
+            passed:
+              echoDecision.decision === "suppress" &&
+              echoDecision.reason === "self-generated-evidence-echo"
+          },
+          {
+            name: "Mission/monitoring consequence plus novel evidence can authorize one investigation",
+            passed:
+              realPreSpend.allowCognition === true &&
+              realPreSpend.allowInvestigation === true
+          },
+          {
+            name: "Generated plan IDs and transient fingerprints do not count as information gain",
+            passed: semanticA === semanticB
+          },
+          {
+            name: "Success alone is not encoded as information gain",
+            passed:
+              !/result\?\.success === true \|\|/.test(
+                this.applyCognitiveInformationGain.toString()
+              )
+          },
+          {
+            name: "Quiescence snapshots an evidence frontier for future novelty decisions",
+            passed:
+              Array.isArray(intention.economics.evidenceFrontier) &&
+              intention.economics.evidenceFrontier.length === 1
+          },
+          {
+            name: "Automatic retry still refuses quiescent cognition",
+            passed:
+              this.scheduleCognitiveIntentionRetry(
+                intention,
+                "fixture"
+              ) === false
+          },
+          {
+            name: "External human approval authority remains unchanged",
+            passed:
+              this.configuration
+                .requireHumanApprovalForExternalAction === true
+          }
         ];
-        const passed = checks.every(x => x.passed);
+
+        const passed = checks.every(item => item.passed);
         console.table(checks);
-        console.info(`[MEOS ${this.version}] Commission 006.017D7S3E Executive Attention Economics + Quiescence: ${passed ? "PASS" : "FAIL"}.`);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7S3F Pre-Spend Attention Firewall + Evidence Frontier: ${passed ? "PASS" : "FAIL"}.`
+        );
+
         return {
-          commission: "006.017D7S3E",
+          commission: "006.017D7S3F",
           version: this.version,
           buildId: this.buildId,
           passed,
           checks,
-          principle: "attention-is-capital",
-          economics: {
-            irrelevantDecision: denied,
-            legitimateDecision: admitted,
-            quiescentDecision: sleeping,
-            meaningfulWakeDecision: waking
+          principle:
+            "prove-value-before-spend; novelty-before-rewake",
+          preSpend: {
+            irrelevant: mosquitoPreSpend,
+            legitimate: realPreSpend
           }
         };
       } finally {
