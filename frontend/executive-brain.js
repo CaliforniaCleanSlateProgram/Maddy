@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.7
- * Build: EB1257-COGNITIVE-IDENTITY-HYDRATION-SELF-HEALING-20260811-A
+ * Version: 1.25.8
+ * Build: EB1258-SIDE-EFFECT-FREE-COGNITIVE-IDENTITY-ACCEPTANCE-20260811-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.7";
-  const BUILD_ID = "EB1257-COGNITIVE-IDENTITY-HYDRATION-SELF-HEALING-20260811-A";
+  const VERSION = "1.25.8";
+  const BUILD_ID = "EB1258-SIDE-EFFECT-FREE-COGNITIVE-IDENTITY-ACCEPTANCE-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -334,6 +334,9 @@
 
       this.restore();
       this.cognitiveHydrationPromise = this.hydrateLaptopPersistence().then(result => {
+        this.removeCognitiveIdentityAcceptanceArtifacts({
+          persist: true
+        });
         this.cognitiveContinuity.hydrated = true;
         const temporalResume = this.resumeTemporalContinuity({
           reason: "durable-cognition-hydrated"
@@ -1715,7 +1718,10 @@
       intention.triggers = [...(intention.triggers || []), ...this.clone(triggers)].slice(-50);
       this.cognitiveIntentions = this.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions);
       if (options.persist !== false) this.persist();
-      if (brainPersistence.hydrated === true) {
+      if (
+        brainPersistence.hydrated === true &&
+        options.projectSelfModel !== false
+      ) {
         this.projectSelfModel({
           reason: "cognitive-intention-updated",
           persist: false
@@ -16204,16 +16210,34 @@
     },
 
     async runCognitiveIdentityHydrationSelfHealingAcceptanceTest() {
-      const originalIntentions = this.clone(this.cognitiveIntentions);
-      const originalHealing = {
-        count: brainPersistence.intentionSelfHealingCount,
+      const original = {
+        intentions: this.clone(this.cognitiveIntentions),
+        timers: this.cognitiveReentryTimers,
+        inFlight: this.cognitiveReentryInFlight,
+        signatures: this.meaningfulChangeSignatures,
+        lineages: this.activeCognitiveLineages,
+        healingCount: brainPersistence.intentionSelfHealingCount,
         absorbed: brainPersistence.intentionRecordsAbsorbed,
-        last: this.clone(brainPersistence.lastIntentionSelfHealing),
-        pending: brainPersistence.pendingIntentionSelfHealingWriteback
+        lastHealing: this.clone(brainPersistence.lastIntentionSelfHealing),
+        pendingWriteback:
+          brainPersistence.pendingIntentionSelfHealingWriteback,
+        hydrated: brainPersistence.hydrated
       };
 
+      /*
+       * Acceptance must observe cognition, not become cognition.
+       * Use isolated maps and suppress self-model projection so no observer,
+       * timer, Hallway path, world-model change, or persistence write can
+       * escape the fixture.
+       */
+      this.cognitiveReentryTimers = new Map();
+      this.cognitiveReentryInFlight = new Set();
+      this.meaningfulChangeSignatures = new Map();
+      this.activeCognitiveLineages = new Map();
+      brainPersistence.hydrated = false;
+
       try {
-        const subject = "Pursue Foundation X";
+        const subject = "Commission 006.017D7S3C Identity Fixture";
         const intentionId = "identity-healing-fixture";
         const voices = [
           ["grant-office", "strong-fit"],
@@ -16261,7 +16285,10 @@
               source: "operations",
               event: "same-goal-more-context"
             }],
-            { persist: false }
+            {
+              persist: false,
+              projectSelfModel: false
+            }
           );
 
         const completedVsStale =
@@ -16282,6 +16309,13 @@
               }
             ],
             { recordHealing: false }
+          );
+
+        const fixtureLeakBeforeRestore =
+          this.cognitiveIntentions.some(
+            item =>
+              item?.intentionId === intentionId ||
+              item?.subject === subject
           );
 
         const checks = [
@@ -16351,6 +16385,17 @@
               )
           },
           {
+            name: "Acceptance fixture never projects itself into self/world cognition",
+            passed:
+              brainPersistence.hydrated === false &&
+              this.cognitiveReentryTimers.size === 0 &&
+              this.cognitiveReentryInFlight.size === 0
+          },
+          {
+            name: "Acceptance fixture is identifiable for deterministic cleanup",
+            passed: fixtureLeakBeforeRestore === true
+          },
+          {
             name: "External human approval authority remains unchanged",
             passed:
               this.configuration
@@ -16370,19 +16415,125 @@
           passed,
           checks,
           healed: this.clone(healed),
-          resultingIntentions: this.clone(this.cognitiveIntentions)
+          sideEffectFreeAcceptance: true
         };
       } finally {
-        this.cognitiveIntentions = originalIntentions;
+        /*
+         * Hard restore of every mutable acceptance surface.
+         * Any timer created unexpectedly is cancelled before the original
+         * runtime maps are restored.
+         */
+        for (const timer of this.cognitiveReentryTimers.values()) {
+          if (timer?.timerId) {
+            global.clearTimeout(timer.timerId);
+          }
+        }
+
+        this.cognitiveIntentions = original.intentions;
+        this.cognitiveReentryTimers = original.timers;
+        this.cognitiveReentryInFlight = original.inFlight;
+        this.meaningfulChangeSignatures = original.signatures;
+        this.activeCognitiveLineages = original.lineages;
         brainPersistence.intentionSelfHealingCount =
-          originalHealing.count;
+          original.healingCount;
         brainPersistence.intentionRecordsAbsorbed =
-          originalHealing.absorbed;
+          original.absorbed;
         brainPersistence.lastIntentionSelfHealing =
-          originalHealing.last;
+          original.lastHealing;
         brainPersistence.pendingIntentionSelfHealingWriteback =
-          originalHealing.pending;
+          original.pendingWriteback;
+        brainPersistence.hydrated = original.hydrated;
       }
+    },
+
+    removeCognitiveIdentityAcceptanceArtifacts(options = {}) {
+      const fixtureSubjects = new Set([
+        this.normalize("Pursue Foundation X"),
+        this.normalize(
+          "Commission 006.017D7S3C Identity Fixture"
+        )
+      ]);
+      const fixtureIds = new Set([
+        "identity-healing-fixture"
+      ]);
+
+      const before = this.cognitiveIntentions.length;
+      const removed = [];
+
+      this.cognitiveIntentions =
+        this.cognitiveIntentions.filter(item => {
+          const key = this.normalize(
+            item?.subject || item?.key || ""
+          );
+          const id = String(item?.intentionId || "").trim();
+
+          /*
+           * "Pursue Foundation X" existed only as the acceptance fixture from
+           * v1.25.7. Remove it only when its trigger/convergence evidence also
+           * identifies acceptance-generated cognition. Never delete a real
+           * organizational intention by subject alone.
+           */
+          const acceptanceEvidence =
+            fixtureIds.has(id) ||
+            item?.convergence?.identity ===
+              "intention:identity-healing-fixture" ||
+            (item?.triggers || []).some(trigger =>
+              [
+                "strong-fit",
+                "match-required",
+                "eligibility-check",
+                "deadline-change",
+                "dependency-found",
+                "authoritative-pdf-found",
+                "partner-fit",
+                "same-goal-more-context"
+              ].includes(trigger?.event)
+            );
+
+          if (
+            fixtureSubjects.has(key) &&
+            acceptanceEvidence
+          ) {
+            removed.push(this.clone(item));
+            return false;
+          }
+
+          return true;
+        });
+
+      const result = {
+        success: true,
+        schema:
+          "meos.maddy.cognitive-identity-acceptance-cleanup.v1",
+        before,
+        after: this.cognitiveIntentions.length,
+        removedCount: removed.length,
+        removedIntentionIds:
+          removed.map(item => item.intentionId).filter(Boolean),
+        productionIntentionsPreserved:
+          this.cognitiveIntentions.length,
+        persisted: false,
+        cleanedAt: new Date().toISOString()
+      };
+
+      if (
+        removed.length > 0 &&
+        options.persist !== false
+      ) {
+        this.persist();
+        result.persisted = true;
+      }
+
+      this.record(
+        "cognition.acceptance-artifacts-cleaned",
+        {
+          removedCount: result.removedCount,
+          removedIntentionIds:
+            result.removedIntentionIds
+        }
+      );
+
+      return result;
     },
 
     runOneShotOneKillAcceptanceTest() {
