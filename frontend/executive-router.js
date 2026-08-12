@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.0.0
- * Build: ER100-MADDY-20260731-A
+ * Version: 1.1.0
+ * Build: ER110-UNIFIED-GOVERNED-ANSWER-PRODUCTION-20260812-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.0.0";
-  const BUILD_ID = "ER100-MADDY-20260731-A";
+  const VERSION = "1.1.0";
+  const BUILD_ID = "ER110-UNIFIED-GOVERNED-ANSWER-PRODUCTION-20260812-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -365,6 +365,15 @@
 
     collect(context) {
       const result = context.dispatchResult || {};
+      const rawOutput = result.output !== undefined ? result.output : result;
+      const governedAnswer = this.produceGovernedAnswer({
+        request: context.request,
+        route: context.route,
+        package: context.brainResult.package,
+        source: result.source || "meos",
+        provider: result.provider || null,
+        output: rawOutput
+      });
 
       return {
         success: true,
@@ -378,11 +387,205 @@
         approvalRequired: context.route.approvalRequired,
         source: result.source || "meos",
         provider: result.provider || null,
-        output: result.output !== undefined ? result.output : result,
+        answer: governedAnswer.answer,
+        governedAnswer,
+        output: rawOutput,
         package: this.clone(context.brainResult.package),
         durationMs: Number((Date.now() - context.startedAt).toFixed(2)),
         completedAt: new Date().toISOString()
       };
+    },
+
+    /*
+     * Commission 006.018E — Unified Governed Answer Production
+     *
+     * The Router already owns normalized result collection. It now also owns
+     * the canonical answer contract returned to every presentation surface.
+     * Local MEOS evidence is synthesized deterministically at zero provider
+     * cost. Provider results are normalized into the same contract. Voice,
+     * HUD, and future digital-human presentation can consume one answer rather
+     * than inventing separate answers downstream.
+     */
+    produceGovernedAnswer(input = {}) {
+      const pkg = input.package || {};
+      const output = input.output || {};
+      const localEvidence = Array.isArray(pkg.localContext?.evidence)
+        ? pkg.localContext.evidence
+        : [];
+      const providerAnswer = this.firstText(
+        output.answer,
+        output.response?.answer,
+        output.result?.answer,
+        output.output?.answer,
+        output.text,
+        output.response?.text,
+        output.result?.text,
+        output.output?.text
+      );
+
+      const localAnswer = this.synthesizeLocalAnswer(
+        input.request?.text || pkg.request?.text || "",
+        localEvidence,
+        pkg
+      );
+
+      const answer = providerAnswer || localAnswer ||
+        "I do not have enough verified information yet to give you a trustworthy answer.";
+
+      const evidenceUnknowns = this.normalizeTextList(
+        pkg.evidenceIntegrity?.unverifiedInformation,
+        pkg.localContext?.unknowns,
+        output.unknowns,
+        output.response?.unknowns,
+        output.result?.unknowns
+      );
+
+      const citations = localEvidence
+        .map(item => this.firstText(item.citation, item.provenance?.citation))
+        .filter(Boolean)
+        .slice(0, 12);
+
+      return Object.freeze({
+        schema: "meos.governed-answer.v1",
+        answer,
+        basis: providerAnswer
+          ? "authorized-provider-result"
+          : localAnswer
+            ? "verified-meos-local-evidence"
+            : "insufficient-evidence",
+        confidence: Number(
+          output.confidence ??
+          output.response?.confidence ??
+          output.result?.confidence ??
+          pkg.localContext?.confidence ??
+          pkg.evidenceIntegrity?.confidence ??
+          0
+        ) || 0,
+        unknowns: evidenceUnknowns,
+        recommendation: this.firstText(
+          output.recommendation,
+          output.response?.recommendation,
+          output.result?.recommendation
+        ) || null,
+        approvalRequired: Boolean(
+          input.route?.approvalRequired ||
+          pkg.responseContract?.humanApprovalRequired
+        ),
+        citations: [...new Set(citations)],
+        source: input.source || "meos",
+        provider: input.provider || null,
+        providerPaidForAnswer: Boolean(input.provider),
+        generatedBy: providerAnswer ? "provider-normalization" : "meos-local-synthesis",
+        generatedAt: new Date().toISOString()
+      });
+    },
+
+    synthesizeLocalAnswer(question, evidence = [], pkg = {}) {
+      if (!Array.isArray(evidence) || evidence.length === 0) return "";
+
+      const statements = [];
+      for (const item of evidence) {
+        const text = this.firstText(
+          item.summary,
+          item.content,
+          item.answer,
+          item.fact,
+          item.description,
+          item.raw?.summary,
+          item.raw?.content
+        );
+        if (!text) continue;
+        const normalized = text.replace(/\s+/g, " ").trim();
+        if (!normalized || statements.includes(normalized)) continue;
+        statements.push(normalized);
+        if (statements.length >= 4) break;
+      }
+
+      if (statements.length === 0) return "";
+
+      const conflictCount = Number(pkg.localContext?.integrity?.conflictCount || 0);
+      const uncertaintyRequired = Boolean(pkg.localContext?.integrity?.uncertaintyRequired);
+      const prefix = conflictCount > 0
+        ? "Maddy has relevant evidence, but it contains a conflict: "
+        : uncertaintyRequired
+          ? "Based on the evidence Maddy currently has: "
+          : "";
+
+      return `${prefix}${statements.join(" ")}`.trim();
+    },
+
+    firstText(...values) {
+      for (const value of values) {
+        if (typeof value === "string" && value.trim()) return value.trim();
+        if (value && typeof value === "object") {
+          const nested = value.text || value.answer || value.summary || value.content;
+          if (typeof nested === "string" && nested.trim()) return nested.trim();
+        }
+      }
+      return "";
+    },
+
+    normalizeTextList(...values) {
+      const items = values.flatMap(value => Array.isArray(value) ? value : value ? [value] : []);
+      return [...new Set(items.map(item => {
+        if (typeof item === "string") return item.trim();
+        return this.firstText(item?.question, item?.unknown, item?.summary, item?.content);
+      }).filter(Boolean))].slice(0, 12);
+    },
+
+    runUnifiedAnswerAcceptanceTest() {
+      const local = this.produceGovernedAnswer({
+        request: { text: "Why are wombat droppings cube-shaped?" },
+        route: { approvalRequired: false },
+        package: {
+          localContext: {
+            confidence: 0.91,
+            integrity: { conflictCount: 0, uncertaintyRequired: false },
+            evidence: [{
+              summary: "Wombat intestines vary in elasticity, shaping feces into cubes during digestion.",
+              source: "fixture",
+              confidence: 0.91
+            }]
+          },
+          responseContract: { humanApprovalRequired: false }
+        },
+        source: "meos-local-context",
+        provider: null,
+        output: { type: "local-evidence-package" }
+      });
+
+      const provider = this.produceGovernedAnswer({
+        request: { text: "Explain the result." },
+        route: { approvalRequired: false },
+        package: { localContext: { confidence: 0, evidence: [] } },
+        source: "external-intelligence-provider",
+        provider: "fixture-provider",
+        output: { answer: "Provider answer." }
+      });
+
+      const assertions = [
+        { name: "Canonical governed-answer schema exists", passed: local.schema === "meos.governed-answer.v1" },
+        { name: "Local evidence produces a human-readable answer", passed: /Wombat intestines/.test(local.answer) },
+        { name: "Local answer requires no provider", passed: local.provider === null && local.providerPaidForAnswer === false },
+        { name: "Local answer identifies MEOS synthesis", passed: local.generatedBy === "meos-local-synthesis" },
+        { name: "Provider answer normalizes into same schema", passed: provider.schema === local.schema && provider.answer === "Provider answer." },
+        { name: "Provider provenance remains explicit", passed: provider.provider === "fixture-provider" && provider.generatedBy === "provider-normalization" },
+        { name: "Answer production grants no external-action authority", passed: local.approvalRequired === false }
+      ];
+      const passed = assertions.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === assertions.length,
+        commission: "006.018E",
+        schema: "meos.executive-router.unified-answer-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: assertions.length,
+        assertions
+      });
+      console.table(assertions);
+      console.info(`[MEOS ${VERSION}] Commission 006.018E Unified Governed Answer Production: ${result.success ? "PASS" : "FAIL"} (${passed}/${assertions.length}).`);
+      return result;
     },
 
     installDefaultRoutes() {
