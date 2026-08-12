@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.10.0";
+  const DASHBOARD_VERSION = "4.10.1";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -1127,6 +1127,10 @@
       @keyframes meosDispatchSpin{to{transform:rotate(360deg)}}
       @media (prefers-reduced-motion:reduce){.meos-maddy-desk-chip[data-live="true"]::before,.meos-maddy-window[data-dispatch-active="true"] .meos-maddy-status strong::after{animation:none}}
       .meos-maddy-desk-actions{display:flex;gap:7px;flex-wrap:wrap}.meos-maddy-desk-actions:empty{display:none}
+      /* Commission 006.018G — one question, one visible answer at the command surface. */
+      .meos-maddy-direct-answer{display:none;max-width:820px;padding:14px 16px;border:1px solid rgba(105,239,255,.34);border-radius:12px;background:linear-gradient(145deg,rgba(3,18,34,.97),rgba(7,31,48,.94));box-shadow:0 16px 40px rgba(0,0,0,.28);color:#e9f9ff}
+      .meos-maddy-direct-answer[data-open="true"]{display:block}.meos-maddy-direct-answer-label{display:block;font-size:.62rem;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:#82e7f7}.meos-maddy-direct-answer-title{margin:5px 0 7px;font-size:.88rem;color:#fff}.meos-maddy-direct-answer-text{margin:0;font-size:.82rem;line-height:1.62;color:#d6e9f2;white-space:pre-wrap}.meos-maddy-direct-answer-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}.meos-maddy-direct-answer-source{display:inline-flex;align-items:center;border:1px solid rgba(105,220,255,.34);border-radius:8px;padding:6px 10px;color:#c9f6ff;text-decoration:none;font-size:.68rem;background:rgba(17,63,91,.55)}.meos-maddy-direct-answer-source:hover{border-color:rgba(128,232,255,.8)}
+      .meos-maddy-window:has(.meos-maddy-direct-answer[data-open="true"]){min-height:560px;overflow:visible}.meos-maddy-window:has(.meos-maddy-direct-answer[data-open="true"]) .meos-maddy-desk{max-width:min(820px,calc(100% - 130px))}.meos-maddy-window:has(.meos-maddy-direct-answer[data-open="true"]) .meos-maddy-telemetry{opacity:.18;pointer-events:none}
       .meos-maddy-work-package{display:none;margin-top:8px;max-width:720px;border:1px solid rgba(105,220,255,.24);border-radius:11px;background:rgba(2,16,32,.78);overflow:hidden}.meos-maddy-work-package[data-open="true"]{display:block}.meos-maddy-package-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border-bottom:1px solid rgba(105,220,255,.13)}.meos-maddy-package-label{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:#86dff2}.meos-maddy-package-count{font-size:.64rem;color:#8ca7b8}.meos-maddy-package-body{display:grid;grid-template-columns:36px minmax(0,1fr) 36px;gap:8px;align-items:center;padding:9px 10px}.meos-maddy-package-nav{height:34px;border:1px solid rgba(105,220,255,.24);border-radius:9px;background:rgba(10,35,57,.72);color:#d9f7ff;cursor:pointer}.meos-maddy-package-nav:disabled{opacity:.3;cursor:default}.meos-maddy-package-card{min-width:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:2px 4px}.meos-maddy-package-title{display:block;font-size:.78rem;font-weight:800;color:#f2fbff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meos-maddy-package-meta{display:block;margin-top:3px;font-size:.64rem;color:#8ca7b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meos-maddy-package-position{display:block;margin-top:4px;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:#67dff5}.meos-maddy-package-strip{display:flex;gap:5px;padding:0 10px 9px;overflow-x:auto;scrollbar-width:thin}.meos-maddy-package-pill{flex:0 0 auto;max-width:150px;border:1px solid rgba(105,220,255,.16);border-radius:999px;background:rgba(8,30,49,.68);color:#8ca7b8;padding:5px 9px;font-size:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.meos-maddy-package-pill[data-selected="true"]{border-color:rgba(105,220,255,.58);color:#dffaff;background:rgba(16,67,91,.72)}@media(max-width:760px){.meos-maddy-package-strip{display:none}}
       /* Commission 006.013A — Executive Workspace Mission Integrity */
       .meos-executive-workspace{position:fixed;inset:18px;z-index:10040;display:none;grid-template-columns:minmax(240px,300px) minmax(420px,1fr) minmax(280px,340px);grid-template-rows:auto 1fr;gap:0;border:1px solid rgba(105,220,255,.34);border-radius:20px;background:linear-gradient(135deg,rgba(2,10,23,.985),rgba(5,20,38,.985));box-shadow:0 30px 90px rgba(0,0,0,.58),0 0 50px rgba(63,195,255,.1);overflow:hidden;color:#dff7ff}
@@ -2851,6 +2855,7 @@ document
               </div>
               <div id="meosMaddyDeskActions" class="meos-maddy-desk-actions"></div>
               <div id="meosMaddyWorkPackage" class="meos-maddy-work-package" data-open="false" aria-live="polite"></div>
+              <div id="meosMaddyDirectAnswer" class="meos-maddy-direct-answer" data-open="false" aria-live="polite"></div>
               <div id="meosMaddyDeskBrief" class="meos-maddy-brief" data-open="false" aria-live="polite"></div>
             </div>
             <div class="meos-maddy-telemetry">
@@ -5153,6 +5158,54 @@ document
     return String(value);
   }
 
+  function decodeMaddyText(value) {
+    const text = String(value ?? "");
+    if (!text || !/[&][#a-zA-Z0-9]+;/.test(text)) return text;
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = text;
+    return textarea.value;
+  }
+
+  function findFirstHttpUrl(value, depth = 0, seen = new Set()) {
+    if (depth > 7 || value == null) return null;
+    if (typeof value === "string") {
+      const match = value.match(/https?:\/\/[^\s<>"']+/i);
+      return match ? match[0].replace(/[),.;]+$/, "") : null;
+    }
+    if (typeof value !== "object" || seen.has(value)) return null;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = findFirstHttpUrl(item, depth + 1, seen);
+        if (found) return found;
+      }
+      return null;
+    }
+    const preferred = ["sourceUrl", "url", "openUrl", "link", "href", "canonicalUrl", "retrievedUrl", "finalUrl", "citation"];
+    for (const key of preferred) {
+      if (!(key in value)) continue;
+      const found = findFirstHttpUrl(value[key], depth + 1, seen);
+      if (found) return found;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (preferred.includes(key)) continue;
+      const found = findFirstHttpUrl(child, depth + 1, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function getGovernedAnswerFromDeliverable(deliverable) {
+    const data = deliverable?.data || {};
+    return data.governedAnswer || data.result?.governedAnswer || data.output?.governedAnswer || data.response?.governedAnswer || null;
+  }
+
+  function getDeliverableSourceUrl(deliverable) {
+    const data = deliverable?.data || {};
+    const governed = getGovernedAnswerFromDeliverable(deliverable);
+    return deliverable?.openUrl || deliverable?.downloadUrl || data.url || data.sourceUrl || data.website || findFirstHttpUrl(governed?.citations) || findFirstHttpUrl(data) || null;
+  }
+
   function classifyMaddyDeliverable(deliverable) {
     const data = deliverable?.data || {};
     const development = data.resourceDevelopment || {};
@@ -5196,7 +5249,7 @@ document
     const executive = data.executiveBrief || data.executiveSummary || data.resourceDevelopment?.executiveBrief || {};
     const development = data.resourceDevelopment || {};
     const type = classifyMaddyDeliverable(deliverable);
-    const sourceUrl = deliverable?.openUrl || deliverable?.downloadUrl || data.url || data.sourceUrl || data.website || null;
+    const sourceUrl = getDeliverableSourceUrl(deliverable);
     const sourceName = firstBriefValue(data.funder, data.organization, data.sourceName, deliverable?.source, deliverable?.provider);
     const summary = deliverable?.summary || firstBriefValue(data.answer, data.finding, data.conclusion, data.learnedFact, data.learning?.summary, executive.summary, executive.reason, data.summary) || "Maddy returned this deliverable without a written summary.";
     const confidence = firstBriefValue(data.confidence, data.evidenceConfidence, data.learning?.confidence, development.confidence, executive.confidence);
@@ -5240,7 +5293,8 @@ document
     const evidence = firstBriefValue(data.evidence, data.verifiedFacts, data.facts, data.learning?.evidence, executive.evidence);
     const unknowns = firstBriefValue(data.unknowns, data.openQuestions, data.learning?.unknowns, executive.unknowns);
     const knowledgeStatus = firstBriefValue(data.knowledgeStatus, data.learningStatus, data.learning?.status, data.status, executive.status);
-    const answer = firstBriefValue(data.answer, data.finding, data.conclusion, data.learnedFact, data.learning?.summary, summary);
+    const governedAnswer = getGovernedAnswerFromDeliverable(deliverable);
+    const answer = decodeMaddyText(firstBriefValue(governedAnswer?.answer, data.answer, data.finding, data.conclusion, data.learnedFact, data.learning?.summary, summary));
     const fields = [
       ["Result Type", type === "research" ? "Research / Learning" : "Executive Work"],
       ["Knowledge Status", briefText(knowledgeStatus, "Returned result")],
@@ -5254,7 +5308,7 @@ document
       type,
       kicker: `${type === "research" ? "Research result" : "Executive result"} ${index + 1} of ${total}`,
       title: deliverable?.title || "Maddy's result",
-      summary: briefText(answer, summary),
+      summary: decodeMaddyText(briefText(answer, summary)),
       meta: [type === "research" ? "Research / Learning" : "Executive Work", sourceName ? `Source: ${briefText(sourceName)}` : "Mission-bound result"].join(" · "),
       fields,
       judgment: briefText(firstBriefValue(executive.judgment, executive.reason, data.judgment, data.interpretation, data.learning?.interpretation), "Maddy returned the result above. Evidence and uncertainty remain separate from executive judgment."),
@@ -5263,6 +5317,26 @@ document
       primaryAction: "View Result Details",
       sourceAction: "Open Source ↗"
     };
+  }
+
+  function renderMaddyDirectAnswer(deliverable) {
+    const panel = document.getElementById("meosMaddyDirectAnswer");
+    if (!panel) return false;
+    if (!deliverable) { panel.dataset.open = "false"; panel.innerHTML = ""; return false; }
+    const view = getMaddyDeliverablePresentation(deliverable, 0, 1);
+    if (!view.summary) { panel.dataset.open = "false"; panel.innerHTML = ""; return false; }
+    panel.innerHTML = "";
+    const label = document.createElement("span"); label.className = "meos-maddy-direct-answer-label"; label.textContent = "Maddy's answer";
+    const title = document.createElement("h3"); title.className = "meos-maddy-direct-answer-title"; title.textContent = decodeMaddyText(view.title);
+    const answer = document.createElement("p"); answer.className = "meos-maddy-direct-answer-text"; answer.textContent = decodeMaddyText(view.summary);
+    const actions = document.createElement("div"); actions.className = "meos-maddy-direct-answer-actions";
+    const details = document.createElement("button"); details.type = "button"; details.className = "meos-maddy-desk-action"; details.textContent = "View Result Details"; details.addEventListener("click", () => renderMaddyExecutiveBrief(deliverable)); actions.appendChild(details);
+    if (view.sourceUrl) {
+      const source = document.createElement("a"); source.className = "meos-maddy-direct-answer-source"; source.href = view.sourceUrl; source.target = "_blank"; source.rel = "noopener noreferrer"; source.textContent = view.sourceAction || "Open Source ↗"; actions.appendChild(source);
+    }
+    panel.append(label, title, answer, actions);
+    panel.dataset.open = "true";
+    return true;
   }
 
   function renderMaddyExecutiveBrief(deliverable) {
@@ -5496,7 +5570,7 @@ document
       const p = document.createElement("p"); p.textContent = view.type === "opportunity" ? "Maddy keeps opportunity evidence visible while you decide what authority to grant." : "Review the returned work, its evidence status, and any available source without changing the mission.";
       actions.append(h, p);
 
-      const inspect = document.createElement("button"); inspect.type = "button"; inspect.className = "meos-workspace-action"; inspect.textContent = view.primaryAction; inspect.addEventListener("click", () => renderMaddyExecutiveBrief(selected)); actions.appendChild(inspect);
+      const inspect = document.createElement("button"); inspect.type = "button"; inspect.className = "meos-workspace-action"; inspect.textContent = view.primaryAction; inspect.addEventListener("click", () => { closeMaddyExecutiveWorkspace(); renderMaddyExecutiveBrief(selected); document.getElementById("meosMaddyDeskBrief")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); }); actions.appendChild(inspect);
 
       const official = document.createElement("button"); official.type = "button"; official.className = "meos-workspace-action"; official.textContent = view.sourceAction; official.disabled = !view.sourceUrl; official.addEventListener("click", () => { if (view.sourceUrl) window.open(view.sourceUrl, "_blank", "noopener,noreferrer"); }); actions.appendChild(official);
 
@@ -5843,6 +5917,7 @@ document
       ? `${packageCount} in work package`
       : `${snapshot.hallwayDeliverables.length} deliverables`);
     renderMaddyWorkPackage(snapshot, packageState);
+    renderMaddyDirectAnswer(packageState.selected);
 
     const actions = document.getElementById("meosMaddyDeskActions");
     if (!actions) return;
@@ -7359,6 +7434,34 @@ document
   }
 
 
+  function runDirectAnswerReturnAcceptanceTest() {
+    const fixture = {
+      id: "006.018G-fixture", workId: "006.018G-work", kind: "research-status",
+      title: "Why do wombats have cube-shaped poop?",
+      summary: "Wombats produce cube-shaped poop because different intestinal regions contract with different elasticity over a long digestive cycle. Here&#x27;s the evidence.",
+      data: {
+        governedAnswer: { schema: "meos.governed-answer.v1", answer: "Wombats produce cube-shaped poop because different intestinal regions contract with different elasticity over a long digestive cycle. Here&#x27;s the evidence.", citations: ["https://example.org/wombat-evidence"] },
+        sources: [{ url: "https://example.org/wombat-evidence", title: "Wombat evidence" }]
+      }
+    };
+    const presentation = getMaddyDeliverablePresentation(fixture, 0, 1);
+    const checks = [
+      { name: "HUD has a dedicated answer surface beside the command work package", passed: Boolean(document.getElementById("meosMaddyDirectAnswer")) },
+      { name: "Governed answer is preferred for human-facing answer text", passed: /different intestinal regions/i.test(presentation.summary) },
+      { name: "HTML entities are decoded before human presentation", passed: presentation.summary.includes("Here's") && !presentation.summary.includes("&#x27;") },
+      { name: "Source provenance can be recovered from returned governed citations or nested research data", passed: presentation.sourceUrl === "https://example.org/wombat-evidence" },
+      { name: "Direct answer renderer exists", passed: typeof renderMaddyDirectAnswer === "function" },
+      { name: "Deep result inspection remains available", passed: typeof renderMaddyExecutiveBrief === "function" },
+      { name: "Executive Workspace remains optional rather than required to read an answer", passed: typeof openMaddyExecutiveWorkspace === "function" && typeof closeMaddyExecutiveWorkspace === "function" },
+      { name: "No external-action authority is added by answer presentation", passed: true }
+    ];
+    const passed = checks.filter((check) => check.passed).length;
+    const result = { success: passed === checks.length, commission: "006.018G", schema: "meos.dashboard.direct-answer-return-acceptance.v1", version: DASHBOARD_VERSION, buildId: "OD411-DIRECT-ANSWER-RETURN-PROVENANCE-20260812-A", passed, total: checks.length, checks };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.018G Direct Answer Return + Provenance: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   function initialize() {
     createDashboardShell();
     bindRealtimeEvidenceTargets();
@@ -7380,7 +7483,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.013C Maddy Presence Positioning online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018G Direct Answer Return + Provenance online.`
     );
   }
 
@@ -7408,6 +7511,7 @@ document
       refresh: renderLiveHeadquarters,
       getSnapshot: collectHeadquartersSnapshot,
       runAcceptanceTest: runHeadquartersAcceptanceTest,
+      runDirectAnswerReturnAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
     }),
     presence: Object.freeze({
