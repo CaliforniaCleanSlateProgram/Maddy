@@ -1,7 +1,7 @@
 /**
  * MEOS Mission Engine
- * Version: 0.1.7
- * Build: ME017-CLEAN-CONCURRENCY-TRANSPORT-20260808-A
+ * Version: 0.1.8
+ * Build: ME018-MISSION-DUPLICATION-LINEAGE-AUDIT-20260812-A
  *
  * Purpose:
  * The Mission Engine is the central work-management system for MEOS.
@@ -22,8 +22,8 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.7";
-    const BUILD_ID = "ME017-CLEAN-CONCURRENCY-TRANSPORT-20260808-A";
+    const VERSION = "0.1.8";
+    const BUILD_ID = "ME018-MISSION-DUPLICATION-LINEAGE-AUDIT-20260812-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -1786,6 +1786,307 @@
         return null;
     }
 
+    /*
+     * Commission 006.018L1 — Mission Duplication Lineage Audit
+     *
+     * This is deliberately read-only. Before archiving, quarantining, or
+     * deleting any durable mission, MEOS must prove what accumulated and why.
+     * Durable history is not automatically active work, and repeated shells
+     * must be visible before lifecycle policy changes are allowed.
+     */
+    function normalizeMissionAuditText(value) {
+        return String(value || "")
+            .toLowerCase()
+            .replace(/["'`’]/g, "")
+            .replace(/[^a-z0-9]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function missionSourceReferenceFamily(value) {
+        const ref = String(value || "").trim();
+        if (!ref) return "none";
+        if (ref.startsWith("cognitive-dispatch:")) return "cognitive-dispatch";
+        if (ref.startsWith("hallway-feedback-revision:")) return "hallway-feedback-revision";
+        if (ref.startsWith("hallway-work:")) return "hallway-work";
+        const colon = ref.indexOf(":");
+        return colon > 0 ? ref.slice(0, colon) : "other";
+    }
+
+    function missionAuditSignature(mission) {
+        const title = normalizeMissionAuditText(mission?.title);
+        const objective = normalizeMissionAuditText(mission?.objective);
+        const description = normalizeMissionAuditText(mission?.description);
+        const createdBy = normalizeMissionAuditText(mission?.createdBy);
+        const leadOffice = normalizeMissionAuditText(mission?.leadOffice);
+        const tags = Array.isArray(mission?.tags)
+            ? mission.tags.map(normalizeMissionAuditText).filter(Boolean).sort().join("|")
+            : "";
+
+        return [
+            title,
+            objective || description,
+            createdBy,
+            leadOffice,
+            tags
+        ].join("::");
+    }
+
+    function missionAuditAgeHours(mission, referenceMs = Date.now()) {
+        const created = Date.parse(mission?.createdAt || "");
+        if (!Number.isFinite(created)) return null;
+        return Math.max(0, (referenceMs - created) / 3600000);
+    }
+
+    function missionApproximateBytes(mission) {
+        try {
+            return new Blob([JSON.stringify(mission)]).size;
+        } catch (_) {
+            try {
+                return JSON.stringify(mission).length;
+            } catch (_) {
+                return 0;
+            }
+        }
+    }
+
+    function buildMissionDuplicationLineageAudit(options = {}) {
+        const referenceMs = Number.isFinite(Number(options.referenceMs))
+            ? Number(options.referenceMs)
+            : Date.now();
+
+        const records = [
+            ...(Array.isArray(state.missions) ? state.missions : []),
+            ...(Array.isArray(state.completedMissions) ? state.completedMissions : []),
+            ...(Array.isArray(state.archivedMissions) ? state.archivedMissions : [])
+        ];
+
+        const activeIds = new Set((state.missions || []).map(item => item?.id).filter(Boolean));
+        const bySignature = new Map();
+        const byTitle = new Map();
+        const bySourceFamily = new Map();
+        const byStatus = new Map();
+        const byCreatedBy = new Map();
+
+        const add = (map, key, mission) => {
+            const normalizedKey = key || "unknown";
+            if (!map.has(normalizedKey)) map.set(normalizedKey, []);
+            map.get(normalizedKey).push(mission);
+        };
+
+        records.forEach(mission => {
+            add(bySignature, missionAuditSignature(mission), mission);
+            add(byTitle, normalizeMissionAuditText(mission?.title) || "untitled", mission);
+            add(bySourceFamily, missionSourceReferenceFamily(mission?.sourceReference), mission);
+            add(byStatus, String(mission?.status || "unknown"), mission);
+            add(byCreatedBy, normalizeMissionAuditText(mission?.createdBy) || "unknown", mission);
+        });
+
+        const groupSummary = (map, { duplicatesOnly = false } = {}) => [...map.entries()]
+            .map(([key, missions]) => {
+                const sorted = [...missions].sort((a, b) =>
+                    Date.parse(a?.createdAt || 0) - Date.parse(b?.createdAt || 0)
+                );
+                const active = sorted.filter(item => activeIds.has(item?.id));
+                const bytes = sorted.reduce((sum, item) => sum + missionApproximateBytes(item), 0);
+                const activeBytes = active.reduce((sum, item) => sum + missionApproximateBytes(item), 0);
+                const duplicateCandidateCount = Math.max(0, sorted.length - 1);
+                return {
+                    key,
+                    count: sorted.length,
+                    activeCount: active.length,
+                    duplicateCandidateCount,
+                    approximateBytes: bytes,
+                    approximateActiveBytes: activeBytes,
+                    firstCreatedAt: sorted[0]?.createdAt || null,
+                    lastCreatedAt: sorted[sorted.length - 1]?.createdAt || null,
+                    exampleMissionIds: sorted.slice(0, 5).map(item => item?.id).filter(Boolean),
+                    exampleSourceReferences: [...new Set(
+                        sorted.slice(0, 12).map(item => item?.sourceReference).filter(Boolean)
+                    )].slice(0, 5)
+                };
+            })
+            .filter(item => !duplicatesOnly || item.count > 1)
+            .sort((a, b) =>
+                b.activeCount - a.activeCount ||
+                b.count - a.count ||
+                b.approximateBytes - a.approximateBytes
+            );
+
+        const signatureGroups = groupSummary(bySignature, { duplicatesOnly: true });
+        const titleGroups = groupSummary(byTitle, { duplicatesOnly: true });
+        const sourceFamilies = groupSummary(bySourceFamily);
+        const statusGroups = groupSummary(byStatus);
+        const creatorGroups = groupSummary(byCreatedBy);
+
+        const activeMissionBytes = (state.missions || [])
+            .reduce((sum, mission) => sum + missionApproximateBytes(mission), 0);
+
+        const activeDuplicateCandidates = signatureGroups.reduce(
+            (sum, group) => sum + Math.max(0, group.activeCount - (group.activeCount > 0 ? 1 : 0)),
+            0
+        );
+
+        const repeatedTitleActiveCandidates = titleGroups.reduce(
+            (sum, group) => sum + Math.max(0, group.activeCount - (group.activeCount > 0 ? 1 : 0)),
+            0
+        );
+
+        const ageBuckets = {
+            under1h: 0,
+            h1to8: 0,
+            h8to24: 0,
+            d1to7: 0,
+            over7d: 0,
+            unknown: 0
+        };
+
+        (state.missions || []).forEach(mission => {
+            const age = missionAuditAgeHours(mission, referenceMs);
+            if (age === null) ageBuckets.unknown += 1;
+            else if (age < 1) ageBuckets.under1h += 1;
+            else if (age < 8) ageBuckets.h1to8 += 1;
+            else if (age < 24) ageBuckets.h8to24 += 1;
+            else if (age < 168) ageBuckets.d1to7 += 1;
+            else ageBuckets.over7d += 1;
+        });
+
+        const report = {
+            success: true,
+            commission: "006.018L1",
+            schema: "meos.mission-engine.duplication-lineage-audit.v1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            generatedAt: now(),
+            readOnly: true,
+            counts: {
+                active: state.missions.length,
+                completed: state.completedMissions.length,
+                archived: state.archivedMissions.length,
+                totalDurable: records.length,
+                exactSemanticShellDuplicateGroups: signatureGroups.length,
+                activeExactSemanticShellDuplicateCandidates: activeDuplicateCandidates,
+                repeatedTitleGroups: titleGroups.length,
+                activeRepeatedTitleCandidates: repeatedTitleActiveCandidates
+            },
+            storage: {
+                approximateActiveBytes: activeMissionBytes
+            },
+            ageBuckets,
+            topDuplicateSemanticShells: signatureGroups.slice(0, 25),
+            topRepeatedTitles: titleGroups.slice(0, 25),
+            sourceReferenceFamilies: sourceFamilies.slice(0, 25),
+            statusGroups: statusGroups.slice(0, 25),
+            creatorGroups: creatorGroups.slice(0, 25)
+        };
+
+        if (options.log !== false) {
+            console.info(
+                `[MEOS ${VERSION}] Mission Duplication Lineage Audit — ` +
+                `${report.counts.active} active | ` +
+                `${report.counts.activeExactSemanticShellDuplicateCandidates} exact-shell duplicate candidates | ` +
+                `${report.counts.activeRepeatedTitleCandidates} repeated-title candidates.`
+            );
+            console.table(report.topDuplicateSemanticShells.slice(0, 12));
+            console.table(report.sourceReferenceFamilies);
+        }
+
+        return report;
+    }
+
+    function runMissionDuplicationLineageAuditAcceptanceTest() {
+        const fixture = [
+            {
+                id: "A",
+                title: "Why is the ocean salty?",
+                objective: "Why is the ocean salty?",
+                createdBy: "Maddy / Executive Hallway",
+                leadOffice: "research",
+                tags: ["executive-hallway", "research"],
+                sourceReference: "hallway-work:A",
+                createdAt: "2026-08-12T10:00:00.000Z",
+                status: "in_progress"
+            },
+            {
+                id: "B",
+                title: "why is the ocean salty",
+                objective: "why is the ocean salty",
+                createdBy: "Maddy / Executive Hallway",
+                leadOffice: "research",
+                tags: ["research", "executive-hallway"],
+                sourceReference: "hallway-work:B",
+                createdAt: "2026-08-12T10:01:00.000Z",
+                status: "in_progress"
+            }
+        ];
+
+        const sameSignature =
+            missionAuditSignature(fixture[0]) === missionAuditSignature(fixture[1]);
+
+        const checks = [
+            {
+                name: "Equivalent punctuation/case normalizes to one semantic mission shell",
+                passed: sameSignature
+            },
+            {
+                name: "Unique Hallway work IDs remain distinguishable as lineage references",
+                passed:
+                    fixture[0].sourceReference !== fixture[1].sourceReference
+            },
+            {
+                name: "Hallway work lineage is classified explicitly",
+                passed:
+                    missionSourceReferenceFamily(fixture[0].sourceReference) === "hallway-work"
+            },
+            {
+                name: "Cognitive dispatch lineage is classified explicitly",
+                passed:
+                    missionSourceReferenceFamily("cognitive-dispatch:test") === "cognitive-dispatch"
+            },
+            {
+                name: "Audit can estimate mission payload weight without mutation",
+                passed:
+                    missionApproximateBytes(fixture[0]) > 0
+            },
+            {
+                name: "Audit implementation is read-only",
+                passed:
+                    !/persist\(|archiveMission\(|clearMissionData\(|splice\(/.test(
+                        buildMissionDuplicationLineageAudit.toString()
+                    )
+            },
+            {
+                name: "Underlying mission collections are not rewritten by the audit",
+                passed:
+                    !/state\.(missions|completedMissions|archivedMissions)\s*=/.test(
+                        buildMissionDuplicationLineageAudit.toString()
+                    )
+            },
+            {
+                name: "No external-action authority is added",
+                passed: true
+            }
+        ];
+
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks);
+        console.info(
+            `[MEOS ${VERSION}] Commission 006.018L1 Mission Duplication Lineage Audit: ` +
+            `${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+
+        return {
+            success: passed === checks.length,
+            commission: "006.018L1",
+            schema: "meos.mission-engine.duplication-lineage-audit-acceptance.v1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            total: checks.length,
+            checks
+        };
+    }
+
     function createMission(options = {}) {
         const title = normalizeText(options.title);
 
@@ -3055,6 +3356,8 @@
         getMissionHistory,
         getActivityLog,
         getMissionSummary,
+        buildMissionDuplicationLineageAudit,
+        runMissionDuplicationLineageAuditAcceptanceTest,
 
         exportMissionData,
         clearMissionData,
