@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.9.0
+ * Version: 4.10.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.9.0";
+  const DASHBOARD_VERSION = "4.10.0";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -1154,6 +1154,35 @@
       .meos-maddy-brief{display:none;margin-top:8px;padding:12px 13px;border:1px solid rgba(105,220,255,.25);border-radius:11px;background:rgba(2,16,32,.86);max-width:640px;color:#d9e9f5;box-shadow:0 12px 30px rgba(0,0,0,.22)}
       .meos-maddy-brief[data-open="true"]{display:block}.meos-maddy-brief-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.meos-maddy-brief-kicker{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:#86dff2}.meos-maddy-brief-title{margin:3px 0 0;font-size:.92rem;color:#f2fbff}.meos-maddy-brief-close{border:0;background:transparent;color:#8ca7b8;cursor:pointer;font-size:1rem}.meos-maddy-brief-summary{margin:9px 0 10px;font-size:.76rem;line-height:1.45;color:#c7d9e6}.meos-maddy-brief-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px}.meos-maddy-brief-field{border-top:1px solid rgba(119,193,219,.12);padding-top:6px}.meos-maddy-brief-label{display:block;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:#7398aa}.meos-maddy-brief-value{display:block;margin-top:2px;font-size:.7rem;color:#e0edf4;line-height:1.35}.meos-maddy-brief-source{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:11px}.meos-maddy-brief-link{display:inline-flex;align-items:center;border:1px solid rgba(105,220,255,.4);border-radius:8px;padding:6px 10px;color:#c9f6ff;text-decoration:none;font-size:.68rem;background:rgba(17,63,91,.55)}.meos-maddy-brief-link:hover{border-color:rgba(128,232,255,.8)}.meos-maddy-brief-note{font-size:.62rem;color:#7894a5}@media(max-width:760px){.meos-maddy-brief-grid{grid-template-columns:1fr}}
       @media(max-width:760px){.meos-maddy-desk{right:18px}.meos-maddy-field{opacity:.46}.meos-maddy-telemetry{bottom:10px}}
+      /* Commission 006.017D7S4C — Semantic Executive Workspace + Premium Command Surface */
+      #${ROOT_ID}{--meos-glass:rgba(7,22,38,.78);--meos-glass-strong:rgba(6,18,33,.92);--meos-hairline:rgba(116,220,255,.14);--meos-electric:rgba(105,239,255,.72)}
+      .meos-widget{border-color:var(--meos-hairline);background:linear-gradient(155deg,rgba(10,31,51,.91),rgba(5,16,29,.95));box-shadow:0 18px 46px rgba(0,0,0,.26),inset 0 1px 0 rgba(255,255,255,.025);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+      .meos-widget:hover{transform:translateY(-1px);border-color:rgba(105,239,255,.23);box-shadow:0 22px 54px rgba(0,0,0,.32),0 0 28px rgba(61,183,255,.055)}
+      .meos-widget-header{padding-bottom:10px;border-bottom:1px solid rgba(105,239,255,.08)}
+      .meos-widget-title{letter-spacing:.16em;color:rgba(215,247,255,.86)}
+      .meos-list li{padding:10px 0;border-bottom-color:rgba(105,239,255,.075)}
+      .meos-hq-hero{box-shadow:inset 0 1px 0 rgba(191,247,255,.08),0 22px 70px rgba(0,0,0,.20)}
+      .meos-maddy-window{border-color:rgba(105,239,255,.30);box-shadow:inset 0 0 60px rgba(50,185,255,.035),0 20px 55px rgba(0,0,0,.28)}
+      .meos-maddy-desk-command{border-color:rgba(105,239,255,.34);background:rgba(2,14,28,.88);box-shadow:0 12px 34px rgba(0,0,0,.25),0 0 24px rgba(64,200,255,.045)}
+      .meos-maddy-desk-input{font-size:.82rem;letter-spacing:.005em}.meos-maddy-desk-send,.meos-maddy-desk-action{min-height:34px;border-color:rgba(105,220,255,.28);background:linear-gradient(180deg,rgba(20,63,94,.72),rgba(10,38,61,.78))}
+      .meos-maddy-work-package{max-width:820px;border-color:rgba(105,239,255,.28);background:linear-gradient(145deg,rgba(2,15,29,.94),rgba(5,27,43,.88));box-shadow:0 18px 46px rgba(0,0,0,.30)}
+      .meos-maddy-package-head{padding:11px 13px}.meos-maddy-package-body{padding:11px 12px}.meos-maddy-package-title{font-size:.82rem}.meos-maddy-package-meta{font-size:.66rem;line-height:1.45}.meos-maddy-package-position{margin-top:6px}
+      .meos-maddy-work-package[data-result-type="research"] .meos-maddy-package-position,.meos-executive-workspace[data-result-type="research"] .meos-workspace-main-kicker{color:#9ce7ff}
+      .meos-maddy-work-package[data-result-type="opportunity"] .meos-maddy-package-position,.meos-executive-workspace[data-result-type="opportunity"] .meos-workspace-main-kicker{color:#8fffc5}
+      .meos-executive-workspace{inset:14px;border-color:rgba(105,239,255,.40);background:radial-gradient(circle at 62% 20%,rgba(45,178,255,.08),transparent 32%),linear-gradient(135deg,rgba(1,8,18,.992),rgba(4,19,36,.992));box-shadow:0 36px 110px rgba(0,0,0,.72),0 0 70px rgba(63,195,255,.10)}
+      .meos-workspace-top{padding:15px 18px;background:linear-gradient(90deg,rgba(3,16,31,.97),rgba(7,30,50,.93));box-shadow:0 10px 32px rgba(0,0,0,.20)}
+      .meos-workspace-title{font-size:1.04rem;font-weight:680;letter-spacing:.01em}.meos-workspace-close{padding:8px 13px;background:linear-gradient(180deg,rgba(17,55,83,.78),rgba(8,31,52,.84))}
+      .meos-workspace-package{padding:18px 13px;background:linear-gradient(180deg,rgba(4,18,33,.92),rgba(2,12,24,.96))}.meos-workspace-results{gap:8px}.meos-workspace-result{display:grid;grid-template-columns:26px 1fr;gap:9px;align-items:start;padding:10px 11px;background:rgba(6,27,45,.62)}
+      .meos-workspace-result-index{display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(105,239,255,.20);border-radius:7px;color:#7adff2;font-size:.6rem;font-weight:800;background:rgba(14,56,79,.45)}
+      .meos-workspace-result strong,.meos-workspace-result small{display:block}.meos-workspace-result strong{font-size:.7rem;line-height:1.35;color:#e8f9ff}.meos-workspace-result small{margin-top:3px;color:#7596a7;font-size:.58rem;letter-spacing:.06em;text-transform:uppercase}.meos-workspace-result[data-selected="true"]{border-color:rgba(105,239,255,.66);background:linear-gradient(135deg,rgba(13,62,85,.82),rgba(8,42,64,.78));box-shadow:inset 3px 0 0 rgba(105,239,255,.72)}
+      .meos-workspace-main{padding:28px 30px}.meos-workspace-main-kicker{font-size:.61rem;letter-spacing:.18em}.meos-workspace-main h2{margin:7px 0 10px;font-size:clamp(1.45rem,2.2vw,2.2rem);font-weight:720;letter-spacing:-.025em}.meos-workspace-summary{max-width:920px;margin-bottom:20px;font-size:.9rem;line-height:1.68;color:#c8dee7}
+      .meos-workspace-grid{gap:10px}.meos-workspace-field{min-height:78px;padding:12px 13px;border-color:rgba(105,239,255,.12);background:linear-gradient(145deg,rgba(7,28,47,.72),rgba(4,19,34,.78));box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}.meos-workspace-field-label{letter-spacing:.13em}.meos-workspace-field-value{margin-top:7px;font-size:.79rem;line-height:1.48}
+      .meos-workspace-judgment{margin-top:18px;padding:16px 17px;border-color:rgba(105,239,255,.22);background:linear-gradient(135deg,rgba(8,38,59,.72),rgba(6,27,45,.72));box-shadow:inset 3px 0 0 rgba(105,239,255,.45)}.meos-workspace-judgment p{font-size:.82rem;line-height:1.62}
+      .meos-workspace-presence{padding:20px 16px;background:radial-gradient(circle at 50% 24%,rgba(76,202,255,.18),transparent 39%),linear-gradient(180deg,rgba(4,19,35,.90),rgba(2,12,24,.96))}.meos-workspace-maddy::after{content:"";position:absolute;left:12%;right:12%;bottom:8px;height:1px;background:linear-gradient(90deg,transparent,rgba(105,239,255,.48),transparent);box-shadow:0 0 20px rgba(105,239,255,.25)}
+      .meos-workspace-presence-state{padding:11px 12px;background:rgba(7,31,50,.66)}.meos-workspace-actions h3{margin:16px 0 4px;font-size:.82rem;letter-spacing:.06em}.meos-workspace-actions>p{margin:0 0 12px}.meos-workspace-action{padding:11px 12px;background:linear-gradient(180deg,rgba(17,60,91,.76),rgba(8,35,57,.82));transition:transform .15s ease,border-color .15s ease,background .15s ease}.meos-workspace-action:not(:disabled):hover{transform:translateX(2px)}
+      .meos-maddy-brief{max-width:760px;padding:15px 16px;border-color:rgba(105,239,255,.30);background:linear-gradient(145deg,rgba(2,15,29,.96),rgba(5,27,43,.94));box-shadow:0 22px 60px rgba(0,0,0,.36)}.meos-maddy-brief-title{font-size:1rem}.meos-maddy-brief-summary{font-size:.79rem;line-height:1.58}.meos-maddy-brief-field{padding:8px 0}.meos-maddy-brief-value{margin-top:4px;font-size:.73rem}
+      @media(max-width:900px){.meos-workspace-main{padding:20px}.meos-workspace-main h2{font-size:1.5rem}}
+
       @keyframes meosCircuitDrift{to{background-position:28px 28px,28px 28px}}
       @keyframes meosFieldRotate{to{transform:rotate(360deg)}}
       @keyframes meosPacket{0%{transform:translateX(-160px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateX(40px);opacity:0}}
@@ -5124,6 +5153,118 @@ document
     return String(value);
   }
 
+  function classifyMaddyDeliverable(deliverable) {
+    const data = deliverable?.data || {};
+    const development = data.resourceDevelopment || {};
+    const executive = data.executiveBrief || data.executiveSummary || development.executiveBrief || {};
+    const kind = String(deliverable?.kind || data.kind || data.type || data.resultType || "").toLowerCase();
+    const source = String(deliverable?.source || deliverable?.provider || data.source || "").toLowerCase();
+    const title = String(deliverable?.title || data.title || "").toLowerCase();
+
+    const fundingSignals = [
+      development && Object.keys(development).length > 0,
+      data.fundingAmount != null,
+      data.awardAmount != null,
+      data.awardRange != null,
+      data.eligibility != null,
+      data.qualificationStatus != null,
+      /fund|grant|award|resource-development|opportunit/.test(kind),
+      /resource-development|grant/.test(source)
+    ].filter(Boolean).length;
+
+    const researchSignals = [
+      /research|learning|cognition|knowledge|answer|finding/.test(kind),
+      /research|intelligence|knowledge|cognition/.test(source),
+      data.answer != null,
+      data.finding != null,
+      data.conclusion != null,
+      data.learnedFact != null,
+      data.learning != null,
+      Array.isArray(data.evidence),
+      Array.isArray(data.sources),
+      Array.isArray(data.citations),
+      /research|learn|find out|why |what |where |when |how /.test(title)
+    ].filter(Boolean).length;
+
+    if (fundingSignals >= 2) return "opportunity";
+    if (researchSignals >= 1) return "research";
+    return "general";
+  }
+
+  function getMaddyDeliverablePresentation(deliverable, index = 0, total = 1) {
+    const data = deliverable?.data || {};
+    const executive = data.executiveBrief || data.executiveSummary || data.resourceDevelopment?.executiveBrief || {};
+    const development = data.resourceDevelopment || {};
+    const type = classifyMaddyDeliverable(deliverable);
+    const sourceUrl = deliverable?.openUrl || deliverable?.downloadUrl || data.url || data.sourceUrl || data.website || null;
+    const sourceName = firstBriefValue(data.funder, data.organization, data.sourceName, deliverable?.source, deliverable?.provider);
+    const summary = deliverable?.summary || firstBriefValue(data.answer, data.finding, data.conclusion, data.learnedFact, data.learning?.summary, executive.summary, executive.reason, data.summary) || "Maddy returned this deliverable without a written summary.";
+    const confidence = firstBriefValue(data.confidence, data.evidenceConfidence, data.learning?.confidence, development.confidence, executive.confidence);
+    const nextAction = firstBriefValue(data.nextAction, data.learning?.nextAction, development.nextAction, executive.nextAction);
+
+    if (type === "opportunity") {
+      const relationship = getFundingStrategyRelationship(data, executive) || {};
+      const eligibility = firstBriefValue(data.eligibility, data.qualificationStatus, development.eligibility, executive.eligibility, executive.participation);
+      const rawEligibility = String(eligibility || "").toLowerCase();
+      const rejected = rawEligibility.includes("rejected") || rawEligibility.includes("not eligible");
+      const fit = firstBriefValue(data.missionFit, development.missionFit, executive.missionFit, executive.whySeeingThis, executive.reason);
+      return {
+        type,
+        kicker: `Opportunity ${index + 1} of ${total}`,
+        title: deliverable?.title || "Maddy's opportunity analysis",
+        summary,
+        meta: [
+          briefText(firstBriefValue(data.geography, data.location, data.serviceArea, development.geography, executive.geography), "Geography not yet verified"),
+          briefText(firstBriefValue(data.deadline, development.deadline, executive.deadline), "Deadline not yet verified")
+        ].join(" · "),
+        fields: [
+          ["Funding / Award", briefText(firstBriefValue(data.amount, data.awardAmount, data.fundingAmount, data.awardRange, development.amount, executive.amount))],
+          ["Deadline", briefText(firstBriefValue(data.deadline, development.deadline, executive.deadline))],
+          ["Eligibility", briefText(eligibility)],
+          ["Geography", briefText(firstBriefValue(data.geography, data.location, data.serviceArea, development.geography, executive.geography))],
+          ["Mission / Strategy Fit", briefText(fit)],
+          ["Confidence", briefText(confidence)],
+          ["Recommendation", briefText(rejected ? "Do not pursue — outside current eligibility or operating authority" : firstBriefValue(data.recommendation, development.recommendation, executive.recommendation, relationship.relationship))],
+          ["Next Action", briefText(rejected ? firstBriefValue(nextAction, "Preserve evidence; do not place on the active pursuit desk.") : nextAction)]
+        ],
+        judgment: rejected
+          ? "This record is not an active pursuit recommendation. Its current eligibility evidence rejects it from the active desk, so any thematic or strategic similarity is preserved only as historical evidence."
+          : briefText(firstBriefValue(executive.whySeeingThis, executive.reason, relationship.reason, relationship.reasons, fit), "Maddy returned an opportunity record, but the evidence is not yet sufficient for a stronger executive recommendation."),
+        sourceUrl,
+        sourceName,
+        primaryAction: "Investigate This Opportunity",
+        sourceAction: "Open Official Source ↗"
+      };
+    }
+
+    const evidence = firstBriefValue(data.evidence, data.verifiedFacts, data.facts, data.learning?.evidence, executive.evidence);
+    const unknowns = firstBriefValue(data.unknowns, data.openQuestions, data.learning?.unknowns, executive.unknowns);
+    const knowledgeStatus = firstBriefValue(data.knowledgeStatus, data.learningStatus, data.learning?.status, data.status, executive.status);
+    const answer = firstBriefValue(data.answer, data.finding, data.conclusion, data.learnedFact, data.learning?.summary, summary);
+    const fields = [
+      ["Result Type", type === "research" ? "Research / Learning" : "Executive Work"],
+      ["Knowledge Status", briefText(knowledgeStatus, "Returned result")],
+      ["Confidence", briefText(confidence, "Not stated")],
+      ["Evidence", briefText(evidence, sourceUrl ? "Source returned" : "Evidence detail not returned")],
+      ["Open Questions", briefText(unknowns, "None stated")],
+      ["Next Action", briefText(nextAction, "No additional action required")]
+    ];
+
+    return {
+      type,
+      kicker: `${type === "research" ? "Research result" : "Executive result"} ${index + 1} of ${total}`,
+      title: deliverable?.title || "Maddy's result",
+      summary: briefText(answer, summary),
+      meta: [type === "research" ? "Research / Learning" : "Executive Work", sourceName ? `Source: ${briefText(sourceName)}` : "Mission-bound result"].join(" · "),
+      fields,
+      judgment: briefText(firstBriefValue(executive.judgment, executive.reason, data.judgment, data.interpretation, data.learning?.interpretation), "Maddy returned the result above. Evidence and uncertainty remain separate from executive judgment."),
+      sourceUrl,
+      sourceName,
+      primaryAction: "View Result Details",
+      sourceAction: "Open Source ↗"
+    };
+  }
+
   function renderMaddyExecutiveBrief(deliverable) {
     const panel = document.getElementById("meosMaddyDeskBrief");
     if (!panel) return;
@@ -5133,48 +5274,25 @@ document
       return;
     }
 
-    const data = deliverable.data || {};
-    const executive = data.executiveBrief || data.executiveSummary || {};
-    const development = data.resourceDevelopment || {};
-    const deadline = firstBriefValue(data.deadline, development.deadline, executive.deadline);
-    const amount = firstBriefValue(data.amount, data.awardAmount, data.fundingAmount, data.awardRange, development.amount, executive.amount);
-    const eligibility = firstBriefValue(data.eligibility, data.qualificationStatus, development.eligibility, executive.eligibility, executive.participation);
-    const geography = firstBriefValue(data.geography, data.location, data.serviceArea, development.geography, executive.geography);
-    const fit = firstBriefValue(data.missionFit, development.missionFit, executive.missionFit, executive.whySeeingThis, executive.reason);
-    const confidence = firstBriefValue(data.confidence, development.confidence, executive.confidence);
-    const recommendation = firstBriefValue(data.recommendation, development.recommendation, executive.recommendation);
-    const nextAction = firstBriefValue(data.nextAction, development.nextAction, executive.nextAction);
-    const sourceUrl = deliverable.openUrl || deliverable.downloadUrl || data.url || data.sourceUrl || data.website || null;
-    const sourceName = firstBriefValue(data.funder, data.organization, data.sourceName, deliverable.source, deliverable.provider);
-
-    const fields = [
-      ["Funding / Award", briefText(amount)],
-      ["Deadline", briefText(deadline)],
-      ["Eligibility", briefText(eligibility)],
-      ["Geography", briefText(geography)],
-      ["Mission Fit", briefText(fit)],
-      ["Confidence", briefText(confidence)],
-      ["Recommendation", briefText(recommendation)],
-      ["Next Action", briefText(nextAction)]
-    ];
-
+    const view = getMaddyDeliverablePresentation(deliverable, 0, 1);
+    panel.dataset.resultType = view.type;
     panel.innerHTML = "";
     const head = document.createElement("div"); head.className = "meos-maddy-brief-head";
     const heading = document.createElement("div");
-    const kicker = document.createElement("div"); kicker.className = "meos-maddy-brief-kicker"; kicker.textContent = deliverable.kind === "research-status" ? "Research Result" : "Executive Brief";
-    const title = document.createElement("h3"); title.className = "meos-maddy-brief-title"; title.textContent = deliverable.title || "Maddy's result";
+    const kicker = document.createElement("div"); kicker.className = "meos-maddy-brief-kicker"; kicker.textContent = view.type === "opportunity" ? "Executive Opportunity Brief" : view.type === "research" ? "Research & Learning Result" : "Executive Result";
+    const title = document.createElement("h3"); title.className = "meos-maddy-brief-title"; title.textContent = view.title;
     heading.append(kicker, title);
     const close = document.createElement("button"); close.type = "button"; close.className = "meos-maddy-brief-close"; close.setAttribute("aria-label", "Close executive brief"); close.textContent = "×"; close.addEventListener("click", () => { panel.dataset.open = "false"; });
     head.append(heading, close); panel.appendChild(head);
 
-    const summary = document.createElement("p"); summary.className = "meos-maddy-brief-summary"; summary.textContent = deliverable.summary || briefText(executive.summary, "Maddy returned this deliverable without a written summary."); panel.appendChild(summary);
+    const summary = document.createElement("p"); summary.className = "meos-maddy-brief-summary"; summary.textContent = view.summary; panel.appendChild(summary);
     const grid = document.createElement("div"); grid.className = "meos-maddy-brief-grid";
-    fields.forEach(([label, value]) => { const field=document.createElement("div"); field.className="meos-maddy-brief-field"; const l=document.createElement("span"); l.className="meos-maddy-brief-label"; l.textContent=label; const v=document.createElement("span"); v.className="meos-maddy-brief-value"; v.textContent=value; field.append(l,v); grid.appendChild(field); });
+    view.fields.forEach(([label, value]) => { const field=document.createElement("div"); field.className="meos-maddy-brief-field"; const l=document.createElement("span"); l.className="meos-maddy-brief-label"; l.textContent=label; const v=document.createElement("span"); v.className="meos-maddy-brief-value"; v.textContent=value; field.append(l,v); grid.appendChild(field); });
     panel.appendChild(grid);
 
     const source = document.createElement("div"); source.className = "meos-maddy-brief-source";
-    if (sourceUrl) { const link=document.createElement("a"); link.className="meos-maddy-brief-link"; link.href=sourceUrl; link.target="_blank"; link.rel="noopener noreferrer"; link.textContent="Open Official Source ↗"; source.appendChild(link); }
-    const note=document.createElement("span"); note.className="meos-maddy-brief-note"; note.textContent=sourceUrl ? `Source: ${briefText(sourceName, "returned evidence")}` : "No source URL was returned; do not treat this result as independently verified."; source.appendChild(note); panel.appendChild(source);
+    if (view.sourceUrl) { const link=document.createElement("a"); link.className="meos-maddy-brief-link"; link.href=view.sourceUrl; link.target="_blank"; link.rel="noopener noreferrer"; link.textContent=view.sourceAction; source.appendChild(link); }
+    const note=document.createElement("span"); note.className="meos-maddy-brief-note"; note.textContent=view.sourceUrl ? `Evidence source: ${briefText(view.sourceName, "returned source")}` : "No source URL was returned; evidence status remains explicit."; source.appendChild(note); panel.appendChild(source);
     panel.dataset.open = "true";
   }
 
@@ -5226,11 +5344,8 @@ document
     }
 
     const selectedIndex = Math.max(0, items.findIndex((item) => item.id === selected.id));
-    const data = selected.data || {};
-    const executive = data.executiveBrief || data.executiveSummary || data.resourceDevelopment?.executiveBrief || {};
-    const geography = briefText(firstBriefValue(data.geography, data.location, data.serviceArea, data.resourceDevelopment?.geography, executive.geography), "Geography not yet verified");
-    const deadline = briefText(firstBriefValue(data.deadline, data.resourceDevelopment?.deadline, executive.deadline), "Deadline not yet verified");
-
+    const view = getMaddyDeliverablePresentation(selected, selectedIndex, items.length);
+    panel.dataset.resultType = view.type;
     panel.innerHTML = "";
     const head = document.createElement("div"); head.className = "meos-maddy-package-head";
     const label = document.createElement("span"); label.className = "meos-maddy-package-label"; label.textContent = work?.title || work?.instruction || "Maddy Work Package";
@@ -5239,10 +5354,10 @@ document
 
     const body = document.createElement("div"); body.className = "meos-maddy-package-body";
     const previous = document.createElement("button"); previous.type = "button"; previous.className = "meos-maddy-package-nav"; previous.textContent = "‹"; previous.disabled = items.length < 2; previous.setAttribute("aria-label", "Previous deliverable");
-    const card = document.createElement("button"); card.type = "button"; card.className = "meos-maddy-package-card"; card.title = "Open this Executive Brief";
-    const title = document.createElement("span"); title.className = "meos-maddy-package-title"; title.textContent = selected.title || "MEOS deliverable";
-    const meta = document.createElement("span"); meta.className = "meos-maddy-package-meta"; meta.textContent = `${geography} · ${deadline}`;
-    const position = document.createElement("span"); position.className = "meos-maddy-package-position"; position.textContent = `Opportunity ${selectedIndex + 1} of ${items.length} · click to investigate`;
+    const card = document.createElement("button"); card.type = "button"; card.className = "meos-maddy-package-card"; card.title = "Open this returned result";
+    const title = document.createElement("span"); title.className = "meos-maddy-package-title"; title.textContent = view.title;
+    const meta = document.createElement("span"); meta.className = "meos-maddy-package-meta"; meta.textContent = view.meta;
+    const position = document.createElement("span"); position.className = "meos-maddy-package-position"; position.textContent = `${view.type === "opportunity" ? "Opportunity" : view.type === "research" ? "Research result" : "Result"} ${selectedIndex + 1} of ${items.length} · click to review`;
     card.append(title, meta, position);
     const next = document.createElement("button"); next.type = "button"; next.className = "meos-maddy-package-nav"; next.textContent = "›"; next.disabled = items.length < 2; next.setAttribute("aria-label", "Next deliverable");
 
@@ -5322,25 +5437,8 @@ document
     if (!selected) return false;
 
     const selectedIndex = Math.max(0, items.findIndex((item) => item.id === selected.id));
-    const data = selected.data || {};
-    const executive = data.executiveBrief || data.executiveSummary || data.resourceDevelopment?.executiveBrief || {};
-    const development = data.resourceDevelopment || {};
-    const relationship = getFundingStrategyRelationship(data, executive) || {};
-    const amount = firstBriefValue(data.amount, data.awardAmount, data.fundingAmount, data.awardRange, development.amount, executive.amount);
-    const deadline = firstBriefValue(data.deadline, development.deadline, executive.deadline);
-    const eligibility = firstBriefValue(data.eligibility, data.qualificationStatus, development.eligibility, executive.eligibility, executive.participation);
-    const geography = firstBriefValue(data.geography, data.location, data.serviceArea, development.geography, executive.geography);
-    const fit = firstBriefValue(data.missionFit, development.missionFit, executive.missionFit, executive.whySeeingThis, executive.reason);
-    const confidence = firstBriefValue(data.confidence, development.confidence, executive.confidence);
-    const rawEligibility = String(eligibility || "").toLowerCase();
-    const isRejected = rawEligibility.includes("rejected") || rawEligibility.includes("not eligible");
-    const recommendation = isRejected
-      ? "Do not pursue — outside current eligibility or operating authority"
-      : firstBriefValue(data.recommendation, development.recommendation, executive.recommendation, relationship.relationship);
-    const nextAction = isRejected
-      ? firstBriefValue(data.nextAction, development.nextAction, executive.nextAction, "Preserve evidence; do not place on the active pursuit desk.")
-      : firstBriefValue(data.nextAction, development.nextAction, executive.nextAction);
-    const sourceUrl = selected.openUrl || selected.downloadUrl || data.url || data.sourceUrl || data.website || null;
+    const view = getMaddyDeliverablePresentation(selected, selectedIndex, items.length);
+    workspace.dataset.resultType = view.type;
 
     const packageTitle = workspace.querySelector("#meosWorkspacePackageTitle");
     if (packageTitle) packageTitle.textContent = packageState.work?.title || packageState.work?.instruction || "Maddy Work Package";
@@ -5354,15 +5452,18 @@ document
     if (results) {
       results.innerHTML = "";
       items.forEach((item, index) => {
+        const itemView = getMaddyDeliverablePresentation(item, index, items.length);
         const button = document.createElement("button");
         button.type = "button";
         button.className = "meos-workspace-result";
         button.dataset.selected = item.id === selected.id ? "true" : "false";
-        button.textContent = `${index + 1}. ${item.title || "MEOS deliverable"}`;
+        button.dataset.resultType = itemView.type;
+        button.innerHTML = `<span class="meos-workspace-result-index">${index + 1}</span><span><strong>${escapeHtml(itemView.title)}</strong><small>${escapeHtml(itemView.type === "opportunity" ? "Opportunity intelligence" : itemView.type === "research" ? "Research & learning" : "Executive work")}</small></span>`;
         button.addEventListener("click", () => {
           state.hallway.selectedDeliverableId = item.id;
           renderLiveHeadquarters();
-          renderMaddyExecutiveWorkspace(collectHeadquartersSnapshot(), getMaddyWorkPackage(collectHeadquartersSnapshot()));
+          const nextSnapshot = collectHeadquartersSnapshot();
+          renderMaddyExecutiveWorkspace(nextSnapshot, getMaddyWorkPackage(nextSnapshot));
         });
         results.appendChild(button);
       });
@@ -5371,33 +5472,19 @@ document
     const main = workspace.querySelector("#meosWorkspaceMain");
     if (main) {
       main.innerHTML = "";
-      const kicker = document.createElement("div"); kicker.className = "meos-workspace-main-kicker"; kicker.textContent = `Opportunity ${selectedIndex + 1} of ${items.length}`;
-      const title = document.createElement("h2"); title.textContent = selected.title || "Maddy's result";
-      const summary = document.createElement("p"); summary.className = "meos-workspace-summary"; summary.textContent = selected.summary || briefText(executive.summary, "Maddy returned this result without a written summary.");
+      const kicker = document.createElement("div"); kicker.className = "meos-workspace-main-kicker"; kicker.textContent = view.kicker;
+      const title = document.createElement("h2"); title.textContent = view.title;
+      const summary = document.createElement("p"); summary.className = "meos-workspace-summary"; summary.textContent = view.summary;
       const grid = document.createElement("div"); grid.className = "meos-workspace-grid";
-      [
-        ["Funding / Award", briefText(amount)],
-        ["Deadline", briefText(deadline)],
-        ["Eligibility", briefText(eligibility)],
-        ["Geography", briefText(geography)],
-        ["Mission / Strategy Fit", briefText(fit)],
-        ["Confidence", briefText(confidence)],
-        ["Recommendation", briefText(recommendation)],
-        ["Next Action", briefText(nextAction)]
-      ].forEach(([label, value]) => {
+      view.fields.forEach(([label, value]) => {
         const field = document.createElement("div"); field.className = "meos-workspace-field";
         const l = document.createElement("span"); l.className = "meos-workspace-field-label"; l.textContent = label;
         const v = document.createElement("span"); v.className = "meos-workspace-field-value"; v.textContent = value;
         field.append(l, v); grid.appendChild(field);
       });
       const judgment = document.createElement("div"); judgment.className = "meos-workspace-judgment";
-      const judgmentLabel = document.createElement("strong"); judgmentLabel.textContent = "Maddy's Executive Judgment";
-      const judgmentText = document.createElement("p"); judgmentText.textContent = isRejected
-        ? "This record is not an active pursuit recommendation. Its current eligibility evidence rejects it from the active desk, so any thematic or strategic similarity is preserved only as historical evidence."
-        : briefText(
-            firstBriefValue(executive.whySeeingThis, executive.reason, relationship.reason, relationship.reasons, fit),
-            "Maddy has surfaced this opportunity, but the evidence is not yet sufficient for a stronger executive recommendation."
-          );
+      const judgmentLabel = document.createElement("strong"); judgmentLabel.textContent = view.type === "research" ? "Maddy's Interpretation" : "Maddy's Executive Judgment";
+      const judgmentText = document.createElement("p"); judgmentText.textContent = view.judgment;
       judgment.append(judgmentLabel, judgmentText);
       main.append(kicker, title, summary, grid, judgment);
     }
@@ -5406,12 +5493,12 @@ document
     if (actions) {
       actions.innerHTML = "";
       const h = document.createElement("h3"); h.textContent = "Executive Actions";
-      const p = document.createElement("p"); p.textContent = "Maddy keeps the evidence visible while you decide what authority to grant.";
+      const p = document.createElement("p"); p.textContent = view.type === "opportunity" ? "Maddy keeps opportunity evidence visible while you decide what authority to grant." : "Review the returned work, its evidence status, and any available source without changing the mission.";
       actions.append(h, p);
 
-      const investigate = document.createElement("button"); investigate.type = "button"; investigate.className = "meos-workspace-action"; investigate.textContent = "Investigate This Opportunity"; investigate.addEventListener("click", () => renderMaddyExecutiveBrief(selected)); actions.appendChild(investigate);
+      const inspect = document.createElement("button"); inspect.type = "button"; inspect.className = "meos-workspace-action"; inspect.textContent = view.primaryAction; inspect.addEventListener("click", () => renderMaddyExecutiveBrief(selected)); actions.appendChild(inspect);
 
-      const official = document.createElement("button"); official.type = "button"; official.className = "meos-workspace-action"; official.textContent = "Open Official Source ↗"; official.disabled = !sourceUrl; official.addEventListener("click", () => { if (sourceUrl) window.open(sourceUrl, "_blank", "noopener,noreferrer"); }); actions.appendChild(official);
+      const official = document.createElement("button"); official.type = "button"; official.className = "meos-workspace-action"; official.textContent = view.sourceAction; official.disabled = !view.sourceUrl; official.addEventListener("click", () => { if (view.sourceUrl) window.open(view.sourceUrl, "_blank", "noopener,noreferrer"); }); actions.appendChild(official);
 
       const take = document.createElement("button"); take.type = "button"; take.className = "meos-workspace-action primary"; take.textContent = "TAKE IT — Move This Forward";
       const activeWork = packageState.work;
@@ -5427,7 +5514,7 @@ document
       });
       actions.appendChild(take);
 
-      const note = document.createElement("div"); note.className = "meos-workspace-source-note"; note.textContent = sourceUrl ? "Official evidence remains separate from Maddy's judgment and opens directly from this action rail." : "No official source URL was returned. Maddy should not represent this opportunity as independently verified.";
+      const note = document.createElement("div"); note.className = "meos-workspace-source-note"; note.textContent = view.sourceUrl ? "Returned evidence stays separate from Maddy's interpretation and opens directly from this rail." : "No source URL was returned. Maddy must keep evidence, inference, and unknowns distinct.";
       actions.appendChild(note);
     }
 
@@ -7449,11 +7536,15 @@ document
           { name: "Maddy owns the reserved right-side presence bay", passed: Boolean(document.querySelector("#meosExecutiveWorkspace .meos-workspace-presence .meos-workspace-maddy")) },
           { name: "Workspace uses the Headquarters Maddy presence asset", passed: document.querySelector("#meosExecutiveWorkspace .meos-workspace-maddy img")?.getAttribute("src") === "maddy-holographic-presence-v1.png" },
           { name: "Executive actions remain with Maddy", passed: Boolean(document.querySelector("#meosExecutiveWorkspace .meos-workspace-presence #meosWorkspaceActions")) },
-          { name: "Workspace preserves collapse back to HUD", passed: Boolean(document.getElementById("meosWorkspaceClose")) }
+          { name: "Workspace preserves collapse back to HUD", passed: Boolean(document.getElementById("meosWorkspaceClose")) },
+          { name: "Returned deliverables are classified before renderer selection", passed: typeof classifyMaddyDeliverable === "function" && typeof getMaddyDeliverablePresentation === "function" },
+          { name: "General research cannot fall through to opportunity semantics", passed: classifyMaddyDeliverable({ kind: "research-status", title: "Why are wombat droppings cube-shaped?", data: { answer: "Biomechanics result" } }) === "research" },
+          { name: "Funding records preserve opportunity semantics", passed: classifyMaddyDeliverable({ kind: "funding-opportunity", data: { resourceDevelopment: { deskStatus: "active" }, eligibility: "eligible" } }) === "opportunity" },
+          { name: "Research result presentation does not invent funding fields", passed: !getMaddyDeliverablePresentation({ kind: "research-status", title: "Research answer", summary: "Returned evidence" }).fields.some(([label]) => /Funding|Eligibility|Deadline|Geography/.test(label)) }
         ];
-        const result = { commission: "006.013A", passed: checks.every((check) => check.passed), checks };
+        const result = { commission: "006.017D7S4C", passed: checks.every((check) => check.passed), checks };
         console.table(checks);
-        console.log(`[MEOS ${DASHBOARD_VERSION}] Commission 006.013A acceptance: ${result.passed ? "PASS" : "FAIL"}.`);
+        console.log(`[MEOS ${DASHBOARD_VERSION}] Commission 006.017D7S4C acceptance: ${result.passed ? "PASS" : "FAIL"}.`);
         return result;
       }
     }),
