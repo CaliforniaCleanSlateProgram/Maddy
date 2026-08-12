@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.13
- * Build: EB12513-EXECUTIVE-COGNITIVE-HOMEOSTASIS-20260812-A
+ * Version: 1.25.14
+ * Build: EB12514-TOTALITY-CIRCUMSTANCES-EXECUTIVE-JUDGMENT-20260812-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.13";
-  const BUILD_ID = "EB12513-EXECUTIVE-COGNITIVE-HOMEOSTASIS-20260812-A";
+  const VERSION = "1.25.14";
+  const BUILD_ID = "EB12514-TOTALITY-CIRCUMSTANCES-EXECUTIVE-JUDGMENT-20260812-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -14453,6 +14453,116 @@
     runExecutiveJudgmentCycle(options = {}) {
       const demands=this.collectExecutivePriorityDemands(options);
       return this.arbitrateHomeostaticPriorities(demands,options);
+    },
+
+    assessTotalityOfCircumstances(input = {}, options = {}) {
+      const subject = String(input.subject || "Executive judgment").trim();
+      const raw = Array.isArray(input.evidence) ? input.evidence : [];
+      const normalized = raw.map((item, index) => {
+        const claim = String(item.claim || item.summary || item.content || "").trim();
+        const source = String(item.source || item.url || item.provenance?.source || `evidence-${index + 1}`);
+        const lineage = String(item.lineageId || item.originId || item.provenance?.lineageId || source).trim();
+        const authority = String(item.authority || item.provenance?.authority || "unknown").toLowerCase();
+        const firsthand = item.firsthand === true || item.directObservation === true;
+        const contemporaneous = item.contemporaneous === true;
+        const verified = item.verified === true || ["authoritative","official","verified"].includes(authority);
+        const positionToKnow = Math.max(0, Math.min(1, Number(item.positionToKnow ?? (firsthand ? 0.9 : verified ? 0.85 : 0.5))));
+        const reliability = Math.max(0, Math.min(1, Number(item.reliability ?? item.confidence ?? (verified ? 0.9 : 0.6))));
+        const weight = Math.max(0, Math.min(1, reliability * 0.45 + positionToKnow * 0.35 + (verified ? 0.15 : 0) + (contemporaneous ? 0.05 : 0)));
+        return {id:item.id || `evidence-${index + 1}`,claim,source,lineage,authority,verified,firsthand,contemporaneous,positionToKnow,reliability,weight,stance:String(item.stance || "supports").toLowerCase(),context:String(item.context || "").trim(),raw:this.clone(item)};
+      }).filter(item => item.claim);
+
+      const lineages = new Map();
+      normalized.forEach(item => {
+        if (!lineages.has(item.lineage)) lineages.set(item.lineage, []);
+        lineages.get(item.lineage).push(item);
+      });
+      const independent = [...lineages.values()].map(group => group.slice().sort((a,b)=>b.weight-a.weight)[0]);
+      const supporting = independent.filter(item => item.stance !== "contradicts");
+      const contradicting = independent.filter(item => item.stance === "contradicts");
+      const supportWeight = supporting.reduce((sum,item)=>sum+item.weight,0);
+      const contradictionWeight = contradicting.reduce((sum,item)=>sum+item.weight,0);
+      const totalWeight = supportWeight + contradictionWeight;
+      const supportShare = totalWeight > 0 ? supportWeight / totalWeight : 0;
+      const authoritativeSupport = supporting.some(item => item.verified && item.weight >= 0.78);
+      const independentCorroboration = supporting.filter(item=>item.weight>=0.62).length;
+      const materialConflict = contradictionWeight >= 0.62 && supportWeight >= 0.62;
+
+      let factStatus = "unknown";
+      if (authoritativeSupport && !materialConflict) factStatus = "established";
+      else if (independentCorroboration >= 2 && supportShare >= 0.72 && !materialConflict) factStatus = "strongly-corroborated";
+      else if (supportWeight > contradictionWeight && supportWeight >= 0.62) factStatus = "supported-but-not-established";
+      else if (materialConflict) factStatus = "materially-disputed";
+
+      const established = normalized.filter(item => item.verified && item.weight >= 0.78 && item.stance !== "contradicts").map(item=>item.claim);
+      const disputes = contradicting.map(item=>item.claim);
+      const unknowns = Array.isArray(input.unknowns) ? input.unknowns.map(String) : [];
+      if (materialConflict && unknowns.length === 0) unknowns.push("Materially conflicting independent accounts remain unresolved.");
+      const decisionMaterial = input.decisionMaterial !== false;
+      const enoughToMove = factStatus === "established" || factStatus === "strongly-corroborated" || (factStatus === "supported-but-not-established" && input.allowBoundedJudgment !== false);
+      const furtherResearchWorthwhile = !enoughToMove && decisionMaterial && (materialConflict || unknowns.length > 0);
+      const judgment = String(input.judgment || (enoughToMove
+        ? `Based on the totality of the circumstances, the best supported judgment is that ${subject} is sufficiently supported to move forward while preserving stated uncertainty.`
+        : `The totality of the circumstances does not yet support a defensible conclusion about ${subject}.`));
+
+      return {
+        schema:"meos.maddy.totality-circumstances-judgment.v1", subject,
+        establishedFacts:[...new Set(established)],
+        independentEvidencePaths:independent.length,
+        derivativeEvidenceCount:Math.max(0, normalized.length-independent.length),
+        supportingIndependentPaths:supporting.length,
+        contradictingIndependentPaths:contradicting.length,
+        materialConflict, factStatus, judgment,
+        judgmentIsFact:false,
+        uncertainty:[...new Set(unknowns)],
+        disputes,
+        enoughToMove,
+        furtherResearchWorthwhile,
+        stopReason:enoughToMove ? "decision-sufficient-totality" : (furtherResearchWorthwhile ? "material-uncertainty-remains" : "insufficient-value-for-more-research"),
+        evidenceAssessment:normalized.map(item=>({id:item.id,source:item.source,lineage:item.lineage,weight:Number(item.weight.toFixed(3)),verified:item.verified,stance:item.stance,positionToKnow:item.positionToKnow,reliability:item.reliability})),
+        epistemicRule:"Experience and context inform judgment; they do not manufacture facts. Conflicting accounts do not erase what the totality of reliable circumstances can establish.",
+        providerCallRequired:false,
+        externalActionAuthorized:false
+      };
+    },
+
+    async runTotalityOfCircumstancesExecutiveJudgmentAcceptanceTest() {
+      const common=[
+        {id:"camera",claim:"A fight occurred outside the bar.",source:"camera",lineageId:"camera",authority:"verified",reliability:0.98,positionToKnow:0.98,contemporaneous:true},
+        {id:"bartender",claim:"A fight occurred outside the bar.",source:"bartender",lineageId:"bartender",firsthand:true,reliability:0.88,positionToKnow:0.9,contemporaneous:true},
+        {id:"copy1",claim:"A fight occurred outside the bar.",source:"social-copy-1",lineageId:"bartender",reliability:0.55,positionToKnow:0.25},
+        {id:"copy2",claim:"A fight occurred outside the bar.",source:"social-copy-2",lineageId:"bartender",reliability:0.5,positionToKnow:0.2},
+        {id:"subject-a",claim:"Subject B threw the first punch.",source:"subject-a",lineageId:"subject-a",firsthand:true,reliability:0.62,positionToKnow:0.8},
+        {id:"subject-b",claim:"Subject A threw the first punch.",source:"subject-b",lineageId:"subject-b",firsthand:true,reliability:0.62,positionToKnow:0.8,stance:"contradicts"}
+      ];
+      const fight=this.assessTotalityOfCircumstances({subject:"the occurrence of the fight",evidence:common,unknowns:["Who initiated the physical confrontation?"],allowBoundedJudgment:true});
+      const rumor=this.assessTotalityOfCircumstances({subject:"the repeated rumor",evidence:[
+        {claim:"Program will reopen next month.",source:"original-post",lineageId:"rumor-1",reliability:0.55,positionToKnow:0.4},
+        {claim:"Program will reopen next month.",source:"copy-a",lineageId:"rumor-1",reliability:0.5,positionToKnow:0.2},
+        {claim:"Program will reopen next month.",source:"copy-b",lineageId:"rumor-1",reliability:0.5,positionToKnow:0.2}
+      ],unknowns:["Whether the program will actually reopen."],decisionMaterial:true});
+      const contextual=this.assessTotalityOfCircumstances({subject:"nonprofit participation",evidence:[
+        {claim:"Nonprofits are eligible.",source:"official-rule",lineageId:"official-rule",authority:"official",reliability:1,positionToKnow:1},
+        {claim:"Applicants need two years operating history.",source:"official-guidance",lineageId:"official-guidance",authority:"official",reliability:1,positionToKnow:1,context:"direct applicant requirement"},
+        {claim:"Newer nonprofits may participate through a fiscal sponsor.",source:"sponsor-guidance",lineageId:"sponsor-guidance",authority:"verified",reliability:0.9,positionToKnow:0.9,context:"alternate route"}
+      ],judgment:"The sources describe different dimensions of participation rather than mutually exclusive realities; direct eligibility and an alternate sponsor route can coexist.",unknowns:["Whether this specific program accepts the sponsor route."],allowBoundedJudgment:true});
+      const checks=[
+        {name:"Totality judgment establishes what reliable circumstances support despite differing accounts",passed:fight.factStatus==="established"&&fight.establishedFacts.includes("A fight occurred outside the bar.")},
+        {name:"Derivative repetitions do not become independent corroboration",passed:fight.derivativeEvidenceCount>=2&&rumor.independentEvidencePaths===1},
+        {name:"Conflicting accounts preserve unresolved details instead of erasing established reality",passed:fight.uncertainty.includes("Who initiated the physical confrontation?")&&fight.enoughToMove===true},
+        {name:"Source position-to-know and reliability materially affect evidence weight",passed:fight.evidenceAssessment.find(x=>x.id==="camera")?.weight>fight.evidenceAssessment.find(x=>x.id==="subject-a")?.weight},
+        {name:"Repeated rumor alone does not manufacture verified fact",passed:rumor.factStatus!=="established"&&rumor.factStatus!=="strongly-corroborated"},
+        {name:"Contextual differences can support bounded executive judgment rather than forced paradox",passed:contextual.enoughToMove===true&&contextual.judgment.includes("different dimensions")},
+        {name:"Executive judgment remains explicitly distinct from fact",passed:fight.judgmentIsFact===false&&contextual.judgmentIsFact===false},
+        {name:"Decision-sufficient evidence can stop research despite residual uncertainty",passed:fight.stopReason==="decision-sufficient-totality"&&fight.furtherResearchWorthwhile===false},
+        {name:"Material unresolved uncertainty can justify targeted further investigation",passed:rumor.furtherResearchWorthwhile===true&&rumor.stopReason==="material-uncertainty-remains"},
+        {name:"Totality judgment uses already-held evidence without a provider call",passed:fight.providerCallRequired===false&&rumor.providerCallRequired===false&&contextual.providerCallRequired===false},
+        {name:"Evidence judgment cannot self-authorize external action",passed:fight.externalActionAuthorized===false&&contextual.externalActionAuthorized===false}
+      ];
+      const passed=checks.every(x=>x.passed);
+      console.table(checks.map(x=>({name:x.name,passed:x.passed})));
+      console.info(`[MEOS ${this.version}] Commission 006.018O Totality-of-Circumstances Executive Judgment: ${passed?"PASS":"FAIL"} (${checks.filter(x=>x.passed).length}/${checks.length}).`);
+      return {success:passed,commission:"006.018O",schema:"meos.executive-brain.totality-circumstances-acceptance.v1",version:this.version,buildId:this.buildId,passed:checks.filter(x=>x.passed).length,total:checks.length,checks,examples:{fight,rumor,contextual}};
     },
 
     async runExecutiveCognitiveHomeostasisAcceptanceTest() {
