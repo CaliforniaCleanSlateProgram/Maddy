@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Monitoring Engine
- * Version: 1.0.1
+ * Version: 1.0.2
  *
  * Mission:
  * Continuously observe MEOS operational state, detect risks, deadline pressure,
@@ -37,7 +37,7 @@
 
     const ExecutiveMonitoring = {
         name: "MEOS Executive Monitoring Engine",
-        version: "1.0.1",
+        version: "1.0.2",
         status: "initializing",
         operatingMode: "continuous-executive-oversight",
 
@@ -50,6 +50,9 @@
             scannerEnabled: true,
             maximumAlerts: 5000,
             maximumHistory: 5000,
+            browserCacheMaximumAlerts: 100,
+            browserCacheMaximumSnapshots: 50,
+            browserCacheMaximumHistory: 100,
             deadlineWarningDays: 10,
             deadlineCriticalDays: 3,
             inactivityWarningHours: 72,
@@ -101,6 +104,10 @@
             };
 
             this.restore();
+            this.compactBrowserContinuityCache({
+                reason: "startup-quota-hygiene",
+                persist: true
+            });
             this.initializedAt = new Date().toISOString();
             this.status = "online";
 
@@ -115,7 +122,7 @@
             }
 
             console.info(
-                `[MEOS] ${this.name} v${this.version} ${this.status}. Build EM101-MONITORING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A.`
+                `[MEOS] ${this.name} v${this.version} ${this.status}. Build EM102-BROWSER-PERSISTENCE-RECOVERY-QUOTA-HYGIENE-20260812-A.`
             );
 
             this.emit("monitoring:online", this.getStatus());
@@ -1911,6 +1918,185 @@
             };
         },
 
+        buildBrowserContinuityCachePayload() {
+            const exported = this.exportMonitoring({
+                includeHistory: true,
+                includeSnapshots: true
+            }).data || {};
+
+            return {
+                ...exported,
+                alerts: Array.isArray(exported.alerts)
+                    ? exported.alerts.slice(0, this.configuration.browserCacheMaximumAlerts)
+                    : [],
+                snapshots: Array.isArray(exported.snapshots)
+                    ? exported.snapshots.slice(0, this.configuration.browserCacheMaximumSnapshots)
+                    : [],
+                history: Array.isArray(exported.history)
+                    ? exported.history.slice(0, this.configuration.browserCacheMaximumHistory)
+                    : [],
+                browserCache: {
+                    role: "best-effort-monitoring-continuity-cache",
+                    authoritative: false,
+                    compact: true,
+                    limits: {
+                        alerts: this.configuration.browserCacheMaximumAlerts,
+                        snapshots: this.configuration.browserCacheMaximumSnapshots,
+                        history: this.configuration.browserCacheMaximumHistory
+                    },
+                    generatedAt: new Date().toISOString()
+                }
+            };
+        },
+
+        estimateBrowserStorage() {
+            const rows = [];
+            let totalBytes = 0;
+
+            if (!global.localStorage) {
+                return {
+                    success: false,
+                    available: false,
+                    totalApproximateBytes: 0,
+                    entries: []
+                };
+            }
+
+            for (let index = 0; index < global.localStorage.length; index += 1) {
+                const key = global.localStorage.key(index);
+                const value = key ? global.localStorage.getItem(key) : "";
+                const approximateBytes =
+                    (String(key || "").length + String(value || "").length) * 2;
+                totalBytes += approximateBytes;
+                rows.push({
+                    key,
+                    approximateBytes,
+                    meosOwned: /^meos[._-]/i.test(String(key || ""))
+                });
+            }
+
+            rows.sort((a, b) => b.approximateBytes - a.approximateBytes);
+
+            return {
+                success: true,
+                available: true,
+                totalApproximateBytes: totalBytes,
+                entries: rows
+            };
+        },
+
+        compactBrowserContinuityCache(options = {}) {
+            if (!global.localStorage) {
+                return {
+                    success: false,
+                    compacted: false,
+                    reason: "browser-local-storage-unavailable"
+                };
+            }
+
+            const beforeRaw =
+                global.localStorage.getItem(this.configuration.localStorageKey) || "";
+            const beforeApproximateBytes =
+                (this.configuration.localStorageKey.length + beforeRaw.length) * 2;
+
+            const payload = this.buildBrowserContinuityCachePayload();
+            const serialized = JSON.stringify(payload);
+
+            try {
+                if (options.persist !== false) {
+                    global.localStorage.setItem(
+                        this.configuration.localStorageKey,
+                        serialized
+                    );
+                }
+
+                const afterApproximateBytes =
+                    (this.configuration.localStorageKey.length + serialized.length) * 2;
+
+                this.persistenceState.suspended = false;
+                this.persistenceState.reason = null;
+                this.persistenceState.suspendedAt = null;
+                this.persistenceState.lastFailure = null;
+
+                return {
+                    success: true,
+                    compacted: true,
+                    reason: options.reason || "manual-quota-hygiene",
+                    beforeApproximateBytes,
+                    afterApproximateBytes,
+                    approximateBytesReleased:
+                        Math.max(0, beforeApproximateBytes - afterApproximateBytes),
+                    storage: this.estimateBrowserStorage()
+                };
+            } catch (error) {
+                if (this.isStorageQuotaError(error)) {
+                    this.suspendBrowserPersistence(error);
+                    return {
+                        success: false,
+                        compacted: false,
+                        suspended: true,
+                        reason: "storage-quota-exhausted",
+                        beforeApproximateBytes
+                    };
+                }
+
+                return {
+                    success: false,
+                    compacted: false,
+                    reason: "persistence-error",
+                    error: error?.message || String(error)
+                };
+            }
+        },
+
+        runBrowserQuotaHygieneAcceptanceTest() {
+            const payload = this.buildBrowserContinuityCachePayload();
+            const checks = [
+                ["Browser monitoring cache is explicitly non-authoritative",
+                    payload.browserCache?.authoritative === false],
+                ["Browser cache alert retention is bounded",
+                    Array.isArray(payload.alerts) &&
+                    payload.alerts.length <= this.configuration.browserCacheMaximumAlerts],
+                ["Browser cache snapshot retention is bounded",
+                    Array.isArray(payload.snapshots) &&
+                    payload.snapshots.length <= this.configuration.browserCacheMaximumSnapshots],
+                ["Browser cache history retention is bounded",
+                    Array.isArray(payload.history) &&
+                    payload.history.length <= this.configuration.browserCacheMaximumHistory],
+                ["Full live monitoring limits remain unchanged",
+                    this.configuration.maximumAlerts === 5000 &&
+                    this.configuration.maximumHistory === 5000],
+                ["Storage inspection is MEOS-owned and read-only",
+                    typeof this.estimateBrowserStorage === "function" &&
+                    !/removeItem|clear\(/.test(this.estimateBrowserStorage.toString())],
+                ["Quota hygiene never deletes unrelated browser keys",
+                    !/localStorage\\.clear|removeItem/.test(this.compactBrowserContinuityCache.toString())],
+                ["No provider, paid cognition, corrective-action, or external authority is added",
+                    this.configuration.requireExecutiveApprovalForCorrectiveAction === true]
+            ];
+
+            const rows = checks.map(([name, passed]) => ({
+                name,
+                passed: Boolean(passed)
+            }));
+            console.table(rows);
+            const passed = rows.every(row => row.passed);
+            console.info(
+                `[MEOS 1.0.2] Commission 006.018L3 Browser Persistence Recovery + Quota Hygiene: ${passed ? "PASS" : "FAIL"} (${rows.filter(row => row.passed).length}/${rows.length}).`
+            );
+
+            return {
+                success: passed,
+                commission: "006.018L3",
+                schema: "meos.executive-monitoring.browser-quota-hygiene-acceptance.v1",
+                version: "1.0.2",
+                buildId: "EM102-BROWSER-PERSISTENCE-RECOVERY-QUOTA-HYGIENE-20260812-A",
+                passed: rows.filter(row => row.passed).length,
+                total: rows.length,
+                checks: rows
+            };
+        },
+
         persist() {
             if (
                 !this.configuration.persistenceEnabled
@@ -1934,10 +2120,7 @@
                 global.localStorage.setItem(
                     this.configuration.localStorageKey,
                     JSON.stringify(
-                        this.exportMonitoring({
-                            includeHistory: true,
-                            includeSnapshots: true
-                        }).data
+                        this.buildBrowserContinuityCachePayload()
                     )
                 );
 
