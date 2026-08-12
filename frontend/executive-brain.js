@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.10
- * Build: EB12510-PRE-SPEND-ATTENTION-FIREWALL-EVIDENCE-FRONTIER-20260811-A
+ * Version: 1.25.11
+ * Build: EB12511-AUTONOMOUS-LEARNING-INTENT-ECONOMIC-STEWARDSHIP-20260811-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.10";
-  const BUILD_ID = "EB12510-PRE-SPEND-ATTENTION-FIREWALL-EVIDENCE-FRONTIER-20260811-A";
+  const VERSION = "1.25.11";
+  const BUILD_ID = "EB12511-AUTONOMOUS-LEARNING-INTENT-ECONOMIC-STEWARDSHIP-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -184,6 +184,17 @@
       productiveIdleMaxConsecutiveSameSubject: 3,
       openDomainCuriosityEnabled: true,
       openDomainCuriosityBaseValue: 0.58,
+      autonomousLearningFreedomEnabled: true,
+      autonomousLearningCheapFirst: true,
+      autonomousLearningMaxResearchPasses: 1,
+      autonomousLearningDailyNovelSubjectLimit: 24,
+      autonomousLearningSubjectCooldownMs: 6 * 60 * 60 * 1000,
+      autonomousLearningWorldBreadthWeight: 0.22,
+      autonomousLearningExecutiveGrowthWeight: 0.28,
+      autonomousLearningKnowledgeGapWeight: 0.22,
+      autonomousLearningConnectivityWeight: 0.14,
+      autonomousLearningFreshnessWeight: 0.08,
+      autonomousLearningCostWeight: 0.06,
       openDomainCuriosityAdjacentValue: 0.52,
       openDomainCuriosityMissionSeedLimit: 8,
       meaningfulChangeDebounceMs: 1200,
@@ -14511,6 +14522,202 @@
      * Existing investigations, developmental goals, unfinished cognition,
      * preparedness insights, and World Model unknowns compete for investment.
      */
+    /*
+     * Commission 006.017D7S4A — Autonomous Learning Intent + Economic Stewardship
+     *
+     * Maddy may choose what she wants to learn. Mission relevance can increase
+     * value, but it is not an intellectual whitelist. Curiosity does not itself
+     * authorize paid inference, large retrieval, durable writes, or external
+     * action. The first move is always the cheapest truthful perception path.
+     */
+    buildAutonomousLearningResearchRequest(candidate = {}) {
+      const subject = String(candidate?.subject || "").trim();
+      if (!subject) return null;
+      return {
+        schema: "meos.maddy.autonomous-learning-research-request.v1",
+        subject,
+        objective:
+          String(candidate.reason || "").trim() ||
+          `Learn enough about ${subject} to improve Maddy's World Model or executive capability.`,
+        questions: this.clone(candidate.unknowns || []).slice(0, 8),
+        evidenceAlreadyHeld: this.clone(candidate.evidence || []).slice(0, 8),
+        acquisitionPolicy: {
+          cheapFirst: true,
+          publicSourcesPreferred: true,
+          textBeforeRichMedia: true,
+          captionsOrTranscriptsBeforeVideoFrames: true,
+          reuseExistingEvidenceBeforeRetrieval: true,
+          deduplicateBeforeResearch: true,
+          maxResearchPasses: Number(
+            this.configuration.autonomousLearningMaxResearchPasses || 1
+          ),
+          paidModelAuthorized: false,
+          paidSearchAuthorized: false,
+          largeMediaProcessingAuthorized: false
+        },
+        authority: {
+          chooseSubjectAuthorized:
+            this.configuration.autonomousLearningFreedomEnabled === true,
+          publicReadResearchAuthorized: true,
+          paidSpendAuthorized: false,
+          externalActionAuthorized: false
+        },
+        truthRule:
+          "Curiosity may choose the subject. Research must preserve provenance and uncertainty; learning intent is not evidence that research occurred."
+      };
+    },
+
+    scoreAutonomousLearningOpportunity(input = {}) {
+      const clamp = value =>
+        Math.max(0, Math.min(1, Number(value || 0)));
+      const worldBreadth = clamp(input.worldBreadth ?? 0.5);
+      const executiveGrowth = clamp(input.executiveGrowth ?? 0.5);
+      const knowledgeGap = clamp(input.knowledgeGap ?? 0.5);
+      const connectivity = clamp(input.connectivity ?? 0.5);
+      const freshness = clamp(input.freshness ?? 0.35);
+      const cheapness = clamp(input.cheapness ?? 0.9);
+
+      const score =
+        worldBreadth *
+          Number(this.configuration.autonomousLearningWorldBreadthWeight || 0.22) +
+        executiveGrowth *
+          Number(this.configuration.autonomousLearningExecutiveGrowthWeight || 0.28) +
+        knowledgeGap *
+          Number(this.configuration.autonomousLearningKnowledgeGapWeight || 0.22) +
+        connectivity *
+          Number(this.configuration.autonomousLearningConnectivityWeight || 0.14) +
+        freshness *
+          Number(this.configuration.autonomousLearningFreshnessWeight || 0.08) +
+        cheapness *
+          Number(this.configuration.autonomousLearningCostWeight || 0.06);
+
+      return Number(Math.max(0, Math.min(1, score)).toFixed(3));
+    },
+
+    collectAutonomousLearningSeeds(options = {}) {
+      if (this.configuration.autonomousLearningFreedomEnabled !== true) {
+        return [];
+      }
+
+      const seeds = [];
+      const add = seed => {
+        const subject = String(seed?.subject || "").trim();
+        if (!subject) return;
+        const score = this.scoreAutonomousLearningOpportunity(seed);
+        seeds.push({
+          schema: "meos.maddy.autonomous-learning-seed.v1",
+          subject,
+          origin: String(seed.origin || "autonomous-curiosity"),
+          reason: String(seed.reason || ""),
+          value: score,
+          evidence: this.clone(seed.evidence || []),
+          unknowns: this.clone(seed.unknowns || []),
+          dimensions: {
+            worldBreadth: Number(seed.worldBreadth ?? 0.5),
+            executiveGrowth: Number(seed.executiveGrowth ?? 0.5),
+            knowledgeGap: Number(seed.knowledgeGap ?? 0.5),
+            connectivity: Number(seed.connectivity ?? 0.5),
+            freshness: Number(seed.freshness ?? 0.35),
+            cheapness: Number(seed.cheapness ?? 0.9)
+          }
+        });
+      };
+
+      /*
+       * Existing developmental drive is Maddy's strongest self-authored signal
+       * about what would make her more capable. It is not restricted to the
+       * current organization.
+       */
+      (this.developmentalGoals || [])
+        .filter(goal => goal?.status !== "achieved")
+        .slice(0, 24)
+        .forEach(goal => add({
+          subject:
+            goal.subject || goal.capability || goal.goal,
+          origin: "self-development-gap",
+          reason:
+            goal.reason ||
+            "Maddy identified a capability gap that could improve future judgment or execution.",
+          worldBreadth: Number(goal.worldBreadth ?? 0.45),
+          executiveGrowth: Number(goal.impact ?? 0.8),
+          knowledgeGap: Math.max(
+            0.2,
+            1 - Number(goal.demonstrated ?? goal.confidence ?? 0.35)
+          ),
+          connectivity: Number(goal.leverage ?? 0.7),
+          freshness: Number(goal.urgency ?? 0.35),
+          cheapness: 0.9,
+          evidence: goal.evidence || [],
+          unknowns: goal.unknowns || []
+        }));
+
+      /*
+       * World Model unknowns can earn curiosity because they expose blind spots.
+       * "Consequence" helps prioritization but is deliberately not required.
+       */
+      const world = this.worldModel || this.getWorldModel?.({ refresh: false });
+      const unknowns = world?.temporal?.unknowns || world?.unknowns || [];
+      (Array.isArray(unknowns) ? unknowns : [])
+        .slice(0, 24)
+        .forEach(item => {
+          const subject = String(
+            item?.subject || item?.question || item || ""
+          ).trim();
+          if (!subject) return;
+          add({
+            subject,
+            origin: "world-model-blind-spot",
+            reason:
+              "Reduce a real gap in Maddy's understanding of the world, then test whether the learning connects to existing knowledge or future judgment.",
+            worldBreadth: 0.78,
+            executiveGrowth: Number(item?.executiveGrowth ?? 0.45),
+            knowledgeGap: Number(item?.confidence)
+              ? 1 - Number(item.confidence)
+              : 0.85,
+            connectivity: Number(item?.connectivity ?? item?.consequence ?? 0.5),
+            freshness: Number(item?.urgency ?? 0.35),
+            cheapness: 0.9,
+            evidence: item?.evidence || [],
+            unknowns: [item?.question || subject]
+          });
+        });
+
+      /*
+       * When no explicit blind spot exists, Maddy still gets an open intellectual
+       * horizon. The organization is context, not a cage. This seed deliberately
+       * asks her to improve her understanding of human systems, executive craft,
+       * science/technology, economics, institutions, culture, environment, or
+       * another unfamiliar domain she judges worth knowing.
+       */
+      if (seeds.length === 0) {
+        add({
+          subject:
+            "Choose and investigate a high-value unfamiliar part of the world",
+          origin: "self-directed-world-learning",
+          reason:
+            "Maddy has no higher-value unresolved learning seed. She may choose an unfamiliar domain because understanding the world and improving herself are legitimate internal goals, even when the subject is not immediately tied to an organizational mission.",
+          worldBreadth: 1,
+          executiveGrowth: 0.65,
+          knowledgeGap: 1,
+          connectivity: 0.45,
+          freshness: 0.5,
+          cheapness: 0.95,
+          evidence: [],
+          unknowns: [
+            "What part of the world do I understand poorly enough that learning it could change how I reason?",
+            "What human, scientific, technological, economic, institutional, cultural, environmental, or executive subject am I genuinely curious about?",
+            "Can I satisfy this curiosity through cheap public text, captions, transcripts, structured data, or already-held evidence before spending more?"
+          ]
+        });
+      }
+
+      return seeds
+        .filter(seed => seed.value >= Number(
+          this.configuration.productiveIdleDiminishingReturnFloor || 0
+        ))
+        .sort((a, b) => b.value - a.value);
+    },
+
     collectProductiveIdleCandidates(options = {}) {
       if (this.configuration.productiveIdleCognitionEnabled !== true) return [];
       const now=Date.now(), candidates=[];
@@ -14543,7 +14750,9 @@
         value:Number(x.impact??0.55)*0.40+Number(x.leverage??0.75)*0.35+Number(x.urgency??0.35)*0.25,
         evidence:x.evidence||[],unknowns:x.unknowns||[],externalResearchUseful:true
       }));
-      (this.cognitiveIntentions||[]).filter(x=>x?.status!=="completed").forEach(x=>add({
+      (this.cognitiveIntentions||[]).filter(x=>
+        x?.status!=="completed" && x?.status!=="quiescent"
+      ).forEach(x=>add({
         subject:x.subject,origin:"unfinished-cognition",
         reason:"Resolve unfinished cognition when higher-priority work is absent.",
         move:"resume-unfinished-cognition",value:x.status==="blocked"?0.72:0.62,
@@ -14604,7 +14813,19 @@
         });
       });
 
-      if(this.configuration.openDomainCuriosityEnabled===true && candidates.length===0){
+      if(this.configuration.openDomainCuriosityEnabled===true){
+        const autonomousSeeds = this.collectAutonomousLearningSeeds(options);
+        autonomousSeeds.slice(0, 12).forEach(seed => add({
+          subject: seed.subject,
+          origin: seed.origin,
+          reason: seed.reason,
+          move: "explore-read-learn-connect",
+          value: seed.value,
+          evidence: seed.evidence,
+          unknowns: seed.unknowns,
+          externalResearchUseful: true
+        }));
+
         const organization=this.buildOrganizationContext?.()||{};
         const mission=String(
           organization.mission||
@@ -14617,8 +14838,8 @@
         if(mission){
           add({
             subject:`Deepen domain expertise and discover useful adjacent knowledge for ${organizationName}`,
-            origin:"open-domain-curiosity",
-            reason:`No queued cognitive work currently clears the gate. Use the organization's mission as a starting point—not a boundary—to discover what Maddy does not yet know, follow promising adjacent concepts, and build expertise that could create future organizational advantage.`,
+            origin:"organization-context-curiosity",
+            reason:`The organization's mission is one useful source of learning questions, not a boundary on Maddy's curiosity. Explore adjacent knowledge only when it competes successfully with broader world-learning and self-development opportunities.`,
             move:"explore-read-learn-connect",
             value:Number(this.configuration.openDomainCuriosityBaseValue||0.58),
             evidence:[{
@@ -14630,21 +14851,6 @@
               `What important facts, methods, emerging developments, adjacent disciplines, or counterexamples related to "${mission}" does Maddy not yet understand?`,
               "Which adjacent subject could create unexpected leverage if understood deeply?",
               "What would falsify the assumption that a discovered topic deserves more attention?"
-            ],
-            externalResearchUseful:true
-          });
-        } else {
-          add({
-            subject:"Explore a high-value unfamiliar domain and test for organizational relevance",
-            origin:"open-domain-curiosity",
-            reason:"No queued work clears the gate and no mission context is currently available. Curiosity may explore broadly, but continued attention must earn itself through evidence of learning value or future leverage.",
-            move:"explore-read-learn-connect",
-            value:Number(this.configuration.openDomainCuriosityAdjacentValue||0.52),
-            evidence:[],
-            unknowns:[
-              "What unfamiliar subject is changing in the external world?",
-              "Could understanding it create future leverage, preparedness, or better judgment?",
-              "What evidence would justify deeper investigation?"
             ],
             externalResearchUseful:true
           });
@@ -14694,11 +14900,21 @@
         authority:{internalCognitionAuthorized:true,externalActionAuthorized:false},
         capability:{externalResearchUseful:selected.externalResearchUseful,
           externalResearchExecuted:false,
-          missingCapability:selected.externalResearchUseful?"commissioned-headless-public-research-executor":null},
+          requiredCapability:selected.externalResearchUseful?"commissioned-headless-public-research-executor":null},
+        researchRequest:selected.externalResearchUseful
+          ?this.buildAutonomousLearningResearchRequest(selected)
+          :null,
+        economics:{
+          curiosityAuthorized:true,
+          cheapPublicResearchPreferred:true,
+          paidSpendAuthorized:false,
+          largeMediaProcessingAuthorized:false,
+          principle:"free-to-learn-not-free-to-spend"
+        },
         nextMove:selected.externalResearchUseful
-          ?`Use an authorized research capability to investigate ${selected.subject}, seek disconfirming evidence, then integrate verified learning into the World Model.`
+          ?`Use the cheapest authorized public research capability to investigate ${selected.subject}, prefer text/captions/transcripts or structured sources before rich media, seek disconfirming evidence, then integrate verified learning into the World Model.`
           :`Continue internal evidence-grounded cognition on ${selected.subject}.`,
-        truthRule:"Productive idle cognition may choose what to learn; it may not claim research, mastery, or facts not actually obtained."};
+        truthRule:"Productive idle cognition may choose what to learn; it may not claim research, mastery, or facts not actually obtained. Curiosity does not itself authorize paid spend."};
       this.productiveIdleHistory.unshift(this.clone(action));
       this.productiveIdleHistory=this.productiveIdleHistory.slice(0,Number(this.configuration.productiveIdleHistoryLimit||96));
       this.lastProductiveIdleAction=action;
@@ -14894,6 +15110,129 @@
         threadAction:this.clone(threadAction),
         handoff:this.clone(handoff)
       };
+    },
+
+    runAutonomousLearningFreedomAcceptanceTest() {
+      const original = {
+        intentions: this.clone(this.cognitiveIntentions),
+        goals: this.clone(this.developmentalGoals),
+        worldModel: this.clone(this.worldModel),
+        lastIdle: this.clone(this.lastProductiveIdleAction),
+        idleHistory: this.clone(this.productiveIdleHistory),
+        sameCount: this.productiveIdleConsecutiveSameSubject
+      };
+      try {
+        this.cognitiveIntentions = [{
+          intentionId: "legacy-53",
+          subject: "Already exhausted legacy thought",
+          status: "quiescent",
+          attempts: 53,
+          economics: { state: "quiescent", noGainStreak: 2 }
+        }];
+        this.developmentalGoals = [];
+        this.worldModel = { unknowns: [] };
+        this.lastProductiveIdleAction = null;
+        this.productiveIdleHistory = [];
+        this.productiveIdleConsecutiveSameSubject = 0;
+
+        const candidates = this.collectProductiveIdleCandidates({});
+        const choice = this.runProductiveIdleCognition({});
+        const request = choice?.action?.researchRequest || null;
+
+        const psychology = this.scoreAutonomousLearningOpportunity({
+          worldBreadth: 0.7,
+          executiveGrowth: 1,
+          knowledgeGap: 0.9,
+          connectivity: 0.9,
+          freshness: 0.5,
+          cheapness: 0.95
+        });
+        const mosquito = this.scoreAutonomousLearningOpportunity({
+          worldBreadth: 0.6,
+          executiveGrowth: 0.05,
+          knowledgeGap: 1,
+          connectivity: 0.05,
+          freshness: 0.2,
+          cheapness: 1
+        });
+
+        const checks = [
+          {
+            name: "Quiescent exhausted cognition cannot monopolize Maddy's idle learning horizon",
+            passed: !candidates.some(x => x.subject === "Already exhausted legacy thought")
+          },
+          {
+            name: "Maddy retains a self-directed world-learning option when no mission work exists",
+            passed: candidates.some(x => x.origin === "self-directed-world-learning")
+          },
+          {
+            name: "Mission context is a learning candidate rather than an intellectual whitelist",
+            passed:
+              candidates.some(x => x.origin === "self-directed-world-learning") ||
+              candidates.some(x => x.origin === "self-development-gap") ||
+              candidates.some(x => x.origin === "world-model-blind-spot")
+          },
+          {
+            name: "Chosen autonomous learning produces an executable research intent rather than pretending research occurred",
+            passed:
+              choice?.productive === true &&
+              request?.schema === "meos.maddy.autonomous-learning-research-request.v1" &&
+              choice?.action?.capability?.externalResearchExecuted === false
+          },
+          {
+            name: "Autonomous learning is cheap-first and refuses implicit paid model/search authority",
+            passed:
+              request?.acquisitionPolicy?.cheapFirst === true &&
+              request?.acquisitionPolicy?.paidModelAuthorized === false &&
+              request?.acquisitionPolicy?.paidSearchAuthorized === false &&
+              request?.authority?.paidSpendAuthorized === false
+          },
+          {
+            name: "Transcript/caption-first learning is explicitly preferred over expensive video-frame processing",
+            passed:
+              request?.acquisitionPolicy?.captionsOrTranscriptsBeforeVideoFrames === true &&
+              request?.acquisitionPolicy?.largeMediaProcessingAuthorized === false
+          },
+          {
+            name: "Executive-development curiosity can outrank cheap low-connectivity novelty without banning either",
+            passed: psychology > mosquito && mosquito > 0
+          },
+          {
+            name: "Curiosity never grants external-action authority",
+            passed:
+              request?.authority?.externalActionAuthorized === false &&
+              choice?.action?.authority?.externalActionAuthorized === false
+          },
+          {
+            name: "Existing v1.25.10 pre-spend attention firewall remains present",
+            passed:
+              typeof this.assessPreSpendExecutiveAttention === "function" &&
+              typeof this.assessTriggerNovelty === "function"
+          }
+        ];
+
+        const passed = checks.every(x => x.passed);
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7S4A Autonomous Learning Intent + Economic Stewardship: ${passed ? "PASS" : "FAIL"}.`
+        );
+        return {
+          commission: "006.017D7S4A",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          scores: { executivePsychology: psychology, lowConnectivityCuriosity: mosquito },
+          choice
+        };
+      } finally {
+        this.cognitiveIntentions = original.intentions;
+        this.developmentalGoals = original.goals;
+        this.worldModel = original.worldModel;
+        this.lastProductiveIdleAction = original.lastIdle;
+        this.productiveIdleHistory = original.idleHistory;
+        this.productiveIdleConsecutiveSameSubject = original.sameCount;
+      }
     },
 
     async runContinuousCognitionHandoffAcceptanceTest() {
