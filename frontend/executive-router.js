@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.1.0
- * Build: ER110-UNIFIED-GOVERNED-ANSWER-PRODUCTION-20260812-A
+ * Version: 1.2.0
+ * Build: ER120-SEMANTIC-RELEVANCE-PUBLIC-RESEARCH-CONTINUATION-20260812-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.1.0";
-  const BUILD_ID = "ER110-UNIFIED-GOVERNED-ANSWER-PRODUCTION-20260812-A";
+  const VERSION = "1.2.0";
+  const BUILD_ID = "ER120-SEMANTIC-RELEVANCE-PUBLIC-RESEARCH-CONTINUATION-20260812-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -376,7 +376,7 @@
       });
 
       return {
-        success: true,
+        success: governedAnswer.sufficientEvidence === true,
         schema: "meos.executive-router.result.v1",
         requestId: context.request.id,
         brainRequestId: context.brainResult.requestId,
@@ -440,10 +440,10 @@
         output.result?.unknowns
       );
 
-      const citations = localEvidence
-        .map(item => this.firstText(item.citation, item.provenance?.citation))
-        .filter(Boolean)
-        .slice(0, 12);
+      const citations = [...new Set([
+        ...localEvidence.map(item => this.firstText(item.citation, item.provenance?.citation)),
+        ...(Array.isArray(output.citations) ? output.citations : [])
+      ].filter(Boolean))].slice(0, 12);
 
       return Object.freeze({
         schema: "meos.governed-answer.v1",
@@ -476,8 +476,129 @@
         provider: input.provider || null,
         providerPaidForAnswer: Boolean(input.provider),
         generatedBy: providerAnswer ? "provider-normalization" : "meos-local-synthesis",
+        sufficientEvidence: Boolean(providerAnswer || localAnswer),
         generatedAt: new Date().toISOString()
       });
+    },
+
+    /*
+     * Commission 006.018F — Semantic Relevance + Public Research Continuation
+     *
+     * Evidence confidence is not evidence relevance. A high-confidence MEOS
+     * architecture record cannot answer an unrelated public factual question.
+     * This gate is intentionally conservative: generic/general research must
+     * share meaningful subject language with resident evidence before the
+     * zero-cost local synthesis path is allowed to close the question.
+     */
+    meaningfulTerms(value) {
+      const stop = new Set([
+        "a","an","and","are","as","at","be","because","been","but","by","can","could",
+        "did","do","does","for","from","had","has","have","how","i","if","in","into","is",
+        "it","its","me","my","of","on","or","our","should","so","that","the","their","them",
+        "there","these","they","this","to","us","was","we","were","what","when","where","which",
+        "who","why","will","with","would","you","your"
+      ]);
+      return [...new Set(String(value || "").toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, " ")
+        .split(/\s+/)
+        .map(term => term.replace(/^-+|-+$/g, ""))
+        .filter(term => term.length >= 3 && !stop.has(term)))];
+    },
+
+    evidenceSemanticRelevance(question, evidence = []) {
+      const queryTerms = this.meaningfulTerms(question);
+      if (queryTerms.length === 0 || !Array.isArray(evidence) || evidence.length === 0) {
+        return { relevant: false, score: 0, matchedTerms: [], queryTerms };
+      }
+
+      const evidenceText = evidence.map(item => this.firstText(
+        item.title, item.summary, item.content, item.answer, item.fact,
+        item.description, item.raw?.title, item.raw?.summary, item.raw?.content
+      )).join(" ");
+      const evidenceTerms = new Set(this.meaningfulTerms(evidenceText));
+      const matchedTerms = queryTerms.filter(term => evidenceTerms.has(term));
+      const score = matchedTerms.length / Math.max(1, queryTerms.length);
+
+      // One distinctive subject match is enough for a short factual question;
+      // longer questions require broader overlap. No overlap can never close.
+      const requiredMatches = queryTerms.length <= 4 ? 1 : 2;
+      return {
+        relevant: matchedTerms.length >= requiredMatches && score >= 0.18,
+        score: Number(score.toFixed(3)),
+        matchedTerms,
+        queryTerms
+      };
+    },
+
+    localEvidenceMayClose(payload = {}) {
+      const pkg = payload.package || {};
+      const requestType = String(pkg.request?.type || "general").toLowerCase();
+      if (["identity", "self", "organization", "current-work", "monitoring", "learning", "recall"].includes(requestType)) {
+        return { relevant: true, reason: "resident-context-request" };
+      }
+      const relevance = this.evidenceSemanticRelevance(
+        payload.request?.text || pkg.request?.text || "",
+        pkg.localContext?.evidence || []
+      );
+      return { ...relevance, reason: relevance.relevant ? "semantic-subject-match" : "semantic-subject-mismatch" };
+    },
+
+    async dispatchHeadlessPublicResearch(payload = {}, reason = "resident-evidence-insufficient") {
+      const subject = payload.request?.text || payload.package?.request?.text || "";
+      if (!subject) return null;
+      if (typeof global.fetch !== "function") return null;
+
+      try {
+        const response = await global.fetch("/api/headless-research", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            subject,
+            question: subject,
+            reason,
+            maxSources: 8,
+            maxDepth: 2,
+            maxAdditionalPasses: 1,
+            authority: {
+              externalActionAuthorized: false,
+              paidProviderAuthorized: false,
+              humanAuthorityPreserved: true
+            }
+          })
+        });
+        const research = await response.json().catch(() => null);
+        if (!response.ok || !research?.success) return null;
+
+        const facts = Array.isArray(research.synthesis?.supportedFacts)
+          ? research.synthesis.supportedFacts.map(item => this.firstText(item?.claim, item?.fact, item?.summary, item)).filter(Boolean)
+          : [];
+        const evidenceClaims = Array.isArray(research.evidence)
+          ? research.evidence.map(item => this.firstText(item.claim, item.excerpt)).filter(Boolean)
+          : [];
+        const answerParts = [...new Set([...facts, ...evidenceClaims])].slice(0, 4);
+        const sources = Array.isArray(research.evidence)
+          ? [...new Set(research.evidence.map(item => this.firstText(item.source)).filter(Boolean))].slice(0, 12)
+          : [];
+
+        return {
+          source: "meos-headless-public-research",
+          provider: null,
+          output: {
+            type: "public-research-result",
+            answer: answerParts.join(" "),
+            confidence: Number(research.synthesis?.confidence || 0),
+            unknowns: research.synthesis?.unknowns || [],
+            citations: sources,
+            research,
+            paidProviderUsed: false,
+            continuationReason: reason
+          }
+        };
+      } catch (error) {
+        console.warn("[MEOS Executive Router] Zero-cost public research continuation failed.", error);
+        return null;
+      }
     },
 
     synthesizeLocalAnswer(question, evidence = [], pkg = {}) {
@@ -588,20 +709,77 @@
       return result;
     },
 
+    async runSemanticResearchContinuationAcceptanceTest() {
+      const unrelated = this.evidenceSemanticRelevance(
+        "Why do wombats have cube-shaped poop?",
+        [{ summary: "Explainable organization-neutral document classification with executive review controls." }]
+      );
+      const related = this.evidenceSemanticRelevance(
+        "Why do wombats have cube-shaped poop?",
+        [{ summary: "Wombat intestines shape cube-like feces during digestion." }]
+      );
+      const assertions = [
+        { name: "Unrelated institutional evidence cannot close a public factual question", passed: unrelated.relevant === false },
+        { name: "Subject-matching evidence can pass the semantic relevance gate", passed: related.relevant === true },
+        { name: "Zero semantic overlap is explicit", passed: unrelated.matchedTerms.length === 0 },
+        { name: "Headless public research continuation exists", passed: typeof this.dispatchHeadlessPublicResearch === "function" },
+        { name: "Public research continuation forbids paid-provider authority", passed: /paidProviderAuthorized:\s*false/.test(this.dispatchHeadlessPublicResearch.toString()) },
+        { name: "Public research continuation preserves human authority", passed: /humanAuthorityPreserved:\s*true/.test(this.dispatchHeadlessPublicResearch.toString()) },
+        { name: "Insufficient evidence cannot report Router success", passed: /success:\s*governedAnswer\.sufficientEvidence\s*===\s*true/.test(this.collect.toString()) },
+        { name: "No provider monopoly is introduced", passed: !/openai|anthropic|claude|gemini/i.test(this.dispatchHeadlessPublicResearch.toString()) }
+      ];
+      const passed = assertions.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === assertions.length,
+        commission: "006.018F",
+        schema: "meos.executive-router.semantic-research-continuation-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: assertions.length,
+        assertions
+      });
+      console.table(assertions);
+      console.info(`[MEOS ${VERSION}] Commission 006.018F Semantic Relevance + Public Research Continuation: ${result.success ? "PASS" : "FAIL"} (${passed}/${assertions.length}).`);
+      return result;
+    },
+
     installDefaultRoutes() {
-      this.registerRoute(ROUTES.INSTANT_MEOS_CONTEXT, async payload => ({
-        source: "meos-local-context",
-        output: {
-          type: "local-evidence-package",
-          request: payload.package.request,
-          identity: payload.package.identity,
-          organization: payload.package.organization,
-          authority: payload.package.authority,
-          currentWork: payload.package.currentWork,
-          localContext: payload.package.localContext,
-          responseContract: payload.package.responseContract
+      this.registerRoute(ROUTES.INSTANT_MEOS_CONTEXT, async payload => {
+        const relevance = this.localEvidenceMayClose(payload);
+        if (relevance.relevant !== true) {
+          const researched = await this.dispatchHeadlessPublicResearch(
+            payload,
+            relevance.reason || "resident-evidence-semantically-irrelevant"
+          );
+          if (researched) return researched;
+          return {
+            source: "meos-local-context-rejected",
+            output: {
+              type: "insufficient-relevant-evidence",
+              answer: "",
+              unknowns: ["Resident evidence did not match the subject and public research did not return sufficient evidence."],
+              relevance,
+              paidProviderUsed: false
+            }
+          };
         }
-      }));
+
+        return {
+          source: "meos-local-context",
+          output: {
+            type: "local-evidence-package",
+            request: payload.package.request,
+            identity: payload.package.identity,
+            organization: payload.package.organization,
+            authority: payload.package.authority,
+            currentWork: payload.package.currentWork,
+            localContext: payload.package.localContext,
+            responseContract: payload.package.responseContract,
+            relevance
+          }
+        };
+      });
 
       this.registerRoute(
         ROUTES.LOCAL_RECALL_PLUS_PROVIDER,
