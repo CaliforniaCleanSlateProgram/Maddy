@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.6
- * Build: EB1256-AUTONOMOUS-DOCUMENT-COGNITIVE-CONTINUATION-20260811-A
+ * Version: 1.25.7
+ * Build: EB1257-COGNITIVE-IDENTITY-HYDRATION-SELF-HEALING-20260811-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.6";
-  const BUILD_ID = "EB1256-AUTONOMOUS-DOCUMENT-COGNITIVE-CONTINUATION-20260811-A";
+  const VERSION = "1.25.7";
+  const BUILD_ID = "EB1257-COGNITIVE-IDENTITY-HYDRATION-SELF-HEALING-20260811-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -45,6 +45,10 @@
     suspended: false,
     lastPersistedAt: null,
     lastRestoredAt: null,
+    intentionSelfHealingCount: 0,
+    intentionRecordsAbsorbed: 0,
+    lastIntentionSelfHealing: null,
+    pendingIntentionSelfHealingWriteback: false,
     lastError: null
   };
 
@@ -1418,11 +1422,267 @@
       return null;
     },
 
+    cognitiveIntentionTimestamp(value = {}) {
+      const candidates = [
+        value.completedAt,
+        value.updatedAt,
+        value.createdAt
+      ];
+      for (const candidate of candidates) {
+        const parsed = Date.parse(candidate || "");
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return 0;
+    },
+
+    mergeCognitiveIntentionTriggers(...triggerSets) {
+      const merged = [];
+      const seen = new Set();
+      for (const trigger of triggerSets.flat()) {
+        if (!trigger || typeof trigger !== "object") continue;
+        let identity;
+        try {
+          identity = JSON.stringify({
+            fingerprint: trigger.fingerprint || null,
+            id: trigger.id || null,
+            eventId: trigger.eventId || null,
+            type: trigger.type || null,
+            source: trigger.source || null,
+            event: trigger.event || null,
+            lineageId: trigger.lineageId || null,
+            workId: trigger.workId || null,
+            workflowId: trigger.workflowId || null,
+            sourceDocumentId: trigger.sourceDocumentId || null,
+            sourceInvestigationId: trigger.sourceInvestigationId || null,
+            sourceFingerprint: trigger.sourceFingerprint || null,
+            reason: trigger.reason || null
+          });
+        } catch {
+          identity = String(trigger);
+        }
+        if (seen.has(identity)) continue;
+        seen.add(identity);
+        merged.push(this.clone(trigger));
+      }
+      return merged.slice(-50);
+    },
+
+    mergeCognitiveIntentionGroup(records = []) {
+      const usable = records.filter(
+        item => item && typeof item === "object"
+      );
+      if (usable.length === 0) return null;
+      if (usable.length === 1) return this.clone(usable[0]);
+
+      const chronological = [...usable].sort(
+        (a, b) =>
+          this.cognitiveIntentionTimestamp(a) -
+          this.cognitiveIntentionTimestamp(b)
+      );
+      const earliest = chronological[0];
+      const latest = chronological[chronological.length - 1];
+
+      const ids = [
+        ...new Set(
+          usable
+            .map(item => String(item.intentionId || "").trim())
+            .filter(Boolean)
+        )
+      ];
+      const sameExplicitIdentity = ids.length === 1 && ids[0];
+      const completed = usable
+        .filter(item => item.status === "completed")
+        .sort(
+          (a, b) =>
+            this.cognitiveIntentionTimestamp(a) -
+            this.cognitiveIntentionTimestamp(b)
+        )
+        .at(-1);
+
+      /*
+       * Exact identity is stronger than stale status. Once the same explicit
+       * thought completed, an older pending copy may not resurrect it.
+       */
+      const winner =
+        sameExplicitIdentity && completed
+          ? completed
+          : latest;
+
+      const createdTimes = usable
+        .map(item => Date.parse(item.createdAt || ""))
+        .filter(Number.isFinite);
+      const updatedTimes = usable
+        .map(item => Date.parse(item.updatedAt || ""))
+        .filter(Number.isFinite);
+      const triggers = this.mergeCognitiveIntentionTriggers(
+        ...usable.map(item =>
+          Array.isArray(item.triggers) ? item.triggers : []
+        )
+      );
+      const contributorSources = [
+        ...new Set(
+          triggers
+            .map(trigger =>
+              String(trigger?.source || trigger?.type || "").trim()
+            )
+            .filter(Boolean)
+        )
+      ];
+
+      const canonicalId =
+        String(earliest.intentionId || "").trim() ||
+        String(winner.intentionId || "").trim() ||
+        ids[0] ||
+        this.id("cognitive-intention");
+
+      const merged = {
+        ...this.clone(earliest),
+        ...this.clone(winner),
+        intentionId: canonicalId,
+        key:
+          this.normalize(winner.subject || winner.key || "") ||
+          this.normalize(earliest.subject || earliest.key || ""),
+        subject:
+          winner.subject ||
+          earliest.subject ||
+          null,
+        attempts: Math.max(
+          ...usable.map(item => Number(item.attempts || 0)),
+          0
+        ),
+        triggers,
+        createdAt:
+          createdTimes.length
+            ? new Date(Math.min(...createdTimes)).toISOString()
+            : earliest.createdAt || winner.createdAt || null,
+        updatedAt:
+          updatedTimes.length
+            ? new Date(Math.max(...updatedTimes)).toISOString()
+            : winner.updatedAt || earliest.updatedAt || null,
+        lastError:
+          winner.status === "completed"
+            ? null
+            : winner.lastError || null,
+        convergence: {
+          schema: "meos.maddy.cognitive-identity-self-healing.v1",
+          identity: `intention:${canonicalId}`,
+          observedRecordCount: usable.length,
+          absorbedRecordCount: Math.max(0, usable.length - 1),
+          mergedIntentionIds: ids,
+          contributorSources,
+          healedAt: new Date().toISOString(),
+          principle: "many-signals-one-continuing-thought"
+        }
+      };
+
+      if (winner.status === "completed" && completed?.completedAt) {
+        merged.completedAt = completed.completedAt;
+      }
+      return merged;
+    },
+
+    convergeCognitiveIntentions(records = [], options = {}) {
+      const source = Array.isArray(records)
+        ? records.filter(item => item && typeof item === "object")
+        : [];
+      const groups = [];
+      const idToGroup = new Map();
+      const activeKeyToGroup = new Map();
+
+      for (const record of source) {
+        const id = String(record.intentionId || "").trim();
+        const key = this.normalize(record.subject || record.key || "");
+        let groupIndex =
+          id && idToGroup.has(id)
+            ? idToGroup.get(id)
+            : undefined;
+
+        if (
+          groupIndex === undefined &&
+          key &&
+          record.status !== "completed" &&
+          activeKeyToGroup.has(key)
+        ) {
+          groupIndex = activeKeyToGroup.get(key);
+        }
+
+        if (groupIndex === undefined) {
+          groupIndex = groups.length;
+          groups.push([]);
+        }
+
+        groups[groupIndex].push(record);
+        if (id) idToGroup.set(id, groupIndex);
+        if (key && record.status !== "completed") {
+          activeKeyToGroup.set(key, groupIndex);
+        }
+      }
+
+      const intentions = groups
+        .map(group => this.mergeCognitiveIntentionGroup(group))
+        .filter(Boolean)
+        .sort(
+          (a, b) =>
+            this.cognitiveIntentionTimestamp(b) -
+            this.cognitiveIntentionTimestamp(a)
+        )
+        .slice(0, this.configuration.maximumCognitiveIntentions);
+
+      const absorbedRecords = Math.max(
+        0,
+        source.length - intentions.length
+      );
+      const convergedGroups = groups.filter(group => group.length > 1);
+
+      if (absorbedRecords > 0 && options.recordHealing !== false) {
+        brainPersistence.intentionSelfHealingCount +=
+          convergedGroups.length;
+        brainPersistence.intentionRecordsAbsorbed += absorbedRecords;
+        brainPersistence.pendingIntentionSelfHealingWriteback = true;
+        brainPersistence.lastIntentionSelfHealing = {
+          schema: "meos.maddy.cognitive-identity-self-healing-event.v1",
+          inputRecords: source.length,
+          outputIntentions: intentions.length,
+          convergedGroups: convergedGroups.length,
+          absorbedRecords,
+          reason: options.reason || "runtime-convergence",
+          healedAt: new Date().toISOString()
+        };
+        this.record("cognition.intention-identity-self-healed", {
+          inputRecords: source.length,
+          outputIntentions: intentions.length,
+          convergedGroups: convergedGroups.length,
+          absorbedRecords,
+          reason: options.reason || "runtime-convergence"
+        });
+      }
+
+      return {
+        intentions,
+        inputRecords: source.length,
+        outputIntentions: intentions.length,
+        convergedGroups: convergedGroups.length,
+        absorbedRecords
+      };
+    },
+
     upsertCognitiveIntention(subject, triggers = [], options = {}) {
       const normalizedSubject = String(subject || "").trim();
       if (!normalizedSubject) return null;
       const key = this.normalize(normalizedSubject);
-      let intention = this.cognitiveIntentions.find(item => item.key === key && item.status !== "completed");
+      const convergence = this.convergeCognitiveIntentions(
+        this.cognitiveIntentions,
+        {
+          reason: "pre-upsert-identity-gate",
+          recordHealing: true
+        }
+      );
+      this.cognitiveIntentions = convergence.intentions;
+      let intention = this.cognitiveIntentions.find(
+        item =>
+          this.normalize(item.subject || item.key || "") === key &&
+          item.status !== "completed"
+      );
       if (!intention) {
         intention = {
           intentionId: this.id("cognitive-intention"), key, subject: normalizedSubject,
@@ -15605,7 +15865,22 @@
       this.cognitiveRevisitMemories = Array.isArray(saved.cognitiveRevisitMemories) ? saved.cognitiveRevisitMemories.slice(0, this.configuration.maximumCognitiveRevisitMemories) : [];
       this.cognitiveRevisitMemoryCount = Math.max(Number(saved.cognitiveRevisitMemoryCount || 0), this.cognitiveRevisitMemories.length);
       this.cognitiveReentryHistory = Array.isArray(saved.cognitiveReentryHistory) ? saved.cognitiveReentryHistory.slice(0, this.configuration.maximumCognitiveReentryHistory) : [];
-      this.cognitiveIntentions = Array.isArray(saved.cognitiveIntentions) ? saved.cognitiveIntentions.slice(0, this.configuration.maximumCognitiveIntentions) : [];
+      const hydratedIntentions =
+        Array.isArray(saved.cognitiveIntentions)
+          ? saved.cognitiveIntentions.slice(
+              0,
+              this.configuration.maximumCognitiveIntentions
+            )
+          : [];
+      const intentionHealing =
+        this.convergeCognitiveIntentions(
+          hydratedIntentions,
+          {
+            reason: "durable-hydration",
+            recordHealing: true
+          }
+        );
+      this.cognitiveIntentions = intentionHealing.intentions;
       this.selfModel =
         saved.selfModel?.schema === "meos.maddy.self-model.v1"
           ? this.clone(saved.selfModel)
@@ -15867,9 +16142,28 @@
           brainPersistence.durableFingerprint = durable.fingerprint;
           brainPersistence.hydrationSource = "meos-institutional-repository";
           brainPersistence.lastRestoredAt = new Date().toISOString();
-          await this.writeContinuityCache(durable.state).catch(() => false);
+
+          let healedWriteback = false;
+          if (brainPersistence.pendingIntentionSelfHealingWriteback === true) {
+            healedWriteback = await this.persistDurableNow();
+            if (healedWriteback) {
+              brainPersistence.pendingIntentionSelfHealingWriteback = false;
+            }
+          }
+
+          await this.writeContinuityCache(
+            this.buildPersistenceSnapshot()
+          ).catch(() => false);
           this.emit("brain:persistence-hydrated", this.getPersistenceStatus());
-          return { success: true, restored: true, source: brainPersistence.hydrationSource, authority: brainPersistence.authoritativeStorage };
+          return {
+            success: true,
+            restored: true,
+            healedWriteback,
+            intentionSelfHealing:
+              this.clone(brainPersistence.lastIntentionSelfHealing),
+            source: brainPersistence.hydrationSource,
+            authority: brainPersistence.authoritativeStorage
+          };
         }
 
         const cache = await this.readContinuityCache().catch(() => null);
@@ -15907,6 +16201,188 @@
       let localStorageBytes = null;
       try { localStorageBytes = new Blob([global.localStorage?.getItem(STORAGE_KEY) || ""]).size; } catch {}
       return this.clone({ ...brainPersistence, localStorageBytes });
+    },
+
+    async runCognitiveIdentityHydrationSelfHealingAcceptanceTest() {
+      const originalIntentions = this.clone(this.cognitiveIntentions);
+      const originalHealing = {
+        count: brainPersistence.intentionSelfHealingCount,
+        absorbed: brainPersistence.intentionRecordsAbsorbed,
+        last: this.clone(brainPersistence.lastIntentionSelfHealing),
+        pending: brainPersistence.pendingIntentionSelfHealingWriteback
+      };
+
+      try {
+        const subject = "Pursue Foundation X";
+        const intentionId = "identity-healing-fixture";
+        const voices = [
+          ["grant-office", "strong-fit"],
+          ["finance", "match-required"],
+          ["compliance", "eligibility-check"],
+          ["monitoring", "deadline-change"],
+          ["planning", "dependency-found"],
+          ["research", "authoritative-pdf-found"],
+          ["development", "partner-fit"]
+        ];
+
+        const copies = voices.map(([source, event], index) => ({
+          intentionId,
+          key: this.normalize(subject),
+          subject,
+          status: "pending",
+          createdAt: "2026-08-11T20:00:00.000Z",
+          updatedAt: new Date(
+            Date.parse("2026-08-11T20:00:00.000Z") +
+            index * 1000
+          ).toISOString(),
+          attempts: index + 1,
+          triggers: [{
+            source,
+            event,
+            workId: `identity-healing-${index}`
+          }],
+          lastError: null
+        }));
+
+        const healed = this.convergeCognitiveIntentions(
+          copies,
+          {
+            reason: "commission-006.017D7S3C-acceptance",
+            recordHealing: false
+          }
+        );
+
+        this.cognitiveIntentions = this.clone(healed.intentions);
+
+        const sameGoalFromAnotherCaller =
+          this.upsertCognitiveIntention(
+            subject,
+            [{
+              source: "operations",
+              event: "same-goal-more-context"
+            }],
+            { persist: false }
+          );
+
+        const completedVsStale =
+          this.convergeCognitiveIntentions(
+            [
+              {
+                ...this.clone(healed.intentions[0]),
+                status: "completed",
+                completedAt: "2026-08-11T20:10:00.000Z",
+                updatedAt: "2026-08-11T20:10:00.000Z",
+                attempts: 8
+              },
+              {
+                ...this.clone(healed.intentions[0]),
+                status: "pending",
+                updatedAt: "2026-08-11T20:09:00.000Z",
+                attempts: 7
+              }
+            ],
+            { recordHealing: false }
+          );
+
+        const checks = [
+          {
+            name: "Seven historical copies reconstruct as one continuing thought",
+            passed:
+              healed.inputRecords === 7 &&
+              healed.outputIntentions === 1 &&
+              healed.absorbedRecords === 6
+          },
+          {
+            name: "All seven office perspectives survive convergence",
+            passed:
+              healed.intentions[0]?.triggers?.length === 7
+          },
+          {
+            name: "Attempt progression is preserved without multiplying execution",
+            passed:
+              healed.intentions[0]?.attempts === 7
+          },
+          {
+            name: "Earliest cognitive origin survives self-healing",
+            passed:
+              healed.intentions[0]?.createdAt ===
+                "2026-08-11T20:00:00.000Z"
+          },
+          {
+            name: "Upsert identity gate enriches the existing active thought instead of creating another",
+            passed:
+              this.cognitiveIntentions.length === 1 &&
+              sameGoalFromAnotherCaller?.intentionId === intentionId &&
+              sameGoalFromAnotherCaller?.triggers?.some(
+                trigger => trigger.source === "operations"
+              )
+          },
+          {
+            name: "Stale pending state cannot resurrect the same completed thought",
+            passed:
+              completedVsStale.intentions.length === 1 &&
+              completedVsStale.intentions[0]?.status === "completed"
+          },
+          {
+            name: "Hydration path invokes cognitive identity convergence before re-entry",
+            passed:
+              /convergeCognitiveIntentions/.test(
+                this.applyPersistenceSnapshot.toString()
+              )
+          },
+          {
+            name: "Healed hydration is written back through existing durable authority",
+            passed:
+              /pendingIntentionSelfHealingWriteback/.test(
+                this.hydrateLaptopPersistence.toString()
+              ) &&
+              /persistDurableNow/.test(
+                this.hydrateLaptopPersistence.toString()
+              )
+          },
+          {
+            name: "Continuous re-entry remains one timer/in-flight lane per normalized subject",
+            passed:
+              /cognitiveReentryTimers\.has\(key\)/.test(
+                this.scheduleCognitiveIntentionRetry.toString()
+              ) &&
+              /cognitiveReentryInFlight\.has\(key\)/.test(
+                this.scheduleCognitiveIntentionRetry.toString()
+              )
+          },
+          {
+            name: "External human approval authority remains unchanged",
+            passed:
+              this.configuration
+                .requireHumanApprovalForExternalAction === true
+          }
+        ];
+
+        const passed = checks.every(item => item.passed);
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.017D7S3C Cognitive Identity Hydration + Self-Healing: ${passed ? "PASS" : "FAIL"}.`
+        );
+        return {
+          commission: "006.017D7S3C",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          healed: this.clone(healed),
+          resultingIntentions: this.clone(this.cognitiveIntentions)
+        };
+      } finally {
+        this.cognitiveIntentions = originalIntentions;
+        brainPersistence.intentionSelfHealingCount =
+          originalHealing.count;
+        brainPersistence.intentionRecordsAbsorbed =
+          originalHealing.absorbed;
+        brainPersistence.lastIntentionSelfHealing =
+          originalHealing.last;
+        brainPersistence.pendingIntentionSelfHealingWriteback =
+          originalHealing.pending;
+      }
     },
 
     runOneShotOneKillAcceptanceTest() {
