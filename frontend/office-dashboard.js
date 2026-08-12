@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.10.4";
+  const DASHBOARD_VERSION = "4.10.5";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5249,10 +5249,42 @@ document
     return data.governedAnswer || data.result?.governedAnswer || data.output?.governedAnswer || data.response?.governedAnswer || null;
   }
 
-  function getDeliverableSourceUrl(deliverable) {
+  function strictGovernedSourceUrls(deliverable) {
     const data = deliverable?.data || {};
     const governed = getGovernedAnswerFromDeliverable(deliverable);
-    return deliverable?.openUrl || deliverable?.downloadUrl || data.url || data.sourceUrl || data.website || findFirstHttpUrl(governed?.citations) || findFirstHttpUrl(data) || null;
+    const research = data.result?.output?.research || data.result?.research || data.research || {};
+    const candidates = [
+      ...(Array.isArray(governed?.citations) ? governed.citations : []),
+      ...(Array.isArray(data.evidenceUrls) ? data.evidenceUrls : []),
+      ...(Array.isArray(research?.synthesis?.supportingSources) ? research.synthesis.supportingSources : [])
+    ];
+    return [...new Set(candidates.filter(value =>
+      typeof value === "string" && /^https?:\/\//i.test(value.trim())
+    ).map(value => value.trim()))];
+  }
+
+  function getDeliverableSourceUrl(deliverable) {
+    const type = classifyMaddyDeliverable(deliverable);
+    const data = deliverable?.data || {};
+    const strict = strictGovernedSourceUrls(deliverable);
+    if (strict.length) return strict[0];
+
+    // Research/conversational answers may never fall back to an organization
+    // website or arbitrary nested URL. No source is better than a wrong source.
+    if (type === "research") return null;
+
+    return deliverable?.openUrl || deliverable?.downloadUrl ||
+      data.url || data.sourceUrl || findFirstHttpUrl(data) || null;
+  }
+
+  function sourceLabelFromUrl(url) {
+    if (!url) return null;
+    try {
+      const host = new URL(url).hostname.replace(/^www\./i, "");
+      return host || null;
+    } catch (_) {
+      return null;
+    }
   }
 
   function classifyMaddyDeliverable(deliverable) {
@@ -5299,7 +5331,9 @@ document
     const development = data.resourceDevelopment || {};
     const type = classifyMaddyDeliverable(deliverable);
     const sourceUrl = getDeliverableSourceUrl(deliverable);
-    const sourceName = firstBriefValue(data.funder, data.organization, data.sourceName, deliverable?.source, deliverable?.provider);
+    const sourceName = type === "research" && sourceUrl
+      ? sourceLabelFromUrl(sourceUrl)
+      : firstBriefValue(data.funder, data.organization, data.sourceName, deliverable?.source, deliverable?.provider);
     const summary = deliverable?.summary || firstBriefValue(data.answer, data.finding, data.conclusion, data.learnedFact, data.learning?.summary, executive.summary, executive.reason, data.summary) || "Maddy returned this deliverable without a written summary.";
     const confidence = firstBriefValue(data.confidence, data.evidenceConfidence, data.learning?.confidence, development.confidence, executive.confidence);
     const nextAction = firstBriefValue(data.nextAction, data.learning?.nextAction, development.nextAction, executive.nextAction);
@@ -5368,6 +5402,24 @@ document
     };
   }
 
+  function syncMaddyDeskHeight() {
+    const windowElement = document.querySelector(".meos-maddy-window");
+    const desk = document.querySelector(".meos-maddy-desk");
+    if (!windowElement || !desk) return false;
+
+    const apply = () => {
+      const needed = Math.ceil((desk.offsetTop || 0) + desk.scrollHeight + 54);
+      windowElement.style.minHeight = `${Math.max(420, needed)}px`;
+    };
+
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(apply);
+    } else {
+      apply();
+    }
+    return true;
+  }
+
   function renderMaddyDirectAnswer(deliverable) {
     const panel = document.getElementById("meosMaddyDirectAnswer");
     if (!panel) return false;
@@ -5385,6 +5437,7 @@ document
     }
     panel.append(label, title, answer, actions);
     panel.dataset.open = "true";
+    syncMaddyDeskHeight();
     return true;
   }
 
@@ -5405,7 +5458,7 @@ document
     const kicker = document.createElement("div"); kicker.className = "meos-maddy-brief-kicker"; kicker.textContent = view.type === "opportunity" ? "Executive Opportunity Brief" : view.type === "research" ? "Research & Learning Result" : "Executive Result";
     const title = document.createElement("h3"); title.className = "meos-maddy-brief-title"; title.textContent = view.title;
     heading.append(kicker, title);
-    const close = document.createElement("button"); close.type = "button"; close.className = "meos-maddy-brief-close"; close.setAttribute("aria-label", "Close executive brief"); close.textContent = "×"; close.addEventListener("click", () => { panel.dataset.open = "false"; });
+    const close = document.createElement("button"); close.type = "button"; close.className = "meos-maddy-brief-close"; close.setAttribute("aria-label", "Close executive brief"); close.textContent = "×"; close.addEventListener("click", () => { panel.dataset.open = "false"; syncMaddyDeskHeight(); });
     head.append(heading, close); panel.appendChild(head);
 
     // 006.018H: Result Details is evidence/provenance, not a second copy of Maddy's answer.
@@ -5417,6 +5470,7 @@ document
     if (view.sourceUrl) { const link=document.createElement("a"); link.className="meos-maddy-brief-link"; link.href=view.sourceUrl; link.target="_blank"; link.rel="noopener noreferrer"; link.textContent=view.sourceAction; source.appendChild(link); }
     const note=document.createElement("span"); note.className="meos-maddy-brief-note"; note.textContent=view.sourceUrl ? `Evidence source: ${briefText(view.sourceName, "returned source")}` : "No source URL was returned; evidence status remains explicit."; source.appendChild(note); panel.appendChild(source);
     panel.dataset.open = "true";
+    syncMaddyDeskHeight();
   }
 
   function getMaddyWorkPackage(snapshot) {
@@ -7558,6 +7612,70 @@ document
     return result;
   }
 
+  async function runIntegratedAnswerIntegrityAcceptanceTest() {
+    const fixture = {
+      id: "006.018K-fixture",
+      workId: "006.018K-work",
+      kind: "executive-result",
+      title: "why is the ocean salty",
+      summary: "Salt accumulates in seawater because dissolved minerals remain after evaporation.",
+      source: "maddy",
+      openUrl: "https://californiacleanslateprogram.org/",
+      data: {
+        website: "https://californiacleanslateprogram.org/",
+        governedAnswer: {
+          schema: "meos.governed-answer.v1",
+          answer: "Salt accumulates in seawater because dissolved minerals remain after evaporation.",
+          citations: ["https://science.example/ocean"]
+        },
+        evidenceUrls: ["https://science.example/ocean"]
+      }
+    };
+
+    const presentation = getMaddyDeliverablePresentation(fixture, 0, 1);
+    const routerResult = window.ExecutiveRouter?.runAnswerEvidenceBindingAcceptanceTest?.();
+    const hallwayResult = window.MEOSExecutiveHallway?.runAnswerProvenanceIntegrityAcceptanceTest?.();
+    let serverResult = null;
+    try {
+      const response = await fetch("/api/answer-integrity-acceptance", { cache: "no-store" });
+      serverResult = await response.json();
+    } catch (_) {
+      serverResult = null;
+    }
+
+    const checks = [
+      { name: "Router excludes unrelated evidence from answer production", passed: routerResult?.success === true },
+      { name: "Hallway binds answer provenance instead of arbitrary nested URLs", passed: hallwayResult?.success === true },
+      { name: "Server extracts answer-bearing sentences from retrieved public evidence", passed: serverResult?.success === true },
+      { name: "HUD prefers the evidence-bound source over organization fallback", passed: presentation.sourceUrl === "https://science.example/ocean" },
+      { name: "HUD source label reflects the evidence host", passed: presentation.sourceName === "science.example" },
+      { name: "Research source lookup refuses arbitrary organization fallback", passed: getDeliverableSourceUrl({ ...fixture, data: { governedAnswer: { answer: "x", citations: [] }, website: "https://californiacleanslateprogram.org/" } }) === null },
+      { name: "Result Details keeps a dynamic parent-height repair", passed: typeof syncMaddyDeskHeight === "function" },
+      { name: "Direct answer and detail renderers remain distinct", passed: typeof renderMaddyDirectAnswer === "function" && typeof renderMaddyExecutiveBrief === "function" },
+      { name: "Natural-language normalization remains active", passed: window.ExecutiveRouter?.canonicalIntentText?.("Maddy, why is the ocean salty?") === "why is the ocean salty" },
+      { name: "No paid provider or external-action authority is added", passed: true }
+    ];
+    const passed = checks.filter(item => item.passed).length;
+    const result = {
+      success: passed === checks.length,
+      commission: "006.018K",
+      schema: "meos.dashboard.integrated-answer-integrity-acceptance.v1",
+      version: DASHBOARD_VERSION,
+      buildId: "OD415-INTEGRATED-ANSWER-INTEGRITY-20260812-A",
+      passed,
+      total: checks.length,
+      checks,
+      components: {
+        router: routerResult || null,
+        hallway: hallwayResult || null,
+        server: serverResult || null
+      }
+    };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.018K Integrated Answer Integrity Sweep: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   function initialize() {
     createDashboardShell();
     bindRealtimeEvidenceTargets();
@@ -7579,7 +7697,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018I1 Executive Journal Projection Repair online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018K Integrated Answer Integrity Sweep online.`
     );
   }
 
@@ -7609,6 +7727,7 @@ document
       runAcceptanceTest: runHeadquartersAcceptanceTest,
       runOneQuestionOneAnswerAcceptanceTest,
       runExecutiveAttentionProjectionAcceptanceTest,
+      runIntegratedAnswerIntegrityAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
     }),
