@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.10.0
+ * Version: 4.10.2
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.10.1";
+  const DASHBOARD_VERSION = "4.10.2";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5359,7 +5359,7 @@ document
     const close = document.createElement("button"); close.type = "button"; close.className = "meos-maddy-brief-close"; close.setAttribute("aria-label", "Close executive brief"); close.textContent = "×"; close.addEventListener("click", () => { panel.dataset.open = "false"; });
     head.append(heading, close); panel.appendChild(head);
 
-    const summary = document.createElement("p"); summary.className = "meos-maddy-brief-summary"; summary.textContent = view.summary; panel.appendChild(summary);
+    // 006.018H: Result Details is evidence/provenance, not a second copy of Maddy's answer.
     const grid = document.createElement("div"); grid.className = "meos-maddy-brief-grid";
     view.fields.forEach(([label, value]) => { const field=document.createElement("div"); field.className="meos-maddy-brief-field"; const l=document.createElement("span"); l.className="meos-maddy-brief-label"; l.textContent=label; const v=document.createElement("span"); v.className="meos-maddy-brief-value"; v.textContent=value; field.append(l,v); grid.appendChild(field); });
     panel.appendChild(grid);
@@ -5419,6 +5419,15 @@ document
 
     const selectedIndex = Math.max(0, items.findIndex((item) => item.id === selected.id));
     const view = getMaddyDeliverablePresentation(selected, selectedIndex, items.length);
+
+    // 006.018H: a one-result question/answer does not need a second result card.
+    // Keep the package navigator only when there is actually a package to navigate.
+    if (items.length === 1) {
+      panel.dataset.open = "false";
+      panel.innerHTML = "";
+      return packageState;
+    }
+
     panel.dataset.resultType = view.type;
     panel.innerHTML = "";
     const head = document.createElement("div"); head.className = "meos-maddy-package-head";
@@ -5941,19 +5950,13 @@ document
 
     const selected = packageState.selected;
     if (selected) {
-      const view = document.createElement("button");
-      view.type = "button";
-      view.className = "meos-maddy-desk-action";
-      view.textContent = packageCount > 1 ? "Investigate Selected" : "View Executive Brief";
-      view.title = "Read Maddy's selected result, evidence status, recommendation, and official source.";
-      view.addEventListener("click", () => renderMaddyExecutiveBrief(selected));
-      actions.appendChild(view);
-
+      // 006.018H: answer-local controls own Details/Source. The command row keeps only
+      // the genuinely different deep-work action, avoiding duplicate destinations.
       const expand = document.createElement("button");
       expand.type = "button";
       expand.className = "meos-maddy-desk-action";
-      expand.textContent = "Expand Workspace";
-      expand.title = "Spread this work package across Maddy's Executive Workspace.";
+      expand.textContent = "Expand Work";
+      expand.title = "Open the office/work execution workspace for deeper inspection.";
       expand.addEventListener("click", () => openMaddyExecutiveWorkspace());
       actions.appendChild(expand);
     } else {
@@ -7434,9 +7437,9 @@ document
   }
 
 
-  function runDirectAnswerReturnAcceptanceTest() {
+  function runOneQuestionOneAnswerAcceptanceTest() {
     const fixture = {
-      id: "006.018G-fixture", workId: "006.018G-work", kind: "research-status",
+      id: "006.018H-fixture", workId: "006.018H-work", kind: "research-status",
       title: "Why do wombats have cube-shaped poop?",
       summary: "Wombats produce cube-shaped poop because different intestinal regions contract with different elasticity over a long digestive cycle. Here&#x27;s the evidence.",
       data: {
@@ -7445,20 +7448,22 @@ document
       }
     };
     const presentation = getMaddyDeliverablePresentation(fixture, 0, 1);
+    const direct = document.getElementById("meosMaddyDirectAnswer");
+    const packagePanel = document.getElementById("meosMaddyWorkPackage");
     const checks = [
-      { name: "HUD has a dedicated answer surface beside the command work package", passed: Boolean(document.getElementById("meosMaddyDirectAnswer")) },
-      { name: "Governed answer is preferred for human-facing answer text", passed: /different intestinal regions/i.test(presentation.summary) },
-      { name: "HTML entities are decoded before human presentation", passed: presentation.summary.includes("Here's") && !presentation.summary.includes("&#x27;") },
-      { name: "Source provenance can be recovered from returned governed citations or nested research data", passed: presentation.sourceUrl === "https://example.org/wombat-evidence" },
-      { name: "Direct answer renderer exists", passed: typeof renderMaddyDirectAnswer === "function" },
-      { name: "Deep result inspection remains available", passed: typeof renderMaddyExecutiveBrief === "function" },
-      { name: "Executive Workspace remains optional rather than required to read an answer", passed: typeof openMaddyExecutiveWorkspace === "function" && typeof closeMaddyExecutiveWorkspace === "function" },
-      { name: "No external-action authority is added by answer presentation", passed: true }
+      { name: "Main HUD owns the dedicated human-facing answer surface", passed: Boolean(direct) },
+      { name: "Governed answer remains the canonical human-facing answer", passed: /different intestinal regions/i.test(presentation.summary) },
+      { name: "HTML entities remain decoded before human presentation", passed: presentation.summary.includes("Here's") && !presentation.summary.includes("&#x27;") },
+      { name: "Source provenance remains attached to the answer", passed: presentation.sourceUrl === "https://example.org/wombat-evidence" },
+      { name: "Single-result package echo can be suppressed", passed: Boolean(packagePanel) && typeof renderMaddyWorkPackage === "function" },
+      { name: "Result Details remains available as evidence/provenance inspection", passed: typeof renderMaddyExecutiveBrief === "function" },
+      { name: "Executive Workspace remains a distinct optional deep-work surface", passed: typeof openMaddyExecutiveWorkspace === "function" && typeof closeMaddyExecutiveWorkspace === "function" },
+      { name: "No external-action authority is added by HUD simplification", passed: true }
     ];
     const passed = checks.filter((check) => check.passed).length;
-    const result = { success: passed === checks.length, commission: "006.018G", schema: "meos.dashboard.direct-answer-return-acceptance.v1", version: DASHBOARD_VERSION, buildId: "OD411-DIRECT-ANSWER-RETURN-PROVENANCE-20260812-A", passed, total: checks.length, checks };
+    const result = { success: passed === checks.length, commission: "006.018H", schema: "meos.dashboard.one-question-one-answer-acceptance.v1", version: DASHBOARD_VERSION, buildId: "OD412-ONE-QUESTION-ONE-ANSWER-HIERARCHY-20260812-A", passed, total: checks.length, checks };
     console.table(checks);
-    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.018G Direct Answer Return + Provenance: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.018H One Question One Answer Hierarchy: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
     return result;
   }
 
@@ -7483,7 +7488,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018G Direct Answer Return + Provenance online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018H One Question One Answer Hierarchy online.`
     );
   }
 
@@ -7511,7 +7516,8 @@ document
       refresh: renderLiveHeadquarters,
       getSnapshot: collectHeadquartersSnapshot,
       runAcceptanceTest: runHeadquartersAcceptanceTest,
-      runDirectAnswerReturnAcceptanceTest,
+      runOneQuestionOneAnswerAcceptanceTest,
+      runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
     }),
     presence: Object.freeze({
