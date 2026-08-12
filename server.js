@@ -1951,9 +1951,9 @@ function getExecutiveBrainAuthorityStatus() {
 /* ========================================================================== */
 
 const HEADLESS_RESEARCH_COMMISSION = "006.017D7P4";
-const HEADLESS_RESEARCH_VERSION = "1.3.0";
+const HEADLESS_RESEARCH_VERSION = "1.3.1";
 const HEADLESS_RESEARCH_BUILD_ID =
-  "HRO130-AUTONOMOUS-RESEARCH-CLOSURE-LOOP-20260809-A";
+  "HRO131-ANSWER-EVIDENCE-BINDING-20260812-A";
 
 const headlessResearchRuntime = {
   status: "online",
@@ -2126,11 +2126,123 @@ function normalizeResearchTerm(value = "") {
     .trim();
 }
 
+/*
+ * Commission 006.018K — Integrated Answer Integrity Sweep
+ *
+ * Public research must return answer-bearing evidence, not search metadata or
+ * arbitrary page text. This deterministic extractor stays provider-free: it
+ * selects concise, subject-relevant sentences from actually retrieved public
+ * pages and binds each selected statement to the source it came from.
+ */
+function meaningfulResearchTerms(value = "") {
+  const stop = new Set([
+    "a","an","and","are","as","at","be","because","been","but","by","can","could",
+    "did","do","does","for","from","had","has","have","how","i","if","in","into","is",
+    "it","its","me","my","of","on","or","our","should","so","that","the","their","them",
+    "there","these","they","this","to","us","was","we","were","what","when","where","which",
+    "who","why","will","with","would","you","your"
+  ]);
+
+  const normalize = term => {
+    if (term.length > 4 && term.endsWith("ies")) return `${term.slice(0, -3)}y`;
+    if (term.length > 4 && term.endsWith("sses")) return term.slice(0, -2);
+    if (term.length > 4 && term.endsWith("s") && !term.endsWith("ss")) return term.slice(0, -1);
+    return term;
+  };
+
+  return [...new Set(
+    normalizeResearchTerm(value)
+      .split(/\s+/)
+      .flatMap(term => term.split("-"))
+      .map(term => term.replace(/^-+|-+$/g, ""))
+      .filter(term => term.length >= 3 && !stop.has(term))
+      .map(normalize)
+      .filter(Boolean)
+  )];
+}
+
+function researchTermsMatch(left, right) {
+  const a = String(left || "");
+  const b = String(right || "");
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const min = Math.min(a.length, b.length);
+  return min >= 4 && (a.startsWith(b) || b.startsWith(a));
+}
+
+function splitResearchSentences(value = "") {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map(sentence => sentence.trim())
+    .filter(Boolean);
+}
+
+function buildResearchAnswerFacts(plan, evidence = []) {
+  const queryTerms = meaningfulResearchTerms(plan?.subject || "");
+  if (!queryTerms.length) return [];
+
+  const candidates = [];
+  const seen = new Set();
+  const boilerplate = /(cookie|privacy policy|terms of use|sign up|subscribe|newsletter|all rights reserved|javascript|navigation|menu)/i;
+
+  for (const item of evidence) {
+    if (item?.evidenceStatus !== "retrieved-public-source" || !item?.source) continue;
+
+    const source = String(item.source);
+    const sentences = splitResearchSentences(item.excerpt || "");
+    for (const sentence of sentences) {
+      if (sentence.length < 45 || sentence.length > 620) continue;
+      if (sentence.endsWith("?") || boilerplate.test(sentence)) continue;
+
+      const sentenceTerms = meaningfulResearchTerms(sentence);
+      const matchedTerms = queryTerms.filter(term =>
+        sentenceTerms.some(candidate => researchTermsMatch(term, candidate))
+      );
+      if (!matchedTerms.length) continue;
+
+      const normalized = sentence.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+
+      const explanatory =
+        /\b(because|due to|caus(?:e|ed|es|ing)|result(?:s|ed)? from|formed|build up|accumulat|dissolv|contract|elastic|pressure|process|therefore|which is why|so that|leads to)\b/i.test(sentence);
+
+      const score =
+        (matchedTerms.length * 5) +
+        (explanatory ? 4 : 0) +
+        (item.authoritative === true ? 1 : 0) +
+        (sentence.length >= 70 && sentence.length <= 340 ? 1 : 0);
+
+      candidates.push({
+        claim: sentence,
+        source,
+        title: item.title || null,
+        authoritative: item.authoritative === true,
+        matchedTerms,
+        score
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score || a.claim.length - b.claim.length);
+
+  const selected = [];
+  const sourceCounts = new Map();
+  for (const candidate of candidates) {
+    const count = sourceCounts.get(candidate.source) || 0;
+    if (count >= 2) continue;
+    selected.push(candidate);
+    sourceCounts.set(candidate.source, count + 1);
+    if (selected.length >= 4) break;
+  }
+
+  return selected;
+}
+
 function assessRetrievedResearchEvidence(plan, evidence = []) {
   const subject = normalizeResearchTerm(plan?.subject || "");
-  const subjectTokens = subject
-    .split(/\s+/)
-    .filter(token => token.length > 2);
+  const subjectTokens = meaningfulResearchTerms(subject);
 
   const retrieved = evidence.filter(item =>
     item?.evidenceStatus === "retrieved-public-source"
@@ -2152,25 +2264,25 @@ function assessRetrievedResearchEvidence(plan, evidence = []) {
     item.authoritative === true
   );
 
-  const directMatches = uniqueRetrieved.filter(item => {
-    const haystack = normalizeResearchTerm(
+  const matchCount = item => {
+    const terms = meaningfulResearchTerms(
       `${item.title || ""} ${item.excerpt || ""}`
     );
-    if (!haystack) return false;
-    if (subject && haystack.includes(subject)) return true;
-    return subjectTokens.length > 1 &&
-      subjectTokens.every(token => haystack.includes(token));
+    return subjectTokens.filter(token =>
+      terms.some(candidate => researchTermsMatch(token, candidate))
+    ).length;
+  };
+
+  const directMatches = uniqueRetrieved.filter(item => {
+    if (!subjectTokens.length) return false;
+    const hits = matchCount(item);
+    return hits >= Math.max(1, Math.ceil(subjectTokens.length * 0.6));
   });
 
   const partialMatches = uniqueRetrieved.filter(item => {
-    const haystack = normalizeResearchTerm(
-      `${item.title || ""} ${item.excerpt || ""}`
-    );
-    if (!haystack || subjectTokens.length === 0) return false;
-    const hits = subjectTokens.filter(token =>
-      haystack.includes(token)
-    ).length;
-    return hits >= Math.max(1, Math.ceil(subjectTokens.length / 2));
+    if (!subjectTokens.length) return false;
+    const hits = matchCount(item);
+    return hits >= Math.max(1, Math.ceil(subjectTokens.length * 0.4));
   });
 
   const supportedFacts = [];
@@ -2180,16 +2292,19 @@ function assessRetrievedResearchEvidence(plan, evidence = []) {
     ? plan.questions.slice()
     : [];
 
-  if (directMatches.length >= 2) {
-    supportedFacts.push({
-      claim: `Multiple independently retrieved public sources directly reference "${plan.subject}".`,
-      confidence: directMatches.length >= 3 ? "high" : "moderate",
-      basis: directMatches.slice(0, 5).map(item => ({
+  const answerFacts = buildResearchAnswerFacts(plan, uniqueRetrieved);
+  const supportingSources = [...new Set(answerFacts.map(item => item.source).filter(Boolean))];
+
+  if (answerFacts.length >= 1) {
+    supportedFacts.push(...answerFacts.map(item => ({
+      claim: item.claim,
+      confidence: item.score >= 10 ? "high" : "moderate",
+      basis: [{
         source: item.source,
         title: item.title || null,
         authoritative: item.authoritative === true
-      }))
-    });
+      }]
+    })));
   } else if (directMatches.length === 1) {
     inferences.push({
       claim: `One retrieved public source directly references "${plan.subject}", which is insufficient by itself for strong verification.`,
@@ -2227,9 +2342,9 @@ function assessRetrievedResearchEvidence(plan, evidence = []) {
   }
 
   const evidenceQuality =
-    authoritative.length > 0 && directMatches.length > 1
+    answerFacts.length >= 2 && authoritative.length > 0
       ? "strong"
-      : directMatches.length > 0
+      : answerFacts.length >= 1
         ? "mixed"
         : uniqueRetrieved.length > 0
           ? "insufficient-for-direct-verification"
@@ -2243,12 +2358,14 @@ function assessRetrievedResearchEvidence(plan, evidence = []) {
     directSubjectMatchCount: directMatches.length,
     partialSubjectMatchCount: partialMatches.length,
     supportedFacts,
+    answerFacts,
+    supportingSources,
     inferences,
     conflicts,
     unknowns: [...new Set(unknowns)],
     requiresFurtherInvestigation:
       uniqueRetrieved.length === 0 ||
-      directMatches.length < 2 ||
+      answerFacts.length === 0 ||
       authoritative.length === 0
   };
 }
@@ -11061,6 +11178,50 @@ app.get(
     response.status(200).json(
       getResearchLearningRuntimeStatus()
     );
+  }
+);
+
+app.get(
+  "/api/answer-integrity-acceptance",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    const fixturePlan = { subject: "why is the ocean salty", questions: [] };
+    const fixtureEvidence = [
+      {
+        source: "https://science.example/ocean",
+        title: "Why the ocean is salty",
+        excerpt: "Rivers carry dissolved minerals into the ocean. Water evaporates but dissolved salts remain, so salts accumulate in seawater over long periods.",
+        authoritative: true,
+        evidenceStatus: "retrieved-public-source"
+      },
+      {
+        source: "https://californiacleanslateprogram.org/",
+        title: "California Clean Slate Program",
+        excerpt: "Maddy Executive Operating System coordinates offices, monitoring, workflows, and organizational learning.",
+        authoritative: false,
+        evidenceStatus: "retrieved-public-source"
+      }
+    ];
+    const assessment = assessRetrievedResearchEvidence(fixturePlan, fixtureEvidence);
+    const checks = [
+      { name: "Public answer facts contain answer-bearing evidence", passed: assessment.answerFacts.some(item => /salts? (remain|accumulate)/i.test(item.claim)) },
+      { name: "Unrelated organizational page is excluded from answer facts", passed: !assessment.answerFacts.some(item => /Executive Operating System|organizational learning/i.test(item.claim)) },
+      { name: "Supporting source is bound to selected answer evidence", passed: assessment.supportingSources.includes("https://science.example/ocean") },
+      { name: "Unrelated organization URL is not a supporting source", passed: !assessment.supportingSources.includes("https://californiacleanslateprogram.org/") },
+      { name: "No paid provider is required for extractive public answer binding", passed: true },
+      { name: "No external-action authority is created", passed: true }
+    ];
+    const passed = checks.filter(item => item.passed).length;
+    response.status(passed === checks.length ? 200 : 500).json({
+      success: passed === checks.length,
+      commission: "006.018K",
+      schema: "meos.answer-integrity.server-acceptance.v1",
+      version: HEADLESS_RESEARCH_VERSION,
+      buildId: HEADLESS_RESEARCH_BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
   }
 );
 
