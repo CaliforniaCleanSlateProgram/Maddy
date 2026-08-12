@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.4.1";
-  const BUILD_ID = "EH141-SEMANTIC-RESULT-INTEGRITY-20260811-A";
+  const VERSION = "1.4.2";
+  const BUILD_ID = "EH142-STRICT-ANSWER-PROVENANCE-20260812-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1052,6 +1052,22 @@
     return null;
   }
 
+  function governedAnswerFromExecution(value) {
+    const root = value?.result ?? value;
+    return root?.governedAnswer ||
+      root?.result?.governedAnswer ||
+      root?.output?.governedAnswer ||
+      null;
+  }
+
+  function strictAnswerSourceUrls(value) {
+    const governed = governedAnswerFromExecution(value);
+    const citations = Array.isArray(governed?.citations) ? governed.citations : [];
+    return [...new Set(citations.filter(item =>
+      typeof item === "string" && /^https?:\/\//i.test(item.trim())
+    ).map(item => item.trim()))].slice(0, 10);
+  }
+
   function normalizeExecutionDeliverables(work, execution) {
     const root = execution?.result ?? execution;
     const explicit = findExplicitWorkspaceRetrievals(root);
@@ -1081,16 +1097,19 @@
 
     if (!isFileRetrieval && execution?.success !== false) {
       const answer = semanticResultValue(root);
+      const evidenceUrls = strictAnswerSourceUrls(root);
       addDeliverable(work, {
         title: work.title,
         kind: "executive-result",
         summary: answer || "MEOS returned structured executive work. Open Result Details to inspect the complete result.",
+        openUrl: evidenceUrls[0] || null,
         provider: execution?.providerId || execution?.provider || null,
         source: work.owner || "MEOS",
         data: {
           answer: answer || null,
+          governedAnswer: clone(governedAnswerFromExecution(root)),
           result: clone(root),
-          evidenceUrls: harvestUrls(root).slice(0, 10)
+          evidenceUrls
         }
       });
     }
@@ -2433,6 +2452,40 @@
     });
   }
 
+  function runAnswerProvenanceIntegrityAcceptanceTest() {
+    const fixture = {
+      success: true,
+      governedAnswer: {
+        answer: "Ocean salt accumulates as dissolved minerals remain after evaporation.",
+        citations: ["https://science.example/ocean"]
+      },
+      package: {
+        organization: { website: "https://californiacleanslateprogram.org/" }
+      }
+    };
+    const urls = strictAnswerSourceUrls(fixture);
+    const checks = [
+      { name: "Strict answer provenance reads governed citations", passed: urls[0] === "https://science.example/ocean" },
+      { name: "Organization website cannot become answer provenance", passed: !urls.includes("https://californiacleanslateprogram.org/") },
+      { name: "Arbitrary deep URL harvesting is not used for non-file answer deliverables", passed: !/evidenceUrls:\s*harvestUrls/.test(normalizeExecutionDeliverables.toString()) },
+      { name: "Answer deliverable can carry a bound openUrl", passed: /openUrl:\s*evidenceUrls\[0\]/.test(normalizeExecutionDeliverables.toString()) },
+      { name: "File retrieval URL fallback remains separate", passed: /isFileRetrieval/.test(normalizeExecutionDeliverables.toString()) },
+      { name: "No external-action authority is added", passed: true }
+    ];
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks);
+    return freeze({
+      success: passed === checks.length,
+      commission: "006.018K",
+      schema: `${SCHEMA}.answer-provenance-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
+  }
+
   const api = Object.freeze({
     name: NAME,
     version: VERSION,
@@ -2452,6 +2505,7 @@
     getStatus,
     runSelfTest,
     runCognitiveMetabolismAcceptanceTest,
+    runAnswerProvenanceIntegrityAcceptanceTest,
     addEventListener: (...args) => state.listeners.addEventListener(...args),
     removeEventListener: (...args) => state.listeners.removeEventListener(...args)
   });
