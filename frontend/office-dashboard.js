@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.10.2";
+  const DASHBOARD_VERSION = "4.10.3";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5046,7 +5046,53 @@ document
       source: "executive-hallway",
       options: Array.isArray(work.options) ? [...work.options] : [],
       updatedAt: work.updatedAt || work.createdAt || null,
-      authority: work.authority || null
+      authority: work.authority || null,
+      workSource: work.source || null,
+      context: work.context || null
+    };
+  }
+
+  // 006.018I: cognition can create real internal work without automatically earning
+  // Executive Director attention. Preserve the records; gate only Headquarters projection.
+  function normalizeAttentionSubject(value = "") {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/^(support|lead)\s+mission\s*:\s*/i, "")
+      .replace(/^maddy\s+/i, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function isConversationalHallwayWork(work = {}) {
+    const source = String(work?.source || work?.context?.source || work?.context?.originatedFrom || "").toLowerCase();
+    return source.includes("maddy-executive-desk") || source.includes("maddy-hud") || source.includes("maddy-request") || source.includes("conversation");
+  }
+
+  function buildExecutiveProjectionGate(snapshot = {}) {
+    const conversationWork = (snapshot.hallwayWork || []).filter(isConversationalHallwayWork);
+    const workIds = new Set(conversationWork.map((item) => String(item?.id || "")).filter(Boolean));
+    const subjects = conversationWork.map((item) => normalizeAttentionSubject(item?.title || item?.instruction)).filter(Boolean);
+    const matchesConversation = (record = {}) => {
+      if (workIds.has(String(record?.id || record?.workId || ""))) return true;
+      if (isConversationalHallwayWork(record)) return true;
+      const subject = normalizeAttentionSubject(record?.title || record?.message || record?.instruction || "");
+      if (!subject) return false;
+      return subjects.some((candidate) => candidate && (subject === candidate || subject.includes(candidate) || candidate.includes(subject)));
+    };
+    const visibleTasks = (snapshot.tasks || []).filter((item) => !matchesConversation(item));
+    const visibleActivities = (snapshot.activities || []).filter((item) => !matchesConversation(item));
+    const visibleDeliverables = (snapshot.hallwayDeliverables || []).filter((item) => !matchesConversation(item));
+    const visibleWork = (snapshot.hallwayWork || []).filter((item) => !matchesConversation(item));
+    const visibleApprovals = (snapshot.pendingApprovals || []).filter((item) => !matchesConversation(item));
+    return {
+      matchesConversation, workIds, subjects, visibleTasks, visibleActivities, visibleDeliverables, visibleWork, visibleApprovals,
+      suppressed: {
+        tasks: (snapshot.tasks || []).length - visibleTasks.length,
+        activities: (snapshot.activities || []).length - visibleActivities.length,
+        deliverables: (snapshot.hallwayDeliverables || []).length - visibleDeliverables.length,
+        work: (snapshot.hallwayWork || []).length - visibleWork.length,
+        approvals: (snapshot.pendingApprovals || []).length - visibleApprovals.length
+      }
     };
   }
 
@@ -5630,6 +5676,7 @@ document
   }
 
   function compileExecutiveAttention(snapshot) {
+    const projection = buildExecutiveProjectionGate(snapshot);
     const candidates = [];
     const add = (candidate) => {
       if (!candidate || !candidate.title) return;
@@ -5663,7 +5710,7 @@ document
       });
     });
 
-    (snapshot.pendingApprovals || []).slice(0, 12).forEach((record) => add({
+    (projection.visibleApprovals || []).slice(0, 12).forEach((record) => add({
       kind: "approval", score: 92, reasons: ["human authority is the current execution boundary"],
       eyebrow: "MADDY NEEDS YOUR AUTHORITY",
       title: record.title || "Executive decision ready",
@@ -5673,7 +5720,7 @@ document
       action: "Review Decision", record
     }));
 
-    (snapshot.hallwayDeliverables || []).slice(0, 12).forEach((record) => add({
+    (projection.visibleDeliverables || []).slice(0, 12).forEach((record) => add({
       kind: "deliverable", score: 74, reasons: ["completed work is ready to become an organizational outcome"],
       eyebrow: "VALUE RETURNED",
       title: record.title || record.name || "Executive work package returned",
@@ -5683,7 +5730,7 @@ document
       action: "Open Work Package", record
     }));
 
-    (snapshot.blocked || []).slice(0, 12).forEach((record) => add({
+    (projection.visibleTasks || []).filter((item) => item.status === "blocked").slice(0, 12).forEach((record) => add({
       kind: "blocked", score: 68 + (String(record.priority || "").toLowerCase() === "high" ? 12 : 0),
       reasons: ["recorded blocker is suppressing execution"],
       eyebrow: "MADDY FOUND FRICTION",
@@ -5694,7 +5741,7 @@ document
       action: "Inspect Blocker", record
     }));
 
-    (snapshot.hallwayWork || []).filter((item) => !["done","cancelled"].includes(item.state)).slice(0, 20).forEach((record) => {
+    (projection.visibleWork || []).filter((item) => !["done","cancelled"].includes(item.state)).slice(0, 20).forEach((record) => {
       const dispatch = getMaddyDispatchPresentation(record);
       add({
         kind: "work", score: 48 + (dispatch.active ? 8 : 0),
@@ -6082,6 +6129,10 @@ document
 
   function renderLiveHeadquarters() {
     const snapshot = collectHeadquartersSnapshot();
+    const executiveProjection = buildExecutiveProjectionGate(snapshot);
+    const projectedActive = executiveProjection.visibleTasks.filter((task) => task.status === "active");
+    const projectedPending = executiveProjection.visibleTasks.filter((task) => task.status === "pending");
+    const projectedBlocked = executiveProjection.visibleTasks.filter((task) => task.status === "blocked");
     // Keep the original top dashboard gauge as the single authoritative completion display.
     setText("progressPercent", `${snapshot.completion}%`);
     const legacyFill = document.getElementById("progressFill");
@@ -6124,10 +6175,10 @@ document
 
     const today = document.getElementById("meosTodayLiveList");
     if (today) today.innerHTML = [
-      [snapshot.active.length, "Active office tasks", "Live"],
-      [snapshot.pending.length, "Queued tasks", "Queued"],
-      [snapshot.pendingApprovals.length, "Executive decisions", "Review"],
-      [snapshot.blocked.length + snapshot.fundingUrgent.length, "Risks requiring attention", "Watch"]
+      [projectedActive.length, "Active office tasks", "Live"],
+      [projectedPending.length, "Queued tasks", "Queued"],
+      [executiveProjection.visibleApprovals.length, "Executive decisions", "Review"],
+      [projectedBlocked.length + snapshot.fundingUrgent.length, "Risks requiring attention", "Watch"]
     ].map(([count,label,status]) => `<li data-meos-evidence="today" role="button" tabindex="0"><span>${count}</span><span>${escapeHtml(label)}</span><span class="meos-priority medium">${escapeHtml(status)}</span></li>`).join("");
 
     document.documentElement.style.setProperty("--meos-mission-pulse", `${snapshot.missionPulse}%`);
@@ -6137,7 +6188,7 @@ document
     setText("meosMissionPulseLabel", snapshot.missionPulse >= 85 ? "Strong" : snapshot.missionPulse >= 65 ? "Advancing" : "Needs Attention");
     setText("meosMissionPulseDetail", `${snapshot.officeHealth}% office health · ${snapshot.completion}% headquarters completion · ${snapshot.blocked.length} blocked tasks.`);
 
-    const priorities = [...snapshot.active, ...snapshot.pending].sort((a,b) => ({high:3,urgent:4,normal:2,low:1}[b.priority]||0)-({high:3,urgent:4,normal:2,low:1}[a.priority]||0)).slice(0,4);
+    const priorities = [...projectedActive, ...projectedPending].sort((a,b) => ({high:3,urgent:4,normal:2,low:1}[b.priority]||0)-({high:3,urgent:4,normal:2,low:1}[a.priority]||0)).slice(0,4);
     const prioritiesEl = document.getElementById("meosLivePriorities");
     if (prioritiesEl) prioritiesEl.innerHTML = priorities.length ? priorities.map((task,index) => `<li data-meos-evidence="priority" data-evidence-id="${escapeHtml(task.id || "")}" role="button" tabindex="0"><span>${index+1}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.priority === "high" ? "high" : "medium"}">${escapeHtml(task.priority || "normal")}</span></li>`).join("") : `<li data-meos-evidence="today" role="button" tabindex="0"><span>✓</span><span>No executive priorities are currently queued.</span><span class="meos-priority">Clear</span></li>`;
 
@@ -6154,10 +6205,10 @@ document
     }
 
     const journal = document.getElementById("meosLiveJournal");
-    if (journal) journal.innerHTML = snapshot.activities.length ? snapshot.activities.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,4).map((item)=>`<li data-meos-evidence="journal" data-evidence-id="${escapeHtml(item.id || item.workId || item.createdAt || "")}" role="button" tabindex="0"><span>${escapeHtml(formatLastActivity(item.createdAt))}</span><span>${escapeHtml(item.message || item.type)}<br><small class="meos-muted">${escapeHtml(item.officeName)}</small></span><span></span></li>`).join("") : `<li data-meos-evidence="today" role="button" tabindex="0"><span>—</span><span>No office activity has been recorded in this browser session.</span><span></span></li>`;
+    if (journal) journal.innerHTML = executiveProjection.visibleActivities.length ? [...executiveProjection.visibleActivities].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,4).map((item)=>`<li data-meos-evidence="journal" data-evidence-id="${escapeHtml(item.id || item.workId || item.createdAt || "")}" role="button" tabindex="0"><span>${escapeHtml(formatLastActivity(item.createdAt))}</span><span>${escapeHtml(item.message || item.type)}<br><small class="meos-muted">${escapeHtml(item.officeName)}</small></span><span></span></li>`).join("") : `<li data-meos-evidence="today" role="button" tabindex="0"><span>—</span><span>No office activity has been recorded in this browser session.</span><span></span></li>`;
 
     const tasks = document.getElementById("meosLiveTasks");
-    if (tasks) tasks.innerHTML = [...snapshot.active, ...snapshot.pending, ...snapshot.blocked].slice(0,5).map((task)=>`<li data-meos-evidence="task" data-evidence-id="${escapeHtml(task.id || "")}" role="button" tabindex="0"><span>${task.status === "blocked" ? "!" : task.status === "active" ? "▶" : "□"}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.status === "blocked" ? "high" : "medium"}">${escapeHtml(task.status)}</span></li>`).join("") || `<li data-meos-evidence="today" role="button" tabindex="0"><span>✓</span><span>No office tasks are currently recorded.</span><span></span></li>`;
+    if (tasks) tasks.innerHTML = [...projectedActive, ...projectedPending, ...projectedBlocked].slice(0,5).map((task)=>`<li data-meos-evidence="task" data-evidence-id="${escapeHtml(task.id || "")}" role="button" tabindex="0"><span>${task.status === "blocked" ? "!" : task.status === "active" ? "▶" : "□"}</span><span>${escapeHtml(task.title)}<br><small class="meos-muted">${escapeHtml(task.officeName)}</small></span><span class="meos-priority ${task.status === "blocked" ? "high" : "medium"}">${escapeHtml(task.status)}</span></li>`).join("") || `<li data-meos-evidence="today" role="button" tabindex="0"><span>✓</span><span>No office tasks are currently recorded.</span><span></span></li>`;
 
     dispatchMEOS("meos:headquarters-live-state", snapshot);
     return snapshot;
@@ -7437,6 +7488,43 @@ document
   }
 
 
+  function runExecutiveAttentionProjectionAcceptanceTest() {
+    const syntheticConversation = {
+      id: "work-conversation-test", source: "maddy-executive-desk", state: "done",
+      title: "maddy why is the ocean salty?", instruction: "why is the ocean salty?"
+    };
+    const synthetic = {
+      hallwayWork: [syntheticConversation],
+      hallwayDeliverables: [{ id: "delivery-conversation-test", workId: "work-conversation-test", title: "maddy why is the ocean salty?", source: "maddy" }],
+      pendingApprovals: [],
+      tasks: [
+        { id: "office-research", title: "Support mission: maddy why is the ocean salty?", status: "pending", officeName: "Office of Research and Intelligence" },
+        { id: "real-task", title: "File annual compliance report", status: "pending", officeName: "Office of Compliance" }
+      ],
+      activities: [
+        { id: "activity-conversation", workId: "work-conversation-test", message: "work", officeName: "Executive Hallway" },
+        { id: "activity-real", message: "Annual compliance filing due", officeName: "Office of Compliance" }
+      ],
+      fundingUrgent: [], fundingRecords: [], blocked: []
+    };
+    const gate = buildExecutiveProjectionGate(synthetic);
+    const outcome = deriveExecutiveOutcome(synthetic);
+    const checks = [
+      ["Conversational Hallway work is recognized as internal cognition", isConversationalHallwayWork(syntheticConversation)],
+      ["Conversation-spawned office task is suppressed from executive projection", !gate.visibleTasks.some((item) => item.id === "office-research")],
+      ["Real organizational task remains visible to executive projection", gate.visibleTasks.some((item) => item.id === "real-task")],
+      ["Conversation deliverable remains stored but is suppressed from Executive Briefing attention", synthetic.hallwayDeliverables.length === 1 && gate.visibleDeliverables.length === 0],
+      ["Conversation Hallway history is suppressed from Executive Journal projection", !gate.visibleActivities.some((item) => item.id === "activity-conversation")],
+      ["Unrelated organizational history remains visible in Executive Journal projection", gate.visibleActivities.some((item) => item.id === "activity-real")],
+      ["Executive attention refuses to promote a conversational answer as an organizational outcome", outcome.kind === "watch"],
+      ["Projection gating does not delete underlying cognition records", synthetic.tasks.length === 2 && synthetic.activities.length === 2 && synthetic.hallwayDeliverables.length === 1]
+    ];
+    console.table(checks.map(([name, passed]) => ({ name, passed })));
+    const success = checks.every(([, passed]) => passed);
+    console.log(`[MEOS 4.10.3] Commission 006.018I Executive Attention Projection Gate: ${success ? "PASS" : "FAIL"} (${checks.filter(([,p])=>p).length}/${checks.length}).`);
+    return { success, commission: "006.018I", schema: "meos.dashboard.executive-attention-projection-acceptance.v1", version: "4.10.3", buildId: "OD413-EXECUTIVE-ATTENTION-PROJECTION-GATE-20260812-A", checks: checks.map(([name, passed]) => ({ name, passed })) };
+  }
+
   function runOneQuestionOneAnswerAcceptanceTest() {
     const fixture = {
       id: "006.018H-fixture", workId: "006.018H-work", kind: "research-status",
@@ -7461,7 +7549,7 @@ document
       { name: "No external-action authority is added by HUD simplification", passed: true }
     ];
     const passed = checks.filter((check) => check.passed).length;
-    const result = { success: passed === checks.length, commission: "006.018H", schema: "meos.dashboard.one-question-one-answer-acceptance.v1", version: DASHBOARD_VERSION, buildId: "OD412-ONE-QUESTION-ONE-ANSWER-HIERARCHY-20260812-A", passed, total: checks.length, checks };
+    const result = { success: passed === checks.length, commission: "006.018H", schema: "meos.dashboard.one-question-one-answer-acceptance.v1", version: DASHBOARD_VERSION, buildId: "OD413-EXECUTIVE-ATTENTION-PROJECTION-GATE-20260812-A", passed, total: checks.length, checks };
     console.table(checks);
     console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.018H One Question One Answer Hierarchy: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
     return result;
@@ -7488,7 +7576,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018H One Question One Answer Hierarchy online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018I Executive Attention Projection Gate online.`
     );
   }
 
@@ -7517,6 +7605,7 @@ document
       getSnapshot: collectHeadquartersSnapshot,
       runAcceptanceTest: runHeadquartersAcceptanceTest,
       runOneQuestionOneAnswerAcceptanceTest,
+      runExecutiveAttentionProjectionAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
     }),
