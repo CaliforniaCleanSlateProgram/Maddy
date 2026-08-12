@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.50";
+const VERSION = "2.10.51";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1402,9 +1402,9 @@ async function writeDurableExecutiveBrainState(
 /* ========================================================================== */
 
 const COGNITIVE_AUTHORITY_COMMISSION = "006.017D7N";
-const COGNITIVE_AUTHORITY_VERSION = "1.0.0";
+const COGNITIVE_AUTHORITY_VERSION = "1.1.0";
 const COGNITIVE_AUTHORITY_BUILD_ID =
-  "SCA100-SINGLE-WRITER-COGNITIVE-AUTHORITY-CONVERGENCE-20260809-A";
+  "SCA110-CANONICAL-EXECUTIVE-INTENTION-CONVERGENCE-20260811-A";
 
 let executiveBrainCanonicalWriteChain = Promise.resolve();
 const executiveBrainAuthorityState = {
@@ -1417,6 +1417,10 @@ const executiveBrainAuthorityState = {
   lastSource: null,
   lastCanonicalFingerprint: null,
   lastConflictConvergedAt: null,
+  intentionConvergenceCount: 0,
+  intentionRecordsAbsorbed: 0,
+  duplicateExecutionCandidatesPrevented: 0,
+  lastIntentionConvergence: null,
   lastError: null
 };
 
@@ -1425,6 +1429,7 @@ function stableCognitiveValueKey(value) {
     if (value && typeof value === "object") {
       return String(
         value.fingerprint ||
+        value.intentionId ||
         value.id ||
         value.eventId ||
         value.dispatchId ||
@@ -1451,6 +1456,272 @@ function mergeCognitiveArrays(incoming = [], canonical = []) {
     merged.push(value);
   }
   return merged;
+}
+
+function normalizeExecutiveIntentionKey(value = {}) {
+  return String(
+    value.key ||
+    value.subject ||
+    ""
+  )
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function cognitiveIntentionTimestamp(value = {}) {
+  const candidates = [
+    value.completedAt,
+    value.updatedAt,
+    value.createdAt
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = Date.parse(candidate || "");
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return 0;
+}
+
+function mergeExecutiveIntentionTriggers(...triggerSets) {
+  const merged = [];
+  const seen = new Set();
+
+  for (const trigger of triggerSets.flat()) {
+    if (!trigger || typeof trigger !== "object") continue;
+
+    const identity = stableCognitiveValueKey({
+      fingerprint: trigger.fingerprint || null,
+      id: trigger.id || null,
+      eventId: trigger.eventId || null,
+      source: trigger.source || null,
+      event: trigger.event || null,
+      lineageId: trigger.lineageId || null,
+      workId: trigger.workId || null,
+      alertId: trigger.alertId || null,
+      caseRecordId: trigger.caseRecordId || null,
+      sourceId: trigger.sourceId || null,
+      observedAt: trigger.observedAt || null,
+      updatedAt: trigger.updatedAt || null
+    });
+
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    merged.push(trigger);
+  }
+
+  return merged.slice(-50);
+}
+
+function mergeExecutiveIntentionRecords(records = []) {
+  const usable = records.filter(
+    value => value && typeof value === "object"
+  );
+
+  if (usable.length === 0) return null;
+  if (usable.length === 1) return usable[0];
+
+  const chronological = [...usable].sort(
+    (a, b) =>
+      cognitiveIntentionTimestamp(a) -
+      cognitiveIntentionTimestamp(b)
+  );
+  const earliest = chronological[0];
+  const latest = chronological[chronological.length - 1];
+
+  const completed = usable
+    .filter(value => value.status === "completed")
+    .sort(
+      (a, b) =>
+        cognitiveIntentionTimestamp(a) -
+        cognitiveIntentionTimestamp(b)
+    )
+    .at(-1);
+
+  /*
+   * Same intentionId means the same continuing thought. Once that exact
+   * thought completed, a stale pending snapshot may not resurrect it.
+   * A genuinely new thought about the same subject should carry a new id.
+   */
+  const ids = [
+    ...new Set(
+      usable
+        .map(value => String(value.intentionId || "").trim())
+        .filter(Boolean)
+    )
+  ];
+  const sameExplicitIdentity = ids.length === 1 && ids[0];
+
+  const winner =
+    sameExplicitIdentity && completed
+      ? completed
+      : latest;
+
+  const triggers = mergeExecutiveIntentionTriggers(
+    ...usable.map(value =>
+      Array.isArray(value.triggers) ? value.triggers : []
+    )
+  );
+
+  const contributorSources = [
+    ...new Set(
+      triggers
+        .map(trigger => String(trigger?.source || "").trim())
+        .filter(Boolean)
+    )
+  ];
+
+  const canonicalId =
+    String(earliest.intentionId || "").trim() ||
+    String(winner.intentionId || "").trim() ||
+    ids[0] ||
+    null;
+
+  const createdTimes = usable
+    .map(value => Date.parse(value.createdAt || ""))
+    .filter(Number.isFinite);
+  const updatedTimes = usable
+    .map(value => Date.parse(value.updatedAt || ""))
+    .filter(Number.isFinite);
+
+  const merged = {
+    ...earliest,
+    ...winner,
+    intentionId: canonicalId,
+    key:
+      normalizeExecutiveIntentionKey(winner) ||
+      normalizeExecutiveIntentionKey(earliest),
+    subject:
+      winner.subject ||
+      earliest.subject ||
+      null,
+    attempts: Math.max(
+      ...usable.map(value => Number(value.attempts || 0)),
+      0
+    ),
+    triggers,
+    createdAt:
+      createdTimes.length > 0
+        ? new Date(Math.min(...createdTimes)).toISOString()
+        : earliest.createdAt || winner.createdAt || null,
+    updatedAt:
+      updatedTimes.length > 0
+        ? new Date(Math.max(...updatedTimes)).toISOString()
+        : winner.updatedAt || earliest.updatedAt || null,
+    lastError:
+      winner.status === "completed"
+        ? null
+        : winner.lastError || null,
+    convergence: {
+      schema:
+        "meos.maddy.executive-intention-convergence.v1",
+      identity:
+        canonicalId
+          ? `intention:${canonicalId}`
+          : `active-key:${normalizeExecutiveIntentionKey(winner)}`,
+      observedRecordCount: usable.length,
+      absorbedRecordCount: Math.max(0, usable.length - 1),
+      mergedIntentionIds: ids,
+      contributorSources,
+      convergedAt: new Date().toISOString(),
+      principle:
+        "many-signals-one-executive-intention"
+    }
+  };
+
+  if (winner.status === "completed" && completed?.completedAt) {
+    merged.completedAt = completed.completedAt;
+  }
+
+  return merged;
+}
+
+function convergeExecutiveIntentions(incoming = [], canonical = []) {
+  const source = [...incoming, ...canonical].filter(
+    value => value && typeof value === "object"
+  );
+  const groups = [];
+  const idToGroup = new Map();
+  const activeKeyToGroup = new Map();
+
+  const attach = (record, groupIndex) => {
+    const id = String(record.intentionId || "").trim();
+    const key = normalizeExecutiveIntentionKey(record);
+    if (id) idToGroup.set(id, groupIndex);
+    if (key && record.status !== "completed") {
+      activeKeyToGroup.set(key, groupIndex);
+    }
+  };
+
+  for (const record of source) {
+    const id = String(record.intentionId || "").trim();
+    const key = normalizeExecutiveIntentionKey(record);
+
+    let groupIndex =
+      (id && idToGroup.has(id)
+        ? idToGroup.get(id)
+        : undefined);
+
+    if (
+      groupIndex === undefined &&
+      key &&
+      record.status !== "completed" &&
+      activeKeyToGroup.has(key)
+    ) {
+      groupIndex = activeKeyToGroup.get(key);
+    }
+
+    if (groupIndex === undefined) {
+      groupIndex = groups.length;
+      groups.push([]);
+    }
+
+    groups[groupIndex].push(record);
+    attach(record, groupIndex);
+  }
+
+  const intentions = groups
+    .map(group => mergeExecutiveIntentionRecords(group))
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        cognitiveIntentionTimestamp(b) -
+        cognitiveIntentionTimestamp(a)
+    );
+
+  const absorbedRecords = Math.max(
+    0,
+    source.length - intentions.length
+  );
+  const convergedGroups = groups.filter(
+    group => group.length > 1
+  );
+
+  return {
+    intentions,
+    telemetry: {
+      inputRecords: source.length,
+      outputIntentions: intentions.length,
+      convergedGroups: convergedGroups.length,
+      absorbedRecords,
+      duplicateExecutionCandidatesPrevented:
+        absorbedRecords,
+      contributorSources: [
+        ...new Set(
+          convergedGroups.flatMap(group =>
+            group.flatMap(record =>
+              (record.triggers || [])
+                .map(trigger =>
+                  String(trigger?.source || "").trim()
+                )
+                .filter(Boolean)
+            )
+          )
+        )
+      ]
+    }
+  };
 }
 
 function newerCognitiveProjection(incoming, canonical) {
@@ -1485,10 +1756,41 @@ function convergeExecutiveBrainSnapshots(canonical, incoming, source = "browser-
     const b = incoming[key];
 
     if (Array.isArray(a) || Array.isArray(b)) {
-      merged[key] = mergeCognitiveArrays(
-        Array.isArray(b) ? b : [],
-        Array.isArray(a) ? a : []
-      );
+      if (key === "cognitiveIntentions") {
+        const convergence =
+          convergeExecutiveIntentions(
+            Array.isArray(b) ? b : [],
+            Array.isArray(a) ? a : []
+          );
+
+        merged[key] = convergence.intentions;
+
+        if (
+          convergence.telemetry.absorbedRecords > 0
+        ) {
+          executiveBrainAuthorityState
+            .intentionConvergenceCount +=
+              convergence.telemetry.convergedGroups;
+          executiveBrainAuthorityState
+            .intentionRecordsAbsorbed +=
+              convergence.telemetry.absorbedRecords;
+          executiveBrainAuthorityState
+            .duplicateExecutionCandidatesPrevented +=
+              convergence.telemetry
+                .duplicateExecutionCandidatesPrevented;
+          executiveBrainAuthorityState
+            .lastIntentionConvergence = {
+              ...convergence.telemetry,
+              source,
+              at: new Date().toISOString()
+            };
+        }
+      } else {
+        merged[key] = mergeCognitiveArrays(
+          Array.isArray(b) ? b : [],
+          Array.isArray(a) ? a : []
+        );
+      }
       continue;
     }
 
