@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.12
- * Build: EB12512-VERIFIED-CONSEQUENCE-EXECUTIVE-LEARNING-CLOSURE-20260812-A
+ * Version: 1.25.13
+ * Build: EB12513-EXECUTIVE-COGNITIVE-HOMEOSTASIS-20260812-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.12";
-  const BUILD_ID = "EB12512-VERIFIED-CONSEQUENCE-EXECUTIVE-LEARNING-CLOSURE-20260812-A";
+  const VERSION = "1.25.13";
+  const BUILD_ID = "EB12513-EXECUTIVE-COGNITIVE-HOMEOSTASIS-20260812-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -168,6 +168,9 @@
       priorityPortfolioLimit: 32,
       priorityPreemptionThreshold: 0.12,
       protectedAttentionSwitchCost: 0.08,
+      executiveHomeostasisEnabled: true,
+      executiveHomeostasisLearningInfluenceLimit: 0.16,
+      executiveHomeostasisPeripheralLimit: 12,
       cognitiveThreadLimit: 48,
       cognitiveThreadStepLimit: 24,
       cognitiveThreadDiminishingReturnFloor: 0.08,
@@ -330,6 +333,8 @@
     currentExecutivePriority: null,
     lastPriorityArbitration: null,
     priorityArbitrationCount: 0,
+    executiveHomeostasisState: null,
+    currentHumanInterruption: null,
     cognitiveThreads: [],
     activeCognitiveThreadId: null,
     lastCognitiveThreadEvent: null,
@@ -14231,9 +14236,288 @@
       return demands;
     },
 
+    /*
+     * Commission 006.018N — Executive Cognitive Homeostasis
+     *
+     * Homeostasis is balance, not a rigid hierarchy. Existing obligations,
+     * curiosity, growth, operational integrity, learned experience, and human
+     * direction remain simultaneously visible. Maddy may notice more than she
+     * pursues. Verified experience can change later judgment without becoming
+     * a hard-coded rule, and an explicit human task can interrupt autonomous
+     * cognition without erasing the point of interruption.
+     */
+    normalizeHomeostasisText(value = "") {
+      return String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, " ")
+        .split(/\s+/)
+        .filter(token => token.length > 2)
+        .slice(0, 80);
+    },
+
+    collectRelevantLearnedExperience(demand = {}) {
+      const learning = global.ExecutiveLearning;
+      const lessons = Array.isArray(learning?.lessons) ? learning.lessons : [];
+      const demandTokens = new Set(this.normalizeHomeostasisText([
+        demand.subject, demand.reason, demand.origin,
+        ...(Array.isArray(demand.unknowns) ? demand.unknowns : [])
+      ].join(" ")));
+      if (!demandTokens.size || !lessons.length) return [];
+
+      return lessons.map(lesson => {
+        const lessonText = [
+          lesson.title, lesson.statement, lesson.lessonType,
+          ...(Array.isArray(lesson.applicability) ? lesson.applicability : []),
+          ...(Array.isArray(lesson.tags) ? lesson.tags : [])
+        ].join(" ");
+        const lessonTokens = new Set(this.normalizeHomeostasisText(lessonText));
+        const overlap = [...demandTokens].filter(token => lessonTokens.has(token)).length;
+        const relevance = overlap / Math.max(1, Math.min(demandTokens.size, 12));
+        const confidence = Math.max(0, Math.min(1, Number(lesson.confidence ?? 0.5)));
+        const evidenceCount = Math.max(1, Number(lesson.evidenceCount || lesson.sourceObservationIds?.length || 1));
+        const type = String(lesson.lessonType || "").toLowerCase();
+        const negative = /failure|risk|avoid|prevent|block|unmet/.test(type + " " + lessonText.toLowerCase());
+        const positive = /success|effective|valuable|practice|opportunity/.test(type + " " + lessonText.toLowerCase());
+        const direction = negative && !positive ? -1 : positive && !negative ? 1 : 0;
+        return {
+          id: lesson.id || null,
+          title: lesson.title || "Institutional lesson",
+          relevance: Number(relevance.toFixed(3)),
+          confidence,
+          evidenceCount,
+          direction,
+          status: lesson.status || "unknown"
+        };
+      }).filter(item => item.relevance >= 0.18)
+        .sort((a,b) => (b.relevance*b.confidence) - (a.relevance*a.confidence))
+        .slice(0, 6);
+    },
+
+    applyExecutiveHomeostasis(demands = [], options = {}) {
+      const now = new Date().toISOString();
+      const prepared = (Array.isArray(demands) ? demands : []).map(demand => {
+        const experience = this.collectRelevantLearnedExperience(demand);
+        const rawInfluence = experience.reduce((sum, item) => {
+          const evidenceWeight = Math.min(1, 0.45 + Math.log2(item.evidenceCount + 1) * 0.18);
+          return sum + item.direction * item.relevance * item.confidence * evidenceWeight;
+        }, 0);
+        const limit = Number(this.configuration.executiveHomeostasisLearningInfluenceLimit || 0.16);
+        const learningInfluence = Math.max(-limit, Math.min(limit, rawInfluence * 0.12));
+        const base = this.scoreExecutivePriority(demand);
+        const balancedScore = Math.max(0, Math.min(1, base.score + learningInfluence));
+        return {
+          ...this.clone(demand),
+          homeostasis: {
+            baseScore: base.score,
+            balancedScore: Number(balancedScore.toFixed(3)),
+            learningInfluence: Number(learningInfluence.toFixed(3)),
+            relevantExperience: this.clone(experience),
+            principle: "balance-not-rigid-hierarchy"
+          },
+          __homeostasisScore: Number(balancedScore.toFixed(3))
+        };
+      });
+
+      const categories = prepared.reduce((acc, item) => {
+        const origin = String(item.origin || "unknown");
+        acc[origin] = (acc[origin] || 0) + 1;
+        return acc;
+      }, {});
+      const peripheral = prepared
+        .filter(item => item.__homeostasisScore < 0.52)
+        .sort((a,b) => b.__homeostasisScore-a.__homeostasisScore)
+        .slice(0, Number(this.configuration.executiveHomeostasisPeripheralLimit || 12))
+        .map(item => ({
+          id:item.id || null, subject:item.subject, origin:item.origin,
+          disposition:item.__homeostasisScore < 0.28 ? "release" : "watch",
+          score:item.__homeostasisScore,
+          reason:"noticed-without-manufacturing-active-work"
+        }));
+
+      this.executiveHomeostasisState = {
+        schema:"meos.maddy.executive-homeostasis.v1",
+        assessedAt:now,
+        principle:"Maintain productive equilibrium across competing needs; no category has a permanently fixed rank beyond constitutional and authority boundaries.",
+        categories,
+        peripheralAwareness:peripheral,
+        nothingRequiresPursuit:prepared.length===0 || prepared.every(item=>item.__homeostasisScore<0.52),
+        providerCallRequired:false
+      };
+      return {demands:prepared,state:this.clone(this.executiveHomeostasisState)};
+    },
+
+    arbitrateHomeostaticPriorities(demands = [], options = {}) {
+      if (this.configuration.executiveHomeostasisEnabled !== true) {
+        return this.arbitrateExecutivePriorities(demands, options);
+      }
+      const balanced = this.applyExecutiveHomeostasis(demands, options);
+      const scoredInputs = balanced.demands.map(demand => {
+        const target = Number(demand.__homeostasisScore ?? 0);
+        const base = this.scoreExecutivePriority(demand).score;
+        const delta = target - base;
+        // Preserve the existing arbitration organ; nudge mission consequence
+        // only enough to express learned experience, rather than replacing the
+        // whole executive judgment model with another engine.
+        const adjusted = this.clone(demand);
+        adjusted.missionConsequence = Math.max(0, Math.min(1,
+          Number(demand.missionConsequence ?? demand.consequence ?? 0.5) + delta / 0.22
+        ));
+        adjusted.homeostasis = demand.homeostasis;
+        delete adjusted.__homeostasisScore;
+        return adjusted;
+      });
+      const result = this.arbitrateExecutivePriorities(scoredInputs, options);
+      result.homeostasis = balanced.state;
+      return result;
+    },
+
+    interruptCognitionForHumanTask(humanTask = {}) {
+      const subject = String(humanTask.subject || "").trim();
+      if (!subject) return {success:false,reason:"human-task-subject-required"};
+      const active = this.cognitiveThreads.find(thread => thread.id === this.activeCognitiveThreadId) || null;
+      let checkpoint = null;
+      if (active) {
+        checkpoint = this.checkpointCognitiveThread(active, "human-directed-task", {
+          status:"paused",
+          resumeTrigger:"human-directed task completes; reconsider changed reality before resuming"
+        });
+      }
+      const humanPriority = {
+        id: humanTask.id || `human-${this.fingerprintCognitiveDispatch(humanTask)}`,
+        subject,
+        origin:"human-direction",
+        reason:humanTask.reason || "Explicit human-directed task takes foreground attention.",
+        humanDirection:1,
+        missionConsequence:Number(humanTask.missionConsequence ?? 0.85),
+        urgency:Number(humanTask.urgency ?? 0.9),
+        irreversibility:Number(humanTask.irreversibility ?? 0.5),
+        leverage:Number(humanTask.leverage ?? 0.7),
+        externalAuthorityRequired:humanTask.externalAuthorityRequired===true
+      };
+      const priorPriority = this.currentExecutivePriority ? this.clone(this.currentExecutivePriority) : null;
+      const arbitration = this.arbitrateHomeostaticPriorities([humanPriority], {materialChange:true});
+      // Explicit human work is foregrounded by governance, not merely by a score.
+      const selected = arbitration.portfolio?.find(item=>item.id===humanPriority.id) || {
+        ...humanPriority, ...this.scoreExecutivePriority(humanPriority), status:"selected", selectedAt:new Date().toISOString()
+      };
+      this.currentExecutivePriority = this.clone({...selected,status:"selected"});
+      this.currentHumanInterruption = {
+        schema:"meos.maddy.human-interruption.v1",
+        humanTaskId:humanPriority.id,
+        humanTaskSubject:subject,
+        interruptedAt:new Date().toISOString(),
+        interruptedThreadId:active?.id || null,
+        priorPriorityId:priorPriority?.id || null,
+        checkpoint:checkpoint?.checkpoint ? this.clone(checkpoint.checkpoint) : null,
+        status:"human-task-active",
+        providerCallRequired:false
+      };
+      return {success:true,humanPriority:this.clone(this.currentExecutivePriority),checkpoint,interruption:this.clone(this.currentHumanInterruption)};
+    },
+
+    completeHumanTaskAndResume(options = {}) {
+      const interruption = this.currentHumanInterruption;
+      if (!interruption) return {success:true,resumed:false,reason:"no-human-interruption"};
+      const thread = interruption.interruptedThreadId
+        ? this.cognitiveThreads.find(item=>item.id===interruption.interruptedThreadId)
+        : null;
+      const changed = options.materialChange===true || options.cancelPriorWork===true;
+      let resume = null;
+      let disposition = "no-prior-thread";
+      if (thread && options.cancelPriorWork===true) {
+        thread.status="closed";
+        thread.closureState="human-cancelled";
+        thread.closedAt=new Date().toISOString();
+        thread.updatedAt=thread.closedAt;
+        disposition="human-direction-cancelled-prior-work";
+      } else if (thread) {
+        resume=this.resumeCognitiveThread(thread,{materialContradiction:options.materialChange===true,claim:options.changeSummary || "material reality changed during human interruption",evidence:options.evidence || []});
+        disposition=options.materialChange===true ? "reconsidered-and-resumed" : "resumed-at-point-of-interruption";
+        if (resume?.success) {
+          this.currentExecutivePriority={
+            id:thread.priorityId || thread.id,
+            subject:thread.subject,
+            origin:thread.origin,
+            reason:"Resume the interrupted cognitive thread from its preserved point of interruption.",
+            score:Number(this.currentExecutivePriority?.score || 0.6),
+            status:"selected",
+            selectedAt:new Date().toISOString()
+          };
+        }
+      }
+      const completed={...this.clone(interruption),completedAt:new Date().toISOString(),status:"completed",disposition,materialChangeReconsidered:changed};
+      this.currentHumanInterruption=null;
+      return {success:true,resumed:Boolean(resume?.success),disposition,resume,interruption:completed,providerCallRequired:false};
+    },
+
     runExecutiveJudgmentCycle(options = {}) {
       const demands=this.collectExecutivePriorityDemands(options);
-      return this.arbitrateExecutivePriorities(demands,options);
+      return this.arbitrateHomeostaticPriorities(demands,options);
+    },
+
+    async runExecutiveCognitiveHomeostasisAcceptanceTest() {
+      const original={
+        learning:global.ExecutiveLearning,
+        threads:this.clone(this.cognitiveThreads), activeId:this.activeCognitiveThreadId,
+        priority:this.clone(this.currentExecutivePriority), portfolio:this.clone(this.executivePriorityPortfolio),
+        arbitration:this.clone(this.lastPriorityArbitration), homeostasis:this.clone(this.executiveHomeostasisState),
+        interruption:this.clone(this.currentHumanInterruption), eventCount:this.cognitiveThreadEventCount,
+        lastEvent:this.clone(this.lastCognitiveThreadEvent)
+      };
+      const priorHydrated=brainPersistence.hydrated;
+      brainPersistence.hydrated=false;
+      try {
+        this.cognitiveThreads=[]; this.activeCognitiveThreadId=null; this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[]; this.currentHumanInterruption=null;
+        const baseDemand={id:"quiet-signal",subject:"recurring eligibility signal",origin:"world-model-unknown",reason:"A quiet signal may deserve investigation.",missionConsequence:0.5,urgency:0.35,leverage:0.55,informationValue:0.55};
+        global.ExecutiveLearning={lessons:[]};
+        const withoutExperience=this.applyExecutiveHomeostasis([baseDemand]).demands[0];
+        global.ExecutiveLearning={lessons:[{id:"lesson-good",title:"Successful eligibility signal practice",statement:"Recurring eligibility signal produced a valuable opportunity when noticed early.",lessonType:"successful-practice",confidence:0.95,evidenceCount:4,status:"validated"}]};
+        const withPositive=this.applyExecutiveHomeostasis([baseDemand]).demands[0];
+        global.ExecutiveLearning={lessons:[{id:"lesson-bad",title:"Avoidable failure pattern: recurring eligibility signal",statement:"Repeated investigation of this recurring eligibility signal produced no useful result; avoid repeated pursuit until conditions change.",lessonType:"failure-prevention",confidence:0.95,evidenceCount:4,status:"validated"}]};
+        const withNegative=this.applyExecutiveHomeostasis([baseDemand]).demands[0];
+
+        global.ExecutiveLearning={lessons:[]};
+        const urgent=this.runExecutiveJudgmentCycle({humanDirection:{id:"human-task",subject:"Prepare board summary",missionConsequence:0.9,urgency:0.95}});
+
+        this.currentExecutivePriority=null;
+        const opened=this.createCognitiveThread({id:"homeostasis-thread",subject:"Investigate funding pattern",established:["cycles repeat annually"],unknowns:["next cycle timing"],evidence:[{source:"fixture://existing",verified:true}],nextIntendedMove:"compare next-cycle timing"});
+        const before=this.advanceCognitiveThread("homeostasis-thread",{established:["current strategy remains active"],nextIntendedMove:"verify next-cycle timing",marginalValue:0.8});
+        const interruption=this.interruptCognitionForHumanTask({id:"human-board",subject:"Prepare board summary",urgency:1,missionConsequence:1});
+        const resume=this.completeHumanTaskAndResume();
+        const resumedThread=this.cognitiveThreads.find(x=>x.id==="homeostasis-thread");
+        const noRestart=resumedThread?.cycleCount===before.thread.cycleCount && resumedThread?.nextIntendedMove==="verify next-cycle timing" && resumedThread?.evidence?.some(x=>x.source==="fixture://existing");
+
+        const interruption2=this.interruptCognitionForHumanTask({id:"human-change",subject:"Handle changed executive direction",urgency:1,missionConsequence:1});
+        const changedResume=this.completeHumanTaskAndResume({materialChange:true,changeSummary:"new authoritative condition changes prior reasoning",evidence:[{source:"fixture://change",verified:true}]});
+        const peripheral=this.applyExecutiveHomeostasis([{id:"squirrel",subject:"interesting squirrel",origin:"curiosity",missionConsequence:0.05,urgency:0.02,leverage:0.05,informationValue:0.2}]).state;
+        const empty=this.applyExecutiveHomeostasis([]).state;
+        const snapshot=this.buildPersistenceSnapshot();
+        const checks=[
+          {name:"Homeostasis is balance rather than a rigid hierarchy",passed:withPositive.homeostasis?.principle==="balance-not-rigid-hierarchy"},
+          {name:"Identical present conditions can receive different judgment from accumulated verified experience",passed:withPositive.__homeostasisScore>withoutExperience.__homeostasisScore&&withNegative.__homeostasisScore<withoutExperience.__homeostasisScore},
+          {name:"Relevant successful experience can promote a quiet signal",passed:withPositive.homeostasis.learningInfluence>0},
+          {name:"Repeated low-value experience can reduce pursuit pressure without erasing awareness",passed:withNegative.homeostasis.learningInfluence<0},
+          {name:"Explicit human-directed work takes foreground priority",passed:urgent.arbitration.selected?.origin==="human-direction"||urgent.arbitration.selected?.id==="human-task"},
+          {name:"Human interruption checkpoints the exact active cognitive thread",passed:interruption.checkpoint?.checkpoint?.nextIntendedMove==="verify next-cycle timing"},
+          {name:"Completion of human work resumes from the point of interruption instead of restarting",passed:resume.resumed===true&&noRestart===true},
+          {name:"Changed reality is reconsidered before resumption",passed:changedResume.resumed===true&&changedResume.disposition==="reconsidered-and-resumed"},
+          {name:"Peripheral awareness can notice without manufacturing active work",passed:peripheral.peripheralAwareness.some(x=>x.id==="squirrel")},
+          {name:"Nothing currently deserves pursuit remains a valid cognitive conclusion",passed:empty.nothingRequiresPursuit===true},
+          {name:"Homeostasis and interruption continuity require no provider call and preserve authority",passed:empty.providerCallRequired===false&&resume.providerCallRequired===false&&snapshot.currentHumanInterruption==null}
+        ];
+        const passed=checks.every(x=>x.passed);
+        console.table(checks.map(x=>({name:x.name,passed:x.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.018N Executive Cognitive Homeostasis: ${passed?"PASS":"FAIL"} (${checks.filter(x=>x.passed).length}/${checks.length}).`);
+        return {success:passed,commission:"006.018N",schema:"meos.executive-brain.homeostasis-acceptance.v1",version:this.version,buildId:this.buildId,passed:checks.filter(x=>x.passed).length,total:checks.length,checks};
+      } finally {
+        global.ExecutiveLearning=original.learning;
+        this.cognitiveThreads=original.threads; this.activeCognitiveThreadId=original.activeId;
+        this.currentExecutivePriority=original.priority; this.executivePriorityPortfolio=original.portfolio;
+        this.lastPriorityArbitration=original.arbitration; this.executiveHomeostasisState=original.homeostasis;
+        this.currentHumanInterruption=original.interruption; this.cognitiveThreadEventCount=original.eventCount;
+        this.lastCognitiveThreadEvent=original.lastEvent; brainPersistence.hydrated=priorHydrated;
+      }
     },
 
     async runExecutiveJudgmentAcceptanceTest() {
@@ -17115,6 +17399,8 @@
         currentExecutivePriority: this.currentExecutivePriority ? this.clone(this.currentExecutivePriority) : null,
         lastPriorityArbitration: this.lastPriorityArbitration ? this.clone(this.lastPriorityArbitration) : null,
         priorityArbitrationCount: Number(this.priorityArbitrationCount || 0),
+        executiveHomeostasisState: this.executiveHomeostasisState ? this.clone(this.executiveHomeostasisState) : null,
+        currentHumanInterruption: this.currentHumanInterruption ? this.clone(this.currentHumanInterruption) : null,
         cognitiveThreads: this.cognitiveThreads.slice(0, this.configuration.cognitiveThreadLimit),
         activeCognitiveThreadId: this.activeCognitiveThreadId,
         lastCognitiveThreadEvent: this.lastCognitiveThreadEvent ? this.clone(this.lastCognitiveThreadEvent) : null,
@@ -17283,6 +17569,8 @@
       this.currentExecutivePriority = saved.currentExecutivePriority && typeof saved.currentExecutivePriority === "object" ? this.clone(saved.currentExecutivePriority) : null;
       this.lastPriorityArbitration = saved.lastPriorityArbitration && typeof saved.lastPriorityArbitration === "object" ? this.clone(saved.lastPriorityArbitration) : null;
       this.priorityArbitrationCount = Math.max(Number(saved.priorityArbitrationCount || 0), Number(this.lastPriorityArbitration?.arbitrationNumber || 0));
+      this.executiveHomeostasisState = saved.executiveHomeostasisState && typeof saved.executiveHomeostasisState === "object" ? this.clone(saved.executiveHomeostasisState) : null;
+      this.currentHumanInterruption = saved.currentHumanInterruption && typeof saved.currentHumanInterruption === "object" ? this.clone(saved.currentHumanInterruption) : null;
       this.cognitiveThreads = Array.isArray(saved.cognitiveThreads) ? saved.cognitiveThreads.slice(0, this.configuration.cognitiveThreadLimit) : [];
       this.activeCognitiveThreadId = saved.activeCognitiveThreadId || null;
       this.lastCognitiveThreadEvent = saved.lastCognitiveThreadEvent && typeof saved.lastCognitiveThreadEvent === "object" ? this.clone(saved.lastCognitiveThreadEvent) : null;
