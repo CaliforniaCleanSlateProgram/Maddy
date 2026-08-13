@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.54";
+const VERSION = "2.10.55";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -2803,6 +2803,528 @@ const researchLearningRuntime = {
   lastError: null
 };
 
+
+/* ========================================================================== */
+/* Commission 006.018T — Durable Research Learning Recovery Continuity        */
+/* ========================================================================== */
+
+const RESEARCH_LEARNING_RECOVERY_COMMISSION = "006.018T";
+const RESEARCH_LEARNING_RECOVERY_VERSION = "1.0.0";
+const RESEARCH_LEARNING_RECOVERY_BUILD_ID =
+  "RLR100-DURABLE-RESEARCH-LEARNING-RECOVERY-CONTINUITY-20260813-A";
+const RESEARCH_LEARNING_RECOVERY_NAMESPACE =
+  "research-learning";
+const RESEARCH_LEARNING_RECOVERY_KEY =
+  "recovery-outbox";
+const RESEARCH_LEARNING_RECOVERY_CLASSIFICATION =
+  "operational";
+const RESEARCH_LEARNING_RECOVERY_MAX_CANDIDATES = 8;
+const RESEARCH_LEARNING_RECOVERY_MAX_CANDIDATE_BYTES =
+  96 * 1024;
+const RESEARCH_LEARNING_RECOVERY_MAX_OUTBOX_BYTES =
+  512 * 1024;
+
+const researchLearningRecoveryRuntime = {
+  stagedCount: 0,
+  recoveredCount: 0,
+  clearedCount: 0,
+  failedRecoveryCount: 0,
+  startupRecoveryRuns: 0,
+  lastStagedAt: null,
+  lastRecoveredAt: null,
+  lastClearedAt: null,
+  lastRecoveryCandidateId: null,
+  lastRecoveryError: null
+};
+
+function researchLearningRecoveryCandidateKey(record = {}) {
+  return crypto
+    .createHash("sha256")
+    .update(String(record.id || "unknown"), "utf8")
+    .digest("hex")
+    .slice(0, 32);
+}
+
+function emptyResearchLearningRecoveryOutbox() {
+  return {
+    schema: "meos.research-learning.recovery-outbox.v1",
+    commission: RESEARCH_LEARNING_RECOVERY_COMMISSION,
+    buildId: RESEARCH_LEARNING_RECOVERY_BUILD_ID,
+    updatedAt: new Date().toISOString(),
+    candidates: []
+  };
+}
+
+function validateResearchLearningRecoveryCandidate(record = {}) {
+  if (
+    !record ||
+    record.schema !== "meos.research-learning.record.v1" ||
+    !String(record.id || "").trim() ||
+    !String(record.subject || "").trim() ||
+    Number(record.evidenceCount || 0) <= 0
+  ) {
+    const error = new Error(
+      "Research Learning recovery requires a complete evidence-bearing learning record."
+    );
+    error.code = "RESEARCH_LEARNING_RECOVERY_CANDIDATE_INVALID";
+    error.status = 400;
+    throw error;
+  }
+
+  const serialized = JSON.stringify(record);
+  const bytes = Buffer.byteLength(serialized, "utf8");
+  if (bytes > RESEARCH_LEARNING_RECOVERY_MAX_CANDIDATE_BYTES) {
+    const error = new Error(
+      "Research Learning recovery candidate exceeds the bounded durable envelope."
+    );
+    error.code = "RESEARCH_LEARNING_RECOVERY_CANDIDATE_TOO_LARGE";
+    error.status = 413;
+    throw error;
+  }
+
+  return {
+    record: JSON.parse(serialized),
+    bytes
+  };
+}
+
+async function readResearchLearningRecoveryOutbox() {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  const read =
+    await InstitutionalRepositoryAuthority.read({
+      namespace: RESEARCH_LEARNING_RECOVERY_NAMESPACE,
+      key: RESEARCH_LEARNING_RECOVERY_KEY,
+      classification:
+        RESEARCH_LEARNING_RECOVERY_CLASSIFICATION
+    });
+
+  if (!read?.found) {
+    return {
+      outbox: emptyResearchLearningRecoveryOutbox(),
+      fingerprint: null,
+      found: false
+    };
+  }
+
+  const value =
+    read.value &&
+    typeof read.value === "object" &&
+    !Array.isArray(read.value)
+      ? read.value
+      : emptyResearchLearningRecoveryOutbox();
+
+  const candidates =
+    Array.isArray(value.candidates)
+      ? value.candidates
+          .filter(candidate =>
+            candidate &&
+            candidate.schema ===
+              "meos.research-learning.recovery-candidate.v1" &&
+            candidate.record &&
+            candidate.record.schema ===
+              "meos.research-learning.record.v1"
+          )
+          .slice(-RESEARCH_LEARNING_RECOVERY_MAX_CANDIDATES)
+      : [];
+
+  return {
+    outbox: {
+      schema: "meos.research-learning.recovery-outbox.v1",
+      commission: RESEARCH_LEARNING_RECOVERY_COMMISSION,
+      buildId: RESEARCH_LEARNING_RECOVERY_BUILD_ID,
+      updatedAt:
+        value.updatedAt || new Date().toISOString(),
+      candidates
+    },
+    fingerprint:
+      read?.record?.payloadFingerprint || null,
+    found: true
+  };
+}
+
+async function writeResearchLearningRecoveryOutbox(
+  outbox,
+  expectedPreviousFingerprint = undefined
+) {
+  const normalized = {
+    schema: "meos.research-learning.recovery-outbox.v1",
+    commission: RESEARCH_LEARNING_RECOVERY_COMMISSION,
+    buildId: RESEARCH_LEARNING_RECOVERY_BUILD_ID,
+    updatedAt: new Date().toISOString(),
+    candidates:
+      Array.isArray(outbox?.candidates)
+        ? outbox.candidates.slice(
+            -RESEARCH_LEARNING_RECOVERY_MAX_CANDIDATES
+          )
+        : []
+  };
+
+  const serialized = JSON.stringify(normalized);
+  if (
+    Buffer.byteLength(serialized, "utf8") >
+    RESEARCH_LEARNING_RECOVERY_MAX_OUTBOX_BYTES
+  ) {
+    const error = new Error(
+      "Research Learning recovery outbox exceeds its bounded durable envelope."
+    );
+    error.code = "RESEARCH_LEARNING_RECOVERY_OUTBOX_TOO_LARGE";
+    error.status = 413;
+    throw error;
+  }
+
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  return InstitutionalRepositoryAuthority.write({
+    namespace: RESEARCH_LEARNING_RECOVERY_NAMESPACE,
+    key: RESEARCH_LEARNING_RECOVERY_KEY,
+    classification:
+      RESEARCH_LEARNING_RECOVERY_CLASSIFICATION,
+    value: normalized,
+    metadata: {
+      subsystem: "research-learning",
+      stateClass: "durable-persistence-recovery-outbox",
+      commission: RESEARCH_LEARNING_RECOVERY_COMMISSION,
+      buildId: RESEARCH_LEARNING_RECOVERY_BUILD_ID,
+      externalActionAuthorized: false
+    },
+    expectedPreviousFingerprint
+  });
+}
+
+async function mutateResearchLearningRecoveryOutbox(
+  mutator,
+  options = {}
+) {
+  const maximumAttempts = Math.max(
+    1,
+    Math.min(4, Number(options.maximumAttempts || 4))
+  );
+
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    const current =
+      await readResearchLearningRecoveryOutbox();
+    const next =
+      await mutator(
+        JSON.parse(JSON.stringify(current.outbox))
+      );
+
+    try {
+      const write =
+        await writeResearchLearningRecoveryOutbox(
+          next,
+          current.fingerprint || undefined
+        );
+
+      return {
+        success: true,
+        outbox: next,
+        write,
+        attempts: attempt
+      };
+    } catch (error) {
+      if (
+        error?.code !== "MEOS_REPOSITORY_CONCURRENCY_CONFLICT" ||
+        attempt >= maximumAttempts
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  throw Object.assign(
+    new Error(
+      "Research Learning recovery outbox could not converge."
+    ),
+    {
+      code: "RESEARCH_LEARNING_RECOVERY_OUTBOX_CONVERGENCE_FAILED"
+    }
+  );
+}
+
+async function stageResearchLearningRecoveryCandidate(record = {}) {
+  const validated =
+    validateResearchLearningRecoveryCandidate(record);
+  const candidateKey =
+    researchLearningRecoveryCandidateKey(validated.record);
+  const stagedAt = new Date().toISOString();
+
+  const result =
+    await mutateResearchLearningRecoveryOutbox(outbox => {
+      const existing =
+        outbox.candidates.find(
+          candidate => candidate.key === candidateKey
+        );
+
+      if (existing) {
+        existing.record = validated.record;
+        existing.bytes = validated.bytes;
+        existing.lastStagedAt = stagedAt;
+        existing.stageCount =
+          Number(existing.stageCount || 1) + 1;
+      } else {
+        outbox.candidates.push({
+          schema:
+            "meos.research-learning.recovery-candidate.v1",
+          key: candidateKey,
+          record: validated.record,
+          bytes: validated.bytes,
+          firstStagedAt: stagedAt,
+          lastStagedAt: stagedAt,
+          stageCount: 1,
+          lastPersistenceError: null
+        });
+      }
+
+      if (
+        outbox.candidates.length >
+        RESEARCH_LEARNING_RECOVERY_MAX_CANDIDATES
+      ) {
+        const error = new Error(
+          "Research Learning recovery outbox is full; new research must not overwrite unresolved acquired learning."
+        );
+        error.code =
+          "RESEARCH_LEARNING_RECOVERY_OUTBOX_FULL";
+        error.status = 503;
+        throw error;
+      }
+
+      return outbox;
+    });
+
+  researchLearningRecoveryRuntime.stagedCount += 1;
+  researchLearningRecoveryRuntime.lastStagedAt = stagedAt;
+  researchLearningRecoveryRuntime.lastRecoveryCandidateId =
+    validated.record.id;
+  researchLearningRecoveryRuntime.lastRecoveryError = null;
+
+  return {
+    staged: true,
+    candidateKey,
+    recordId: validated.record.id,
+    bytes: validated.bytes,
+    attempts: result.attempts
+  };
+}
+
+async function markResearchLearningRecoveryFailure(
+  recordId,
+  error
+) {
+  const candidateKey =
+    researchLearningRecoveryCandidateKey({ id: recordId });
+
+  return mutateResearchLearningRecoveryOutbox(outbox => {
+    const candidate =
+      outbox.candidates.find(
+        item => item.key === candidateKey
+      );
+    if (candidate) {
+      candidate.lastPersistenceError = {
+        code:
+          error?.code ||
+          "RESEARCH_LEARNING_PERSISTENCE_FAILED",
+        message:
+          error?.message ||
+          String(error),
+        at: new Date().toISOString()
+      };
+    }
+    return outbox;
+  });
+}
+
+async function clearResearchLearningRecoveryCandidate(recordId) {
+  const candidateKey =
+    researchLearningRecoveryCandidateKey({ id: recordId });
+
+  const result =
+    await mutateResearchLearningRecoveryOutbox(outbox => {
+      outbox.candidates =
+        outbox.candidates.filter(
+          candidate => candidate.key !== candidateKey
+        );
+      return outbox;
+    });
+
+  researchLearningRecoveryRuntime.clearedCount += 1;
+  researchLearningRecoveryRuntime.lastClearedAt =
+    new Date().toISOString();
+
+  return {
+    cleared: true,
+    candidateKey,
+    attempts: result.attempts
+  };
+}
+
+async function persistDurableResearchLearningRecord(
+  record,
+  options = {}
+) {
+  const finalPersister =
+    options.finalPersister ||
+    (async learningRecord =>
+      upsertExecutiveMemoryRecordConvergently(
+        RESEARCH_LEARNING_COLLECTION,
+        learningRecord,
+        { maximumAttempts: 4 }
+      ));
+
+  const upsert = await finalPersister(record);
+
+  researchLearningRuntime.lastWriteAttempts =
+    Number(upsert?.totalAttempts || 0);
+
+  if (upsert?.converged) {
+    researchLearningRuntime.convergedWriteCount += 1;
+  }
+
+  researchLearningRuntime.persistedLearningCount += 1;
+  researchLearningRuntime.lastLearningId = record.id;
+  researchLearningRuntime.lastPersistedAt =
+    new Date().toISOString();
+  researchLearningRuntime.lastError = null;
+
+  return {
+    persisted: true,
+    collection: RESEARCH_LEARNING_COLLECTION,
+    recordId: record.id,
+    evidenceCount: record.evidenceCount,
+    epistemicStatus: record.epistemicStatus,
+    knowledgeEngineIngestionRequired: true,
+    worldModelIntegrationRequired: true,
+    convergedWrite: upsert?.converged === true,
+    recordAttempts:
+      Number(upsert?.recordAttempts || 0),
+    manifestAttempts:
+      Number(upsert?.manifestAttempts || 0)
+  };
+}
+
+async function recoverPendingResearchLearning(
+  options = {}
+) {
+  const current =
+    await readResearchLearningRecoveryOutbox();
+  const requestedRecordIds =
+    Array.isArray(options.recordIds)
+      ? new Set(
+          options.recordIds
+            .map(value => String(value || "").trim())
+            .filter(Boolean)
+        )
+      : null;
+  const candidates =
+    Array.isArray(current.outbox?.candidates)
+      ? current.outbox.candidates
+          .filter(candidate =>
+            !requestedRecordIds ||
+            requestedRecordIds.has(
+              String(candidate?.record?.id || "")
+            )
+          )
+          .slice()
+      : [];
+
+  const results = [];
+
+  for (const candidate of candidates) {
+    const record = candidate?.record;
+    if (!record?.id) continue;
+
+    try {
+      const persisted =
+        await persistDurableResearchLearningRecord(
+          record,
+          options
+        );
+
+      await clearResearchLearningRecoveryCandidate(
+        record.id
+      );
+
+      researchLearningRecoveryRuntime.recoveredCount += 1;
+      researchLearningRecoveryRuntime.lastRecoveredAt =
+        new Date().toISOString();
+      researchLearningRecoveryRuntime.lastRecoveryCandidateId =
+        record.id;
+      researchLearningRecoveryRuntime.lastRecoveryError = null;
+
+      results.push({
+        recordId: record.id,
+        recovered: true,
+        persisted
+      });
+    } catch (error) {
+      researchLearningRecoveryRuntime.failedRecoveryCount += 1;
+      researchLearningRecoveryRuntime.lastRecoveryError = {
+        code:
+          error?.code ||
+          "RESEARCH_LEARNING_RECOVERY_FAILED",
+        message:
+          error?.message ||
+          String(error),
+        at: new Date().toISOString()
+      };
+
+      await markResearchLearningRecoveryFailure(
+        record.id,
+        error
+      ).catch(() => undefined);
+
+      results.push({
+        recordId: record.id,
+        recovered: false,
+        error:
+          researchLearningRecoveryRuntime.lastRecoveryError
+      });
+
+      /*
+       * Bounded recovery is not a retry storm. One startup/manual sweep makes
+       * one persistence attempt per retained candidate and leaves failures
+       * durably visible for the next governed opportunity.
+       */
+    }
+  }
+
+  return {
+    success:
+      results.every(result => result.recovered === true),
+    attempted: results.length,
+    recovered:
+      results.filter(result => result.recovered).length,
+    failed:
+      results.filter(result => !result.recovered).length,
+    providerResearchCalls: 0,
+    externalActionAuthorized: false,
+    results
+  };
+}
+
+function getResearchLearningRecoveryRuntimeStatus() {
+  return {
+    commission: RESEARCH_LEARNING_RECOVERY_COMMISSION,
+    version: RESEARCH_LEARNING_RECOVERY_VERSION,
+    buildId: RESEARCH_LEARNING_RECOVERY_BUILD_ID,
+    ...researchLearningRecoveryRuntime,
+    namespace: RESEARCH_LEARNING_RECOVERY_NAMESPACE,
+    key: RESEARCH_LEARNING_RECOVERY_KEY,
+    classification:
+      RESEARCH_LEARNING_RECOVERY_CLASSIFICATION,
+    maximumCandidates:
+      RESEARCH_LEARNING_RECOVERY_MAX_CANDIDATES,
+    maximumCandidateBytes:
+      RESEARCH_LEARNING_RECOVERY_MAX_CANDIDATE_BYTES,
+    maximumOutboxBytes:
+      RESEARCH_LEARNING_RECOVERY_MAX_OUTBOX_BYTES,
+    recoveryMode:
+      "durable-stage-before-final-learning-write-single-sweep-no-research-rediscovery",
+    providerResearchCallsDuringRecovery: 0,
+    externalActionAuthorized: false
+  };
+}
+
 function stableResearchLearningId(result = {}) {
   const subject = String(result.subject || "unknown")
     .toLowerCase()
@@ -3066,7 +3588,10 @@ async function upsertExecutiveMemoryRecordConvergently(
   };
 }
 
-async function persistDurableResearchLearning(result = {}) {
+async function persistDurableResearchLearning(
+  result = {},
+  options = {}
+) {
   return enqueueResearchLearningWrite(async () => {
     const record = buildDurableResearchLearningRecord(result);
 
@@ -3079,38 +3604,36 @@ async function persistDurableResearchLearning(result = {}) {
       };
     }
 
+    /*
+     * Persistence is now a recoverable transaction:
+     * acquired Research Learning is durably staged under a short, provider-safe
+     * operational identity BEFORE the final institutional-learning upsert.
+     * The staging copy is removed only after the final durable write verifies.
+     */
+    const staged =
+      await stageResearchLearningRecoveryCandidate(
+        record
+      );
+
     try {
-      const upsert =
-        await upsertExecutiveMemoryRecordConvergently(
-          RESEARCH_LEARNING_COLLECTION,
+      const persisted =
+        await persistDurableResearchLearningRecord(
           record,
-          { maximumAttempts: 4 }
+          options
         );
 
-      researchLearningRuntime.lastWriteAttempts =
-        upsert.totalAttempts;
-
-      if (upsert.converged) {
-        researchLearningRuntime.convergedWriteCount += 1;
-      }
-
-      researchLearningRuntime.persistedLearningCount += 1;
-      researchLearningRuntime.lastLearningId = record.id;
-      researchLearningRuntime.lastPersistedAt =
-        new Date().toISOString();
-      researchLearningRuntime.lastError = null;
+      await clearResearchLearningRecoveryCandidate(
+        record.id
+      );
 
       return {
-        persisted: true,
-        collection: RESEARCH_LEARNING_COLLECTION,
-        recordId: record.id,
-        evidenceCount: record.evidenceCount,
-        epistemicStatus: record.epistemicStatus,
-        knowledgeEngineIngestionRequired: true,
-        worldModelIntegrationRequired: true,
-        convergedWrite: upsert.converged,
-        recordAttempts: upsert.recordAttempts,
-        manifestAttempts: upsert.manifestAttempts
+        ...persisted,
+        recovery: {
+          staged: true,
+          cleared: true,
+          candidateKey: staged.candidateKey,
+          providerResearchCalls: 0
+        }
       };
     } catch (error) {
       researchLearningRuntime.failedLearningCount += 1;
@@ -3123,6 +3646,20 @@ async function persistDurableResearchLearning(result = {}) {
           String(error),
         at: new Date().toISOString()
       };
+
+      await markResearchLearningRecoveryFailure(
+        record.id,
+        error
+      ).catch(() => undefined);
+
+      error.researchLearningRecovery = {
+        staged: true,
+        retained: true,
+        candidateKey: staged.candidateKey,
+        recordId: record.id,
+        providerResearchCallsRequired: 0
+      };
+
       throw error;
     }
   });
@@ -3141,7 +3678,8 @@ function getResearchLearningRuntimeStatus() {
       worldModelIntegrationRequired: true,
       externalActionAuthorized: false,
       humanAuthorityPreserved: true
-    }
+    },
+    recovery: getResearchLearningRecoveryRuntimeStatus()
   };
 }
 
@@ -11226,6 +11764,336 @@ app.put(
  * Hot cognition remains runtime memory. Only the bounded persistence contract
  * already defined by Executive Brain is eligible for institutional storage.
  */
+async function runResearchLearningRecoveryContinuityAcceptanceTest() {
+  const learningRuntimeBefore =
+    JSON.parse(JSON.stringify(researchLearningRuntime));
+  const recoveryRuntimeBefore =
+    JSON.parse(JSON.stringify(researchLearningRecoveryRuntime));
+
+  const fixture = {
+    success: true,
+    schema: "meos.headless-research-result.v1",
+    commission: HEADLESS_RESEARCH_COMMISSION,
+    buildId: HEADLESS_RESEARCH_BUILD_ID,
+    subject:
+      `006.018T recovery fixture ${crypto.randomUUID()}`,
+    evidence: [{
+      source: "https://example.test/recovery-evidence",
+      title: "Recovery continuity fixture",
+      retrievedAt: new Date().toISOString(),
+      authoritative: false,
+      evidenceStatus: "retrieved-public-source"
+    }],
+    synthesis: {
+      evidenceQuality: "mixed",
+      retrievedSourceCount: 1,
+      authoritativeSourceCount: 0,
+      directSubjectMatchCount: 1,
+      supportedFacts: [{
+        claim:
+          "A previously acquired research result must survive a final persistence failure.",
+        support: "acceptance-fixture"
+      }],
+      inferences: [],
+      conflicts: [],
+      unknowns: [
+        "Fixture evidence is acceptance-only and is not institutional truth."
+      ],
+      requiresFurtherInvestigation: true
+    },
+    researchLoop: {
+      closure: {
+        autonomous: false,
+        passesExecuted: 1,
+        stopReason: "acceptance-fixture"
+      }
+    }
+  };
+
+  const expectedRecord =
+    buildDurableResearchLearningRecord(fixture);
+  let forcedFailureObserved = false;
+  let recoveredRecord = null;
+  let fixtureCandidateKey = null;
+
+  try {
+    try {
+      await persistDurableResearchLearning(
+        fixture,
+        {
+          finalPersister: async () => {
+            const error = new Error(
+              "006.018T acceptance forces final persistence failure after durable staging."
+            );
+            error.code =
+              "ACCEPTANCE_FORCED_FINAL_PERSISTENCE_FAILURE";
+            throw error;
+          }
+        }
+      );
+    } catch (error) {
+      forcedFailureObserved =
+        error?.code ===
+          "ACCEPTANCE_FORCED_FINAL_PERSISTENCE_FAILURE" &&
+        error?.researchLearningRecovery?.retained === true;
+      fixtureCandidateKey =
+        error?.researchLearningRecovery?.candidateKey || null;
+    }
+
+    /*
+     * Fresh durable read: no reference to the staged in-memory object is used.
+     * This is the restart boundary for the acceptance fixture.
+     */
+    const afterFailure =
+      await readResearchLearningRecoveryOutbox();
+    const retainedCandidate =
+      afterFailure.outbox.candidates.find(
+        candidate =>
+          candidate.record?.id === expectedRecord.id
+      ) || null;
+
+    /*
+     * Recover ONLY the fixture record. A production acceptance must never
+     * consume or clear unrelated real pending recovery candidates.
+     */
+    const recovery =
+      await recoverPendingResearchLearning({
+        recordIds: [expectedRecord.id],
+        finalPersister: async record => {
+          if (record.id === expectedRecord.id) {
+            recoveredRecord =
+              JSON.parse(JSON.stringify(record));
+          }
+
+          return {
+            success: true,
+            converged: false,
+            recordAttempts: 1,
+            manifestAttempts: 1,
+            totalAttempts: 2,
+            acceptanceOnly: true
+          };
+        }
+      });
+
+    const afterRecovery =
+      await readResearchLearningRecoveryOutbox();
+    const candidateStillPresent =
+      afterRecovery.outbox.candidates.some(
+        candidate =>
+          candidate.record?.id === expectedRecord.id
+      );
+
+    const checks = [
+      {
+        name:
+          "Acquired Research Learning is durably staged before the final institutional-learning write",
+        passed:
+          forcedFailureObserved &&
+          Boolean(fixtureCandidateKey)
+      },
+      {
+        name:
+          "A forced final persistence failure leaves the exact learning candidate in durable recovery state",
+        passed:
+          retainedCandidate?.record?.id ===
+            expectedRecord.id &&
+          JSON.stringify(retainedCandidate.record) ===
+            JSON.stringify(expectedRecord)
+      },
+      {
+        name:
+          "Fresh recovery reads the candidate from Repository Authority rather than an in-memory reference",
+        passed:
+          afterFailure.found === true &&
+          retainedCandidate?.record?.schema ===
+            "meos.research-learning.record.v1"
+      },
+      {
+        name:
+          "Persistence-only recovery receives the exact originally staged learning record",
+        passed:
+          JSON.stringify(recoveredRecord) ===
+            JSON.stringify(expectedRecord)
+      },
+      {
+        name:
+          "Successful recovery clears only the completed candidate from the durable outbox",
+        passed:
+          candidateStillPresent === false
+      },
+      {
+        name:
+          "Acceptance recovery is scoped so unrelated pending learning cannot be consumed",
+        passed:
+          recovery.attempted === 1
+      },
+      {
+        name:
+          "Recovery performs zero public research provider calls",
+        passed:
+          recovery.providerResearchCalls === 0
+      },
+      {
+        name:
+          "Recovery is a bounded single sweep rather than a retry storm",
+        passed:
+          recovery.failed === 0
+      },
+      {
+        name:
+          "Recovery does not grant external-action authority",
+        passed:
+          recovery.externalActionAuthorized === false
+      }
+    ];
+
+    const passed =
+      checks.filter(check => check.passed).length;
+
+    return {
+      success: passed === checks.length,
+      commission: RESEARCH_LEARNING_RECOVERY_COMMISSION,
+      schema:
+        "meos.research-learning.recovery-continuity-acceptance.v1",
+      version: VERSION,
+      buildId: RESEARCH_LEARNING_RECOVERY_BUILD_ID,
+      passed,
+      total: checks.length,
+      providerResearchCalls: 0,
+      externalActionAuthorized: false,
+      checks
+    };
+  } finally {
+    /*
+     * Defensive fixture cleanup and telemetry restoration. The acceptance may
+     * exercise the real durable recovery boundary, but it must not leave fake
+     * learning or fake production counters behind.
+     */
+    await clearResearchLearningRecoveryCandidate(
+      expectedRecord.id
+    ).catch(() => undefined);
+
+    Object.assign(
+      researchLearningRuntime,
+      learningRuntimeBefore
+    );
+    Object.assign(
+      researchLearningRecoveryRuntime,
+      recoveryRuntimeBefore
+    );
+  }
+}
+
+
+app.get(
+  "/api/research-learning-recovery-runtime",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const durable =
+        await readResearchLearningRecoveryOutbox();
+
+      response.status(200).json({
+        ...getResearchLearningRecoveryRuntimeStatus(),
+        pendingCandidateCount:
+          durable.outbox.candidates.length,
+        pendingRecordIds:
+          durable.outbox.candidates.map(
+            candidate => candidate.record?.id
+          ).filter(Boolean)
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        ...getResearchLearningRecoveryRuntimeStatus(),
+        error: {
+          code:
+            error?.code ||
+            "RESEARCH_LEARNING_RECOVERY_STATUS_FAILED",
+          message:
+            error?.message ||
+            String(error)
+        }
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/research-learning-recovery",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const result =
+        await enqueueResearchLearningWrite(() =>
+          recoverPendingResearchLearning()
+        );
+
+      response.status(
+        result.success ? 200 : 503
+      ).json(result);
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        success: false,
+        commission:
+          RESEARCH_LEARNING_RECOVERY_COMMISSION,
+        buildId:
+          RESEARCH_LEARNING_RECOVERY_BUILD_ID,
+        error: {
+          code:
+            error?.code ||
+            "RESEARCH_LEARNING_RECOVERY_FAILED",
+          message:
+            error?.message ||
+            String(error)
+        },
+        providerResearchCalls: 0,
+        externalActionAuthorized: false
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/research-learning-recovery-acceptance",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    try {
+      const result =
+        await runResearchLearningRecoveryContinuityAcceptanceTest();
+
+      response
+        .status(result.success ? 200 : 500)
+        .json(result);
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        success: false,
+        commission:
+          RESEARCH_LEARNING_RECOVERY_COMMISSION,
+        schema:
+          "meos.research-learning.recovery-continuity-acceptance.v1",
+        version: VERSION,
+        buildId:
+          RESEARCH_LEARNING_RECOVERY_BUILD_ID,
+        error: {
+          code:
+            error?.code ||
+            "RESEARCH_LEARNING_RECOVERY_ACCEPTANCE_FAILED",
+          message:
+            error?.message ||
+            String(error)
+        },
+        providerResearchCalls: 0,
+        externalActionAuthorized: false
+      });
+    }
+  }
+);
+
+
 app.get(
   "/api/research-learning-runtime",
   (request, response) => {
@@ -20795,7 +21663,7 @@ app.listen(PORT, () => {
   );
 
   ensureGoogleWorkspaceInitialized()
-    .then(status => {
+    .then(async status => {
       console.log(
         `[MEOS] Google Workspace Integration ` +
           `v${GOOGLE_WORKSPACE_INTEGRATION_VERSION} initialized. ` +
@@ -20804,6 +21672,40 @@ app.listen(PORT, () => {
           `mode=${status.mode}, ` +
           `build=${GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID}.`
       );
+
+      if (status.connected) {
+        researchLearningRecoveryRuntime.startupRecoveryRuns += 1;
+        try {
+          const recovery =
+            await enqueueResearchLearningWrite(() =>
+              recoverPendingResearchLearning()
+            );
+
+          if (recovery.attempted > 0) {
+            console.log(
+              `[MEOS Research Learning Recovery] Startup sweep ` +
+                `attempted=${recovery.attempted}, ` +
+                `recovered=${recovery.recovered}, ` +
+                `failed=${recovery.failed}.`
+            );
+          }
+        } catch (error) {
+          researchLearningRecoveryRuntime.lastRecoveryError = {
+            code:
+              error?.code ||
+              "RESEARCH_LEARNING_STARTUP_RECOVERY_FAILED",
+            message:
+              error?.message ||
+              String(error),
+            at: new Date().toISOString()
+          };
+
+          console.error(
+            "[MEOS Research Learning Recovery] Startup sweep failed visibly:",
+            error
+          );
+        }
+      }
     })
     .catch(error => {
       console.error(
