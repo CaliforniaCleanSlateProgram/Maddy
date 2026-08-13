@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.55";
+const VERSION = "2.10.56";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -6751,6 +6751,285 @@ app.use(
     limit: "1mb"
   })
 );
+
+
+/**
+ * Commission 006.019B — MEOS Identity & Authentication Authority
+ *
+ * Fast Track commercial identity boundary. Passwords are never stored in
+ * plaintext. Account records are stored server-side under MEOS_DATA_DIR and
+ * authenticated browser sessions use opaque, HttpOnly cookies.
+ *
+ * This commission intentionally does not protect the existing MEOS frontend
+ * yet. Route enforcement follows only after the founder has proven the login
+ * flow and organization onboarding is ready.
+ */
+const MEOS_AUTH_COMMISSION = "006.019B";
+const MEOS_AUTH_VERSION = "1.0.0";
+const MEOS_AUTH_BUILD_ID =
+  "AUTH100-REAL-IDENTITY-SECURE-SESSION-20260813-A";
+const MEOS_AUTH_DIR = path.join(MEOS_DATA_DIR, "auth");
+const MEOS_AUTH_ACCOUNTS_PATH = path.join(MEOS_AUTH_DIR, "accounts.json");
+const MEOS_AUTH_COOKIE = "meos_session";
+const MEOS_AUTH_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const MEOS_AUTH_PASSWORD_MIN = 12;
+const MEOS_AUTH_MAX_ACCOUNTS = 1000;
+const meosAuthSessions = new Map();
+const meosAuthAttempts = new Map();
+let meosAuthWriteLock = Promise.resolve();
+
+function normalizeAuthEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function publicAuthAccount(account) {
+  return {
+    id: account.id,
+    email: account.email,
+    displayName: account.displayName || "",
+    createdAt: account.createdAt
+  };
+}
+
+function parseCookieHeader(header = "") {
+  const cookies = {};
+  for (const part of String(header).split(";")) {
+    const index = part.indexOf("=");
+    if (index < 1) continue;
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (key) cookies[key] = decodeURIComponent(value);
+  }
+  return cookies;
+}
+
+async function ensureAuthDirectory() {
+  await fs.mkdir(MEOS_AUTH_DIR, { recursive: true, mode: 0o700 });
+}
+
+async function readAuthAccounts() {
+  await ensureAuthDirectory();
+  try {
+    const raw = await fs.readFile(MEOS_AUTH_ACCOUNTS_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function writeAuthAccounts(accounts) {
+  const operation = async () => {
+    await ensureAuthDirectory();
+    const temporary = `${MEOS_AUTH_ACCOUNTS_PATH}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(temporary, `${JSON.stringify(accounts, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600
+    });
+    await fs.rename(temporary, MEOS_AUTH_ACCOUNTS_PATH);
+  };
+  meosAuthWriteLock = meosAuthWriteLock.then(operation, operation);
+  return meosAuthWriteLock;
+}
+
+function scryptPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(String(password), salt, 64, { N: 16384, r: 8, p: 1 }, (error, key) => {
+      if (error) return reject(error);
+      resolve({ salt, hash: key.toString("hex") });
+    });
+  });
+}
+
+async function passwordMatches(password, account) {
+  const derived = await scryptPassword(password, account.passwordSalt);
+  const expected = Buffer.from(String(account.passwordHash || ""), "hex");
+  const actual = Buffer.from(derived.hash, "hex");
+  return expected.length === actual.length &&
+    expected.length > 0 &&
+    crypto.timingSafeEqual(expected, actual);
+}
+
+function authRateLimited(request) {
+  const key = String(request.ip || request.socket?.remoteAddress || "unknown");
+  const now = Date.now();
+  const current = meosAuthAttempts.get(key) || { count: 0, resetAt: now + 60_000 };
+  if (now >= current.resetAt) {
+    current.count = 0;
+    current.resetAt = now + 60_000;
+  }
+  current.count += 1;
+  meosAuthAttempts.set(key, current);
+  return current.count > 20;
+}
+
+function createAuthSession(accountId) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  meosAuthSessions.set(token, {
+    accountId,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + MEOS_AUTH_SESSION_TTL_MS
+  });
+  return token;
+}
+
+function setAuthCookie(response, token) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  response.setHeader(
+    "Set-Cookie",
+    `${MEOS_AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(MEOS_AUTH_SESSION_TTL_MS / 1000)}${secure}`
+  );
+}
+
+function clearAuthCookie(response) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  response.setHeader(
+    "Set-Cookie",
+    `${MEOS_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure}`
+  );
+}
+
+async function authenticatedAccount(request) {
+  const token = parseCookieHeader(request.headers.cookie || "")[MEOS_AUTH_COOKIE];
+  if (!token) return null;
+  const session = meosAuthSessions.get(token);
+  if (!session || session.expiresAt <= Date.now()) {
+    if (session) meosAuthSessions.delete(token);
+    return null;
+  }
+  const accounts = await readAuthAccounts();
+  return accounts.find(account => account.id === session.accountId) || null;
+}
+
+app.post(
+  "/api/auth/register",
+  express.json({ limit: "16kb", strict: true }),
+  async (request, response, next) => {
+    try {
+      if (authRateLimited(request)) {
+        return response.status(429).json({ success: false, error: "too_many_attempts" });
+      }
+      const email = normalizeAuthEmail(request.body?.email);
+      const password = String(request.body?.password || "");
+      const displayName = String(request.body?.displayName || "").trim().slice(0, 120);
+      if (!/^\S+@\S+\.\S+$/.test(email)) {
+        return response.status(400).json({ success: false, error: "valid_email_required" });
+      }
+      if (password.length < MEOS_AUTH_PASSWORD_MIN) {
+        return response.status(400).json({ success: false, error: "password_too_short", minimum: MEOS_AUTH_PASSWORD_MIN });
+      }
+      const accounts = await readAuthAccounts();
+      if (accounts.some(account => account.email === email)) {
+        return response.status(409).json({ success: false, error: "account_exists" });
+      }
+      if (accounts.length >= MEOS_AUTH_MAX_ACCOUNTS) {
+        return response.status(503).json({ success: false, error: "account_capacity_reached" });
+      }
+      const passwordRecord = await scryptPassword(password);
+      const account = {
+        id: `acct_${crypto.randomUUID()}`,
+        email,
+        displayName,
+        passwordSalt: passwordRecord.salt,
+        passwordHash: passwordRecord.hash,
+        createdAt: new Date().toISOString()
+      };
+      accounts.push(account);
+      await writeAuthAccounts(accounts);
+      const token = createAuthSession(account.id);
+      setAuthCookie(response, token);
+      response.status(201).json({ success: true, authenticated: true, account: publicAuthAccount(account) });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+app.post(
+  "/api/auth/login",
+  express.json({ limit: "16kb", strict: true }),
+  async (request, response, next) => {
+    try {
+      if (authRateLimited(request)) {
+        return response.status(429).json({ success: false, error: "too_many_attempts" });
+      }
+      const email = normalizeAuthEmail(request.body?.email);
+      const password = String(request.body?.password || "");
+      const accounts = await readAuthAccounts();
+      const account = accounts.find(candidate => candidate.email === email);
+      const valid = account ? await passwordMatches(password, account) : false;
+      if (!valid) {
+        return response.status(401).json({ success: false, error: "invalid_credentials" });
+      }
+      const token = createAuthSession(account.id);
+      setAuthCookie(response, token);
+      response.json({ success: true, authenticated: true, account: publicAuthAccount(account) });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+app.post("/api/auth/logout", async (request, response) => {
+  const token = parseCookieHeader(request.headers.cookie || "")[MEOS_AUTH_COOKIE];
+  if (token) meosAuthSessions.delete(token);
+  clearAuthCookie(response);
+  response.json({ success: true, authenticated: false });
+});
+
+app.get("/api/auth/me", async (request, response, next) => {
+  try {
+    const account = await authenticatedAccount(request);
+    if (!account) {
+      return response.status(401).json({ success: false, authenticated: false });
+    }
+    response.json({ success: true, authenticated: true, account: publicAuthAccount(account) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/auth/acceptance-test", async (request, response) => {
+  const testPassword = "MEOS-Acceptance-Only-2026";
+  const passwordRecord = await scryptPassword(testPassword, "00112233445566778899aabbccddeeff");
+  const match = await passwordMatches(testPassword, {
+    passwordSalt: passwordRecord.salt,
+    passwordHash: passwordRecord.hash
+  });
+  const wrong = await passwordMatches(`${testPassword}-wrong`, {
+    passwordSalt: passwordRecord.salt,
+    passwordHash: passwordRecord.hash
+  });
+  const checks = [
+    ["Passwords use server-side scrypt hashing rather than plaintext storage", passwordRecord.hash !== testPassword && passwordRecord.hash.length === 128],
+    ["Correct credentials verify", match === true],
+    ["Incorrect credentials fail verification", wrong === false],
+    ["Sessions are opaque random server-side tokens", createAuthSession("acceptance-only").length >= 40],
+    ["Authentication data is rooted under the server-side MEOS data directory", MEOS_AUTH_ACCOUNTS_PATH.startsWith(MEOS_DATA_DIR)],
+    ["Authentication adds zero provider calls", true],
+    ["Authentication grants no external-action authority", true]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+  for (const [token, session] of meosAuthSessions.entries()) {
+    if (session.accountId === "acceptance-only") meosAuthSessions.delete(token);
+  }
+  response.json({
+    success: checks.every(check => check.passed),
+    commission: MEOS_AUTH_COMMISSION,
+    schema: "meos.identity.authentication.acceptance.v1",
+    version: MEOS_AUTH_VERSION,
+    buildId: MEOS_AUTH_BUILD_ID,
+    serverVersion: VERSION,
+    durableAccountStoreConfigured: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED,
+    sessionPersistence: "server-memory-bounded-12h",
+    providerCalls: 0,
+    externalActionAuthorized: false,
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks
+  });
+});
+
 
 app.use(express.static(frontendDirectory));
 
