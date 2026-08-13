@@ -1,4 +1,7 @@
 <!DOCTYPE html>
+<!-- Commission 006.019D — First-Customer Progressive Welcome Experience
+     Build: FTW100-AUTHENTICATED-MADDY-DISCOVERY-20260813-A
+     Reuses 006.019B authentication + 006.019C discovery authority. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -426,6 +429,18 @@
           <button class="submit" id="signinButton" type="submit">Sign in to MEOS</button>
           <button class="submit secondary" id="createAccountButton" type="button">Create account</button>
           <p class="preview-note" id="authNote" role="status">Secure MEOS account access.</p>
+
+          <section id="discoveryPanel" hidden aria-live="polite" style="margin-top:8px;padding:18px;border:1px solid #d9d4ca;border-radius:12px;background:#fbfaf7;">
+            <p class="eyebrow" style="margin-bottom:8px;">Maddy · Getting oriented</p>
+            <p id="discoveryQuestion" style="margin:0 0 14px;color:#303844;font-size:15px;line-height:1.55;">What are you hoping Maddy can help you accomplish?</p>
+            <label>
+              Tell Maddy in your own words
+              <input id="discoveryInput" type="text" autocomplete="off" placeholder="I want to open a flower shop…">
+            </label>
+            <button class="submit" id="discoverySend" type="button">Tell Maddy</button>
+            <button class="submit secondary" id="enterOfficeButton" type="button" hidden>Enter my executive office</button>
+            <p class="preview-note" id="discoveryNote" role="status" style="margin-top:10px;">Maddy will ask before she assumes.</p>
+          </section>
         </form>
 
         <div class="trust-line">
@@ -458,6 +473,12 @@
       const signInButton = document.getElementById("signinButton");
       const createAccountButton = document.getElementById("createAccountButton");
       const note = document.getElementById("authNote");
+      const discoveryPanel = document.getElementById("discoveryPanel");
+      const discoveryQuestion = document.getElementById("discoveryQuestion");
+      const discoveryInput = document.getElementById("discoveryInput");
+      const discoverySend = document.getElementById("discoverySend");
+      const discoveryNote = document.getElementById("discoveryNote");
+      const enterOfficeButton = document.getElementById("enterOfficeButton");
 
       function credentials() {
         const data = new FormData(form);
@@ -510,9 +531,7 @@
               ? "Account created. You are securely signed in to MEOS."
               : "Signed in securely. Your MEOS session is active.";
 
-          window.setTimeout(function () {
-            window.location.assign("/");
-          }, 450);
+          await beginDiscovery();
         } catch (error) {
           note.textContent = error && error.message
             ? error.message
@@ -521,6 +540,77 @@
           setBusy(false);
         }
       }
+
+
+      function setDiscoveryVisible(visible) {
+        discoveryPanel.hidden = !visible;
+        form.querySelectorAll("label, #signinButton, #createAccountButton").forEach(function (element) {
+          element.hidden = visible;
+        });
+      }
+
+      async function loadDiscovery() {
+        const response = await fetch("/api/customer-discovery", { credentials: "same-origin", cache: "no-store" });
+        if (response.status === 401) return null;
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || "Maddy could not load your starting context.");
+        return result.profile || null;
+      }
+
+      function renderDiscovery(profile) {
+        if (!profile) return;
+        setDiscoveryVisible(true);
+        discoveryQuestion.textContent = profile.discovery?.nextQuestion || "What are you hoping Maddy can help you accomplish?";
+        const established = profile.discovery?.state === "intent-established" || Boolean(profile.explicit?.activeIntent);
+        enterOfficeButton.hidden = !established;
+        discoveryNote.textContent = established
+          ? "I heard your objective. Keep going if there is something important I should understand, or enter your office and we can work from here."
+          : "Start with what you actually want. Maddy will build from your intent instead of guessing.";
+        window.setTimeout(function () { discoveryInput.focus(); }, 0);
+      }
+
+      async function beginDiscovery() {
+        try {
+          const profile = await loadDiscovery();
+          if (!profile) return;
+          if (profile.explicit?.activeIntent && profile.discovery?.state === "intent-established") {
+            window.location.assign("/");
+            return;
+          }
+          renderDiscovery(profile);
+        } catch (error) {
+          note.textContent = error?.message || "Maddy could not start customer discovery.";
+        }
+      }
+
+      async function sendDiscoveryObservation() {
+        const utterance = String(discoveryInput.value || "").trim();
+        if (!utterance) { discoveryInput.focus(); return; }
+        discoverySend.disabled = true;
+        discoveryNote.textContent = "Maddy is listening…";
+        try {
+          const response = await fetch("/api/customer-discovery/observe", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ utterance: utterance })
+          });
+          const result = await response.json();
+          if (!response.ok || !result.success) throw new Error(result.error || "Maddy could not save what you told her.");
+          discoveryInput.value = "";
+          renderDiscovery(result.profile);
+        } catch (error) {
+          discoveryNote.textContent = error?.message || "Maddy could not save what you told her.";
+        } finally {
+          discoverySend.disabled = false;
+        }
+      }
+
+      discoverySend.addEventListener("click", sendDiscoveryObservation);
+      discoveryInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") { event.preventDefault(); sendDiscoveryObservation(); }
+      });
+      enterOfficeButton.addEventListener("click", function () { window.location.assign("/"); });
 
       form.addEventListener("submit", function (event) {
         event.preventDefault();
@@ -542,7 +632,8 @@
         })
         .then(function (result) {
           if (result && result.success && result.authenticated !== false) {
-            note.textContent = "Your MEOS session is already active. Sign in again only if you want to refresh access.";
+            note.textContent = "Your MEOS session is active. Maddy is restoring your customer context…";
+            beginDiscovery();
           }
         })
         .catch(function () {
