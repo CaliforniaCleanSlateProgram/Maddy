@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Secure executive access to MEOS — Maddy Executive Operating System">
+  <title>MEOS | Executive Sign In</title>
+  <style>
+    :root {
+      --ink: #18202a;
+      --muted: #6b7280;
+      --navy: #17263a;
+      --navy-soft: #253a53;
+      --paper: #f7f4ee;
+      --paper-deep: #eee9df;
+      --line: #d9d4ca;
+      --white: #ffffff;
+      --walnut: #74533a;
+      --walnut-dark: #4f3827;
+      --success: #2f6b55;
+      --shadow: 0 28px 70px rgba(24, 32, 42, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px) 0 0 / 64px 64px,
+        linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px) 0 0 / 64px 64px,
+        var(--paper-deep);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 76% 28%, rgba(116,83,58,.14), transparent 32%);
+    }
+
+    .page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .masthead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 28px clamp(24px, 5vw, 72px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      background: var(--navy);
+      color: white;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      box-shadow: 0 10px 24px rgba(23,38,58,.16);
+    }
+
+    .brand-copy strong {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 20px;
+      letter-spacing: .02em;
+    }
+
+    .brand-copy span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .masthead-note {
+      color: #737373;
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 40px));
+      margin: auto;
+      display: grid;
+      grid-template-columns: minmax(0, .92fr) minmax(420px, 1.08fr);
+      overflow: hidden;
+      border: 1px solid rgba(79,56,39,.14);
+      border-radius: 22px;
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .signin {
+      padding: clamp(42px, 6vw, 78px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 650px;
+    }
+
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--walnut);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 510px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(38px, 4.2vw, 58px);
+      font-weight: 500;
+      line-height: 1.02;
+      letter-spacing: -.035em;
+    }
+
+    .intro {
+      margin: 20px 0 34px;
+      max-width: 470px;
+      color: #59616b;
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .form {
+      display: grid;
+      gap: 19px;
+      max-width: 470px;
+    }
+
+    label {
+      display: grid;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 650;
+      color: #303844;
+    }
+
+    input {
+      width: 100%;
+      height: 52px;
+      border: 1px solid #cbc7bf;
+      border-radius: 9px;
+      background: #fbfaf7;
+      padding: 0 15px;
+      color: var(--ink);
+      font: inherit;
+      outline: none;
+      transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+
+    input::placeholder { color: #9a9a96; }
+
+    input:focus {
+      border-color: var(--navy-soft);
+      background: white;
+      box-shadow: 0 0 0 3px rgba(37,58,83,.10);
+    }
+
+    .password-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .password-row span:last-child {
+      color: #8b857c;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .submit {
+      margin-top: 4px;
+      height: 54px;
+      border: 0;
+      border-radius: 9px;
+      background: var(--navy);
+      color: white;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      cursor: pointer;
+      box-shadow: 0 12px 28px rgba(23,38,58,.18);
+      transition: transform .15s ease, background .15s ease, box-shadow .15s ease;
+    }
+
+    .submit:hover { background: #203650; box-shadow: 0 14px 32px rgba(23,38,58,.22); }
+    .submit:active { transform: translateY(1px); }
+
+    .preview-note {
+      min-height: 39px;
+      margin: 2px 0 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #f4f1eb;
+      color: #6f675d;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .trust-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 27px;
+      max-width: 470px;
+      color: #737980;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .trust-lock {
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #eef1f4;
+      color: var(--navy);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .welcome {
+      position: relative;
+      min-height: 650px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(18,31,47,.08), rgba(18,31,47,.48)),
+        #c9c5bd;
+    }
+
+    .welcome::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background:
+        linear-gradient(90deg, transparent 0 73%, rgba(255,255,255,.08) 73% 73.4%, transparent 73.4%),
+        linear-gradient(0deg, rgba(15,23,35,.28), transparent 38%);
+      pointer-events: none;
+    }
+
+    .welcome::after {
+      content: "";
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      bottom: 44px;
+      height: 12px;
+      z-index: 3;
+      border-radius: 50%;
+      background: rgba(0,0,0,.24);
+      filter: blur(14px);
+    }
+
+    .maddy {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 24%;
+      transform: scale(1.015);
+    }
+
+    .welcome-card {
+      position: absolute;
+      z-index: 4;
+      left: 36px;
+      right: 36px;
+      bottom: 34px;
+      padding: 20px 22px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 14px;
+      color: white;
+      background: rgba(20,32,47,.72);
+      box-shadow: 0 12px 36px rgba(0,0,0,.22);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .welcome-card .role {
+      margin-bottom: 7px;
+      color: rgba(255,255,255,.72);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+
+    .welcome-card strong {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 24px;
+      font-weight: 500;
+    }
+
+    .welcome-card p {
+      margin: 7px 0 0;
+      color: rgba(255,255,255,.82);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 24px clamp(24px, 5vw, 72px) 30px;
+      color: #827d75;
+      font-size: 11px;
+    }
+
+    footer span:last-child { text-align: right; }
+
+    @media (max-width: 860px) {
+      .masthead-note { display: none; }
+      .shell { grid-template-columns: 1fr; width: min(640px, calc(100% - 28px)); }
+      .welcome { min-height: 420px; order: -1; }
+      .signin { min-height: 0; padding: 42px 28px 48px; }
+      .maddy { object-position: center 26%; }
+      .welcome-card { left: 22px; right: 22px; bottom: 22px; }
+      footer { flex-direction: column; }
+      footer span:last-child { text-align: left; }
+    }
+
+    @media (max-width: 520px) {
+      .masthead { padding: 20px 18px; }
+      .brand-copy strong { font-size: 18px; }
+      .shell { width: calc(100% - 18px); border-radius: 16px; }
+      .welcome { min-height: 340px; }
+      .welcome-card { padding: 16px; }
+      .welcome-card strong { font-size: 21px; }
+      h1 { font-size: 40px; }
+      footer { padding: 20px 18px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <div class="brand" aria-label="MEOS — Maddy Executive Operating System">
+        <div class="brand-mark" aria-hidden="true">M</div>
+        <div class="brand-copy">
+          <strong>MEOS</strong>
+          <span>Maddy Executive Operating System</span>
+        </div>
+      </div>
+      <div class="masthead-note">Executive Office Access</div>
+    </header>
+
+    <main class="shell" aria-labelledby="signinTitle">
+      <section class="signin">
+        <p class="eyebrow">Welcome back</p>
+        <h1 id="signinTitle">Enter your executive office.</h1>
+        <p class="intro">
+          Sign in to continue with Maddy and your organization's executive workspace.
+        </p>
+
+        <form class="form" id="previewSigninForm">
+          <label>
+            Work email
+            <input type="email" name="email" autocomplete="email" placeholder="you@organization.org" required>
+          </label>
+
+          <label>
+            <span class="password-row">
+              <span>Password</span>
+              <span>Secure access preview</span>
+            </span>
+            <input type="password" name="password" autocomplete="current-password" placeholder="Enter your password" required>
+          </label>
+
+          <button class="submit" type="submit">Sign in to MEOS</button>
+          <p class="preview-note" id="previewNote" role="status">
+            Static Fast Track preview. Authentication is intentionally not active yet.
+          </p>
+        </form>
+
+        <div class="trust-line">
+          <span class="trust-lock" aria-hidden="true">✓</span>
+          <span>Organization access, authority, and data boundaries will be verified by MEOS before this page becomes an active sign-in gateway.</span>
+        </div>
+      </section>
+
+      <aside class="welcome" aria-label="Maddy executive welcome">
+        <img class="maddy" src="maddy-canonical-v2.png" alt="Maddy, MEOS executive presence">
+        <div class="welcome-card">
+          <div class="role">Your Executive Office</div>
+          <strong>Maddy is ready when you are.</strong>
+          <p>One office. One organizational memory. One place to bring the work that matters.</p>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      <span>MEOS · Executive access</span>
+      <span>Fast Track preview · Authentication not yet connected</span>
+    </footer>
+  </div>
+
+  <script>
+    document.getElementById("previewSigninForm").addEventListener("submit", function (event) {
+      event.preventDefault();
+      document.getElementById("previewNote").textContent =
+        "Preview only — no credentials were sent or stored. Secure authentication will be activated for the CCSP Customer Zero trial.";
+    });
+  </script>
+</body>
+</html>
