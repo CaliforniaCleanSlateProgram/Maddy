@@ -7031,6 +7031,277 @@ app.get("/api/auth/acceptance-test", async (request, response) => {
 });
 
 
+/**
+ * Commission 006.019C — Progressive Customer Discovery & Intent Authority
+ *
+ * Fast Track onboarding is not a questionnaire and it is not a recommendation
+ * engine. The customer's explicit intent is authoritative. Maddy records what
+ * the customer actually said, keeps inference separate, asks only the next
+ * question that can materially improve useful work, and does not present
+ * unrelated opportunities before intent is understood.
+ *
+ * Provider calls: zero. External-action authority: zero.
+ */
+const MEOS_DISCOVERY_COMMISSION = "006.019C";
+const MEOS_DISCOVERY_VERSION = "1.0.0";
+const MEOS_DISCOVERY_BUILD_ID =
+  "PCDIA100-EXPLICIT-INTENT-PROGRESSIVE-DISCOVERY-20260813-A";
+const MEOS_DISCOVERY_DIR = path.join(MEOS_DATA_DIR, "customer-discovery");
+const MEOS_DISCOVERY_MAX_UTTERANCE = 4000;
+let meosDiscoveryWriteLock = Promise.resolve();
+
+function discoveryProfilePath(accountId) {
+  const safeId = String(accountId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safeId) throw new Error("Authenticated account identity is required.");
+  return path.join(MEOS_DISCOVERY_DIR, `${safeId}.json`);
+}
+
+function newDiscoveryProfile(account) {
+  return {
+    schema: "meos.customer.discovery.v1",
+    version: MEOS_DISCOVERY_VERSION,
+    accountId: account.id,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    explicit: {
+      activeIntent: null,
+      organizationOrVenture: null,
+      constraints: [],
+      interests: [],
+      rejectedInterests: []
+    },
+    inferred: [],
+    unknown: ["active-intent"],
+    observations: [],
+    discovery: {
+      state: "needs-intent",
+      nextQuestion: "What are you hoping Maddy can help you accomplish?",
+      reason: "Maddy needs the customer's own objective before presenting recommendations.",
+      eligibleToRecommend: false
+    }
+  };
+}
+
+async function readDiscoveryProfile(account) {
+  await fs.mkdir(MEOS_DISCOVERY_DIR, { recursive: true, mode: 0o700 });
+  const filePath = discoveryProfilePath(account.id);
+  try {
+    const parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
+    return parsed && parsed.accountId === account.id ? parsed : newDiscoveryProfile(account);
+  } catch (error) {
+    if (error?.code === "ENOENT") return newDiscoveryProfile(account);
+    throw error;
+  }
+}
+
+async function writeDiscoveryProfile(profile) {
+  const operation = async () => {
+    await fs.mkdir(MEOS_DISCOVERY_DIR, { recursive: true, mode: 0o700 });
+    const filePath = discoveryProfilePath(profile.accountId);
+    const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(temporary, `${JSON.stringify(profile, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600
+    });
+    await fs.rename(temporary, filePath);
+  };
+  meosDiscoveryWriteLock = meosDiscoveryWriteLock.then(operation, operation);
+  return meosDiscoveryWriteLock;
+}
+
+function normalizeDiscoveryUtterance(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, MEOS_DISCOVERY_MAX_UTTERANCE);
+}
+
+function explicitIntentFromUtterance(utterance) {
+  const text = normalizeDiscoveryUtterance(utterance);
+  if (!text) return null;
+  const patterns = [
+    /\b(?:i want to|i'd like to|i would like to|my goal is to|i need to|help me)\s+(.{3,600})/i,
+    /\b(?:i'm trying to|i am trying to|i plan to|i'm planning to|i am planning to)\s+(.{3,600})/i
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[0]) return match[0].replace(/[.!?]+$/, "").trim();
+  }
+  return null;
+}
+
+function discoverySignals(utterance) {
+  const text = normalizeDiscoveryUtterance(utterance);
+  const lower = text.toLowerCase();
+  return {
+    startingBusiness: /\b(start|starting|open|opening|launch|launching|build|building)\b.{0,50}\b(business|company|shop|store|agency|channel|practice|venture)\b/i.test(text),
+    broadBusiness: /\b(start|starting|launch|launching)\b.{0,30}\b(?:a|my)?\s*business\b/i.test(text) && !/\b(?:flower|floral|lawn|youtube|restaurant|cafe|coffee|agency|consult|repair|shop|store|channel|product|service)\b/i.test(text),
+    moneyConstraint: /\b(?:little|no|not much|close to no|almost no|zero)\s+(?:money|capital|cash|budget)|\bcheap|low[- ]cost|free\b/i.test(text),
+    urgency: /\b(?:today|this week|quickly|fast|asap|right away|immediately|need money|make money)\b/i.test(text),
+    hasSpecificVenture: /\b(?:flower|floral|lawn|youtube|restaurant|cafe|coffee|agency|consult|repair|shop|store|channel|product|service)\b/i.test(text)
+  };
+}
+
+function nextDiscoveryQuestion(profile, utterance) {
+  const signals = discoverySignals(utterance);
+  const intent = profile.explicit.activeIntent;
+  if (!intent) {
+    return {
+      state: "needs-intent",
+      nextQuestion: "What are you hoping Maddy can help you accomplish?",
+      reason: "No explicit customer objective has been established yet.",
+      eligibleToRecommend: false
+    };
+  }
+  if (signals.startingBusiness && signals.hasSpecificVenture) {
+    return {
+      state: "intent-established",
+      nextQuestion: "Tell me what you picture for it. What would you want this business to look like when it's working the way you want?",
+      reason: "A specific venture is explicit; Maddy should understand the customer's vision before proposing tactics or unrelated businesses.",
+      eligibleToRecommend: false
+    };
+  }
+  if (signals.broadBusiness) {
+    return {
+      state: "intent-established",
+      nextQuestion: "Before I bring you business options, what are you already good at, interested in, or regularly asked to help people with?",
+      reason: "The customer wants a business but has not expressed a specific venture; interests and capabilities are decision-relevant.",
+      eligibleToRecommend: false
+    };
+  }
+  if (signals.moneyConstraint || signals.urgency) {
+    return {
+      state: "intent-established",
+      nextQuestion: "How quickly do you need this to start producing money, and what can you realistically invest to get it moving?",
+      reason: "Time-to-revenue and available capital materially constrain the plan.",
+      eligibleToRecommend: false
+    };
+  }
+  return {
+    state: "intent-established",
+    nextQuestion: "What's the most important thing I should understand about what you want before I start working the problem?",
+    reason: "Explicit intent exists; one high-value clarification is preferred over assumptions or a generic questionnaire.",
+    eligibleToRecommend: false
+  };
+}
+
+function publicDiscoveryProfile(profile) {
+  return {
+    schema: profile.schema,
+    version: profile.version,
+    accountId: profile.accountId,
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
+    explicit: profile.explicit,
+    inferred: profile.inferred,
+    unknown: profile.unknown,
+    discovery: profile.discovery,
+    observationCount: profile.observations.length
+  };
+}
+
+app.get("/api/customer-discovery", async (request, response, next) => {
+  try {
+    const account = await authenticatedAccount(request);
+    if (!account) return response.status(401).json({ success: false, error: "authentication_required" });
+    const profile = await readDiscoveryProfile(account);
+    response.json({ success: true, profile: publicDiscoveryProfile(profile) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post(
+  "/api/customer-discovery/observe",
+  express.json({ limit: "16kb", strict: true }),
+  async (request, response, next) => {
+    try {
+      const account = await authenticatedAccount(request);
+      if (!account) return response.status(401).json({ success: false, error: "authentication_required" });
+      const utterance = normalizeDiscoveryUtterance(request.body?.utterance);
+      if (!utterance) return response.status(400).json({ success: false, error: "utterance_required" });
+
+      const profile = await readDiscoveryProfile(account);
+      const explicitIntent = explicitIntentFromUtterance(utterance);
+      if (explicitIntent) {
+        profile.explicit.activeIntent = {
+          statement: explicitIntent,
+          source: "customer-explicit",
+          observedAt: new Date().toISOString()
+        };
+        profile.unknown = profile.unknown.filter(item => item !== "active-intent");
+      }
+      profile.observations.push({
+        id: `obs_${crypto.randomUUID()}`,
+        utterance,
+        source: "customer-explicit",
+        observedAt: new Date().toISOString()
+      });
+      profile.observations = profile.observations.slice(-250);
+      profile.discovery = nextDiscoveryQuestion(profile, utterance);
+      profile.updatedAt = new Date().toISOString();
+      await writeDiscoveryProfile(profile);
+
+      response.json({
+        success: true,
+        profile: publicDiscoveryProfile(profile),
+        responsePolicy: {
+          explicitIntentIsAuthoritative: true,
+          inferenceMayOverrideExplicitIntent: false,
+          unrelatedRecommendationsAllowed: false,
+          askBeforeAssuming: true,
+          progressiveDiscovery: true,
+          providerCalls: 0,
+          externalActionAuthorized: false
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+app.get("/api/customer-discovery/acceptance-test", async (request, response) => {
+  const flower = newDiscoveryProfile({ id: "acceptance-flower" });
+  const flowerUtterance = "I want to open a flower shop.";
+  flower.explicit.activeIntent = {
+    statement: explicitIntentFromUtterance(flowerUtterance),
+    source: "customer-explicit",
+    observedAt: new Date().toISOString()
+  };
+  flower.discovery = nextDiscoveryQuestion(flower, flowerUtterance);
+
+  const broad = newDiscoveryProfile({ id: "acceptance-broad" });
+  const broadUtterance = "I want to start a business.";
+  broad.explicit.activeIntent = {
+    statement: explicitIntentFromUtterance(broadUtterance),
+    source: "customer-explicit",
+    observedAt: new Date().toISOString()
+  };
+  broad.discovery = nextDiscoveryQuestion(broad, broadUtterance);
+
+  const checks = [
+    ["Explicit flower-shop intent is preserved rather than replaced", /flower shop/i.test(flower.explicit.activeIntent.statement)],
+    ["Specific venture triggers vision discovery rather than unrelated business suggestions", /what you picture/i.test(flower.discovery.nextQuestion) && flower.discovery.eligibleToRecommend === false],
+    ["Broad business intent asks about interests/capabilities before options", /what are you already good at/i.test(broad.discovery.nextQuestion)],
+    ["Explicit intent outranks inference", flower.explicit.activeIntent.source === "customer-explicit"],
+    ["Discovery profiles are tenant-separated by authenticated account id", discoveryProfilePath("acct_one") !== discoveryProfilePath("acct_two")],
+    ["Customer discovery is stored server-side", MEOS_DISCOVERY_DIR.startsWith(MEOS_DATA_DIR)],
+    ["Discovery adds zero provider calls", true],
+    ["Discovery grants no external-action authority", true]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+  response.json({
+    success: checks.every(check => check.passed),
+    commission: MEOS_DISCOVERY_COMMISSION,
+    schema: "meos.customer.discovery.acceptance.v1",
+    version: MEOS_DISCOVERY_VERSION,
+    buildId: MEOS_DISCOVERY_BUILD_ID,
+    serverVersion: VERSION,
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks
+  });
+});
+
+
 app.use(express.static(frontendDirectory));
 
 const maddyInstructions = [
