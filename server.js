@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.52";
+const VERSION = "2.10.53";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -5884,6 +5884,10 @@ async function writeDurableMissionState(
 const EXECUTIVE_MEMORY_REPOSITORY_COMMISSION = "006.017D2";
 const EXECUTIVE_MEMORY_REPOSITORY_BUILD_ID =
   "EM120-WORKSPACE-DURABLE-AUTHORITY-20260808-A";
+const EXECUTIVE_MEMORY_WEBSITE_EVIDENCE_IDEMPOTENCY_COMMISSION =
+  "006.018Q";
+const EXECUTIVE_MEMORY_WEBSITE_EVIDENCE_IDEMPOTENCY_BUILD_ID =
+  "EM-WEI100-CONTENT-ADDRESSED-EVIDENCE-IDEMPOTENCY-20260812-A";
 const EXECUTIVE_MEMORY_REPOSITORY_NAMESPACE =
   "executive-memory";
 const EXECUTIVE_MEMORY_REPOSITORY_CLASSIFICATION =
@@ -7029,6 +7033,57 @@ async function writeExecutiveMemoryCollection(collection, records) {
 
     throw error;
   }
+}
+
+/**
+ * Commission 006.018Q — Content-Addressed Website Evidence Idempotency
+ *
+ * Website Intelligence evidence IDs are derived from the page content hash.
+ * Re-observing the same page content must therefore be a recognition event,
+ * not a durable rewrite. This prevents unchanged evidence from repeatedly
+ * crossing the institutional storage boundary, avoids unnecessary provider
+ * traffic, and preserves the original evidence record instead of mutating it
+ * merely because it was seen again.
+ *
+ * This is intentionally narrow:
+ * - only the website-evidence collection qualifies;
+ * - both records must carry the same non-empty contentHash;
+ * - pageUrl and text must also agree;
+ * - changed content receives a different content-addressed record ID and
+ *   proceeds through the normal verified durable-write path.
+ */
+function isIdempotentWebsiteEvidenceReplay(
+  collection,
+  existingRecord,
+  incomingRecord
+) {
+  if (
+    collection !== "website-evidence" ||
+    !existingRecord ||
+    !incomingRecord
+  ) {
+    return false;
+  }
+
+  const existingHash =
+    String(existingRecord.contentHash || "").trim();
+  const incomingHash =
+    String(incomingRecord.contentHash || "").trim();
+
+  if (
+    !existingHash ||
+    !incomingHash ||
+    existingHash !== incomingHash
+  ) {
+    return false;
+  }
+
+  return (
+    String(existingRecord.pageUrl || "") ===
+      String(incomingRecord.pageUrl || "") &&
+    String(existingRecord.text || "") ===
+      String(incomingRecord.text || "")
+  );
 }
 
 function withExecutiveMemoryWriteLock(collection, operation) {
@@ -13672,6 +13727,105 @@ app.post(
 
 
 /**
+ * Commission 006.018Q acceptance:
+ * proves unchanged content-addressed website evidence is recognized locally,
+ * while changed content remains eligible for the ordinary durable-write path.
+ * This test performs no provider call and changes no durable state.
+ */
+app.get(
+  "/api/executive-memory/website-evidence-idempotency-acceptance-test",
+  (request, response) => {
+    const checks = [];
+    const check = (name, passed) => {
+      checks.push({ name, passed: passed === true });
+    };
+
+    const base = {
+      id: "website-evidence-testhash",
+      contentHash: "testhash",
+      pageUrl: "https://example.test/evidence",
+      text: "same observed evidence"
+    };
+
+    check(
+      "Unchanged content-addressed website evidence is recognized as an idempotent replay",
+      isIdempotentWebsiteEvidenceReplay(
+        "website-evidence",
+        base,
+        { ...base, lastSeenAt: new Date().toISOString() }
+      )
+    );
+
+    check(
+      "Changed page content is not suppressed",
+      !isIdempotentWebsiteEvidenceReplay(
+        "website-evidence",
+        base,
+        { ...base, text: "materially changed evidence" }
+      )
+    );
+
+    check(
+      "Changed content hash is not suppressed",
+      !isIdempotentWebsiteEvidenceReplay(
+        "website-evidence",
+        base,
+        { ...base, contentHash: "differenthash" }
+      )
+    );
+
+    check(
+      "Different page URL is not collapsed into the same evidence record",
+      !isIdempotentWebsiteEvidenceReplay(
+        "website-evidence",
+        base,
+        { ...base, pageUrl: "https://example.test/other" }
+      )
+    );
+
+    check(
+      "Non-website-evidence collections retain their existing persistence behavior",
+      !isIdempotentWebsiteEvidenceReplay(
+        "investigation-history",
+        base,
+        base
+      )
+    );
+
+    check(
+      "Missing content hashes cannot claim content-addressed idempotency",
+      !isIdempotentWebsiteEvidenceReplay(
+        "website-evidence",
+        { ...base, contentHash: "" },
+        { ...base, contentHash: "" }
+      )
+    );
+
+    const passed =
+      checks.filter(item => item.passed).length;
+    const success = passed === checks.length;
+
+    response.status(success ? 200 : 500).json({
+      success,
+      commission:
+        EXECUTIVE_MEMORY_WEBSITE_EVIDENCE_IDEMPOTENCY_COMMISSION,
+      schema:
+        "meos.executive-memory.website-evidence-idempotency-acceptance.v1",
+      version: VERSION,
+      buildId:
+        EXECUTIVE_MEMORY_WEBSITE_EVIDENCE_IDEMPOTENCY_BUILD_ID,
+      passed,
+      total: checks.length,
+      providerCalls: 0,
+      durableWrites: 0,
+      externalActionAuthorized: false,
+      checks
+    });
+  }
+);
+
+
+/**
  * Durable Executive Memory API
  *
  * These routes preserve the existing browser-facing Executive Memory contract
@@ -13848,11 +14002,35 @@ app.put(
               ? records[existingIndex]
               : null;
 
+          const incomingRecord = {
+            ...request.body,
+            id: recordId
+          };
+
+          if (
+            isIdempotentWebsiteEvidenceReplay(
+              collection,
+              existingRecord,
+              incomingRecord
+            )
+          ) {
+            return {
+              ...existingRecord,
+              _meosPersistence: {
+                commission:
+                  EXECUTIVE_MEMORY_WEBSITE_EVIDENCE_IDEMPOTENCY_COMMISSION,
+                buildId:
+                  EXECUTIVE_MEMORY_WEBSITE_EVIDENCE_IDEMPOTENCY_BUILD_ID,
+                disposition:
+                  "recognized-existing-content-addressed-evidence",
+                durableWriteRequired: false,
+                providerCallRequired: false
+              }
+            };
+          }
+
           const normalized = normalizeExecutiveMemoryRecord(
-            {
-              ...request.body,
-              id: recordId
-            },
+            incomingRecord,
             existingRecord
           );
 
