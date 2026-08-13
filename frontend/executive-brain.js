@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.14
- * Build: EB12514-TOTALITY-CIRCUMSTANCES-EXECUTIVE-JUDGMENT-20260812-A
+ * Version: 1.25.15
+ * Build: EB12515-CROSS-TIME-PATTERN-SYNTHESIS-SQUIRREL-TRAP-20260812-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.14";
-  const BUILD_ID = "EB12514-TOTALITY-CIRCUMSTANCES-EXECUTIVE-JUDGMENT-20260812-A";
+  const VERSION = "1.25.15";
+  const BUILD_ID = "EB12515-CROSS-TIME-PATTERN-SYNTHESIS-SQUIRREL-TRAP-20260812-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -240,7 +240,13 @@
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
-      temporalCommitmentLookaheadHours: 720
+      temporalCommitmentLookaheadHours: 720,
+      maximumCrossTimePatternHistory: 96,
+      maximumCrossTimePatternTraps: 64,
+      crossTimePatternLookback: 180,
+      crossTimePatternMinimumIndependentLineages: 3,
+      crossTimePatternMinimumDomains: 2,
+      crossTimePatternMinimumSpanMs: 12 * 60 * 60 * 1000
     },
 
     initializedAt: null,
@@ -335,6 +341,10 @@
     priorityArbitrationCount: 0,
     executiveHomeostasisState: null,
     currentHumanInterruption: null,
+    crossTimePatternHistory: [],
+    crossTimePatternTraps: [],
+    lastCrossTimePatternSynthesis: null,
+    crossTimePatternSynthesisCount: 0,
     cognitiveThreads: [],
     activeCognitiveThreadId: null,
     lastCognitiveThreadEvent: null,
@@ -14455,6 +14465,388 @@
       return this.arbitrateHomeostaticPriorities(demands,options);
     },
 
+
+    /*
+     * Commission 006.018P — Cross-Time Pattern Synthesis + Squirrel Trap
+     *
+     * Weak observations can become meaningful only when connected across
+     * time, domains, and genuinely independent lineages. A pattern remains a
+     * hypothesis, never a fact. Existing homeostasis decides investigate /
+     * watch / release. Watch is a cheap recognition trap, not active work.
+     */
+    normalizeCrossTimePatternTokens(value = "") {
+      const stop = new Set([
+        "this","that","with","from","have","will","were","been","into","about",
+        "there","their","they","them","then","than","what","when","where","which",
+        "while","because","could","would","should","after","before","through",
+        "current","change","changed","evidence","signal","signals","pattern",
+        "possible","unknown","verified","executive","maddy","world","model"
+      ]);
+      return [...new Set(String(value || "").toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, " ").split(/\s+/)
+        .filter(token => token.length >= 4 && !stop.has(token)))].slice(0, 80);
+    },
+
+    normalizeCrossTimePatternObservation(raw = {}, fallback = {}) {
+      const occurredAt = raw.occurredAt || raw.generatedAt || raw.createdAt ||
+        raw.reflectedAt || raw.assimilatedAt || fallback.occurredAt ||
+        new Date().toISOString();
+      const domains = [...new Set([
+        ...(Array.isArray(raw.domains) ? raw.domains : []),
+        ...(Array.isArray(raw.affectedDomains) ? raw.affectedDomains : []),
+        ...(Array.isArray(fallback.domains) ? fallback.domains : []),
+        raw.domain, fallback.domain
+      ].filter(Boolean).map(String))].slice(0, 12);
+      const body = [
+        raw.subject, raw.claim, raw.summary, raw.detail, raw.lesson,
+        raw.futureDirective, raw.reason, raw.objective,
+        Array.isArray(raw.questions) ? raw.questions.join(" ") : "",
+        Array.isArray(raw.unknowns) ? raw.unknowns.join(" ") : "",
+        fallback.text
+      ].filter(Boolean).join(" ");
+      const lineageId = String(raw.lineageId || raw.sourceLineageId ||
+        raw.sourceExperienceFingerprint || raw.experienceFingerprint ||
+        raw.investigationFingerprint || raw.fingerprint ||
+        fallback.lineageId || raw.id ||
+        this.fingerprintCognitiveDispatch({body, occurredAt, domains}));
+      return {
+        id:String(raw.id || raw.episodeId || raw.reflectionId ||
+          raw.assimilationId || raw.assessmentNumber ||
+          this.fingerprintCognitiveDispatch({lineageId, occurredAt, body})),
+        occurredAt,
+        sourceType:raw.sourceType || fallback.sourceType || "observation",
+        lineageId,
+        domains,
+        text:body,
+        tokens:this.normalizeCrossTimePatternTokens(body),
+        reliability:Math.max(0,Math.min(1,Number(raw.reliability ?? raw.confidence ?? fallback.reliability ?? .6))),
+        strength:Math.max(0,Math.min(1,Number(raw.strength ?? raw.score ?? raw.salience ?? fallback.strength ?? .45))),
+        materiality:Math.max(0,Math.min(1,Number(raw.materiality ?? raw.missionConsequence ?? fallback.materiality ?? .45))),
+        contradiction:raw.contradiction === true,
+        verified:raw.verified === true || ["verified","authoritative","official"].includes(String(raw.authority || "")),
+        provenance:raw.provenance || raw.source || fallback.provenance || null
+      };
+    },
+
+    collectCrossTimePatternObservations(options = {}) {
+      const limit=Math.max(12,Math.min(Number(options.lookback || this.configuration.crossTimePatternLookback || 180),500));
+      const out=[];
+      (this.salienceHistory || []).slice(0,limit).forEach(item=>{
+        out.push(this.normalizeCrossTimePatternObservation({
+          id:`salience-${item.assessmentNumber || out.length+1}`,
+          occurredAt:item.generatedAt,
+          subject:item.subject,
+          summary:[
+            ...(item.signals || []).map(x=>x.detail),
+            ...(item.connections || []).map(x=>x.reason)
+          ].filter(Boolean).join(" "),
+          affectedDomains:item.affectedDomains,
+          score:item.score,
+          materiality:item.meaningful ? Math.max(.5,Number(item.score || 0)) : Number(item.score || 0),
+          lineageId:`salience:${item.priorWorldFingerprint || "none"}:${item.currentWorldFingerprint || item.assessmentNumber || "unknown"}`,
+          sourceType:"world-model-salience"
+        }));
+      });
+      (this.autobiographicalMemory || []).slice(0,limit).forEach(item=>{
+        out.push(this.normalizeCrossTimePatternObservation({
+          id:item.episodeId,
+          occurredAt:item.createdAt || item.occurredAt,
+          subject:item.subject,
+          summary:[
+            item.learning?.learned || item.learning?.summary,
+            item.action?.summary || item.action?.type,
+            item.outcome?.summary || item.outcome?.result
+          ].filter(Boolean).join(" "),
+          domains:item.domains || item.context?.domains || [item.eventType || "experience"],
+          reliability:item.outcome?.verified === false ? .45 : .72,
+          strength:item.outcome?.success === false ? .62 : .55,
+          materiality:item.outcome?.materiality ?? .5,
+          lineageId:item.experienceFingerprint || item.episodeId,
+          sourceType:"autobiographical-experience"
+        }));
+      });
+      (this.metacognitiveReflections || []).slice(0,limit).forEach(item=>{
+        out.push(this.normalizeCrossTimePatternObservation({
+          id:item.reflectionId,
+          occurredAt:item.reflectedAt,
+          subject:item.adaptation?.lesson || "metacognitive reflection",
+          summary:item.adaptation?.futureDirective,
+          domains:["metacognition","learning"],
+          reliability:item.continuity?.evidenceDerived === true ? .78 : .55,
+          strength:item.adaptation?.correctionRequired === true ? .68 : .5,
+          materiality:item.adaptation?.correctionRequired === true ? .62 : .42,
+          lineageId:item.sourceExperienceFingerprint || item.sourceEpisodeId || item.reflectionId,
+          sourceType:"metacognitive-reflection"
+        }));
+      });
+      (this.evidenceAssimilationHistory || []).slice(0,limit).forEach(item=>{
+        out.push(this.normalizeCrossTimePatternObservation({
+          id:item.assimilationId || item.fingerprint,
+          occurredAt:item.assimilatedAt || item.generatedAt,
+          subject:item.subject,
+          summary:(item.evidence || []).slice(0,6).map(x=>x.summary || x.content || x.title).filter(Boolean).join(" "),
+          domains:item.affectedDomains || item.domains || ["investigation"],
+          reliability:item.evidenceIntegrity?.confidence ?? .72,
+          strength:item.beliefUpdate?.resolution ?? .58,
+          materiality:item.materiality ?? .55,
+          lineageId:item.investigationFingerprint || item.fingerprint,
+          sourceType:"evidence-assimilation"
+        }));
+      });
+      const seen=new Set();
+      return out.filter(item=>{
+        const key=`${item.sourceType}|${item.id}`;
+        if (seen.has(key) || !item.tokens.length) return false;
+        seen.add(key); return true;
+      }).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt)).slice(-limit);
+    },
+
+    crossTimeObservationAffinity(left, right) {
+      const lt=new Set(left.tokens || []), rt=new Set(right.tokens || []);
+      const shared=[...lt].filter(token=>rt.has(token));
+      const ld=new Set(left.domains || []);
+      const sharedDomains=(right.domains || []).filter(domain=>ld.has(domain));
+      const lexical=shared.length/Math.max(1,Math.min(lt.size,rt.size,8));
+      const score=Math.max(0,Math.min(1,
+        lexical + (sharedDomains.length ? .14 : .06) +
+        (left.lineageId !== right.lineageId ? .08 : -.12)));
+      return {score:Number(score.toFixed(3)),sharedTokens:shared.slice(0,12),sharedDomains:sharedDomains.slice(0,8)};
+    },
+
+    buildCrossTimePatternCandidate(observations = []) {
+      const items=(Array.isArray(observations) ? observations : [])
+        .map(item=>item.tokens ? this.clone(item) : this.normalizeCrossTimePatternObservation(item))
+        .filter(item=>item.tokens?.length);
+      if (items.length < 2) return null;
+      const freq=new Map();
+      items.forEach(item=>[...new Set(item.tokens)].forEach(token=>{
+        if (!freq.has(token)) freq.set(token,new Set());
+        freq.get(token).add(item.lineageId);
+      }));
+      const cueTokens=[...freq.entries()].filter(([,lineages])=>lineages.size>=2)
+        .sort((a,b)=>b[1].size-a[1].size).map(([token])=>token).slice(0,12);
+      if (!cueTokens.length) return null;
+      const cue=new Set(cueTokens);
+      const related=items.filter(item=>(item.tokens || []).some(token=>cue.has(token)));
+      const lineages=[...new Set(related.map(x=>x.lineageId))];
+      const domains=[...new Set(related.flatMap(x=>x.domains || []))];
+      const times=related.map(x=>new Date(x.occurredAt).getTime()).filter(Number.isFinite);
+      const span=times.length>=2 ? Math.max(...times)-Math.min(...times) : 0;
+      const contradictions=related.filter(x=>x.contradiction).length;
+      const support=related.filter(x=>!x.contradiction);
+      const avg=(key,def=.5)=>support.reduce((s,x)=>s+Number(x[key] ?? def),0)/Math.max(1,support.length);
+      const minLineages=Number(this.configuration.crossTimePatternMinimumIndependentLineages || 3);
+      const minDomains=Number(this.configuration.crossTimePatternMinimumDomains || 2);
+      const minSpan=Number(this.configuration.crossTimePatternMinimumSpanMs || 0);
+      const score=Math.max(0,Math.min(.92,
+        .24*Math.min(1,lineages.length/minLineages) +
+        .18*Math.min(1,domains.length/minDomains) +
+        .16*(minSpan ? Math.min(1,span/minSpan) : 1) +
+        .20*avg("reliability") + .12*avg("strength") + .10*avg("materiality") -
+        Math.min(.45,contradictions*.15)
+      ));
+      const qualifies=lineages.length>=minLineages && domains.length>=minDomains &&
+        span>=minSpan && support.length>=minLineages && score>=.58;
+      const fingerprint=this.fingerprintCognitiveDispatch({
+        cueTokens,lineages:[...lineages].sort(),domains:[...domains].sort()
+      });
+      return {
+        schema:"meos.maddy.cross-time-pattern-hypothesis.v1",
+        fingerprint,generatedAt:new Date().toISOString(),
+        hypothesisStatus:qualifies ? "hypothesis-not-fact" : "weak-signal-not-established",
+        qualifies,score:Number(score.toFixed(3)),cueTokens,
+        observationCount:related.length,independentLineageCount:lineages.length,
+        independentLineages:lineages.slice(0,20),domains:domains.slice(0,20),
+        temporalSpanMs:span,temporalSpanHours:Number((span/3600000).toFixed(2)),
+        averageReliability:Number(avg("reliability").toFixed(3)),
+        averageStrength:Number(avg("strength").toFixed(3)),
+        materiality:Number(avg("materiality").toFixed(3)),
+        contradictionCount:contradictions,
+        observationIds:related.map(x=>x.id).slice(0,40),
+        sourceTypes:[...new Set(related.map(x=>x.sourceType))],
+        novelty:(this.crossTimePatternHistory || []).some(x=>x.fingerprint===fingerprint) ? "known-pattern" : "new-pattern-candidate",
+        epistemicRule:"Cross-time convergence can justify a hypothesis or investigation; recurrence never upgrades a pattern into fact.",
+        providerCallRequired:false,externalActionAuthorized:false
+      };
+    },
+
+    registerCrossTimePatternTrap(pattern = {}, options = {}) {
+      if (!pattern?.fingerprint) return {success:false,reason:"pattern-fingerprint-required"};
+      const existing=(this.crossTimePatternTraps || []).find(x=>x.patternFingerprint===pattern.fingerprint);
+      const now=new Date().toISOString();
+      const trap=existing || {
+        schema:"meos.maddy.cross-time-pattern-trap.v1",
+        trapId:`trap-${pattern.fingerprint}`,patternFingerprint:pattern.fingerprint,
+        createdAt:now,triggerCount:0
+      };
+      Object.assign(trap,{
+        updatedAt:now,status:"watching",
+        cueTokens:this.clone(pattern.cueTokens || []),
+        domains:this.clone(pattern.domains || []),
+        knownLineages:this.clone(pattern.independentLineages || []),
+        wakeRule:"Reawaken only when materially new evidence matches the pattern cues; unchanged repetition is not a wake.",
+        providerCallRequired:false,activeWorkCreated:false
+      });
+      if (!existing) this.crossTimePatternTraps.unshift(trap);
+      this.crossTimePatternTraps=this.crossTimePatternTraps.slice(0,Number(this.configuration.maximumCrossTimePatternTraps || 64));
+      if (options.persist!==false) this.persist();
+      return {success:true,trap:this.clone(trap)};
+    },
+
+    testCrossTimePatternTrap(observation = {}, options = {}) {
+      const normalized=this.normalizeCrossTimePatternObservation(observation);
+      const fp=this.fingerprintCognitiveDispatch({lineageId:normalized.lineageId,text:normalized.text,provenance:normalized.provenance});
+      const matches=[];
+      (this.crossTimePatternTraps || []).forEach(trap=>{
+        const tokenOverlap=(trap.cueTokens || []).filter(token=>normalized.tokens.includes(token));
+        const domainOverlap=(trap.domains || []).filter(domain=>normalized.domains.includes(domain));
+        const cueMatch=tokenOverlap.length>=1 && (domainOverlap.length>=1 || tokenOverlap.length>=2);
+        if (!cueMatch) return;
+        const materiallyNew=fp!==trap.lastEvidenceFingerprint && !(trap.knownLineages || []).includes(normalized.lineageId);
+        const reawaken=materiallyNew===true;
+        if (reawaken) {
+          trap.triggerCount=Number(trap.triggerCount || 0)+1;
+          trap.lastTriggeredAt=new Date().toISOString();
+          trap.lastEvidenceFingerprint=fp;
+          trap.knownLineages=[...new Set([...(trap.knownLineages || []),normalized.lineageId])].slice(-24);
+          trap.status="triggered-for-reappraisal";
+        }
+        matches.push({trapId:trap.trapId,patternFingerprint:trap.patternFingerprint,
+          tokenOverlap,domainOverlap,materiallyNew,reawaken,activeWorkCreated:false,providerCallRequired:false});
+      });
+      if (options.persist!==false && matches.some(x=>x.reawaken)) this.persist();
+      return {success:true,matches,reawaken:matches.some(x=>x.reawaken),
+        providerCallRequired:false,missionCreated:false};
+    },
+
+    synthesizeCrossTimePatterns(options = {}) {
+      const observations=Array.isArray(options.observations)
+        ? options.observations.map(x=>this.normalizeCrossTimePatternObservation(x))
+        : this.collectCrossTimePatternObservations(options);
+      if (observations.length<2) return {success:true,patterns:[],traps:[],providerCallRequired:false,missionCreated:false};
+      const adjacency=new Map(observations.map((_,i)=>[i,new Set()]));
+      for (let i=0;i<observations.length;i++) for (let j=i+1;j<observations.length;j++) {
+        const a=this.crossTimeObservationAffinity(observations[i],observations[j]);
+        if (a.score>=.27 && a.sharedTokens.length) { adjacency.get(i).add(j); adjacency.get(j).add(i); }
+      }
+      const visited=new Set(), components=[];
+      for (let i=0;i<observations.length;i++) {
+        if (visited.has(i)) continue;
+        const stack=[i], comp=[]; visited.add(i);
+        while(stack.length) {
+          const n=stack.pop(); comp.push(observations[n]);
+          adjacency.get(n).forEach(k=>{if(!visited.has(k)){visited.add(k);stack.push(k);}});
+        }
+        if (comp.length>=2) components.push(comp);
+      }
+      const candidates=components.map(c=>this.buildCrossTimePatternCandidate(c))
+        .filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,12);
+      const patterns=candidates.map(candidate=>{
+        const demand={
+          id:`pattern-${candidate.fingerprint}`,
+          subject:`Cross-time pattern: ${candidate.cueTokens.slice(0,5).join(" / ")}`,
+          origin:"cross-time-pattern",
+          reason:"Several weak observations may form one larger pattern across time and domains.",
+          missionConsequence:candidate.materiality,
+          urgency:Math.min(.75,.25+candidate.contradictionCount*.1),
+          leverage:Math.min(.9,.35+candidate.domains.length*.08),
+          informationValue:Math.min(.95,.45+(1-candidate.averageReliability)*.3),
+          uncertainty:1-candidate.score
+        };
+        const homeo=this.applyExecutiveHomeostasis([demand]).demands[0];
+        const balanced=Number(homeo?.__homeostasisScore ?? candidate.score);
+        const disposition=candidate.qualifies && balanced>=.66 ? "investigate"
+          : candidate.score>=.42 && candidate.independentLineageCount>=2 ? "watch" : "release";
+        const result={...candidate,homeostaticScore:Number(balanced.toFixed(3)),
+          homeostasisInfluence:homeo?.homeostasis?.learningInfluence || 0,disposition,
+          activeWorkCreated:false,nextMove:disposition==="investigate"
+            ? "Target the smallest decision-relevant unknown that could confirm or falsify this pattern."
+            : disposition==="watch"
+              ? "Keep a cheap recognition trigger and reawaken only on materially new matching evidence."
+              : "Release active attention; retain no expensive work state."};
+        if (disposition==="watch") this.registerCrossTimePatternTrap(result,{persist:false});
+        return result;
+      });
+      this.crossTimePatternSynthesisCount=Number(this.crossTimePatternSynthesisCount || 0)+1;
+      this.lastCrossTimePatternSynthesis={
+        schema:"meos.maddy.cross-time-pattern-synthesis.v1",
+        synthesisNumber:this.crossTimePatternSynthesisCount,generatedAt:new Date().toISOString(),
+        observationCount:observations.length,patterns:this.clone(patterns.slice(0,8)),
+        providerCallRequired:false,missionCreated:false
+      };
+      patterns.filter(x=>x.qualifies).forEach(x=>{
+        const prior=(this.crossTimePatternHistory || []).find(y=>y.fingerprint===x.fingerprint);
+        if (prior) Object.assign(prior,this.clone(x),{lastSeenAt:new Date().toISOString()});
+        else this.crossTimePatternHistory.unshift({...this.clone(x),firstSeenAt:new Date().toISOString(),lastSeenAt:new Date().toISOString()});
+      });
+      this.crossTimePatternHistory=this.crossTimePatternHistory.slice(0,Number(this.configuration.maximumCrossTimePatternHistory || 96));
+      if (options.persist!==false) this.persist();
+      this.emit("brain:cross-time-pattern-synthesis",this.clone(this.lastCrossTimePatternSynthesis));
+      return {success:true,patterns:this.clone(patterns),traps:this.clone(this.crossTimePatternTraps),
+        providerCallRequired:false,missionCreated:false};
+    },
+
+    runCrossTimePatternSynthesisAcceptanceTest() {
+      const original={history:this.clone(this.crossTimePatternHistory),traps:this.clone(this.crossTimePatternTraps),
+        last:this.clone(this.lastCrossTimePatternSynthesis),count:this.crossTimePatternSynthesisCount,
+        homeostasis:this.clone(this.executiveHomeostasisState)};
+      try {
+        this.crossTimePatternHistory=[]; this.crossTimePatternTraps=[];
+        this.lastCrossTimePatternSynthesis=null; this.crossTimePatternSynthesisCount=0;
+        const base=Date.parse("2026-01-01T08:00:00Z"), hour=3600000;
+        const observations=[
+          {id:"o1",occurredAt:new Date(base).toISOString(),subject:"vendor onboarding delay preceded missed launch",domains:["operations"],lineageId:"ops-1",reliability:.72,strength:.44,materiality:.66},
+          {id:"o2",occurredAt:new Date(base+18*hour).toISOString(),subject:"vendor onboarding delay coincided with compliance document gap",domains:["compliance"],lineageId:"comp-1",reliability:.76,strength:.47,materiality:.70},
+          {id:"o3",occurredAt:new Date(base+42*hour).toISOString(),subject:"vendor onboarding delay appeared before funding milestone slip",domains:["funding"],lineageId:"fund-1",reliability:.74,strength:.45,materiality:.73},
+          {id:"copy",occurredAt:new Date(base+44*hour).toISOString(),subject:"vendor onboarding delay before funding milestone slip",domains:["funding"],lineageId:"fund-1",reliability:.70,strength:.45,materiality:.70}
+        ];
+        const synthesis=this.synthesizeCrossTimePatterns({observations,persist:false});
+        const pattern=synthesis.patterns[0];
+        const contrary=this.buildCrossTimePatternCandidate([...observations,{
+          id:"contra",occurredAt:new Date(base+48*hour).toISOString(),
+          subject:"vendor onboarding delay did not affect launch or milestones",
+          domains:["operations","funding"],lineageId:"contra-1",
+          reliability:.95,strength:.8,materiality:.7,contradiction:true
+        }]);
+        const weak=this.synthesizeCrossTimePatterns({observations:[
+          {id:"w1",occurredAt:new Date(base).toISOString(),subject:"coffee inventory low",domains:["office"],lineageId:"w1",strength:.2,materiality:.05},
+          {id:"w2",occurredAt:new Date(base+20*hour).toISOString(),subject:"coffee inventory low",domains:["office"],lineageId:"w2",strength:.2,materiality:.05}
+        ],persist:false});
+        const trapSeed=this.buildCrossTimePatternCandidate([
+          {id:"s1",occurredAt:new Date(base).toISOString(),subject:"shipment anomaly squirrel cue",domains:["operations"],lineageId:"s1",reliability:.55,strength:.3,materiality:.25},
+          {id:"s2",occurredAt:new Date(base+16*hour).toISOString(),subject:"shipment anomaly squirrel cue",domains:["finance"],lineageId:"s2",reliability:.55,strength:.3,materiality:.25}
+        ]);
+        const trap=this.registerCrossTimePatternTrap({...trapSeed,qualifies:false,score:.46},{persist:false}).trap;
+        const repeat=this.testCrossTimePatternTrap({id:"same",subject:"shipment anomaly squirrel cue",domains:["operations"],lineageId:"s1"},{persist:false});
+        const novel=this.testCrossTimePatternTrap({id:"new",subject:"shipment anomaly squirrel cue now appears in customer delivery",domains:["operations","customer"],lineageId:"s3"},{persist:false});
+        const snapshot=this.buildPersistenceSnapshot();
+        const checks=[
+          {name:"Several individually weak observations can synthesize into one cross-time pattern",passed:pattern?.qualifies===true&&pattern.observationCount>=3},
+          {name:"Cross-time synthesis requires genuinely independent evidence lineages",passed:pattern?.independentLineageCount===3},
+          {name:"Pattern strength can emerge across different organizational domains",passed:["operations","compliance","funding"].every(x=>(pattern?.domains||[]).includes(x))},
+          {name:"Temporal separation is part of the pattern instead of collapsing all observations into one moment",passed:Number(pattern?.temporalSpanHours||0)>=40},
+          {name:"Detected patterns remain hypothesis rather than silently becoming fact",passed:pattern?.hypothesisStatus==="hypothesis-not-fact"&&pattern?.epistemicRule?.includes("never upgrades")},
+          {name:"Strong contradictory evidence can weaken the same apparent pattern",passed:contrary?.score<pattern?.score&&contrary?.contradictionCount===1},
+          {name:"Low-value recurrence can remain peripheral rather than manufacturing work",passed:weak.patterns.every(x=>x.disposition!=="investigate"&&x.activeWorkCreated===false)},
+          {name:"A recurring weak signal can become a cheap squirrel trap instead of active investigation",passed:trap?.status==="watching"&&trap?.activeWorkCreated===false},
+          {name:"Known repetition does not retrigger the squirrel trap",passed:repeat.reawaken===false},
+          {name:"Materially new matching evidence can reawaken the pattern for reappraisal",passed:novel.reawaken===true},
+          {name:"Cross-time pattern history and traps survive sovereign Brain persistence",passed:Array.isArray(snapshot.crossTimePatternHistory)&&Array.isArray(snapshot.crossTimePatternTraps)},
+          {name:"Pattern synthesis and traps require no provider call, create no Mission, and preserve authority",passed:synthesis.providerCallRequired===false&&novel.providerCallRequired===false&&novel.missionCreated===false&&pattern?.externalActionAuthorized===false}
+        ];
+        const passed=checks.every(x=>x.passed);
+        console.table(checks.map(x=>({name:x.name,passed:x.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.018P Cross-Time Pattern Synthesis + Squirrel Trap: ${passed?"PASS":"FAIL"} (${checks.filter(x=>x.passed).length}/${checks.length}).`);
+        return {success:passed,commission:"006.018P",schema:"meos.executive-brain.cross-time-pattern-acceptance.v1",
+          version:this.version,buildId:this.buildId,passed:checks.filter(x=>x.passed).length,total:checks.length,checks,
+          examples:{pattern,contrary,trap,repeat,novel}};
+      } finally {
+        this.crossTimePatternHistory=original.history; this.crossTimePatternTraps=original.traps;
+        this.lastCrossTimePatternSynthesis=original.last; this.crossTimePatternSynthesisCount=original.count;
+        this.executiveHomeostasisState=original.homeostasis;
+      }
+    },
+
     assessTotalityOfCircumstances(input = {}, options = {}) {
       const subject = String(input.subject || "Executive judgment").trim();
       const raw = Array.isArray(input.evidence) ? input.evidence : [];
@@ -15951,6 +16343,12 @@
       if (Array.isArray(saved.executivePriorityPortfolio)) this.executivePriorityPortfolio=this.clone(saved.executivePriorityPortfolio).slice(0,this.configuration.priorityPortfolioLimit);
       this.currentExecutivePriority=saved.currentExecutivePriority ? this.clone(saved.currentExecutivePriority) : null;
       this.lastPriorityArbitration=saved.lastPriorityArbitration ? this.clone(saved.lastPriorityArbitration) : null;
+      this.executiveHomeostasisState=saved.executiveHomeostasisState ? this.clone(saved.executiveHomeostasisState) : null;
+      this.currentHumanInterruption=saved.currentHumanInterruption ? this.clone(saved.currentHumanInterruption) : null;
+      this.crossTimePatternHistory=Array.isArray(saved.crossTimePatternHistory) ? this.clone(saved.crossTimePatternHistory).slice(0,this.configuration.maximumCrossTimePatternHistory) : [];
+      this.crossTimePatternTraps=Array.isArray(saved.crossTimePatternTraps) ? this.clone(saved.crossTimePatternTraps).slice(0,this.configuration.maximumCrossTimePatternTraps) : [];
+      this.lastCrossTimePatternSynthesis=saved.lastCrossTimePatternSynthesis ? this.clone(saved.lastCrossTimePatternSynthesis) : null;
+      this.crossTimePatternSynthesisCount=Math.max(Number(saved.crossTimePatternSynthesisCount||0),Number(this.lastCrossTimePatternSynthesis?.synthesisNumber||0));
       this.priorityArbitrationCount=Math.max(Number(saved.priorityArbitrationCount||0),Number(this.lastPriorityArbitration?.arbitrationNumber||0));
       if (Array.isArray(saved.cognitiveThreads)) this.cognitiveThreads=this.clone(saved.cognitiveThreads).slice(0,this.configuration.cognitiveThreadLimit);
       this.activeCognitiveThreadId=saved.activeCognitiveThreadId || null;
@@ -16161,6 +16559,16 @@
           portfolio: this.clone(this.executivePriorityPortfolio.slice(0, 12)),
           lastArbitration: this.clone(this.lastPriorityArbitration),
           rule: "Attention is scarce. Maddy must compare competing demands, account for opportunity cost and switching cost, protect justified commitments, and preempt only when new evidence materially changes what deserves attention. Priority never creates external authority."
+        },
+
+        crossTimePatterns: {
+          latest: this.clone(this.lastCrossTimePatternSynthesis),
+          recent: this.clone(this.crossTimePatternHistory.slice(0, 8)),
+          traps: this.clone(this.crossTimePatternTraps.filter(item =>
+            item.status === "watching" ||
+            item.status === "triggered-for-reappraisal"
+          ).slice(0, 12)),
+          rule: "Several weak observations may form a useful cross-time hypothesis only when evidence lineage, domain breadth, temporal separation, contradiction, and homeostatic relevance justify it. Pattern recurrence is never fact."
         },
 
         sustainedCognition: {
@@ -17511,6 +17919,10 @@
         priorityArbitrationCount: Number(this.priorityArbitrationCount || 0),
         executiveHomeostasisState: this.executiveHomeostasisState ? this.clone(this.executiveHomeostasisState) : null,
         currentHumanInterruption: this.currentHumanInterruption ? this.clone(this.currentHumanInterruption) : null,
+        crossTimePatternHistory: this.crossTimePatternHistory.slice(0, this.configuration.maximumCrossTimePatternHistory),
+        crossTimePatternTraps: this.crossTimePatternTraps.slice(0, this.configuration.maximumCrossTimePatternTraps),
+        lastCrossTimePatternSynthesis: this.lastCrossTimePatternSynthesis ? this.clone(this.lastCrossTimePatternSynthesis) : null,
+        crossTimePatternSynthesisCount: Number(this.crossTimePatternSynthesisCount || 0),
         cognitiveThreads: this.cognitiveThreads.slice(0, this.configuration.cognitiveThreadLimit),
         activeCognitiveThreadId: this.activeCognitiveThreadId,
         lastCognitiveThreadEvent: this.lastCognitiveThreadEvent ? this.clone(this.lastCognitiveThreadEvent) : null,
@@ -17681,6 +18093,10 @@
       this.priorityArbitrationCount = Math.max(Number(saved.priorityArbitrationCount || 0), Number(this.lastPriorityArbitration?.arbitrationNumber || 0));
       this.executiveHomeostasisState = saved.executiveHomeostasisState && typeof saved.executiveHomeostasisState === "object" ? this.clone(saved.executiveHomeostasisState) : null;
       this.currentHumanInterruption = saved.currentHumanInterruption && typeof saved.currentHumanInterruption === "object" ? this.clone(saved.currentHumanInterruption) : null;
+      this.crossTimePatternHistory = Array.isArray(saved.crossTimePatternHistory) ? saved.crossTimePatternHistory.slice(0, this.configuration.maximumCrossTimePatternHistory) : [];
+      this.crossTimePatternTraps = Array.isArray(saved.crossTimePatternTraps) ? saved.crossTimePatternTraps.slice(0, this.configuration.maximumCrossTimePatternTraps) : [];
+      this.lastCrossTimePatternSynthesis = saved.lastCrossTimePatternSynthesis && typeof saved.lastCrossTimePatternSynthesis === "object" ? this.clone(saved.lastCrossTimePatternSynthesis) : null;
+      this.crossTimePatternSynthesisCount = Math.max(Number(saved.crossTimePatternSynthesisCount || 0), Number(this.lastCrossTimePatternSynthesis?.synthesisNumber || 0));
       this.cognitiveThreads = Array.isArray(saved.cognitiveThreads) ? saved.cognitiveThreads.slice(0, this.configuration.cognitiveThreadLimit) : [];
       this.activeCognitiveThreadId = saved.activeCognitiveThreadId || null;
       this.lastCognitiveThreadEvent = saved.lastCognitiveThreadEvent && typeof saved.lastCognitiveThreadEvent === "object" ? this.clone(saved.lastCognitiveThreadEvent) : null;
