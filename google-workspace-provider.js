@@ -1,8 +1,8 @@
 /**
  * MEOS Google Workspace Provider
  *
- * Provider Version: 1.3.0
- * Build ID: GWP130-INSTITUTIONAL-REPOSITORY-PROTOTYPE-20260808-A
+ * Provider Version: 1.3.1
+ * Build ID: GWP131-BYTE-SAFE-REPOSITORY-METADATA-20260812-A
  * Status: Commission Candidate
  *
  * Purpose:
@@ -32,7 +32,7 @@ import { fileURLToPath } from "url";
 import { google } from "googleapis";
 
 const VERSION = "1.3.1";
-const BUILD_ID = "GWP131-KEY-CONVERGENCE-20260808-A";
+const BUILD_ID = "GWP131-BYTE-SAFE-REPOSITORY-METADATA-20260812-A";
 const PROVIDER_ID = "google-workspace";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -1257,6 +1257,90 @@ function repositoryRecordName(key) {
   return `${normalizeRepositoryKey(key)}.meos.json`;
 }
 
+
+/*
+ * Commission 006.018S — Byte-Safe Institutional Repository Metadata
+ *
+ * Google Drive limits each custom property key + value pair to 124 UTF-8
+ * bytes. MEOS repository identity itself is NOT shortened here: the exact
+ * normalized institutional key remains in the JSON envelope and file name.
+ *
+ * Only the provider-specific indexing hint is compacted when necessary.
+ * A deterministic SHA-256 surrogate preserves stable equality without
+ * weakening the institutional record's semantic identity.
+ */
+const GOOGLE_APP_PROPERTY_PAIR_MAX_UTF8_BYTES = 124;
+
+function utf8ByteLength(value) {
+  return Buffer.byteLength(String(value ?? ""), "utf8");
+}
+
+function compactGoogleAppPropertyValue(propertyKey, value) {
+  const key = String(propertyKey || "");
+  const raw = String(value ?? "");
+  const maximumValueBytes =
+    GOOGLE_APP_PROPERTY_PAIR_MAX_UTF8_BYTES -
+    utf8ByteLength(key);
+
+  if (maximumValueBytes <= 0) {
+    const error = new Error(
+      `Google app property key "${key}" leaves no UTF-8 byte budget for a value.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_APP_PROPERTY_KEY_TOO_LARGE";
+    error.status = 500;
+    throw error;
+  }
+
+  if (utf8ByteLength(raw) <= maximumValueBytes) {
+    return raw;
+  }
+
+  const digest =
+    `sha256:${crypto
+      .createHash("sha256")
+      .update(raw, "utf8")
+      .digest("hex")}`;
+
+  if (utf8ByteLength(digest) > maximumValueBytes) {
+    const error = new Error(
+      `Google app property "${key}" cannot fit a deterministic metadata surrogate within the provider byte limit.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_APP_PROPERTY_VALUE_UNREPRESENTABLE";
+    error.status = 500;
+    throw error;
+  }
+
+  return digest;
+}
+
+function buildInstitutionalRecordAppProperties(
+  normalizedKey,
+  recordType
+) {
+  const exactRecordType =
+    String(recordType || "state").trim() || "state";
+
+  return {
+    [INSTITUTIONAL_REPOSITORY_RECORD_APP_PROPERTY]:
+      compactGoogleAppPropertyValue(
+        INSTITUTIONAL_REPOSITORY_RECORD_APP_PROPERTY,
+        "true"
+      ),
+    meosRepositoryKey:
+      compactGoogleAppPropertyValue(
+        "meosRepositoryKey",
+        normalizedKey
+      ),
+    meosRecordType:
+      compactGoogleAppPropertyValue(
+        "meosRecordType",
+        exactRecordType
+      )
+  };
+}
+
 async function locateInstitutionalRepository({
   createIfMissing = false,
   forceRefresh = false
@@ -1348,295 +1432,6 @@ async function locateInstitutionalRepository({
   return { ...state.institutionalRepository };
 }
 
-
-const institutionalRepositoryKeyLocks = new Map();
-
-function withInstitutionalRepositoryKeyLock(key, operation) {
-  const normalizedKey = normalizeRepositoryKey(key);
-  const previous =
-    institutionalRepositoryKeyLocks.get(normalizedKey) ||
-    Promise.resolve();
-
-  const current = previous
-    .catch(() => undefined)
-    .then(operation);
-
-  institutionalRepositoryKeyLocks.set(
-    normalizedKey,
-    current
-  );
-
-  return current.finally(() => {
-    if (
-      institutionalRepositoryKeyLocks.get(
-        normalizedKey
-      ) === current
-    ) {
-      institutionalRepositoryKeyLocks.delete(
-        normalizedKey
-      );
-    }
-  });
-}
-
-async function readInstitutionalRepositoryCandidate(file) {
-  const response = await driveClient.files.get({
-    fileId: file.id,
-    alt: "media",
-    supportsAllDrives: true
-  });
-
-  const payload =
-    typeof response.data === "string"
-      ? JSON.parse(response.data)
-      : response.data;
-
-  return {
-    file,
-    payload
-  };
-}
-
-function sameStringArray(left, right) {
-  if (
-    !Array.isArray(left) ||
-    !Array.isArray(right)
-  ) {
-    return false;
-  }
-
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  const a = [...left].map(String).sort();
-  const b = [...right].map(String).sort();
-
-  return a.every(
-    (value, index) => value === b[index]
-  );
-}
-
-function areRepositoryDuplicateCandidatesEquivalent(
-  candidates
-) {
-  if (!Array.isArray(candidates) || candidates.length < 2) {
-    return true;
-  }
-
-  const payloads = candidates.map(
-    candidate => candidate.payload
-  );
-
-  const first = payloads[0];
-
-  if (
-    payloads.every(
-      payload =>
-        JSON.stringify(payload?.value) ===
-        JSON.stringify(first?.value)
-    )
-  ) {
-    return true;
-  }
-
-  /*
-   * Executive Memory collection manifests created concurrently can differ
-   * only by bookkeeping timestamps while expressing the same logical set.
-   * That race is safe to converge. No other divergent durable state is
-   * silently reconciled here.
-   */
-  const authorityValues = payloads.map(
-    payload => payload?.value
-  );
-
-  const allExecutiveMemoryManifests =
-    authorityValues.every(
-      authority =>
-        authority?.schema ===
-          "meos.institutional-repository-authority.record.v1" &&
-        authority?.value?.schema ===
-          "meos.executive-memory.manifest.v1"
-    );
-
-  if (!allExecutiveMemoryManifests) {
-    return false;
-  }
-
-  const reference = authorityValues[0];
-
-  return authorityValues.every(
-    authority =>
-      authority.namespace ===
-        reference.namespace &&
-      authority.key === reference.key &&
-      authority.classification ===
-        reference.classification &&
-      Number(authority.revision || 0) ===
-        Number(reference.revision || 0) &&
-      (authority.previousFingerprint || null) ===
-        (reference.previousFingerprint || null) &&
-      authority.value.collection ===
-        reference.value.collection &&
-      sameStringArray(
-        authority.value.recordIds,
-        reference.value.recordIds
-      )
-  );
-}
-
-function repositoryCandidateSortValue(candidate) {
-  const modified =
-    Date.parse(
-      candidate?.file?.modifiedTime || ""
-    ) || 0;
-  const created =
-    Date.parse(
-      candidate?.file?.createdTime || ""
-    ) || 0;
-
-  return {
-    modified,
-    created,
-    id: String(candidate?.file?.id || "")
-  };
-}
-
-async function resolveInstitutionalRepositoryCandidates(
-  normalizedKey,
-  files,
-  { repairEquivalent = true } = {}
-) {
-  if (!Array.isArray(files) || files.length === 0) {
-    return {
-      file: null,
-      repaired: false,
-      duplicateCount: 0
-    };
-  }
-
-  if (files.length === 1) {
-    return {
-      file: files[0],
-      repaired: false,
-      duplicateCount: 0
-    };
-  }
-
-  const candidates =
-    await Promise.all(
-      files.map(
-        readInstitutionalRepositoryCandidate
-      )
-    );
-
-  const valid = candidates.filter(
-    candidate =>
-      candidate.payload?.schema ===
-        INSTITUTIONAL_REPOSITORY_SCHEMA &&
-      candidate.payload?.key ===
-        normalizedKey
-  );
-
-  if (valid.length !== candidates.length) {
-    const error = new Error(
-      `Institutional repository key "${normalizedKey}" resolves to multiple records and at least one candidate failed envelope verification.`
-    );
-    error.code =
-      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
-    error.status = 409;
-    error.details = {
-      key: normalizedKey,
-      candidateCount: candidates.length,
-      validCandidateCount: valid.length,
-      repairable: false
-    };
-    throw error;
-  }
-
-  if (
-    !repairEquivalent ||
-    !areRepositoryDuplicateCandidatesEquivalent(
-      valid
-    )
-  ) {
-    const error = new Error(
-      `Institutional repository key "${normalizedKey}" resolves to multiple non-equivalent records. Automatic convergence is intentionally blocked.`
-    );
-    error.code =
-      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
-    error.status = 409;
-    error.details = {
-      key: normalizedKey,
-      candidateCount: valid.length,
-      repairable: false
-    };
-    throw error;
-  }
-
-  valid.sort((left, right) => {
-    const a =
-      repositoryCandidateSortValue(left);
-    const b =
-      repositoryCandidateSortValue(right);
-
-    return (
-      b.modified - a.modified ||
-      b.created - a.created ||
-      b.id.localeCompare(a.id)
-    );
-  });
-
-  const canonical = valid[0];
-  const redundant = valid.slice(1);
-
-  for (const candidate of redundant) {
-    await driveClient.files.delete({
-      fileId: candidate.file.id,
-      supportsAllDrives: true
-    });
-  }
-
-  console.warn(
-    `[MEOS Google Workspace] Converged ${valid.length} equivalent durable records for repository key "${normalizedKey}" to canonical file ${canonical.file.id}.`
-  );
-
-  return {
-    file: canonical.file,
-    repaired: true,
-    duplicateCount: redundant.length
-  };
-}
-
-async function findInstitutionalRepositoryRecord(
-  repository,
-  normalizedKey,
-  options = {}
-) {
-  const escapedRepositoryId =
-    escapeDriveQueryValue(repository.id);
-  const escapedFileName =
-    escapeDriveQueryValue(
-      repositoryRecordName(normalizedKey)
-    );
-
-  const result = await searchDrive({
-    query:
-      `'${escapedRepositoryId}' in parents and ` +
-      `name = '${escapedFileName}' and ` +
-      "trashed = false",
-    pageSize: 10,
-    fields:
-      "nextPageToken,files(id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties)"
-  });
-
-  return resolveInstitutionalRepositoryCandidates(
-    normalizedKey,
-    result.files,
-    options
-  );
-}
-
 async function writeInstitutionalRecord({
   key,
   value,
@@ -1646,156 +1441,116 @@ async function writeInstitutionalRecord({
   requireControlledWriteAuthorization();
 
   const normalizedKey = normalizeRepositoryKey(key);
+  const repository =
+    await locateInstitutionalRepository({
+      createIfMissing: true
+    });
 
-  return withInstitutionalRepositoryKeyLock(
-    normalizedKey,
-    async () => {
-      const repository =
-        await locateInstitutionalRepository({
-          createIfMissing: true
-        });
+  const fileName =
+    repositoryRecordName(normalizedKey);
+  const escapedRepositoryId =
+    escapeDriveQueryValue(repository.id);
+  const escapedFileName =
+    escapeDriveQueryValue(fileName);
 
-      const fileName =
-        repositoryRecordName(normalizedKey);
+  const existing = await searchDrive({
+    query:
+      `'${escapedRepositoryId}' in parents and ` +
+      `name = '${escapedFileName}' and ` +
+      "trashed = false",
+    pageSize: 10,
+    fields:
+      "nextPageToken,files(id,name,mimeType,parents,modifiedTime,createdTime,appProperties)"
+  });
 
-      const existing =
-        await findInstitutionalRepositoryRecord(
-          repository,
-          normalizedKey,
-          {
-            repairEquivalent: true
-          }
-        );
+  if (existing.files.length > 1) {
+    const error = new Error(
+      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
+    error.status = 409;
+    throw error;
+  }
 
-      const now = new Date().toISOString();
-      const envelope = {
-        schema: INSTITUTIONAL_REPOSITORY_SCHEMA,
-        key: normalizedKey,
-        recordType:
-          String(recordType || "state").trim() ||
-          "state",
-        provider: PROVIDER_ID,
-        writtenAt: now,
-        metadata:
-          metadata &&
-          typeof metadata === "object"
-            ? metadata
-            : {},
-        value
-      };
-      const body =
-        `${JSON.stringify(envelope, null, 2)}\n`;
+  const now = new Date().toISOString();
+  const envelope = {
+    schema: INSTITUTIONAL_REPOSITORY_SCHEMA,
+    key: normalizedKey,
+    recordType:
+      String(recordType || "state").trim() || "state",
+    provider: PROVIDER_ID,
+    writtenAt: now,
+    metadata:
+      metadata && typeof metadata === "object"
+        ? metadata
+        : {},
+    value
+  };
+  const body =
+    `${JSON.stringify(envelope, null, 2)}\n`;
 
-      let response;
-      let operation;
+  let response;
+  let operation;
 
-      if (existing.file?.id) {
-        operation =
-          existing.repaired
-            ? "converged-and-updated"
-            : "updated";
-
-        response =
-          await driveClient.files.update({
-            fileId: existing.file.id,
-            media: {
-              mimeType: "application/json",
-              body
-            },
-            fields:
-              "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
-            supportsAllDrives: true
-          });
-      } else {
-        operation = "created";
-
-        response =
-          await driveClient.files.create({
-            requestBody: {
-              name: fileName,
-              parents: [repository.id],
-              mimeType: "application/json",
-              appProperties: {
-                [INSTITUTIONAL_REPOSITORY_RECORD_APP_PROPERTY]:
-                  "true",
-                meosRepositoryKey:
-                  normalizedKey,
-                meosRecordType:
-                  String(recordType || "state")
-                    .trim()
-                    .slice(0, 120) ||
-                  "state"
-              }
-            },
-            media: {
-              mimeType: "application/json",
-              body
-            },
-            fields:
-              "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
-            supportsAllDrives: true
-          });
-
-        /*
-         * Drive permits duplicate filenames. Re-scan after create so any
-         * equivalent race converges immediately instead of becoming latent
-         * institutional ambiguity.
-         */
-        const convergence =
-          await findInstitutionalRepositoryRecord(
-            repository,
+  if (existing.files[0]?.id) {
+    operation = "updated";
+    response = await driveClient.files.update({
+      fileId: existing.files[0].id,
+      media: {
+        mimeType: "application/json",
+        body
+      },
+      fields:
+        "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
+      supportsAllDrives: true
+    });
+  } else {
+    operation = "created";
+    response = await driveClient.files.create({
+      requestBody: {
+        name: fileName,
+        parents: [repository.id],
+        mimeType: "application/json",
+        appProperties:
+          buildInstitutionalRecordAppProperties(
             normalizedKey,
-            {
-              repairEquivalent: true
-            }
-          );
+            recordType
+          )
+      },
+      media: {
+        mimeType: "application/json",
+        body
+      },
+      fields:
+        "id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties",
+      supportsAllDrives: true
+    });
+  }
 
-        if (
-          convergence.file?.id &&
-          convergence.file.id !==
-            response.data.id
-        ) {
-          response = {
-            ...response,
-            data: convergence.file
-          };
-          operation =
-            "created-and-converged";
-        } else if (convergence.repaired) {
-          operation =
-            "created-and-converged";
-        }
-      }
-
-      return {
-        schema:
-          "meos.institutional-repository.write-result.v1",
-        success: true,
-        provider: PROVIDER_ID,
-        authority:
-          "app-managed-drive-folder",
-        operation,
-        repository,
-        record: {
-          id: response.data.id || null,
-          key: normalizedKey,
-          name:
-            response.data.name || fileName,
-          recordType:
-            envelope.recordType,
-          modifiedTime:
-            response.data.modifiedTime || now,
-          createdTime:
-            response.data.createdTime || null,
-          size:
-            response.data.size || null,
-          webViewLink:
-            response.data.webViewLink || null
-        },
-        verified: Boolean(response.data.id)
-      };
-    }
-  );
+  return {
+    schema:
+      "meos.institutional-repository.write-result.v1",
+    success: true,
+    provider: PROVIDER_ID,
+    authority: "app-managed-drive-folder",
+    operation,
+    repository,
+    record: {
+      id: response.data.id || null,
+      key: normalizedKey,
+      name: response.data.name || fileName,
+      recordType: envelope.recordType,
+      modifiedTime:
+        response.data.modifiedTime || now,
+      createdTime:
+        response.data.createdTime || null,
+      size: response.data.size || null,
+      webViewLink:
+        response.data.webViewLink || null
+    },
+    verified: Boolean(response.data.id)
+  };
 }
 
 async function readInstitutionalRecord(key) {
@@ -1817,16 +1572,24 @@ async function readInstitutionalRecord(key) {
     };
   }
 
-  const resolved =
-    await findInstitutionalRepositoryRecord(
-      repository,
-      normalizedKey,
-      {
-        repairEquivalent: true
-      }
+  const escapedRepositoryId =
+    escapeDriveQueryValue(repository.id);
+  const escapedFileName =
+    escapeDriveQueryValue(
+      repositoryRecordName(normalizedKey)
     );
 
-  if (!resolved.file?.id) {
+  const result = await searchDrive({
+    query:
+      `'${escapedRepositoryId}' in parents and ` +
+      `name = '${escapedFileName}' and ` +
+      "trashed = false",
+    pageSize: 10,
+    fields:
+      "nextPageToken,files(id,name,mimeType,parents,webViewLink,modifiedTime,createdTime,size,appProperties)"
+  });
+
+  if (result.files.length === 0) {
     return {
       schema:
         "meos.institutional-repository.read-result.v1",
@@ -1838,7 +1601,17 @@ async function readInstitutionalRecord(key) {
     };
   }
 
-  const file = resolved.file;
+  if (result.files.length > 1) {
+    const error = new Error(
+      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
+    error.status = 409;
+    throw error;
+  }
+
+  const file = result.files[0];
   const response = await driveClient.files.get({
     fileId: file.id,
     alt: "media",
@@ -1873,26 +1646,17 @@ async function readInstitutionalRecord(key) {
     provider: PROVIDER_ID,
     authority: "app-managed-drive-folder",
     repository,
-    repairedAmbiguity:
-      resolved.repaired === true,
     record: {
       id: file.id,
       key: normalizedKey,
       name: file.name,
-      recordType:
-        payload.recordType || null,
-      writtenAt:
-        payload.writtenAt || null,
-      metadata:
-        payload.metadata || {},
-      modifiedTime:
-        file.modifiedTime || null,
-      createdTime:
-        file.createdTime || null,
-      size:
-        file.size || null,
-      webViewLink:
-        file.webViewLink || null
+      recordType: payload.recordType || null,
+      writtenAt: payload.writtenAt || null,
+      metadata: payload.metadata || {},
+      modifiedTime: file.modifiedTime || null,
+      createdTime: file.createdTime || null,
+      size: file.size || null,
+      webViewLink: file.webViewLink || null
     },
     value: payload.value
   };
@@ -1902,75 +1666,95 @@ async function deleteInstitutionalRecord(key) {
   requireControlledWriteAuthorization();
 
   const normalizedKey = normalizeRepositoryKey(key);
+  const repository =
+    await locateInstitutionalRepository();
 
-  return withInstitutionalRepositoryKeyLock(
-    normalizedKey,
-    async () => {
-      const repository =
-        await locateInstitutionalRepository();
+  if (!repository) {
+    return {
+      schema:
+        "meos.institutional-repository.delete-result.v1",
+      success: true,
+      deleted: false,
+      provider: PROVIDER_ID,
+      key: normalizedKey,
+      reason: "repository-not-found"
+    };
+  }
 
-      if (!repository) {
-        return {
-          schema:
-            "meos.institutional-repository.delete-result.v1",
-          success: true,
-          deleted: false,
-          provider: PROVIDER_ID,
-          key: normalizedKey,
-          reason: "repository-not-found"
-        };
-      }
+  const escapedRepositoryId =
+    escapeDriveQueryValue(repository.id);
+  const escapedFileName =
+    escapeDriveQueryValue(
+      repositoryRecordName(normalizedKey)
+    );
 
-      const resolved =
-        await findInstitutionalRepositoryRecord(
-          repository,
-          normalizedKey,
-          {
-            repairEquivalent: true
-          }
-        );
+  const result = await searchDrive({
+    query:
+      `'${escapedRepositoryId}' in parents and ` +
+      `name = '${escapedFileName}' and ` +
+      "trashed = false",
+    pageSize: 10,
+    fields:
+      "nextPageToken,files(id,name)"
+  });
 
-      if (!resolved.file?.id) {
-        return {
-          schema:
-            "meos.institutional-repository.delete-result.v1",
-          success: true,
-          deleted: false,
-          provider: PROVIDER_ID,
-          key: normalizedKey,
-          reason: "record-not-found"
-        };
-      }
+  if (result.files.length > 1) {
+    const error = new Error(
+      `Institutional repository key "${normalizedKey}" resolves to multiple records.`
+    );
+    error.code =
+      "GOOGLE_WORKSPACE_REPOSITORY_RECORD_AMBIGUOUS";
+    error.status = 409;
+    throw error;
+  }
 
-      await driveClient.files.delete({
-        fileId: resolved.file.id,
-        supportsAllDrives: true
-      });
+  if (!result.files[0]?.id) {
+    return {
+      schema:
+        "meos.institutional-repository.delete-result.v1",
+      success: true,
+      deleted: false,
+      provider: PROVIDER_ID,
+      key: normalizedKey,
+      reason: "record-not-found"
+    };
+  }
 
-      return {
-        schema:
-          "meos.institutional-repository.delete-result.v1",
-        success: true,
-        deleted: true,
-        provider: PROVIDER_ID,
-        key: normalizedKey,
-        id: resolved.file.id,
-        repairedAmbiguity:
-          resolved.repaired === true
-      };
-    }
-  );
+  await driveClient.files.delete({
+    fileId: result.files[0].id,
+    supportsAllDrives: true
+  });
+
+  return {
+    schema:
+      "meos.institutional-repository.delete-result.v1",
+    success: true,
+    deleted: true,
+    provider: PROVIDER_ID,
+    key: normalizedKey,
+    id: result.files[0].id
+  };
 }
 
 async function runInstitutionalRepositoryAcceptanceTest() {
   requireControlledWriteAuthorization();
 
+  /*
+   * Use a deliberately long repository identity and record type so the live
+   * acceptance crosses the exact Google appProperties boundary that rejected
+   * real Research Learning. The exact values must survive in the JSON envelope
+   * while only provider metadata is compacted.
+   */
   const testKey =
-    `acceptance-${crypto.randomUUID()}`;
+    `acceptance-byte-safe-${crypto.randomUUID()}-${"research-learning-".repeat(8)}`;
+  const testRecordType =
+    `acceptance-research-learning-${"institutional-memory-".repeat(7)}`;
   const sentinel = {
-    commission: "006.017C",
+    commission: "006.018S",
     nonce: crypto.randomUUID(),
-    testedAt: new Date().toISOString()
+    testedAt: new Date().toISOString(),
+    exactKey: normalizeRepositoryKey(testKey),
+    exactRecordType: testRecordType
   };
 
   const checks = [];
@@ -1995,19 +1779,52 @@ async function runInstitutionalRepositoryAcceptanceTest() {
       await writeInstitutionalRecord({
         key: testKey,
         value: sentinel,
-        recordType: "acceptance-test",
+        recordType: testRecordType,
         metadata: {
           disposable: true,
-          commission: "006.017C"
+          commission: "006.018S"
         }
       });
 
     checks.push({
       name:
-        "Institutional repository accepts controlled writes",
+        "Institutional repository accepts controlled writes with over-limit semantic identity",
       passed:
         writeResult.success === true &&
         writeResult.verified === true
+    });
+
+    const acceptanceAppProperties =
+      buildInstitutionalRecordAppProperties(
+        normalizeRepositoryKey(testKey),
+        testRecordType
+      );
+
+    checks.push({
+      name:
+        "Every provider appProperty key/value pair is within Google's 124 UTF-8 byte limit",
+      passed:
+        Object.entries(acceptanceAppProperties)
+          .every(([key, value]) =>
+            utf8ByteLength(key) +
+              utf8ByteLength(value) <=
+            GOOGLE_APP_PROPERTY_PAIR_MAX_UTF8_BYTES
+          )
+    });
+
+    checks.push({
+      name:
+        "Over-limit provider metadata uses deterministic content-derived surrogates",
+      passed:
+        acceptanceAppProperties.meosRepositoryKey
+          .startsWith("sha256:") &&
+        acceptanceAppProperties.meosRecordType
+          .startsWith("sha256:") &&
+        acceptanceAppProperties.meosRepositoryKey ===
+          buildInstitutionalRecordAppProperties(
+            normalizeRepositoryKey(testKey),
+            testRecordType
+          ).meosRepositoryKey
     });
 
     readResult =
@@ -2027,6 +1844,20 @@ async function runInstitutionalRepositoryAcceptanceTest() {
       passed:
         JSON.stringify(readResult.value) ===
         JSON.stringify(sentinel)
+    });
+
+    checks.push({
+      name:
+        "Provider metadata compaction does not change the institutional record key or record type",
+      passed:
+        readResult?.key ===
+          normalizeRepositoryKey(testKey) &&
+        readResult?.recordType ===
+          testRecordType &&
+        readResult?.value?.exactKey ===
+          normalizeRepositoryKey(testKey) &&
+        readResult?.value?.exactRecordType ===
+          testRecordType
     });
 
     checks.push({
@@ -2060,9 +1891,9 @@ async function runInstitutionalRepositoryAcceptanceTest() {
     checks.every(check => check.passed);
 
   const result = {
-    commission: "006.017C",
+    commission: "006.018S",
     schema:
-      "meos.google-workspace.institutional-repository.acceptance.v1",
+      "meos.google-workspace.institutional-repository.byte-safe-metadata-acceptance.v2",
     version: VERSION,
     buildId: BUILD_ID,
     passed,
@@ -2078,7 +1909,7 @@ async function runInstitutionalRepositoryAcceptanceTest() {
 
   console.table(checks);
   console.info(
-    `[MEOS ${VERSION}] Commission 006.017C institutional repository acceptance: ${passed ? "PASS" : "FAIL"}.`
+    `[MEOS ${VERSION}] Commission 006.018S byte-safe institutional repository metadata acceptance: ${passed ? "PASS" : "FAIL"}.`
   );
 
   return result;
