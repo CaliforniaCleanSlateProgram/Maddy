@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.53";
+const VERSION = "2.10.54";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -11301,6 +11301,498 @@ app.post(
     response
       .status(result.success ? 200 : 400)
       .json(result);
+  }
+);
+
+
+
+/* ========================================================================== */
+/* Commission 006.018R — Human Direction -> Resident Brain Research Bridge    */
+/* ========================================================================== */
+
+/*
+ * A human-directed research task is not autonomous curiosity and must not be
+ * disguised as productive-idle cognition. This bridge gives the resident,
+ * browser-independent Executive Brain an explicit human task, checkpoints any
+ * cognition it interrupts, executes the already-commissioned bounded public
+ * research stack, returns an evidence-bound receipt to that same Brain, then
+ * resumes the interrupted cognitive thread from its preserved PIT.
+ *
+ * No new research engine, persistence authority, paid-search authority, paid
+ * model authority, or external-action authority is created here.
+ */
+const HUMAN_RESIDENT_RESEARCH_COMMISSION = "006.018R";
+const HUMAN_RESIDENT_RESEARCH_BUILD_ID =
+  "HRRB100-HUMAN-DIRECTION-RESIDENT-BRAIN-RESEARCH-BRIDGE-20260812-A";
+
+const humanResidentResearchState = {
+  requestCount: 0,
+  executedCount: 0,
+  failedCount: 0,
+  inFlight: false,
+  lastRequestedAt: null,
+  lastCompletedAt: null,
+  lastSubject: null,
+  lastEvidenceCount: 0,
+  lastStopReason: null,
+  lastError: null
+};
+
+function normalizeHumanResidentResearchRequest(body = {}) {
+  const subject = String(body.subject || "").trim().slice(0, 500);
+  const objective = String(
+    body.objective ||
+      body.reason ||
+      (subject ? `Research ${subject} using bounded public evidence.` : "")
+  ).trim().slice(0, 2000);
+  const questions = Array.isArray(body.questions)
+    ? body.questions
+        .map(value => String(value || "").trim())
+        .filter(Boolean)
+        .slice(0, 8)
+    : [];
+
+  return {
+    schema: "meos.maddy.human-directed-research-request.v1",
+    subject,
+    objective,
+    questions,
+    authority: {
+      humanDirected: true,
+      publicReadResearchAuthorized: true,
+      paidSpendAuthorized: false,
+      externalActionAuthorized: false
+    }
+  };
+}
+
+function validateHumanResidentResearchRequest(request = {}) {
+  if (!request.subject) {
+    return { valid: false, reason: "human-research-subject-required" };
+  }
+  if (request.authority?.humanDirected !== true) {
+    return { valid: false, reason: "explicit-human-direction-required" };
+  }
+  if (
+    request.authority?.paidSpendAuthorized !== false ||
+    request.authority?.externalActionAuthorized !== false
+  ) {
+    return { valid: false, reason: "human-research-authority-invalid" };
+  }
+  return { valid: true, reason: "bounded-public-research-authorized" };
+}
+
+async function executeHumanResidentResearch(
+  body = {},
+  options = {}
+) {
+  const request = normalizeHumanResidentResearchRequest(body);
+  const validation = validateHumanResidentResearchRequest(request);
+  if (!validation.valid) {
+    return {
+      success: false,
+      executed: false,
+      reason: validation.reason,
+      request,
+      paidSearchUsed: false,
+      paidModelUsed: false,
+      externalActionAuthorized: false
+    };
+  }
+
+  if (humanResidentResearchState.inFlight) {
+    return {
+      success: false,
+      executed: false,
+      reason: "human-resident-research-already-in-flight",
+      paidSearchUsed: false,
+      paidModelUsed: false,
+      externalActionAuthorized: false
+    };
+  }
+
+  humanResidentResearchState.inFlight = true;
+  humanResidentResearchState.requestCount += 1;
+  humanResidentResearchState.lastRequestedAt = new Date().toISOString();
+  humanResidentResearchState.lastSubject = request.subject;
+  humanResidentResearchState.lastError = null;
+
+  let brain = null;
+  let interruption = null;
+
+  try {
+    brain =
+      options.brain ||
+      await getResidentContinuousCognitionBrain();
+
+    if (
+      typeof brain?.interruptCognitionForHumanTask !== "function" ||
+      typeof brain?.completeHumanTaskAndResume !== "function"
+    ) {
+      const error = new Error(
+        "Resident Executive Brain does not expose the commissioned human-interruption continuity contract."
+      );
+      error.code = "RESIDENT_BRAIN_HUMAN_CONTINUITY_CONTRACT_MISSING";
+      throw error;
+    }
+
+    interruption = brain.interruptCognitionForHumanTask({
+      id:
+        body.id ||
+        `human-research-${fingerprintAutonomousLearningSubject(request.subject).slice(0, 24)}`,
+      subject: request.subject,
+      reason: request.objective,
+      urgency: Number(body.urgency ?? 0.9),
+      missionConsequence: Number(body.missionConsequence ?? 0.75),
+      irreversibility: Number(body.irreversibility ?? 0.2),
+      leverage: Number(body.leverage ?? 0.7),
+      externalAuthorityRequired: false
+    });
+
+    if (interruption?.success !== true) {
+      return {
+        success: false,
+        executed: false,
+        reason: interruption?.reason || "resident-brain-human-interruption-failed",
+        interruption,
+        paidSearchUsed: false,
+        paidModelUsed: false,
+        externalActionAuthorized: false
+      };
+    }
+
+    const researchExecutor =
+      options.researchExecutor ||
+      executeHeadlessResearch;
+
+    const result = await researchExecutor({
+      subject: request.subject,
+      reason: request.objective,
+      unknowns: request.questions,
+      maxSources: 8,
+      maxDepth: 2,
+      maxAdditionalPasses: 0,
+      preferredProviders: [
+        PUBLIC_WEB_ADAPTER_ID,
+        "public-web-retrieval-v1"
+      ]
+    });
+
+    const evidenceCount = Array.isArray(result?.evidence)
+      ? result.evidence.length
+      : 0;
+    const stopReason =
+      result?.researchLoop?.closure?.stopReason ||
+      (result?.success === true
+        ? "bounded-human-research-complete"
+        : "human-research-failed");
+
+    /*
+     * Preserve the research event in the same resident Brain's autobiographical
+     * memory without promoting retrieved claims to verified institutional fact.
+     */
+    if (Array.isArray(brain.autobiographicalMemory)) {
+      brain.autobiographicalMemory.push({
+        schema: "meos.maddy.autobiographical-memory.v1",
+        eventType: "human-directed-public-research",
+        sourceId:
+          `human-research-${fingerprintAutonomousLearningSubject(request.subject)}`,
+        occurredAt: new Date().toISOString(),
+        subject: request.subject,
+        intention: {
+          origin: "human-direction",
+          objective: request.objective
+        },
+        action: {
+          transport: "existing-headless-public-research",
+          evidenceCount,
+          paidSearchUsed: false,
+          paidModelUsed: false
+        },
+        outcome: {
+          researchSuccess: result?.success === true,
+          durableLearningPersisted:
+            result?.durableLearning?.persisted === true ||
+            result?.durableLearning?.success === true,
+          stopReason
+        },
+        truthRule:
+          "This autobiographical receipt proves bounded research execution; retrieved claims retain their own evidence status."
+      });
+    }
+
+    const resumed = brain.completeHumanTaskAndResume({
+      materialChange: result?.success === true,
+      changeSummary:
+        result?.success === true
+          ? `Human-directed public research completed for ${request.subject}.`
+          : `Human-directed public research failed for ${request.subject}.`,
+      evidence: Array.isArray(result?.evidence)
+        ? result.evidence.slice(0, 8)
+        : []
+    });
+
+    humanResidentResearchState.executedCount += 1;
+    humanResidentResearchState.lastCompletedAt = new Date().toISOString();
+    humanResidentResearchState.lastEvidenceCount = evidenceCount;
+    humanResidentResearchState.lastStopReason = stopReason;
+
+    /*
+     * The human interruption and new autobiographical receipt are material
+     * Brain state. Checkpoint once after completion instead of writing on each
+     * research step.
+     */
+    if (!options.skipCheckpoint) {
+      const syntheticCycle = {
+        handoff: brain.buildContinuousCognitionHandoff({
+          materialChange: result?.success === true
+        })
+      };
+      await checkpointContinuousCognition(
+        brain,
+        syntheticCycle,
+        "human-directed-research-complete"
+      );
+    }
+
+    return {
+      success: result?.success === true,
+      executed: true,
+      commission: HUMAN_RESIDENT_RESEARCH_COMMISSION,
+      buildId: HUMAN_RESIDENT_RESEARCH_BUILD_ID,
+      request,
+      residentBrain: {
+        version: brain.version,
+        buildId: brain.buildId,
+        sameResidentBrain: true
+      },
+      interruption,
+      research: {
+        evidenceCount,
+        evidenceQuality: result?.synthesis?.evidenceQuality || "none",
+        durableLearning: result?.durableLearning || null,
+        closure: result?.researchLoop?.closure || null,
+        synthesis: result?.synthesis || null
+      },
+      resume: resumed,
+      paidSearchUsed: false,
+      paidModelUsed: false,
+      externalActionAuthorized: false
+    };
+  } catch (error) {
+    humanResidentResearchState.failedCount += 1;
+    humanResidentResearchState.lastError = {
+      code: error?.code || "HUMAN_RESIDENT_RESEARCH_FAILED",
+      message: error?.message || String(error),
+      at: new Date().toISOString()
+    };
+
+    if (
+      brain &&
+      interruption?.success === true &&
+      typeof brain.completeHumanTaskAndResume === "function"
+    ) {
+      try {
+        brain.completeHumanTaskAndResume({
+          materialChange: false,
+          changeSummary: "Human-directed research failed without verified material change."
+        });
+      } catch {}
+    }
+
+    return {
+      success: false,
+      executed: true,
+      commission: HUMAN_RESIDENT_RESEARCH_COMMISSION,
+      buildId: HUMAN_RESIDENT_RESEARCH_BUILD_ID,
+      reason: "human-resident-research-failed",
+      error: humanResidentResearchState.lastError,
+      paidSearchUsed: false,
+      paidModelUsed: false,
+      externalActionAuthorized: false
+    };
+  } finally {
+    humanResidentResearchState.inFlight = false;
+  }
+}
+
+function getHumanResidentResearchStatus() {
+  return {
+    commission: HUMAN_RESIDENT_RESEARCH_COMMISSION,
+    buildId: HUMAN_RESIDENT_RESEARCH_BUILD_ID,
+    ...humanResidentResearchState,
+    maxSources: 8,
+    maxDepth: 2,
+    maximumAdditionalPasses: 0,
+    paidSearchAuthorized: false,
+    paidModelAuthorized: false,
+    externalActionAuthorized: false
+  };
+}
+
+async function runHumanResidentResearchAcceptanceTest() {
+  const events = [];
+  const fakeBrain = {
+    version: "fixture",
+    buildId: "fixture",
+    autobiographicalMemory: [],
+    interruptCognitionForHumanTask(task) {
+      events.push("interrupt");
+      return {
+        success: true,
+        interruption: {
+          humanTaskSubject: task.subject,
+          interruptedThreadId: "fixture-thread",
+          status: "human-task-active"
+        },
+        checkpoint: {
+          checkpoint: {
+            reason: "human-directed-task",
+            nextIntendedMove: "resume exact prior work"
+          }
+        }
+      };
+    },
+    completeHumanTaskAndResume() {
+      events.push("resume");
+      return {
+        success: true,
+        resumed: true,
+        disposition: "reconsidered-and-resumed"
+      };
+    },
+    buildContinuousCognitionHandoff() {
+      return { activeThreadId: "fixture-thread" };
+    }
+  };
+
+  const fakeResearch = async () => {
+    events.push("research");
+    return {
+      success: true,
+      evidence: [
+        {
+          source: "https://example.test/source",
+          claim: "fixture evidence"
+        }
+      ],
+      synthesis: {
+        evidenceQuality: "bounded-fixture"
+      },
+      durableLearning: {
+        persisted: true,
+        record: { id: "fixture-learning" }
+      },
+      researchLoop: {
+        closure: {
+          stopReason: "decision-sufficient-evidence"
+        }
+      }
+    };
+  };
+
+  const result = await executeHumanResidentResearch(
+    {
+      subject: "fixture public-world question",
+      objective: "Determine enough to make a bounded judgment.",
+      questions: ["What is established?", "What remains uncertain?"]
+    },
+    {
+      brain: fakeBrain,
+      researchExecutor: fakeResearch,
+      skipCheckpoint: true
+    }
+  );
+
+  const checks = [
+    {
+      name: "Explicit human research direction enters the resident Brain before research",
+      passed: events[0] === "interrupt"
+    },
+    {
+      name: "Existing bounded public research executes after human-direction checkpoint",
+      passed: events[1] === "research"
+    },
+    {
+      name: "Human research completion resumes prior cognition after research",
+      passed: events[2] === "resume"
+    },
+    {
+      name: "The same resident Brain receives an autobiographical research receipt",
+      passed:
+        fakeBrain.autobiographicalMemory.length === 1 &&
+        fakeBrain.autobiographicalMemory[0]?.eventType ===
+          "human-directed-public-research"
+    },
+    {
+      name: "Existing durable research learning remains the persistence authority",
+      passed:
+        result?.research?.durableLearning?.persisted === true &&
+        result?.research?.durableLearning?.record?.id === "fixture-learning"
+    },
+    {
+      name: "Research remains bounded to the cheap public envelope",
+      passed:
+        result?.paidSearchUsed === false &&
+        result?.paidModelUsed === false &&
+        result?.externalActionAuthorized === false
+    },
+    {
+      name: "No second research engine is created by the bridge",
+      passed:
+        typeof executeHeadlessResearch === "function" &&
+        result?.research?.closure?.stopReason ===
+          "decision-sufficient-evidence"
+    },
+    {
+      name: "Human interruption continuity remains a first-class Brain contract",
+      passed:
+        result?.interruption?.checkpoint?.checkpoint?.reason ===
+          "human-directed-task" &&
+        result?.resume?.resumed === true
+    }
+  ];
+
+  const passed = checks.filter(check => check.passed).length;
+  return {
+    success: passed === checks.length,
+    commission: HUMAN_RESIDENT_RESEARCH_COMMISSION,
+    schema: "meos.human-resident-research-bridge.acceptance.v1",
+    version: VERSION,
+    buildId: HUMAN_RESIDENT_RESEARCH_BUILD_ID,
+    passed,
+    total: checks.length,
+    providerCalls: 0,
+    durableWrites: 0,
+    externalActionAuthorized: false,
+    checks
+  };
+}
+
+app.get(
+  "/api/human-resident-research-runtime",
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    response.status(200).json(getHumanResidentResearchStatus());
+  }
+);
+
+app.get(
+  "/api/human-resident-research-acceptance",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    const result = await runHumanResidentResearchAcceptanceTest();
+    response.status(result.success ? 200 : 500).json(result);
+  }
+);
+
+app.post(
+  "/api/human-resident-research",
+  express.json({ limit: "64kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    const result = await executeHumanResidentResearch(request.body || {});
+    response.status(result.success ? 200 : 400).json(result);
   }
 );
 
