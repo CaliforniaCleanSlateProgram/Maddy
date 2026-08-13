@@ -219,6 +219,24 @@
     .submit:hover { background: #203650; box-shadow: 0 14px 32px rgba(23,38,58,.22); }
     .submit:active { transform: translateY(1px); }
 
+    .submit.secondary {
+      margin-top: 0;
+      background: transparent;
+      color: var(--navy);
+      border: 1px solid rgba(23,38,58,.22);
+      box-shadow: none;
+    }
+
+    .submit.secondary:hover {
+      background: #f5f3ee;
+      box-shadow: none;
+    }
+
+    .submit:disabled {
+      cursor: wait;
+      opacity: .68;
+    }
+
     .preview-note {
       min-height: 39px;
       margin: 2px 0 0;
@@ -391,7 +409,7 @@
           Sign in to continue with Maddy and your organization's executive workspace.
         </p>
 
-        <form class="form" id="previewSigninForm">
+        <form class="form" id="signinForm">
           <label>
             Work email
             <input type="email" name="email" autocomplete="email" placeholder="you@organization.org" required>
@@ -400,20 +418,19 @@
           <label>
             <span class="password-row">
               <span>Password</span>
-              <span>Secure access preview</span>
+              <span>Secure account access</span>
             </span>
             <input type="password" name="password" autocomplete="current-password" placeholder="Enter your password" required>
           </label>
 
-          <button class="submit" type="submit">Sign in to MEOS</button>
-          <p class="preview-note" id="previewNote" role="status">
-            Static Fast Track preview. Authentication is intentionally not active yet.
-          </p>
+          <button class="submit" id="signinButton" type="submit">Sign in to MEOS</button>
+          <button class="submit secondary" id="createAccountButton" type="button">Create account</button>
+          <p class="preview-note" id="authNote" role="status">Secure MEOS account access.</p>
         </form>
 
         <div class="trust-line">
           <span class="trust-lock" aria-hidden="true">✓</span>
-          <span>Organization access, authority, and data boundaries will be verified by MEOS before this page becomes an active sign-in gateway.</span>
+          <span>Your password is verified by MEOS on the server. This page does not store your password in the browser.</span>
         </div>
       </section>
 
@@ -429,16 +446,109 @@
 
     <footer>
       <span>MEOS · Executive access</span>
-      <span>Fast Track preview · Authentication not yet connected</span>
+      <span>Fast Track · Secure account access</span>
     </footer>
   </div>
 
   <script>
-    document.getElementById("previewSigninForm").addEventListener("submit", function (event) {
-      event.preventDefault();
-      document.getElementById("previewNote").textContent =
-        "Preview only — no credentials were sent or stored. Secure authentication will be activated for the CCSP Customer Zero trial.";
-    });
+    (function () {
+      "use strict";
+
+      const form = document.getElementById("signinForm");
+      const signInButton = document.getElementById("signinButton");
+      const createAccountButton = document.getElementById("createAccountButton");
+      const note = document.getElementById("authNote");
+
+      function credentials() {
+        const data = new FormData(form);
+        return {
+          email: String(data.get("email") || "").trim(),
+          password: String(data.get("password") || "")
+        };
+      }
+
+      function setBusy(busy) {
+        signInButton.disabled = busy;
+        createAccountButton.disabled = busy;
+      }
+
+      async function authRequest(path) {
+        if (!form.reportValidity()) return;
+
+        const body = credentials();
+        setBusy(true);
+        note.textContent = "Contacting MEOS securely…";
+
+        try {
+          const response = await fetch(path, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          });
+
+          let result = {};
+          try {
+            result = await response.json();
+          } catch (_) {
+            result = {};
+          }
+
+          if (!response.ok || result.success === false) {
+            throw new Error(
+              result.error ||
+              result.message ||
+              (response.status === 401
+                ? "That email or password was not recognized."
+                : "MEOS could not complete secure account access.")
+            );
+          }
+
+          form.reset();
+          note.textContent =
+            path === "/api/auth/register"
+              ? "Account created. You are securely signed in to MEOS."
+              : "Signed in securely. Your MEOS session is active.";
+
+          window.setTimeout(function () {
+            window.location.assign("/");
+          }, 450);
+        } catch (error) {
+          note.textContent = error && error.message
+            ? error.message
+            : "MEOS could not complete secure account access.";
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        authRequest("/api/auth/login");
+      });
+
+      createAccountButton.addEventListener("click", function () {
+        authRequest("/api/auth/register");
+      });
+
+      fetch("/api/auth/me", {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store"
+      })
+        .then(function (response) {
+          if (!response.ok) return null;
+          return response.json();
+        })
+        .then(function (result) {
+          if (result && result.success && result.authenticated !== false) {
+            note.textContent = "Your MEOS session is already active. Sign in again only if you want to refresh access.";
+          }
+        })
+        .catch(function () {
+          // The form remains usable even when session discovery is unavailable.
+        });
+    }());
   </script>
 </body>
 </html>
