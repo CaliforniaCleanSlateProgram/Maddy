@@ -1850,9 +1850,9 @@ async function runInstitutionalRepositoryAcceptanceTest() {
       name:
         "Provider metadata compaction does not change the institutional record key or record type",
       passed:
-        readResult?.key ===
+        readResult?.record?.key ===
           normalizeRepositoryKey(testKey) &&
-        readResult?.recordType ===
+        readResult?.record?.recordType ===
           testRecordType &&
         readResult?.value?.exactKey ===
           normalizeRepositoryKey(testKey) &&
