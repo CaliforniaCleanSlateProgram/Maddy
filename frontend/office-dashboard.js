@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.0";
+  const DASHBOARD_VERSION = "4.11.1";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3421,9 +3421,12 @@ document
       .meos-office-bay[data-widget="mission-pulse"]{left:226vw}
       .meos-office-bay[data-widget="priorities"]{left:252vw}
       .meos-office-bay[data-widget="grant-intelligence"]{left:278vw}
-      .meos-office-bay .meos-widget{display:block!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;border:1px solid rgba(107,222,231,.2)!important;border-radius:15px!important;background:linear-gradient(145deg,rgba(3,16,21,.91),rgba(5,12,15,.86))!important;box-shadow:0 20px 55px rgba(0,0,0,.42),inset 0 0 0 1px rgba(223,171,88,.04)!important;backdrop-filter:blur(13px)!important}
+      .meos-office-bay .meos-widget{display:block!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;border:1px solid rgba(107,222,231,.2)!important;border-radius:15px!important;background:linear-gradient(145deg,rgba(3,16,21,.20),rgba(5,12,15,.10))!important;box-shadow:0 14px 38px rgba(0,0,0,.18),inset 0 0 0 1px rgba(223,171,88,.025)!important;backdrop-filter:blur(2px)!important}
       .meos-office-bay .meos-widget-inner{height:100%!important;overflow:auto!important;scrollbar-width:thin;scrollbar-color:rgba(212,162,83,.55) transparent}
-      .meos-office-bay .meos-widget-header{position:sticky!important;top:0!important;z-index:4!important;background:rgba(4,17,21,.94)!important;backdrop-filter:blur(10px)!important}
+      .meos-office-bay .meos-widget-header{position:sticky!important;top:0!important;z-index:4!important;background:linear-gradient(180deg,rgba(4,17,21,.34),rgba(4,17,21,.12))!important;backdrop-filter:blur(3px)!important}
+      .meos-office-bay .meos-widget,.meos-office-bay .meos-widget *{text-shadow:0 1px 3px rgba(0,0,0,.82)}
+      .meos-office-bay .meos-widget::before{opacity:.12!important}
+      
       .meos-office-bay[data-expanded="true"]{height:72vh;width:27vw;z-index:80}
       .meos-office-bay[data-popout="true"]{position:fixed!important;left:50vw!important;top:8vh!important;transform:translateX(-50%)!important;width:min(900px,76vw)!important;max-width:none!important;height:78vh!important;z-index:300!important}
       .meos-office-tools{position:absolute;z-index:8;right:8px;top:8px;display:flex;gap:5px}
@@ -3564,7 +3567,7 @@ document
       ['Navigation proxy controls present', (scene?.querySelectorAll('#meosImageOfficeNav button').length || 0) > 0],
       ['Every mounted widget has expand and popout controls', (scene?.querySelectorAll('[data-office-tool]').length || 0) === (scene?.querySelectorAll('.meos-office-bay').length || 0) * 2]
     ].map(([name,passed]) => ({name,passed:Boolean(passed)}));
-    const result = {success:checks.every(c=>c.passed),commission:'006.020D',version:DASHBOARD_VERSION,buildId:'EO4110-IMAGE-PANORAMIC-EXECUTIVE-OFFICE-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
+    const result = {success:checks.every(c=>c.passed),commission:'006.020D',version:DASHBOARD_VERSION,buildId:'EO4111-GLASS-HUD-PANORAMIC-EXECUTIVE-OFFICE-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);
     console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D Image Panoramic Executive Office: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
     return result;
