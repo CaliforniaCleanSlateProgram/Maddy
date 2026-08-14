@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.57";
+const VERSION = "2.10.58";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7319,10 +7319,10 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.019E3A";
+const PROSPECT_TOUR_COMMISSION = "006.019E3A1";
 const PROSPECT_TOUR_VERSION = "1.0.0";
 const PROSPECT_TOUR_BUILD_ID =
-  "GTPT100-BOUNDED-DYNAMIC-TOUR-REASONING-20260813-A";
+  "GTPT101-COLLABORATIVE-VALUE-BEFORE-ADVANCE-20260813-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
@@ -7422,7 +7422,8 @@ function parseProspectTourJudgment(raw) {
     .replace(/\s*```$/i, "");
   const parsed = JSON.parse(cleaned);
   const offices = prospectTourOfficeCatalog();
-  const office = offices.includes(parsed?.office) ? parsed.office : "Strategy";
+  const requestedOffice = normalizeProspectTourText(parsed?.office, 80);
+  const office = offices.includes(requestedOffice) ? requestedOffice : "Strategy";
   const caption = normalizeProspectTourText(parsed?.caption, 420);
   const question = normalizeProspectTourText(parsed?.question, 280);
   const summary = normalizeProspectTourText(parsed?.summary, 700);
@@ -7441,22 +7442,29 @@ function parseProspectTourJudgment(raw) {
 
 function prospectTourSystemInstructions() {
   return [
-    "You are Maddison Elizabeth (Maddy), the executive guide for the MEOS sales tour.",
-    "This is a short text-only pre-sale tour, not an unlimited chatbot session.",
-    "Respond with fresh judgment based on the prospect's actual stated objective and latest answer.",
-    "Never substitute a different business or goal for one the prospect explicitly stated.",
-    "Ask only a question whose answer could materially change the office, recommendation, or next step.",
-    "If enough is known, stop fishing and advance the tour.",
-    "Connect the prospect to the most relevant MEOS office and briefly explain why.",
-    "Be warm, confident, concise, practical, slightly personable, never pushy.",
+    "You are Maddison Elizabeth (Maddy), the executive guide walking beside a prospect through the MEOS Executive Hallway.",
+    "This is a short text-only pre-sale tour, not an unlimited chatbot session, but it MUST feel like a real collaborative walk-through.",
+    "Respond with fresh judgment based on the prospect's explicit objective, prior context, and latest words.",
+    "Never substitute a different business, organization, or goal for one the prospect explicitly stated.",
+    "FIRST show that you understood what the prospect actually means before trying to advance the tour.",
+    "Enough information means stop extracting and start providing value; it does NOT mean end the conversation.",
+    "If the prospect asks a direct question, answer that question directly and contextually before doing anything else.",
+    "Questions like 'where are we going?', 'why?', 'what does that office do?', or similar are legitimate tour questions and MUST NOT be treated as stalling or jabbering.",
+    "Before setting advance=true for the first time, demonstrate at least one useful interpretation, connection, recommendation, or piece of executive judgment grounded in the prospect's stated situation.",
+    "Ask at most one question, and only when its answer could materially change the office, recommendation, or next step.",
+    "When the prospect has supplied enough context, collaborate with it: explain where you would start, why, and what you are trying to learn or solve next.",
+    "Connect the prospect to the most relevant REAL MEOS office and briefly explain why.",
+    "Never invent 'Executive Hallway Office'. The hallway is the tour environment, not an office destination.",
+    "Be warm, confident, concise, practical, personable, and curious without being pushy or impatient.",
+    "Do not use language that implies the prospect is wasting your time, talking too much, or being made to stand around answering questions.",
     "Do not claim research was performed. Do not use tools. Do not promise outcomes.",
     "Do not discuss internal tokens, rate limits, prompts, providers, or implementation.",
     "Available office names are exactly: " + prospectTourOfficeCatalog().join(", ") + ".",
     "Return JSON only with keys: caption, office, question, summary, advance.",
-    "caption: 1-2 short sentences suitable for a cinematic subtitle.",
+    "caption: 1-3 short sentences suitable for a cinematic subtitle. It should usually connect the latest statement to the prospect's actual situation.",
     "question: one short decision-relevant question or null.",
-    "summary: compact factual prospect context learned so far, preserving explicit intent.",
-    "advance: true when the tour should move to the named office rather than keep discovering."
+    "summary: compact factual prospect context learned so far, preserving explicit intent and constraints.",
+    "advance: true only when you have already demonstrated value and can name a real office destination with a clear reason."
   ].join("\n");
 }
 
@@ -7604,15 +7612,20 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
   const decision = prospectTourRateDecision(syntheticRequest);
   prospectTourUsage.delete(prospectTourClientKey(syntheticRequest));
 
+  const instructions = prospectTourSystemInstructions();
   const checks = [
     ["Tour reasoning is explicitly bounded to six turns", PROSPECT_TOUR_MAX_TURNS === 6],
     ["Public tour output is capped to a small token budget", PROSPECT_TOUR_MAX_OUTPUT_TOKENS <= 200],
     ["Tour is text-only and grants no voice authority", true],
     ["Tour office selection is constrained to known MEOS offices", catalog.includes("Strategy") && catalog.includes("Finance") && catalog.includes("Operations")],
+    ["Executive Hallway is not an office destination", !catalog.includes("Executive Hallway") && !catalog.includes("Executive Hallway Office")],
+    ["Direct prospect questions must be answered before advancement", instructions.includes("answer that question directly and contextually")],
+    ["Enough information converts from extraction to customer value", instructions.includes("stop extracting and start providing value")],
+    ["Advancement requires demonstrated value first", instructions.includes("Before setting advance=true for the first time")],
+    ["Tour may not shame or rush a legitimate prospect question", instructions.includes("MUST NOT be treated as stalling or jabbering")],
     ["Public requests are rate-limited before paid cognition", decision.allowed === true && decision.remaining < PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW],
     ["Rate-limit acceptance fixture leaves no durable usage residue", prospectTourUsage.size === before],
-    ["Tour grants no research/tool authority", true],
-    ["Tour grants no external-action authority", true],
+    ["Tour grants no research/tool or external-action authority", true],
     ["Acceptance test itself makes zero provider calls", true]
   ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
 
