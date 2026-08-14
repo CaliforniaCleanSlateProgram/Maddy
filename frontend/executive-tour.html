@@ -1,6 +1,6 @@
 <!doctype html>
-<!-- Commission 006.019E3B1 — Executive Tour Caption Clearance Repair
-Build: AETC101-CAPTION-CLEARANCE-REPAIR-20260813-A
+<!-- Commission 006.019E3B2 — Persistent Tour Progress + Cinematic Dialogue Handoff
+Build: AETC102-PERSISTENT-PROGRESS-CINEMATIC-HANDOFF-20260813-A
 Consumes commissioned 006.019E3A bounded prospect-tour reasoning. -->
 <html lang="en">
 <head>
@@ -20,6 +20,10 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
 .caption{max-width:680px;padding:16px 24px;text-align:center;border-radius:10px;background:linear-gradient(90deg,transparent,rgba(0,0,0,.66) 12%,rgba(0,0,0,.72) 88%,transparent);text-shadow:0 2px 6px #000}
 .speaker{display:block;margin-bottom:6px;color:var(--gold);font-size:10px;font-weight:900;letter-spacing:.22em;text-transform:uppercase}
 .words{display:block;font-family:Georgia,"Times New Roman",serif;font-size:clamp(18px,1.55vw,24px);line-height:1.35}
+.caption{transition:opacity .22s ease,transform .22s ease}
+.caption.out{opacity:0;transform:translateY(5px)}
+.caption.thinking{opacity:.82}
+
 .you{position:absolute;z-index:5;left:38%;right:8%;bottom:34%;display:none;justify-content:center;pointer-events:none}
 .you.show{display:flex}
 .you-box{max-width:700px;padding:12px 20px;border-radius:10px;background:rgba(18,18,17,.68);text-align:center;text-shadow:0 2px 5px #000}
@@ -57,7 +61,7 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
  </div>
 
  <div class="caption-wrap" aria-live="polite">
-   <div class="caption">
+   <div id="maddyCaption" class="caption">
      <span class="speaker">Maddy</span>
      <span id="words" class="words">Come on. Let me show you how this place works — and we'll keep what you told me in mind as we go.</span>
    </div>
@@ -75,6 +79,7 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
 (()=>{
  "use strict";
  const words=document.getElementById("words");
+ const maddyCaption=document.getElementById("maddyCaption");
  const you=document.getElementById("you");
  const youWords=document.getElementById("youWords");
  const form=document.getElementById("composer");
@@ -103,26 +108,40 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
    words.textContent=`Come on, ${initialName}. Let me show you how this place works — and we'll keep what you told me in mind as we go.`;
  }
 
- function showYou(text){
-   youWords.textContent=text;
-   you.classList.add("show");
-   window.setTimeout(()=>you.classList.remove("show"),1800);
+ const wait=(ms)=>new Promise(resolve=>window.setTimeout(resolve,ms));
+
+ async function transitionMaddy(text,{thinking=false}={}){
+   maddyCaption.classList.add("out");
+   await wait(230);
+   words.textContent=text;
+   maddyCaption.classList.toggle("thinking",thinking);
+   maddyCaption.classList.remove("out");
+   await wait(230);
  }
 
- function gracefulFallback(){
-   words.textContent="I’ve got enough to keep us moving. Let me show you where I’d start rather than making you stand in the hallway answering questions all day.";
+ async function showYou(text){
+   youWords.textContent=text;
+   you.classList.add("show");
+   await wait(650);
+   you.classList.remove("show");
+   await wait(180);
+ }
+
+ async function gracefulFallback(){
+   await transitionMaddy("I’ve got enough context to keep us moving. I’ll use what you’ve told me as we go.");
    advance.classList.add("show");
-   hint.textContent="Maddy is advancing the tour instead of extending the conversation.";
+   hint.textContent="Keep walking when you’re ready, or tell Maddy something else that matters.";
  }
 
  async function submitTurn(event){
    event.preventDefault();
    const utterance=String(input.value||"").trim().replace(/\s+/g," ");
    if(!utterance){input.focus();return;}
-   showYou(utterance);
    input.value="";
    send.disabled=true;
-   hint.textContent="Maddy is thinking about whether this changes where she should take you…";
+   await showYou(utterance);
+   await transitionMaddy("Thinking…",{thinking:true});
+   hint.textContent="Maddy is connecting that to what you’ve already told her…";
 
    try {
      const r=await fetch("/api/prospect-tour/turn",{
@@ -140,12 +159,12 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
      const result=await r.json().catch(()=>null);
 
      if(!r.ok || !result?.success){
-       if(result?.gracefulAdvance){gracefulFallback();return;}
+       if(result?.gracefulAdvance){await gracefulFallback();return;}
        throw new Error(result?.message || `Tour reasoning returned HTTP ${r.status}.`);
      }
 
      const judgment=result.judgment||{};
-     words.textContent=judgment.caption || "Got it. Let’s keep moving.";
+     await transitionMaddy(judgment.caption || "Got it. Let’s keep moving.");
      summary=judgment.summary || summary;
      office=judgment.office || office;
      officeChip.textContent=office+" Office";
@@ -170,7 +189,7 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
      } catch(_e) {}
    } catch(error) {
      hint.textContent=error?.message || "Maddy couldn't finish that thought.";
-     gracefulFallback();
+     await gracefulFallback();
    } finally {
      send.disabled=false;
      input.focus();
@@ -178,10 +197,56 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
  }
 
  form.addEventListener("submit",submitTurn);
- advance.addEventListener("click",()=>{
-   words.textContent=`This is where I’d start with our ${office} Office. I’ll show you why as we keep moving.`;
-   advance.classList.remove("show");
-   hint.textContent="Tour route updated from what Maddy learned about you.";
+ advance.addEventListener("click",async()=>{
+   if(send.disabled) return;
+   send.disabled=true;
+   advance.disabled=true;
+   await transitionMaddy("Thinking…",{thinking:true});
+   hint.textContent="Maddy is deciding the next useful stop from what she knows about you…";
+   try{
+     const r=await fetch("/api/prospect-tour/turn",{
+       method:"POST",
+       credentials:"same-origin",
+       cache:"no-store",
+       headers:{"Content-Type":"application/json"},
+       body:JSON.stringify({
+         turn,
+         utterance:"I’m ready. Keep walking and show me the next useful stop.",
+         introIntent,
+         priorSummary:summary
+       })
+     });
+     const result=await r.json().catch(()=>null);
+     if(!r.ok || !result?.success){
+       if(result?.gracefulAdvance){await gracefulFallback();return;}
+       throw new Error(result?.message || `Tour reasoning returned HTTP ${r.status}.`);
+     }
+     const judgment=result.judgment||{};
+     await transitionMaddy(judgment.caption || "Come on. I know where I want to take you next.");
+     summary=judgment.summary || summary;
+     office=judgment.office || office;
+     officeChip.textContent=office+" Office";
+     if(judgment.question){
+       input.placeholder=judgment.question;
+       hint.textContent=judgment.question;
+     }else{
+       input.placeholder="Reply to Maddy…";
+       hint.textContent="Keep walking when you’re ready, or tell Maddy something else that matters.";
+     }
+     turn+=1;
+     try{
+       sessionStorage.setItem("meos.prospect.tour",JSON.stringify({
+         turn,summary,office,introIntent,updatedAt:new Date().toISOString()
+       }));
+     }catch(_e){}
+   }catch(error){
+     hint.textContent=error?.message || "Maddy couldn't finish that thought.";
+     await gracefulFallback();
+   }finally{
+     send.disabled=false;
+     advance.disabled=false;
+     input.focus();
+   }
  });
  input.focus();
 })();
