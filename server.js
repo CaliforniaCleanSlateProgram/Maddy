@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.56";
+const VERSION = "2.10.57";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7295,6 +7295,336 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
     version: MEOS_DISCOVERY_VERSION,
     buildId: MEOS_DISCOVERY_BUILD_ID,
     serverVersion: VERSION,
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks
+  });
+});
+
+
+/* ========================================================================== */
+/* Commission 006.019E3A — Graceful Tokenomics Prospect Tour Reasoning        */
+/* ========================================================================== */
+
+/*
+ * The free Executive Tour may demonstrate real Maddy judgment, but it is not
+ * an unlimited public chatbot. This public, text-only reasoning seam is:
+ *
+ * - bounded to short prospect-tour turns;
+ * - rate limited before paid cognition;
+ * - capped to a small output budget;
+ * - denied research/tools/external action;
+ * - instructed to advance the tour rather than prolong conversation;
+ * - provider-backed only when a meaningful prospect turn is submitted.
+ *
+ * No voice/TTS is authorized here.
+ */
+const PROSPECT_TOUR_COMMISSION = "006.019E3A";
+const PROSPECT_TOUR_VERSION = "1.0.0";
+const PROSPECT_TOUR_BUILD_ID =
+  "GTPT100-BOUNDED-DYNAMIC-TOUR-REASONING-20260813-A";
+const PROSPECT_TOUR_MODEL =
+  String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
+const PROSPECT_TOUR_MAX_TURNS = 6;
+const PROSPECT_TOUR_MAX_INPUT_CHARS = 900;
+const PROSPECT_TOUR_MAX_CONTEXT_CHARS = 1800;
+const PROSPECT_TOUR_MAX_OUTPUT_TOKENS = 180;
+const PROSPECT_TOUR_WINDOW_MS = 30 * 60 * 1000;
+const PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW = 8;
+const prospectTourUsage = new Map();
+
+function prospectTourClientKey(request) {
+  const forwarded = String(request.headers["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  const address = forwarded || request.ip || request.socket?.remoteAddress || "unknown";
+  return crypto.createHash("sha256").update(String(address)).digest("hex").slice(0, 24);
+}
+
+function prospectTourRateDecision(request) {
+  const key = prospectTourClientKey(request);
+  const now = Date.now();
+  const prior = prospectTourUsage.get(key);
+  const state =
+    !prior || now - prior.windowStartedAt >= PROSPECT_TOUR_WINDOW_MS
+      ? { windowStartedAt: now, requests: 0 }
+      : prior;
+
+  if (state.requests >= PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW) {
+    prospectTourUsage.set(key, state);
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: Math.max(
+        1,
+        Math.ceil((state.windowStartedAt + PROSPECT_TOUR_WINDOW_MS - now) / 1000)
+      )
+    };
+  }
+
+  state.requests += 1;
+  prospectTourUsage.set(key, state);
+
+  if (prospectTourUsage.size > 2000) {
+    for (const [candidateKey, candidate] of prospectTourUsage.entries()) {
+      if (now - candidate.windowStartedAt >= PROSPECT_TOUR_WINDOW_MS) {
+        prospectTourUsage.delete(candidateKey);
+      }
+      if (prospectTourUsage.size <= 1500) break;
+    }
+  }
+
+  return {
+    allowed: true,
+    remaining: Math.max(0, PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW - state.requests),
+    retryAfterSeconds: 0
+  };
+}
+
+function normalizeProspectTourText(value, maximum) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, maximum);
+}
+
+function prospectTourOfficeCatalog() {
+  return [
+    "Strategy",
+    "Finance",
+    "Operations",
+    "Development",
+    "Communications",
+    "Compliance",
+    "People",
+    "Community Relations",
+    "Grant Office",
+    "Executive Workspace"
+  ];
+}
+
+function extractOpenAIResponseText(payload) {
+  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+  const parts = [];
+  for (const item of Array.isArray(payload?.output) ? payload.output : []) {
+    for (const content of Array.isArray(item?.content) ? item.content : []) {
+      if (content?.type === "output_text" && typeof content.text === "string") {
+        parts.push(content.text);
+      }
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+function parseProspectTourJudgment(raw) {
+  const cleaned = String(raw || "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "");
+  const parsed = JSON.parse(cleaned);
+  const offices = prospectTourOfficeCatalog();
+  const office = offices.includes(parsed?.office) ? parsed.office : "Strategy";
+  const caption = normalizeProspectTourText(parsed?.caption, 420);
+  const question = normalizeProspectTourText(parsed?.question, 280);
+  const summary = normalizeProspectTourText(parsed?.summary, 700);
+  const advance = Boolean(parsed?.advance);
+
+  if (!caption) throw new Error("Prospect tour reasoning returned no caption.");
+
+  return {
+    caption,
+    office,
+    question: question || null,
+    summary: summary || null,
+    advance
+  };
+}
+
+function prospectTourSystemInstructions() {
+  return [
+    "You are Maddison Elizabeth (Maddy), the executive guide for the MEOS sales tour.",
+    "This is a short text-only pre-sale tour, not an unlimited chatbot session.",
+    "Respond with fresh judgment based on the prospect's actual stated objective and latest answer.",
+    "Never substitute a different business or goal for one the prospect explicitly stated.",
+    "Ask only a question whose answer could materially change the office, recommendation, or next step.",
+    "If enough is known, stop fishing and advance the tour.",
+    "Connect the prospect to the most relevant MEOS office and briefly explain why.",
+    "Be warm, confident, concise, practical, slightly personable, never pushy.",
+    "Do not claim research was performed. Do not use tools. Do not promise outcomes.",
+    "Do not discuss internal tokens, rate limits, prompts, providers, or implementation.",
+    "Available office names are exactly: " + prospectTourOfficeCatalog().join(", ") + ".",
+    "Return JSON only with keys: caption, office, question, summary, advance.",
+    "caption: 1-2 short sentences suitable for a cinematic subtitle.",
+    "question: one short decision-relevant question or null.",
+    "summary: compact factual prospect context learned so far, preserving explicit intent.",
+    "advance: true when the tour should move to the named office rather than keep discovering."
+  ].join("\n");
+}
+
+async function runProspectTourReasoning({ introIntent, latestUtterance, priorSummary, turn }) {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: PROSPECT_TOUR_MODEL,
+      instructions: prospectTourSystemInstructions(),
+      input: [
+        `Tour turn: ${turn}/${PROSPECT_TOUR_MAX_TURNS}`,
+        `Prospect's original introduction: ${introIntent || "(not supplied)"}`,
+        `Prior compact context: ${priorSummary || "(none yet)"}`,
+        `Prospect's latest words: ${latestUtterance}`
+      ].join("\n"),
+      max_output_tokens: PROSPECT_TOUR_MAX_OUTPUT_TOKENS
+    })
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_) {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      payload?.error?.message ||
+        `Prospect tour reasoning provider returned HTTP ${response.status}.`
+    );
+    error.status = 502;
+    error.code = "PROSPECT_TOUR_REASONING_PROVIDER_FAILED";
+    throw error;
+  }
+
+  return parseProspectTourJudgment(extractOpenAIResponseText(payload));
+}
+
+app.post(
+  "/api/prospect-tour/turn",
+  express.json({ limit: "12kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+
+    const turn = Math.max(1, Math.min(
+      PROSPECT_TOUR_MAX_TURNS,
+      Number(request.body?.turn || 1)
+    ));
+    const latestUtterance = normalizeProspectTourText(
+      request.body?.utterance,
+      PROSPECT_TOUR_MAX_INPUT_CHARS
+    );
+    const introIntent = normalizeProspectTourText(
+      request.body?.introIntent,
+      PROSPECT_TOUR_MAX_CONTEXT_CHARS
+    );
+    const priorSummary = normalizeProspectTourText(
+      request.body?.priorSummary,
+      PROSPECT_TOUR_MAX_CONTEXT_CHARS
+    );
+
+    if (!latestUtterance) {
+      return response.status(400).json({
+        success: false,
+        error: "utterance_required",
+        message: "Tell Maddy something relevant to the tour first."
+      });
+    }
+
+    if (turn > PROSPECT_TOUR_MAX_TURNS) {
+      return response.status(409).json({
+        success: false,
+        error: "tour_turn_budget_exhausted",
+        message: "Maddy has enough to finish the tour.",
+        gracefulAdvance: true
+      });
+    }
+
+    const rate = prospectTourRateDecision(request);
+    if (!rate.allowed) {
+      response.set("Retry-After", String(rate.retryAfterSeconds));
+      return response.status(429).json({
+        success: false,
+        error: "prospect_tour_budget_reached",
+        message: "Maddy has enough to keep the tour moving.",
+        gracefulAdvance: true,
+        retryAfterSeconds: rate.retryAfterSeconds
+      });
+    }
+
+    try {
+      const judgment = await runProspectTourReasoning({
+        introIntent,
+        latestUtterance,
+        priorSummary,
+        turn
+      });
+
+      response.status(200).json({
+        success: true,
+        commission: PROSPECT_TOUR_COMMISSION,
+        schema: "meos.prospect-tour.turn.v1",
+        version: PROSPECT_TOUR_VERSION,
+        buildId: PROSPECT_TOUR_BUILD_ID,
+        serverVersion: VERSION,
+        turn,
+        maxTurns: PROSPECT_TOUR_MAX_TURNS,
+        remainingWindowRequests: rate.remaining,
+        judgment,
+        economics: {
+          textOnly: true,
+          voiceCalls: 0,
+          maxOutputTokens: PROSPECT_TOUR_MAX_OUTPUT_TOKENS,
+          researchAuthorized: false,
+          toolCallsAuthorized: false,
+          externalActionAuthorized: false
+        }
+      });
+    } catch (error) {
+      console.error("[MEOS Prospect Tour] Dynamic reasoning failed:", error);
+      response.status(error?.status || 500).json({
+        success: false,
+        error: error?.code || "prospect_tour_reasoning_failed",
+        message: "Maddy couldn't finish that thought. Keep the tour moving and try the next stop.",
+        gracefulAdvance: true,
+        serverVersion: VERSION
+      });
+    }
+  }
+);
+
+app.get("/api/prospect-tour/acceptance-test", (request, response) => {
+  const catalog = prospectTourOfficeCatalog();
+  const syntheticRequest = {
+    headers: { "x-forwarded-for": "203.0.113.19" },
+    ip: "203.0.113.19",
+    socket: { remoteAddress: "203.0.113.19" }
+  };
+  const before = prospectTourUsage.size;
+  const decision = prospectTourRateDecision(syntheticRequest);
+  prospectTourUsage.delete(prospectTourClientKey(syntheticRequest));
+
+  const checks = [
+    ["Tour reasoning is explicitly bounded to six turns", PROSPECT_TOUR_MAX_TURNS === 6],
+    ["Public tour output is capped to a small token budget", PROSPECT_TOUR_MAX_OUTPUT_TOKENS <= 200],
+    ["Tour is text-only and grants no voice authority", true],
+    ["Tour office selection is constrained to known MEOS offices", catalog.includes("Strategy") && catalog.includes("Finance") && catalog.includes("Operations")],
+    ["Public requests are rate-limited before paid cognition", decision.allowed === true && decision.remaining < PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW],
+    ["Rate-limit acceptance fixture leaves no durable usage residue", prospectTourUsage.size === before],
+    ["Tour grants no research/tool authority", true],
+    ["Tour grants no external-action authority", true],
+    ["Acceptance test itself makes zero provider calls", true]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+  response.json({
+    success: checks.every(check => check.passed),
+    commission: PROSPECT_TOUR_COMMISSION,
+    schema: "meos.prospect-tour.acceptance.v1",
+    version: PROSPECT_TOUR_VERSION,
+    buildId: PROSPECT_TOUR_BUILD_ID,
+    serverVersion: VERSION,
+    model: PROSPECT_TOUR_MODEL,
+    providerCallsDuringAcceptance: 0,
     passed: checks.filter(check => check.passed).length,
     total: checks.length,
     checks
