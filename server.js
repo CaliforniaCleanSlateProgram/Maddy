@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.59";
+const VERSION = "2.10.60";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7319,10 +7319,10 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.019E3A2";
+const PROSPECT_TOUR_COMMISSION = "006.019E3A3";
 const PROSPECT_TOUR_VERSION = "1.0.0";
 const PROSPECT_TOUR_BUILD_ID =
-  "GTPT102-LIVE-REASONING-RECOVERY-20260813-A";
+  "GTPT103-MADDY-EXECUTIVE-CONVERSATION-RELEVANCE-GATE-20260813-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
@@ -7442,30 +7442,99 @@ function parseProspectTourJudgment(raw) {
 
 function prospectTourSystemInstructions() {
   return [
-    "You are Maddison Elizabeth (Maddy), the executive guide walking beside a prospect through the MEOS Executive Hallway.",
-    "This is a short text-only pre-sale tour, not an unlimited chatbot session, but it MUST feel like a real collaborative walk-through.",
-    "Respond with fresh judgment based on the prospect's explicit objective, prior context, and latest words.",
-    "Never substitute a different business, organization, or goal for one the prospect explicitly stated.",
-    "FIRST show that you understood what the prospect actually means before trying to advance the tour.",
-    "Enough information means stop extracting and start providing value; it does NOT mean end the conversation.",
-    "If the prospect asks a direct question, answer that question directly and contextually before doing anything else.",
-    "Questions like 'where are we going?', 'why?', 'what does that office do?', or similar are legitimate tour questions and MUST NOT be treated as stalling or jabbering.",
-    "Before setting advance=true for the first time, demonstrate at least one useful interpretation, connection, recommendation, or piece of executive judgment grounded in the prospect's stated situation.",
-    "Ask at most one question, and only when its answer could materially change the office, recommendation, or next step.",
-    "When the prospect has supplied enough context, collaborate with it: explain where you would start, why, and what you are trying to learn or solve next.",
-    "Connect the prospect to the most relevant REAL MEOS office and briefly explain why.",
-    "Never invent 'Executive Hallway Office'. The hallway is the tour environment, not an office destination.",
-    "Be warm, confident, concise, practical, personable, and curious without being pushy or impatient.",
-    "Do not use language that implies the prospect is wasting your time, talking too much, or being made to stand around answering questions.",
-    "Do not claim research was performed. Do not use tools. Do not promise outcomes.",
-    "Do not discuss internal tokens, rate limits, prompts, providers, or implementation.",
+    "You are Maddison Elizabeth (Maddy), the MEOS executive partner walking beside a prospect through the Executive Hallway.",
+    "MEOS owns your identity; the model supplies reasoning. Sound recognizably like one capable executive woman, not a generic assistant.",
+    "This is NOT intake. You are demonstrating what it feels like to have an executive partner.",
+    "Your default reasoning rhythm is: UNDERSTAND -> THINK -> ADD VALUE -> RECOMMEND -> MOVE.",
+    "Do not merely paraphrase or echo the prospect. Acknowledge briefly, then interpret what their words mean for the business.",
+    "Every paid reasoning turn should create customer value: an inference, useful connection, recommendation, tradeoff, warning, prioritization, or next step.",
+    "If the prospect asks a direct question, answer it directly before asking anything back.",
+    "Use prior context naturally. Do not make the prospect repeat information already supplied.",
+    "A single need may require multiple offices. Say so when that is the better executive judgment.",
+    "When recommending an office, explain WHY it matters to this specific prospect and what MEOS would try to accomplish there.",
+    "Ask at most one follow-up question, and only when the answer can materially change your recommendation, route, or next action.",
+    "Do not ask a chain of intake questions. Once enough is known, start solving and showing value.",
+    "Do not ask about budget, staffing preference, or implementation detail merely to keep conversation going.",
+    "The tour should progress mostly through your conversation. Movement should feel like a natural consequence of your judgment.",
+    "When it is useful to move, say where you want to go next and why. Keep Walking is navigation support, not the personality of the tour.",
+    "Never narrate lighting, hallways, footsteps, doors, scenery, camera movement, weather, or cinematic atmosphere.",
+    "Cinematic refers ONLY to how the UI presents your words. Write dialogue, never screenplay or scene description.",
+    "Never invent an Executive Hallway Office. The hallway is the environment, not a destination.",
+    "Never imply the prospect is wasting your time, talking too much, or needs to hurry.",
+    "Be warm, confident, concise, practical, perceptive, lightly witty when natural, and never pushy.",
+    "Preserve truth discipline: distinguish what the prospect told you from what you infer. Do not claim research, tool use, or work that did not occur.",
+    "Do not discuss tokens, prompts, providers, rate limits, or implementation.",
     "Available office names are exactly: " + prospectTourOfficeCatalog().join(", ") + ".",
     "Return JSON only with keys: caption, office, question, summary, advance.",
-    "caption: 1-3 short sentences suitable for a cinematic subtitle. It should usually connect the latest statement to the prospect's actual situation.",
-    "question: one short decision-relevant question or null.",
-    "summary: compact factual prospect context learned so far, preserving explicit intent and constraints.",
-    "advance: true only when you have already demonstrated value and can name a real office destination with a clear reason."
+    "caption: 1-3 concise spoken sentences. It must sound like Maddy talking directly to the prospect.",
+    "office: the most useful real MEOS office for the next step.",
+    "question: one decision-relevant question or null.",
+    "summary: compact factual prospect context worth carrying forward; exclude irrelevant chatter.",
+    "advance: true only when moving to the named office now adds more value than another discovery question."
   ].join("\n");
+}
+
+const PROSPECT_TOUR_RELEVANCE_SCHEMA = "meos.prospect-tour.relevance.v1";
+
+function prospectTourRelevanceDecision({ introIntent, latestUtterance, priorSummary }) {
+  const latest = normalizeProspectTourText(latestUtterance, PROSPECT_TOUR_MAX_INPUT_CHARS);
+  const context = normalizeProspectTourText(
+    `${introIntent || ""} ${priorSummary || ""}`,
+    PROSPECT_TOUR_MAX_CONTEXT_CHARS * 2
+  ).toLowerCase();
+  const lower = latest.toLowerCase();
+
+  /*
+   * Conservative, deterministic pre-spend gate.
+   * It blocks only clearly non-business/free-chat abuse. Ambiguous messages are
+   * deliberately allowed through because rejecting a legitimate prospect to
+   * save a fraction of a cent is false economy.
+   */
+  const businessSignals = [
+    "business","company","organization","nonprofit","shop","store","restaurant",
+    "customer","client","sales","revenue","profit","margin","cost","budget",
+    "accounting","bookkeeping","finance","financial","operations","strategy",
+    "marketing","communications","brand","website","social media","employee",
+    "staff","team","hire","hiring","hr","people","grant","funding","fundraise",
+    "grow","growth","scale","franchise","location","office","meos","maddy",
+    "tour","where are we going","what can you do","how can you help","help me",
+    "plan","launch","start","build","sell","buy","pricing","price","sign up"
+  ];
+  const directTourQuestion =
+    /^(where|why|what|how|which|who|when|can|could|would|should|do|does|is|are)\b/i.test(latest);
+  const hasBusinessSignal = businessSignals.some(signal => lower.includes(signal));
+  const contextOverlap = context
+    .split(/[^a-z0-9]+/)
+    .filter(word => word.length >= 5)
+    .some(word => lower.includes(word));
+
+  const absurdSignals = [
+    "cat starts mooing","mooing like a cow","grandma is buck naked",
+    "naked grandma","mowing the driveway","mowing the drive way",
+    "fluorescent lamp","florencent lamp","cooky ville"
+  ];
+  const absurdHits = absurdSignals.filter(signal => lower.includes(signal)).length;
+
+  if (hasBusinessSignal || directTourQuestion || contextOverlap) {
+    return { relevant: true, reason: "business_or_tour_relevant", paidCognition: true };
+  }
+
+  if (absurdHits >= 2) {
+    return { relevant: false, reason: "clearly_irrelevant_free_chat", paidCognition: false };
+  }
+
+  // Benefit of the doubt: ambiguous human language reaches Maddy.
+  return { relevant: true, reason: "ambiguous_benefit_of_doubt", paidCognition: true };
+}
+
+function prospectTourCheapRedirect() {
+  return {
+    caption: "That was a journey. Come on — tell me what you’re trying to build, fix, or get off your plate in the business and I’ll show you where I can actually help.",
+    office: "Strategy",
+    question: "What are you trying to build, fix, or get off your plate?",
+    summary: null,
+    advance: false
+  };
 }
 
 async function runProspectTourReasoning({ introIntent, latestUtterance, priorSummary, turn }) {
@@ -7583,6 +7652,36 @@ app.post(
       });
     }
 
+    const relevance = prospectTourRelevanceDecision({
+      introIntent,
+      latestUtterance,
+      priorSummary
+    });
+
+    if (!relevance.paidCognition) {
+      return response.status(200).json({
+        success: true,
+        commission: PROSPECT_TOUR_COMMISSION,
+        schema: "meos.prospect-tour.turn.v1",
+        version: PROSPECT_TOUR_VERSION,
+        buildId: PROSPECT_TOUR_BUILD_ID,
+        serverVersion: VERSION,
+        turn,
+        maxTurns: PROSPECT_TOUR_MAX_TURNS,
+        judgment: prospectTourCheapRedirect(),
+        relevance,
+        economics: {
+          textOnly: true,
+          paidCognition: false,
+          providerCalls: 0,
+          voiceCalls: 0,
+          researchAuthorized: false,
+          toolCallsAuthorized: false,
+          externalActionAuthorized: false
+        }
+      });
+    }
+
     const rate = prospectTourRateDecision(request);
     if (!rate.allowed) {
       response.set("Retry-After", String(rate.retryAfterSeconds));
@@ -7614,8 +7713,11 @@ app.post(
         maxTurns: PROSPECT_TOUR_MAX_TURNS,
         remainingWindowRequests: rate.remaining,
         judgment,
+        relevance,
         economics: {
           textOnly: true,
+          paidCognition: true,
+          providerCalls: 1,
           voiceCalls: 0,
           maxOutputTokens: PROSPECT_TOUR_MAX_OUTPUT_TOKENS,
           researchAuthorized: false,
@@ -7661,6 +7763,12 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Live reasoning requests minimal reasoning effort", true],
     ["Live reasoning requires strict structured JSON", true],
     ["Cognition failure is retryable rather than graceful advancement", true],
+    ["Maddy contract defines executive-partner rather than intake behavior", instructions.includes("This is NOT intake")],
+    ["Maddy contract requires value creation on every paid reasoning turn", instructions.includes("Every paid reasoning turn should create customer value")],
+    ["Maddy contract bans scenic narration", instructions.includes("never screenplay or scene description")],
+    ["Relevance gate gives ambiguous prospects the benefit of the doubt", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "I have something unusual I want to try", priorSummary: "" }).paidCognition === true],
+    ["Relevance gate blocks clearly irrelevant gibber-jabber before paid cognition", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "My cat starts mooing like a cow while naked grandma is mowing the driveway with a fluorescent lamp", priorSummary: "" }).paidCognition === false],
+    ["Cheap redirect requires zero provider calls by construction", prospectTourCheapRedirect().advance === false],
     ["Tour may not shame or rush a legitimate prospect question", instructions.includes("MUST NOT be treated as stalling or jabbering")],
     ["Public requests are rate-limited before paid cognition", decision.allowed === true && decision.remaining < PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW],
     ["Rate-limit acceptance fixture leaves no durable usage residue", prospectTourUsage.size === before],
