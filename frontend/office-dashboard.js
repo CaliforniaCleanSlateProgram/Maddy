@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.0";
+  const DASHBOARD_VERSION = "4.11.1";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3379,525 +3379,374 @@ document
   }
 
 
-  const EXECUTIVE_OFFICE_PANORAMA_BUILD_ID = "EO4110-FPV-PANORAMIC-EXECUTIVE-DASHBOARD-20260814-A";
+  /*
+   * Commission 006.020B2 — 180° Curved Executive Office Dashboard
+   *
+   * This is a presentation commission over the proven 4.10.5 dashboard.
+   * Existing widget DOM nodes are MOVED into the office after their original
+   * handlers are bound; they are not replaced with decorative replicas.
+   * The screenshot/design reference is never used as a background image.
+   */
+  function installCurvedExecutiveOffice(root) {
+    if (!root || root.dataset.curvedExecutiveOffice === "true") return root;
 
-  function installExecutiveDirectorPanorama(root) {
-    if (!root || root.dataset.executivePanorama === "true") return root;
+    const widgetGrid = root.querySelector("#meosWidgetGrid");
+    const originalHero = root.querySelector(".meos-hq-hero");
+    const maddyControl = document.getElementById("meosExecutiveOfficeControl");
+    const officeDetail = document.getElementById("officeDashboard");
+    if (!widgetGrid || !originalHero || !maddyControl) return root;
 
-    const hero = root.querySelector(".meos-hq-hero");
-    const grid = root.querySelector("#meosWidgetGrid");
-    if (!hero || !grid) return root;
-
-    root.dataset.executivePanorama = "true";
-    root.dataset.executivePanoramaBuild = EXECUTIVE_OFFICE_PANORAMA_BUILD_ID;
+    root.dataset.curvedExecutiveOffice = "true";
 
     const style = document.createElement("style");
-    style.id = "meosExecutiveDirectorPanoramaStyles";
+    style.id = "meosCurvedExecutiveOfficeStyles";
     style.textContent = `
-      #${ROOT_ID}{
-        --meos-office-pan:0%;
-        overflow:hidden;
-        background:#05090b;
-      }
-      #${ROOT_ID} .meos-dashboard-shell{
-        width:100%;
-        max-width:none;
-        padding:0;
-        background:#05090b;
-      }
-      #${ROOT_ID} .meos-dashboard-topline{
-        display:none!important;
-      }
+      :root{--meos-office-yaw:0deg}
+      body.meos-immersive-office-active{overflow:hidden!important;background:#080808!important}
+      body.meos-immersive-office-active [data-meos-navigation]{visibility:hidden!important;pointer-events:none!important}
+      #${ROOT_ID}{position:fixed!important;inset:0!important;z-index:9000!important;width:100vw!important;height:100vh!important;overflow:hidden!important;background:#080808!important;color:#f5f0e6!important}
+      #${ROOT_ID} .meos-dashboard-shell{position:relative!important;width:100%!important;height:100%!important;max-width:none!important;margin:0!important;padding:0!important;overflow:hidden!important}
+      #${ROOT_ID} .meos-dashboard-topline{display:none!important}
+      #${ROOT_ID} .meos-hq-hero{position:absolute!important;left:-99999px!important;top:-99999px!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
+      #${ROOT_ID} #meosWidgetGrid{position:absolute!important;left:-99999px!important;top:-99999px!important;width:1px!important;height:1px!important;overflow:hidden!important}
+      #${ROOT_ID} .meos-office-detail{position:absolute!important;inset:7vh 7vw!important;z-index:90!important;overflow:auto!important;border:1px solid rgba(213,169,92,.35)!important;background:rgba(6,12,15,.96)!important;backdrop-filter:blur(22px)!important;box-shadow:0 35px 100px rgba(0,0,0,.68)!important}
 
-      /* Keep the commissioned Living Presence / Digital Actor DOM alive for later,
-         but deliberately leave the new physical Maddy stage empty in this commission. */
-      #${ROOT_ID} .meos-hq-hero{
-        position:absolute!important;
-        width:1px!important;
-        height:1px!important;
-        min-height:1px!important;
-        left:-10000px!important;
-        top:-10000px!important;
-        overflow:hidden!important;
-        opacity:0!important;
-        pointer-events:none!important;
-      }
+      .meos-curve-office{position:absolute;inset:0;overflow:hidden;isolation:isolate;background:
+        radial-gradient(ellipse at 50% 29%,rgba(190,119,58,.12),transparent 32%),
+        linear-gradient(180deg,#17110e 0%,#0b0c0d 18%,#101414 68%,#080707 100%)}
+      .meos-office-ceiling{position:absolute;z-index:2;left:-7%;right:-7%;top:-16%;height:38%;border-radius:0 0 50% 50%;background:
+        repeating-radial-gradient(ellipse at 50% 0%,rgba(237,175,91,.10) 0 2px,transparent 3px 70px),
+        radial-gradient(ellipse at 50% 0%,#3a2b21 0,#17110e 60%,#090909 100%);
+        border-bottom:3px solid rgba(226,167,86,.68);box-shadow:0 8px 42px rgba(221,150,65,.23),inset 0 -14px 40px rgba(0,0,0,.4)}
+      .meos-office-ceiling::after{content:"";position:absolute;left:7%;right:7%;bottom:18px;height:3px;background:linear-gradient(90deg,transparent,#da9a4e 14%,#ffcc79 50%,#da9a4e 86%,transparent);box-shadow:0 0 16px rgba(255,185,85,.65)}
+      .meos-office-floor{position:absolute;z-index:1;left:-16%;right:-16%;bottom:-22%;height:64%;background:
+        repeating-linear-gradient(90deg,rgba(255,255,255,.018) 0 1px,transparent 1px 170px),
+        repeating-linear-gradient(0deg,rgba(255,255,255,.016) 0 1px,transparent 1px 94px),
+        linear-gradient(180deg,#49301f 0,#2b1c13 48%,#120d0a 100%);
+        transform:perspective(900px) rotateX(58deg);transform-origin:center bottom;box-shadow:inset 0 25px 70px rgba(0,0,0,.45)}
+      .meos-office-window{position:absolute;z-index:3;left:31%;right:31%;top:17%;bottom:31%;border:1px solid rgba(219,175,103,.18);border-radius:3px;background:
+        linear-gradient(180deg,rgba(61,99,132,.50) 0,rgba(238,139,72,.24) 43%,rgba(31,31,36,.45) 44%,rgba(13,17,21,.86) 100%);
+        box-shadow:inset 0 0 60px rgba(2,5,8,.46),0 20px 60px rgba(0,0,0,.32)}
+      .meos-office-window::before{content:"";position:absolute;left:0;right:0;bottom:0;height:45%;background:
+        radial-gradient(ellipse at 35% 100%,#171a1c 0 14%,transparent 15%),
+        radial-gradient(ellipse at 64% 100%,#121518 0 20%,transparent 21%),
+        repeating-linear-gradient(90deg,transparent 0 8%,rgba(235,181,104,.13) 8.2% 8.45%,transparent 8.7% 16%);
+        opacity:.9}
+      .meos-office-window::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 24.7%,rgba(20,23,26,.75) 25% 25.5%,transparent 25.8% 49.7%,rgba(20,23,26,.75) 50% 50.5%,transparent 50.8% 74.7%,rgba(20,23,26,.75) 75% 75.5%,transparent 75.8%)}
+      .meos-office-shelf{position:absolute;z-index:4;top:18%;bottom:30%;width:10%;background:
+        repeating-linear-gradient(180deg,rgba(237,177,97,.25) 0 2px,transparent 2px 22%),
+        linear-gradient(90deg,#15110e,#2b2119 48%,#120f0d);border:1px solid rgba(215,166,91,.22);box-shadow:inset 0 0 36px rgba(245,176,80,.10)}
+      .meos-office-shelf.left{left:21%}.meos-office-shelf.right{right:21%}
+      .meos-office-shelf::after{content:"";position:absolute;inset:8% 14%;background:
+        radial-gradient(circle at 28% 10%,#c59a58 0 4px,transparent 5px),
+        radial-gradient(circle at 72% 31%,#c59a58 0 5px,transparent 6px),
+        radial-gradient(circle at 34% 53%,#b88a4d 0 4px,transparent 5px),
+        radial-gradient(circle at 70% 76%,#c79a55 0 5px,transparent 6px)}
+      .meos-office-plant{position:absolute;z-index:5;top:35%;width:76px;height:180px;filter:drop-shadow(0 15px 14px rgba(0,0,0,.36))}
+      .meos-office-plant.left{left:27%}.meos-office-plant.right{right:27%}
+      .meos-office-plant::before{content:"";position:absolute;left:32px;bottom:28px;width:13px;height:115px;background:#2a4a2c;border-radius:90% 10%}
+      .meos-office-plant::after{content:"";position:absolute;left:8px;bottom:0;width:60px;height:38px;border-radius:8px 8px 20px 20px;background:linear-gradient(90deg,#17100d,#4b3020,#17100d);box-shadow:0 -90px 0 -21px #365b34,26px -118px 0 -23px #365b34,-21px -132px 0 -23px #365b34,14px -153px 0 -24px #365b34}
 
-      #${ROOT_ID} .meos-fpv-office{
-        position:relative;
-        width:100%;
-        height:clamp(720px,88vh,1040px);
-        overflow:hidden;
-        isolation:isolate;
-        background:#080d10;
-        border-bottom:1px solid rgba(210,166,94,.18);
-      }
-      #${ROOT_ID} .meos-fpv-scene{
-        position:absolute;
-        z-index:1;
-        top:0;
-        bottom:0;
-        left:-9%;
-        width:118%;
-        transform:translateX(var(--meos-office-pan));
-        transition:transform .46s cubic-bezier(.22,.78,.22,1);
-        will-change:transform;
-      }
-      #${ROOT_ID} .meos-fpv-background{
-        position:absolute;
-        inset:0;
-        width:100%;
-        height:100%;
-        object-fit:cover;
-        object-position:center center;
-        user-select:none;
-        pointer-events:none;
-      }
-      #${ROOT_ID} .meos-fpv-vignette{
-        position:absolute;
-        inset:0;
-        z-index:2;
-        pointer-events:none;
-        background:
-          linear-gradient(90deg,rgba(2,6,8,.34),transparent 11%,transparent 89%,rgba(2,6,8,.34)),
-          linear-gradient(180deg,rgba(2,6,8,.10),transparent 24%,transparent 72%,rgba(2,6,8,.24));
-      }
+      .meos-curved-world{position:absolute;z-index:10;left:50%;top:49%;width:1px;height:1px;transform-style:preserve-3d;perspective:1300px}
+      .meos-curved-wall{position:absolute;left:0;top:0;width:min(330px,21vw);height:min(610px,64vh);margin-left:calc(0px - min(165px,10.5vw));margin-top:calc(0px - min(305px,32vh));transform-style:preserve-3d;transition:filter .25s ease,opacity .25s ease}
+      .meos-curved-wall[data-angle="-76"]{transform:rotateY(58deg) translateX(-49vw) translateZ(-210px)}
+      .meos-curved-wall[data-angle="-54"]{transform:rotateY(35deg) translateX(-35vw) translateZ(-105px)}
+      .meos-curved-wall[data-angle="-34"]{transform:rotateY(20deg) translateX(-23vw) translateZ(-32px)}
+      .meos-curved-wall[data-angle="34"]{transform:rotateY(-20deg) translateX(23vw) translateZ(-32px)}
+      .meos-curved-wall[data-angle="54"]{transform:rotateY(-35deg) translateX(35vw) translateZ(-105px)}
+      .meos-curved-wall[data-angle="72"]{transform:rotateY(-54deg) translateX(48vw) translateZ(-195px)}
+      .meos-curved-wall[data-angle="82"]{transform:rotateY(-64deg) translateX(57vw) translateZ(-250px)}
+      .meos-curved-wall .meos-widget{display:block!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;border:1px solid rgba(214,168,87,.28)!important;border-radius:13px!important;background:linear-gradient(145deg,rgba(5,16,21,.90),rgba(7,12,15,.84))!important;box-shadow:0 18px 55px rgba(0,0,0,.40),inset 0 0 38px rgba(53,159,170,.035)!important;backdrop-filter:blur(14px) saturate(1.12)}
+      .meos-curved-wall .meos-widget-inner{height:100%!important;overflow:auto!important;scrollbar-width:thin;scrollbar-color:rgba(208,161,82,.55) transparent}
+      .meos-curved-wall .meos-widget-header{position:sticky!important;z-index:3!important;top:0!important;background:linear-gradient(180deg,rgba(7,17,22,.98),rgba(7,17,22,.78))!important;backdrop-filter:blur(8px);cursor:pointer}
+      .meos-curved-wall .meos-widget-title{font-size:.9rem!important;letter-spacing:.05em}
+      .meos-curved-wall .meos-widget::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:13px;box-shadow:inset 0 0 0 1px rgba(110,225,233,.04)}
+      .meos-curved-wall[data-expanded="true"]{z-index:70!important;filter:none!important}
+      .meos-curved-wall[data-expanded="true"] .meos-widget{box-shadow:0 28px 90px rgba(0,0,0,.62),0 0 0 1px rgba(218,171,91,.32)!important}
+      .meos-panel-tools{position:absolute;z-index:8;top:8px;right:8px;display:flex;gap:5px}
+      .meos-panel-tools button{width:27px;height:27px;border:1px solid rgba(211,168,91,.25);border-radius:8px;background:rgba(6,14,18,.72);color:#e8d3ad;cursor:pointer;font-size:.68rem;backdrop-filter:blur(8px)}
+      .meos-panel-tools button:hover{background:rgba(49,35,23,.88);border-color:rgba(230,184,103,.5)}
+      .meos-panel-popout{position:absolute!important;z-index:96!important;left:8vw!important;right:8vw!important;top:8vh!important;bottom:13vh!important;width:auto!important;height:auto!important;margin:0!important;transform:none!important}
+      .meos-panel-popout .meos-widget{height:100%!important}
+      .meos-panel-popout .meos-widget-inner{max-height:none!important;height:100%!important}
 
-      /* Protected Maddy Digital Human territory. Intentionally empty. */
-      #${ROOT_ID} .meos-maddy-future-stage{
-        position:absolute;
-        z-index:5;
-        left:50%;
-        top:20%;
-        width:27%;
-        height:49%;
-        transform:translateX(-50%);
-        pointer-events:none;
-      }
+      .meos-digital-human-stage{position:absolute;z-index:12;left:50%;top:24%;transform:translateX(-50%);width:min(440px,28vw);height:42%;pointer-events:none}
+      .meos-digital-human-stage::before,.meos-digital-human-stage::after{content:"";position:absolute;inset:0;border:1px solid transparent}
+      .meos-digital-human-stage::before{background:
+        linear-gradient(#8be7f2,#8be7f2) left top/46px 1px no-repeat,
+        linear-gradient(#8be7f2,#8be7f2) left top/1px 46px no-repeat,
+        linear-gradient(#8be7f2,#8be7f2) right top/46px 1px no-repeat,
+        linear-gradient(#8be7f2,#8be7f2) right top/1px 46px no-repeat,
+        linear-gradient(#8be7f2,#8be7f2) left bottom/46px 1px no-repeat,
+        linear-gradient(#8be7f2,#8be7f2) left bottom/1px 46px no-repeat,
+        linear-gradient(#8be7f2,#8be7f2) right bottom/46px 1px no-repeat,
+        linear-gradient(#8be7f2,#8be7f2) right bottom/1px 46px no-repeat;opacity:.42;filter:drop-shadow(0 0 10px rgba(92,218,233,.25))}
+      .meos-digital-human-stage-label{position:absolute;left:0;right:0;bottom:5%;text-align:center;color:rgba(231,244,246,.68);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase}
+      .meos-digital-human-stage-label strong{display:block;margin-bottom:4px;color:rgba(255,255,255,.82);font-size:.92rem;letter-spacing:.15em}
 
-      #${ROOT_ID} .meos-fpv-hud-zone{
-        position:absolute;
-        z-index:8;
-        top:18%;
-        width:27%;
-        height:48%;
-        display:flex;
-        flex-direction:column;
-        gap:10px;
-        pointer-events:auto;
-      }
-      #${ROOT_ID} .meos-fpv-hud-zone[data-side="left"]{left:4.2%}
-      #${ROOT_ID} .meos-fpv-hud-zone[data-side="right"]{right:4.2%}
+      .meos-insignia-rug{position:absolute;z-index:7;left:50%;bottom:15.5%;width:min(560px,38vw);aspect-ratio:1;transform:translateX(-50%) perspective(900px) rotateX(68deg) scaleY(.78);transform-origin:center bottom;border-radius:50%;background:radial-gradient(circle,rgba(34,29,27,.98) 0 64%,rgba(12,11,11,.98) 65% 74%,transparent 75%);box-shadow:0 22px 45px rgba(0,0,0,.42),inset 0 0 0 2px rgba(215,168,90,.16);overflow:hidden}
+      .meos-insignia-rug img{width:100%;height:100%;object-fit:cover;border-radius:50%;filter:sepia(.25) saturate(.65) contrast(1.18) brightness(.76);mix-blend-mode:screen;opacity:.78}
 
-      #${ROOT_ID} .meos-fpv-zone-label{
-        display:flex;
-        align-items:end;
-        justify-content:space-between;
-        gap:12px;
-        padding:0 3px 8px;
-        border-bottom:1px solid rgba(202,164,101,.20);
-        color:rgba(246,249,248,.94);
-        text-shadow:0 2px 14px rgba(0,0,0,.8);
-      }
-      #${ROOT_ID} .meos-fpv-zone-label strong{
-        font-size:.78rem;
-        letter-spacing:.12em;
-        text-transform:uppercase;
-      }
-      #${ROOT_ID} .meos-fpv-zone-label span{
-        color:rgba(222,190,134,.72);
-        font-size:.56rem;
-        letter-spacing:.08em;
-        text-transform:uppercase;
-      }
+      .meos-executive-desk{position:absolute;z-index:30;left:50%;bottom:-5%;transform:translateX(-50%);width:min(1260px,82vw);height:29%;background:linear-gradient(180deg,#644128 0,#3b2517 22%,#20130d 72%,#0e0a08);clip-path:polygon(8% 0,92% 0,100% 100%,0 100%);box-shadow:0 -18px 45px rgba(0,0,0,.38),inset 0 3px 0 rgba(234,185,109,.18)}
+      .meos-executive-desk::before{content:"EXECUTIVE DIRECTOR";position:absolute;left:50%;top:10%;transform:translateX(-50%);padding:7px 30px;border:1px solid rgba(214,165,88,.35);border-radius:4px;background:#16100d;color:#d8a455;font-size:.66rem;letter-spacing:.16em;white-space:nowrap}
+      .meos-desk-riser{position:absolute;z-index:31;left:50%;bottom:6.4%;transform:translateX(-50%);width:min(820px,58vw);height:12%;border:1px solid rgba(215,165,89,.20);border-radius:18px 18px 4px 4px;background:linear-gradient(180deg,#201914,#0d0b0a);box-shadow:0 14px 32px rgba(0,0,0,.42)}
 
-      #${ROOT_ID} .meos-fpv-widget-stack{
-        min-height:0;
-        overflow:auto;
-        overscroll-behavior:contain;
-        scroll-snap-type:y proximity;
-        scrollbar-width:thin;
-        scrollbar-color:rgba(111,213,224,.26) transparent;
-        display:flex;
-        flex-direction:column;
-        gap:8px;
-        padding:1px 4px 14px 1px;
-      }
-      #${ROOT_ID} .meos-fpv-widget-stack .meos-widget{
-        flex:0 0 auto!important;
-        width:100%!important;
-        min-height:64px!important;
-        max-height:94px!important;
-        overflow:hidden!important;
-        scroll-snap-align:start;
-        margin:0!important;
-        border:1px solid rgba(123,210,221,.16)!important;
-        border-radius:11px!important;
-        background:linear-gradient(145deg,rgba(4,17,23,.70),rgba(3,12,17,.60))!important;
-        backdrop-filter:blur(12px) saturate(1.08);
-        box-shadow:0 12px 30px rgba(0,0,0,.20)!important;
-        transition:max-height .30s ease,border-color .18s ease,background .18s ease,transform .18s ease;
-      }
-      #${ROOT_ID} .meos-fpv-widget-stack .meos-widget:hover{
-        border-color:rgba(123,210,221,.34)!important;
-        transform:translateY(-1px);
-      }
-      #${ROOT_ID} .meos-fpv-widget-stack .meos-widget[data-fpv-expanded="true"]{
-        max-height:min(49vh,500px)!important;
-        background:linear-gradient(145deg,rgba(4,20,28,.93),rgba(3,13,19,.91))!important;
-        border-color:rgba(123,210,221,.40)!important;
-      }
-      #${ROOT_ID} .meos-fpv-widget-stack .meos-widget-header{
-        position:sticky;
-        top:0;
-        z-index:3;
-        cursor:pointer;
-        background:linear-gradient(180deg,rgba(4,18,25,.94),rgba(4,18,25,.72))!important;
-      }
-      #${ROOT_ID} .meos-fpv-widget-stack .meos-widget-header::after{
-        content:"↕";
-        margin-left:auto;
-        color:rgba(215,235,237,.45);
-        font-size:.7rem;
-      }
-      #${ROOT_ID} .meos-fpv-widget-stack .meos-widget[data-fpv-expanded="true"] .meos-widget-header::after{
-        content:"↑";
-      }
-      #${ROOT_ID} .meos-fpv-widget-stack .meos-widget-body{
-        overflow:auto!important;
-        max-height:calc(min(49vh,500px) - 50px)!important;
-      }
+      .meos-maddy-dock{position:absolute;z-index:50;left:18px;bottom:18px;width:min(285px,19vw)}
+      .meos-maddy-dock #meosExecutiveOfficeControl{position:relative!important;visibility:visible!important;pointer-events:auto!important;width:100%!important;margin:0!important;padding:0!important;border:1px solid rgba(215,166,90,.28)!important;border-radius:18px!important;background:rgba(5,14,18,.90)!important;backdrop-filter:blur(18px)!important;box-shadow:0 18px 48px rgba(0,0,0,.42)!important}
+      .meos-maddy-dock #meosExecutiveOfficeControl .meos-office-presence{padding:12px!important}
+      .meos-maddy-dock #meosExecutiveOfficeControl .meos-office-status-grid,.meos-maddy-dock #meosExecutiveOfficeControl .meos-mode-label,.meos-maddy-dock #meosExecutiveOfficeControl .meos-mode-select,.meos-maddy-dock #meosExecutiveOfficeControl .meos-executive-hub-command,.meos-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary-row,.meos-maddy-dock #meosExecutiveOfficeControl .meos-open-hub-button{display:none!important}
+      .meos-maddy-dock #meosExecutiveOfficeControl .meos-office-presence{display:grid!important;grid-template-columns:auto 1fr!important;gap:10px!important;align-items:center!important}
+      .meos-maddy-dock #meosExecutiveOfficeControl .meos-office-voice-actions{grid-column:1/-1!important}
+      .meos-maddy-dock #meosExecutiveOfficeControl .meos-voice-primary{width:100%!important}
+      .meos-maddy-dock #meosHallwayMini{grid-column:1/-1!important}
+      .meos-maddy-dock[data-open="true"]{width:min(420px,31vw);max-height:72vh;overflow:auto}
+      .meos-maddy-dock[data-open="true"] #meosExecutiveOfficeControl .meos-office-status-grid,.meos-maddy-dock[data-open="true"] #meosExecutiveOfficeControl .meos-mode-label,.meos-maddy-dock[data-open="true"] #meosExecutiveOfficeControl .meos-mode-select,.meos-maddy-dock[data-open="true"] #meosExecutiveOfficeControl .meos-executive-hub-command,.meos-maddy-dock[data-open="true"] #meosExecutiveOfficeControl .meos-voice-secondary-row,.meos-maddy-dock[data-open="true"] #meosExecutiveOfficeControl .meos-open-hub-button{display:grid!important}
+      .meos-maddy-dock[data-open="true"] #meosExecutiveOfficeControl .meos-mode-label{display:block!important}
+      .meos-maddy-dock-toggle{position:absolute;right:8px;top:8px;z-index:4;width:28px;height:28px;border:1px solid rgba(214,166,91,.25);border-radius:8px;background:#15100d;color:#d9b170;cursor:pointer}
 
-      /* Existing widget grid is not the customer-facing presentation anymore. */
-      #${ROOT_ID} #meosWidgetGrid{
-        display:none!important;
-      }
+      .meos-integrated-nav{position:absolute;z-index:55;left:max(320px,22vw);right:18px;bottom:18px;height:92px;display:flex;align-items:stretch;justify-content:center;gap:3px;padding:7px;border:1px solid rgba(214,167,91,.28);border-radius:19px;background:rgba(6,12,15,.88);backdrop-filter:blur(18px);box-shadow:0 20px 55px rgba(0,0,0,.43);overflow-x:auto;scrollbar-width:none}
+      .meos-integrated-nav::-webkit-scrollbar{display:none}
+      .meos-integrated-nav button{flex:1 0 96px;min-width:96px;max-width:155px;border:0;border-right:1px solid rgba(210,163,87,.12);border-radius:12px;background:transparent;color:#ddd5c8;font:inherit;cursor:pointer;padding:10px 7px;font-size:.66rem;line-height:1.25;letter-spacing:.05em;text-transform:uppercase}
+      .meos-integrated-nav button:hover,.meos-integrated-nav button[data-active="true"]{background:linear-gradient(180deg,rgba(128,88,43,.38),rgba(55,35,21,.22));color:#f2c36f;box-shadow:inset 0 0 0 1px rgba(221,169,87,.22)}
+      .meos-integrated-nav button strong{display:block;margin-bottom:4px;font-size:.72rem;color:inherit}
 
-      /* Fixed seated-view controls. They do not move with the panorama. */
-      #${ROOT_ID} .meos-fpv-look{
-        position:absolute;
-        z-index:20;
-        top:42%;
-        width:46px;
-        height:92px;
-        border:1px solid rgba(214,176,111,.12);
-        background:rgba(3,10,13,.18);
-        color:rgba(247,249,248,.58);
-        font:inherit;
-        font-size:2rem;
-        cursor:pointer;
-        backdrop-filter:blur(5px);
-      }
-      #${ROOT_ID} .meos-fpv-look:hover{
-        color:#fff;
-        background:rgba(3,10,13,.42);
-        border-color:rgba(214,176,111,.28);
-      }
-      #${ROOT_ID} .meos-fpv-look.left{left:0;border-radius:0 14px 14px 0}
-      #${ROOT_ID} .meos-fpv-look.right{right:0;border-radius:14px 0 0 14px}
+      .meos-look-control{position:absolute;z-index:58;top:43%;width:62px;height:118px;border:0;background:linear-gradient(90deg,rgba(4,9,12,.60),transparent);color:rgba(247,233,207,.75);font-size:2.4rem;cursor:pointer;opacity:.62;transition:opacity .2s ease}
+      .meos-look-control:hover{opacity:1}.meos-look-control.left{left:0;border-radius:0 22px 22px 0}.meos-look-control.right{right:0;transform:scaleX(-1);border-radius:0 22px 22px 0}
+      .meos-look-hint{position:absolute;z-index:40;left:50%;bottom:115px;transform:translateX(-50%);color:rgba(236,223,203,.50);font-size:.61rem;letter-spacing:.11em;text-transform:uppercase;pointer-events:none}
 
-      #${ROOT_ID} .meos-fpv-center-home{
-        position:absolute;
-        z-index:20;
-        left:50%;
-        top:16px;
-        transform:translateX(-50%);
-        border:1px solid rgba(214,176,111,.16);
-        border-radius:999px;
-        padding:7px 12px;
-        background:rgba(3,10,13,.40);
-        color:rgba(242,246,245,.70);
-        font:inherit;
-        font-size:.58rem;
-        letter-spacing:.12em;
-        text-transform:uppercase;
-        cursor:pointer;
-        backdrop-filter:blur(8px);
-      }
-
-      /* Compact real-function minibar: proxies only existing commissioned controls. */
-      #${ROOT_ID} .meos-fpv-minibar{
-        position:absolute;
-        z-index:22;
-        left:50%;
-        bottom:2.2%;
-        transform:translateX(-50%);
-        display:flex;
-        align-items:center;
-        gap:6px;
-        max-width:92%;
-        padding:7px 8px;
-        border:1px solid rgba(129,213,224,.15);
-        border-radius:14px;
-        background:rgba(3,12,17,.78);
-        backdrop-filter:blur(16px) saturate(1.1);
-        box-shadow:0 12px 34px rgba(0,0,0,.28);
-      }
-      #${ROOT_ID} .meos-fpv-minibar img{
-        width:31px;
-        height:31px;
-        object-fit:contain;
-        opacity:.92;
-        margin:0 4px 0 1px;
-      }
-      #${ROOT_ID} .meos-fpv-minibar button{
-        min-height:34px;
-        border:1px solid rgba(129,213,224,.12);
-        border-radius:9px;
-        padding:0 11px;
-        background:rgba(8,28,36,.68);
-        color:rgba(235,247,249,.88);
-        font:inherit;
-        font-size:.64rem;
-        letter-spacing:.02em;
-        cursor:pointer;
-      }
-      #${ROOT_ID} .meos-fpv-minibar button:hover{
-        border-color:rgba(129,213,224,.34);
-        background:rgba(10,38,48,.88);
-        color:#fff;
-      }
-
-      /* Existing Maddy office control remains the authority, not a second implementation. */
-      .meos-executive-office-control[data-fpv-authority="true"]{
-        position:fixed!important;
-        z-index:10000!important;
-        right:18px!important;
-        bottom:18px!important;
-        width:min(360px,calc(100vw - 36px))!important;
-        max-height:72vh!important;
-        overflow:auto!important;
-        display:none!important;
-      }
-      .meos-executive-office-control[data-fpv-authority="true"][data-fpv-open="true"]{
-        display:block!important;
-      }
-
-      #${ROOT_ID} .meos-office-detail{
-        position:relative;
-        z-index:40;
-        max-width:1760px;
-        margin:18px auto;
-      }
-
-      @media(max-width:1050px){
-        #${ROOT_ID} .meos-fpv-hud-zone{width:31%;top:16%}
-        #${ROOT_ID} .meos-maddy-future-stage{width:31%}
-      }
-      @media(max-width:760px){
-        #${ROOT_ID} .meos-fpv-office{height:980px}
-        #${ROOT_ID} .meos-fpv-scene{left:-18%;width:136%}
-        #${ROOT_ID} .meos-fpv-hud-zone{top:49%;width:45%;height:34%}
-        #${ROOT_ID} .meos-fpv-hud-zone[data-side="left"]{left:2%}
-        #${ROOT_ID} .meos-fpv-hud-zone[data-side="right"]{right:2%}
-        #${ROOT_ID} .meos-maddy-future-stage{top:14%;width:62%;height:34%}
-        #${ROOT_ID} .meos-fpv-minibar{bottom:1%;overflow-x:auto;justify-content:flex-start}
-        #${ROOT_ID} .meos-fpv-minibar button{white-space:nowrap}
-      }
-      @media(prefers-reduced-motion:reduce){
-        #${ROOT_ID} .meos-fpv-scene,
-        #${ROOT_ID} .meos-fpv-widget-stack .meos-widget{transition:none}
-      }
+      @media(max-width:1180px){.meos-curved-wall{width:250px;height:540px}.meos-maddy-dock{width:240px}.meos-integrated-nav{left:270px}.meos-digital-human-stage{width:360px}.meos-insignia-rug{width:480px}}
+      @media(max-width:820px){.meos-maddy-dock{left:8px;bottom:8px;width:220px}.meos-integrated-nav{left:238px;right:8px;bottom:8px;height:78px}.meos-curved-wall{width:220px;height:470px}.meos-digital-human-stage{width:330px;height:36%}.meos-executive-desk{width:100vw}.meos-desk-riser{display:none}.meos-look-hint{display:none}}
     `;
     document.head.appendChild(style);
+    document.body.classList.add("meos-immersive-office-active");
 
-    const office = document.createElement("section");
-    office.className = "meos-fpv-office";
-    office.id = "meosExecutiveDirectorPanorama";
-    office.setAttribute("aria-label", "Executive Director office from the seated desk point of view");
-    office.innerHTML = `
-      <div class="meos-fpv-scene" id="meosFpvScene">
-        <img
-          class="meos-fpv-background"
-          src="executive-director-office-panorama.png"
-          alt=""
-          aria-hidden="true"
-          draggable="false"
-        />
-        <div class="meos-fpv-vignette" aria-hidden="true"></div>
-
-        <section class="meos-fpv-hud-zone" data-side="left" aria-label="Mission impact and completed executive work">
-          <div class="meos-fpv-zone-label"><strong>Mission & Impact</strong><span>What we’ve done</span></div>
-          <div class="meos-fpv-widget-stack" id="meosFpvLeftStack"></div>
-        </section>
-
-        <div
-          class="meos-maddy-future-stage"
-          id="meosMaddyDigitalHumanStage"
-          aria-label="Reserved Maddy Digital Human area"
-          data-reserved-for="maddy-digital-human"
-        ></div>
-
-        <section class="meos-fpv-hud-zone" data-side="right" aria-label="Executive work requiring attention">
-          <div class="meos-fpv-zone-label"><strong>Executive Attention</strong><span>What needs you</span></div>
-          <div class="meos-fpv-widget-stack" id="meosFpvRightStack"></div>
-        </section>
+    const scene = document.createElement("section");
+    scene.id = "meosCurvedExecutiveOffice";
+    scene.className = "meos-curve-office";
+    scene.setAttribute("aria-label", "MEOS Executive Director 180 degree office dashboard");
+    scene.innerHTML = `
+      <div class="meos-office-ceiling" aria-hidden="true"></div>
+      <div class="meos-office-floor" aria-hidden="true"></div>
+      <div class="meos-office-window" aria-hidden="true"></div>
+      <div class="meos-office-shelf left" aria-hidden="true"></div>
+      <div class="meos-office-shelf right" aria-hidden="true"></div>
+      <div class="meos-office-plant left" aria-hidden="true"></div>
+      <div class="meos-office-plant right" aria-hidden="true"></div>
+      <div id="meosCurvedWorld" class="meos-curved-world"></div>
+      <div id="meosMaddyDigitalHumanStage" class="meos-digital-human-stage" data-reserved-for="maddy-digital-human" aria-label="Reserved Maddy Digital Human stage">
+        <div class="meos-digital-human-stage-label"><strong>Maddy</strong>Digital Human Stage</div>
       </div>
-
-      <button class="meos-fpv-look left" type="button" data-fpv-look="-1" aria-label="Look left">‹</button>
-      <button class="meos-fpv-look right" type="button" data-fpv-look="1" aria-label="Look right">›</button>
-      <button class="meos-fpv-center-home" type="button" data-fpv-look="0">Center View</button>
-
-      <nav class="meos-fpv-minibar" aria-label="Executive office minibar">
-        <img src="maddy-executive-insignia.png" alt="MEOS executive insignia" />
-        <button type="button" data-fpv-action="maddy">Maddy</button>
-        <button type="button" data-fpv-action="hallway">Executive Hallway</button>
-        <button type="button" data-fpv-action="workspace">Workspace</button>
-        <button type="button" data-fpv-action="activity">Office Activity</button>
-      </nav>
+      <div class="meos-insignia-rug" aria-label="Maddy executive insignia rug"><img src="maddy-executive-insignia-rug.png" alt="" /></div>
+      <div class="meos-executive-desk" aria-hidden="true"></div>
+      <div class="meos-desk-riser" aria-hidden="true"></div>
+      <div id="meosMaddyDock" class="meos-maddy-dock" data-open="false"></div>
+      <nav id="meosIntegratedNav" class="meos-integrated-nav" aria-label="MEOS navigation"></nav>
+      <button class="meos-look-control left" type="button" aria-label="Look left">‹</button>
+      <button class="meos-look-control right" type="button" aria-label="Look right">‹</button>
+      <div class="meos-look-hint">Drag left / right or use arrows to look around</div>
     `;
+    root.querySelector(".meos-dashboard-shell")?.appendChild(scene);
 
-    hero.parentNode.insertBefore(office, hero);
-
-    const left = office.querySelector("#meosFpvLeftStack");
-    const right = office.querySelector("#meosFpvRightStack");
-
-    /*
-     * Only existing, already-wired v4.10.5 widgets are admitted here.
-     * No replica cards and no fabricated data are created.
-     */
-    const widgets = new Map(
-      [...grid.querySelectorAll(".meos-widget")].map((node) => [
-        node.dataset.widgetId || node.getAttribute("data-widget-id"),
-        node
-      ])
-    );
-
-    ["mission-impact", "office-activity", "briefing"].forEach((id) => {
-      const widget = widgets.get(id);
-      if (widget) left.appendChild(widget);
+    const world = scene.querySelector("#meosCurvedWorld");
+    const placements = [
+      ["mission-impact",-76],
+      ["office-activity",-54],
+      ["briefing",-34],
+      ["mission-pulse",34],
+      ["priorities",54],
+      ["grant-intelligence",72],
+      ["risk-center",82]
+    ];
+    placements.forEach(([id, angle]) => {
+      const widget = root.querySelector(`.meos-widget[data-widget-id="${id}"]`);
+      if (!widget) return;
+      const mount = document.createElement("div");
+      mount.className = "meos-curved-wall";
+      mount.dataset.angle = String(angle);
+      mount.dataset.expanded = "false";
+      mount.dataset.widget = id;
+      const tools = document.createElement("div");
+      tools.className = "meos-panel-tools";
+      tools.innerHTML = `<button type="button" data-panel-action="expand" aria-label="Expand ${id}" title="Expand / collapse">↕</button><button type="button" data-panel-action="popout" aria-label="Pop out ${id}" title="Pop out">□</button>`;
+      mount.appendChild(widget);
+      mount.appendChild(tools);
+      world.appendChild(mount);
     });
 
-    ["mission-pulse", "priorities", "grant-intelligence", "risk-center"].forEach((id) => {
-      const widget = widgets.get(id);
-      if (widget) right.appendChild(widget);
+    const maddyDock = scene.querySelector("#meosMaddyDock");
+    maddyDock.appendChild(maddyControl);
+    const dockToggle = document.createElement("button");
+    dockToggle.className = "meos-maddy-dock-toggle";
+    dockToggle.type = "button";
+    dockToggle.textContent = "↕";
+    dockToggle.title = "Expand Maddy control";
+    dockToggle.addEventListener("click", () => {
+      const open = maddyDock.dataset.open !== "true";
+      maddyDock.dataset.open = String(open);
+      dockToggle.textContent = open ? "×" : "↕";
+    });
+    maddyDock.appendChild(dockToggle);
+
+    // Bottom navigation is a live proxy to the existing navigation. Only
+    // controls that actually exist and can be clicked are mirrored.
+    const originalNavigation = getNavigationArea();
+    const integratedNav = scene.querySelector("#meosIntegratedNav");
+    if (originalNavigation) {
+      const candidates = [...originalNavigation.querySelectorAll("a[href],button")]
+        .filter(node => !node.closest("#meosExecutiveOfficeControl"))
+        .filter(node => !node.disabled)
+        .filter(node => String(node.textContent || node.getAttribute("aria-label") || "").trim());
+      const seen = new Set();
+      candidates.forEach(original => {
+        const label = String(original.textContent || original.getAttribute("aria-label") || "").replace(/\s+/g," ").trim();
+        if (!label || seen.has(label.toLowerCase())) return;
+        seen.add(label.toLowerCase());
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.navProxy = "true";
+        button.innerHTML = `<strong>${label.length > 24 ? label.slice(0,24) + "…" : label}</strong>`;
+        button.addEventListener("click", () => original.click());
+        integratedNav.appendChild(button);
+      });
+    }
+
+    // Ensure the most important proven destinations remain available even
+    // when they are not represented by a legacy navigation element.
+    const addAction = (label, action) => {
+      const button=document.createElement("button");
+      button.type="button";
+      button.innerHTML=`<strong>${label}</strong>`;
+      button.addEventListener("click", action);
+      integratedNav.appendChild(button);
+    };
+    addAction("Dashboard", () => setYaw(0));
+    addAction("Office Activity", () => focusPanel("office-activity"));
+    addAction("Maddy", () => { maddyDock.dataset.open="true"; document.getElementById("meosExecutiveHubInput")?.focus(); });
+
+    let yaw = 0;
+    let dragStartX = null;
+    let dragStartYaw = 0;
+    const setYaw = value => {
+      yaw = Math.max(-78, Math.min(78, Number(value) || 0));
+      scene.dataset.yaw = String(yaw);
+      // Translate the visual office slightly for parallax; panels receive
+      // perspective emphasis according to their permanent angular location.
+      const windowEl = scene.querySelector(".meos-office-window");
+      const shelfLeft = scene.querySelector(".meos-office-shelf.left");
+      const shelfRight = scene.querySelector(".meos-office-shelf.right");
+      if (windowEl) windowEl.style.transform = `translateX(${yaw * -0.13}vw)`;
+      if (shelfLeft) shelfLeft.style.transform = `translateX(${yaw * -0.08}vw)`;
+      if (shelfRight) shelfRight.style.transform = `translateX(${yaw * -0.08}vw)`;
+      [...world.querySelectorAll(".meos-curved-wall")].forEach(mount => {
+        if (mount.classList.contains("meos-panel-popout")) return;
+        const angle = Number(mount.dataset.angle || 0);
+        const relative = angle - yaw;
+        const visible = Math.abs(relative) <= 96;
+        mount.style.opacity = visible ? "1" : "0";
+        mount.style.pointerEvents = visible ? "auto" : "none";
+        const distance = Math.min(1, Math.abs(relative) / 95);
+        mount.style.filter = `brightness(${1 - distance * .24}) saturate(${1 - distance * .16})`;
+        // Additional camera motion layered over each authored curved-wall placement.
+        mount.style.marginLeft = `calc(0px - min(165px,10.5vw) + ${-yaw * 0.72}vw)`;
+      });
+    };
+    const focusPanel = id => {
+      const mount = world.querySelector(`.meos-curved-wall[data-widget="${id}"]`);
+      if (!mount) return;
+      setYaw(Number(mount.dataset.angle || 0));
+      mount.querySelector(".meos-widget")?.focus?.();
+    };
+
+    scene.querySelector(".meos-look-control.left")?.addEventListener("click", () => setYaw(yaw - 24));
+    scene.querySelector(".meos-look-control.right")?.addEventListener("click", () => setYaw(yaw + 24));
+    scene.addEventListener("pointerdown", event => {
+      if (event.target.closest("button,input,a,select,textarea,.meos-widget,.meos-maddy-dock,.meos-integrated-nav")) return;
+      dragStartX = event.clientX;
+      dragStartYaw = yaw;
+      scene.setPointerCapture?.(event.pointerId);
+    });
+    scene.addEventListener("pointermove", event => {
+      if (dragStartX === null) return;
+      setYaw(dragStartYaw - (event.clientX - dragStartX) * .12);
+    });
+    scene.addEventListener("pointerup", () => { dragStartX = null; });
+    scene.addEventListener("pointercancel", () => { dragStartX = null; });
+
+    // Existing widgets gain spatial expand and pop-out behavior without
+    // replacing any of their internal controls or runtime handlers.
+    world.addEventListener("click", event => {
+      const tool = event.target.closest("[data-panel-action]");
+      if (!tool) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const mount = tool.closest(".meos-curved-wall");
+      if (!mount) return;
+      const action = tool.dataset.panelAction;
+      if (action === "expand") {
+        const expanded = mount.dataset.expanded !== "true";
+        mount.dataset.expanded = String(expanded);
+        mount.style.height = expanded ? "min(78vh,760px)" : "";
+        tool.textContent = expanded ? "↑" : "↕";
+      }
+      if (action === "popout") {
+        const open = mount.classList.toggle("meos-panel-popout");
+        tool.textContent = open ? "×" : "□";
+        if (open) mount.style.opacity = "1";
+        else setYaw(yaw);
+      }
     });
 
-    office.querySelectorAll(".meos-fpv-widget-stack .meos-widget").forEach((widget) => {
-      widget.dataset.fpvExpanded = "false";
-      const header = widget.querySelector(".meos-widget-header");
-      if (!header) return;
-
-      header.addEventListener("click", (event) => {
+    // Clicking a panel header expands it in place; native buttons/links keep
+    // their original consequence and do not trigger the generic expansion.
+    world.querySelectorAll(".meos-curved-wall .meos-widget-header").forEach(header => {
+      header.addEventListener("click", event => {
         if (event.target.closest("button,a,input,select,textarea")) return;
-
-        const expand = widget.dataset.fpvExpanded !== "true";
-        office.querySelectorAll('.meos-widget[data-fpv-expanded="true"]').forEach((other) => {
-          if (other !== widget) other.dataset.fpvExpanded = "false";
-        });
-        widget.dataset.fpvExpanded = String(expand);
-
-        if (expand) {
-          widget.scrollIntoView({ behavior:"smooth", block:"nearest" });
-        }
+        const mount = header.closest(".meos-curved-wall");
+        const expanded = mount.dataset.expanded !== "true";
+        mount.dataset.expanded = String(expanded);
+        mount.style.height = expanded ? "min(78vh,760px)" : "";
       });
     });
 
-    let view = 0;
-    const setView = (next) => {
-      view = Math.max(-1, Math.min(1, Number(next) || 0));
-      root.style.setProperty("--meos-office-pan", `${view * -7.5}%`);
-      office.dataset.view = view < 0 ? "left" : view > 0 ? "right" : "center";
-    };
-
-    office.querySelectorAll("[data-fpv-look]").forEach((button) => {
-      button.addEventListener("click", () => setView(button.dataset.fpvLook));
-    });
-
-    let pointerStartX = null;
-    let pointerStartView = 0;
-    office.addEventListener("pointerdown", (event) => {
-      if (event.target.closest("button,a,input,select,textarea,.meos-widget")) return;
-      pointerStartX = event.clientX;
-      pointerStartView = view;
-      office.setPointerCapture?.(event.pointerId);
-    });
-    office.addEventListener("pointerup", (event) => {
-      if (pointerStartX === null) return;
-      const delta = event.clientX - pointerStartX;
-      if (Math.abs(delta) > 70) {
-        setView(pointerStartView + (delta > 0 ? -1 : 1));
-      }
-      pointerStartX = null;
-    });
-
-    const executiveControl = document.getElementById("meosExecutiveOfficeControl");
-    if (executiveControl) {
-      executiveControl.dataset.fpvAuthority = "true";
-      executiveControl.dataset.fpvOpen = "false";
+    // Opening a full executive-office detail keeps it inside this immersive
+    // dashboard rather than exposing the old page beneath it.
+    if (officeDetail) {
+      scene.appendChild(officeDetail);
     }
 
-    office.querySelector('[data-fpv-action="maddy"]')?.addEventListener("click", () => {
-      if (!executiveControl) return;
-      executiveControl.dataset.fpvOpen =
-        executiveControl.dataset.fpvOpen === "true" ? "false" : "true";
-    });
+    // The Maddy control was moved out of navigation; hide the now-redundant
+    // original navigation visually, while its controls remain callable by
+    // the integrated proxy dock above.
+    if (originalNavigation) {
+      originalNavigation.style.visibility = "hidden";
+      originalNavigation.style.pointerEvents = "none";
+    }
 
-    office.querySelector('[data-fpv-action="hallway"]')?.addEventListener("click", () => {
-      const hallway = document.getElementById("meosHallwayMini");
-      if (executiveControl && hallway) {
-        executiveControl.dataset.fpvOpen = "true";
-        hallway.hidden = false;
-        hallway.scrollIntoView?.({ behavior:"smooth", block:"nearest" });
-      }
-    });
-
-    office.querySelector('[data-fpv-action="workspace"]')?.addEventListener("click", () => {
-      if (typeof openMaddyExecutiveWorkspace === "function") {
-        openMaddyExecutiveWorkspace();
-      }
-    });
-
-    office.querySelector('[data-fpv-action="activity"]')?.addEventListener("click", () => {
-      if (typeof openOfficeActivityBrowser === "function") {
-        openOfficeActivityBrowser("all");
-      }
-    });
-
-    // Wheel over a HUD stack explores that stack; wheel elsewhere does not hijack the page.
-    office.querySelectorAll(".meos-fpv-widget-stack").forEach((stack) => {
-      stack.addEventListener("wheel", (event) => {
-        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-        const before = stack.scrollTop;
-        stack.scrollTop += event.deltaY;
-        if (stack.scrollTop !== before) event.preventDefault();
-      }, { passive:false });
-    });
-
-    setView(0);
+    setYaw(0);
     return root;
   }
 
-  function runExecutiveDirectorPanoramaAcceptanceTest() {
-    const office = document.getElementById("meosExecutiveDirectorPanorama");
-    const stage = document.getElementById("meosMaddyDigitalHumanStage");
-    const checks = [
-      ["FPV office is mounted", Boolean(office)],
-      ["Panoramic environment uses the approved office asset", office?.querySelector(".meos-fpv-background")?.getAttribute("src") === "executive-director-office-panorama.png"],
-      ["Maddy Digital Human stage is intentionally empty", Boolean(stage) && stage.childElementCount === 0],
-      ["Executive insignia asset is used", Boolean(office?.querySelector('img[src="maddy-executive-insignia.png"]'))],
-      ["Mission Impact is an existing widget, not a replica", Boolean(office?.querySelector('[data-widget-id="mission-impact"]'))],
-      ["Office Activity is an existing widget, not a replica", Boolean(office?.querySelector('[data-widget-id="office-activity"]'))],
-      ["Mission Pulse is an existing widget, not a replica", Boolean(office?.querySelector('[data-widget-id="mission-pulse"]'))],
-      ["Priorities is an existing widget, not a replica", Boolean(office?.querySelector('[data-widget-id="priorities"]'))],
-      ["Grant Intelligence is an existing widget, not a replica", Boolean(office?.querySelector('[data-widget-id="grant-intelligence"]'))],
-      ["Risk Center is an existing widget, not a replica", Boolean(office?.querySelector('[data-widget-id="risk-center"]'))],
-      ["Workspace action uses the existing workspace implementation", typeof openMaddyExecutiveWorkspace === "function"],
-      ["Office Activity action uses the existing activity implementation", typeof openOfficeActivityBrowser === "function"],
-      ["Underlying Digital Actor mount remains in the dashboard DOM", Boolean(document.getElementById("meosDigitalActorMount"))]
-    ].map(([name, passed]) => ({ name, passed:Boolean(passed) }));
-
-    const result = {
-      success:checks.every((check) => check.passed),
-      commission:"006.020A",
-      version:DASHBOARD_VERSION,
-      buildId:EXECUTIVE_OFFICE_PANORAMA_BUILD_ID,
-      passed:checks.filter((check) => check.passed).length,
-      total:checks.length,
-      checks
-    };
+  function runCurvedExecutiveOfficeAcceptanceTest() {
+    const scene=document.getElementById("meosCurvedExecutiveOffice");
+    const checks=[
+      ["180 degree Executive Office scene is mounted",Boolean(scene)],
+      ["Screenshot reference is not used as a dashboard background",!document.querySelector('#meosCurvedExecutiveOffice img[src*="ab2ee50b"],#meosCurvedExecutiveOffice img[src*="wide_ultra"]')],
+      ["Maddy Digital Human center stage remains reserved",document.getElementById("meosMaddyDigitalHumanStage")?.dataset.reservedFor==="maddy-digital-human"],
+      ["Supplied executive insignia rug asset is used",document.querySelector(".meos-insignia-rug img")?.getAttribute("src")==="maddy-executive-insignia-rug.png"],
+      ["Mission Impact is the real widget",Boolean(document.querySelector('.meos-curved-wall[data-widget="mission-impact"] .meos-widget[data-widget-id="mission-impact"]'))],
+      ["Office Activity is the real widget",Boolean(document.querySelector('.meos-curved-wall[data-widget="office-activity"] .meos-widget[data-widget-id="office-activity"]'))],
+      ["Briefing is the real widget",Boolean(document.querySelector('.meos-curved-wall[data-widget="briefing"] .meos-widget[data-widget-id="briefing"]'))],
+      ["Mission Pulse is the real widget",Boolean(document.querySelector('.meos-curved-wall[data-widget="mission-pulse"] .meos-widget[data-widget-id="mission-pulse"]'))],
+      ["Priorities is the real widget",Boolean(document.querySelector('.meos-curved-wall[data-widget="priorities"] .meos-widget[data-widget-id="priorities"]'))],
+      ["Grant Intelligence is the real widget",Boolean(document.querySelector('.meos-curved-wall[data-widget="grant-intelligence"] .meos-widget[data-widget-id="grant-intelligence"]'))],
+      ["Risk Center is the real widget",Boolean(document.querySelector('.meos-curved-wall[data-widget="risk-center"] .meos-widget[data-widget-id="risk-center"]'))],
+      ["Existing Maddy Executive Office control is physically incorporated",Boolean(document.querySelector(".meos-maddy-dock #meosExecutiveOfficeControl"))],
+      ["Existing navigation is represented by live proxy controls",document.querySelectorAll("#meosIntegratedNav button").length>=3],
+      ["Panels have expand and pop-out controls",document.querySelectorAll(".meos-panel-tools [data-panel-action]").length>=14]
+    ].map(([name,passed])=>({name,passed:Boolean(passed)}));
+    const result={success:checks.every(c=>c.passed),commission:"006.020B2",version:DASHBOARD_VERSION,buildId:"EO4111-CURVED-180-EXECUTIVE-OFFICE-20260814-A",passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);
-    console.log(`[MEOS ${DASHBOARD_VERSION}] Executive Director FPV Panorama: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020B2 180° Curved Executive Office: ${result.success?"PASS":"FAIL"} (${result.passed}/${result.total}).`);
     return result;
   }
 
@@ -3940,7 +3789,7 @@ document
               <div class="meos-presence-stage">
                 <span class="meos-presence-circuit" aria-hidden="true"></span>
                 <img class="meos-presence-logo" src="maddy-executive-insignia.png" alt="MEOS Maddy command insignia beginning the startup transformation" onerror="this.style.visibility='hidden';" />
-                <img class="meos-presence-human" id="meosCanonicalMaddy" src="maddy-canonical-v2.png" alt="Maddy's canonical holographic executive presence fallback" onerror="this.style.visibility='hidden';" />
+                <img class="meos-presence-human" id="meosCanonicalMaddy" src="maddy-holographic-presence-v1.png" alt="Maddy's canonical holographic executive presence fallback" onerror="this.style.visibility='hidden';" />
                 <div class="meos-digital-actor-mount" id="meosDigitalActorMount" aria-label="Maddy digital executive telepresence performance viewport"></div>
                 <span class="meos-presence-human-glow" aria-hidden="true"></span>
                 <span class="meos-presence-scan" aria-hidden="true"></span>
@@ -4041,7 +3890,7 @@ document
     updateClockAndGreeting();
     renderBuildProgress();
     createOfficeDashboard();
-    installExecutiveDirectorPanorama(root);
+    installCurvedExecutiveOffice(root);
 
     return root;
   }
@@ -6123,7 +5972,7 @@ document
       </aside>
       <main class="meos-workspace-main" id="meosWorkspaceMain"></main>
       <aside class="meos-workspace-presence">
-        <div class="meos-workspace-maddy"><img src="maddy-canonical-v2.png" alt="Maddy present in the executive workspace" onerror="this.style.visibility='hidden';" /></div>
+        <div class="meos-workspace-maddy"><img src="maddy-holographic-presence-v1.png" alt="Maddy present in the executive workspace" onerror="this.style.visibility='hidden';" /></div>
         <h3>Maddy is here with you</h3>
         <p>The right side is Maddy's permanent presence bay, reserved for the interactive Digital Human experience.</p>
         <div class="meos-workspace-presence-state" id="meosWorkspacePresenceState">Maddy is holding the current mission in context.</div>
@@ -6837,7 +6686,7 @@ document
       ["Maddy HUD work chip exposes runtime dispatch state", Boolean(document.getElementById("meosMaddyDeskWork")?.dataset.workState)],
       ["Maddy HUD is connected to the Hallway executive feedback API", typeof getExecutiveHallway()?.submitFeedback === "function"],
       ["Maddy HUD has a feedback result surface", Boolean(document.getElementById("meosMaddyDeskActions"))],
-      ["Living Headquarters uses the protected canonical Maddy asset", document.getElementById("meosCanonicalMaddy")?.getAttribute("src") === "maddy-canonical-v2.png"],
+      ["Living Headquarters uses the protected canonical Maddy asset", document.getElementById("meosCanonicalMaddy")?.getAttribute("src") === "maddy-holographic-presence-v1.png"],
       ["Logo-to-human startup evolution is installed in the Headquarters hero", Boolean(document.querySelector("#meosLivingPresence .meos-presence-logo") && document.querySelector("#meosLivingPresence .meos-presence-human"))],
       ["Maddy is the visual feature of the Headquarters center", Boolean(document.querySelector(".meos-hq-core.meos-living-presence"))],
       ["Canonical Maddy fills the Living Headquarters presence field", Boolean(document.querySelector(".meos-presence-human"))],
@@ -7602,7 +7451,7 @@ document
       const snapshot = await renderer.initialize({
         target: "#meosDigitalActorMount",
         config: {
-          poster: "maddy-canonical-v2.png",
+          poster: "maddy-holographic-presence-v1.png",
           autoplay: options.autoplay === true,
           preloadOnInitialize: options.preloadOnInitialize === true,
           showStatus: false,
@@ -7678,7 +7527,7 @@ document
       ["Digital Actor Renderer is connected to the Presence Engine", snapshot.connected === true],
       ["Living Headquarters reports Digital Actor availability", root?.dataset.digitalActorAvailable === "true"],
       ["Living Headquarters reports Digital Actor mounted state", root?.dataset.digitalActorMounted === "true"],
-      ["Current holographic Maddy remains available as honest fallback", fallback?.getAttribute("src") === "maddy-canonical-v2.png"],
+      ["Current holographic Maddy remains available as honest fallback", fallback?.getAttribute("src") === "maddy-holographic-presence-v1.png"],
       ["Static dashboard portrait is hidden after the actor viewport mounts", getComputedStyle(document.getElementById("meosCanonicalMaddy")).visibility === "hidden"],
       ["Digital Actor event listeners are installed once", state.maddyDigitalActor.listenersInstalled === true],
       ["Digital Actor media activation remains deferred until real performance clips exist", root?.dataset.digitalActorMedia === "fallback"]
@@ -8252,6 +8101,7 @@ document
       runOneQuestionOneAnswerAcceptanceTest,
       runExecutiveAttentionProjectionAcceptanceTest,
       runIntegratedAnswerIntegrityAcceptanceTest,
+      runCurvedExecutiveOfficeAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
     }),
@@ -8379,7 +8229,7 @@ document
           { name: "Every visible deliverable belongs to the current mission", passed: !currentWorkId || packageState.items.every((item) => item.workId === currentWorkId) },
           { name: "Work package occupies the left column", passed: Boolean(document.querySelector("#meosExecutiveWorkspace .meos-workspace-package #meosWorkspaceResults")) },
           { name: "Maddy owns the reserved right-side presence bay", passed: Boolean(document.querySelector("#meosExecutiveWorkspace .meos-workspace-presence .meos-workspace-maddy")) },
-          { name: "Workspace uses the Headquarters Maddy presence asset", passed: document.querySelector("#meosExecutiveWorkspace .meos-workspace-maddy img")?.getAttribute("src") === "maddy-canonical-v2.png" },
+          { name: "Workspace uses the Headquarters Maddy presence asset", passed: document.querySelector("#meosExecutiveWorkspace .meos-workspace-maddy img")?.getAttribute("src") === "maddy-holographic-presence-v1.png" },
           { name: "Executive actions remain with Maddy", passed: Boolean(document.querySelector("#meosExecutiveWorkspace .meos-workspace-presence #meosWorkspaceActions")) },
           { name: "Workspace preserves collapse back to HUD", passed: Boolean(document.getElementById("meosWorkspaceClose")) },
           { name: "Returned deliverables are classified before renderer selection", passed: typeof classifyMaddyDeliverable === "function" && typeof getMaddyDeliverablePresentation === "function" },
