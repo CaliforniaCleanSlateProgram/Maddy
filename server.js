@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.60";
+const VERSION = "2.10.61";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7319,10 +7319,10 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.019E3A3";
+const PROSPECT_TOUR_COMMISSION = "006.019E3A3R1";
 const PROSPECT_TOUR_VERSION = "1.0.0";
 const PROSPECT_TOUR_BUILD_ID =
-  "GTPT103-MADDY-EXECUTIVE-CONVERSATION-RELEVANCE-GATE-20260813-A";
+  "GTPT103R1-RELEVANCE-GATE-ACCEPTANCE-CONVERGENCE-20260813-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
@@ -7515,12 +7515,16 @@ function prospectTourRelevanceDecision({ introIntent, latestUtterance, priorSumm
   ];
   const absurdHits = absurdSignals.filter(signal => lower.includes(signal)).length;
 
-  if (hasBusinessSignal || directTourQuestion || contextOverlap) {
-    return { relevant: true, reason: "business_or_tour_relevant", paidCognition: true };
-  }
-
+  // Multi-signal absurd free-chat is the only class we confidently stop
+  // before paid cognition. This check intentionally runs before generic
+  // "Maddy"/tour-word relevance so Johnny Gibber Jabber cannot bypass it by
+  // sprinkling a business-ish word into obvious nonsense.
   if (absurdHits >= 2) {
     return { relevant: false, reason: "clearly_irrelevant_free_chat", paidCognition: false };
+  }
+
+  if (hasBusinessSignal || directTourQuestion || contextOverlap) {
+    return { relevant: true, reason: "business_or_tour_relevant", paidCognition: true };
   }
 
   // Benefit of the doubt: ambiguous human language reaches Maddy.
@@ -7757,9 +7761,9 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Tour is text-only and grants no voice authority", true],
     ["Tour office selection is constrained to known MEOS offices", catalog.includes("Strategy") && catalog.includes("Finance") && catalog.includes("Operations")],
     ["Executive Hallway is not an office destination", !catalog.includes("Executive Hallway") && !catalog.includes("Executive Hallway Office")],
-    ["Direct prospect questions must be answered before advancement", instructions.includes("answer that question directly and contextually")],
-    ["Enough information converts from extraction to customer value", instructions.includes("stop extracting and start providing value")],
-    ["Advancement requires demonstrated value first", instructions.includes("Before setting advance=true for the first time")],
+    ["Direct prospect questions must be answered before advancement", instructions.includes("answer it directly before asking anything back")],
+    ["Enough information converts from extraction to customer value", instructions.includes("Once enough is known, start solving and showing value")],
+    ["Advancement requires value-led movement", instructions.includes("advance: true only when moving to the named office now adds more value")],
     ["Live reasoning requests minimal reasoning effort", true],
     ["Live reasoning requires strict structured JSON", true],
     ["Cognition failure is retryable rather than graceful advancement", true],
@@ -7769,7 +7773,7 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Relevance gate gives ambiguous prospects the benefit of the doubt", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "I have something unusual I want to try", priorSummary: "" }).paidCognition === true],
     ["Relevance gate blocks clearly irrelevant gibber-jabber before paid cognition", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "My cat starts mooing like a cow while naked grandma is mowing the driveway with a fluorescent lamp", priorSummary: "" }).paidCognition === false],
     ["Cheap redirect requires zero provider calls by construction", prospectTourCheapRedirect().advance === false],
-    ["Tour may not shame or rush a legitimate prospect question", instructions.includes("MUST NOT be treated as stalling or jabbering")],
+    ["Tour may not shame or rush a legitimate prospect question", instructions.includes("Never imply the prospect is wasting your time")],
     ["Public requests are rate-limited before paid cognition", decision.allowed === true && decision.remaining < PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW],
     ["Rate-limit acceptance fixture leaves no durable usage residue", prospectTourUsage.size === before],
     ["Tour grants no research/tool or external-action authority", true],
