@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.6";
+  const DASHBOARD_VERSION = "4.11.7";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3460,19 +3460,27 @@ document
 
       .meos-office-maddy-dock{position:absolute;z-index:120;left:6.2%;bottom:7.2%;width:min(250px,18vw);max-height:190px;transform:perspective(700px) rotateX(3deg);transform-origin:bottom center}
       .meos-office-maddy-dock #meosExecutiveOfficeControl{position:relative!important;visibility:visible!important;pointer-events:auto!important;width:100%!important;margin:0!important;border:1px solid rgba(214,174,108,.32)!important;border-radius:12px!important;background:linear-gradient(145deg,rgba(31,27,21,.76),rgba(8,13,14,.72))!important;box-shadow:0 10px 24px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.05)!important;backdrop-filter:blur(8px)!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-presence{padding:10px!important;display:grid!important;grid-template-columns:46px 1fr!important;gap:8px!important;align-items:center!important;overflow:hidden!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-presence-avatar,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-avatar,.meos-office-maddy-dock #meosExecutiveOfficeControl img{max-width:46px!important;max-height:46px!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-presence{padding:11px!important;display:grid!important;grid-template-columns:58px minmax(0,1fr)!important;grid-auto-rows:auto!important;column-gap:10px!important;row-gap:7px!important;align-items:center!important;justify-items:stretch!important;overflow:hidden!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-maddy-orb{grid-column:1!important;grid-row:1!important;width:58px!important;height:58px!important;min-width:58px!important;min-height:58px!important;margin:0!important;align-self:center!important;justify-self:center!important;overflow:hidden!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-maddy-orb::before{inset:4px!important;border-width:2px!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-maddy-orb::after{inset:1px!important;border-width:2px!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-maddy-orb-insignia{display:block!important;inset:6px!important;width:calc(100% - 12px)!important;height:calc(100% - 12px)!important;max-width:none!important;max-height:none!important;object-fit:cover!important;object-position:center!important;border-radius:50%!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-maddy-orb-fallback{font-size:1.35rem!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-identity{grid-column:2!important;grid-row:1!important;align-self:center!important;text-align:left!important;min-width:0!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-identity strong{font-size:.84rem!important;line-height:1.05!important;letter-spacing:.09em!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-identity span{display:block!important;margin-top:4px!important;font-size:.58rem!important;line-height:1.15!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-executive-hub-command,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-hub-command,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-open-hub-button,.meos-office-maddy-dock #meosHallwayMini{display:none!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-label{display:block!important;margin-top:2px!important;font-size:.48rem!important;color:rgba(220,231,232,.55)!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-select{display:block!important;width:100%!important;min-height:25px!important;padding:2px 5px!important;font-size:.55rem!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-label{display:block!important;grid-column:1/-1!important;margin:1px 0 -3px!important;font-size:.48rem!important;color:rgba(220,231,232,.55)!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-select{display:block!important;grid-column:1/-1!important;width:100%!important;min-height:27px!important;padding:3px 6px!important;font-size:.55rem!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary-row{display:flex!important;gap:4px!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary{min-height:25px!important;padding:4px 6px!important;font-size:.52rem!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-grid{display:grid!important;grid-column:1/-1!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px!important;margin-top:1px!important;width:100%!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-row{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;min-width:0!important;gap:2px!important;padding:4px 5px!important;border:1px solid rgba(125,190,202,.10)!important;border-radius:7px!important;background:rgba(3,11,14,.13)!important;font-size:.50rem!important;line-height:1.1!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-row{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;text-align:center!important;min-width:0!important;gap:2px!important;padding:4px 5px!important;border:1px solid rgba(125,190,202,.10)!important;border-radius:7px!important;background:rgba(3,11,14,.13)!important;font-size:.50rem!important;line-height:1.1!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-row>span:first-child{color:rgba(220,231,232,.56)!important;font-size:.48rem!important;letter-spacing:.04em!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-status-value{font-size:.53rem!important;white-space:nowrap!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-voice-actions{grid-column:1/-1!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-primary{width:100%!important;min-height:32px!important;padding:6px!important;font-size:.62rem!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-voice-actions{grid-column:1/-1!important;width:100%!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-primary{display:none!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary-row{width:100%!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:5px!important}
 
       .meos-office-nav{position:absolute;z-index:130;left:50%;top:10px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:5px;max-width:450px;padding:6px 8px;border:1px solid rgba(213,162,83,.18);border-radius:11px;background:rgba(4,10,12,.42);backdrop-filter:blur(7px)}
       .meos-office-nav button{border:0;background:transparent;color:rgba(235,239,236,.74);padding:6px 8px;border-radius:7px;cursor:pointer;font:700 .56rem/1 system-ui;letter-spacing:.05em;text-transform:uppercase}
@@ -3881,9 +3889,9 @@ document
       ['Left and right wayfinding mounted', Boolean(scene?.querySelector('#meosOfficeWayfindingLeft button')) && Boolean(scene?.querySelector('#meosOfficeWayfindingRight button'))],
       ['Desk workspace API mounted', Boolean(scene?.MEOSOfficeWorkspace?.sendToDesk) && Boolean(scene?.MEOSOfficeWorkspace?.sendHome)]
     ].map(([name,passed]) => ({name,passed:Boolean(passed)}));
-    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R5',version:DASHBOARD_VERSION,buildId:'EO4116-INTEGRATED-EXECUTIVE-DESK-CONTROLS-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
+    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R6',version:DASHBOARD_VERSION,buildId:'EO4117-MADDY-CONSOLE-OPTICAL-CLEANUP-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);
-    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R5 Integrated Executive Desk Controls: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R6 Maddy Console Optical Cleanup: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
     return result;
   }
 
