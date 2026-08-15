@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.10.2
+ * Version: 4.11.9
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,8 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.8";
+  const DASHBOARD_VERSION = "4.11.9";
+  const CABINET_RECONCILIATION_BUILD_ID = "EO4119-LEAN-CABINET-NAVIGATION-RECONCILIATION-20260815-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3718,14 +3719,42 @@ document
     /* Mirror the real cabinet members. Their original links already own the
        commissioned office-dashboard show(member) behavior, so we reuse it. */
     const originalCabinetMenu = document.getElementById('cabinetMenu');
+
+    /* Commission 006.022C — the customer-facing cabinet mirrors the lean
+       executive cabinet, while shared capabilities remain infrastructure.
+       Labels communicate both the accountable executive and the office
+       function; click authority remains owned by the original cabinet link. */
+    const getCabinetNavigationLabel = member => {
+      if (!member) return 'Executive Office';
+      if (member.id === 'maddy') return `${member.name || 'Maddy'} · Executive Operations`;
+      const officeName = String(member.office || '')
+        .replace(/^Office of\s+/i, '')
+        .trim();
+      const functionName = officeName || String(member.title || '')
+        .replace(/^(Chief|Director of)\s+/i, '')
+        .trim();
+      return functionName
+        ? `${member.name || member.id || 'Executive'} · ${functionName}`
+        : String(member.name || member.id || 'Executive Office');
+    };
+
     const populateCabinetMenu = () => {
       if (!cabinetMenu) return;
       cabinetMenu.replaceChildren();
       const memberLinks = [...(originalCabinetMenu?.querySelectorAll('a.cabinet-member,[data-office-id]') || [])];
+      const cabinet = window.MEOS?.getCabinet?.();
+      const visibleMembers = [cabinet?.maddy, ...(cabinet?.offices || [])].filter(Boolean);
+      const memberById = new Map(visibleMembers.map(member => [String(member.id), member]));
+
       memberLinks.forEach(originalLink => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = String(originalLink.textContent || '').trim() || originalLink.dataset.officeId || 'Executive Office';
+        const officeId = String(originalLink.dataset.officeId || '').trim();
+        const member = memberById.get(officeId);
+        button.dataset.officeId = officeId;
+        button.textContent = member
+          ? getCabinetNavigationLabel(member)
+          : (String(originalLink.textContent || '').trim() || officeId || 'Executive Office');
         button.addEventListener('click', () => {
           cabinetMenu.dataset.open = 'false';
           cabinetButton.setAttribute('aria-expanded','false');
@@ -4070,6 +4099,42 @@ document
     });
 
     return root;
+  }
+
+  function runCabinetNavigationReconciliationAcceptanceTest() {
+    const cabinet = window.MEOS?.getCabinet?.();
+    const menu = document.getElementById('meosOfficeCabinetMenu');
+    const visibleIds = [cabinet?.maddy, ...(cabinet?.offices || [])]
+      .filter(Boolean)
+      .map(member => String(member.id));
+    const buttons = [...(menu?.querySelectorAll('button[data-office-id]') || [])];
+    const buttonIds = buttons.map(button => String(button.dataset.officeId || ''));
+    const sterling = cabinet?.offices?.find(office => office.id === 'archie');
+    const sterlingButton = buttons.find(button => button.dataset.officeId === 'archie');
+    const retiredIds = ['atlas','ledger','compass','nova'];
+    const checks = [
+      ['Lean Executive Cabinet exposes exactly 7 accountable offices', cabinet?.offices?.length === 7],
+      ['Restructured institutional layer exposes exactly 4 shared capabilities', cabinet?.capabilities?.length === 4],
+      ['Panoramic cabinet menu mirrors Maddy plus all 7 accountable offices', buttons.length === 8 && visibleIds.every(id => buttonIds.includes(id))],
+      ['Sterling owns the Finance & Economic Stewardship navigation identity', sterling?.name === 'Sterling' && /Finance.*Economic Stewardship/i.test(String(sterling?.office || sterling?.title || '')) && /Sterling.*Finance.*Economic Stewardship/i.test(String(sterlingButton?.textContent || ''))],
+      ['Retired office identities are not presented as customer-facing cabinet offices', retiredIds.every(id => !buttonIds.includes(id))],
+      ['Every visible cabinet navigation control retains an office routing identity', buttons.every(button => Boolean(button.dataset.officeId))],
+      ['Cabinet navigation remains a proxy over the commissioned original links', Boolean(document.getElementById('cabinetMenu'))]
+    ].map(([name,passed]) => ({ name, passed:Boolean(passed) }));
+    const passed = checks.filter(check => check.passed).length;
+    const result = {
+      success: passed === checks.length,
+      commission: '006.022C',
+      schema: 'meos.dashboard.lean-cabinet-navigation-reconciliation.acceptance.v1',
+      version: DASHBOARD_VERSION,
+      buildId: CABINET_RECONCILIATION_BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.022C Lean Cabinet Navigation Reconciliation: ${result.success ? 'PASS' : 'FAIL'} (${passed}/${checks.length}).`);
+    return result;
   }
 
   function runImagePanoramicExecutiveOfficeAcceptanceTest() {
@@ -7070,7 +7135,7 @@ document
       ["Mission Impact refuses to count potential funding as realized resources", compileMissionImpact({ ...snapshot, fundingRecords: [{ id:"test-potential", awardAmount:500000, status:"open" }] }).realizedResourceCount === 0],
       ["Mission Impact refuses to invent financial value without realized-value evidence", compileMissionImpact(snapshot).financialValueKnown === false && compileMissionImpact(snapshot).financialValue === null],
       ["Mission Impact requires explicit evidence before claiming a blocker or risk was resolved", compileMissionImpact({ ...snapshot, hallwayWork: [{ id:"test-blocker", state:"done" }] }).resolvedRiskCount === 0],
-      ["No planned office or widget was removed", snapshot.offices.length === 11]
+      ["Lean cabinet contract preserves 7 accountable offices plus 4 shared capabilities", snapshot.offices.length === 7 && window.MEOS?.getCabinet?.()?.offices?.length === 7 && window.MEOS?.getCabinet?.()?.capabilities?.length === 4]
     ].map(([name,passed]) => ({ name, passed: Boolean(passed) }));
     return { success: checks.every((check)=>check.passed), schema:"meos.executive-headquarters.v4.acceptance", version:DASHBOARD_VERSION, passed:checks.filter((check)=>check.passed).length, total:checks.length, completion:snapshot.completion, checks };
   }
@@ -8417,7 +8482,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.018K Integrated Answer Integrity Sweep online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Commission 006.022C Lean Cabinet Navigation Reconciliation online.`
     );
   }
 
@@ -8449,6 +8514,7 @@ document
       runExecutiveAttentionProjectionAcceptanceTest,
       runIntegratedAnswerIntegrityAcceptanceTest,
       runImagePanoramicExecutiveOfficeAcceptanceTest,
+      runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
     }),
