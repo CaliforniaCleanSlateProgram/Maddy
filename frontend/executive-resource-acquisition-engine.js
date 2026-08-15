@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Resource Acquisition Engine
  *
- * Version: 3.0.0
- * Build: ERAE300-ORGANIZATION-NEUTRAL-CORE-20260815-A
+ * Version: 3.1.0
+ * Build: ERAE310-FAST-TRACK-BANKABILITY-PORTFOLIO-20260815-A
  *
  * Mission:
  * Make one authoritative executive decision for every grant or resource
@@ -16,8 +16,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Resource Acquisition Engine";
-  const VERSION = "3.0.0";
-  const BUILD_ID = "ERAE300-ORGANIZATION-NEUTRAL-CORE-20260815-A";
+  const VERSION = "3.1.0";
+  const BUILD_ID = "ERAE310-FAST-TRACK-BANKABILITY-PORTFOLIO-20260815-A";
   const SCHEMA = "meos.executive-resource-decision.v2";
 
   const DECISIONS = Object.freeze({
@@ -296,6 +296,162 @@
     return { score, label: score >= 5 ? "high" : score >= 3 ? "medium" : "low", drivers };
   }
 
+  function clamp(value, min = 0, max = 100) {
+    return Math.max(min, Math.min(max, Number(value) || 0));
+  }
+
+  function cashSpeed(opportunity = {}, timingResult = {}) {
+    const t = text(opportunity);
+    let score = 45;
+    const evidence = [];
+
+    if (timingResult.daysRemaining !== null) {
+      if (timingResult.daysRemaining <= 3 && timingResult.daysRemaining >= 0) {
+        score += 20;
+        evidence.push("Application deadline is immediate.");
+      } else if (timingResult.daysRemaining <= 14 && timingResult.daysRemaining >= 0) {
+        score += 12;
+        evidence.push("Application deadline is near-term.");
+      } else if (timingResult.daysRemaining <= 45 && timingResult.daysRemaining >= 0) {
+        score += 6;
+        evidence.push("Application window is active.");
+      }
+    }
+
+    if (/rolling|open until filled|first come|first served|ongoing applications/.test(t)) {
+      score += 12;
+      evidence.push("Opportunity language indicates rolling or continuously open intake.");
+    }
+    if (/reimbursement only|reimbursable after|cost reimbursement/.test(t)) {
+      score -= 18;
+      evidence.push("Resource appears reimbursement-based, which can delay usable cash.");
+    }
+    if (/advance payment|upfront payment|initial payment|upon award/.test(t)) {
+      score += 15;
+      evidence.push("Opportunity language indicates an earlier cash-access path.");
+    }
+
+    return {
+      score: clamp(score),
+      evidence,
+      explanation: evidence.length
+        ? evidence.join(" ")
+        : "Cash timing is not sufficiently documented; neutral speed is assumed."
+    };
+  }
+
+  function evidenceConfidence(eligibility = {}, advancementResult = {}, timingResult = {}, value = {}) {
+    let score = 20;
+    const evidence = [];
+    const unknowns = [];
+
+    if (eligibility.canLead === true || eligibility.canPartner === true) {
+      score += 30;
+      evidence.push("A lawful acquisition path is evidenced.");
+    } else {
+      unknowns.push("Acquisition path is not verified.");
+    }
+
+    if (advancementResult.advances) {
+      score += 20;
+      evidence.push("Organizational advancement is evidenced.");
+    } else {
+      unknowns.push("Organizational advancement is not established.");
+    }
+
+    if (timingResult.verified) {
+      score += 15;
+      evidence.push("Deadline is verified.");
+    } else {
+      unknowns.push("Deadline is not verified.");
+    }
+
+    if (value.estimated !== null || value.nonCash) {
+      score += 15;
+      evidence.push("Resource value/type is evidenced.");
+    } else {
+      unknowns.push("Resource value is not verified.");
+    }
+
+    if (eligibility.hardExclusions?.length) score = Math.min(score, 10);
+
+    return { score: clamp(score), evidence, unknowns };
+  }
+
+  function fastTrackPriority(opportunity, eligibility, advancementResult, timingResult, effortResult, value) {
+    const evidence = evidenceConfidence(
+      eligibility,
+      advancementResult,
+      timingResult,
+      value
+    );
+    const speed = cashSpeed(opportunity, timingResult);
+
+    // Value uses a logarithmic curve so a huge headline award cannot bury a
+    // smaller, faster, more attainable opportunity.
+    let valueScore = 45;
+    if (value.nonCash) valueScore = 55;
+    else if (value.estimated !== null) {
+      const dollars = Math.max(1, value.estimated);
+      valueScore = clamp(18 * Math.log10(dollars) - 35);
+    }
+
+    const effortScore =
+      effortResult.label === "low" ? 90 :
+      effortResult.label === "medium" ? 60 :
+      30;
+
+    const urgencyScore =
+      timingResult.state === "immediate" ? 100 :
+      timingResult.state === "urgent" ? 85 :
+      timingResult.state === "open" ? 65 :
+      timingResult.state === "unknown" ? 40 :
+      0;
+
+    const pathScore =
+      eligibility.canLead === true ? 100 :
+      eligibility.canPartner === true ? 72 :
+      eligibility.status === "research" ? 30 :
+      0;
+
+    const advancementScore = advancementResult.advances ? 90 : 10;
+
+    const score = clamp(
+      valueScore * 0.20 +
+      pathScore * 0.22 +
+      speed.score * 0.18 +
+      effortScore * 0.14 +
+      urgencyScore * 0.10 +
+      evidence.score * 0.10 +
+      advancementScore * 0.06
+    );
+
+    const tier =
+      score >= 80 ? "fast-track-now" :
+      score >= 65 ? "high-priority" :
+      score >= 50 ? "workable" :
+      score >= 35 ? "investigate-position" :
+      "low-priority";
+
+    return {
+      score: Math.round(score * 10) / 10,
+      tier,
+      components: {
+        resourceValue: Math.round(valueScore * 10) / 10,
+        acquisitionPath: pathScore,
+        cashSpeed: speed.score,
+        effortEfficiency: effortScore,
+        deadlineUrgency: urgencyScore,
+        evidenceConfidence: evidence.score,
+        organizationalAdvancement: advancementScore
+      },
+      evidence: [...evidence.evidence, ...speed.evidence],
+      unknowns: evidence.unknowns,
+      explanation:
+        "Fast Track priority balances resource value, lawful acquisition path, speed to usable resources, effort, deadline, evidence confidence, and organizational advancement. It does not treat the largest headline amount as automatically best."
+    };
+  }
+
   function worth(opportunity, eligibility, advancementResult, timingResult) {
     const value = acquisitionValue(opportunity);
     const effortResult = effort(opportunity);
@@ -322,10 +478,20 @@
       !unclearApplicantPath &&
       !/\bresearch partnerships notice of intent\b/.test(t);
 
+    const fastTrack = fastTrackPriority(
+      opportunity,
+      eligibility,
+      advancementResult,
+      timingResult,
+      effortResult,
+      value
+    );
+
     return {
       worthPursuing,
       value,
       effort: effortResult,
+      fastTrackPriority: fastTrack,
       urgency:
         timingResult.daysRemaining !== null &&
         timingResult.daysRemaining <= 14 &&
@@ -448,6 +614,11 @@
       deadline: timingResult,
       resourceValue: worthResult.value,
       effort: worthResult.effort,
+      fastTrackPriority: worthResult.fastTrackPriority,
+      successDefinition: {
+        win: "resource-landed",
+        rule: "Discovery, qualification, application, submission, recommendation, and award notice are progress states. Acquisition success is recorded only when money or another verified resource is actually received by the organization."
+      },
       reasoning: {
         reason,
         primaryTitleGate: titleGate,
@@ -473,6 +644,57 @@
           ? "The current opportunity may be lost when the deadline passes."
           : "The consequence of delay is not verified."
       }
+    };
+  }
+
+  function rankPortfolio(opportunities = [], context = {}) {
+    const evaluated = array(opportunities)
+      .map(opportunity => ({
+        opportunity,
+        decision: decide(opportunity, context)
+      }))
+      .sort((a, b) => {
+        const scoreDelta =
+          (b.decision.fastTrackPriority?.score || 0) -
+          (a.decision.fastTrackPriority?.score || 0);
+        if (scoreDelta !== 0) return scoreDelta;
+
+        const aDays = a.decision.deadline?.daysRemaining;
+        const bDays = b.decision.deadline?.daysRemaining;
+        if (aDays === null || aDays === undefined) return 1;
+        if (bDays === null || bDays === undefined) return -1;
+        return aDays - bDays;
+      });
+
+    return {
+      success: true,
+      schema: "meos.fast-track-acquisition-portfolio.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      rankedAt: now(),
+      count: evaluated.length,
+      governingRule:
+        "Work the strongest evidence-supported path to landed resources first without suppressing other legitimate concurrent pursuits.",
+      queue: evaluated.map((entry, index) => ({
+        rank: index + 1,
+        opportunityId:
+          entry.opportunity.id ||
+          entry.opportunity.externalId ||
+          null,
+        title:
+          entry.opportunity.title ||
+          "Untitled opportunity",
+        decision:
+          entry.decision.decision,
+        fastTrackPriority:
+          entry.decision.fastTrackPriority,
+        nextAction:
+          entry.decision.nextAction,
+        deadline:
+          entry.decision.deadline,
+        resourceValue:
+          entry.decision.resourceValue
+      }))
     };
   }
 
@@ -552,6 +774,44 @@
       return { name: testCase.name, passed, result };
     });
 
+    const fastCash = {
+      id: "fast-cash",
+      title: "Rapid Small Business Operating Award",
+      description: "For profit small businesses. Rolling applications with advance payment upon award.",
+      eligibleApplicants: ["for profit small businesses"],
+      awardCeiling: 50000,
+      deadline: future(7)
+    };
+    const slowHeadline = {
+      id: "slow-headline",
+      title: "Large Business Reimbursement Program",
+      description: "For profit small businesses. Cost reimbursement after performance. Required match and audited financial statements.",
+      eligibleApplicants: ["for profit small businesses"],
+      awardCeiling: 1000000,
+      deadline: future(120)
+    };
+
+    const ranked = rankPortfolio(
+      [slowHeadline, fastCash],
+      { organizationProfile: creatorBusiness }
+    );
+
+    checks.push({
+      name: "Fast Track does not blindly rank the largest headline award first",
+      passed:
+        ranked.queue[0]?.opportunityId === "fast-cash" &&
+        ranked.queue[0]?.fastTrackPriority?.score >
+          ranked.queue[1]?.fastTrackPriority?.score,
+      result: ranked
+    });
+
+    checks.push({
+      name: "Acquisition success is defined by landed resources, not homework",
+      passed:
+        decide(fastCash, { organizationProfile: creatorBusiness })
+          .successDefinition?.win === "resource-landed"
+    });
+
     return {
       success: checks.every(check => check.passed),
       schema: "meos.executive-resource-acquisition.acceptance-test.v3",
@@ -571,6 +831,7 @@
     decisions: DECISIONS,
     timing: TIMING,
     decide,
+    rankPortfolio,
     toGrantOfficeEvaluation,
     runAcceptanceTest
   });
