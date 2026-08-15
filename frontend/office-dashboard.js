@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.1";
+  const DASHBOARD_VERSION = "4.11.2";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3413,6 +3413,35 @@ document
       .meos-office-pano[data-dragging="true"] .meos-office-world{transition:none}
       .meos-office-vignette{position:absolute;z-index:5;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.25),transparent 8%,transparent 92%,rgba(0,0,0,.25)),linear-gradient(180deg,rgba(0,0,0,.08),transparent 18%,transparent 78%,rgba(0,0,0,.3))}
 
+      /* Center-focus overlay: uses the SAME commissioned panorama asset,
+         cropped to the center office and brought forward so the main view
+         reads at natural proportions instead of appearing horizontally stretched. */
+      .meos-office-center-focus{
+        position:absolute;z-index:11;left:150vw;top:12vh;
+        width:min(92vw,1500px);height:68vh;
+        transform:translateX(-50%);
+        border:1px solid rgba(220,174,99,.24);
+        border-radius:22px;
+        overflow:hidden;
+        pointer-events:none;
+        background-image:
+          linear-gradient(180deg,rgba(0,0,0,.02),rgba(0,0,0,.06)),
+          url('meos-executive-office-panorama.png');
+        background-repeat:no-repeat;
+        background-size:300% 100%;
+        background-position:50% 50%;
+        box-shadow:
+          0 30px 85px rgba(0,0,0,.22),
+          inset 0 0 0 1px rgba(255,255,255,.025);
+      }
+      .meos-office-center-focus::after{
+        content:"";
+        position:absolute;inset:0;
+        background:
+          linear-gradient(90deg,rgba(5,8,9,.18),transparent 7%,transparent 93%,rgba(5,8,9,.18)),
+          linear-gradient(180deg,rgba(8,8,8,.06),transparent 20%,transparent 82%,rgba(8,8,8,.14));
+      }
+
       /* Real widgets live in six permanent wall bays. No 3D transforms. */
       .meos-office-bay{position:absolute;z-index:20;top:16vh;width:22vw;min-width:310px;max-width:390px;height:57vh;transform:translateX(-50%);transition:height .2s ease,width .2s ease,box-shadow .2s ease}
       .meos-office-bay[data-widget="mission-impact"]{left:22vw}
@@ -3439,17 +3468,17 @@ document
 
       /* Camera-fixed controls: compact and functional. */
       .meos-office-maddy-dock{position:absolute;z-index:120;left:16px;bottom:14px;width:202px}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl{position:relative!important;visibility:visible!important;pointer-events:auto!important;width:100%!important;margin:0!important;border:1px solid rgba(213,162,83,.3)!important;border-radius:15px!important;background:rgba(5,13,16,.9)!important;box-shadow:0 16px 45px rgba(0,0,0,.45)!important;backdrop-filter:blur(16px)!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl{position:relative!important;visibility:visible!important;pointer-events:auto!important;width:100%!important;margin:0!important;border:1px solid rgba(213,162,83,.20)!important;border-radius:15px!important;background:linear-gradient(145deg,rgba(5,13,16,.34),rgba(5,13,16,.18))!important;box-shadow:0 12px 32px rgba(0,0,0,.20)!important;backdrop-filter:blur(4px)!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-presence{padding:9px!important;display:grid!important;grid-template-columns:56px 1fr!important;gap:8px!important;align-items:center!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-grid,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-label,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-select,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-executive-hub-command,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary-row,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-open-hub-button,.meos-office-maddy-dock #meosHallwayMini{display:none!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-voice-actions{grid-column:1/-1!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-primary{width:100%!important;min-height:32px!important;padding:6px!important;font-size:.62rem!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-maddy-orb{width:56px!important;height:56px!important}
-      .meos-office-nav{position:absolute;z-index:121;left:232px;right:16px;bottom:14px;height:56px;display:flex;gap:3px;padding:5px;border:1px solid rgba(213,162,83,.28);border-radius:15px;background:rgba(5,11,13,.88);backdrop-filter:blur(16px);box-shadow:0 16px 45px rgba(0,0,0,.43);overflow-x:auto;scrollbar-width:none}
+      .meos-office-nav{position:absolute;z-index:121;left:16px;right:16px;top:14px;height:56px;display:flex;gap:3px;padding:5px;border:1px solid rgba(213,162,83,.25);border-radius:15px;background:rgba(5,11,13,.72);backdrop-filter:blur(12px);box-shadow:0 12px 34px rgba(0,0,0,.28);overflow-x:auto;scrollbar-width:none}
       .meos-office-nav::-webkit-scrollbar{display:none}.meos-office-nav button{flex:1 0 92px;min-width:92px;border:0;border-right:1px solid rgba(213,162,83,.1);border-radius:9px;background:transparent;color:#e3d8ca;font:inherit;font-size:.58rem;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}.meos-office-nav button:hover{background:rgba(117,78,39,.26);color:#f0b962}
       .meos-office-look{position:absolute;z-index:125;top:44%;width:52px;height:104px;border:0;color:rgba(244,225,197,.78);font-size:2.3rem;cursor:pointer;background:linear-gradient(90deg,rgba(5,8,9,.62),transparent);opacity:.62}.meos-office-look:hover{opacity:1}.meos-office-look.left{left:0;border-radius:0 16px 16px 0}.meos-office-look.right{right:0;transform:scaleX(-1);border-radius:0 16px 16px 0}
-      .meos-office-location{position:absolute;z-index:124;left:50%;bottom:77px;transform:translateX(-50%);padding:5px 10px;border-radius:999px;background:rgba(5,10,12,.46);color:rgba(237,222,201,.62);font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;pointer-events:none}
-      @media(max-width:1100px){.meos-office-bay{width:300px;min-width:300px}.meos-office-maddy-dock{width:185px}.meos-office-nav{left:210px}}
+      .meos-office-location{position:absolute;z-index:124;left:50%;top:78px;transform:translateX(-50%);padding:5px 10px;border-radius:999px;background:rgba(5,10,12,.46);color:rgba(237,222,201,.62);font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;pointer-events:none}
+      @media(max-width:1100px){.meos-office-bay{width:300px;min-width:300px}.meos-office-maddy-dock{width:185px}.meos-office-nav{left:8px;right:8px;top:8px}}
     `;
     document.head.appendChild(style);
 
@@ -3459,6 +3488,7 @@ document
     viewport.dataset.dragging = 'false';
     viewport.innerHTML = `
       <div id="meosImageOfficeWorld" class="meos-office-world">
+        <div class="meos-office-center-focus" aria-hidden="true"></div>
         <div id="meosMaddyDigitalHumanStage" class="meos-digital-human-zone" data-reserved-for="maddy-digital-human"><span>Maddy Digital Human Stage</span></div>
       </div>
       <div class="meos-office-vignette"></div>
@@ -3556,6 +3586,8 @@ document
     const checks = [
       ['Panoramic office mounted', Boolean(scene)],
       ['300vw continuous world mounted', Boolean(scene?.querySelector('.meos-office-world'))],
+      ['Center-focus overlay uses same panorama asset', Boolean(scene?.querySelector('.meos-office-center-focus'))],
+      ['Working navigation is mounted at the top', Boolean(scene?.querySelector('#meosImageOfficeNav'))],
       ['Center reserved for Maddy Digital Human', scene?.querySelector('#meosMaddyDigitalHumanStage')?.dataset.reservedFor === 'maddy-digital-human'],
       ['Mission Impact real widget preserved', Boolean(scene?.querySelector('.meos-office-bay[data-widget="mission-impact"] .meos-widget[data-widget-id="mission-impact"]'))],
       ['Office Activity real widget preserved', Boolean(scene?.querySelector('.meos-office-bay[data-widget="office-activity"] .meos-widget[data-widget-id="office-activity"]'))],
@@ -3567,9 +3599,9 @@ document
       ['Navigation proxy controls present', (scene?.querySelectorAll('#meosImageOfficeNav button').length || 0) > 0],
       ['Every mounted widget has expand and popout controls', (scene?.querySelectorAll('[data-office-tool]').length || 0) === (scene?.querySelectorAll('.meos-office-bay').length || 0) * 2]
     ].map(([name,passed]) => ({name,passed:Boolean(passed)}));
-    const result = {success:checks.every(c=>c.passed),commission:'006.020D',version:DASHBOARD_VERSION,buildId:'EO4111-GLASS-HUD-PANORAMIC-EXECUTIVE-OFFICE-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
+    const result = {success:checks.every(c=>c.passed),commission:'006.020D4',version:DASHBOARD_VERSION,buildId:'EO4112-CENTER-FOCUS-TOP-NAV-EXECUTIVE-OFFICE-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);
-    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D Image Panoramic Executive Office: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4 Center Focus + Top Navigation: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
     return result;
   }
 
