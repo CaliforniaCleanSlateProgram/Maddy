@@ -2,13 +2,13 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Resource Acquisition Engine
  *
- * Version: 2.1.1
- * Build: ERAE211-LIVE-RECORD-GATE-20260803-A
+ * Version: 3.0.0
+ * Build: ERAE300-ORGANIZATION-NEUTRAL-CORE-20260815-A
  *
  * Mission:
  * Make one authoritative executive decision for every grant or resource
- * opportunity: can CCSP acquire it, does it advance CCSP, is it worth the
- * executive time, when should action occur, and should it reach the
+ * opportunity: can the active organization acquire it, does it advance the
+ * active organization, is it worth the executive time, when should action occur, and should it reach the
  * Executive Director's desk?
  */
 
@@ -16,8 +16,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Resource Acquisition Engine";
-  const VERSION = "2.1.1";
-  const BUILD_ID = "ERAE211-LIVE-RECORD-GATE-20260803-A";
+  const VERSION = "3.0.0";
+  const BUILD_ID = "ERAE300-ORGANIZATION-NEUTRAL-CORE-20260815-A";
   const SCHEMA = "meos.executive-resource-decision.v2";
 
   const DECISIONS = Object.freeze({
@@ -132,78 +132,30 @@
   function primaryTitleGate(opportunity = {}) {
     const title = normalize(opportunity.title);
 
-    const rejectRules = [
-      {
-        id: "oil-gas-technology",
-        rule:
-          /\bimproved oil and gas recovery\b|\boil and gas recovery\b|\bproduced water management technologies\b/,
-        reason:
-          "The primary funded work is oil-and-gas technology development, which does not advance CCSP."
-      },
-      {
-        id: "wildland-forestry",
-        rule:
-          /\bwildland fire\b|\bforest and woodlands\b|\brangeland resource\b|\bferal swine\b|\binvasive and noxious plant\b/,
-        reason:
-          "The primary funded work is natural-resource management outside CCSP's mission."
-      },
-      {
-        id: "desalination-research",
-        rule:
-          /\bdesalination and water purification research\b/,
-        reason:
-          "The primary funded work is scientific desalination research rather than CCSP service delivery or strategic development."
-      },
-      {
-        id: "foreign-diplomatic-program",
-        rule:
-          /\bjefferson center mandalay\b|\bamerican center yangon\b/,
-        reason:
-          "The opportunity funds foreign public-diplomacy work outside CCSP's operating footprint."
-      }
-    ];
-
-    for (const item of rejectRules) {
-      if (item.rule.test(title)) {
-        return {
-          status: "reject",
-          id: item.id,
-          reason: item.reason
-        };
-      }
-    }
-
-    if (
-      /\bcontinuum of care competition and youth homelessness demonstration program grants\b/.test(
-        title
-      )
-    ) {
+    // Core neutrality rule: a sector, population, geography, or industry is never
+    // rejected here merely because it was irrelevant to a previous customer.
+    // Those decisions belong to the active Organizational Profile.
+    if (/\bcompetition and .*demonstration program grants\b/.test(title)) {
       return {
         status: "research",
         id: "mixed-program-notice",
-        reason:
-          "This bundled notice contains distinct Continuum of Care and youth-demonstration tracks. The specific track CCSP can pursue must be identified before it reaches the Executive Director's desk."
+        reason: "This notice appears to contain distinct program tracks. The applicable track must be resolved against the active organization before executive pursuit."
       };
     }
 
-    return {
-      status: "continue",
-      id: null,
-      reason: null
-    };
+    return { status: "continue", id: null, reason: null };
   }
-
 
 
   function getProfile(context = {}) {
     return context.organizationProfile ||
-      global.CCSPOrganizationalProfile ||
       global.OrganizationalProfile ||
+      global.ActiveOrganizationalProfile ||
       null;
   }
 
   function getStrategy(context = {}) {
-    return context.longTermStrategy || global.CCSPLongTermStrategy || null;
+    return context.longTermStrategy || global.OrganizationalStrategy || null;
   }
 
   function getPortfolio(context = {}) {
@@ -233,112 +185,60 @@
     };
   }
 
-  function explicitEligibility(opportunity = {}) {
+  function profileText(profile = {}) {
+    return normalize(collectSourceText(profile).join(" "));
+  }
+
+  function organizationName(profile = {}) {
+    return profile?.organization?.legalName ||
+      profile?.organization?.name ||
+      profile?.legalName ||
+      profile?.name ||
+      "the active organization";
+  }
+
+  function explicitEligibility(opportunity = {}, context = {}) {
     const t = text(opportunity);
-    const title = normalize(opportunity.title);
+    const profile = getProfile(context);
+    const p = profileText(profile);
     const evidence = [];
     const hardExclusions = [];
+    const unknowns = [];
 
-    const explicitNonprofitPath =
-      /\b501 c 3\b|\bnonprofits?\b|\bnonprofit organizations?\b|\bpublic charities?\b|\bcommunity based organizations?\b/.test(t);
-    const explicitPartnerPath =
-      /\bsubrecipient\b|\bsubaward\b|\bimplementation partner\b|\bcommunity partner\b|\bfunded partner\b/.test(t);
-
-    if (/nonprofits? (?:are )?not eligible|501 c 3 (?:organizations? )?not eligible|for profit entities only|individuals only/.test(t)) {
-      hardExclusions.push("The notice explicitly excludes nonprofit applicants.");
+    if (!profile) {
+      return { canLead: null, canPartner: null, hardExclusions, evidence, unknowns: ["Active Organizational Profile is not available."], status: "research" };
     }
 
-    if (
-      /\bamerican center\b|\bjefferson center\b|\bu s embassy\b|\bunited states embassy\b|\bpublic diplomacy\b/.test(t) ||
-      /\bmandalay\b|\byangon\b|\bmyanmar\b|\bsomalia\b|\buganda\b|\bkenya\b|\bdjibouti\b|\balgeria\b|\bindonesia\b/.test(title) ||
-      /activities must (?:be )?(?:conducted|performed) outside the united states/.test(t)
-    ) {
-      hardExclusions.push("The funded work or beneficiaries are outside CCSP's approved United States operating footprint.");
-    }
+    const partnerPath = /\bsubrecipient\b|\bsubaward\b|\bimplementation partner\b|\bcommunity partner\b|\bfunded partner\b|\bsubcontractor\b/.test(t);
+    const orgIsNonprofit = /\bnonprofit\b|\b501 c 3\b|\bpublic charity\b/.test(p);
+    const orgIsForProfit = /\bfor profit\b|\bbusiness\b|\bcompany\b|\bcorporation\b|\bllc\b/.test(p) && !orgIsNonprofit;
+    const orgIsGovernment = /\bgovernment agency\b|\bmunicipality\b|\bcounty government\b|\bcity government\b|\bstate agency\b/.test(p);
+    const orgIsTribal = /\btribe\b|\btribal\b/.test(p);
+    const orgIsAcademic = /\buniversity\b|\bcollege\b|\binstitution of higher education\b|\bresearch institution\b/.test(p);
 
-    const youthOnly =
-      /\brunaway and homeless youth\b|\byouth homelessness\b|\byouth only\b|\bchildren only\b|\badolescents only\b|\bages? 12 to 17\b|\bages? 14 to 24\b/.test(t);
-    const broadPopulation =
-      /\ball ages\b|\badults and families\b|\bgeneral population\b|\bcommunity wide\b/.test(t);
+    const paths = [];
+    if (orgIsNonprofit && /\b501 c 3\b|\bnonprofits?\b|\bpublic charities?\b|\bcommunity based organizations?\b/.test(t)) paths.push("nonprofit");
+    if (orgIsForProfit && /\bfor profit\b|\bsmall business\b|\bbusinesses?\b|\bcommercial entities\b/.test(t)) paths.push("for-profit");
+    if (orgIsGovernment && /\bstate governments?\b|\bcounty governments?\b|\bcity governments?\b|\bmunicipalit/.test(t)) paths.push("government");
+    if (orgIsTribal && /\btribal\b|\btribes?\b/.test(t)) paths.push("tribal");
+    if (orgIsAcademic && /\binstitutions? of higher education\b|\buniversit/.test(t)) paths.push("academic");
 
-    if (youthOnly && !broadPopulation) {
-      hardExclusions.push("The opportunity is restricted to a youth-only population that CCSP is not organized to serve exclusively.");
-    }
+    if (orgIsNonprofit && /nonprofits? (?:are )?not eligible|501 c 3 (?:organizations? )?not eligible|for profit entities only/.test(t)) hardExclusions.push("The notice explicitly excludes the active organization's verified entity type.");
+    if (orgIsForProfit && /for profit (?:entities|organizations|businesses) (?:are )?not eligible|nonprofits? only|501 c 3 only/.test(t)) hardExclusions.push("The notice explicitly excludes the active organization's verified entity type.");
 
-    if (/\bveterans only\b|\beligible veterans\b|\bveteran households only\b|\bstand down grants\b/.test(t)) {
-      hardExclusions.push("The opportunity is restricted to veterans or veteran-serving organizations rather than CCSP's general mission population.");
-    }
+    const canLead = hardExclusions.length ? false : paths.length ? true : null;
+    const canPartner = hardExclusions.length ? false : partnerPath ? true : null;
+    paths.forEach(path => evidence.push(`Explicit ${path} applicant path matches the active Organizational Profile.`));
+    if (partnerPath) evidence.push("Explicit funded partnership path found.");
+    if (canLead === null && canPartner === null) unknowns.push("The notice does not yet establish an applicant or funded-partner path for the active organization.");
 
-    if (/\btribal colleges and universities\b|\bfederally recognized tribes only\b|\btribal entities only\b/.test(t) && !explicitPartnerPath) {
-      hardExclusions.push("The opportunity is restricted to tribal institutions or entities without a verified funded CCSP partner role.");
-    }
-
-    if (/\binstitutions? of higher education only\b|\bresearch institutions? only\b|\buniversity research\b|\bclinical trial\b|\br01\b|\bu01\b|\bu24\b|\br25\b|\bk12\b|\brm1\b|\bdissertation research award\b|\bresearch education program\b|\bresearch centers?\b/.test(t)) {
-      hardExclusions.push("The opportunity funds specialized academic, scientific, or clinical research rather than CCSP service delivery or organizational development.");
-    }
-
-    const governmentOnly =
-      /\bstate governments only\b|\bcounty governments only\b|\bcity governments only\b|\bmunicipalities only\b|\bpublic water systems only\b|\blaw enforcement agencies only\b/.test(t);
-    const partnerAllowed =
-      /\bnonprofit partners?\b|\bcommunity based organization partners?\b|\bsubrecipient\b|\bsubaward\b/.test(t);
-
-    if (governmentOnly && !partnerAllowed) {
-      hardExclusions.push("The applicant pool is restricted to government or public agencies and no funded CCSP partner path is established.");
-    }
-
-    const canLead = hardExclusions.length ? false : explicitNonprofitPath ? true : null;
-    const canPartner = hardExclusions.length ? false : explicitPartnerPath ? true : null;
-
-    if (canLead === true) evidence.push("Explicit nonprofit applicant path found.");
-    if (canPartner === true) evidence.push("Explicit funded partnership path found.");
-
-    return {
-      canLead,
-      canPartner,
-      hardExclusions,
-      evidence,
-      status: hardExclusions.length ? "ineligible" : (canLead || canPartner ? "plausible" : "research")
-    };
+    return { canLead, canPartner, hardExclusions, evidence, unknowns, status: hardExclusions.length ? "ineligible" : (canLead || canPartner ? "plausible" : "research") };
   }
 
   function advancement(opportunity = {}, context = {}) {
-    const t = text(opportunity);
-    const direct = [];
-    const strategic = [];
-    const unrelated = [];
-
-    const directRules = [
-      ["mobile-hygiene", /\bmobile hygiene\b|\bmobile shower\b|\bshower trailer\b|\bhygiene services\b|\bsanitation services\b|\blaundry services\b/],
-      ["general-homelessness-outreach", /\bhomelessness\b|\bunsheltered\b|\bstreet outreach\b|\bencampment outreach\b|\bhousing insecurity\b/],
-      ["recovery-treatment-navigation", /\bsubstance use disorder services\b|\baddiction treatment services\b|\brecovery services\b|\bsober living\b|\btreatment navigation\b|\boverdose prevention services\b/],
-      ["housing-stabilization", /\bsupportive housing\b|\btransitional housing\b|\bhousing navigation\b|\bcommunity stabilization\b|\brapid rehousing\b/],
-      ["employment-self-sufficiency", /\bworkforce development\b|\bjob training\b|\bemployment services\b|\bcareer pathways\b|\beconomic self sufficiency\b/],
-      ["watershed-health", /\bsan lorenzo river\b|\bmonterey bay\b|\bwatershed protection\b|\bwater quality improvement\b|\bpollution prevention\b/]
-    ];
-
-    const strategicRules = [
-      ["general-operating-support", /\bgeneral operating support\b|\bunrestricted operating support\b|\bunrestricted funding\b/],
-      ["organizational-capacity", /\bnonprofit capacity building\b|\borganizational development\b|\btechnology capacity\b|\bboard development\b/],
-      ["capital-facility", /\bcapital grant\b|\bcapital funding\b|\bfacility acquisition\b|\bbuilding acquisition\b|\bland acquisition\b|\bproperty donation\b|\bfacility renovation\b|\brecovery facility\b/],
-      ["vehicle-equipment", /\bvehicle donation\b|\bfleet donation\b|\bequipment donation\b|\bmobile unit\b|\btrailer donation\b|\bcapital equipment\b/],
-      ["future-treatment-build", /\btreatment facility\b|\brehabilitation center\b|\brecovery campus\b|\bbehavioral health facility\b|\brecovery facility\b/],
-      ["funded-service-path", /\bservice contract\b|\bgovernment contract\b|\bsubrecipient\b|\bimplementation partner\b|\bfunded partner\b/]
-    ];
-
-    const unrelatedRules = [
-      ["foreign-diplomatic", /\bamerican center\b|\bjefferson center\b|\bpublic diplomacy\b|\bembassy small grants\b/],
-      ["natural-resource-management", /\bforest and woodlands\b|\bwildland fire science\b|\brangeland resource\b|\binvasive and noxious plant\b|\babandoned mine lands\b|\boil and gas recovery\b|\bferal swine\b|\bplant conservation and restoration\b|\bregional conservation partnership program\b|\bcoastal program\b/],
-      ["scientific-research", /\bdesalination and water purification research\b|\bresearch projects\b|\bresearch center\b|\bresearch infrastructure\b|\bclinical trial\b|\bcausal hypotheses\b|\binformatics technologies for research\b/],
-      ["municipal-utility", /\bmunicipal wastewater\b|\bwastewater treatment systems\b|\bpublic water system\b|\belectric grid\b/],
-      ["education-program", /\bpersonal responsibility education\b|\bmedical student education\b|\boccupational safety and health education and research centers\b/],
-      ["law-enforcement-court", /\bdrug court training\b|\blaw enforcement products\b|\bprosecutor\b|\bcorrectional agency\b/],
-      ["disaster-economic-development", /\beda fy25 disaster supplemental\b|\beconomic development administration\b|\bdisaster supplemental\b/]
-    ];
-
-    directRules.forEach(([id, rule]) => { if (rule.test(t)) direct.push(id); });
-    strategicRules.forEach(([id, rule]) => { if (rule.test(t)) strategic.push(id); });
-    unrelatedRules.forEach(([id, rule]) => { if (rule.test(t)) unrelated.push(id); });
-
+    const profile = getProfile(context);
+    const opportunityText = text(opportunity);
+    const pText = profileText(profile);
     const strategy = getStrategy(context);
     const portfolio = getPortfolio(context);
     let strategyResult = null;
@@ -351,37 +251,24 @@
 
     const strategyScore = Number(strategyResult?.score || strategyResult?.alignmentScore || 0);
     const portfolioScore = Number(portfolioResult?.score || 0);
-    const explicitPath =
-      direct.length > 0 ||
-      strategic.length > 0 ||
-      strategyScore >= 75 ||
-      portfolioScore >= 75;
-    const title = normalize(opportunity.title);
-    const primarySectorMismatch =
-      /\bimproved oil and gas recovery\b|\boil and gas recovery\b|\bproduced water management technologies\b|\bwildland fire\b|\bforest and woodlands\b|\brangeland resource\b|\bferal swine\b|\bdesalination and water purification research\b/.test(
-        title
-      );
-
-    const unrelatedDominant =
-      primarySectorMismatch ||
-      (
-        unrelated.length > 0 &&
-        direct.length === 0 &&
-        strategic.length === 0
-      );
+    const stop = new Set(["the","and","for","with","from","that","this","into","organization","program","services","service","support","current","future","community","executive","maddy","meos"]);
+    const profileTerms = new Set(pText.split(" ").filter(w => w.length >= 5 && !stop.has(w)));
+    const oppTerms = new Set(opportunityText.split(" ").filter(w => w.length >= 5 && !stop.has(w)));
+    const shared = [...oppTerms].filter(w => profileTerms.has(w));
+    const lexicalScore = Math.min(100, shared.length * 8);
+    const advances = strategyScore >= 60 || portfolioScore >= 60 || lexicalScore >= 24;
 
     return {
-      advances: explicitPath && !unrelatedDominant,
-      direct,
-      strategic,
-      unrelated,
+      advances,
+      direct: shared.slice(0, 12),
+      strategic: [],
+      unrelated: [],
       strategyResult,
       portfolioResult,
-      explanation: unrelatedDominant
-        ? "The primary funded work is outside CCSP's mission and approved strategic buildout."
-        : explicitPath
-          ? "The opportunity has an evidence-supported path to current operations or the approved future organization."
-          : "No evidence-supported path to CCSP's current mission or approved future buildout is established."
+      lexicalScore,
+      explanation: advances
+        ? "The opportunity has an evidence-supported relationship to the active Organizational Profile or approved strategy."
+        : "No evidence-supported relationship to the active Organizational Profile or approved strategy is established yet."
     };
   }
 
@@ -463,7 +350,7 @@
   function decide(opportunity = {}, context = {}) {
     const evaluatedAt = now();
     const titleGate = primaryTitleGate(opportunity);
-    const eligibility = explicitEligibility(opportunity);
+    const eligibility = explicitEligibility(opportunity, context);
     const advances = advancement(opportunity, context);
     const timingResult = deadline(opportunity);
     const worthResult = worth(opportunity, eligibility, advances, timingResult);
@@ -489,7 +376,7 @@
       acquisitionPath = "unresolved-track";
       reason = titleGate.reason;
       nextAction =
-        "Separate the bundled notice into its distinct program tracks and verify CCSP eligibility for the applicable track.";
+        "Separate the bundled notice into its distinct program tracks and verify the active organization's eligibility for the applicable track.";
     } else if (eligibility.hardExclusions.length > 0) {
       reason = eligibility.hardExclusions[0];
     } else if (!advances.advances) {
@@ -504,20 +391,20 @@
       acquisitionPath = "lead";
       showExecutiveDirector = true;
       strategicTiming = timingResult.state === "immediate" ? TIMING.IMMEDIATE : TIMING.NOW;
-      reason = "CCSP has a plausible direct acquisition path and the opportunity advances the organization enough to justify pursuit.";
+      reason = "The active organization has a plausible direct acquisition path and the opportunity advances the organization enough to justify pursuit.";
       nextAction = timingResult.state === "immediate" ? "Place on the Executive Director's immediate-action desk." : "Place on the Executive Director's pursue-now desk.";
     } else if (eligibility.canPartner === true && worthResult.worthPursuing) {
       decision = DECISIONS.PARTNER;
       acquisitionPath = "partner";
       showExecutiveDirector = true;
       strategicTiming = TIMING.NOW;
-      reason = "A funded partnership path can move CCSP forward even though direct lead eligibility is not established.";
-      nextAction = "Identify the strongest eligible lead and verify CCSP's funded role.";
+      reason = "A funded partnership path can move the active organization forward even though direct lead eligibility is not established.";
+      nextAction = "Identify the strongest eligible lead and verify the active organization's funded role.";
     } else if (eligibility.status === "research" && advances.advances) {
       decision = DECISIONS.RESEARCH;
       strategicTiming = TIMING.BUILD_NOW_FOR_FUTURE;
       showExecutiveDirector = false;
-      reason = "The opportunity may advance CCSP, but the lawful applicant or funded-partner path is not verified.";
+      reason = "The opportunity may advance the active organization, but the lawful applicant or funded-partner path is not verified.";
       nextAction = "Keep in research and verify eligibility before placing it on the Executive Director's desk.";
     } else if (
       advances.advances &&
@@ -528,7 +415,7 @@
       showExecutiveDirector = true;
       strategicTiming = TIMING.BUILD_NOW_FOR_FUTURE;
       acquisitionPath = eligibility.canLead ? "lead" : eligibility.canPartner ? "partner" : "capacity-build";
-      reason = "The opportunity advances the approved future organization, but CCSP must build readiness or wait for the correct cycle.";
+      reason = "The opportunity advances the approved future organization, but the active organization must build readiness or wait for the correct cycle.";
       nextAction = "Place on the prepare desk with the exact capability, partnership, or timing requirement.";
     }
 
@@ -547,8 +434,11 @@
       opportunityId: opportunity.id || opportunity.externalId || null,
       title: opportunity.title || "Untitled opportunity",
       resourceType: opportunity.type || opportunity.category || "resource-opportunity",
+      organization: organizationName(getProfile(context)),
       canAcquire,
       acquisitionPath,
+      advancesOrganization: advances.advances,
+      // Deprecated compatibility alias. Remove after Grant Office consumers migrate.
       advancesCCSP: advances.advances,
       strategicTiming,
       worthPursuing: worthResult.worthPursuing,
@@ -567,7 +457,7 @@
       },
       evidence: [
         ...eligibility.evidence,
-        ...advances.direct.map(id => `Direct mission path: ${id}`),
+        ...advances.direct.map(id => `Organizational profile evidence: ${id}`),
         ...advances.strategic.map(id => `Strategic build path: ${id}`)
       ],
       unknowns,
@@ -618,73 +508,53 @@
 
   function runAcceptanceTest() {
     const future = days => new Date(Date.now() + days * 86400000).toISOString();
+    const nonprofit = {
+      organization: { legalName: "Example Community Recovery", organizationType: "501(c)(3) nonprofit public charity" },
+      purpose: { mission: "Veteran recovery housing outreach employment and community stabilization" },
+      legalAndOperationalBoundaries: { doesProvide: ["Veteran support", "Recovery services", "Housing pathways"] }
+    };
+    const creatorBusiness = {
+      organization: { legalName: "Example Creator Studio LLC", organizationType: "for profit LLC business" },
+      purpose: { mission: "Digital creator production marketing technology and audience growth" },
+      programs: { studio: { purpose: "Creator production equipment and digital media technology" } }
+    };
+    const veteranOpportunity = {
+      id: "neutral-veteran",
+      title: "Veteran Recovery and Housing Support",
+      description: "Funding for nonprofit organizations serving eligible veterans with recovery housing and employment services.",
+      eligibleApplicants: ["nonprofit organizations"],
+      awardCeiling: 250000,
+      deadline: future(30)
+    };
+    const businessOpportunity = {
+      id: "neutral-business",
+      title: "Small Business Digital Creator Technology Grant",
+      description: "Capital technology and production equipment funding for eligible for profit small businesses and digital creator companies.",
+      eligibleApplicants: ["for profit small businesses"],
+      awardCeiling: 50000,
+      deadline: future(30)
+    };
 
     const cases = [
-      { name: "Direct operating support reaches desk", opportunity: { id: "good-operating", title: "California Nonprofit General Operating Support", description: "Unrestricted general operating support for California 501(c)(3) nonprofit organizations.", eligibleApplicants: ["501(c)(3) nonprofits"], awardCeiling: 250000, deadline: future(10) }, expected: { show: true, decision: "pursue" } },
-      { name: "Mobile unit funding reaches desk", opportunity: { id: "good-mobile", title: "Mobile Hygiene Vehicle and Equipment Grant", description: "Capital equipment and mobile shower vehicle funding for community-based nonprofit organizations.", eligibleApplicants: ["nonprofits"], awardCeiling: 100000, deadline: future(5) }, expected: { show: true, decision: "pursue" } },
-      { name: "General street outreach reaches desk", opportunity: { id: "good-outreach", title: "Community Street Outreach Program", description: "Funding for nonprofit organizations providing street outreach to unsheltered adults and families.", eligibleApplicants: ["nonprofit organizations"], awardCeiling: 200000, deadline: future(14) }, expected: { show: true, decision: "pursue" } },
-      { name: "Future facility grant reaches prepare or pursue", opportunity: { id: "good-future", title: "Capital Facility Acquisition Grant", description: "Building acquisition and facility renovation for nonprofit behavioral health and recovery organizations.", eligibleApplicants: ["nonprofits"], awardCeiling: 2000000, deadline: future(180) }, expected: { show: true, decisions: ["pursue", "prepare"] } },
-      { name: "Youth-only opportunity stays off desk", opportunity: { id: "bad-youth", title: "Youth Homelessness Demonstration", description: "Services exclusively for runaway and homeless youth ages 12 to 17. Nonprofits eligible.", eligibleApplicants: ["nonprofits"], awardCeiling: 1000000, deadline: future(20) }, expected: { show: false, decision: "reject" } },
-      { name: "Mandalay diplomatic grant stays off desk", opportunity: { id: "bad-mandalay", title: "Jefferson Center Mandalay Small Grants Competition", description: "U.S. Embassy public diplomacy grants for activities in Mandalay, Myanmar. Nonprofits may apply.", eligibleApplicants: ["nonprofits"], awardCeiling: 50000, deadline: future(7) }, expected: { show: false, decision: "reject" } },
-      { name: "Yangon diplomatic grant stays off desk", opportunity: { id: "bad-yangon", title: "American Center Yangon Small Grants Competition", description: "Public diplomacy activities for beneficiaries in Yangon, Myanmar.", eligibleApplicants: ["nonprofits"], awardCeiling: 50000, deadline: future(7) }, expected: { show: false, decision: "reject" } },
-      { name: "Wildland research stays off desk", opportunity: { id: "bad-fire", title: "Wildland Fire Science Research Program", description: "University research into wildland fire science and forest management. Nonprofits may apply.", eligibleApplicants: ["nonprofits"], awardCeiling: 500000, deadline: future(30) }, expected: { show: false, decision: "reject" } },
-      { name: "Oil and gas technology stays off desk", opportunity: { id: "bad-oil", title: "Improved Oil and Gas Recovery and Produced Water Management Technologies", description: "Research and development for oil and gas recovery technologies. Nonprofits may apply.", eligibleApplicants: ["nonprofits"], awardCeiling: 1000000, deadline: future(36) }, expected: { show: false, decision: "reject" } },
-      { name: "Desalination research stays off desk", opportunity: { id: "bad-desalination", title: "Desalination and Water Purification Research Program: Research Projects", description: "Scientific research projects on desalination and water purification.", eligibleApplicants: ["nonprofits"], awardCeiling: 800000, deadline: future(57) }, expected: { show: false, decision: "reject" } },
-      { name: "Municipal wastewater program stays off desk", opportunity: { id: "bad-wastewater", title: "Technical Assistance for Rural Municipalities and Wastewater Treatment Systems", description: "Technical assistance to municipal wastewater treatment systems and public utilities.", eligibleApplicants: ["municipalities only"], awardCeiling: 3000000, deadline: future(11) }, expected: { show: false, decision: "reject" } },
-      { name: "Veteran-only Stand Down grant stays off desk", opportunity: { id: "bad-veteran", title: "Announcement of Stand Down Grants", description: "Funding for organizations serving eligible veterans through Stand Down events.", eligibleApplicants: ["nonprofits"], awardCeiling: 10000, deadline: future(58) }, expected: { show: false, decision: "reject" } },
-      { name: "Clinical research stays off desk", opportunity: { id: "bad-clinical", title: "Substance Use Clinical Trial R01", description: "Clinical trial research for university medical research institutions.", awardCeiling: 1500000, deadline: future(100) }, expected: { show: false, decision: "reject" } },
-      { name: "Unknown applicant path stays in research and off desk", opportunity: { id: "research-eligibility", title: "Regional Recovery Facility Capital Opportunity", description: "Capital funding for a regional recovery facility. Applicant types are not stated.", awardCeiling: 2500000, deadline: future(60) }, expected: { show: false, decision: "research" } },
-      {
-        name: "Exact live oil-and-gas title stays off desk despite cached mission language",
-        opportunity: {
-          id: "live-oil-record",
-          title: "Improved Oil and Gas Recovery and Produced Water Management Technologies",
-          description: "Technology research and development opportunity.",
-          eligibleApplicants: ["nonprofit organizations"],
-          executiveQualification: {
-            executiveBrief: {
-              reason: "Old cached record mentioned recovery services and community stabilization."
-            }
-          },
-          resourceDevelopment: {
-            missionScope: {
-              directMatches: ["recovery-treatment-navigation"]
-            }
-          },
-          awardCeiling: 1000000,
-          deadline: future(36)
-        },
-        expected: { show: false, decision: "reject" }
-      },
-      {
-        name: "Exact bundled CoC and youth NOFO stays in research off desk",
-        opportunity: {
-          id: "live-coc-youth-record",
-          title: "FY 2026 Continuum of Care Competition and Youth Homelessness Demonstration Program Grants NOFO",
-          description: "A bundled federal notice containing multiple program tracks.",
-          eligibleApplicants: ["nonprofit organizations"],
-          awardCeiling: 3000000,
-          deadline: future(23)
-        },
-        expected: { show: false, decision: "research" }
-      }
+      { name: "Veteran opportunity can advance a veteran-serving nonprofit", opportunity: veteranOpportunity, context: { organizationProfile: nonprofit }, expectedLead: true, expectedAdvance: true },
+      { name: "For-profit creator opportunity does not inherit nonprofit eligibility", opportunity: businessOpportunity, context: { organizationProfile: nonprofit }, expectedLead: null },
+      { name: "For-profit creator opportunity can advance a matching business", opportunity: businessOpportunity, context: { organizationProfile: creatorBusiness }, expectedLead: true, expectedAdvance: true },
+      { name: "Missing organization profile fails into research, not a customer assumption", opportunity: businessOpportunity, context: {}, expectedStatus: "research" }
     ];
 
     const checks = cases.map(testCase => {
-      const result = decide(testCase.opportunity, {});
-      const expectedDecision = testCase.expected.decisions
-        ? testCase.expected.decisions.includes(result.decision)
-        : result.decision === testCase.expected.decision;
-      return {
-        name: testCase.name,
-        passed: result.showExecutiveDirector === testCase.expected.show && expectedDecision,
-        result
-      };
+      const result = decide(testCase.opportunity, testCase.context);
+      const eligibility = result.reasoning.eligibility;
+      const passed =
+        (testCase.expectedLead === undefined || eligibility.canLead === testCase.expectedLead) &&
+        (testCase.expectedAdvance === undefined || result.advancesOrganization === testCase.expectedAdvance) &&
+        (testCase.expectedStatus === undefined || eligibility.status === testCase.expectedStatus);
+      return { name: testCase.name, passed, result };
     });
 
     return {
       success: checks.every(check => check.passed),
-      schema: "meos.executive-resource-acquisition.acceptance-test.v2.1",
+      schema: "meos.executive-resource-acquisition.acceptance-test.v3",
       version: VERSION,
       buildId: BUILD_ID,
       passed: checks.filter(check => check.passed).length,
