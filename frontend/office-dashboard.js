@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.4";
+  const DASHBOARD_VERSION = "4.11.5";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3452,25 +3452,25 @@ document
       #${ROOT_ID} .meos-office-detail{position:absolute!important;z-index:260!important;inset:7vh 7vw!important;overflow:auto!important;background:linear-gradient(145deg,rgba(24,22,18,.96),rgba(8,14,15,.97))!important;border:1px solid rgba(212,162,83,.36)!important;border-radius:16px!important;box-shadow:0 35px 110px rgba(0,0,0,.72)!important;backdrop-filter:blur(20px)!important}
 
       /* Persistent wayfinding: find anything without cluttering the center. */
-      .meos-office-wayfinding{position:absolute;z-index:135;top:50%;transform:translateY(-50%);display:grid;gap:7px}
-      .meos-office-wayfinding.left{left:8px}
-      .meos-office-wayfinding.right{right:8px}
-      .meos-office-wayfinding button{writing-mode:vertical-rl;transform:rotate(180deg);min-height:86px;border:1px solid rgba(213,162,83,.22);border-radius:9px;background:rgba(5,12,14,.52);color:rgba(239,226,203,.78);padding:8px 6px;cursor:pointer;font:700 .55rem/1 system-ui;letter-spacing:.06em;text-transform:uppercase;backdrop-filter:blur(6px)}
-      .meos-office-wayfinding.right button{transform:none}
+      .meos-office-wayfinding{position:absolute;z-index:135;top:10px;display:flex;align-items:center;gap:5px;max-width:calc(50vw - 290px)}
+      .meos-office-wayfinding.left{right:calc(50% + 235px);justify-content:flex-end}
+      .meos-office-wayfinding.right{left:calc(50% + 235px);justify-content:flex-start}
+      .meos-office-wayfinding button{min-height:32px;border:1px solid rgba(213,162,83,.20);border-radius:8px;background:rgba(5,12,14,.48);color:rgba(239,226,203,.82);padding:6px 9px;cursor:pointer;font:700 .56rem/1 system-ui;letter-spacing:.045em;text-transform:uppercase;white-space:nowrap;backdrop-filter:blur(6px)}
       .meos-office-wayfinding button:hover{color:#f6d59e;border-color:rgba(229,184,110,.58);background:rgba(28,23,16,.72)}
 
-      .meos-office-maddy-dock{position:absolute;z-index:120;left:16px;bottom:14px;width:202px}
+      .meos-office-maddy-dock{position:absolute;z-index:120;left:18px;bottom:18px;width:218px;max-height:224px}
       .meos-office-maddy-dock #meosExecutiveOfficeControl{position:relative!important;visibility:visible!important;pointer-events:auto!important;width:100%!important;margin:0!important;border:1px solid rgba(213,162,83,.18)!important;border-radius:15px!important;background:linear-gradient(145deg,rgba(5,13,16,.32),rgba(5,13,16,.16))!important;box-shadow:0 12px 30px rgba(0,0,0,.18)!important;backdrop-filter:blur(4px)!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-presence{padding:9px!important;display:grid!important;grid-template-columns:56px 1fr!important;gap:8px!important;align-items:center!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-presence{padding:10px!important;display:grid!important;grid-template-columns:46px 1fr!important;gap:8px!important;align-items:center!important;overflow:hidden!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-presence-avatar,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-avatar,.meos-office-maddy-dock #meosExecutiveOfficeControl img{max-width:46px!important;max-height:46px!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-label,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-select,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-executive-hub-command,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary-row,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-open-hub-button,.meos-office-maddy-dock #meosHallwayMini{display:none!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-grid{display:grid!important;grid-column:1/-1!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important;margin-top:2px!important;width:100%!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-row{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;min-width:0!important;gap:2px!important;padding:5px 6px!important;border:1px solid rgba(125,190,202,.10)!important;border-radius:8px!important;background:rgba(3,11,14,.13)!important;font-size:.53rem!important;line-height:1.15!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-grid{display:grid!important;grid-column:1/-1!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px!important;margin-top:1px!important;width:100%!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-row{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;min-width:0!important;gap:2px!important;padding:4px 5px!important;border:1px solid rgba(125,190,202,.10)!important;border-radius:7px!important;background:rgba(3,11,14,.13)!important;font-size:.50rem!important;line-height:1.1!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-row>span:first-child{color:rgba(220,231,232,.56)!important;font-size:.48rem!important;letter-spacing:.04em!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-status-value{font-size:.53rem!important;white-space:nowrap!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-voice-actions{grid-column:1/-1!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-primary{width:100%!important;min-height:32px!important;padding:6px!important;font-size:.62rem!important}
 
-      .meos-office-nav{position:absolute;z-index:130;left:50%;top:10px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:6px;max-width:78vw;padding:6px 8px;border:1px solid rgba(213,162,83,.18);border-radius:11px;background:rgba(4,10,12,.42);backdrop-filter:blur(7px)}
+      .meos-office-nav{position:absolute;z-index:130;left:50%;top:10px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:5px;max-width:450px;padding:6px 8px;border:1px solid rgba(213,162,83,.18);border-radius:11px;background:rgba(4,10,12,.42);backdrop-filter:blur(7px)}
       .meos-office-nav button{border:0;background:transparent;color:rgba(235,239,236,.74);padding:6px 8px;border-radius:7px;cursor:pointer;font:700 .56rem/1 system-ui;letter-spacing:.05em;text-transform:uppercase}
       .meos-office-nav button:hover{background:rgba(216,171,98,.12);color:#f4d39e}
       .meos-office-look{position:absolute;z-index:125;top:50%;transform:translateY(-50%);width:38px;height:68px;border:1px solid rgba(213,162,83,.20);border-radius:10px;background:rgba(4,10,12,.42);color:#e8c07d;font-size:1.8rem;cursor:pointer;backdrop-filter:blur(6px)}
@@ -3673,13 +3673,14 @@ document
       if (rightExt) rightExt.style.width = `${extensionPx + 80}px`;
 
       const center = worldWidthPx / 2;
-      const leftStart = Math.max(210, center - centerImageWidthPx / 2 - extensionPx * .70);
-      const leftEnd = center - centerImageWidthPx / 2 + Math.min(220, centerImageWidthPx * .08);
-      const rightStart = center + centerImageWidthPx / 2 - Math.min(220, centerImageWidthPx * .08);
-      const rightEnd = Math.min(worldWidthPx - 210, center + centerImageWidthPx / 2 + extensionPx * .70);
+      /* Keep each wing readable as a three-surface executive bank. The room can
+         remain very wide, but related cards should not be miles apart. */
+      const bayGap = Math.max(326, Math.min(390, width * .215));
+      const leftAnchor = center - centerImageWidthPx / 2 - Math.max(360, extensionPx * .34);
+      const rightAnchor = center + centerImageWidthPx / 2 + Math.max(360, extensionPx * .34);
 
-      const leftXs = [leftStart, (leftStart + leftEnd) / 2, leftEnd];
-      const rightXs = [rightStart, (rightStart + rightEnd) / 2, rightEnd];
+      const leftXs = [leftAnchor - bayGap, leftAnchor, leftAnchor + bayGap];
+      const rightXs = [rightAnchor - bayGap, rightAnchor, rightAnchor + bayGap];
       ['mission-impact','office-activity','briefing'].forEach((id,i) => bayPositions[id] = leftXs[i]);
       ['mission-pulse','priorities','grant-intelligence'].forEach((id,i) => bayPositions[id] = rightXs[i]);
 
@@ -3800,9 +3801,9 @@ document
       ['Left and right wayfinding mounted', Boolean(scene?.querySelector('#meosOfficeWayfindingLeft button')) && Boolean(scene?.querySelector('#meosOfficeWayfindingRight button'))],
       ['Desk workspace API mounted', Boolean(scene?.MEOSOfficeWorkspace?.sendToDesk) && Boolean(scene?.MEOSOfficeWorkspace?.sendHome)]
     ].map(([name,passed]) => ({name,passed:Boolean(passed)}));
-    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R3',version:DASHBOARD_VERSION,buildId:'EO4114-EXPANDABLE-EXECUTIVE-OFFICE-DESK-WORKSPACE-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
+    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R4',version:DASHBOARD_VERSION,buildId:'EO4115-EXECUTIVE-WINGS-WAYFINDING-MADDY-HOME-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);
-    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R3 Expandable Executive Office + Desk Workspace: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R4 Executive Wings + Wayfinding + Maddy Home: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
     return result;
   }
 
