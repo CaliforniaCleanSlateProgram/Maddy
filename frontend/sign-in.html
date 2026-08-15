@@ -92,7 +92,17 @@ h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:clamp(43px,5vw
     if(!form.reportValidity()) return false; const data=new FormData(form); button.disabled=true; note.classList.remove("error"); note.textContent="Opening your executive office securely…";
     try{const r=await fetch(path,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:String(data.get("email")||"").trim(),password:String(data.get("password")||"")})}); let result={}; try{result=await r.json();}catch(_){}
       if(!r.ok||result.success===false) throw new Error(result.error||result.message||(r.status===401?"That email or password was not recognized.":"MEOS could not complete secure account access."));
-      form.reset(); note.textContent=path==="/api/auth/register"?"Your office is created. Maddy is getting ready to meet you…":"Welcome back. Maddy is restoring your office…"; window.setTimeout(()=>location.assign("/"),350); return true;
+      if(path==="/api/auth/register"){
+        try{
+          const prospect={
+            intent:JSON.parse(sessionStorage.getItem("meos.prospect.intent")||"null"),
+            tour:JSON.parse(sessionStorage.getItem("meos.prospect.tour")||"null"),
+            close:JSON.parse(sessionStorage.getItem("meos.prospect.close")||"null")
+          };
+          sessionStorage.setItem("meos.customer.onboarding",JSON.stringify({...prospect,account:result.account||null,createdAt:new Date().toISOString()}));
+        }catch(_e){}
+      }
+      form.reset(); note.textContent=path==="/api/auth/register"?"Yay — we're doing this. Your office is created. Maddy is opening the door…":"Welcome back. Maddy is restoring your office…"; window.setTimeout(()=>location.assign("/"),650); return true;
     }catch(e){note.classList.add("error");note.textContent=e&&e.message?e.message:"MEOS could not complete secure account access.";return false;}finally{button.disabled=false;}
   }
   signinForm.addEventListener("submit",e=>{e.preventDefault();postAuth("/api/auth/login",signinForm,signinButton,authNote);});
