@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Opportunity Office
  *
- * Version: 2.1.0
- * Build: EOO210-ONE-AUTHORITY-20260803-A
+ * Version: 2.2.0
+ * Build: EOO220-ORGANIZATION-NEUTRAL-DISCOVERY-20260815-A
  *
  * Purpose:
  * - Maintain an approved registry of public opportunity sources.
@@ -28,8 +28,8 @@
     "use strict";
 
     const NAME = "MEOS Executive Opportunity Office";
-    const VERSION = "2.1.0";
-    const BUILD_ID = "EOO210-ONE-AUTHORITY-20260803-A";
+    const VERSION = "2.2.0";
+    const BUILD_ID = "EOO220-ORGANIZATION-NEUTRAL-DISCOVERY-20260815-A";
     const SCHEMA = "meos.executive-opportunity-office.v1";
     const STORAGE_KEY = "meos.executive-opportunity-office.v1";
 
@@ -44,7 +44,9 @@
         COMMUNITY: "community",
         LEGISLATION: "legislation",
         SETTLEMENT: "settlement",
-        NONPROFIT_BENEFIT: "nonprofit-benefit",
+        RESOURCE_BENEFIT: "resource-benefit",
+        BUSINESS_BENEFIT: "business-benefit",
+        NONPROFIT_BENEFIT: "nonprofit-benefit", // legacy compatibility
         PARTNERSHIP: "partnership",
         MEDIA_REVENUE: "media-revenue",
         OTHER: "other"
@@ -263,10 +265,23 @@
         );
     }
 
+    function getOrganizationalProfile() {
+        return (
+            global.MEOSOrganizationalProfile?.profile ||
+            global.MEOSOrganizationalProfile ||
+            global.OrganizationalProfile?.profile ||
+            global.OrganizationalProfile ||
+            global.CCSPOrganizationalProfile?.profile || // legacy customer-package compatibility
+            global.CCSPOrganizationalProfile ||
+            null
+        );
+    }
+
     function getLongTermStrategy() {
         return (
-            global.CCSPLongTermStrategy ||
             global.MEOSOrganizationLongTermStrategy ||
+            global.OrganizationLongTermStrategy ||
+            global.CCSPLongTermStrategy || // legacy customer-package compatibility
             null
         );
     }
@@ -279,26 +294,73 @@
         );
     }
 
-    function calculateCurrentReadiness(opportunity = {}) {
+    function getOrganizationIdentity(profile = getOrganizationalProfile()) {
+        if (!profile || typeof profile !== "object") return {};
+        const org = profile.organization && typeof profile.organization === "object"
+            ? profile.organization
+            : profile;
+        return {
+            legalName: org.legalName || org.name || "",
+            organizationType: org.organizationType || org.entityType || org.legalStructure || "",
+            taxStatus: org.federalTaxStatus || org.taxStatus || "",
+            serviceArea: org.serviceArea || org.primaryGeography || org.geography || "",
+            mission: org.mission || profile.mission || ""
+        };
+    }
+
+    function applicantClassAppearsCompatible(applicants = [], profile = getOrganizationalProfile()) {
+        if (!Array.isArray(applicants) || applicants.length === 0) return null;
+        const identity = getOrganizationIdentity(profile);
+        const orgText = normalizeText([
+            identity.organizationType,
+            identity.taxStatus,
+            identity.legalName
+        ].filter(Boolean).join(" "));
+        if (!orgText) return null;
+
+        const aliases = [];
+        if (/501 c 3|501c3|nonprofit|public charity|tax exempt/.test(orgText)) {
+            aliases.push("501 c 3", "501c3", "nonprofit", "public charity", "tax exempt");
+        }
+        if (/for profit|business|corporation|llc|sole proprietor|partnership/.test(orgText)) {
+            aliases.push("for profit", "business", "corporation", "llc", "sole proprietor", "partnership");
+        }
+        if (/government|public agency|municipal|county|city|state agency/.test(orgText)) {
+            aliases.push("government", "public agency", "municipal", "county", "city", "state agency");
+        }
+        if (/tribal|tribe/.test(orgText)) aliases.push("tribal", "tribe");
+        if (/school|university|college|education/.test(orgText)) aliases.push("school", "university", "college", "education");
+        if (/individual|person|creator/.test(orgText)) aliases.push("individual", "creator");
+
+        const orgTokens = new Set(orgText.split(" ").filter(t => t.length >= 3));
+        return applicants.some(item => {
+            const text = normalizeText(item);
+            return aliases.some(alias => text.includes(alias)) ||
+                [...orgTokens].some(token => text.includes(token));
+        });
+    }
+
+    function geographyAppearsRelevant(opportunity = {}, profile = getOrganizationalProfile()) {
+        const opportunityGeo = normalizeText(opportunity.geography || "");
+        const organizationGeo = normalizeText(getOrganizationIdentity(profile).serviceArea || "");
+        if (!opportunityGeo || !organizationGeo) return null;
+        const orgTokens = new Set(organizationGeo.split(" ").filter(t => t.length >= 4));
+        return opportunityGeo.split(" ").filter(t => t.length >= 4).some(t => orgTokens.has(t));
+    }
+
+    function calculateCurrentReadiness(opportunity = {}, profile = getOrganizationalProfile()) {
         let score = 35;
         const applicants = opportunity.eligibleApplicants || [];
         const requirements = opportunity.requirements || {};
-        const geography = normalizeText(opportunity.geography || "");
 
-        if (
-            applicants.length === 0 ||
-            applicants.some(item =>
-                normalizeText(item).includes("501 c 3") ||
-                normalizeText(item).includes("nonprofit")
-            )
-        ) score += 20;
+        const applicantFit = applicantClassAppearsCompatible(applicants, profile);
+        if (applicantFit === true) score += 20;
+        else if (applicantFit === null) score += 10;
 
-        if (
-            !geography ||
-            geography.includes("california") ||
-            geography.includes("santa cruz") ||
-            geography.includes("monterey")
-        ) score += 15;
+        // Local fit helps readiness; it never suppresses a concurrent state/national/federal pursuit.
+        const geographyFit = geographyAppearsRelevant(opportunity, profile);
+        if (geographyFit === true) score += 15;
+        else if (geographyFit === null) score += 7;
 
         if (!requirements.requiredLicense) score += 10;
         if (!requirements.requiredFacility) score += 10;
@@ -310,7 +372,7 @@
 
     function determineExecutiveRecommendation(opportunity, strategyResult, portfolioResult) {
         const lifecycle = String(opportunity.lifecycle || "").toLowerCase();
-        const currentReadiness = calculateCurrentReadiness(opportunity);
+        const currentReadiness = calculateCurrentReadiness(opportunity, getOrganizationalProfile());
         const strategyScore =
             Number(strategyResult?.matches?.strategicSignalScore || 0);
         const bestBuildMatch = portfolioResult?.bestMatch || null;
@@ -345,7 +407,7 @@
                 currentReadiness >= 70
                     ? EXECUTIVE_RECOMMENDATIONS.PURSUE
                     : EXECUTIVE_RECOMMENDATIONS.PREPARE;
-            reasons.push("The opportunity strongly advances CCSP's long-term strategy.");
+            reasons.push("The opportunity strongly advances the active organization\'s long-term strategy.");
         } else if (strategyScore >= 30) {
             recommendation = EXECUTIVE_RECOMMENDATIONS.HUMAN_REVIEW;
             reasons.push("The opportunity has adaptive or strategic potential that deserves human judgment.");
@@ -400,6 +462,7 @@
             const resourceDecision = engine.decide(opportunity, {
                 source: NAME,
                 officeVersion: VERSION,
+                organizationalProfile: getOrganizationalProfile(),
                 longTermStrategy: getLongTermStrategy(),
                 buildPortfolio: getBuildPortfolio()
             });
@@ -823,7 +886,10 @@
             ["tribal governments", ["tribal government", "federally recognized tribe"]],
             ["educational institutions", ["school district", "university", "college", "educational institution"]],
             ["small businesses", ["small business"]],
-            ["individual applicants", ["individual applicant", "individuals may apply"]]
+            ["for-profit businesses", ["for profit", "for-profit", "business entities", "commercial entities"]],
+            ["limited liability companies", ["limited liability company", "llc"]],
+            ["sole proprietors", ["sole proprietor", "sole proprietorship"]],
+            ["individual applicants", ["individual applicant", "individuals may apply", "individual creators", "creators may apply"]]
         ];
 
         mappings.forEach(([label, indicators]) => {
@@ -894,7 +960,11 @@
         if (source.type === SOURCE_TYPES.CORPORATE) return "corporate-philanthropy";
         if (source.type === SOURCE_TYPES.FOUNDATION) return "private-foundation";
         if (source.type === SOURCE_TYPES.COMMUNITY) return "community-foundation";
-        if (source.type === SOURCE_TYPES.NONPROFIT_BENEFIT) return "technology-benefit";
+        if (
+            source.type === SOURCE_TYPES.RESOURCE_BENEFIT ||
+            source.type === SOURCE_TYPES.BUSINESS_BENEFIT ||
+            source.type === SOURCE_TYPES.NONPROFIT_BENEFIT
+        ) return "technology-benefit";
         if (source.type === SOURCE_TYPES.PARTNERSHIP) return "strategic-partnership";
         if (source.type === SOURCE_TYPES.MEDIA_REVENUE) return "digital-revenue";
         if (text.includes("contract")) return "government-contract";
@@ -1450,6 +1520,9 @@
             buildPortfolioConnected: Boolean(
                 getBuildPortfolio()?.matchOpportunity
             ),
+            organizationalProfileConnected: Boolean(getOrganizationalProfile()),
+            organizationIdentity: clone(getOrganizationIdentity()),
+            organizationNeutralCore: true,
             automaticScanning: Boolean(state.timerId),
             sourceCount: state.sources.length,
             enabledSourceCount: state.sources.filter(source => source.enabled).length,
