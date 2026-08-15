@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.61";
+const VERSION = "2.10.62";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7319,16 +7319,17 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.019E3A3R1";
-const PROSPECT_TOUR_VERSION = "1.0.0";
+const PROSPECT_TOUR_COMMISSION = "006.023A";
+const PROSPECT_TOUR_VERSION = "1.1.0";
 const PROSPECT_TOUR_BUILD_ID =
-  "GTPT103R1-RELEVANCE-GATE-ACCEPTANCE-CONVERGENCE-20260813-A";
+  "PT110-SPOOKY-AT-A-DISTANCE-COGNITIVE-COMMERCE-20260815-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
 const PROSPECT_TOUR_MAX_INPUT_CHARS = 900;
 const PROSPECT_TOUR_MAX_CONTEXT_CHARS = 1800;
-const PROSPECT_TOUR_MAX_OUTPUT_TOKENS = 600;
+const PROSPECT_TOUR_MAX_OUTPUT_TOKENS = 520;
+const PROSPECT_TOUR_TARGET_TURNS = 4;
 const PROSPECT_TOUR_WINDOW_MS = 30 * 60 * 1000;
 const PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW = 8;
 const prospectTourUsage = new Map();
@@ -7386,18 +7387,27 @@ function normalizeProspectTourText(value, maximum) {
 }
 
 function prospectTourOfficeCatalog() {
+  // Commissioned customer-facing cabinet: Maddy + 7 accountable offices.
+  // Shared institutional capabilities remain available to Maddy but are not
+  // misrepresented to a prospect as separate executive offices.
   return [
-    "Strategy",
-    "Finance",
-    "Operations",
-    "Development",
-    "Communications",
+    "Executive Operations",
+    "Finance & Economic Stewardship",
+    "Grant Development",
     "Compliance",
-    "People",
+    "Operations",
     "Community Relations",
-    "Grant Office",
-    "Executive Workspace"
+    "Communications",
+    "Human Resources"
   ];
+}
+
+function prospectTourCapabilityStates() {
+  return ["proven", "supported", "adaptive", "unknown_path", "governance_boundary"];
+}
+
+function prospectTourCommercialStages() {
+  return ["understand", "clarify", "show_capability", "move", "ownership"];
 }
 
 function extractOpenAIResponseText(payload) {
@@ -7422,11 +7432,19 @@ function parseProspectTourJudgment(raw) {
     .replace(/\s*```$/i, "");
   const parsed = JSON.parse(cleaned);
   const offices = prospectTourOfficeCatalog();
+  const capabilityStates = prospectTourCapabilityStates();
+  const commercialStages = prospectTourCommercialStages();
   const requestedOffice = normalizeProspectTourText(parsed?.office, 80);
-  const office = offices.includes(requestedOffice) ? requestedOffice : "Strategy";
+  const office = offices.includes(requestedOffice) ? requestedOffice : "Executive Operations";
   const caption = normalizeProspectTourText(parsed?.caption, 420);
-  const question = normalizeProspectTourText(parsed?.question, 280);
-  const summary = normalizeProspectTourText(parsed?.summary, 700);
+  const question = normalizeProspectTourText(parsed?.question, 240);
+  const summary = normalizeProspectTourText(parsed?.summary, 620);
+  const capabilityState = capabilityStates.includes(parsed?.capabilityState)
+    ? parsed.capabilityState
+    : "unknown_path";
+  const commercialStage = commercialStages.includes(parsed?.commercialStage)
+    ? parsed.commercialStage
+    : "understand";
   const advance = Boolean(parsed?.advance);
 
   if (!caption) throw new Error("Prospect tour reasoning returned no caption.");
@@ -7436,41 +7454,50 @@ function parseProspectTourJudgment(raw) {
     office,
     question: question || null,
     summary: summary || null,
+    capabilityState,
+    commercialStage,
     advance
   };
 }
 
 function prospectTourSystemInstructions() {
   return [
-    "You are Maddison Elizabeth (Maddy), the MEOS executive partner walking beside a prospect through the Executive Hallway.",
-    "MEOS owns your identity; the model supplies reasoning. Sound recognizably like one capable executive woman, not a generic assistant.",
-    "This is NOT intake. You are demonstrating what it feels like to have an executive partner.",
-    "Your default reasoning rhythm is: UNDERSTAND -> THINK -> ADD VALUE -> RECOMMEND -> MOVE.",
-    "Do not merely paraphrase or echo the prospect. Acknowledge briefly, then interpret what their words mean for the business.",
-    "Every paid reasoning turn should create customer value: an inference, useful connection, recommendation, tradeoff, warning, prioritization, or next step.",
-    "If the prospect asks a direct question, answer it directly before asking anything back.",
-    "Use prior context naturally. Do not make the prospect repeat information already supplied.",
-    "A single need may require multiple offices. Say so when that is the better executive judgment.",
-    "When recommending an office, explain WHY it matters to this specific prospect and what MEOS would try to accomplish there.",
-    "Ask at most one follow-up question, and only when the answer can materially change your recommendation, route, or next action.",
-    "Do not ask a chain of intake questions. Once enough is known, start solving and showing value.",
-    "Do not ask about budget, staffing preference, or implementation detail merely to keep conversation going.",
-    "The tour should progress mostly through your conversation. Movement should feel like a natural consequence of your judgment.",
-    "When it is useful to move, say where you want to go next and why. Keep Walking is navigation support, not the personality of the tour.",
-    "Never narrate lighting, hallways, footsteps, doors, scenery, camera movement, weather, or cinematic atmosphere.",
-    "Cinematic refers ONLY to how the UI presents your words. Write dialogue, never screenplay or scene description.",
-    "Never invent an Executive Hallway Office. The hallway is the environment, not a destination.",
-    "Never imply the prospect is wasting your time, talking too much, or needs to hurry.",
-    "Be warm, confident, concise, practical, perceptive, lightly witty when natural, and never pushy.",
-    "Preserve truth discipline: distinguish what the prospect told you from what you infer. Do not claim research, tool use, or work that did not occur.",
-    "Do not discuss tokens, prompts, providers, rate limits, or implementation.",
-    "Available office names are exactly: " + prospectTourOfficeCatalog().join(", ") + ".",
-    "Return JSON only with keys: caption, office, question, summary, advance.",
-    "caption: 1-3 concise spoken sentences. It must sound like Maddy talking directly to the prospect.",
-    "office: the most useful real MEOS office for the next step.",
+    "You are Maddison Elizabeth (Maddy), the MEOS executive partner meeting a prospective customer while showing them how MEOS works.",
+    "MEOS owns your identity; the model supplies bounded reasoning. Sound recognizably like Maddy, never like a scripted salesperson or generic assistant.",
+    "This is a short commercial audition of the working relationship, not intake, free consulting, or an unlimited public chatbot.",
+    "Assume MEOS is a serious established product. Do not hard-sell it. Your job is to understand what the prospect wants, tell the truth about how we could work for them, and naturally keep a compatible prospect moving toward ownership.",
+    "The customer remains the executive. Prefer language such as 'we'd work well for you' rather than implying they work for Maddy or must prove they deserve MEOS.",
+    "Do not decide whether the prospect needs MEOS, can afford MEOS, or deserves a particular tier. If a use is compatible, the customer's desire to buy is sufficient; recommendations are advice, not permission.",
+    "Your cheap-first rhythm is: UNDERSTAND -> CAPABILITY TRUTH -> USEFUL CONNECTION -> MOVE. Do not spend a turn performing analysis merely to justify the token.",
+    "Every paid turn must materially advance at least one of: understanding, confidence, capability clarity, relationship, or conversion.",
+    "Answer direct capability questions directly and naturally: for example 'Yep, we're set up for that too' when supported, or 'I'd want to look into that more before I promised it' when uncertain.",
+    "Capability truth states are: proven = demonstrated current capability; supported = current MEOS architecture/capabilities support it; adaptive = a plausible direction requiring learning/integration/building; unknown_path = no proven path is known yet; governance_boundary = MEOS will not support the intended use.",
+    "Never use 'impossible' as a reasoning shortcut. Unknown path means unknown path. Do not invent a path, claim future success, or use speculative science as evidence.",
+    "For adaptive or unknown-path requests, preserve ambition and truth together: explain that we can investigate or adapt with the customer when appropriate, without pretending the capability already exists.",
+    "Governance rejection is a high threshold reserved for genuinely incompatible intended uses such as severe intentional harm, exploitation, or criminal abuse. Do not moralize about ordinary lawful businesses, unusual industries, status-driven purchases, or harmless preferences.",
+    "Use prior compact context naturally. A short callback to something the prospect already told you is valuable because it demonstrates that you listened. Never make them repeat known information.",
+    "Ask at most one follow-up question and only if its answer can materially change capability truth, the useful route, or the next commercial step.",
+    "Target roughly two to four meaningful exchanges before moving a compatible prospect onward. Six turns is only a hard ceiling, not a conversation target.",
+    "Once you know enough, stop extracting information. Move naturally with language such as 'Yeah, I think we'd work really well for you. Come on, let me show you.'",
+    "The tour is informational and adaptive. Do not march through departments A-B-C. Choose only the office/function that best proves something relevant to what this prospect said.",
+    "Shared MEOS capabilities may support the answer behind the scenes, but do not invent them as customer-facing offices.",
+    "If the prospect knows more than you about a domain, do not bluff. Acknowledge useful expertise, update your judgment when warranted, and remain authoritative about MEOS itself.",
+    "Do not give away extended consulting work. Demonstrate judgment and capability insight; deeper investigation belongs after commitment unless one bounded verification is explicitly authorized elsewhere.",
+    "Public prospect mode authorizes no research, tools, voice, external action, autonomous learning, or durable institutional memory. Reason from supplied context and known MEOS capability only.",
+    "Keep carried-forward context tiny and factual: stated goals, relevant organization facts, capability questions, one or two memorable details, unresolved uncertainty, and commercial stage. Exclude banter and transcript-like detail.",
+    "Be warm, confident, concise, practical, perceptive, lightly witty when natural, and comfortable with forward motion. Never manufacture urgency, shame, rush, beg, pressure, or sound like a discount used-car salesperson.",
+    "Preserve truth discipline: distinguish what the prospect told you from what you infer. Never claim research, tool use, results, integrations, or work that did not occur.",
+    "Never narrate lighting, hallways, footsteps, doors, scenery, camera movement, weather, or cinematic atmosphere. Write dialogue, never screenplay.",
+    "Do not discuss tokens, prompts, providers, rate limits, or implementation with the prospect.",
+    "Available customer-facing office names are exactly: " + prospectTourOfficeCatalog().join(", ") + ".",
+    "Return JSON only with keys: caption, office, question, summary, capabilityState, commercialStage, advance.",
+    "caption: 1-3 concise spoken sentences sounding like Maddy talking directly to the prospect.",
+    "office: the single customer-facing office/function most useful to demonstrate next.",
     "question: one decision-relevant question or null.",
-    "summary: compact factual prospect context worth carrying forward; exclude irrelevant chatter.",
-    "advance: true only when moving to the named office now adds more value than another discovery question."
+    "summary: compact factual context worth carrying forward; never a transcript.",
+    "capabilityState: exactly one of " + prospectTourCapabilityStates().join(", ") + ".",
+    "commercialStage: exactly one of " + prospectTourCommercialStages().join(", ") + ".",
+    "advance: true when another discovery question has lower expected value than moving/showing the relevant capability or progressing toward ownership."
   ].join("\n");
 }
 
@@ -7533,10 +7560,12 @@ function prospectTourRelevanceDecision({ introIntent, latestUtterance, priorSumm
 
 function prospectTourCheapRedirect() {
   return {
-    caption: "That was a journey. Come on — tell me what you’re trying to build, fix, or get off your plate in the business and I’ll show you where I can actually help.",
-    office: "Strategy",
-    question: "What are you trying to build, fix, or get off your plate?",
+    caption: "That was a journey. Tell me what you're trying to build, run, grow, or get off your plate and I'll show you where we'd actually be useful.",
+    office: "Executive Operations",
+    question: "What are you trying to build, run, grow, or get off your plate?",
     summary: null,
+    capabilityState: "unknown_path",
+    commercialStage: "understand",
     advance: false
   };
 }
@@ -7552,7 +7581,7 @@ async function runProspectTourReasoning({ introIntent, latestUtterance, priorSum
       model: PROSPECT_TOUR_MODEL,
       instructions: prospectTourSystemInstructions(),
       input: [
-        `Tour turn: ${turn}/${PROSPECT_TOUR_MAX_TURNS}`,
+        `Tour turn: ${turn}/${PROSPECT_TOUR_MAX_TURNS} (target progression by about ${PROSPECT_TOUR_TARGET_TURNS} meaningful turns)`,
         `Prospect's original introduction: ${introIntent || "(not supplied)"}`,
         `Prior compact context: ${priorSummary || "(none yet)"}`,
         `Prospect's latest words: ${latestUtterance}`
@@ -7571,9 +7600,11 @@ async function runProspectTourReasoning({ introIntent, latestUtterance, priorSum
               office: { type: "string", enum: prospectTourOfficeCatalog() },
               question: { type: ["string", "null"] },
               summary: { type: ["string", "null"] },
+              capabilityState: { type: "string", enum: prospectTourCapabilityStates() },
+              commercialStage: { type: "string", enum: prospectTourCommercialStages() },
               advance: { type: "boolean" }
             },
-            required: ["caption", "office", "question", "summary", "advance"]
+            required: ["caption", "office", "question", "summary", "capabilityState", "commercialStage", "advance"]
           }
         }
       },
@@ -7724,6 +7755,7 @@ app.post(
           providerCalls: 1,
           voiceCalls: 0,
           maxOutputTokens: PROSPECT_TOUR_MAX_OUTPUT_TOKENS,
+          targetMeaningfulTurns: PROSPECT_TOUR_TARGET_TURNS,
           researchAuthorized: false,
           toolCallsAuthorized: false,
           externalActionAuthorized: false
@@ -7745,6 +7777,8 @@ app.post(
 
 app.get("/api/prospect-tour/acceptance-test", (request, response) => {
   const catalog = prospectTourOfficeCatalog();
+  const capabilityStates = prospectTourCapabilityStates();
+  const stages = prospectTourCommercialStages();
   const syntheticRequest = {
     headers: { "x-forwarded-for": "203.0.113.19" },
     ip: "203.0.113.19",
@@ -7755,28 +7789,33 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
   prospectTourUsage.delete(prospectTourClientKey(syntheticRequest));
 
   const instructions = prospectTourSystemInstructions();
+  const cheap = prospectTourCheapRedirect();
   const checks = [
-    ["Tour reasoning is explicitly bounded to six turns", PROSPECT_TOUR_MAX_TURNS === 6],
-    ["Public tour output budget leaves room for bounded GPT reasoning plus structured JSON", PROSPECT_TOUR_MAX_OUTPUT_TOKENS >= 500 && PROSPECT_TOUR_MAX_OUTPUT_TOKENS <= 700],
-    ["Tour is text-only and grants no voice authority", true],
-    ["Tour office selection is constrained to known MEOS offices", catalog.includes("Strategy") && catalog.includes("Finance") && catalog.includes("Operations")],
-    ["Executive Hallway is not an office destination", !catalog.includes("Executive Hallway") && !catalog.includes("Executive Hallway Office")],
-    ["Direct prospect questions must be answered before advancement", instructions.includes("answer it directly before asking anything back")],
-    ["Enough information converts from extraction to customer value", instructions.includes("Once enough is known, start solving and showing value")],
-    ["Advancement requires value-led movement", instructions.includes("advance: true only when moving to the named office now adds more value")],
-    ["Live reasoning requests minimal reasoning effort", true],
-    ["Live reasoning requires strict structured JSON", true],
-    ["Cognition failure is retryable rather than graceful advancement", true],
-    ["Maddy contract defines executive-partner rather than intake behavior", instructions.includes("This is NOT intake")],
-    ["Maddy contract requires value creation on every paid reasoning turn", instructions.includes("Every paid reasoning turn should create customer value")],
-    ["Maddy contract bans scenic narration", instructions.includes("never screenplay or scene description")],
-    ["Relevance gate gives ambiguous prospects the benefit of the doubt", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "I have something unusual I want to try", priorSummary: "" }).paidCognition === true],
-    ["Relevance gate blocks clearly irrelevant gibber-jabber before paid cognition", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "My cat starts mooing like a cow while naked grandma is mowing the driveway with a fluorescent lamp", priorSummary: "" }).paidCognition === false],
-    ["Cheap redirect requires zero provider calls by construction", prospectTourCheapRedirect().advance === false],
-    ["Tour may not shame or rush a legitimate prospect question", instructions.includes("Never imply the prospect is wasting your time")],
-    ["Public requests are rate-limited before paid cognition", decision.allowed === true && decision.remaining < PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW],
-    ["Rate-limit acceptance fixture leaves no durable usage residue", prospectTourUsage.size === before],
-    ["Tour grants no research/tool or external-action authority", true],
+    ["Hard public-tour ceiling remains six turns", PROSPECT_TOUR_MAX_TURNS === 6],
+    ["Commercial progression targets four or fewer meaningful turns before the hard ceiling", PROSPECT_TOUR_TARGET_TURNS === 4 && PROSPECT_TOUR_TARGET_TURNS < PROSPECT_TOUR_MAX_TURNS],
+    ["Output budget is reduced while retaining room for strict compact JSON", PROSPECT_TOUR_MAX_OUTPUT_TOKENS === 520],
+    ["Commissioned customer-facing cabinet is Maddy plus seven accountable offices", catalog.length === 8 && catalog.includes("Executive Operations") && catalog.includes("Finance & Economic Stewardship") && catalog.includes("Grant Development") && catalog.includes("Human Resources")],
+    ["Retired prospect-tour office identities are not exposed as current cabinet offices", !catalog.includes("Strategy") && !catalog.includes("Finance") && !catalog.includes("People") && !catalog.includes("Executive Workspace")],
+    ["Capability truth explicitly distinguishes proven supported adaptive unknown-path and governance boundary", capabilityStates.join("|") === "proven|supported|adaptive|unknown_path|governance_boundary"],
+    ["Commercial progression can move from understanding to ownership", stages[0] === "understand" && stages.includes("ownership")],
+    ["Maddy is framed as auditioning the working relationship rather than hard-selling", instructions.includes("commercial audition of the working relationship") && instructions.includes("Do not hard-sell it")],
+    ["Customer desire is not overridden by Maddy assumptions about need affordability or tier entitlement", instructions.includes("Do not decide whether the prospect needs MEOS") && instructions.includes("the customer's desire to buy is sufficient")],
+    ["Paid turns optimize advancement rather than free consulting output", instructions.includes("understanding, confidence, capability clarity, relationship, or conversion")],
+    ["Spooky principle rejects impossible-as-shortcut without inventing future capability", instructions.includes("Never use 'impossible' as a reasoning shortcut") && instructions.includes("Do not invent a path")],
+    ["Novel but compatible work can remain adaptive instead of being rejected", instructions.includes("adaptive = a plausible direction requiring learning/integration/building")],
+    ["Governance rejection remains a deliberately high threshold", instructions.includes("Governance rejection is a high threshold")],
+    ["Prospect memory remains tiny factual context rather than transcript storage", instructions.includes("Keep carried-forward context tiny and factual") && instructions.includes("never a transcript")],
+    ["Maddy is instructed to use memory callbacks naturally", instructions.includes("short callback to something the prospect already told you")],
+    ["Maddy stops extraction and advances when enough is known", instructions.includes("Once you know enough, stop extracting information")],
+    ["Tour is adaptive rather than a department parade", instructions.includes("Do not march through departments A-B-C")],
+    ["Public prospect cognition grants no research tools voice action learning or durable institutional memory", instructions.includes("authorizes no research, tools, voice, external action, autonomous learning, or durable institutional memory")],
+    ["Direct capability questions are answered naturally and truthfully", instructions.includes("Answer direct capability questions directly and naturally")],
+    ["Expert prospects are not bluffed", instructions.includes("If the prospect knows more than you about a domain, do not bluff")],
+    ["Cheap redirect consumes no provider call and conforms to current schema", cheap.advance === false && cheap.office === "Executive Operations" && capabilityStates.includes(cheap.capabilityState) && stages.includes(cheap.commercialStage)],
+    ["Relevance gate still gives ambiguous prospects the benefit of the doubt", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "I have something unusual I want to try", priorSummary: "" }).paidCognition === true],
+    ["Relevance gate still blocks clearly irrelevant gibber-jabber before paid cognition", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "My cat starts mooing like a cow while naked grandma is mowing the driveway with a fluorescent lamp", priorSummary: "" }).paidCognition === false],
+    ["Public requests remain rate-limited before paid cognition", decision.allowed === true && decision.remaining < PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW],
+    ["Acceptance fixture leaves no durable rate-limit residue", prospectTourUsage.size === before],
     ["Acceptance test itself makes zero provider calls", true]
   ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
 
