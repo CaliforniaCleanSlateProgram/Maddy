@@ -2,7 +2,7 @@
  * Maddy Executive Operations System
  * Executive Office Standard
  *
- * Version: 0.3.0
+ * Version: 0.5.0
  *
  * Establishes:
  * - The Executive Director as final human authority
@@ -18,7 +18,7 @@
 (() => {
     "use strict";
 
-    const SYSTEM_VERSION = "0.3.0";
+    const SYSTEM_VERSION = "0.5.0";
 
     const OFFICE_STATUS = Object.freeze({
         OPERATIONAL: "operational",
@@ -51,6 +51,31 @@
         PENDING_DIRECTOR: "pending-director",
         APPROVED: "approved",
         REJECTED: "rejected"
+    });
+
+
+    /*
+     * Commission 006.022A — Lean Executive Cabinet / Tokenomics
+     *
+     * Maddy is the conversational executive relationship. Executive offices are
+     * operational functions: durable responsibility, records, tasks, tools and
+     * accountability. They do not receive an always-on conversational AI loop.
+     * Paid cognition is invoked only when work actually requires it.
+     */
+    const OFFICE_EXECUTION_POLICY = Object.freeze({
+        conversational: false,
+        defaultAttentionState: "idle",
+        wakeOn: Object.freeze([
+            "assigned-work",
+            "scheduled-obligation",
+            "meaningful-state-change",
+            "explicit-refresh",
+            "maddy-delegation"
+        ]),
+        localFirst: true,
+        paidProviderPolicy: "only-when-work-requires-it",
+        continuousPaidMonitoring: false,
+        accountabilityRequired: true
     });
 
     const executiveDirector = Object.freeze({
@@ -117,11 +142,19 @@
 
     const OFFICE_IMPLEMENTATION_PROFILES = Object.freeze({
         archie: Object.freeze({
-            progress: 24,
-            stage: "partial",
-            owns: ["Financial Position", "Grant Budgets", "Cash Visibility"],
-            liveSystems: ["GrantOffice"],
-            nextMilestone: "Connect durable accounting, banking, restricted-fund, and cash-runway records."
+            progress: 58,
+            stage: "commissioned-local",
+            owns: [
+                "Financial Position",
+                "Income & Expenses",
+                "Budgets & Obligations",
+                "Reserve & Deployable Capital",
+                "Financial Records & Recall",
+                "MEOS Tokenomics",
+                "ROI & Capital Allocation"
+            ],
+            liveSystems: ["GrantOffice", "MEOSFinance"],
+            nextMilestone: "Connect governed receipt ingestion and approved monthly accounting export/sync."
         }),
         atlas: Object.freeze({
             progress: 82,
@@ -216,6 +249,9 @@
             office,
             reportsTo: maddy.id,
             responsibility,
+            organizationalClass: "executive-office",
+            cabinetVisible: true,
+            executionPolicy: OFFICE_EXECUTION_POLICY,
 
             standard: {
                 name: "MEOS Executive Office Standard",
@@ -282,19 +318,22 @@
         return officeState;
     }
 
-    const executiveOffices = [
+    const legacyOfficeRoster = [
         createExecutiveOffice({
             id: "archie",
             name: "Archie",
             title: "Chief Financial Officer",
             office: "Office of Finance",
             responsibility:
-                "Budgeting, financial reporting, cash flow, grant budgets, and expense analysis.",
+                "Protect, account for, deploy, and grow organizational capital. Own financial truth, budgets, income, expenses, obligations, reserves, financial records, MEOS economic stewardship, ROI, and evidence-backed capital allocation.",
             successMetrics: [
+                "Financial record integrity",
+                "Cash and obligation visibility",
                 "Budget accuracy",
-                "Financial reporting quality",
-                "Cash flow visibility",
-                "Grant budget readiness"
+                "Reserve coverage",
+                "Realized return on deployed capital",
+                "MEOS outcome per dollar",
+                "Waste and duplicate spend prevented"
             ]
         }),
 
@@ -450,11 +489,87 @@
     ];
 
 
+    const CABINET_OFFICE_IDS = Object.freeze([
+        "archie",   // Finance
+        "grant",    // Grant Development
+        "justice",  // Compliance
+        "forge",    // Operations
+        "harmony",  // Community Relations
+        "echo",     // Communications
+        "sage"      // Human Resources
+    ]);
+
+    const CAPABILITY_RESTRUCTURE = Object.freeze({
+        atlas: Object.freeze({
+            id: "research-intelligence",
+            name: "Research & Intelligence",
+            inheritedFrom: "atlas",
+            responsibility: "Shared research, opportunity discovery, external intelligence, and regulatory research available to Maddy and every operating office.",
+            primarySteward: "maddy",
+            availableTo: Object.freeze(["maddy", "archie", "grant", "justice", "forge", "harmony", "echo", "sage"]),
+            executionPolicy: OFFICE_EXECUTION_POLICY
+        }),
+        ledger: Object.freeze({
+            id: "records-memory",
+            name: "Records, Recall & Institutional Memory",
+            inheritedFrom: "ledger",
+            responsibility: "Organization-wide document records, evidence, decision history, retrieval, recall, and institutional memory shared by every office.",
+            primarySteward: "maddy",
+            availableTo: Object.freeze(["maddy", "archie", "grant", "justice", "forge", "harmony", "echo", "sage"]),
+            executionPolicy: OFFICE_EXECUTION_POLICY
+        }),
+        compass: Object.freeze({
+            id: "strategy-analytics",
+            name: "Strategy & Analytics",
+            inheritedFrom: "compass",
+            responsibility: "Shared strategic priorities, KPI interpretation, mission alignment, portfolio reasoning, and executive reporting coordinated by Maddy.",
+            primarySteward: "maddy",
+            availableTo: Object.freeze(["maddy", "archie", "grant", "justice", "forge", "harmony", "echo", "sage"]),
+            executionPolicy: OFFICE_EXECUTION_POLICY
+        }),
+        nova: Object.freeze({
+            id: "meos-platform",
+            name: "MEOS Platform & Reliability",
+            inheritedFrom: "nova",
+            responsibility: "Platform architecture, integrations, provider health, reliability, production security, and technical observability. This is infrastructure, not a customer-facing executive office.",
+            primarySteward: "meos-core",
+            availableTo: Object.freeze(["maddy"]),
+            executionPolicy: OFFICE_EXECUTION_POLICY
+        })
+    });
+
+    const executiveOffices = legacyOfficeRoster.filter((office) =>
+        CABINET_OFFICE_IDS.includes(office.id)
+    );
+
+    const retiredOfficeCompatibility = Object.freeze(
+        legacyOfficeRoster
+            .filter((office) => !CABINET_OFFICE_IDS.includes(office.id))
+            .reduce((registry, office) => {
+                const capability = CAPABILITY_RESTRUCTURE[office.id];
+                registry[office.id] = Object.freeze({
+                    ...office,
+                    organizationalClass: "shared-capability",
+                    cabinetVisible: false,
+                    retiredAsOffice: true,
+                    capabilityId: capability?.id || office.id,
+                    responsibility: capability?.responsibility || office.responsibility,
+                    executionPolicy: OFFICE_EXECUTION_POLICY
+                });
+                return registry;
+            }, {})
+    );
+
+    const institutionalCapabilities = Object.freeze(
+        Object.values(CAPABILITY_RESTRUCTURE)
+    );
+
+
 
     function getOfficeReference(officeId) {
         return executiveOffices.find(
             (office) => office.id === officeId
-        ) || null;
+        ) || retiredOfficeCompatibility[officeId] || null;
     }
 
     function requireOffice(officeId) {
@@ -797,11 +912,429 @@
         });
     }
 
+
+    /*
+     * Commission 006.022B — Archie Finance + ROI / Tokenomics
+     *
+     * Finance is deterministic and local-first. Arithmetic, status, aggregation,
+     * health, ROI and recall do not invoke an AI provider. Maddy may use paid
+     * cognition only when judgment adds value; Archie owns the economic record.
+     */
+    const FINANCE_STORAGE_KEY = "meos.finance.archie.v1";
+
+    const FINANCIAL_EVIDENCE_STATE = Object.freeze({
+        REPORTED: "reported",
+        RECORDED: "recorded",
+        SUPPORTED: "supported",
+        RECONCILED: "reconciled"
+    });
+
+    const FINANCIAL_VALUE_STATE = Object.freeze({
+        LANDED: "landed",
+        EXPECTED: "expected",
+        COMMITTED: "committed",
+        ESTIMATED: "estimated",
+        REALIZED: "realized"
+    });
+
+    const CAPITAL_PURPOSE = Object.freeze({
+        OPERATING: "operating",
+        PROTECTIVE: "protective",
+        INVESTMENT: "investment",
+        WASTE: "waste",
+        UNKNOWN: "unknown"
+    });
+
+    function money(value) {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? Math.round((numeric + Number.EPSILON) * 100) / 100 : 0;
+    }
+
+    function sumMoney(items, selector) {
+        return money(items.reduce((total, item) => total + money(selector(item)), 0));
+    }
+
+    function loadFinanceState() {
+        const empty = {
+            version: 1,
+            currency: "USD",
+            transactions: [],
+            obligations: [],
+            budgets: [],
+            capitalEvents: [],
+            meosSpend: [],
+            periods: [],
+            updatedAt: null
+        };
+        try {
+            const raw = window.localStorage?.getItem(FINANCE_STORAGE_KEY);
+            if (!raw) return empty;
+            const parsed = JSON.parse(raw);
+            return { ...empty, ...parsed };
+        } catch (error) {
+            console.warn("[MEOS Finance] Local recovery failed; starting from empty local ledger.", error);
+            return empty;
+        }
+    }
+
+    const financeState = loadFinanceState();
+
+    function persistFinanceState() {
+        financeState.updatedAt = createTimestamp();
+        try {
+            window.localStorage?.setItem(FINANCE_STORAGE_KEY, JSON.stringify(financeState));
+            return true;
+        } catch (error) {
+            console.warn("[MEOS Finance] Local persistence failed.", error);
+            return false;
+        }
+    }
+
+    function addFinancialTransaction(input = {}) {
+        const amount = money(input.amount);
+        if (!(amount > 0)) throw new Error("Finance transaction requires a positive amount.");
+        const direction = input.direction === "in" ? "in" : input.direction === "out" ? "out" : null;
+        if (!direction) throw new Error('Finance transaction direction must be "in" or "out".');
+
+        const transaction = {
+            id: input.id || createId("fin"),
+            direction,
+            amount,
+            date: input.date || createTimestamp(),
+            merchant: String(input.merchant || input.source || "").trim(),
+            category: String(input.category || "uncategorized").trim(),
+            purpose: String(input.purpose || "").trim(),
+            project: String(input.project || "").trim(),
+            paymentMethod: String(input.paymentMethod || "").trim(),
+            evidenceState: Object.values(FINANCIAL_EVIDENCE_STATE).includes(input.evidenceState)
+                ? input.evidenceState
+                : FINANCIAL_EVIDENCE_STATE.REPORTED,
+            valueState: Object.values(FINANCIAL_VALUE_STATE).includes(input.valueState)
+                ? input.valueState
+                : (direction === "in" ? FINANCIAL_VALUE_STATE.LANDED : FINANCIAL_VALUE_STATE.REALIZED),
+            restricted: Boolean(input.restricted),
+            evidenceRefs: Array.isArray(input.evidenceRefs) ? [...input.evidenceRefs] : [],
+            notes: String(input.notes || "").trim(),
+            createdAt: createTimestamp()
+        };
+        financeState.transactions.push(transaction);
+        persistFinanceState();
+        return clone(transaction);
+    }
+
+    function addObligation(input = {}) {
+        const amount = money(input.amount);
+        if (!(amount > 0)) throw new Error("Finance obligation requires a positive amount.");
+        const obligation = {
+            id: input.id || createId("obl"),
+            name: String(input.name || input.vendor || "Financial obligation").trim(),
+            amount,
+            dueAt: input.dueAt || null,
+            recurring: Boolean(input.recurring),
+            autopay: Boolean(input.autopay),
+            reserved: input.reserved !== false,
+            status: String(input.status || "open"),
+            category: String(input.category || "operating").trim(),
+            createdAt: createTimestamp()
+        };
+        financeState.obligations.push(obligation);
+        persistFinanceState();
+        return clone(obligation);
+    }
+
+    function addBudget(input = {}) {
+        const limit = money(input.limit);
+        if (!(limit >= 0)) throw new Error("Finance budget requires a non-negative limit.");
+        const budget = {
+            id: input.id || createId("budget"),
+            name: String(input.name || "Budget").trim(),
+            category: String(input.category || "").trim(),
+            project: String(input.project || "").trim(),
+            limit,
+            reserveTarget: money(input.reserveTarget),
+            startsAt: input.startsAt || null,
+            endsAt: input.endsAt || null,
+            createdAt: createTimestamp()
+        };
+        financeState.budgets.push(budget);
+        persistFinanceState();
+        return clone(budget);
+    }
+
+    function recordCapitalEvent(input = {}) {
+        const deployed = money(input.deployed);
+        const realizedReturn = money(input.realizedReturn);
+        const pipelineValue = money(input.pipelineValue);
+        const event = {
+            id: input.id || createId("roi"),
+            missionId: input.missionId || null,
+            customerId: input.customerId || null,
+            officeId: input.officeId || null,
+            description: String(input.description || "Capital deployment").trim(),
+            purpose: Object.values(CAPITAL_PURPOSE).includes(input.purpose) ? input.purpose : CAPITAL_PURPOSE.UNKNOWN,
+            deployed,
+            realizedReturn,
+            pipelineValue,
+            laborHoursAvoided: Math.max(0, Number(input.laborHoursAvoided) || 0),
+            estimatedLaborValue: money(input.estimatedLaborValue),
+            expectedValueAtDecision: money(input.expectedValueAtDecision),
+            outcomeState: realizedReturn > 0 ? "realized" : pipelineValue > 0 ? "pipeline" : "pending",
+            createdAt: createTimestamp()
+        };
+        financeState.capitalEvents.push(event);
+        persistFinanceState();
+        return clone(event);
+    }
+
+    function recordMEOSSpend(input = {}) {
+        const cost = money(input.cost);
+        if (!(cost >= 0)) throw new Error("MEOS spend requires a non-negative cost.");
+        const record = {
+            id: input.id || createId("meos-cost"),
+            provider: String(input.provider || "unknown").trim(),
+            capability: String(input.capability || "").trim(),
+            missionId: input.missionId || null,
+            customerId: input.customerId || null,
+            officeId: input.officeId || null,
+            cost,
+            avoidedCost: money(input.avoidedCost),
+            outcomeId: input.outcomeId || null,
+            reason: String(input.reason || "").trim(),
+            createdAt: createTimestamp()
+        };
+        financeState.meosSpend.push(record);
+        persistFinanceState();
+        return clone(record);
+    }
+
+    function getFinancePosition() {
+        const tx = financeState.transactions;
+        const landed = sumMoney(tx.filter(x => x.direction === "in" && x.valueState === FINANCIAL_VALUE_STATE.LANDED), x => x.amount);
+        const expected = sumMoney(tx.filter(x => x.direction === "in" && x.valueState === FINANCIAL_VALUE_STATE.EXPECTED), x => x.amount);
+        const spent = sumMoney(tx.filter(x => x.direction === "out"), x => x.amount);
+        const openObligations = financeState.obligations.filter(x => !["paid", "cancelled"].includes(x.status));
+        const committed = sumMoney(openObligations, x => x.amount);
+        const reservedForObligations = sumMoney(openObligations.filter(x => x.reserved), x => x.amount);
+        const cashPosition = money(landed - spent);
+        const availableAfterCommitments = money(cashPosition - reservedForObligations);
+
+        return {
+            landed,
+            expected,
+            spent,
+            committed,
+            reservedForObligations,
+            cashPosition,
+            availableAfterCommitments,
+            transactionCount: tx.length,
+            openObligationCount: openObligations.length,
+            unreconciledCount: tx.filter(x => x.evidenceState !== FINANCIAL_EVIDENCE_STATE.RECONCILED).length,
+            unsupportedExpenseCount: tx.filter(x => x.direction === "out" && ![FINANCIAL_EVIDENCE_STATE.SUPPORTED, FINANCIAL_EVIDENCE_STATE.RECONCILED].includes(x.evidenceState)).length,
+            updatedAt: financeState.updatedAt
+        };
+    }
+
+    function getBudgetPerformance() {
+        return financeState.budgets.map(budget => {
+            const actual = sumMoney(
+                financeState.transactions.filter(tx =>
+                    tx.direction === "out" &&
+                    (!budget.category || tx.category === budget.category) &&
+                    (!budget.project || tx.project === budget.project)
+                ),
+                tx => tx.amount
+            );
+            const remaining = money(budget.limit - actual);
+            const variancePct = budget.limit > 0 ? Math.round(((actual - budget.limit) / budget.limit) * 1000) / 10 : 0;
+            return { ...clone(budget), actual, remaining, variancePct, overBudget: actual > budget.limit };
+        });
+    }
+
+    function getROI() {
+        const deployed = sumMoney(financeState.capitalEvents, x => x.deployed);
+        const realizedReturn = sumMoney(financeState.capitalEvents, x => x.realizedReturn);
+        const pipelineValue = sumMoney(financeState.capitalEvents, x => x.pipelineValue);
+        const meosCost = sumMoney(financeState.meosSpend, x => x.cost);
+        const avoidedCost = sumMoney(financeState.meosSpend, x => x.avoidedCost);
+        const laborHoursAvoided = financeState.capitalEvents.reduce((sum, x) => sum + (Number(x.laborHoursAvoided) || 0), 0);
+        const estimatedLaborValue = sumMoney(financeState.capitalEvents, x => x.estimatedLaborValue);
+        const realizedROI = deployed > 0 ? Math.round(((realizedReturn - deployed) / deployed) * 1000) / 10 : null;
+        const realizedMultiple = deployed > 0 ? Math.round((realizedReturn / deployed) * 100) / 100 : null;
+        return {
+            capitalDeployed: deployed,
+            realizedReturn,
+            pipelineValue,
+            realizedROI,
+            realizedMultiple,
+            meosOperatingCost: meosCost,
+            providerSpendAvoided: avoidedCost,
+            laborHoursAvoided: Math.round(laborHoursAvoided * 10) / 10,
+            estimatedLaborValue
+        };
+    }
+
+    function getFinancialHealth(options = {}) {
+        const position = getFinancePosition();
+        const monthlyEssentialSpend = Math.max(0, money(options.monthlyEssentialSpend));
+        const reserveTargetMonths = Math.max(0, Number(options.reserveTargetMonths) || 3);
+        const reserveTarget = money(monthlyEssentialSpend * reserveTargetMonths);
+        const reserveCoverage = reserveTarget > 0 ? Math.max(0, position.availableAfterCommitments / reserveTarget) : null;
+
+        const budgets = getBudgetPerformance();
+        const budgetScore = budgets.length
+            ? Math.max(0, 100 - Math.round(budgets.reduce((sum, b) => sum + Math.max(0, b.variancePct), 0) / budgets.length))
+            : 100;
+        const documentationScore = position.transactionCount
+            ? Math.round(((position.transactionCount - position.unsupportedExpenseCount) / position.transactionCount) * 100)
+            : 100;
+        const obligationScore = position.cashPosition >= position.reservedForObligations ? 100 : 0;
+        const reserveScore = reserveCoverage === null ? 100 : Math.min(100, Math.round(reserveCoverage * 100));
+        const score = clampScore(
+            obligationScore * 0.35 +
+            reserveScore * 0.30 +
+            budgetScore * 0.20 +
+            documentationScore * 0.15
+        );
+
+        let label = "building";
+        if (position.cashPosition < 0) label = "critical";
+        else if (score >= 85) label = "strong";
+        else if (score >= 70) label = "healthy";
+        else if (score >= 50) label = "watch";
+        else if (position.cashPosition > 0) label = "strained";
+
+        return {
+            score,
+            label,
+            obligationCoverage: position.cashPosition >= position.reservedForObligations,
+            reserveTarget,
+            reserveCoverageMonths: monthlyEssentialSpend > 0
+                ? Math.round((Math.max(0, position.availableAfterCommitments) / monthlyEssentialSpend) * 10) / 10
+                : null,
+            components: {
+                obligations: obligationScore,
+                reserve: reserveScore,
+                budget: budgetScore,
+                documentation: documentationScore
+            },
+            position
+        };
+    }
+
+    function recallFinance(query) {
+        const terms = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+        if (!terms.length) return [];
+        const scoreText = text => {
+            const haystack = String(text || "").toLowerCase();
+            return terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+        };
+        return financeState.transactions
+            .map(tx => ({
+                transaction: tx,
+                score: scoreText([
+                    tx.merchant, tx.category, tx.purpose, tx.project,
+                    tx.paymentMethod, tx.notes, tx.amount, tx.date
+                ].join(" "))
+            }))
+            .filter(result => result.score > 0)
+            .sort((a, b) => b.score - a.score || String(b.transaction.date).localeCompare(String(a.transaction.date)))
+            .slice(0, 25)
+            .map(result => clone(result.transaction));
+    }
+
+    function getFinanceOfficeCard(options = {}) {
+        const health = getFinancialHealth(options);
+        const roi = getROI();
+        return {
+            officeId: "archie",
+            office: "Office of Finance",
+            headline: "Financial Position",
+            financialHealth: health,
+            moneyIn: {
+                landed: health.position.landed,
+                expected: health.position.expected
+            },
+            moneyOut: {
+                spent: health.position.spent,
+                transactionCount: health.position.transactionCount
+            },
+            committed: {
+                amount: health.position.committed,
+                reserved: health.position.reservedForObligations,
+                obligations: health.position.openObligationCount
+            },
+            available: health.position.availableAfterCommitments,
+            needsAttention: {
+                unsupportedExpenses: health.position.unsupportedExpenseCount,
+                unreconciledTransactions: health.position.unreconciledCount,
+                overBudget: getBudgetPerformance().filter(x => x.overBudget).length
+            },
+            tokenomics: roi,
+            lastVerifiedAt: health.position.updatedAt,
+            refreshPolicy: "local-first-on-demand"
+        };
+    }
+
+    function exportFinancePeriod({ startsAt = null, endsAt = null } = {}) {
+        const within = value => {
+            const t = new Date(value).getTime();
+            if (!Number.isFinite(t)) return false;
+            if (startsAt && t < new Date(startsAt).getTime()) return false;
+            if (endsAt && t > new Date(endsAt).getTime()) return false;
+            return true;
+        };
+        return clone({
+            generatedAt: createTimestamp(),
+            currency: financeState.currency,
+            transactions: financeState.transactions.filter(tx => within(tx.date)),
+            obligations: financeState.obligations,
+            budgets: getBudgetPerformance(),
+            position: getFinancePosition(),
+            roi: getROI()
+        });
+    }
+
+    const financeOffice = Object.freeze({
+        version: "1.0.0",
+        commission: "006.022B",
+        policy: Object.freeze({
+            conversational: false,
+            arithmeticUsesPaidAI: false,
+            localFirst: true,
+            continuousPaidMonitoring: false,
+            principle: "Every dollar leaves with a job; Archie optimizes ROI, not minimum spend.",
+            economicGate: "Spend more when evidence-supported expected return justifies it; stop when marginal value no longer justifies cost."
+        }),
+        evidenceStates: FINANCIAL_EVIDENCE_STATE,
+        valueStates: FINANCIAL_VALUE_STATE,
+        capitalPurposes: CAPITAL_PURPOSE,
+        addTransaction: addFinancialTransaction,
+        addObligation,
+        addBudget,
+        recordCapitalEvent,
+        recordMEOSSpend,
+        getPosition: getFinancePosition,
+        getBudgetPerformance,
+        getROI,
+        getFinancialHealth,
+        recall: recallFinance,
+        getOfficeCard: getFinanceOfficeCard,
+        exportPeriod: exportFinancePeriod,
+        getState() { return clone(financeState); }
+    });
+
     const cabinet = {
         version: SYSTEM_VERSION,
         executiveDirector,
         maddy,
-        offices: executiveOffices
+        offices: executiveOffices,
+        capabilities: institutionalCapabilities,
+        restructuring: Object.freeze({
+            commission: "006.022B",
+            principle: "Maddy is conversational; offices are operational. Archie owns financial truth, Tokenomics, and ROI.",
+            retiredOfficeIds: Object.freeze(Object.keys(retiredOfficeCompatibility)),
+            cabinetOfficeIds: CABINET_OFFICE_IDS
+        })
     };
 
     window.MEOS = Object.freeze({
@@ -818,8 +1351,29 @@
             return cabinet;
         },
 
+        finance: financeOffice,
+
         getOffice(officeId) {
             return getOfficeReference(officeId);
+        },
+
+        getCabinetOffices() {
+            return clone(executiveOffices);
+        },
+
+        getInstitutionalCapabilities() {
+            return clone(institutionalCapabilities);
+        },
+
+        getOrganizationalStructure() {
+            return clone({
+                principle: "Maddy is conversational; offices are operational. Archie owns financial truth, Tokenomics, and ROI.",
+                offices: executiveOffices.map((office) => ({
+                    id: office.id, name: office.name, title: office.title, office: office.office,
+                    responsibility: office.responsibility, executionPolicy: office.executionPolicy
+                })),
+                capabilities: institutionalCapabilities
+            });
         },
 
         getOfficeScorecard,
@@ -858,7 +1412,7 @@
     });
 
     console.info(
-        `[MEOS ${window.MEOS.version}] Executive Office Standard initialized.`,
+        `[MEOS ${window.MEOS.version}] Lean Executive Cabinet initialized — 7 offices + shared capabilities.`,
         window.MEOS.getCabinet()
     );
 })();
