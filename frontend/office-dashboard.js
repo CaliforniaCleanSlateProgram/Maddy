@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.7";
+  const DASHBOARD_VERSION = "4.11.8";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3485,6 +3485,31 @@ document
       .meos-office-nav{position:absolute;z-index:130;left:50%;top:10px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:5px;max-width:450px;padding:6px 8px;border:1px solid rgba(213,162,83,.18);border-radius:11px;background:rgba(4,10,12,.42);backdrop-filter:blur(7px)}
       .meos-office-nav button{border:0;background:transparent;color:rgba(235,239,236,.74);padding:6px 8px;border-radius:7px;cursor:pointer;font:700 .56rem/1 system-ui;letter-spacing:.05em;text-transform:uppercase}
       .meos-office-nav button:hover{background:rgba(216,171,98,.12);color:#f4d39e}
+
+      .meos-office-nav-wrap{position:absolute;z-index:140;left:50%;top:10px;transform:translateX(-50%);display:grid;justify-items:center}
+      .meos-office-nav-wrap .meos-office-nav{position:relative!important;left:auto!important;top:auto!important;transform:none!important}
+      .meos-office-cabinet-menu{display:none;position:absolute;top:44px;left:50%;transform:translateX(-50%);width:min(360px,78vw);max-height:56vh;overflow:auto;padding:7px;border:1px solid rgba(213,162,83,.28);border-radius:11px;background:rgba(8,12,12,.96);box-shadow:0 20px 55px rgba(0,0,0,.52);backdrop-filter:blur(14px)}
+      .meos-office-cabinet-menu[data-open="true"]{display:grid;gap:4px}
+      .meos-office-cabinet-menu button{width:100%;border:1px solid rgba(213,162,83,.12);border-radius:8px;background:rgba(255,255,255,.025);color:#e9e1d6;text-align:left;padding:9px 10px;cursor:pointer;font:700 .64rem/1.25 system-ui}
+      .meos-office-cabinet-menu button:hover{border-color:rgba(229,184,110,.42);background:rgba(92,67,34,.24);color:#f4d39e}
+
+      .meos-office-utility{display:grid;gap:13px;color:#ece8df}
+      .meos-office-utility-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:10px;border-bottom:1px solid rgba(216,171,98,.18)}
+      .meos-office-utility-header strong{font-size:1rem;color:#f1d09a}
+      .meos-office-utility-header span{display:block;margin-top:4px;color:rgba(230,235,232,.58);font-size:.68rem}
+      .meos-office-utility-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+      .meos-office-utility-search input{min-width:0;border:1px solid rgba(112,197,208,.28);border-radius:9px;background:rgba(2,9,11,.66);color:#f3f4ef;padding:10px 12px;outline:none;font:600 .76rem/1 system-ui}
+      .meos-office-utility-search button,.meos-office-utility-refresh{border:1px solid rgba(216,171,98,.36);border-radius:9px;background:rgba(63,48,27,.52);color:#f1d09a;padding:9px 12px;cursor:pointer;font:700 .66rem/1 system-ui}
+      .meos-office-utility-results{display:grid;gap:8px}
+      .meos-office-utility-result{padding:11px;border:1px solid rgba(125,190,202,.13);border-radius:10px;background:rgba(4,13,15,.34)}
+      .meos-office-utility-result strong{display:block;color:#f0eee7;font-size:.75rem}
+      .meos-office-utility-result span{display:block;margin-top:4px;color:rgba(222,231,230,.60);font-size:.65rem;line-height:1.4}
+      .meos-system-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+      .meos-system-card{padding:11px;border:1px solid rgba(125,190,202,.13);border-radius:10px;background:rgba(4,13,15,.34)}
+      .meos-system-card strong{display:block;color:#ece9e1;font-size:.70rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .meos-system-card span{display:block;margin-top:5px;font-size:.62rem;color:#79d7a4;text-transform:uppercase}
+      .meos-system-card[data-status="offline"] span,.meos-system-card[data-status="error"] span{color:#f09b83}
+      @media(max-width:900px){.meos-system-grid{grid-template-columns:1fr 1fr}}
       .meos-office-look{position:absolute;z-index:125;top:50%;transform:translateY(-50%);width:38px;height:68px;border:1px solid rgba(213,162,83,.20);border-radius:10px;background:rgba(4,10,12,.42);color:#e8c07d;font-size:1.8rem;cursor:pointer;backdrop-filter:blur(6px)}
       .meos-office-look.left{left:52px}.meos-office-look.right{right:52px}
       .meos-office-look:disabled{opacity:.22;cursor:default}
@@ -3553,7 +3578,10 @@ document
         <div><strong>Hand It to Maddy</strong><span>Drop files here · or click to choose</span></div>
         <small id="meosDeskIntakeStatus" class="meos-desk-intake-status"></small>
       </label>
-      <nav id="meosImageOfficeNav" class="meos-office-nav" aria-label="Executive Office navigation"></nav>
+      <div id="meosImageOfficeNavWrap" class="meos-office-nav-wrap">
+        <nav id="meosImageOfficeNav" class="meos-office-nav" aria-label="Executive Office navigation"></nav>
+        <div id="meosOfficeCabinetMenu" class="meos-office-cabinet-menu" data-open="false" aria-label="Executive Cabinet"></div>
+      </div>
       <button class="meos-office-look left" type="button" aria-label="Look left">‹</button>
       <button class="meos-office-look right" type="button" aria-label="Look right">›</button>
       <div id="meosImageOfficeLocation" class="meos-office-location">Center · Executive Director Office</div>
@@ -3653,23 +3681,91 @@ document
 
     const originalNav = getNavigationArea();
     const nav = viewport.querySelector('#meosImageOfficeNav');
-    if (originalNav) {
-      const seen = new Set();
-      [...originalNav.querySelectorAll('a[href],button')]
-        .filter(node => !node.closest('#meosExecutiveOfficeControl') && !node.disabled)
-        .forEach(original => {
-          const label = String(original.textContent || original.getAttribute('aria-label') || '').replace(/\s+/g,' ').trim();
-          if (!label || seen.has(label.toLowerCase())) return;
-          seen.add(label.toLowerCase());
-          const proxy = document.createElement('button');
-          proxy.type = 'button';
-          proxy.textContent = label.length > 20 ? `${label.slice(0,20)}…` : label;
-          proxy.addEventListener('click', () => original.click());
-          nav.appendChild(proxy);
+    const cabinetMenu = viewport.querySelector('#meosOfficeCabinetMenu');
+
+    const addTopNavButton = (label, handler, options = {}) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      if (options.id) button.id = options.id;
+      if (options.ariaExpanded !== undefined) button.setAttribute('aria-expanded', String(options.ariaExpanded));
+      button.addEventListener('click', handler);
+      nav?.appendChild(button);
+      return button;
+    };
+
+    /* Desk is the spatial home position: the center of the Executive Director
+       nameplate is the zero point of the panorama. */
+    const deskNavButton = addTopNavButton('Desk', () => {
+      cabinetMenu.dataset.open = 'false';
+      setPan(0);
+      viewport.focus({ preventScroll:true });
+    }, { id:'meosDeskNavButton' });
+
+    const executiveOfficeOriginal = originalNav?.querySelector('a[href="#executive-office"]');
+    addTopNavButton('Executive Office', () => {
+      cabinetMenu.dataset.open = 'false';
+      executiveOfficeOriginal?.click();
+      setPan(0);
+    });
+
+    const cabinetButton = addTopNavButton('Executive Cabinet ▾', () => {
+      const open = cabinetMenu.dataset.open !== 'true';
+      cabinetMenu.dataset.open = String(open);
+      cabinetButton.setAttribute('aria-expanded', String(open));
+    }, { id:'meosCabinetNavButton', ariaExpanded:false });
+
+    /* Mirror the real cabinet members. Their original links already own the
+       commissioned office-dashboard show(member) behavior, so we reuse it. */
+    const originalCabinetMenu = document.getElementById('cabinetMenu');
+    const populateCabinetMenu = () => {
+      if (!cabinetMenu) return;
+      cabinetMenu.replaceChildren();
+      const memberLinks = [...(originalCabinetMenu?.querySelectorAll('a.cabinet-member,[data-office-id]') || [])];
+      memberLinks.forEach(originalLink => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = String(originalLink.textContent || '').trim() || originalLink.dataset.officeId || 'Executive Office';
+        button.addEventListener('click', () => {
+          cabinetMenu.dataset.open = 'false';
+          cabinetButton.setAttribute('aria-expanded','false');
+          setPan(0);
+          originalLink.click();
         });
+        cabinetMenu.appendChild(button);
+      });
+      if (!memberLinks.length) {
+        const empty = document.createElement('button');
+        empty.type = 'button';
+        empty.textContent = 'Cabinet is still loading…';
+        empty.disabled = true;
+        cabinetMenu.appendChild(empty);
+      }
+    };
+    populateCabinetMenu();
+    window.setTimeout(populateCabinetMenu, 600);
+
+    addTopNavButton('Knowledge', () => {
+      cabinetMenu.dataset.open = 'false';
+      openKnowledgeSurface();
+    });
+
+    addTopNavButton('System', () => {
+      cabinetMenu.dataset.open = 'false';
+      openSystemSurface();
+    });
+
+    if (originalNav) {
       originalNav.style.visibility = 'hidden';
       originalNav.style.pointerEvents = 'none';
     }
+
+    document.addEventListener('pointerdown', event => {
+      if (!viewport.querySelector('#meosImageOfficeNavWrap')?.contains(event.target)) {
+        cabinetMenu.dataset.open = 'false';
+        cabinetButton.setAttribute('aria-expanded','false');
+      }
+    });
 
     let aspect = 3;
     let worldWidthPx = 0;
@@ -3704,11 +3800,12 @@ document
     };
 
     const sendHome = () => {
-      if (!deskWidgetId) return;
-      const record = bays.get(deskWidgetId);
-      if (record) {
-        record.bay.insertBefore(record.widget, record.homeMarker);
-        record.bay.dataset.atDesk = 'false';
+      if (deskWidgetId) {
+        const record = bays.get(deskWidgetId);
+        if (record) {
+          record.bay.insertBefore(record.widget, record.homeMarker);
+          record.bay.dataset.atDesk = 'false';
+        }
       }
       deskWidgetId = null;
       deskBody.replaceChildren();
@@ -3719,13 +3816,118 @@ document
     const sendToDesk = id => {
       const record = bays.get(id);
       if (!record) return;
-      if (deskWidgetId && deskWidgetId !== id) sendHome();
+      if (desk.dataset.open === 'true') sendHome();
       deskWidgetId = id;
       record.bay.dataset.atDesk = 'true';
       deskBody.appendChild(record.widget);
       deskTitle.textContent = widgetLabels[id] || id;
       desk.dataset.open = 'true';
       setPan(0);
+    };
+
+    const openUtilitySurface = (title, renderer) => {
+      if (desk.dataset.open === 'true') sendHome();
+      deskWidgetId = null;
+      deskBody.replaceChildren();
+      deskTitle.textContent = title;
+      desk.dataset.open = 'true';
+      setPan(0);
+      renderer(deskBody);
+    };
+
+    const openKnowledgeSurface = () => {
+      openUtilitySurface('Knowledge', body => {
+        body.innerHTML = `
+          <section class="meos-office-utility">
+            <header class="meos-office-utility-header">
+              <div><strong>Institutional Knowledge</strong><span>Search the active MEOS Knowledge Engine.</span></div>
+            </header>
+            <form class="meos-office-utility-search">
+              <input type="search" placeholder="Search organizational knowledge…" aria-label="Search organizational knowledge" />
+              <button type="submit">Search</button>
+            </form>
+            <div class="meos-office-utility-results" aria-live="polite"></div>
+          </section>`;
+        const form = body.querySelector('form');
+        const input = body.querySelector('input');
+        const results = body.querySelector('.meos-office-utility-results');
+        const renderResults = query => {
+          const engine = window.MEOSKnowledgeEngine || window.KnowledgeEngine;
+          if (!engine || typeof engine.search !== 'function') {
+            results.innerHTML = `<article class="meos-office-utility-result"><strong>Knowledge Engine unavailable</strong><span>The active runtime has not exposed a searchable Knowledge Engine.</span></article>`;
+            return;
+          }
+          let response;
+          try { response = engine.search(query, { limit:20 }); }
+          catch (error) {
+            results.innerHTML = `<article class="meos-office-utility-result"><strong>Search failed</strong><span>${escapeHtml(error?.message || 'Knowledge search failed.')}</span></article>`;
+            return;
+          }
+          const items = Array.isArray(response?.results) ? response.results : [];
+          if (!items.length) {
+            results.innerHTML = `<article class="meos-office-utility-result"><strong>No matching knowledge</strong><span>No active record matched “${escapeHtml(query)}”.</span></article>`;
+            return;
+          }
+          results.innerHTML = items.map(result => {
+            const item = result?.item || {};
+            const title = item.title || item.name || item.label || item.id || result.resultType || 'Knowledge record';
+            const summary = item.summary || item.description || item.content?.summary || item.content?.text || item.sourceType || result.resultType || '';
+            return `<article class="meos-office-utility-result"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(String(summary || '').slice(0,360))}</span></article>`;
+          }).join('');
+        };
+        form?.addEventListener('submit', event => {
+          event.preventDefault();
+          const query = String(input?.value || '').trim();
+          if (!query) { input?.focus(); return; }
+          renderResults(query);
+        });
+        input?.focus();
+      });
+    };
+
+    const openSystemSurface = () => {
+      openUtilitySurface('System', body => {
+        body.innerHTML = `
+          <section class="meos-office-utility">
+            <header class="meos-office-utility-header">
+              <div><strong>MEOS Runtime</strong><span>Live status reported by currently exposed system components.</span></div>
+              <button class="meos-office-utility-refresh" type="button">Refresh</button>
+            </header>
+            <div class="meos-system-grid" aria-live="polite"></div>
+          </section>`;
+        const grid = body.querySelector('.meos-system-grid');
+        const candidates = [
+          ['Executive Brain', 'MEOSExecutiveBrain', 'ExecutiveBrain'],
+          ['Mission Engine', 'MEOSMissionEngine', 'MissionEngine'],
+          ['Knowledge Engine', 'MEOSKnowledgeEngine', 'KnowledgeEngine'],
+          ['Knowledge Memory', 'MEOSKnowledgeMemory', 'KnowledgeMemory'],
+          ['Intelligence', 'MEOSIntelligenceEngine', 'IntelligenceEngine'],
+          ['Executive Hallway', 'MEOSExecutiveHallway'],
+          ['Monitoring', 'ExecutiveMonitoring'],
+          ['Learning', 'ExecutiveLearning'],
+          ['Automation', 'ExecutiveAutomation'],
+          ['Workspace Office', 'MEOSExecutiveWorkspaceOffice'],
+          ['Provider Manager', 'MEOSProviderManager', 'ProviderManager'],
+          ['Document Ingestion', 'MEOSDocumentIngestion', 'DocumentIngestion']
+        ];
+        const refresh = () => {
+          grid.replaceChildren();
+          candidates.forEach(([label, ...keys]) => {
+            const component = keys.map(key => window[key]).find(Boolean);
+            let status = null;
+            try { status = component?.getStatus?.() || null; } catch {}
+            const stateText = String(status?.status || (component ? 'online' : 'unavailable')).toLowerCase();
+            const version = status?.version ? `v${status.version}` : '';
+            const card = document.createElement('article');
+            card.className = 'meos-system-card';
+            card.dataset.status = /offline|error|failed|unavailable/.test(stateText) ? 'offline' : 'online';
+            card.innerHTML = `<strong>${escapeHtml(label)} ${escapeHtml(version)}</strong><span>${escapeHtml(stateText)}</span>`;
+            grid.appendChild(card);
+          });
+        };
+        body.querySelector('.meos-office-utility-refresh')?.addEventListener('click', refresh);
+        refresh();
+      });
     };
 
     const addWayfinding = (container, ids) => {
@@ -3889,9 +4091,9 @@ document
       ['Left and right wayfinding mounted', Boolean(scene?.querySelector('#meosOfficeWayfindingLeft button')) && Boolean(scene?.querySelector('#meosOfficeWayfindingRight button'))],
       ['Desk workspace API mounted', Boolean(scene?.MEOSOfficeWorkspace?.sendToDesk) && Boolean(scene?.MEOSOfficeWorkspace?.sendHome)]
     ].map(([name,passed]) => ({name,passed:Boolean(passed)}));
-    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R6',version:DASHBOARD_VERSION,buildId:'EO4117-MADDY-CONSOLE-OPTICAL-CLEANUP-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
+    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R7',version:DASHBOARD_VERSION,buildId:'EO4118-FUNCTIONAL-OFFICE-NAVIGATION-DESK-SNAP-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);
-    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R6 Maddy Console Optical Cleanup: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R7 Functional Office Navigation + Desk Snap: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
     return result;
   }
 
