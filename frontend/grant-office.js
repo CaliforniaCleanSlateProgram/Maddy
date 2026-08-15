@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.11.0
- * Build: GO1110-EXECUTIVE-ADAPTIVE-REASONING-20260804-A
+ * Version: 1.12.0
+ * Build: GO1120-ORGANIZATION-NEUTRAL-ADAPTIVE-ACQUISITION-20260815-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.11.0";
-    const BUILD_ID = "GO1110-EXECUTIVE-ADAPTIVE-REASONING-20260804-A";
+    const VERSION = "1.12.0";
+    const BUILD_ID = "GO1120-ORGANIZATION-NEUTRAL-ADAPTIVE-ACQUISITION-20260815-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -409,8 +409,22 @@
 
         getOrganizationProfile() {
             return (
+                global.MEOSOrganizationalProfile?.profile ||
+                global.MEOSOrganizationalProfile ||
+                global.OrganizationalProfile?.profile ||
                 global.OrganizationalProfile ||
+                global.CCSPOrganizationalProfile?.profile || // legacy customer-package compatibility
                 global.CCSPOrganizationalProfile ||
+                null
+            );
+        },
+
+        getOrganizationStrategy() {
+            return (
+                global.MEOSOrganizationLongTermStrategy ||
+                global.OrganizationLongTermStrategy ||
+                global.MEOSLongTermStrategy ||
+                global.CCSPLongTermStrategy || // legacy customer-package compatibility
                 null
             );
         },
@@ -1061,6 +1075,19 @@
                     "",
                 serviceArea:
                     organization.serviceArea ||
+                    organization.primaryGeography ||
+                    organization.geography ||
+                    "",
+                country:
+                    organization.country ||
+                    organization.countryCode ||
+                    profile.geography?.country ||
+                    "",
+                state:
+                    organization.state ||
+                    organization.region ||
+                    profile.geography?.state ||
+                    profile.geography?.region ||
                     "",
                 mission:
                     organization.mission ||
@@ -1565,6 +1592,137 @@
             };
         },
 
+        evaluateApplicantCompatibility(eligibleApplicants = [], organization = {}) {
+            const applicantText =
+                this.normalizeText(
+                    Array.isArray(eligibleApplicants)
+                        ? eligibleApplicants.join(" ")
+                        : eligibleApplicants
+                );
+
+            if (!applicantText) {
+                return {
+                    status: "unknown",
+                    compatible: null,
+                    explanation: "Applicant eligibility language is missing."
+                };
+            }
+
+            const organizationText =
+                this.normalizeText([
+                    organization.organizationType,
+                    organization.federalTaxStatus,
+                    organization.legalName
+                ].filter(Boolean).join(" "));
+
+            if (!organizationText) {
+                return {
+                    status: "unknown",
+                    compatible: null,
+                    explanation:
+                        "The active organizational profile does not yet establish applicant class."
+                };
+            }
+
+            const classes = [
+                {
+                    id: "nonprofit",
+                    opportunity:
+                        /nonprofit|non profit|501 c 3|501c3|public charity|tax exempt/,
+                    organization:
+                        /nonprofit|non profit|501 c 3|501c3|public charity|tax exempt/
+                },
+                {
+                    id: "for-profit-business",
+                    opportunity:
+                        /for profit|for-profit|business|commercial entit|corporation|company|llc|limited liability|sole proprietor|sole proprietorship/,
+                    organization:
+                        /for profit|for-profit|business|commercial|corporation|company|llc|limited liability|sole proprietor|sole proprietorship/
+                },
+                {
+                    id: "government",
+                    opportunity:
+                        /government|public agency|municipal|municipality|county|city|state agency|local agency/,
+                    organization:
+                        /government|public agency|municipal|municipality|county|city|state agency|local agency/
+                },
+                {
+                    id: "tribal",
+                    opportunity: /tribal|tribe|native nation/,
+                    organization: /tribal|tribe|native nation/
+                },
+                {
+                    id: "education",
+                    opportunity:
+                        /school|school district|college|university|education institution|educational institution/,
+                    organization:
+                        /school|school district|college|university|education institution|educational institution/
+                },
+                {
+                    id: "individual",
+                    opportunity:
+                        /individual|person|creator|artist|researcher|student/,
+                    organization:
+                        /individual|person|creator|artist|researcher|student/
+                }
+            ];
+
+            const statedClasses =
+                classes.filter(item => item.opportunity.test(applicantText));
+
+            if (statedClasses.length) {
+                const matching =
+                    statedClasses.find(item => item.organization.test(organizationText));
+
+                if (matching) {
+                    return {
+                        status: "confirmed",
+                        compatible: true,
+                        applicantClass: matching.id,
+                        explanation:
+                            `Applicant class "${matching.id}" appears compatible with the active organizational profile.`
+                    };
+                }
+
+                return {
+                    status: "conflict",
+                    compatible: false,
+                    applicantClass: null,
+                    explanation:
+                        "The stated applicant classes do not clearly include the active organization."
+                };
+            }
+
+            const organizationWords =
+                new Set(
+                    organizationText
+                        .split(" ")
+                        .filter(word => word.length >= 4)
+                );
+
+            const lexicalOverlap =
+                applicantText
+                    .split(" ")
+                    .filter(word => word.length >= 4)
+                    .some(word => organizationWords.has(word));
+
+            return lexicalOverlap
+                ? {
+                    status: "confirmed",
+                    compatible: true,
+                    applicantClass: "profile-overlap",
+                    explanation:
+                        "Applicant language overlaps the active organization's documented legal/entity identity."
+                }
+                : {
+                    status: "unknown",
+                    compatible: null,
+                    applicantClass: null,
+                    explanation:
+                        "Applicant compatibility is not established from the available organization and opportunity evidence."
+                };
+        },
+
         evaluateEligibility(context) {
             const opportunity =
                 context.opportunity;
@@ -1576,38 +1734,23 @@
             const conditions = [];
             const confirmed = [];
 
-            const applicantText =
-                this.normalizeText(
-                    opportunity.eligibleApplicants.join(" ")
+            const applicantCompatibility =
+                this.evaluateApplicantCompatibility(
+                    opportunity.eligibleApplicants,
+                    organization
                 );
-            const organizationText =
-                this.normalizeText([
-                    organization.organizationType,
-                    organization.federalTaxStatus,
-                    organization.legalName
-                ].join(" "));
 
-            if (!applicantText) {
-                conditions.push(
-                    "Applicant eligibility language is missing."
-                );
-            } else if (
-                applicantText.includes("nonprofit") ||
-                applicantText.includes("501 c 3") ||
-                applicantText.includes("public charity")
-            ) {
+            if (applicantCompatibility.compatible === true) {
                 confirmed.push(
-                    "Nonprofit/public-charity applicant class appears permitted."
+                    applicantCompatibility.explanation
                 );
-            } else if (
-                !applicantText
-                    .split(" ")
-                    .some((word) =>
-                        organizationText.includes(word)
-                    )
-            ) {
+            } else if (applicantCompatibility.compatible === false) {
                 failures.push(
-                    "Applicant class does not clearly include the organization."
+                    applicantCompatibility.explanation
+                );
+            } else {
+                conditions.push(
+                    applicantCompatibility.explanation
                 );
             }
 
@@ -2903,16 +3046,19 @@
         },
 
         evaluateGeography(opportunity, organization) {
-            const grant =
+            const opportunityGeography =
                 this.normalizeText(
                     opportunity.geography
                 );
-            const service =
-                this.normalizeText(
-                    organization.serviceArea
-                );
 
-            if (!grant) {
+            const organizationGeography =
+                this.normalizeText([
+                    organization.serviceArea,
+                    organization.state,
+                    organization.country
+                ].filter(Boolean).join(" "));
+
+            if (!opportunityGeography) {
                 return {
                     confirmed: false,
                     disqualified: false,
@@ -2921,36 +3067,30 @@
                 };
             }
 
-            if (
-                [
-                    "national",
-                    "united states",
-                    "california",
-                    "statewide"
-                ].some((term) =>
-                    grant.includes(term)
-                )
-            ) {
+            if (!organizationGeography) {
                 return {
-                    confirmed: true,
+                    confirmed: false,
                     disqualified: false,
                     explanation:
-                        "Geography appears compatible with the service area."
+                        "Opportunity geography is stated, but the active organizational profile does not yet establish enough geographic evidence to confirm eligibility."
                 };
             }
 
-            const serviceTerms =
-                service
+            const opportunityTerms =
+                opportunityGeography
                     .split(" ")
-                    .filter(
-                        (term) =>
-                            term.length >= 4
-                    );
+                    .filter(term => term.length >= 4);
+
+            const organizationTerms =
+                new Set(
+                    organizationGeography
+                        .split(" ")
+                        .filter(term => term.length >= 4)
+                );
 
             const overlap =
-                serviceTerms.some(
-                    (term) =>
-                        grant.includes(term)
+                opportunityTerms.some(
+                    term => organizationTerms.has(term)
                 );
 
             if (overlap) {
@@ -2958,15 +3098,29 @@
                     confirmed: true,
                     disqualified: false,
                     explanation:
-                        "Opportunity geography overlaps the organizational service area."
+                        "Opportunity geography overlaps the active organization's documented service area or jurisdiction."
+                };
+            }
+
+            const broadOpportunity =
+                /national|nationwide|federal|united states|usa|u s /.test(
+                    opportunityGeography
+                );
+
+            if (broadOpportunity) {
+                return {
+                    confirmed: false,
+                    disqualified: false,
+                    explanation:
+                        "The opportunity is broad/national. The local service area does not disqualify it; jurisdiction eligibility should be confirmed from authoritative requirements."
                 };
             }
 
             return {
                 confirmed: false,
-                disqualified: true,
+                disqualified: false,
                 explanation:
-                    "Opportunity geography does not appear to include the organizational service area."
+                    "No direct geographic overlap was established. Treat geography as unresolved until authoritative eligibility evidence confirms or excludes the organization."
             };
         },
 
@@ -4495,8 +4649,7 @@
 
             const strategy =
                 input.organizationStrategy ||
-                global.CCSPLongTermStrategy ||
-                global.MEOSLongTermStrategy ||
+                this.getOrganizationStrategy() ||
                 {};
 
             const explicitActivities =
@@ -4716,7 +4869,7 @@
                         "reduced pressure on aquatic habitat"
                     ],
                     caution:
-                        "Do not claim direct fish restoration unless CCSP performs or documents direct habitat work."
+                        "Do not claim direct target-species or habitat restoration unless the active organization performs or documents that work."
                 },
                 {
                     id: "hygiene-public-health",
@@ -5883,7 +6036,7 @@
 
         recommendApplicationSources(category) {
             const common = [
-                "CCSP Organizational Profile",
+                "Organizational Profile",
                 "Knowledge Memory",
                 "Executive Evidence Integrity"
             ];
@@ -14998,6 +15151,103 @@
                         error.message
                 };
             }
+        },
+
+        runOrganizationNeutralityAcceptanceTest() {
+            const nonprofit = {
+                legalName: "Community Aid Foundation",
+                organizationType: "501(c)(3) nonprofit public charity",
+                federalTaxStatus: "501(c)(3)",
+                serviceArea: "Santa Cruz County, California",
+                state: "California",
+                country: "United States"
+            };
+
+            const creatorBusiness = {
+                legalName: "Independent Creator Studios LLC",
+                organizationType: "For-profit limited liability company",
+                federalTaxStatus: "",
+                serviceArea: "United States",
+                country: "United States"
+            };
+
+            const veteranNonprofit = {
+                legalName: "Veterans Recovery Alliance",
+                organizationType: "501(c)(3) nonprofit public charity",
+                federalTaxStatus: "501(c)(3)",
+                serviceArea: "United States",
+                country: "United States"
+            };
+
+            const checks = [
+                {
+                    name: "Nonprofit opportunity confirms nonprofit organization",
+                    passed:
+                        this.evaluateApplicantCompatibility(
+                            ["501(c)(3) nonprofit organizations"],
+                            nonprofit
+                        ).compatible === true
+                },
+                {
+                    name: "Nonprofit opportunity does not falsely confirm for-profit organization",
+                    passed:
+                        this.evaluateApplicantCompatibility(
+                            ["501(c)(3) nonprofit organizations"],
+                            creatorBusiness
+                        ).compatible === false
+                },
+                {
+                    name: "For-profit opportunity confirms matching creator business",
+                    passed:
+                        this.evaluateApplicantCompatibility(
+                            ["for-profit businesses", "limited liability companies"],
+                            creatorBusiness
+                        ).compatible === true
+                },
+                {
+                    name: "Veteran-serving organization is not rejected merely because the population is veterans",
+                    passed:
+                        this.evaluateApplicantCompatibility(
+                            ["501(c)(3) nonprofit organizations"],
+                            veteranNonprofit
+                        ).compatible === true
+                },
+                {
+                    name: "Federal opportunity remains open for a locally described organization",
+                    passed: (() => {
+                        const result =
+                            this.evaluateGeography(
+                                { geography: "United States national federal program" },
+                                nonprofit
+                            );
+                        return result.disqualified === false;
+                    })()
+                },
+                {
+                    name: "Missing organization identity remains unresolved rather than silently becoming CCSP",
+                    passed:
+                        this.evaluateApplicantCompatibility(
+                            ["for-profit businesses"],
+                            {}
+                        ).compatible === null
+                }
+            ];
+
+            return {
+                success:
+                    checks.every(check => check.passed),
+                commission:
+                    "006.023C",
+                version:
+                    VERSION,
+                buildId:
+                    BUILD_ID,
+                passed:
+                    checks.filter(check => check.passed).length,
+                total:
+                    checks.length,
+                checks
+            };
         },
 
         extractConcepts(value) {
