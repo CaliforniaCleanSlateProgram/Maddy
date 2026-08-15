@@ -170,13 +170,8 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
      office=judgment.office || office;
      officeChip.textContent=office+" Office";
 
-     if(judgment.question){
-       input.placeholder=judgment.question;
-       hint.textContent=judgment.question;
-     } else {
-       input.placeholder="Anything important I should know before we move on?";
-       hint.textContent="Maddy has enough context to keep the tour moving.";
-     }
+     input.placeholder="Reply to Maddy…";
+     if(!readyToClose) hint.textContent="Reply to Maddy when you want to keep going.";
 
      if(judgment.advance || turn >= Number(result.maxTurns||6)){
        readyToClose=true;
@@ -201,7 +196,7 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
  }
 
  form.addEventListener("submit",submitTurn);
- advance.addEventListener("click",async()=>{
+ advance.addEventListener("click",()=>{
    if(send.disabled) return;
    if(readyToClose){
      try{
@@ -212,60 +207,12 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
      location.assign("/your-office.html");
      return;
    }
-   send.disabled=true;
-   advance.disabled=true;
-   await transitionMaddy("Thinking…",{thinking:true});
-   hint.textContent="Maddy is deciding the next useful stop from what she knows about you…";
-   try{
-     const r=await fetch("/api/prospect-tour/turn",{
-       method:"POST",
-       credentials:"same-origin",
-       cache:"no-store",
-       headers:{"Content-Type":"application/json"},
-       body:JSON.stringify({
-         turn,
-         utterance:"I’m ready. Keep walking and show me the next useful stop.",
-         introIntent,
-         priorSummary:summary
-       })
-     });
-     const result=await r.json().catch(()=>null);
-     if(!r.ok || !result?.success){
-       if(result?.gracefulAdvance){await gracefulFallback();return;}
-       throw new Error(result?.message || `Tour reasoning returned HTTP ${r.status}.`);
-     }
-     const judgment=result.judgment||{};
-     await transitionMaddy(judgment.caption || "Come on. I know where I want to take you next.");
-     summary=judgment.summary || summary;
-     office=judgment.office || office;
-     officeChip.textContent=office+" Office";
-     if(judgment.advance || turn >= Number(result.maxTurns||6)){
-       readyToClose=true;
-       advance.textContent="See Your Office →";
-       advance.classList.add("show");
-       hint.textContent="Maddy has enough context. The next stop is yours.";
-     }
-     if(judgment.question){
-       input.placeholder=judgment.question;
-       hint.textContent=judgment.question;
-     }else{
-       input.placeholder="Reply to Maddy…";
-       hint.textContent="Keep walking when you’re ready, or tell Maddy something else that matters.";
-     }
-     turn+=1;
-     try{
-       sessionStorage.setItem("meos.prospect.tour",JSON.stringify({
-         turn,summary,office,introIntent,updatedAt:new Date().toISOString()
-       }));
-     }catch(_e){}
-   }catch(error){
-     hint.textContent=error?.message || "Maddy couldn't finish that thought.";
-     await gracefulFallback();
-   }finally{
-     send.disabled=false;
-     advance.disabled=false;
-     input.focus();
-   }
+   // A navigation click does not authorize a second paid Maddy answer.
+   // The most recent prospect judgment already owns the route.
+   stage.classList.add("stage-shift");
+   window.setTimeout(()=>stage.classList.remove("stage-shift"),260);
+   input.focus();
+   hint.textContent="Reply to Maddy when you want to keep going.";
  });
  input.focus();
 })();
