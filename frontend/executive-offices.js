@@ -2,7 +2,7 @@
  * Maddy Executive Operations System
  * Executive Office Standard
  *
- * Version: 0.5.0
+ * Version: 0.5.1
  *
  * Establishes:
  * - The Executive Director as final human authority
@@ -18,7 +18,7 @@
 (() => {
     "use strict";
 
-    const SYSTEM_VERSION = "0.5.0";
+    const SYSTEM_VERSION = "0.5.1";
 
     const OFFICE_STATUS = Object.freeze({
         OPERATIONAL: "operational",
@@ -321,9 +321,9 @@
     const legacyOfficeRoster = [
         createExecutiveOffice({
             id: "archie",
-            name: "Archie",
-            title: "Chief Financial Officer",
-            office: "Office of Finance",
+            name: "Sterling",
+            title: "Chief Financial & Economic Stewardship Officer",
+            office: "Office of Finance & Economic Stewardship",
             responsibility:
                 "Protect, account for, deploy, and grow organizational capital. Own financial truth, budgets, income, expenses, obligations, reserves, financial records, MEOS economic stewardship, ROI, and evidence-backed capital allocation.",
             successMetrics: [
@@ -914,12 +914,13 @@
 
 
     /*
-     * Commission 006.022B — Archie Finance + ROI / Tokenomics
+     * Commission 006.022B1 — Sterling Finance + Economic Stewardship Identity
      *
      * Finance is deterministic and local-first. Arithmetic, status, aggregation,
      * health, ROI and recall do not invoke an AI provider. Maddy may use paid
-     * cognition only when judgment adds value; Archie owns the economic record.
+     * cognition only when judgment adds value; Sterling owns the economic record.
      */
+    // Legacy storage namespace intentionally retained so the Sterling rename does not orphan existing Finance data.
     const FINANCE_STORAGE_KEY = "meos.finance.archie.v1";
 
     const FINANCIAL_EVIDENCE_STATE = Object.freeze({
@@ -1247,7 +1248,7 @@
         const roi = getROI();
         return {
             officeId: "archie",
-            office: "Office of Finance",
+            office: "Office of Finance & Economic Stewardship",
             headline: "Financial Position",
             financialHealth: health,
             moneyIn: {
@@ -1296,13 +1297,13 @@
 
     const financeOffice = Object.freeze({
         version: "1.0.0",
-        commission: "006.022B",
+        commission: "006.022B1",
         policy: Object.freeze({
             conversational: false,
             arithmeticUsesPaidAI: false,
             localFirst: true,
             continuousPaidMonitoring: false,
-            principle: "Every dollar leaves with a job; Archie optimizes ROI, not minimum spend.",
+            principle: "Every dollar leaves with a job; Sterling optimizes ROI, not minimum spend.",
             economicGate: "Spend more when evidence-supported expected return justifies it; stop when marginal value no longer justifies cost."
         }),
         evidenceStates: FINANCIAL_EVIDENCE_STATE,
@@ -1331,7 +1332,7 @@
         capabilities: institutionalCapabilities,
         restructuring: Object.freeze({
             commission: "006.022B",
-            principle: "Maddy is conversational; offices are operational. Archie owns financial truth, Tokenomics, and ROI.",
+            principle: "Maddy is conversational; offices are operational. Sterling owns financial truth, Tokenomics, and ROI.",
             retiredOfficeIds: Object.freeze(Object.keys(retiredOfficeCompatibility)),
             cabinetOfficeIds: CABINET_OFFICE_IDS
         })
@@ -1367,7 +1368,7 @@
 
         getOrganizationalStructure() {
             return clone({
-                principle: "Maddy is conversational; offices are operational. Archie owns financial truth, Tokenomics, and ROI.",
+                principle: "Maddy is conversational; offices are operational. Sterling owns financial truth, Tokenomics, and ROI.",
                 offices: executiveOffices.map((office) => ({
                     id: office.id, name: office.name, title: office.title, office: office.office,
                     responsibility: office.responsibility, executionPolicy: office.executionPolicy
