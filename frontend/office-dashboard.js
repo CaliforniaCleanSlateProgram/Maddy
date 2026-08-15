@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.2";
+  const DASHBOARD_VERSION = "4.11.3";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3408,19 +3408,23 @@ document
       #${ROOT_ID} .meos-hq-hero,#${ROOT_ID} #meosWidgetGrid{position:absolute!important;left:-100000px!important;top:-100000px!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
       #${ROOT_ID} .meos-office-detail{position:absolute!important;z-index:250!important;inset:7vh 7vw!important;overflow:auto!important;background:rgba(6,12,15,.97)!important;border:1px solid rgba(212,162,83,.34)!important;border-radius:16px!important;box-shadow:0 35px 110px rgba(0,0,0,.72)!important;backdrop-filter:blur(20px)!important}
 
-      .meos-office-pano{position:absolute;inset:0;overflow:hidden;background:#090909;user-select:none;touch-action:none}
-      .meos-office-world{--office-x:-100vw;position:absolute;left:0;top:0;width:300vw;height:100vh;transform:translate3d(var(--office-x),0,0);transition:transform .42s cubic-bezier(.22,.7,.2,1);will-change:transform;background-image:linear-gradient(180deg,rgba(0,0,0,.02),rgba(0,0,0,.08)),url('meos-executive-office-panorama.png');background-size:100% 100%;background-repeat:no-repeat;background-position:center center}
+      .meos-office-pano{position:absolute;inset:0;overflow:hidden;background:#090909;user-select:none;touch-action:pan-y;cursor:grab}
+      .meos-office-pano[data-dragging="true"]{cursor:grabbing}
+      /* Natural-aspect panorama: JS sizes this world from the source image's
+         true aspect ratio. Translation pans only; neither axis is stretched. */
+      .meos-office-world{position:absolute;left:50%;top:0;height:100%;transform:translate3d(calc(-50% + var(--office-x,0px)),0,0);transition:transform .5s cubic-bezier(.22,.7,.2,1);will-change:transform}
       .meos-office-pano[data-dragging="true"] .meos-office-world{transition:none}
+      .meos-office-image{position:absolute;left:0;top:0;width:100%;height:100%;display:block;pointer-events:none;-webkit-user-drag:none}
       .meos-office-vignette{position:absolute;z-index:5;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.25),transparent 8%,transparent 92%,rgba(0,0,0,.25)),linear-gradient(180deg,rgba(0,0,0,.08),transparent 18%,transparent 78%,rgba(0,0,0,.3))}
 
       /* Real widgets live in six permanent wall bays. No 3D transforms. */
       .meos-office-bay{position:absolute;z-index:20;top:16vh;width:22vw;min-width:310px;max-width:390px;height:57vh;transform:translateX(-50%);transition:height .2s ease,width .2s ease,box-shadow .2s ease}
-      .meos-office-bay[data-widget="mission-impact"]{left:22vw}
-      .meos-office-bay[data-widget="office-activity"]{left:48vw}
-      .meos-office-bay[data-widget="briefing"]{left:74vw}
-      .meos-office-bay[data-widget="mission-pulse"]{left:226vw}
-      .meos-office-bay[data-widget="priorities"]{left:252vw}
-      .meos-office-bay[data-widget="grant-intelligence"]{left:278vw}
+      .meos-office-bay[data-widget="mission-impact"]{left:7.333333%}
+      .meos-office-bay[data-widget="office-activity"]{left:16%}
+      .meos-office-bay[data-widget="briefing"]{left:24.666667%}
+      .meos-office-bay[data-widget="mission-pulse"]{left:75.333333%}
+      .meos-office-bay[data-widget="priorities"]{left:84%}
+      .meos-office-bay[data-widget="grant-intelligence"]{left:92.666667%}
       .meos-office-bay .meos-widget{display:block!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;border:1px solid rgba(107,222,231,.2)!important;border-radius:15px!important;background:linear-gradient(145deg,rgba(3,16,21,.20),rgba(5,12,15,.10))!important;box-shadow:0 14px 38px rgba(0,0,0,.18),inset 0 0 0 1px rgba(223,171,88,.025)!important;backdrop-filter:blur(2px)!important}
       .meos-office-bay .meos-widget-inner{height:100%!important;overflow:auto!important;scrollbar-width:thin;scrollbar-color:rgba(212,162,83,.55) transparent}
       .meos-office-bay .meos-widget-header{position:sticky!important;top:0!important;z-index:4!important;background:linear-gradient(180deg,rgba(4,17,21,.34),rgba(4,17,21,.12))!important;backdrop-filter:blur(3px)!important}
@@ -3433,7 +3437,7 @@ document
       .meos-office-tools button{width:29px;height:29px;border:1px solid rgba(214,164,84,.32);border-radius:8px;background:rgba(6,12,14,.88);color:#e7bd7b;cursor:pointer}
 
       /* The center third is intentionally scenery + Digital Human space. */
-      .meos-digital-human-zone{position:absolute;z-index:12;left:150vw;top:16vh;width:34vw;height:55vh;transform:translateX(-50%);pointer-events:none}
+      .meos-digital-human-zone{position:absolute;z-index:12;left:50%;top:16vh;width:34vw;height:55vh;transform:translateX(-50%);pointer-events:none}
       .meos-digital-human-zone::before{content:"";position:absolute;inset:0;background:linear-gradient(#9ee7ef,#9ee7ef) left top/38px 1px no-repeat,linear-gradient(#9ee7ef,#9ee7ef) left top/1px 38px no-repeat,linear-gradient(#9ee7ef,#9ee7ef) right top/38px 1px no-repeat,linear-gradient(#9ee7ef,#9ee7ef) right top/1px 38px no-repeat,linear-gradient(#9ee7ef,#9ee7ef) left bottom/38px 1px no-repeat,linear-gradient(#9ee7ef,#9ee7ef) left bottom/1px 38px no-repeat,linear-gradient(#9ee7ef,#9ee7ef) right bottom/38px 1px no-repeat,linear-gradient(#9ee7ef,#9ee7ef) right bottom/1px 38px no-repeat;opacity:.12}
       .meos-digital-human-zone span{position:absolute;left:0;right:0;bottom:3%;text-align:center;color:rgba(239,245,245,.48);font-size:.58rem;letter-spacing:.16em;text-transform:uppercase}
 
@@ -3480,7 +3484,7 @@ document
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-maddy-orb{width:56px!important;height:56px!important}
       .meos-office-nav{position:absolute;z-index:121;left:0;right:0;top:0;height:56px;display:flex;gap:3px;padding:5px 14px;border:0;border-bottom:1px solid rgba(213,162,83,.20);border-radius:0;background:rgba(5,11,13,.68);backdrop-filter:blur(10px);box-shadow:0 10px 28px rgba(0,0,0,.20);overflow-x:auto;scrollbar-width:none}
       .meos-office-nav::-webkit-scrollbar{display:none}.meos-office-nav button{flex:1 0 92px;min-width:92px;border:0;border-right:1px solid rgba(213,162,83,.1);border-radius:9px;background:transparent;color:#e3d8ca;font:inherit;font-size:.58rem;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}.meos-office-nav button:hover{background:rgba(117,78,39,.26);color:#f0b962}
-      .meos-office-look{position:absolute;z-index:125;top:44%;width:52px;height:104px;border:0;color:rgba(244,225,197,.78);font-size:2.3rem;cursor:pointer;background:linear-gradient(90deg,rgba(5,8,9,.62),transparent);opacity:.62}.meos-office-look:hover{opacity:1}.meos-office-look.left{left:0;border-radius:0 16px 16px 0}.meos-office-look.right{right:0;transform:scaleX(-1);border-radius:0 16px 16px 0}
+      .meos-office-look{position:absolute;z-index:125;top:44%;width:52px;height:104px;border:0;color:rgba(244,225,197,.78);font-size:2.3rem;cursor:pointer;background:linear-gradient(90deg,rgba(5,8,9,.62),transparent);opacity:.62}.meos-office-look:hover{opacity:1}.meos-office-look.left{left:0;border-radius:0 16px 16px 0}.meos-office-look.right{right:0;border-radius:16px 0 0 16px}
       .meos-office-location{position:absolute;z-index:124;left:50%;top:64px;transform:translateX(-50%);padding:5px 10px;border-radius:999px;background:rgba(5,10,12,.46);color:rgba(237,222,201,.62);font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;pointer-events:none}
       @media(max-width:1100px){.meos-office-bay{width:300px;min-width:300px}.meos-office-maddy-dock{width:185px}.meos-office-nav{left:0;right:0;top:0}}
     `;
@@ -3490,19 +3494,23 @@ document
     viewport.id = 'meosImagePanoramicOffice';
     viewport.className = 'meos-office-pano';
     viewport.dataset.dragging = 'false';
+    viewport.setAttribute('tabindex', '0');
+    viewport.setAttribute('aria-label', 'Executive Director office, first-person panoramic view. Drag, scroll horizontally, or use the left and right arrow keys to look around.');
     viewport.innerHTML = `
       <div id="meosImageOfficeWorld" class="meos-office-world">
+        <img id="meosPanoImage" class="meos-office-image" src="meos-executive-office-panorama.png" alt="Executive Director office, first-person panoramic view" draggable="false" />
         <div id="meosMaddyDigitalHumanStage" class="meos-digital-human-zone" data-reserved-for="maddy-digital-human"><span>Maddy Digital Human Stage</span></div>
       </div>
       <div class="meos-office-vignette"></div>
       <div id="meosImageOfficeMaddyDock" class="meos-office-maddy-dock"></div>
       <nav id="meosImageOfficeNav" class="meos-office-nav" aria-label="Executive Office navigation"></nav>
       <button class="meos-office-look left" type="button" aria-label="Look left">‹</button>
-      <button class="meos-office-look right" type="button" aria-label="Look right">‹</button>
+      <button class="meos-office-look right" type="button" aria-label="Look right">›</button>
       <div id="meosImageOfficeLocation" class="meos-office-location">Center · Executive Director Office</div>
     `;
     shell.appendChild(viewport);
     const world = viewport.querySelector('#meosImageOfficeWorld');
+    const image = viewport.querySelector('#meosPanoImage');
 
     ['mission-impact','office-activity','briefing','mission-pulse','priorities','grant-intelligence'].forEach(id => {
       const widget = root.querySelector(`.meos-widget[data-widget-id="${id}"]`);
@@ -3542,28 +3550,86 @@ document
       originalNav.style.pointerEvents = 'none';
     }
 
-    let pan = -100;
-    let dragX = null;
-    let dragPan = pan;
+    /* Keep the panorama at its source aspect ratio. The original widget anchors
+       are unchanged semantically; their 300vw positions were converted to
+       equivalent percentages of the panorama so they remain on the same walls. */
+    let aspect = 3;
+    let worldWidthPx = 0;
+    let maxPanPx = 0;
+    let panPx = 0;
+
     const setPan = value => {
-      pan = Math.max(-200, Math.min(0, Number(value) || 0));
-      world.style.setProperty('--office-x', `${pan}vw`);
+      panPx = Math.max(-maxPanPx, Math.min(maxPanPx, Number(value) || 0));
+      world.style.setProperty('--office-x', `${panPx}px`);
       const location = viewport.querySelector('#meosImageOfficeLocation');
-      if (location) location.textContent = pan > -66 ? 'Left · Mission & Impact' : pan < -134 ? 'Right · Priorities & Opportunity' : 'Center · Executive Director Office';
+      const fraction = maxPanPx > 0 ? panPx / maxPanPx : 0;
+      if (location) {
+        location.textContent = fraction > 0.34
+          ? 'Left · Mission & Impact'
+          : fraction < -0.34
+            ? 'Right · Priorities & Opportunity'
+            : 'Center · Executive Director Office';
+      }
+      const left = viewport.querySelector('.meos-office-look.left');
+      const right = viewport.querySelector('.meos-office-look.right');
+      if (left) left.disabled = panPx >= maxPanPx - 0.5;
+      if (right) right.disabled = panPx <= -maxPanPx + 0.5;
     };
 
-    viewport.querySelector('.meos-office-look.left')?.addEventListener('click', () => setPan(pan + 34));
-    viewport.querySelector('.meos-office-look.right')?.addEventListener('click', () => setPan(pan - 34));
+    const layoutPanorama = () => {
+      const rect = viewport.getBoundingClientRect();
+      const height = rect.height || window.innerHeight;
+      worldWidthPx = height * aspect;
+      world.style.width = `${worldWidthPx}px`;
+      maxPanPx = Math.max(0, (worldWidthPx - rect.width) / 2);
+      setPan(panPx);
+    };
+
+    if (image?.naturalWidth && image?.naturalHeight) {
+      aspect = image.naturalWidth / image.naturalHeight;
+    }
+    image?.addEventListener('load', () => {
+      if (image.naturalWidth && image.naturalHeight) {
+        aspect = image.naturalWidth / image.naturalHeight;
+      }
+      layoutPanorama();
+    });
+    window.addEventListener('resize', layoutPanorama);
+
+    viewport.querySelector('.meos-office-look.left')?.addEventListener('click', () => setPan(panPx + worldWidthPx * 0.16));
+    viewport.querySelector('.meos-office-look.right')?.addEventListener('click', () => setPan(panPx - worldWidthPx * 0.16));
+    viewport.addEventListener('keydown', event => {
+      if (event.target !== viewport) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setPan(panPx + worldWidthPx * 0.10);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setPan(panPx - worldWidthPx * 0.10);
+      }
+    });
+
+    let dragX = null;
+    let dragPan = 0;
     viewport.addEventListener('pointerdown', event => {
       if (event.target.closest('button,a,input,select,textarea,.meos-office-bay,.meos-office-nav,.meos-office-maddy-dock')) return;
-      dragX = event.clientX; dragPan = pan; viewport.dataset.dragging = 'true'; viewport.setPointerCapture?.(event.pointerId);
+      dragX = event.clientX;
+      dragPan = panPx;
+      viewport.dataset.dragging = 'true';
+      viewport.setPointerCapture?.(event.pointerId);
     });
     viewport.addEventListener('pointermove', event => {
       if (dragX === null) return;
-      setPan(dragPan + ((event.clientX - dragX) / Math.max(1, window.innerWidth)) * 100);
+      setPan(dragPan + (event.clientX - dragX));
     });
     const endDrag = () => { dragX = null; viewport.dataset.dragging = 'false'; };
-    viewport.addEventListener('pointerup', endDrag); viewport.addEventListener('pointercancel', endDrag);
+    viewport.addEventListener('pointerup', endDrag);
+    viewport.addEventListener('pointercancel', endDrag);
+    viewport.addEventListener('wheel', event => {
+      if (Math.abs(event.deltaX) < Math.abs(event.deltaY)) return;
+      event.preventDefault();
+      setPan(panPx - event.deltaX);
+    }, { passive: false });
 
     world.addEventListener('click', event => {
       const tool = event.target.closest('[data-office-tool]');
@@ -3580,7 +3646,8 @@ document
 
     const detail = document.getElementById('officeDashboard');
     if (detail) viewport.appendChild(detail);
-    setPan(-100);
+    layoutPanorama();
+    setPan(0);
     return root;
   }
 
@@ -3588,7 +3655,7 @@ document
     const scene = document.getElementById('meosImagePanoramicOffice');
     const checks = [
       ['Panoramic office mounted', Boolean(scene)],
-      ['300vw continuous world mounted', Boolean(scene?.querySelector('.meos-office-world'))],
+      ['Natural-aspect panorama image mounted', Boolean(scene?.querySelector('.meos-office-world .meos-office-image'))],
       ['Center reserved for Maddy Digital Human', scene?.querySelector('#meosMaddyDigitalHumanStage')?.dataset.reservedFor === 'maddy-digital-human'],
       ['Mission Impact real widget preserved', Boolean(scene?.querySelector('.meos-office-bay[data-widget="mission-impact"] .meos-widget[data-widget-id="mission-impact"]'))],
       ['Office Activity real widget preserved', Boolean(scene?.querySelector('.meos-office-bay[data-widget="office-activity"] .meos-widget[data-widget-id="office-activity"]'))],
@@ -3600,9 +3667,9 @@ document
       ['Navigation proxy controls present', (scene?.querySelectorAll('#meosImageOfficeNav button').length || 0) > 0],
       ['Every mounted widget has expand and popout controls', (scene?.querySelectorAll('[data-office-tool]').length || 0) === (scene?.querySelectorAll('.meos-office-bay').length || 0) * 2]
     ].map(([name,passed]) => ({name,passed:Boolean(passed)}));
-    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R1',version:DASHBOARD_VERSION,buildId:'EO4112-TOP-NAV-MADDY-LIVE-STATUS-RESTORE-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
+    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R2',version:DASHBOARD_VERSION,buildId:'EO4113-NATURAL-ASPECT-PANORAMIC-MOTION-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);
-    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R1 Top Navigation + Maddy Live Status Restore: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R2 Natural-Aspect Panoramic Motion: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
     return result;
   }
 
