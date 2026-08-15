@@ -94,6 +94,7 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
  let office="Executive Hallway";
  let introIntent="";
  let initialName="";
+ let readyToClose=false;
 
  try {
    const raw=sessionStorage.getItem("meos.prospect.intent");
@@ -178,7 +179,10 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
      }
 
      if(judgment.advance || turn >= Number(result.maxTurns||6)){
+       readyToClose=true;
+       advance.textContent="See Your Office →";
        advance.classList.add("show");
+       hint.textContent="Maddy has enough context. The next stop is yours.";
      }
 
      turn += 1;
@@ -199,6 +203,15 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
  form.addEventListener("submit",submitTurn);
  advance.addEventListener("click",async()=>{
    if(send.disabled) return;
+   if(readyToClose){
+     try{
+       sessionStorage.setItem("meos.prospect.tour",JSON.stringify({
+         turn,summary,office,introIntent,readyToClose:true,updatedAt:new Date().toISOString()
+       }));
+     }catch(_e){}
+     location.assign("/your-office.html");
+     return;
+   }
    send.disabled=true;
    advance.disabled=true;
    await transitionMaddy("Thinking…",{thinking:true});
@@ -226,6 +239,12 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
      summary=judgment.summary || summary;
      office=judgment.office || office;
      officeChip.textContent=office+" Office";
+     if(judgment.advance || turn >= Number(result.maxTurns||6)){
+       readyToClose=true;
+       advance.textContent="See Your Office →";
+       advance.classList.add("show");
+       hint.textContent="Maddy has enough context. The next stop is yours.";
+     }
      if(judgment.question){
        input.placeholder=judgment.question;
        hint.textContent=judgment.question;
