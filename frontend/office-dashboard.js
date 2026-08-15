@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.5";
+  const DASHBOARD_VERSION = "4.11.6";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3458,11 +3458,15 @@ document
       .meos-office-wayfinding button{min-height:32px;border:1px solid rgba(213,162,83,.20);border-radius:8px;background:rgba(5,12,14,.48);color:rgba(239,226,203,.82);padding:6px 9px;cursor:pointer;font:700 .56rem/1 system-ui;letter-spacing:.045em;text-transform:uppercase;white-space:nowrap;backdrop-filter:blur(6px)}
       .meos-office-wayfinding button:hover{color:#f6d59e;border-color:rgba(229,184,110,.58);background:rgba(28,23,16,.72)}
 
-      .meos-office-maddy-dock{position:absolute;z-index:120;left:18px;bottom:18px;width:218px;max-height:224px}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl{position:relative!important;visibility:visible!important;pointer-events:auto!important;width:100%!important;margin:0!important;border:1px solid rgba(213,162,83,.18)!important;border-radius:15px!important;background:linear-gradient(145deg,rgba(5,13,16,.32),rgba(5,13,16,.16))!important;box-shadow:0 12px 30px rgba(0,0,0,.18)!important;backdrop-filter:blur(4px)!important}
+      .meos-office-maddy-dock{position:absolute;z-index:120;left:6.2%;bottom:7.2%;width:min(250px,18vw);max-height:190px;transform:perspective(700px) rotateX(3deg);transform-origin:bottom center}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl{position:relative!important;visibility:visible!important;pointer-events:auto!important;width:100%!important;margin:0!important;border:1px solid rgba(214,174,108,.32)!important;border-radius:12px!important;background:linear-gradient(145deg,rgba(31,27,21,.76),rgba(8,13,14,.72))!important;box-shadow:0 10px 24px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.05)!important;backdrop-filter:blur(8px)!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-presence{padding:10px!important;display:grid!important;grid-template-columns:46px 1fr!important;gap:8px!important;align-items:center!important;overflow:hidden!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-presence-avatar,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-avatar,.meos-office-maddy-dock #meosExecutiveOfficeControl img{max-width:46px!important;max-height:46px!important}
-      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-label,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-select,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-executive-hub-command,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary-row,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-open-hub-button,.meos-office-maddy-dock #meosHallwayMini{display:none!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-executive-hub-command,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-hub-command,.meos-office-maddy-dock #meosExecutiveOfficeControl .meos-open-hub-button,.meos-office-maddy-dock #meosHallwayMini{display:none!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-label{display:block!important;margin-top:2px!important;font-size:.48rem!important;color:rgba(220,231,232,.55)!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-mode-select{display:block!important;width:100%!important;min-height:25px!important;padding:2px 5px!important;font-size:.55rem!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary-row{display:flex!important;gap:4px!important}
+      .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary{min-height:25px!important;padding:4px 6px!important;font-size:.52rem!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-grid{display:grid!important;grid-column:1/-1!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px!important;margin-top:1px!important;width:100%!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-row{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;min-width:0!important;gap:2px!important;padding:4px 5px!important;border:1px solid rgba(125,190,202,.10)!important;border-radius:7px!important;background:rgba(3,11,14,.13)!important;font-size:.50rem!important;line-height:1.1!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-office-status-row>span:first-child{color:rgba(220,231,232,.56)!important;font-size:.48rem!important;letter-spacing:.04em!important}
@@ -3477,6 +3481,27 @@ document
       .meos-office-look.left{left:52px}.meos-office-look.right{right:52px}
       .meos-office-look:disabled{opacity:.22;cursor:default}
       .meos-office-location{position:absolute;z-index:122;left:50%;bottom:12px;transform:translateX(-50%);padding:6px 10px;border-radius:999px;background:rgba(4,10,12,.46);border:1px solid rgba(213,162,83,.15);color:rgba(235,239,236,.62);font:700 .54rem/1 system-ui;letter-spacing:.07em;text-transform:uppercase;pointer-events:none}
+
+      .meos-desk-maddy-text{position:absolute;z-index:118;left:50%;bottom:5.6%;width:min(560px,39vw);height:76px;transform:translateX(-50%) perspective(800px) rotateX(4deg);border:1px solid rgba(220,177,103,.42);border-radius:13px;background:linear-gradient(180deg,rgba(24,22,18,.70),rgba(7,13,14,.80));box-shadow:0 10px 28px rgba(0,0,0,.34),inset 0 0 0 1px rgba(255,255,255,.025);backdrop-filter:blur(8px);display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:10px 12px}
+      .meos-desk-maddy-text::before{content:"TEXT MADDY";position:absolute;left:13px;top:7px;color:#e6bd7b;font:800 .53rem/1 system-ui;letter-spacing:.13em}
+      .meos-desk-maddy-text input{width:100%;height:38px;margin-top:9px;border:1px solid rgba(118,213,224,.26);border-radius:9px;background:rgba(2,9,11,.72);color:#f4f1e9;padding:0 12px;outline:none;font:600 .78rem/1 system-ui;box-shadow:inset 0 0 14px rgba(78,190,207,.045)}
+      .meos-desk-maddy-text input::placeholder{color:rgba(227,237,237,.68)}
+      .meos-desk-maddy-text input:focus{border-color:rgba(228,183,108,.72);box-shadow:0 0 0 2px rgba(228,183,108,.09),inset 0 0 16px rgba(78,190,207,.055)}
+      .meos-desk-maddy-text button{width:42px;height:38px;margin-top:9px;border:1px solid rgba(228,183,108,.46);border-radius:9px;background:linear-gradient(145deg,rgba(77,57,31,.78),rgba(27,23,17,.86));color:#f3d49f;cursor:pointer;font-size:1rem;font-weight:900}
+      .meos-desk-maddy-text button:hover{border-color:rgba(241,202,137,.82);background:linear-gradient(145deg,rgba(100,72,35,.88),rgba(35,27,18,.92))}
+
+      .meos-desk-intake{position:absolute;z-index:118;right:5.6%;bottom:6.5%;width:min(255px,19vw);height:92px;border:1px dashed rgba(222,181,111,.48);border-radius:13px;background:linear-gradient(145deg,rgba(22,21,18,.44),rgba(5,12,13,.38));box-shadow:0 9px 24px rgba(0,0,0,.22);backdrop-filter:blur(6px);display:grid;place-items:center;text-align:center;color:#eee5d7;cursor:pointer;padding:10px;transition:border-color .16s ease,background .16s ease,transform .16s ease}
+      .meos-desk-intake:hover,.meos-desk-intake[data-dragover="true"]{border-color:rgba(241,201,133,.84);background:linear-gradient(145deg,rgba(55,43,26,.60),rgba(7,15,16,.52));transform:translateY(-2px)}
+      .meos-desk-intake strong{display:block;color:#efc985;font:800 .70rem/1.1 system-ui;letter-spacing:.08em;text-transform:uppercase}
+      .meos-desk-intake span{display:block;margin-top:6px;color:rgba(236,240,237,.66);font:600 .58rem/1.25 system-ui}
+      .meos-desk-intake input{display:none!important}
+      .meos-desk-intake-status{position:absolute;left:8px;right:8px;bottom:5px;color:rgba(143,224,197,.82);font:700 .50rem/1 system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+      @media(max-width:1100px){
+        .meos-office-maddy-dock{left:2.5%;width:210px}
+        .meos-desk-maddy-text{width:43vw}
+        .meos-desk-intake{right:2.5%;width:205px}
+      }
 
       @media(max-width:900px){
         .meos-office-bay{width:330px;min-width:280px}
@@ -3511,6 +3536,15 @@ document
       <div id="meosOfficeWayfindingLeft" class="meos-office-wayfinding left" aria-label="Left office surfaces"></div>
       <div id="meosOfficeWayfindingRight" class="meos-office-wayfinding right" aria-label="Right office surfaces"></div>
       <div id="meosImageOfficeMaddyDock" class="meos-office-maddy-dock"></div>
+      <form id="meosDeskMaddyText" class="meos-desk-maddy-text" aria-label="Text Maddy">
+        <input id="meosDeskMaddyInput" type="text" autocomplete="off" placeholder="Talk to Maddy… ask, decide, assign, or work through something." />
+        <button type="submit" aria-label="Send to Maddy" title="Send to Maddy">↑</button>
+      </form>
+      <label id="meosDeskIntake" class="meos-desk-intake" aria-label="Hand files to Maddy">
+        <input id="meosDeskIntakeInput" type="file" multiple />
+        <div><strong>Hand It to Maddy</strong><span>Drop files here · or click to choose</span></div>
+        <small id="meosDeskIntakeStatus" class="meos-desk-intake-status"></small>
+      </label>
       <nav id="meosImageOfficeNav" class="meos-office-nav" aria-label="Executive Office navigation"></nav>
       <button class="meos-office-look left" type="button" aria-label="Look left">‹</button>
       <button class="meos-office-look right" type="button" aria-label="Look right">›</button>
@@ -3562,6 +3596,52 @@ document
     });
 
     viewport.querySelector('#meosImageOfficeMaddyDock').appendChild(maddy);
+
+    /* The desk text surface is only a new office affordance. It delegates to the
+       already-commissioned Maddy Executive Command path instead of inventing a
+       second conversation transport. */
+    const deskTextForm = viewport.querySelector('#meosDeskMaddyText');
+    const deskTextInput = viewport.querySelector('#meosDeskMaddyInput');
+    deskTextForm?.addEventListener('submit', event => {
+      event.preventDefault();
+      const message = String(deskTextInput?.value || '').trim();
+      if (!message) { deskTextInput?.focus(); return; }
+      const commandInput = document.getElementById('meosExecutiveHubInput') || document.getElementById('meosHubCommandInput');
+      const commandSend = document.getElementById('meosExecutiveHubSend') || document.getElementById('meosHubCommandSend');
+      if (!commandInput || !commandSend) {
+        dispatchMEOS('meos:executive-command-requested', { message, source:'executive-desk' });
+      } else {
+        commandInput.value = message;
+        commandInput.dispatchEvent(new Event('input', { bubbles:true }));
+        commandSend.click();
+      }
+      deskTextInput.value = '';
+    });
+
+    /* File intake delegates through MEOS events so the existing ingestion layer
+       remains the authority. We pass the browser File objects; the existing
+       document-intake listener can accept/reroute them without a second uploader. */
+    const intake = viewport.querySelector('#meosDeskIntake');
+    const intakeInput = viewport.querySelector('#meosDeskIntakeInput');
+    const intakeStatus = viewport.querySelector('#meosDeskIntakeStatus');
+    const handFilesToMaddy = files => {
+      const list = Array.from(files || []).filter(Boolean);
+      if (!list.length) return;
+      if (intakeStatus) intakeStatus.textContent = list.length === 1 ? `Received: ${list[0].name}` : `Received ${list.length} files`;
+      dispatchMEOS('meos:document-intake-requested', { files:list, source:'executive-desk', intent:'hand-to-maddy' });
+      dispatchMEOS('meos:maddy-files-received', { count:list.length, names:list.map(file => file.name), source:'executive-desk' });
+    };
+    intakeInput?.addEventListener('change', event => {
+      handFilesToMaddy(event.target.files);
+      event.target.value = '';
+    });
+    ['dragenter','dragover'].forEach(type => intake?.addEventListener(type, event => {
+      event.preventDefault(); event.stopPropagation(); intake.dataset.dragover = 'true';
+    }));
+    ['dragleave','drop'].forEach(type => intake?.addEventListener(type, event => {
+      event.preventDefault(); event.stopPropagation(); intake.dataset.dragover = 'false';
+      if (type === 'drop') handFilesToMaddy(event.dataTransfer?.files);
+    }));
 
     const originalNav = getNavigationArea();
     const nav = viewport.querySelector('#meosImageOfficeNav');
@@ -3801,9 +3881,9 @@ document
       ['Left and right wayfinding mounted', Boolean(scene?.querySelector('#meosOfficeWayfindingLeft button')) && Boolean(scene?.querySelector('#meosOfficeWayfindingRight button'))],
       ['Desk workspace API mounted', Boolean(scene?.MEOSOfficeWorkspace?.sendToDesk) && Boolean(scene?.MEOSOfficeWorkspace?.sendHome)]
     ].map(([name,passed]) => ({name,passed:Boolean(passed)}));
-    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R4',version:DASHBOARD_VERSION,buildId:'EO4115-EXECUTIVE-WINGS-WAYFINDING-MADDY-HOME-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
+    const result = {success:checks.every(c=>c.passed),commission:'006.020D4R5',version:DASHBOARD_VERSION,buildId:'EO4116-INTEGRATED-EXECUTIVE-DESK-CONTROLS-20260814-A',passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);
-    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R4 Executive Wings + Wayfinding + Maddy Home: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.020D4R5 Integrated Executive Desk Controls: ${result.success ? 'PASS' : 'FAIL'} (${result.passed}/${result.total}).`);
     return result;
   }
 
