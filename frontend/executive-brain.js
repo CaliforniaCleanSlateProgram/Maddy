@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.17
- * Build: EB12517-CAPABILITY-MIRROR-ACCEPTANCE-CONTEXT-20260816-A
+ * Version: 1.25.18
+ * Build: EB12518-WHOLE-BODY-CAPABILITY-RECONCILIATION-20260816-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.17";
-  const BUILD_ID = "EB12517-CAPABILITY-MIRROR-ACCEPTANCE-CONTEXT-20260816-A";
+  const VERSION = "1.25.18";
+  const BUILD_ID = "EB12518-WHOLE-BODY-CAPABILITY-RECONCILIATION-20260816-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -7208,6 +7208,60 @@
             null
           );
 
+      /*
+       * Commission 006.024B — Whole-Body Capability Reconciliation
+       *
+       * Provider Manager reports provider capability truth. It is not, by
+       * itself, a complete inventory of Maddy. The mirror therefore reconciles
+       * provider evidence with the live MEOS organ manifest, the Executive
+       * Cabinet/shared-capability runtime, directly callable internal engines,
+       * and Maddy's speech runtime.
+       *
+       * The important epistemic boundary is absence-of-provider !=
+       * absence-of-Maddy. A catalog capability with no registered provider is
+       * UNKNOWN at the whole-body level unless another runtime path establishes
+       * it as AVAILABLE/PROVEN or a direct runtime constraint establishes it as
+       * UNAVAILABLE/PROHIBITED.
+       */
+      const hasOption = key => Object.prototype.hasOwnProperty.call(options, key);
+      const runtimeComponents =
+        options.runtimeComponents && typeof options.runtimeComponents === "object"
+          ? options.runtimeComponents
+          : null;
+      const resolveRuntimeComponent = globalName => {
+        if (runtimeComponents && Object.prototype.hasOwnProperty.call(runtimeComponents, globalName)) {
+          return runtimeComponents[globalName];
+        }
+        return this.resolveComponent(globalName);
+      };
+      const systemManifest = Array.isArray(options.systemManifest)
+        ? this.clone(options.systemManifest)
+        : this.getSystemManifest();
+      const meosRuntime = hasOption("meosRuntime")
+        ? options.meosRuntime
+        : global.MEOS || null;
+      const institutionalCapabilities = Array.isArray(options.institutionalCapabilities)
+        ? this.clone(options.institutionalCapabilities)
+        : this.safe(
+            () => meosRuntime?.getInstitutionalCapabilities?.() || [],
+            []
+          );
+      const officeImplementations = Array.isArray(options.officeImplementations)
+        ? this.clone(options.officeImplementations)
+        : this.safe(
+            () => meosRuntime?.getImplementationPortfolio?.() || [],
+            []
+          );
+      const speechEngine = hasOption("speechEngine")
+        ? options.speechEngine
+        : global.MaddySpeech || null;
+      const speechStatus = hasOption("speechStatus")
+        ? this.clone(options.speechStatus)
+        : this.safe(
+            () => speechEngine?.getStatus?.() || null,
+            null
+          );
+
       const records = new Map();
       const stateRank = {
         prohibited: 70,
@@ -7256,9 +7310,209 @@
         }
       };
 
-      /* Provider Manager's catalog is useful evidence, but registered provider
-       * capabilities are also collected because MEOS intentionally allows
-       * provider-specific capabilities outside the static catalog. */
+      /* Every registered MEOS organ contributes its own bounded capability
+       * evidence. This is intentionally derived from the existing manifest's
+       * purpose text rather than a second handwritten sales catalog. */
+      systemManifest.forEach(item => {
+        add({
+          capabilityId: `meos.organ.${this.normalizeCapabilityMirrorId(item?.globalName || item?.label)}`,
+          label: item?.purpose || item?.label || item?.globalName,
+          state:
+            item?.online === true
+              ? "available"
+              : item?.available === true
+                ? "conditional"
+                : "unavailable",
+          source: "meos-organ-manifest",
+          requirements:
+            item?.online === true
+              ? []
+              : item?.available === true
+                ? ["MEOS organ must return to an online runtime state"]
+                : ["MEOS organ is not present in the current runtime"],
+          evidence: {
+            globalName: item?.globalName || null,
+            component: item?.label || null,
+            purpose: item?.purpose || null,
+            available: item?.available === true,
+            online: item?.online === true,
+            status: item?.status || null,
+            version: item?.version || null
+          }
+        });
+      });
+
+      /* Shared cabinet capabilities are first-class parts of Maddy's operating
+       * body. Their presence is runtime-derived from the commissioned cabinet. */
+      institutionalCapabilities.forEach(item => {
+        const availableTo = Array.isArray(item?.availableTo) ? item.availableTo : [];
+        const availableToMaddy =
+          availableTo.length === 0 ||
+          availableTo.map(value => String(value || "").toLowerCase()).includes("maddy");
+        add({
+          capabilityId: `meos.shared.${item?.id || item?.name}`,
+          label: item?.responsibility || item?.name || item?.id,
+          state: availableToMaddy ? "available" : "conditional",
+          source: "executive-cabinet-shared-capability",
+          requirements: availableToMaddy ? [] : ["shared capability is not currently assigned to Maddy"],
+          evidence: {
+            id: item?.id || null,
+            name: item?.name || null,
+            primarySteward: item?.primarySteward || null,
+            availableTo,
+            executionPolicy: item?.executionPolicy || null
+          }
+        });
+      });
+
+      /* Cabinet implementation state is preserved without pretending that a
+       * planned/partial office is fully commissioned. */
+      officeImplementations.forEach(item => {
+        const stage = String(item?.stage || "").toLowerCase();
+        const live = stage.includes("live") || stage.includes("commissioned");
+        const plannedOrPartial = stage.includes("planned") || stage.includes("partial");
+        add({
+          capabilityId: `meos.office.${item?.id || item?.name}`,
+          label: item?.office || item?.name || item?.id,
+          state: live ? "available" : plannedOrPartial ? "conditional" : "unknown",
+          source: "executive-cabinet-implementation",
+          requirements: live
+            ? (stage.includes("partial") ? ["office is live-partial; claims must stay within its commissioned live systems"] : [])
+            : ["office implementation must reach a live/commissioned stage"],
+          evidence: {
+            id: item?.id || null,
+            stage: item?.stage || null,
+            progress: Number.isFinite(Number(item?.progress)) ? Number(item.progress) : null,
+            owns: Array.isArray(item?.owns) ? item.owns : [],
+            liveSystems: Array.isArray(item?.liveSystems) ? item.liveSystems : [],
+            nextMilestone: item?.nextMilestone || null
+          }
+        });
+      });
+
+      /* Direct internal runtime bridges reconcile canonical capability names
+       * with actual callable MEOS organs. These do not grant new capability;
+       * they merely expose capability already present in current runtime APIs. */
+      const institutionalReasoning = resolveRuntimeComponent("InstitutionalReasoning");
+      const reasoningManifest = systemManifest.find(item => item?.globalName === "InstitutionalReasoning");
+      const reasoningCallable = Boolean(
+        reasoningManifest?.online === true &&
+        institutionalReasoning &&
+        typeof institutionalReasoning.analyze === "function"
+      );
+      if (reasoningCallable) {
+        add({
+          capabilityId: "general-reasoning",
+          label: "Evidence-grounded executive analysis and reasoning",
+          state: "available",
+          source: "meos-internal-runtime",
+          evidence: {
+            organ: "InstitutionalReasoning",
+            method: "analyze",
+            modes: institutionalReasoning.REASONING_MODES || null
+          }
+        });
+        add({
+          capabilityId: "synthesis",
+          label: "Cross-evidence executive synthesis",
+          state: "available",
+          source: "meos-internal-runtime",
+          evidence: { organ: "InstitutionalReasoning", method: "analyze" }
+        });
+
+        const reasoningModes = institutionalReasoning.REASONING_MODES || {};
+        const modeAliases = [
+          ["COMPLIANCE", "compliance-analysis", "Compliance and governance analysis"],
+          ["FINANCIAL", "financial-analysis", "Financial analysis"],
+          ["OPERATIONAL", "operations-analysis", "Operational analysis"]
+        ];
+        modeAliases.forEach(([modeKey, capabilityId, label]) => {
+          if (reasoningModes?.[modeKey]) {
+            add({
+              capabilityId,
+              label,
+              state: "available",
+              source: "meos-internal-runtime",
+              evidence: {
+                organ: "InstitutionalReasoning",
+                method: "analyze",
+                reasoningMode: reasoningModes[modeKey]
+              }
+            });
+          }
+        });
+      }
+
+      const resourceAcquisition =
+        resolveRuntimeComponent("ExecutiveResourceAcquisitionEngine") ||
+        resolveRuntimeComponent("MEOSExecutiveResourceAcquisitionEngine");
+      if (resourceAcquisition && typeof resourceAcquisition.decide === "function") {
+        add({
+          capabilityId: "eligibility-analysis",
+          label: "Eligibility and qualification analysis for resource opportunities",
+          state: "available",
+          source: "meos-internal-runtime",
+          evidence: {
+            organ: resourceAcquisition.name || "ExecutiveResourceAcquisitionEngine",
+            method: "decide",
+            version: resourceAcquisition.version || null
+          }
+        });
+      }
+
+      const financeRuntime = meosRuntime?.finance || null;
+      const financeMethods = ["getPosition", "getBudgetPerformance", "getROI", "getFinancialHealth"];
+      const liveFinanceMethods = financeMethods.filter(method => typeof financeRuntime?.[method] === "function");
+      if (liveFinanceMethods.length >= 3) {
+        add({
+          capabilityId: "financial-analysis",
+          label: "Local financial position, budget, ROI, and financial-health analysis",
+          state: "available",
+          source: "meos-finance-runtime",
+          evidence: { methods: liveFinanceMethods, version: financeRuntime?.version || null }
+        });
+      }
+
+      if (meosRuntime && typeof meosRuntime.createTask === "function" && typeof meosRuntime.getCabinetOffices === "function") {
+        add({
+          capabilityId: "executive-office-work",
+          label: "Create and coordinate work inside commissioned Executive Offices",
+          state: "available",
+          source: "executive-cabinet-runtime",
+          evidence: {
+            methods: ["createTask", "getCabinetOffices"],
+            cabinetOfficeCount: this.safe(() => meosRuntime.getCabinetOffices().length, null)
+          }
+        });
+      }
+
+      if (speechStatus?.supported) {
+        const speechCapabilities = [
+          ["speech.remote-tts", "Remote text-to-speech rendering", speechStatus.supported.remoteTts === true],
+          ["speech.browser-speech", "Browser speech rendering fallback", speechStatus.supported.browserSpeech === true],
+          ["speech.listening", "Spoken-input listening", speechStatus.supported.listening === true],
+          ["speech.audio", "Audio playback", speechStatus.supported.audio === true]
+        ];
+        speechCapabilities.forEach(([capabilityId, label, supported]) => {
+          add({
+            capabilityId,
+            label,
+            state: supported ? "available" : "unavailable",
+            source: "maddy-speech-runtime",
+            requirements: supported ? [] : ["current speech runtime/browser does not expose this capability"],
+            evidence: {
+              supported,
+              version: speechStatus.version || null,
+              voiceEngineVersion: speechStatus.voiceEngineVersion || null
+            }
+          });
+        });
+      }
+
+      /* Provider Manager's catalog is useful provider evidence, but it does not
+       * define the whole of Maddy. Registered provider capabilities are also
+       * collected because MEOS intentionally allows provider-specific
+       * capabilities outside the static catalog. */
       providerCatalog.forEach(item => {
         const registered = Array.isArray(item?.registeredProviders)
           ? item.registeredProviders
@@ -7274,7 +7528,7 @@
               ? "available"
               : registered.length > 0
                 ? "conditional"
-                : "unavailable",
+                : "unknown",
           source: "provider-manager-catalog",
           providers: available.length ? available : registered,
           requirements:
@@ -7282,7 +7536,7 @@
               ? []
               : registered.length > 0
                 ? ["registered provider must become selectable/healthy"]
-                : ["no registered provider currently supplies this capability"],
+                : ["no external provider currently supplies this capability; absence of a provider is not evidence that whole-MEOS capability is unavailable"],
           evidence: {
             registeredProviders: registered,
             availableProviders: available,
@@ -7381,6 +7635,16 @@
         truthStates: [...CAPABILITY_TRUTH_STATES],
         providerIndependent: true,
         runtimeDerived: true,
+        wholeBodyReconciled: true,
+        evidenceSources: {
+          meosOrgans: systemManifest.length,
+          institutionalCapabilities: institutionalCapabilities.length,
+          executiveOffices: officeImplementations.length,
+          providerCatalogCapabilities: providerCatalog.length,
+          registeredProviders: providers.length,
+          workspaceRuntimeObserved: Boolean(workspaceStatus),
+          speechRuntimeObserved: Boolean(speechStatus)
+        },
         creativeReasoningCannotPromoteCapability: true,
         providerSuggestionIsNotCapabilityEvidence: true,
         capabilityIsNotAuthority: true,
@@ -8086,14 +8350,76 @@
     },
 
     runCapabilityMirrorAcceptance() {
+      const fixtureReasoning = {
+        name: "Fixture Institutional Reasoning",
+        version: "fixture",
+        REASONING_MODES: {
+          COMPLIANCE: "compliance",
+          FINANCIAL: "financial",
+          OPERATIONAL: "operational"
+        },
+        analyze() { return { success: true }; }
+      };
+      const fixtureResourceAcquisition = {
+        name: "Fixture Resource Acquisition",
+        version: "fixture",
+        decide() { return { decision: "research" }; }
+      };
+      const fixtureMEOS = {
+        finance: {
+          version: "fixture",
+          getPosition() {},
+          getBudgetPerformance() {},
+          getROI() {},
+          getFinancialHealth() {}
+        },
+        getInstitutionalCapabilities() {
+          return [
+            {
+              id: "research-intelligence",
+              name: "Research & Intelligence",
+              responsibility: "Shared research and intelligence",
+              availableTo: ["maddy"]
+            }
+          ];
+        },
+        getImplementationPortfolio() {
+          return [
+            {
+              id: "archie",
+              office: "Office of Finance & Economic Stewardship",
+              stage: "commissioned-local",
+              progress: 58,
+              liveSystems: ["MEOSFinance"]
+            },
+            {
+              id: "harmony",
+              office: "Office of Community Relations",
+              stage: "planned",
+              progress: 28,
+              liveSystems: []
+            }
+          ];
+        },
+        getCabinetOffices() { return [{ id: "archie" }]; },
+        createTask() { return { success: true }; }
+      };
+
       const fixtureAwareness = this.buildCapabilityAwareness({
         providerCapabilities: [
           {
             id: "general-reasoning",
             description: "General analysis and reasoning",
-            registeredProviders: ["fixture-llm"],
-            availableProviders: ["fixture-llm"],
-            available: true
+            registeredProviders: [],
+            availableProviders: [],
+            available: false
+          },
+          {
+            id: "vision",
+            description: "Image and visual analysis",
+            registeredProviders: [],
+            availableProviders: [],
+            available: false
           }
         ],
         providers: [
@@ -8112,6 +8438,43 @@
           registered: true,
           readOnly: true,
           capabilities: ["workspace.file.search", "workspace.file.research"]
+        },
+        systemManifest: [
+          {
+            globalName: "InstitutionalReasoning",
+            label: "Institutional Reasoning",
+            purpose: "Applies evidence and governance to reasoning.",
+            available: true,
+            online: true,
+            status: "online",
+            version: "fixture"
+          },
+          {
+            globalName: "ExecutiveMonitoring",
+            label: "Executive Monitoring",
+            purpose: "Watches risks, deadlines, stalled work, and approvals.",
+            available: true,
+            online: true,
+            status: "online",
+            version: "fixture"
+          }
+        ],
+        runtimeComponents: {
+          InstitutionalReasoning: fixtureReasoning,
+          ExecutiveResourceAcquisitionEngine: fixtureResourceAcquisition
+        },
+        meosRuntime: fixtureMEOS,
+        institutionalCapabilities: fixtureMEOS.getInstitutionalCapabilities(),
+        officeImplementations: fixtureMEOS.getImplementationPortfolio(),
+        speechStatus: {
+          version: "fixture",
+          voiceEngineVersion: "fixture",
+          supported: {
+            remoteTts: true,
+            browserSpeech: true,
+            listening: true,
+            audio: true
+          }
         }
       });
 
@@ -8121,20 +8484,23 @@
       const workspaceWrite = this.assessCapability("workspace.file.write", {
         awareness: fixtureAwareness
       });
-      const reasoning = this.assessCapability("general-reasoning", {
-        awareness: fixtureAwareness
-      });
-      const cooking = this.assessCapability("physical.cooking", {
-        awareness: fixtureAwareness
-      });
-      const scheduling = this.assessCapability("customer.crew-scheduling", {
-        awareness: fixtureAwareness
-      });
+      const reasoning = this.assessCapability("general-reasoning", { awareness: fixtureAwareness });
+      const compliance = this.assessCapability("compliance-analysis", { awareness: fixtureAwareness });
+      const finance = this.assessCapability("financial-analysis", { awareness: fixtureAwareness });
+      const operations = this.assessCapability("operations-analysis", { awareness: fixtureAwareness });
+      const eligibility = this.assessCapability("eligibility-analysis", { awareness: fixtureAwareness });
+      const officeWork = this.assessCapability("executive-office-work", { awareness: fixtureAwareness });
+      const monitoringOrgan = this.assessCapability("meos.organ.executivemonitoring", { awareness: fixtureAwareness });
+      const sharedResearch = this.assessCapability("meos.shared.research-intelligence", { awareness: fixtureAwareness });
+      const speechListening = this.assessCapability("speech.listening", { awareness: fixtureAwareness });
+      const externalVisionOnly = this.assessCapability("vision", { awareness: fixtureAwareness });
+      const cooking = this.assessCapability("physical.cooking", { awareness: fixtureAwareness });
+      const scheduling = this.assessCapability("customer.crew-scheduling", { awareness: fixtureAwareness });
       const selfModel = this.buildSelfModelProjection({
-        reason: "commission-006.024A1-capability-mirror-acceptance-context-repair"
+        reason: "commission-006.024B-whole-body-capability-reconciliation"
       });
       const providerInstructions = this.buildProviderInstructions({
-        text: "Capability Mirror acceptance fixture",
+        text: "Capability Mirror whole-body acceptance fixture",
         classification: { type: REQUEST_TYPES.SELF },
         startup: {
           identity: this.buildIdentityContext(),
@@ -8151,44 +8517,68 @@
 
       const checks = [
         {
-          name: "Capability Mirror has explicit truth states and is runtime-derived",
+          name: "Capability Mirror is runtime-derived and whole-body reconciled",
           passed:
             fixtureAwareness?.schema === "meos.maddy.capability-awareness.v1" &&
             fixtureAwareness?.runtimeDerived === true &&
+            fixtureAwareness?.wholeBodyReconciled === true &&
             CAPABILITY_TRUTH_STATES.every(state => fixtureAwareness.truthStates.includes(state))
         },
         {
-          name: "Connected read-only Workspace is recognized as a real available capability",
+          name: "Provider absence alone no longer declares whole-Maddy capability unavailable",
           passed:
-            workspaceRead?.state === "available" &&
-            workspaceRead?.current === true
+            externalVisionOnly?.state === "unknown" &&
+            externalVisionOnly?.current === false
         },
         {
-          name: "Read-only Workspace does not falsely claim user-file write capability",
-          passed:
-            workspaceWrite?.state === "unavailable" &&
-            workspaceWrite?.current === false
+          name: "Internal Institutional Reasoning reconciles provider-level general reasoning absence",
+          passed: reasoning?.state === "available" && reasoning?.current === true
         },
         {
-          name: "Available provider capability is positively recognized",
+          name: "Declared internal reasoning modes establish compliance financial and operational analysis",
           passed:
-            reasoning?.state === "available" &&
-            reasoning?.current === true
+            compliance?.state === "available" &&
+            finance?.state === "available" &&
+            operations?.state === "available"
+        },
+        {
+          name: "Resource Acquisition runtime establishes eligibility analysis",
+          passed: eligibility?.state === "available"
+        },
+        {
+          name: "Executive Cabinet runtime establishes executive-office work",
+          passed: officeWork?.state === "available"
+        },
+        {
+          name: "Online MEOS organs appear in Maddy's mirror as bounded organ capabilities",
+          passed: monitoringOrgan?.state === "available" && monitoringOrgan?.current === true
+        },
+        {
+          name: "Shared Executive Cabinet capabilities are visible to Maddy",
+          passed: sharedResearch?.state === "available"
+        },
+        {
+          name: "Maddy Speech runtime contributes actual listening capability",
+          passed: speechListening?.state === "available"
+        },
+        {
+          name: "Connected read-only Workspace remains a real available capability",
+          passed: workspaceRead?.state === "available" && workspaceRead?.current === true
+        },
+        {
+          name: "Read-only Workspace still does not claim user-file write capability",
+          passed: workspaceWrite?.state === "unavailable" && workspaceWrite?.current === false
         },
         {
           name: "Unsupported physical cooking remains unknown rather than imagined into capability",
-          passed:
-            cooking?.state === "unknown" &&
-            cooking?.current === false
+          passed: cooking?.state === "unknown" && cooking?.current === false
         },
         {
           name: "Unsupported customer crew scheduling remains unknown without a verified execution path",
-          passed:
-            scheduling?.state === "unknown" &&
-            scheduling?.current === false
+          passed: scheduling?.state === "unknown" && scheduling?.current === false
         },
         {
-          name: "Creative/provider reasoning is explicitly forbidden from promoting capability truth",
+          name: "Creative/provider reasoning remains forbidden from promoting capability truth",
           passed:
             fixtureAwareness?.creativeReasoningCannotPromoteCapability === true &&
             fixtureAwareness?.providerSuggestionIsNotCapabilityEvidence === true
@@ -8202,16 +8592,14 @@
         },
         {
           name: "Human approval boundary remains intact",
-          passed:
-            fixtureAwareness?.humanApprovalRequiredForExternalAction === true
+          passed: fixtureAwareness?.humanApprovalRequiredForExternalAction === true
         },
         {
-          name: "Maddy's self-model now includes current capability awareness",
-          passed:
-            selfModel?.capabilityAwareness?.schema === "meos.maddy.capability-awareness.v1"
+          name: "Maddy's persistent self-model still includes capability awareness",
+          passed: selfModel?.capabilityAwareness?.schema === "meos.maddy.capability-awareness.v1"
         },
         {
-          name: "Advisory providers receive Maddy's bounded capability mirror without becoming Maddy",
+          name: "Advisory providers receive the bounded mirror without becoming Maddy",
           passed:
             providerInstructions?.role?.includes("not Maddy") &&
             providerInstructions?.maddySelfModel?.capabilityAwareness?.schema ===
@@ -8222,12 +8610,12 @@
       const passed = checks.every(item => item.passed);
       console.table(checks);
       console.info(
-        `[MEOS ${this.version}] Commission 006.024A1 Capability Mirror Acceptance Context Repair: ${passed ? "PASS" : "FAIL"} (${checks.filter(item => item.passed).length}/${checks.length}).`
+        `[MEOS ${this.version}] Commission 006.024B Whole-Body Capability Reconciliation: ${passed ? "PASS" : "FAIL"} (${checks.filter(item => item.passed).length}/${checks.length}).`
       );
 
       return {
         success: passed,
-        commission: "006.024A1",
+        commission: "006.024B",
         schema: "meos.maddy.capability-mirror.acceptance.v1",
         version: this.version,
         buildId: this.buildId,
