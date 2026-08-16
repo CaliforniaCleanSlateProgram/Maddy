@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- Commission 006.019E3B2 — Persistent Tour Progress + Cinematic Dialogue Handoff
-Build: AETC102-PERSISTENT-PROGRESS-CINEMATIC-HANDOFF-20260813-A
-Consumes commissioned 006.019E3A bounded prospect-tour reasoning. -->
+<!-- Commission 006.023F2 — Commercial Synchronization Conversion Path
+Build: ET023F2-CAPTION-EYELINE-PRICING-PATH-20260815-A
+Consumes commissioned 006.023F commercial synchronization reasoning. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -35,15 +35,19 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
 .composer button{height:48px;border:1px solid #c58f3d;border-radius:8px;background:linear-gradient(90deg,#b77c30,#dcae63);color:#15120e;padding:0 18px;font:inherit;font-size:13px;font-weight:900;cursor:pointer}
 .composer button:disabled{opacity:.55;cursor:wait}
 .hint{grid-column:1/-1;margin:0;color:#bdb8af;font-size:10.5px;line-height:1.4}
-.advance{position:absolute;z-index:6;right:4%;bottom:4%;display:none;min-height:46px;padding:0 18px;align-items:center;border-radius:8px;border:1px solid #d6a24d;background:rgba(12,11,9,.9);color:#edbd70;font-size:12px;font-weight:900;cursor:pointer}
-.advance.show{display:flex}
+.conversion-path{display:none;margin:14px auto 0;padding-top:13px;border-top:1px solid rgba(229,178,95,.28);pointer-events:auto}
+.conversion-path.show{display:block}
+.conversion-kicker{display:block;margin-bottom:9px;color:#ded8cf;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:11px;font-weight:700;letter-spacing:.02em}
+.pricing-cta{min-height:48px;padding:0 22px;border:1px solid #d6a24d;border-radius:8px;background:linear-gradient(90deg,#b77c30,#dcae63);color:#15120e;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;font-weight:900;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,.30)}
+.pricing-cta:hover{filter:brightness(1.06)}
+.pricing-cta:focus-visible{outline:3px solid rgba(229,178,95,.30);outline-offset:3px}
+.keep-talking{display:block;margin-top:8px;color:#aaa49b;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:10px}
 @media(max-width:780px){
  .hero{object-position:58% center}
  .caption-wrap{left:5%;right:5%;bottom:30%}
  .you{left:5%;right:5%;bottom:42%}
  .composer{bottom:2%;grid-template-columns:1fr}
  .composer button{width:100%}
- .advance{right:4%;bottom:20%}
  .office-chip{left:16px;top:16px}
  .back{right:16px;top:16px}
 }
@@ -64,6 +68,11 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
    <div id="maddyCaption" class="caption">
      <span class="speaker">Maddy</span>
      <span id="words" class="words">Come on. Let me show you how this place works — and we'll keep what you told me in mind as we go.</span>
+     <div id="conversionPath" class="conversion-path" aria-live="polite">
+       <span class="conversion-kicker">Ready to take the next step?</span>
+       <button id="pricingCta" class="pricing-cta" type="button">LET'S GO OVER PRICING →</button>
+       <span class="keep-talking">Or keep talking with Maddy.</span>
+     </div>
    </div>
  </div>
 
@@ -73,7 +82,6 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
    <p id="hint" class="hint">Text-only tour. Maddy asks only what can change the route, recommendation, or next step.</p>
  </form>
 
- <button id="advance" class="advance" type="button">Keep Walking →</button>
 </main>
 <script>
 (()=>{
@@ -87,7 +95,8 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
  const send=document.getElementById("send");
  const hint=document.getElementById("hint");
  const officeChip=document.getElementById("officeChip");
- const advance=document.getElementById("advance");
+ const conversionPath=document.getElementById("conversionPath");
+ const pricingCta=document.getElementById("pricingCta");
 
  let turn=1;
  let summary="";
@@ -95,6 +104,8 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
  let introIntent="";
  let initialName="";
  let readyToClose=false;
+ let commercialMove="understand";
+ let pricingReady=false;
 
  try {
    const raw=sessionStorage.getItem("meos.prospect.intent");
@@ -128,10 +139,37 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
    await wait(180);
  }
 
+ function setPricingPath(visible){
+   pricingReady=Boolean(visible);
+   conversionPath.classList.toggle("show",pricingReady);
+   if(pricingReady){
+     hint.textContent="Keep talking with Maddy, or go over pricing when you're ready.";
+   }
+ }
+
+ function persistTour(extra={}){
+   try{
+     sessionStorage.setItem("meos.prospect.tour",JSON.stringify({
+       turn,summary,office,introIntent,readyToClose,commercialMove,pricingReady,
+       updatedAt:new Date().toISOString(),...extra
+     }));
+   }catch(_e){}
+ }
+
+ function goToOwnership(){
+   if(send.disabled) return;
+   readyToClose=true;
+   pricingReady=true;
+   persistTour({readyToClose:true,pricingReady:true,commercialMove:commercialMove||"close"});
+   location.assign("/your-office.html");
+ }
+
  async function gracefulFallback(){
    await transitionMaddy("I’ve got enough context to keep us moving. I’ll use what you’ve told me as we go.");
-   advance.classList.add("show");
-   hint.textContent="Keep walking when you’re ready, or tell Maddy something else that matters.";
+   if(turn >= 4 || summary) setPricingPath(true);
+   hint.textContent=pricingReady
+     ? "Keep talking with Maddy, or go over pricing when you're ready."
+     : "Reply to Maddy when you want to keep going.";
  }
 
  async function submitTurn(event){
@@ -171,21 +209,24 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
      officeChip.textContent=office+" Office";
 
      input.placeholder="Reply to Maddy…";
-     if(!readyToClose) hint.textContent="Reply to Maddy when you want to keep going.";
+     commercialMove=String(judgment.commercialMove || commercialMove || "understand");
+     const explicitPricingReady=judgment.pricingReady === true;
+     const closeMove=commercialMove === "close";
+     const ownershipStage=judgment.commercialStage === "ownership";
+     const hardCeiling=turn >= Number(result.maxTurns||6);
 
-     if(judgment.advance || turn >= Number(result.maxTurns||6)){
+     // 023F: Maddy may expose pricing once value/confidence is sufficient, but
+     // she never forces the customer forward. Explicit buying intent makes the
+     // path immediately obvious and ends further selling.
+     if(explicitPricingReady || closeMove || ownershipStage || hardCeiling){
        readyToClose=true;
-       advance.textContent="See Your Office →";
-       advance.classList.add("show");
-       hint.textContent="Maddy has enough context. The next stop is yours.";
+       setPricingPath(true);
+     } else {
+       hint.textContent="Reply to Maddy when you want to keep going.";
      }
 
      turn += 1;
-     try {
-       sessionStorage.setItem("meos.prospect.tour",JSON.stringify({
-         turn,summary,office,introIntent,updatedAt:new Date().toISOString()
-       }));
-     } catch(_e) {}
+     persistTour();
    } catch(error) {
      hint.textContent=error?.message || "Maddy couldn't finish that thought.";
      await gracefulFallback();
@@ -196,24 +237,8 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
  }
 
  form.addEventListener("submit",submitTurn);
- advance.addEventListener("click",()=>{
-   if(send.disabled) return;
-   if(readyToClose){
-     try{
-       sessionStorage.setItem("meos.prospect.tour",JSON.stringify({
-         turn,summary,office,introIntent,readyToClose:true,updatedAt:new Date().toISOString()
-       }));
-     }catch(_e){}
-     location.assign("/your-office.html");
-     return;
-   }
-   // A navigation click does not authorize a second paid Maddy answer.
-   // The most recent prospect judgment already owns the route.
-   stage.classList.add("stage-shift");
-   window.setTimeout(()=>stage.classList.remove("stage-shift"),260);
-   input.focus();
-   hint.textContent="Reply to Maddy when you want to keep going.";
- });
+ pricingCta.addEventListener("click",goToOwnership);
+
  input.focus();
 })();
 </script>
