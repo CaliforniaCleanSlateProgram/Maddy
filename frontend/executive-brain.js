@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.20
- * Build: EB12520-ADVISER-ONLY-RESPONSE-OWNERSHIP-20260816-A
+ * Version: 1.25.21
+ * Build: EB12521-OBJECTIVE-BOUND-SEMANTIC-JUDGMENT-20260816-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.20";
-  const BUILD_ID = "EB12520-ADVISER-ONLY-RESPONSE-OWNERSHIP-20260816-A";
+  const VERSION = "1.25.21";
+  const BUILD_ID = "EB12521-OBJECTIVE-BOUND-SEMANTIC-JUDGMENT-20260816-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -983,6 +983,130 @@
 
 
     /*
+     * Commission 006.025B4 — Objective-Bound Semantic Judgment
+     *
+     * Institutional Reasoning is intentionally formal and governance-heavy.
+     * Its rationale is an internal decision basis, not automatically the best
+     * semantic answer to a human conversational objective.  This bridge keeps
+     * that rationale intact while letting Executive Brain state its own
+     * objective-bound position without borrowing provider language.
+     *
+     * The response-form detector is grammatical, not domain-specific: it does
+     * not look for construction, crews, grants, sales, or any customer phrase.
+     * It only recognizes whether the final human clause asks Maddy directly
+     * whether she can/will/could perform or help with an objective.
+     */
+    inferObjectiveResponseForm(text = "") {
+      const normalized = String(text || "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (!normalized) return "objective";
+
+      const clauses = normalized
+        .split(/(?<=[.!?])\s+/)
+        .map(item => item.trim())
+        .filter(Boolean);
+      const questionClause = [...clauses]
+        .reverse()
+        .find(item => /\?\s*$/.test(item)) || normalized;
+      const cleaned = questionClause
+        .replace(/^[^a-z0-9]+/i, "")
+        .trim();
+
+      if (/^(?:can|could|would|will|may)\s+(?:you|maddy)\b/i.test(cleaned)) {
+        return "maddy-assistance-question";
+      }
+
+      if (/^(?:should|would)\s+(?:we|i)\b/i.test(cleaned)) {
+        return "decision-question";
+      }
+
+      if (/^(?:who|what|when|where|why|how|which)\b/i.test(cleaned)) {
+        return "open-question";
+      }
+
+      return /\?\s*$/.test(cleaned)
+        ? "question"
+        : "objective";
+    },
+
+    buildObjectiveBoundResponseRecommendation(requestPackage = {}, reasoning = null, unknowns = []) {
+      const base = this.clone(reasoning?.recommendation || null);
+      if (!base || typeof base !== "object") return base;
+
+      const responseForm = this.inferObjectiveResponseForm(
+        requestPackage?.request?.text || ""
+      );
+      const state = String(base.state || "").trim().toLowerCase();
+      const internalRationale = this.textContent(base.rationale || "").trim();
+      const materialUnknowns = Array.isArray(unknowns)
+        ? unknowns.filter(item => item?.blocking === true).length
+        : 0;
+      const riskCount = Array.isArray(reasoning?.risks)
+        ? reasoning.risks.filter(item => item?.severity === "high").length
+        : 0;
+      const conflictCount = Array.isArray(reasoning?.conflicts)
+        ? reasoning.conflicts.filter(item => item?.requiresReview !== false).length
+        : 0;
+      const conditionCount = Array.isArray(base.conditions)
+        ? base.conditions.length
+        : 0;
+
+      let directAnswer = null;
+      let position = state || "unknown";
+      let rationale = internalRationale;
+
+      if (responseForm === "maddy-assistance-question") {
+        if (state === "proceed") {
+          directAnswer = true;
+          rationale =
+            "Yes. I can help with that. The current reasoning supports a path forward without requiring me to invent an execution capability.";
+        } else if (state === "proceed-with-conditions") {
+          directAnswer = true;
+          const bounded = [
+            conflictCount > 0 ? "conflicts" : "",
+            riskCount > 0 ? "risks" : "",
+            materialUnknowns > 0 ? "unknowns" : "",
+            conditionCount > 0 ? "conditions" : ""
+          ].filter(Boolean);
+          const boundary = bounded.length > 0
+            ? ` I still need to keep the material ${bounded.join(", ")} bounded before I claim a specific execution path.`
+            : " I still need to keep the remaining conditions explicit before I claim a specific execution path.";
+          rationale = `Yes—with conditions. I can help with that.${boundary}`;
+        } else if (state === "hold") {
+          directAnswer = false;
+          rationale =
+            "Not responsibly yet. I can reason through the objective, but the current evidence is below the threshold I need before I claim a supported execution path.";
+        } else if (state === "insufficient-evidence") {
+          directAnswer = null;
+          rationale =
+            "I can help investigate it, but I do not know enough yet to claim a supported execution path.";
+        }
+      }
+
+      return {
+        ...base,
+        rationale,
+        internalRationale: internalRationale || null,
+        objectiveBound: true,
+        responseForm,
+        semanticJudgment: {
+          schema: "meos.maddy.objective-bound-judgment.v1",
+          objective: requestPackage?.request?.text || null,
+          position,
+          directAnswer,
+          materialUnknownCount: materialUnknowns,
+          highRiskCount: riskCount,
+          materialConflictCount: conflictCount,
+          conditionCount,
+          providerLanguageRequired: false,
+          generatedBy: "maddy-executive-brain"
+        }
+      };
+    },
+
+    /*
      * Commission 006.025B — Adviser-Only Response Ownership
      *
      * Providers may contribute analysis, alternatives, candidate language, and
@@ -1032,7 +1156,11 @@
         firstAdviceObject?.suggestion ||
         null;
 
-      const maddyRecommendation = reasoning?.recommendation || null;
+      const maddyRecommendation = this.buildObjectiveBoundResponseRecommendation(
+        requestPackage,
+        reasoning,
+        maddyUnknowns
+      );
       const maddyFindings = Array.isArray(reasoning?.findings)
         ? reasoning.findings
         : [];
@@ -1125,6 +1253,130 @@
       });
       this.emit("brain:semantic-response-owned", decision);
       return this.clone(decision);
+    },
+
+
+    runObjectiveBoundSemanticJudgmentAcceptanceTest() {
+      const assistancePrepared = {
+        request: {
+          id: "b4-assistance-request",
+          text: "I manage several field teams. Can you help me keep up with them?",
+          requiresApproval: false
+        },
+        cognition: {
+          cognitionId: "b4-cognition",
+          reasoning: {
+            recommendation: {
+              state: "proceed-with-conditions",
+              confidence: 0.77,
+              rationale:
+                "The institutional record supports movement, but material conflicts or risks must be controlled first.",
+              conditions: ["Confirm critical dependencies."],
+              executiveApprovalRequired: true
+            },
+            findings: [],
+            options: [],
+            risks: [{ severity: "high", title: "Fixture risk" }],
+            conflicts: [{ requiresReview: true, summary: "Fixture conflict" }]
+          },
+          unknowns: [{ blocking: true, text: "Fixture unknown" }],
+          dispatchReadiness: { authorityRequired: true }
+        },
+        localContext: { evidence: [] },
+        selfModel: {}
+      };
+
+      const fakeAdviser = {
+        success: true,
+        answer:
+          "I definitely have a Crew Board with a Nudge button and can text every crew lead automatically."
+      };
+      const result = this.reconcileAdviserResult(
+        assistancePrepared,
+        fakeAdviser,
+        { acceptanceTest: true }
+      );
+      const rationale = result?.recommendation?.rationale || "";
+      const internalRationale = result?.recommendation?.internalRationale || "";
+
+      const unrelatedPrepared = this.clone(assistancePrepared);
+      unrelatedPrepared.request.text = "What evidence supports the current position?";
+      const unrelated = this.reconcileAdviserResult(
+        unrelatedPrepared,
+        fakeAdviser,
+        { acceptanceTest: true }
+      );
+
+      const checks = [
+        {
+          name: "Assistance objective is recognized grammatically without domain phrases",
+          passed:
+            result?.recommendation?.responseForm === "maddy-assistance-question"
+        },
+        {
+          name: "Maddy directly answers a supported assistance objective",
+          passed:
+            result?.recommendation?.semanticJudgment?.directAnswer === true &&
+            /^Yes\b/i.test(rationale)
+        },
+        {
+          name: "Objective-bound answer does not expose generic institutional rationale",
+          passed:
+            !/institutional record supports movement/i.test(rationale)
+        },
+        {
+          name: "Internal institutional rationale remains preserved as reasoning basis",
+          passed:
+            /institutional record supports movement/i.test(internalRationale)
+        },
+        {
+          name: "Material uncertainty remains bounded instead of silencing the answer",
+          passed:
+            result?.recommendation?.semanticJudgment?.materialUnknownCount === 1 &&
+            /unknowns/i.test(rationale)
+        },
+        {
+          name: "Provider candidate language is not required to create Maddy judgment",
+          passed:
+            result?.recommendation?.semanticJudgment?.providerLanguageRequired === false
+        },
+        {
+          name: "Fake provider capability remains adviser candidate only",
+          passed:
+            result?.adviser?.candidateLanguage?.includes("Crew Board") === true &&
+            !rationale.includes("Crew Board") &&
+            result?.adviser?.providerOutputIsMaddyBelief === false &&
+            result?.adviser?.providerOutputIsFinalSpeech === false
+        },
+        {
+          name: "Non-assistance open question is not forced into a yes/no assistance answer",
+          passed:
+            unrelated?.recommendation?.responseForm === "open-question" &&
+            !/^Yes\b/i.test(unrelated?.recommendation?.rationale || "")
+        },
+        {
+          name: "External action authority remains ungranted",
+          passed:
+            result?.authority?.externalActionGrantedByResponse === false &&
+            result?.authority?.providerCanGrantAuthority === false
+        }
+      ];
+
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.025B4 Objective-Bound Semantic Judgment: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+
+      return {
+        success: passed === checks.length,
+        commission: "006.025B4",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        total: checks.length,
+        checks
+      };
     },
 
 
