@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.66";
+const VERSION = "2.10.67";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7319,17 +7319,19 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.023F";
-const PROSPECT_TOUR_VERSION = "1.5.0";
+const PROSPECT_TOUR_COMMISSION = "006.023F1";
+const PROSPECT_TOUR_VERSION = "1.5.1";
 const PROSPECT_TOUR_BUILD_ID =
-  "PT150-COMMERCIAL-SYNCHRONIZATION-20260815-A";
+  "PT151-REASONING-HEADROOM-RUNTIME-RESILIENCE-20260815-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
 const PROSPECT_TOUR_MAX_INPUT_CHARS = 900;
 const PROSPECT_TOUR_MAX_CONTEXT_CHARS = 1800;
-const PROSPECT_TOUR_MAX_OUTPUT_TOKENS = 400;
+const PROSPECT_TOUR_MAX_OUTPUT_TOKENS = 3000;
 const PROSPECT_TOUR_TARGET_TURNS = 4;
+const PROSPECT_TOUR_VISIBLE_CAPTION_CHARS = 420;
+const PROSPECT_TOUR_VISIBLE_SUMMARY_CHARS = 620;
 const PROSPECT_TOUR_REASONING_EFFORT =
   String(process.env.MEOS_PROSPECT_TOUR_REASONING_EFFORT || "medium").trim().toLowerCase();
 const PROSPECT_TOUR_WINDOW_MS = 30 * 60 * 1000;
@@ -7484,8 +7486,8 @@ function parseProspectTourJudgment(raw) {
   const commercialMoves = prospectTourCommercialMoves();
   const requestedOffice = normalizeProspectTourText(parsed?.office, 80);
   const office = offices.includes(requestedOffice) ? requestedOffice : "Executive Operations";
-  const caption = normalizeProspectTourText(parsed?.caption, 420);
-  const summary = normalizeProspectTourText(parsed?.summary, 620);
+  const caption = normalizeProspectTourText(parsed?.caption, PROSPECT_TOUR_VISIBLE_CAPTION_CHARS);
+  const summary = normalizeProspectTourText(parsed?.summary, PROSPECT_TOUR_VISIBLE_SUMMARY_CHARS);
   const capabilityState = capabilityStates.includes(parsed?.capabilityState)
     ? parsed.capabilityState
     : "unknown_path";
@@ -7690,6 +7692,16 @@ async function runProspectTourReasoning({ introIntent, latestUtterance, priorSum
   const rawText = extractOpenAIResponseText(payload);
   if (!rawText) {
     const incompleteReason = payload?.incomplete_details?.reason || null;
+    const usage = payload?.usage || null;
+    console.error("[MEOS Prospect Tour] Provider returned no visible output.", {
+      providerStatus: payload?.status || null,
+      incompleteReason,
+      model: PROSPECT_TOUR_MODEL,
+      reasoningEffort: PROSPECT_TOUR_REASONING_EFFORT,
+      maxOutputTokens: PROSPECT_TOUR_MAX_OUTPUT_TOKENS,
+      outputTokens: usage?.output_tokens ?? null,
+      reasoningTokens: usage?.output_tokens_details?.reasoning_tokens ?? null
+    });
     const error = new Error(
       incompleteReason
         ? `Prospect tour reasoning returned no visible answer (${incompleteReason}).`
@@ -7835,6 +7847,8 @@ app.post(
           providerCalls: 1,
           voiceCalls: 0,
           maxOutputTokens: PROSPECT_TOUR_MAX_OUTPUT_TOKENS,
+          visibleCaptionChars: PROSPECT_TOUR_VISIBLE_CAPTION_CHARS,
+          visibleSummaryChars: PROSPECT_TOUR_VISIBLE_SUMMARY_CHARS,
           targetMeaningfulTurns: PROSPECT_TOUR_TARGET_TURNS,
           researchAuthorized: false,
           toolCallsAuthorized: false,
@@ -7874,8 +7888,9 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
   const checks = [
     ["Hard public-tour ceiling remains six turns", PROSPECT_TOUR_MAX_TURNS === 6],
     ["Commercial progression targets four or fewer meaningful turns before the hard ceiling", PROSPECT_TOUR_TARGET_TURNS === 4 && PROSPECT_TOUR_TARGET_TURNS < PROSPECT_TOUR_MAX_TURNS],
-    ["Output budget remains capped at 400 tokens", PROSPECT_TOUR_MAX_OUTPUT_TOKENS === 400],
+    ["Medium reasoning has 3000-token total headroom while visible Maddy output remains compact", PROSPECT_TOUR_MAX_OUTPUT_TOKENS === 3000 && PROSPECT_TOUR_VISIBLE_CAPTION_CHARS === 420 && PROSPECT_TOUR_VISIBLE_SUMMARY_CHARS === 620],
     ["Commercial tour spends medium reasoning by default where judgment affects CPA", PROSPECT_TOUR_REASONING_EFFORT === "medium"],
+    ["Visible response remains tightly bounded despite larger reasoning headroom", PROSPECT_TOUR_VISIBLE_CAPTION_CHARS === 420 && PROSPECT_TOUR_VISIBLE_SUMMARY_CHARS === 620],
     ["Commissioned customer-facing cabinet is Maddy plus seven accountable offices", catalog.length === 8 && catalog.includes("Executive Operations") && catalog.includes("Finance & Economic Stewardship") && catalog.includes("Grant Development") && catalog.includes("Human Resources")],
     ["Retired prospect-tour office identities are not exposed as current cabinet offices", !catalog.includes("Strategy") && !catalog.includes("Finance") && !catalog.includes("People") && !catalog.includes("Executive Workspace")],
     ["Capability truth explicitly distinguishes proven supported adaptive unknown-path and governance boundary", capabilityStates.join("|") === "proven|supported|adaptive|unknown_path|governance_boundary"],
@@ -7915,7 +7930,7 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Acceptance fixture leaves no durable rate-limit residue", prospectTourUsage.size === before],
     ["Single-voice schema contains no separate customer-facing question field", !instructions.includes("Return JSON only with keys: caption, office, question")],
     ["Capability reveal reuses the existing single paid reasoning call rather than adding a second caller", true],
-    ["Prospect output budget is capped at 400 tokens", PROSPECT_TOUR_MAX_OUTPUT_TOKENS === 400],
+    ["Prospect reasoning headroom is capped at 3000 total generated tokens", PROSPECT_TOUR_MAX_OUTPUT_TOKENS === 3000],
     ["Acceptance test itself makes zero provider calls", true]
   ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
 
