@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.21
- * Build: EB12521-OBJECTIVE-BOUND-SEMANTIC-JUDGMENT-20260816-A
+ * Version: 1.25.22
+ * Build: EB12522-OWNED-SPEECH-AUTHORIZATION-KERNEL-20260816-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.21";
-  const BUILD_ID = "EB12521-OBJECTIVE-BOUND-SEMANTIC-JUDGMENT-20260816-A";
+  const VERSION = "1.25.22";
+  const BUILD_ID = "EB12522-OWNED-SPEECH-AUTHORIZATION-KERNEL-20260816-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -1375,6 +1375,143 @@
         buildId: this.buildId,
         passed,
         total: checks.length,
+        checks
+      };
+    },
+
+
+    /*
+     * Commission 006.025C1 — Owned Speech Authorization Kernel
+     *
+     * Executive Brain already owns the semantic judgment after 006.025B/B4.
+     * This method turns that owned meaning into exactly one speech receipt
+     * without promoting provider candidate language into Maddy speech.
+     *
+     * This is deliberately dependency-safe: no new provider or voice path is
+     * required for this file to land. Later C commits may supply optional
+     * language-worker suggestions, but final release still comes back through
+     * this Maddy-owned authorization boundary.
+     */
+    renderOwnedSemanticResponse(maddyResponse = {}, options = {}) {
+      if (!maddyResponse || maddyResponse.owner !== "maddy-executive-brain") {
+        return {
+          success: false,
+          schema: "meos.maddy.owned-speech.v1",
+          status: "semantic-owner-missing",
+          owner: "maddy-executive-brain",
+          finalSpeechAuthorized: false,
+          oneMouth: true,
+          text: ""
+        };
+      }
+
+      const recommendationText = this.textContent(
+        maddyResponse?.recommendation?.rationale || ""
+      ).replace(/\s+/g, " ").trim();
+
+      const semanticParts = Array.isArray(maddyResponse?.semanticParts)
+        ? maddyResponse.semanticParts
+        : [];
+      const ownedFallback = semanticParts
+        .filter(part => part?.source === "maddy-reasoning" && part?.representation !== "evidence")
+        .map(part => this.textContent(part?.text || "").replace(/\s+/g, " ").trim())
+        .find(text => text && !/^[{[]/.test(text)) || "";
+
+      const finalText = recommendationText || ownedFallback;
+      const finalSpeechAuthorized = Boolean(finalText);
+      const rendered = {
+        ...this.clone(maddyResponse),
+        speech: {
+          ...(this.clone(maddyResponse.speech) || {}),
+          schema: "meos.maddy.owned-speech.v1",
+          status: finalSpeechAuthorized ? "authorized" : "language-unavailable",
+          renderer: "maddy-owned-semantic-judgment",
+          semanticAuthority: "maddy-executive-brain",
+          finalText,
+          candidateLanguageAuthorized: false,
+          finalSpeechAuthorized,
+          oneMouth: true
+        }
+      };
+
+      this.record("response.speech-authorized", {
+        requestId: rendered.requestId || null,
+        cognitionId: rendered.cognitionId || null,
+        authorized: finalSpeechAuthorized,
+        renderer: rendered.speech.renderer,
+        textLength: finalText.length
+      });
+      this.emit("brain:speech-authorized", rendered);
+      return this.clone(rendered);
+    },
+
+    runOwnedSpeechAuthorizationAcceptanceTest() {
+      const prepared = {
+        request: {
+          id: "c1-owned-speech-request",
+          text: "I manage several field teams. Can you help me keep up with them?",
+          requiresApproval: false
+        },
+        cognition: {
+          cognitionId: "c1-cognition",
+          reasoning: {
+            recommendation: {
+              state: "proceed-with-conditions",
+              confidence: 0.78,
+              rationale: "The institutional record supports movement, but material conflicts or risks must be controlled first.",
+              conditions: ["Confirm critical dependencies."],
+              executiveApprovalRequired: true
+            },
+            findings: [],
+            options: [],
+            risks: [{ severity: "high", title: "Fixture risk" }],
+            conflicts: [{ requiresReview: true, summary: "Fixture conflict" }]
+          },
+          unknowns: [{ blocking: true, text: "Fixture unknown" }],
+          dispatchReadiness: { authorityRequired: true }
+        },
+        localContext: { evidence: [] },
+        selfModel: {}
+      };
+
+      const fakeAdviser = {
+        success: true,
+        answer: "I definitely have a Crew Board with a Nudge button and can text every crew lead automatically."
+      };
+      const semantic = this.reconcileAdviserResult(prepared, fakeAdviser, { acceptanceTest: true });
+      const rendered = this.renderOwnedSemanticResponse(semantic, { acceptanceTest: true });
+      const finalText = rendered?.speech?.finalText || "";
+
+      const ownerless = this.renderOwnedSemanticResponse({
+        owner: "external-provider",
+        recommendation: { rationale: "I am Maddy now." }
+      });
+
+      const checks = [
+        { name: "Owned semantic response is accepted for speech authorization", passed: rendered?.owner === "maddy-executive-brain" },
+        { name: "Exactly one Maddy mouth is declared", passed: rendered?.speech?.oneMouth === true },
+        { name: "Final speech is explicitly authorized", passed: rendered?.speech?.finalSpeechAuthorized === true },
+        { name: "Speech renderer is Maddy-owned semantic judgment", passed: rendered?.speech?.renderer === "maddy-owned-semantic-judgment" },
+        { name: "B4 objective-bound judgment survives into speech", passed: /^Yes[—-]?with conditions\. I can help with that\./i.test(finalText) },
+        { name: "Provider candidate language is not authorized", passed: rendered?.speech?.candidateLanguageAuthorized === false },
+        { name: "Fake Crew Board claim cannot enter authorized speech", passed: !/Crew Board|Nudge button|text every crew lead automatically/i.test(finalText) },
+        { name: "Provider remains non-owner of final speech", passed: semantic?.adviser?.providerOutputIsFinalSpeech === false },
+        { name: "Non-Maddy semantic owner fails closed", passed: ownerless?.finalSpeechAuthorized === false && ownerless?.text === "" }
+      ];
+
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.025C1 Owned Speech Authorization Kernel: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      return {
+        success: passed === checks.length,
+        commission: "006.025C1",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        total: checks.length,
+        finalText,
         checks
       };
     },
