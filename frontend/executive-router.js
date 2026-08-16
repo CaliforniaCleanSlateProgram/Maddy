@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.4.3
- * Build: ER143-MADDY-SEMANTIC-ANSWER-PRIORITY-20260816-A
+ * Version: 1.4.4
+ * Build: ER144-OWNED-SPEECH-RECEIPT-CONSUMPTION-20260816-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.4.3";
-  const BUILD_ID = "ER143-MADDY-SEMANTIC-ANSWER-PRIORITY-20260816-A";
+  const VERSION = "1.4.4";
+  const BUILD_ID = "ER144-OWNED-SPEECH-RECEIPT-CONSUMPTION-20260816-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -401,7 +401,7 @@
       const result = context.dispatchResult || {};
       const rawOutput = result.output !== undefined ? result.output : result;
       const brain = this.resolveBrain();
-      const maddyResponse =
+      const semanticResponse =
         brain && typeof brain.reconcileAdviserResult === "function"
           ? brain.reconcileAdviserResult(
               context.brainResult.package,
@@ -412,6 +412,7 @@
               }
             )
           : null;
+      const maddyResponse = this.resolveOwnedSpeechReceipt(semanticResponse);
       const governedAnswer = this.produceGovernedAnswer({
         request: context.request,
         route: context.route,
@@ -446,6 +447,37 @@
     },
 
     /*
+     * Commission 006.025C2 — Router Consumes Maddy-Owned Speech Receipt
+     *
+     * C1 established the Executive Brain speech authorization kernel. Router
+     * may transport that receipt, but it may not invent a second answer when
+     * an owned semantic response exists. This helper is also used by direct
+     * acceptance calls so the authorization boundary cannot be bypassed by
+     * invoking produceGovernedAnswer() outside collect().
+     */
+    resolveOwnedSpeechReceipt(maddyResponse = null) {
+      if (!maddyResponse || maddyResponse.owner !== "maddy-executive-brain") {
+        return maddyResponse;
+      }
+
+      if (
+        maddyResponse?.speech?.finalSpeechAuthorized === true &&
+        maddyResponse?.speech?.oneMouth === true &&
+        this.firstText(maddyResponse?.speech?.finalText)
+      ) {
+        return maddyResponse;
+      }
+
+      const brain = this.resolveBrain();
+      if (!brain || typeof brain.renderOwnedSemanticResponse !== "function") {
+        return maddyResponse;
+      }
+
+      const rendered = brain.renderOwnedSemanticResponse(maddyResponse);
+      return rendered?.owner === "maddy-executive-brain" ? rendered : maddyResponse;
+    },
+
+    /*
      * Commission 006.018E — Unified Governed Answer Production
      *
      * The Router already owns normalized result collection. It now also owns
@@ -476,7 +508,8 @@
         output.result?.text,
         output.output?.text
       );
-      const maddyResponse = input.maddyResponse || null;
+      const semanticResponse = input.maddyResponse || null;
+      const maddyResponse = this.resolveOwnedSpeechReceipt(semanticResponse);
 
       const question = input.request?.text || pkg.request?.text || "";
       const localAnswer = this.synthesizeLocalAnswer(
@@ -484,32 +517,26 @@
         answerEvidence,
         pkg
       );
-      const maddySemanticAnswer = this.synthesizeMaddySemanticAnswer(
-        maddyResponse,
-        pkg
-      );
+      const maddyFinalText =
+        maddyResponse?.owner === "maddy-executive-brain" &&
+        maddyResponse?.speech?.finalSpeechAuthorized === true &&
+        maddyResponse?.speech?.oneMouth === true
+          ? this.firstText(maddyResponse?.speech?.finalText)
+          : "";
 
       /*
-       * 006.025B3 — Maddy Semantic Judgment Priority
+       * 006.025C2 — Router consumes, but does not author, Maddy speech.
        *
-       * 006.025B returned semantic ownership to Executive Brain, but Router
-       * still selected its legacy evidence-concatenation rendering as the
-       * outward answer. That allowed merely topical recall fragments to sound
-       * like Maddy's judgment even when Maddy had already produced a governed
-       * semantic decision.
-       *
-       * Maddy-owned semantic judgment is now the primary answer source. Local
-       * evidence synthesis remains a zero-cost fallback only when Executive
-       * Brain has no usable semantic judgment. Provider candidate language is
-       * never promoted by this selection.
+       * If Executive Brain produced an owned semantic response, Router may
+       * return only the C1-authorized speech receipt. It may not fall back to
+       * evidence concatenation or provider candidate language for that turn.
+       * Legacy local synthesis remains available only when no Maddy-owned
+       * semantic response exists at all.
        */
       const adviserTurn = Boolean(input.provider);
-      const semanticJudgmentOwnsAnswer = Boolean(
-        adviserTurn && maddySemanticAnswer
-      );
-      const answer = semanticJudgmentOwnsAnswer
-        ? maddySemanticAnswer
-        : localAnswer || maddySemanticAnswer || "";
+      const maddyOwnsTurn = maddyResponse?.owner === "maddy-executive-brain";
+      const semanticJudgmentOwnsAnswer = Boolean(maddyFinalText);
+      const answer = maddyFinalText || (!maddyOwnsTurn ? localAnswer : "");
 
       const evidenceUnknowns = this.normalizeTextList(
         pkg.evidenceIntegrity?.unverifiedInformation,
@@ -534,13 +561,11 @@
         answer,
         basis: semanticJudgmentOwnsAnswer
           ? "maddy-semantic-judgment"
-          : localAnswer
+          : (!maddyOwnsTurn && localAnswer)
             ? "maddy-owned-local-rendering"
-            : maddySemanticAnswer
-              ? "maddy-semantic-judgment"
-              : maddyResponse?.success === true
-                ? "maddy-semantic-response-language-pending"
-                : "insufficient-evidence",
+            : maddyOwnsTurn
+              ? "maddy-semantic-response-language-pending"
+              : "insufficient-evidence",
         confidence: Number(
           output.confidence ??
           output.response?.confidence ??
@@ -572,13 +597,14 @@
         providerCandidateLanguage: providerCandidate || null,
         generatedBy: semanticJudgmentOwnsAnswer
           ? "maddy-semantic-synthesis"
-          : localAnswer
+          : (!maddyOwnsTurn && localAnswer)
             ? "meos-local-synthesis"
-            : maddySemanticAnswer
-              ? "maddy-semantic-synthesis"
-              : "maddy-semantic-response",
+            : "maddy-semantic-response",
+        oneMouth: true,
+        finalSpeechAuthorized: maddyResponse?.speech?.finalSpeechAuthorized === true,
+        speechAuthorizationOwner: maddyResponse?.speech?.semanticAuthority || null,
         sufficientEvidence: Boolean(
-          maddySemanticAnswer || localAnswer || maddyResponse?.success === true
+          maddyFinalText || (!maddyOwnsTurn && localAnswer)
         ),
         generatedAt: new Date().toISOString()
       });
@@ -1184,6 +1210,86 @@
       console.info(
         `[MEOS ${VERSION}] Commission 006.025B3 Maddy Semantic Answer Priority: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
       );
+      return result;
+    },
+
+    runOwnedSpeechReceiptConsumptionAcceptanceTest() {
+      const fakeProviderClaim =
+        "I definitely have a Crew Board with a Nudge button and can text every crew lead automatically.";
+      const pkg = {
+        request: { text: "Can you help me keep up with this work?", type: "general" },
+        localContext: {
+          confidence: 0.9,
+          evidence: [{ summary: "Fieldservicely unrelated topical evidence dump." }]
+        },
+        responseContract: { humanApprovalRequired: false }
+      };
+      const semantic = {
+        success: true,
+        owner: "maddy-executive-brain",
+        recommendation: {
+          state: "proceed-with-conditions",
+          rationale: "Yes—with conditions. I can help with that. I still need to keep material risks bounded before I claim a specific execution path."
+        },
+        semanticParts: [{
+          source: "maddy-reasoning",
+          representation: "recommendation",
+          text: "Yes—with conditions. I can help with that."
+        }],
+        adviser: {
+          candidateLanguage: fakeProviderClaim,
+          providerOutputIsEvidence: false,
+          providerOutputIsMaddyBelief: false,
+          providerOutputIsFinalSpeech: false
+        }
+      };
+
+      const governed = this.produceGovernedAnswer({
+        request: { text: pkg.request.text },
+        route: { approvalRequired: false },
+        package: pkg,
+        source: "north-star-adviser-test",
+        provider: "north-star-adviser-test",
+        output: { answer: fakeProviderClaim },
+        maddyResponse: semantic
+      });
+
+      const ownerless = this.produceGovernedAnswer({
+        request: { text: pkg.request.text },
+        route: { approvalRequired: false },
+        package: pkg,
+        source: "north-star-adviser-test",
+        provider: "north-star-adviser-test",
+        output: { answer: fakeProviderClaim },
+        maddyResponse: { success: true, owner: "provider" }
+      });
+
+      const checks = [
+        { name: "Router consumes Executive Brain authorized speech", passed: governed.finalSpeechAuthorized === true },
+        { name: "One mouth remains declared", passed: governed.oneMouth === true },
+        { name: "Speech authorization owner is Executive Brain", passed: governed.speechAuthorizationOwner === "maddy-executive-brain" },
+        { name: "Authorized Maddy judgment is outward answer", passed: /^Yes[—-]?with conditions\. I can help with that\./i.test(governed.answer) },
+        { name: "Provider candidate cannot replace authorized speech", passed: !/Crew Board|Nudge button|text every crew lead automatically/i.test(governed.answer) },
+        { name: "Topical evidence dump cannot replace authorized speech", passed: !/Fieldservicely/i.test(governed.answer) },
+        { name: "Provider remains advice-only", passed: governed.providerPaidForAdvice === true && governed.providerPaidForAnswer === false },
+        { name: "B3 semantic basis remains compatible", passed: governed.basis === "maddy-semantic-judgment" && governed.generatedBy === "maddy-semantic-synthesis" },
+        { name: "Non-Maddy owner cannot receive Maddy speech authorization", passed: ownerless.finalSpeechAuthorized === false && ownerless.answer !== fakeProviderClaim }
+      ];
+      const passed = checks.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === checks.length,
+        commission: "006.025C2",
+        schema: "meos.executive-router.owned-speech-receipt-consumption-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        answer: governed.answer,
+        basis: governed.basis,
+        checks
+      });
+      console.table(checks);
+      console.info(`[MEOS ${VERSION}] Commission 006.025C2 Owned Speech Receipt Consumption: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
       return result;
     },
 
