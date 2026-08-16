@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.4.1
- * Build: ER141-EXPLICIT-ADVISER-SELECTION-PRECEDENCE-20260816-A
+ * Version: 1.4.2
+ * Build: ER142-EXPLICIT-ADVISER-ROUTE-OVERRIDE-20260816-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.4.1";
-  const BUILD_ID = "ER141-EXPLICIT-ADVISER-SELECTION-PRECEDENCE-20260816-A";
+  const VERSION = "1.4.2";
+  const BUILD_ID = "ER142-EXPLICIT-ADVISER-ROUTE-OVERRIDE-20260816-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -354,7 +354,7 @@
     },
 
     async dispatch(context) {
-      return context.route.handler({
+      const payload = {
         request: this.clone(context.request),
         route: {
           name: context.route.name,
@@ -363,7 +363,38 @@
           approvalRequired: context.route.approvalRequired
         },
         package: this.clone(context.brainResult.package)
-      }, this);
+      };
+
+      /*
+       * 006.025B2 live correction: explicit adviser selection is an execution
+       * contract, not merely a preference inside provider-capable routes. A
+       * caller that deliberately selects a registered adviser (for controlled
+       * testing/debugging or an explicitly governed provider turn) must reach
+       * that adviser even when Executive Brain correctly classifies resident
+       * context as instant-meos-context. Otherwise the local route can start
+       * unrelated public-research continuation before adviser dispatch and the
+       * explicit adviser is never exercised.
+       *
+       * This override does NOT change normal routing. Without an explicit
+       * registered adviser, the commissioned Brain-selected route remains
+       * authoritative. The adviser still receives Maddy-owned context and its
+       * output remains advice only.
+       */
+      const explicitlyRequestedProvider = this.normalizeName(
+        context.request?.options?.provider || ""
+      );
+      const explicitRouterAdviser = explicitlyRequestedProvider
+        ? this.providers.get(explicitlyRequestedProvider)
+        : null;
+
+      if (explicitRouterAdviser?.enabled) {
+        return this.dispatchToProvider(
+          payload,
+          { provider: explicitlyRequestedProvider }
+        );
+      }
+
+      return context.route.handler(payload, this);
     },
 
     collect(context) {
