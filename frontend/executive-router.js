@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.4.2
- * Build: ER142-EXPLICIT-ADVISER-ROUTE-OVERRIDE-20260816-A
+ * Version: 1.4.3
+ * Build: ER143-MADDY-SEMANTIC-ANSWER-PRIORITY-20260816-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.4.2";
-  const BUILD_ID = "ER142-EXPLICIT-ADVISER-ROUTE-OVERRIDE-20260816-A";
+  const VERSION = "1.4.3";
+  const BUILD_ID = "ER143-MADDY-SEMANTIC-ANSWER-PRIORITY-20260816-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -478,18 +478,38 @@
       );
       const maddyResponse = input.maddyResponse || null;
 
+      const question = input.request?.text || pkg.request?.text || "";
       const localAnswer = this.synthesizeLocalAnswer(
-        input.request?.text || pkg.request?.text || "",
+        question,
         answerEvidence,
+        pkg
+      );
+      const maddySemanticAnswer = this.synthesizeMaddySemanticAnswer(
+        maddyResponse,
         pkg
       );
 
       /*
-       * 006.025B: providerCandidate is advisory language only. Until Maddy's
-       * one-mouth renderer authorizes language, Router may expose only a
-       * deterministic local evidence rendering for backward compatibility.
+       * 006.025B3 — Maddy Semantic Judgment Priority
+       *
+       * 006.025B returned semantic ownership to Executive Brain, but Router
+       * still selected its legacy evidence-concatenation rendering as the
+       * outward answer. That allowed merely topical recall fragments to sound
+       * like Maddy's judgment even when Maddy had already produced a governed
+       * semantic decision.
+       *
+       * Maddy-owned semantic judgment is now the primary answer source. Local
+       * evidence synthesis remains a zero-cost fallback only when Executive
+       * Brain has no usable semantic judgment. Provider candidate language is
+       * never promoted by this selection.
        */
-      const answer = localAnswer || "";
+      const adviserTurn = Boolean(input.provider);
+      const semanticJudgmentOwnsAnswer = Boolean(
+        adviserTurn && maddySemanticAnswer
+      );
+      const answer = semanticJudgmentOwnsAnswer
+        ? maddySemanticAnswer
+        : localAnswer || maddySemanticAnswer || "";
 
       const evidenceUnknowns = this.normalizeTextList(
         pkg.evidenceIntegrity?.unverifiedInformation,
@@ -499,19 +519,28 @@
         output.result?.unknowns
       );
 
-      const citations = [...new Set([
-        ...answerEvidence.map(item => this.firstText(item.citation, item.provenance?.citation)),
-        ...(Array.isArray(output.citations) ? output.citations : [])
-      ].filter(Boolean))].slice(0, 12);
+      const adviserCitations = adviserTurn && Array.isArray(output.citations)
+        ? [...new Set(output.citations.filter(Boolean))].slice(0, 12)
+        : [];
+      const citations = semanticJudgmentOwnsAnswer
+        ? []
+        : [...new Set([
+            ...answerEvidence.map(item => this.firstText(item.citation, item.provenance?.citation)),
+            ...(!adviserTurn && Array.isArray(output.citations) ? output.citations : [])
+          ].filter(Boolean))].slice(0, 12);
 
       return Object.freeze({
         schema: "meos.governed-answer.v1",
         answer,
-        basis: localAnswer
-          ? "maddy-owned-local-rendering"
-          : maddyResponse?.success === true
-            ? "maddy-semantic-response-language-pending"
-            : "insufficient-evidence",
+        basis: semanticJudgmentOwnsAnswer
+          ? "maddy-semantic-judgment"
+          : localAnswer
+            ? "maddy-owned-local-rendering"
+            : maddySemanticAnswer
+              ? "maddy-semantic-judgment"
+              : maddyResponse?.success === true
+                ? "maddy-semantic-response-language-pending"
+                : "insufficient-evidence",
         confidence: Number(
           output.confidence ??
           output.response?.confidence ??
@@ -526,18 +555,31 @@
           output.response?.recommendation,
           output.result?.recommendation
         ) || null,
+        recommendationState: this.firstText(
+          maddyResponse?.recommendation?.state,
+          pkg.cognition?.reasoning?.recommendation?.state
+        ) || null,
         approvalRequired: Boolean(
           input.route?.approvalRequired ||
           pkg.responseContract?.humanApprovalRequired
         ),
         citations: [...new Set(citations)],
+        adviserCitations,
         source: input.source || "meos",
         provider: input.provider || null,
         providerPaidForAdvice: Boolean(input.provider),
         providerPaidForAnswer: false,
         providerCandidateLanguage: providerCandidate || null,
-        generatedBy: localAnswer ? "meos-local-synthesis" : "maddy-semantic-response",
-        sufficientEvidence: Boolean(localAnswer || maddyResponse?.success === true),
+        generatedBy: semanticJudgmentOwnsAnswer
+          ? "maddy-semantic-synthesis"
+          : localAnswer
+            ? "meos-local-synthesis"
+            : maddySemanticAnswer
+              ? "maddy-semantic-synthesis"
+              : "maddy-semantic-response",
+        sufficientEvidence: Boolean(
+          maddySemanticAnswer || localAnswer || maddyResponse?.success === true
+        ),
         generatedAt: new Date().toISOString()
       });
     },
@@ -737,6 +779,40 @@
         console.warn("[MEOS Executive Router] Zero-cost public research continuation failed.", error);
         return null;
       }
+    },
+
+    synthesizeMaddySemanticAnswer(maddyResponse = null, pkg = {}) {
+      if (!maddyResponse || maddyResponse.owner !== "maddy-executive-brain") {
+        return "";
+      }
+
+      const reasoning = pkg?.cognition?.reasoning || {};
+      const recommendation = maddyResponse?.recommendation || reasoning?.recommendation || null;
+      const rationale = this.firstText(
+        recommendation?.rationale,
+        reasoning?.executiveSummary?.recommendation
+      );
+
+      /*
+       * At the B-stage Maddy owns meaning but the dedicated one-mouth language
+       * renderer is not commissioned yet. Render only her governed judgment
+       * here; do not concatenate raw evidence or adviser prose into it.
+       */
+      if (rationale) {
+        return rationale.replace(/\s+/g, " ").trim();
+      }
+
+      const semanticParts = Array.isArray(maddyResponse?.semanticParts)
+        ? maddyResponse.semanticParts
+        : [];
+      const reasoningPart = semanticParts.find(part => {
+        if (part?.source !== "maddy-reasoning") return false;
+        if (part?.representation === "evidence") return false;
+        const text = this.firstText(part?.text);
+        return Boolean(text) && !/^[{[]/.test(text.trim());
+      });
+
+      return this.firstText(reasoningPart?.text);
     },
 
     synthesizeLocalAnswer(question, evidence = [], pkg = {}) {
@@ -971,6 +1047,143 @@
       });
       console.table(checks);
       console.info(`[MEOS ${VERSION}] Commission 006.018K Answer Evidence Binding: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+      return result;
+    },
+
+    runMaddySemanticAnswerPriorityAcceptanceTest() {
+      const fakeProviderClaim =
+        "I definitely have a Crew Board with a Nudge button and can text every crew lead automatically.";
+      const fixturePackage = {
+        request: {
+          text: "I run a construction company with three crews. Can you help me keep up with them?",
+          type: "general"
+        },
+        cognition: {
+          reasoning: {
+            recommendation: {
+              state: "proceed-with-conditions",
+              rationale:
+                "I can help organize and reason about the work, but any communication capability must be verified before I claim it."
+            }
+          }
+        },
+        localContext: {
+          confidence: 0.92,
+          integrity: { conflictCount: 2, uncertaintyRequired: true },
+          evidence: [
+            {
+              summary:
+                "Fieldservicely is a comprehensive construction crew management software that can help you execute the tips shared above.",
+              confidence: 0.91
+            },
+            {
+              summary:
+                "Evidence submission by construction crews can create accountability.",
+              confidence: 0.88
+            },
+            {
+              summary:
+                "Durable evidence-backed research learning became available to MEOS Knowledge Engine search and recall.",
+              confidence: 0.99
+            }
+          ]
+        },
+        responseContract: { humanApprovalRequired: false }
+      };
+      const maddyResponse = {
+        success: true,
+        owner: "maddy-executive-brain",
+        recommendation: fixturePackage.cognition.reasoning.recommendation,
+        semanticParts: [
+          {
+            source: "maddy-reasoning",
+            representation: "recommendation",
+            text: "Maddy-owned governed recommendation"
+          }
+        ],
+        adviser: {
+          candidateLanguage: fakeProviderClaim,
+          providerOutputIsEvidence: false,
+          providerOutputIsMaddyBelief: false,
+          providerOutputIsFinalSpeech: false
+        }
+      };
+
+      const answer = this.produceGovernedAnswer({
+        request: { text: fixturePackage.request.text },
+        route: { approvalRequired: false },
+        package: fixturePackage,
+        source: "north-star-adviser-test",
+        provider: "north-star-adviser-test",
+        output: {
+          answer: fakeProviderClaim,
+          citations: ["https://adviser.example/fake-crew-board"]
+        },
+        maddyResponse
+      });
+
+      const checks = [
+        {
+          name: "Maddy semantic judgment outranks topical evidence concatenation",
+          passed:
+            answer.basis === "maddy-semantic-judgment" &&
+            answer.generatedBy === "maddy-semantic-synthesis"
+        },
+        {
+          name: "Maddy judgment is present in outward answer",
+          passed: /help organize and reason about the work/i.test(answer.answer)
+        },
+        {
+          name: "Fieldservicely recall fragment cannot become Maddy's answer",
+          passed: !/Fieldservicely/i.test(answer.answer)
+        },
+        {
+          name: "Unrelated durable-learning recall fragment cannot become Maddy's answer",
+          passed: !/Durable evidence-backed research learning/i.test(answer.answer)
+        },
+        {
+          name: "Fake adviser capability claim cannot become Maddy's answer",
+          passed: !/Crew Board|Nudge button|text every crew lead automatically/i.test(answer.answer)
+        },
+        {
+          name: "Fake adviser language remains visible only as candidate provenance",
+          passed: answer.providerCandidateLanguage === fakeProviderClaim
+        },
+        {
+          name: "Provider remains paid for advice, not answer ownership",
+          passed:
+            answer.providerPaidForAdvice === true &&
+            answer.providerPaidForAnswer === false
+        },
+        {
+          name: "Adviser citations cannot masquerade as Maddy answer citations",
+          passed:
+            answer.citations.length === 0 &&
+            answer.adviserCitations.includes("https://adviser.example/fake-crew-board")
+        },
+        {
+          name: "No external-action authority is created",
+          passed: answer.approvalRequired === false
+        }
+      ];
+      const passed = checks.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === checks.length,
+        commission: "006.025B3",
+        schema: "meos.executive-router.maddy-semantic-answer-priority-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        answer: answer.answer,
+        basis: answer.basis,
+        providerCandidateLanguage: answer.providerCandidateLanguage,
+        checks
+      });
+      console.table(checks);
+      console.info(
+        `[MEOS ${VERSION}] Commission 006.025B3 Maddy Semantic Answer Priority: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
       return result;
     },
 
