@@ -7319,10 +7319,10 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.023F3";
-const PROSPECT_TOUR_VERSION = "1.5.2";
+const PROSPECT_TOUR_COMMISSION = "006.023F4";
+const PROSPECT_TOUR_VERSION = "1.5.3";
 const PROSPECT_TOUR_BUILD_ID =
-  "PT152-COMMERCIAL-SUFFICIENCY-MARGINAL-QUESTION-VALUE-20260815-A";
+  "PT153-CAPABILITY-TRUTH-COMPLETE-CLOSE-HANDOFF-20260815-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
@@ -7433,8 +7433,8 @@ function prospectTourExplicitCloseJudgment({ introIntent, priorSummary }) {
   const name = nameMatch ? nameMatch[1][0].toUpperCase() + nameMatch[1].slice(1).toLowerCase() : null;
   return {
     caption: name
-      ? `Perfect, ${name}. I think we're going to work really well together. Let's get you set up.`
-      : "Perfect. I think we're going to work really well together. Let's get you set up.",
+      ? `Sounds like we're there, ${name}. Come on — I'll show you to your new office so we can go over pricing.`
+      : "Sounds like we're there. Come on — I'll show you to your new office so we can go over pricing.",
     office: "Executive Operations",
     summary: normalizeProspectTourText(priorSummary, 620) || null,
     capabilityState: "proven",
@@ -7556,6 +7556,10 @@ function prospectTourSystemInstructions() {
     "A capability reveal is informational, not a claim that it is enabled in this public text-only tour.",
     "Never reveal private/local-only Maddy profiles or non-product personality settings.",
     "Capability truth: proven=current demonstrated capability; supported=current architecture supports it; adaptive=requires learning/integration/building; unknown_path=no proven path yet; governance_boundary=MEOS will not support the intended use.",
+    "TRUTH BEFORE PERSUASION: never convert a general MEOS capability into an unverified industry-specific execution promise. A plausible workflow is not automatically a commissioned capability.",
+    "When describing external actions such as messaging people, ordering materials, submitting permits, approving invoices/change orders, reassigning staff, or operating a customer's third-party systems, state them as conditional on verified connected provider capabilities and customer authority unless that exact execution path is established in the supplied capability truth.",
+    "For supported or adaptive paths, use truthful conditional language such as 'with the right verified connection, MEOS can route that work' or 'that can be configured where the connected system supports it.' Never say 'MEOS will' perform an unverified external action end-to-end.",
+    "Do not pad a demonstration with invented interface details such as one-click actions, response windows, automatic pings, or industry-specific automations unless those exact details are established by the supplied capability truth.",
     "Never use impossible as a shortcut. Do not invent a path, prior fact, integration, result, or future success.",
     "Governance rejection is a high threshold for severe intentional harm, exploitation, or criminal abuse; do not reject ordinary lawful or unusual businesses.",
     "Remember compact prospect facts naturally and do not re-introduce yourself after the Meet Maddy handoff. Do not make them repeat known information.",
@@ -7567,7 +7571,7 @@ function prospectTourSystemInstructions() {
     "Available customer-facing office names are exactly: " + prospectTourOfficeCatalog().join(", ") + ".",
     "Prospect-safe capability truth (choose at most one materially new capability if relevant):\n" + prospectTourCapabilityBrief(),
     "Return JSON only with keys: caption, office, summary, capabilityState, commercialStage, commercialMove, pricingReady, informationSufficiency, questionNeeded, advance.",
-    "caption: the ONE complete Maddy utterance, 1-3 concise spoken sentences; include any necessary question inside it.",
+    "caption: the ONE complete Maddy utterance, 1-2 concise spoken sentences, normally under 320 characters and ALWAYS ending as a complete sentence; include any necessary question inside it. Never run into the visible caption limit or end mid-word/mid-sentence.",
     "office: the single customer-facing office/function most useful next.",
     "summary: tiny factual carry-forward context, never a transcript. Preserve established/accepted value, materially new capability already shown, unresolved concern, and explicit ownership intent when present. Never invent missing facts.",
     "capabilityState: exactly one of " + prospectTourCapabilityStates().join(", ") + ".",
@@ -7921,6 +7925,10 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Commissioned customer-facing cabinet is Maddy plus seven accountable offices", catalog.length === 8 && catalog.includes("Executive Operations") && catalog.includes("Finance & Economic Stewardship") && catalog.includes("Grant Development") && catalog.includes("Human Resources")],
     ["Retired prospect-tour office identities are not exposed as current cabinet offices", !catalog.includes("Strategy") && !catalog.includes("Finance") && !catalog.includes("People") && !catalog.includes("Executive Workspace")],
     ["Capability truth explicitly distinguishes proven supported adaptive unknown-path and governance boundary", capabilityStates.join("|") === "proven|supported|adaptive|unknown_path|governance_boundary"],
+    ["Industry-specific execution promises require verified capability and authority", instructions.includes("never convert a general MEOS capability into an unverified industry-specific execution promise") && instructions.includes("conditional on verified connected provider capabilities and customer authority")],
+    ["Prospect demonstrations cannot invent interface or automation details", instructions.includes("Do not pad a demonstration with invented interface details") && instructions.includes("automatic pings")],
+    ["Customer-facing captions are instructed to finish complete before the visible limit", instructions.includes("ALWAYS ending as a complete sentence") && instructions.includes("Never run into the visible caption limit")],
+    ["Explicit close narrates the office handoff before pricing", prospectTourExplicitCloseJudgment({ introIntent:"I'm Mike. I run three crews.", priorSummary:"Mike runs three crews." }).caption.includes("show you to your new office so we can go over pricing")],
     ["Commercial progression can move from understanding to ownership", stages[0] === "understand" && stages.includes("ownership")],
     ["Maddy is commercially synchronized rather than pushy", instructions.includes("COMMERCIAL SYNCHRONIZATION") && instructions.includes("Never get ahead of them and never remain behind them")],
     ["Tour does not invent pricing tier or entitlement assumptions", instructions.includes("Do not invent prices, plan names, tier placement, upgrades, or entitlement assumptions")],
