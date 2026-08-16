@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.18
- * Build: EB12518-WHOLE-BODY-CAPABILITY-RECONCILIATION-20260816-A
+ * Version: 1.25.19
+ * Build: EB12519-HUMAN-STIMULUS-COGNITION-BRIDGE-20260816-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.18";
-  const BUILD_ID = "EB12518-WHOLE-BODY-CAPABILITY-RECONCILIATION-20260816-A";
+  const VERSION = "1.25.19";
+  const BUILD_ID = "EB12519-HUMAN-STIMULUS-COGNITION-BRIDGE-20260816-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -733,6 +733,18 @@
       return prepared;
     },
 
+    /*
+     * Commission 006.025A — Human Stimulus -> Maddy Cognition Bridge
+     *
+     * A routed human turn is a cognitive stimulus, not merely a provider
+     * preparation request. The same prepared package now enters Maddy's
+     * commissioned cognition cycle before routing leaves Executive Brain.
+     *
+     * This does not authorize external action and does not make provider
+     * output Maddy. It reconnects the already-commissioned reasoning,
+     * planning-readiness, unknown, and attention organs to the interactive
+     * request path.
+     */
     routeRequest(input, options = {}) {
       const prepared = this.prepareRequest(input, options);
 
@@ -740,14 +752,74 @@
         return prepared;
       }
 
+      const cognition = options.skipCognition === true
+        ? null
+        : this.runCognitionCycle(input, {
+            ...options,
+            preparedPackage: prepared,
+            force: false
+          });
+
+      if (cognition && cognition.success !== true) {
+        return {
+          success: false,
+          error: cognition.error || "Maddy cognition did not complete for this routed stimulus.",
+          status: cognition.status || "cognition-failed",
+          requestId: prepared.request.id,
+          cognition: this.clone(cognition)
+        };
+      }
+
+      const cognitionContext = cognition
+        ? this.buildInteractiveCognitionContext(cognition)
+        : null;
+      const routedPackage = {
+        ...this.clone(prepared),
+        cognition: cognitionContext,
+        providerInstructions: {
+          ...this.clone(prepared.providerInstructions),
+          maddyCognition: cognitionContext,
+          responseOwnership: {
+            semanticAuthority: "maddy-executive-brain",
+            providerRole: "adviser",
+            providerOutputIsFinalSpeech: false
+          }
+        },
+        responseContract: {
+          ...this.clone(prepared.responseContract),
+          responseOwnership: {
+            semanticAuthority: "maddy-executive-brain",
+            providerRole: "adviser",
+            providerOutputIsFinalSpeech: false
+          }
+        }
+      };
+
       return {
         success: true,
         requestId: prepared.request.id,
+        cognitionId: cognition?.cognitionId || null,
         route: prepared.routing.primaryRoute,
         supportingRoutes: prepared.routing.supportingRoutes,
         researchDepth: prepared.routing.researchDepth,
         approvalRequired: prepared.request.requiresApproval,
-        package: prepared
+        cognition: cognitionContext,
+        package: routedPackage
+      };
+    },
+
+    buildInteractiveCognitionContext(cognition = {}) {
+      return {
+        schema: "meos.maddy.interactive-cognition-context.v1",
+        cognitionId: cognition.cognitionId || null,
+        generatedAt: cognition.generatedAt || null,
+        reasoning: this.clone(cognition.reasoning || null),
+        planning: this.clone(cognition.planning || null),
+        unknowns: this.clone(cognition.unknowns || []),
+        attention: this.clone(cognition.attention || null),
+        dispatchReadiness: this.clone(cognition.dispatchReadiness || null),
+        truthRule:
+          "This is Maddy-owned cognition. Provider output may advise it but cannot rewrite its evidence, capability state, uncertainty, or authority."
       };
     },
 
@@ -762,10 +834,13 @@
       }
 
       const started = this.now();
-      const prepared = this.prepareRequest(input, {
-        ...options,
-        force: options.force !== false
-      });
+      const prepared =
+        options.preparedPackage?.success === true
+          ? this.clone(options.preparedPackage)
+          : this.prepareRequest(input, {
+              ...options,
+              force: options.force !== false
+            });
 
       if (!prepared?.success) {
         return prepared;
@@ -6532,7 +6607,8 @@
           "Identify conflicts instead of silently choosing one.",
           "Provide options for material decisions.",
           "Human leadership remains the final executive authority.",
-          "Treat Maddy's supplied capability awareness as the authority for claims about what MEOS can currently do; provider suggestions and plausible workarounds may not promote an unknown capability into an available one."
+          "Treat Maddy's supplied capability awareness as the authority for claims about what MEOS can currently do; provider suggestions and plausible workarounds may not promote an unknown capability into an available one.",
+          "Maddy's supplied cognition is prior context, not a request for you to become Maddy. Add useful analysis or alternatives without replacing Maddy's owned truth, uncertainty, intention, or authority."
         ],
 
         maddyIdentity: context.startup.identity.maddy,
