@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.16
- * Build: EB12516-CAPABILITY-MIRROR-20260816-A
+ * Version: 1.25.17
+ * Build: EB12517-CAPABILITY-MIRROR-ACCEPTANCE-CONTEXT-20260816-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.16";
-  const BUILD_ID = "EB12516-CAPABILITY-MIRROR-20260816-A";
+  const VERSION = "1.25.17";
+  const BUILD_ID = "EB12517-CAPABILITY-MIRROR-ACCEPTANCE-CONTEXT-20260816-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -8131,9 +8131,11 @@
         awareness: fixtureAwareness
       });
       const selfModel = this.buildSelfModelProjection({
-        reason: "commission-006.024A-capability-mirror-acceptance"
+        reason: "commission-006.024A1-capability-mirror-acceptance-context-repair"
       });
       const providerInstructions = this.buildProviderInstructions({
+        text: "Capability Mirror acceptance fixture",
+        classification: { type: REQUEST_TYPES.SELF },
         startup: {
           identity: this.buildIdentityContext(),
           organization: this.buildOrganizationContext(),
@@ -8141,7 +8143,10 @@
           selfModel,
           workingAwareness: null,
           autobiographicalMemory: []
-        }
+        },
+        localContext: { evidence: [] },
+        evidenceIntegrity: null,
+        routing: {}
       });
 
       const checks = [
@@ -8217,12 +8222,12 @@
       const passed = checks.every(item => item.passed);
       console.table(checks);
       console.info(
-        `[MEOS ${this.version}] Commission 006.024A Maddy Capability Mirror: ${passed ? "PASS" : "FAIL"} (${checks.filter(item => item.passed).length}/${checks.length}).`
+        `[MEOS ${this.version}] Commission 006.024A1 Capability Mirror Acceptance Context Repair: ${passed ? "PASS" : "FAIL"} (${checks.filter(item => item.passed).length}/${checks.length}).`
       );
 
       return {
         success: passed,
-        commission: "006.024A",
+        commission: "006.024A1",
         schema: "meos.maddy.capability-mirror.acceptance.v1",
         version: this.version,
         buildId: this.buildId,
