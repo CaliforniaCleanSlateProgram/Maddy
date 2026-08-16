@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- Commission 006.023F4A — Follow Maddy Transaction Continuity
-Build: ET023F4A-FOLLOW-MADDY-HANDOFF-20260815-A
-Consumes commissioned 006.023F4 prospect capability-truth and close-handoff reasoning. -->
+<!-- Commission 006.024C — Concurrent Prospect Thinking
+Build: ET024C-CONCURRENT-THINKING-LATENCY-20260816-A
+Preserves Maddy's natural thinking beat while overlapping it with the existing prospect reasoning request instead of delaying provider cognition behind presentation animation. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -178,24 +178,45 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
    if(!utterance){input.focus();return;}
    input.value="";
    send.disabled=true;
+
+   // 006.024C: cognition starts immediately. The existing human-paced "You"
+   // and "Thinking…" presentation remains, but it now runs concurrently
+   // with the provider request instead of adding ~1.29s before reasoning begins.
+   const requestStartedAt=performance.now();
+   let responseAvailableAt=null;
+   const reasoningRequest=fetch("/api/prospect-tour/turn",{
+     method:"POST",
+     credentials:"same-origin",
+     cache:"no-store",
+     headers:{"Content-Type":"application/json"},
+     body:JSON.stringify({
+       turn,
+       utterance,
+       introIntent,
+       priorSummary:summary
+     })
+   }).then(response=>{
+     responseAvailableAt=performance.now();
+     return response;
+   });
+
    await showYou(utterance);
    await transitionMaddy("Thinking…",{thinking:true});
    hint.textContent="Maddy is connecting that to what you’ve already told her…";
+   const visualBeatCompletedAt=performance.now();
 
    try {
-     const r=await fetch("/api/prospect-tour/turn",{
-       method:"POST",
-       credentials:"same-origin",
-       cache:"no-store",
-       headers:{"Content-Type":"application/json"},
-       body:JSON.stringify({
-         turn,
-         utterance,
-         introIntent,
-         priorSummary:summary
-       })
-     });
+     const r=await reasoningRequest;
      const result=await r.json().catch(()=>null);
+     window.MEOSProspectTourLastLatency=Object.freeze({
+       commission:"006.024C",
+       buildId:"ET024C-CONCURRENT-THINKING-LATENCY-20260816-A",
+       requestStartedBeforeVisualBeat:true,
+       requestToVisualBeatMs:Math.round(visualBeatCompletedAt-requestStartedAt),
+       responseAvailableMs:Math.round((responseAvailableAt??performance.now())-requestStartedAt),
+       providerCompletedDuringVisualBeat:Boolean(responseAvailableAt!==null && responseAvailableAt<=visualBeatCompletedAt),
+       providerReasoningConfigurationChanged:false
+     });
 
      if(!r.ok || !result?.success){
        if(result?.gracefulAdvance){await gracefulFallback();return;}
