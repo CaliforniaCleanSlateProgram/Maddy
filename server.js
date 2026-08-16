@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.67";
+const VERSION = "2.10.68";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7319,10 +7319,10 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.023F1";
-const PROSPECT_TOUR_VERSION = "1.5.1";
+const PROSPECT_TOUR_COMMISSION = "006.023F3";
+const PROSPECT_TOUR_VERSION = "1.5.2";
 const PROSPECT_TOUR_BUILD_ID =
-  "PT151-REASONING-HEADROOM-RUNTIME-RESILIENCE-20260815-A";
+  "PT152-COMMERCIAL-SUFFICIENCY-MARGINAL-QUESTION-VALUE-20260815-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
@@ -7418,6 +7418,10 @@ function prospectTourCommercialMoves() {
   return ["understand", "demonstrate", "broaden", "resolve", "advance", "close"];
 }
 
+function prospectTourInformationSufficiencyStates() {
+  return ["insufficient", "sufficient", "transaction_ready"];
+}
+
 function prospectTourExplicitTransactionIntent(latestUtterance) {
   const text = normalizeProspectTourText(latestUtterance, PROSPECT_TOUR_MAX_INPUT_CHARS).toLowerCase();
   if (!text) return false;
@@ -7437,6 +7441,8 @@ function prospectTourExplicitCloseJudgment({ introIntent, priorSummary }) {
     commercialStage: "ownership",
     commercialMove: "close",
     pricingReady: true,
+    informationSufficiency: "transaction_ready",
+    questionNeeded: false,
     advance: true
   };
 }
@@ -7484,6 +7490,7 @@ function parseProspectTourJudgment(raw) {
   const capabilityStates = prospectTourCapabilityStates();
   const commercialStages = prospectTourCommercialStages();
   const commercialMoves = prospectTourCommercialMoves();
+  const sufficiencyStates = prospectTourInformationSufficiencyStates();
   const requestedOffice = normalizeProspectTourText(parsed?.office, 80);
   const office = offices.includes(requestedOffice) ? requestedOffice : "Executive Operations";
   const caption = normalizeProspectTourText(parsed?.caption, PROSPECT_TOUR_VISIBLE_CAPTION_CHARS);
@@ -7498,6 +7505,10 @@ function parseProspectTourJudgment(raw) {
     ? parsed.commercialMove
     : "understand";
   const pricingReady = Boolean(parsed?.pricingReady);
+  const informationSufficiency = sufficiencyStates.includes(parsed?.informationSufficiency)
+    ? parsed.informationSufficiency
+    : "insufficient";
+  const questionNeeded = Boolean(parsed?.questionNeeded);
   const advance = Boolean(parsed?.advance);
 
   if (!caption) throw new Error("Prospect tour reasoning returned no caption.");
@@ -7510,6 +7521,8 @@ function parseProspectTourJudgment(raw) {
     commercialStage,
     commercialMove,
     pricingReady,
+    informationSufficiency,
+    questionNeeded,
     advance
   };
 }
@@ -7531,6 +7544,12 @@ function prospectTourSystemInstructions() {
     "When asked to show, explain, or demonstrate how MEOS would help, demonstrating relevant truthful capability outranks gathering more information when existing context is sufficient.",
     "Defer implementation discovery about devices, software, staffing, workflow mechanics, integrations, scheduling ownership, account setup, or contact details until onboarding unless strictly required to determine capability truth.",
     "Every paid turn must add marginal value: understanding, confidence, new capability clarity, objection resolution, relationship, or conversion. Repetition has negative marginal value.",
+    "COMMERCIAL SUFFICIENCY GATE: before asking ANY question, decide whether the missing answer is truly necessary to (a) determine capability truth, (b) choose between materially different demonstrations, (c) resolve a material objection/uncertainty the prospect raised, or (d) safely complete the immediate commercial next step. If none applies, the question has negative marginal value: do not ask it.",
+    "Do not confuse useful onboarding/configuration data with useful sales-tour data. Alert categories, preferred reports, workflow details, crew roles, software, devices, integrations, contact information, notification preferences, and setup choices are onboarding unless they are strictly necessary to capability truth.",
+    "When the prospect states the desired operating outcome in outcome language (for example: only bring me what needs my attention; stop making me chase everyone; keep the routine work moving), treat that outcome as commercially sufficient for the demonstrated problem unless they express a contradiction or unresolved doubt. Do not decompose it into configuration questions.",
+    "If informationSufficiency=sufficient, your caption should normally state the useful conclusion/value and MOVE, BROADEN, or ADVANCE—not ask another question. If informationSufficiency=transaction_ready, STOP SELLING and close.",
+    "A question must earn its turn. Asking merely because more detail would be nice, interesting, useful later, or helpful for implementation is forbidden in the public tour.",
+    "Do not advance just because information is sufficient if the prospect still has an unresolved objection or has not yet experienced enough truthful value. Sufficiency prevents unnecessary extraction; it does not manufacture a close.",
     "Selectively reveal at most ONE materially new MEOS capability per turn when it naturally answers what the prospect said. Do not recite a feature catalog.",
     "Capability first, desire second, plan later. Do not invent prices, plan names, tier placement, upgrades, or entitlement assumptions.",
     "Use the prospect's own situation. Moving between crews or rejecting dashboard babysitting may make configured voice relevant; repeated context may make governed memory relevant; cross-functional burden may make executive coordination relevant.",
@@ -7540,14 +7559,14 @@ function prospectTourSystemInstructions() {
     "Never use impossible as a shortcut. Do not invent a path, prior fact, integration, result, or future success.",
     "Governance rejection is a high threshold for severe intentional harm, exploitation, or criminal abuse; do not reject ordinary lawful or unusual businesses.",
     "Remember compact prospect facts naturally and do not re-introduce yourself after the Meet Maddy handoff. Do not make them repeat known information.",
-    "Ask only if the answer is necessary to capability truth or a genuinely unresolved commercial decision. Once enough is known, stop extracting and move.",
+    "Ask only when questionNeeded=true under the Commercial Sufficiency Gate. Once enough is known for the present commercial decision, stop extracting and move.",
     "A natural destination is 'I think we'd work really well for you' when earned. Do not force it before sufficient understanding/value, and do not keep selling after ownership intent.",
     "Do not bluff when the prospect has deeper domain expertise.",
     "Public prospect mode authorizes no research, tools, voice execution, external action, autonomous learning, or durable institutional memory.",
     "Write dialogue only. No cinematic narration and no internal implementation talk.",
     "Available customer-facing office names are exactly: " + prospectTourOfficeCatalog().join(", ") + ".",
     "Prospect-safe capability truth (choose at most one materially new capability if relevant):\n" + prospectTourCapabilityBrief(),
-    "Return JSON only with keys: caption, office, summary, capabilityState, commercialStage, commercialMove, pricingReady, advance.",
+    "Return JSON only with keys: caption, office, summary, capabilityState, commercialStage, commercialMove, pricingReady, informationSufficiency, questionNeeded, advance.",
     "caption: the ONE complete Maddy utterance, 1-3 concise spoken sentences; include any necessary question inside it.",
     "office: the single customer-facing office/function most useful next.",
     "summary: tiny factual carry-forward context, never a transcript. Preserve established/accepted value, materially new capability already shown, unresolved concern, and explicit ownership intent when present. Never invent missing facts.",
@@ -7555,6 +7574,8 @@ function prospectTourSystemInstructions() {
     "commercialStage: exactly one of " + prospectTourCommercialStages().join(", ") + ".",
     "commercialMove: exactly one of " + prospectTourCommercialMoves().join(", ") + ".",
     "pricingReady: true when the prospect has enough value/confidence to reasonably choose the pricing path, or explicitly asks to transact; false when showing pricing would outrun them.",
+    "informationSufficiency: insufficient when a genuinely material answer is still required; sufficient when you know enough for the present commercial decision/demonstration; transaction_ready when explicit transaction intent exists.",
+    "questionNeeded: true ONLY when a question passes the Commercial Sufficiency Gate; otherwise false.",
     "advance: true when continuing the current conversational line has lower expected value than moving forward. Explicit transaction intent always advances."
   ].join("\n");
 }
@@ -7625,6 +7646,8 @@ function prospectTourCheapRedirect() {
     commercialStage: "understand",
     commercialMove: "understand",
     pricingReady: false,
+    informationSufficiency: "insufficient",
+    questionNeeded: false,
     advance: false
   };
 }
@@ -7662,9 +7685,11 @@ async function runProspectTourReasoning({ introIntent, latestUtterance, priorSum
               commercialStage: { type: "string", enum: prospectTourCommercialStages() },
               commercialMove: { type: "string", enum: prospectTourCommercialMoves() },
               pricingReady: { type: "boolean" },
+              informationSufficiency: { type: "string", enum: prospectTourInformationSufficiencyStates() },
+              questionNeeded: { type: "boolean" },
               advance: { type: "boolean" }
             },
-            required: ["caption", "office", "summary", "capabilityState", "commercialStage", "commercialMove", "pricingReady", "advance"]
+            required: ["caption", "office", "summary", "capabilityState", "commercialStage", "commercialMove", "pricingReady", "informationSufficiency", "questionNeeded", "advance"]
           }
         }
       },
@@ -7774,6 +7799,7 @@ app.post(
         economics: {
           textOnly: true, paidCognition: false, providerCalls: 0, voiceCalls: 0,
           maxOutputTokens: 0, targetMeaningfulTurns: PROSPECT_TOUR_TARGET_TURNS,
+          commercialSufficiencyEvaluated: true,
           researchAuthorized: false, toolCallsAuthorized: false, externalActionAuthorized: false
         }
       });
@@ -7874,6 +7900,7 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
   const capabilityStates = prospectTourCapabilityStates();
   const stages = prospectTourCommercialStages();
   const moves = prospectTourCommercialMoves();
+  const sufficiencyStates = prospectTourInformationSufficiencyStates();
   const syntheticRequest = {
     headers: { "x-forwarded-for": "203.0.113.19" },
     ip: "203.0.113.19",
@@ -7898,13 +7925,18 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Maddy is commercially synchronized rather than pushy", instructions.includes("COMMERCIAL SYNCHRONIZATION") && instructions.includes("Never get ahead of them and never remain behind them")],
     ["Tour does not invent pricing tier or entitlement assumptions", instructions.includes("Do not invent prices, plan names, tier placement, upgrades, or entitlement assumptions")],
     ["Paid turns optimize marginal commercial value rather than repetition", instructions.includes("Every paid turn must add marginal value") && instructions.includes("Repetition has negative marginal value")],
+    ["Commercial Sufficiency Gate runs before any prospect question", instructions.includes("COMMERCIAL SUFFICIENCY GATE: before asking ANY question") && instructions.includes("question has negative marginal value")],
+    ["Outcome-level sufficiency blocks configuration interrogation", instructions.includes("only bring me what needs my attention") && instructions.includes("Do not decompose it into configuration questions")],
+    ["Onboarding details remain out of the sales tour", instructions.includes("Alert categories, preferred reports, workflow details, crew roles, software, devices, integrations, contact information, notification preferences, and setup choices are onboarding")],
+    ["Questions must earn their commercial turn", instructions.includes("A question must earn its turn") && instructions.includes("helpful for implementation is forbidden in the public tour")],
+    ["Sufficiency does not force a premature close", instructions.includes("Sufficiency prevents unnecessary extraction; it does not manufacture a close")],
     ["Explicit show-me requests prioritize capability demonstration over more discovery", instructions.includes("demonstrating relevant truthful capability outranks gathering more information")],
     ["Accepted value is not resold unless reopened", instructions.includes("Once a value proposition has clearly landed") && instructions.includes("Do not sell, explain, or ask them to affirm the same value again")],
     ["Breadth questions force materially different value instead of looping", instructions.includes("BROADEN to a materially different relevant capability") && instructions.includes("do not repeat the first demonstration")],
     ["Commercial cognition reads meaning rather than memorized phrases", instructions.includes("Respond to the meaning, not to a memorized phrase list")],
     ["Tour refuses repetitive yes stacking and forced closes", instructions.includes("Do not manufacture agreement") && instructions.includes("stack repetitive yes-questions")],
     ["Explicit transaction intent stops selling and advances", prospectTourExplicitTransactionIntent("I am sold. Take me to my office so I can sign up.") && instructions.includes("STOP SELLING")],
-    ["Explicit transaction close is deterministic and pricing-ready", prospectTourExplicitCloseJudgment({ introIntent:"Hey, I am Mike. I run three crews.", priorSummary:"Mike runs three crews." }).commercialMove === "close" && prospectTourExplicitCloseJudgment({ introIntent:"Hey, I am Mike. I run three crews.", priorSummary:"Mike runs three crews." }).pricingReady === true],
+    ["Explicit transaction close is deterministic and pricing-ready", prospectTourExplicitCloseJudgment({ introIntent:"Hey, I am Mike. I run three crews.", priorSummary:"Mike runs three crews." }).commercialMove === "close" && prospectTourExplicitCloseJudgment({ introIntent:"Hey, I am Mike. I run three crews.", priorSummary:"Mike runs three crews." }).pricingReady === true && prospectTourExplicitCloseJudgment({ introIntent:"Hey, I am Mike. I run three crews.", priorSummary:"Mike runs three crews." }).informationSufficiency === "transaction_ready" && prospectTourExplicitCloseJudgment({ introIntent:"Hey, I am Mike. I run three crews.", priorSummary:"Mike runs three crews." }).questionNeeded === false],
     ["Unknown contact facts may never be invented", instructions.includes("Never claim the prospect previously supplied a fact unless it is present") && instructions.includes("you do not know it")],
     ["Implementation discovery is deferred until onboarding unless capability truth requires it", instructions.includes("Defer implementation discovery about devices, software, staffing, workflow mechanics, integrations, scheduling ownership, account setup, or contact details until onboarding")],
     ["Known context must be used before asking another question", instructions.includes("Reason from the entire compact context")],
@@ -7923,12 +7955,13 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Public prospect cognition grants no research tools voice action learning or durable institutional memory", instructions.includes("authorizes no research, tools, voice execution, external action, autonomous learning, or durable institutional memory")],
     ["One canonical utterance owns both answer and any needed question", instructions.includes("ONE canonical customer-facing utterance") && instructions.includes("ask it inside caption")],
     ["Expert prospects are not bluffed", instructions.includes("Do not bluff when the prospect has deeper domain expertise")],
-    ["Cheap redirect consumes no provider call and conforms to current schema", cheap.advance === false && cheap.pricingReady === false && cheap.commercialMove === "understand" && cheap.office === "Executive Operations" && capabilityStates.includes(cheap.capabilityState) && stages.includes(cheap.commercialStage) && moves.includes(cheap.commercialMove)],
+    ["Cheap redirect consumes no provider call and conforms to current schema", cheap.advance === false && cheap.pricingReady === false && cheap.commercialMove === "understand" && cheap.informationSufficiency === "insufficient" && cheap.questionNeeded === false && cheap.office === "Executive Operations" && capabilityStates.includes(cheap.capabilityState) && stages.includes(cheap.commercialStage) && moves.includes(cheap.commercialMove) && sufficiencyStates.includes(cheap.informationSufficiency)],
     ["Relevance gate still gives ambiguous prospects the benefit of the doubt", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "I have something unusual I want to try", priorSummary: "" }).paidCognition === true],
     ["Relevance gate still blocks clearly irrelevant gibber-jabber before paid cognition", prospectTourRelevanceDecision({ introIntent: "", latestUtterance: "My cat starts mooing like a cow while naked grandma is mowing the driveway with a fluorescent lamp", priorSummary: "" }).paidCognition === false],
     ["Public requests remain rate-limited before paid cognition", decision.allowed === true && decision.remaining < PROSPECT_TOUR_MAX_REQUESTS_PER_WINDOW],
     ["Acceptance fixture leaves no durable rate-limit residue", prospectTourUsage.size === before],
     ["Single-voice schema contains no separate customer-facing question field", !instructions.includes("Return JSON only with keys: caption, office, question")],
+    ["Reasoning schema explicitly reports information sufficiency and whether a question is necessary", instructions.includes("informationSufficiency") && instructions.includes("questionNeeded") && sufficiencyStates.join("|") === "insufficient|sufficient|transaction_ready"],
     ["Capability reveal reuses the existing single paid reasoning call rather than adding a second caller", true],
     ["Prospect reasoning headroom is capped at 3000 total generated tokens", PROSPECT_TOUR_MAX_OUTPUT_TOKENS === 3000],
     ["Acceptance test itself makes zero provider calls", true]
