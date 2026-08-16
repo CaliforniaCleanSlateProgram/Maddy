@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.68";
+const VERSION = "2.10.69";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7319,10 +7319,10 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.023F5";
-const PROSPECT_TOUR_VERSION = "1.5.5";
+const PROSPECT_TOUR_COMMISSION = "006.024D";
+const PROSPECT_TOUR_VERSION = "1.5.6";
 const PROSPECT_TOUR_BUILD_ID =
-  "PT155-MADDY-EXPRESSION-IDENTITY-20260815-A";
+  "PT156-CUSTOMER-FACING-CAPABILITY-TRUTH-GATE-20260816-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
@@ -7465,6 +7465,120 @@ function prospectTourCapabilityBrief() {
   return prospectTourSellableCapabilities().map(item => `${item.id} [${item.truth}]: ${item.reveal}`).join("\n");
 }
 
+/*
+ * Commission 006.024D — Customer-Facing Capability Truth Gate
+ *
+ * Provider prose is proposal, not product reality. This deterministic gate runs
+ * after the single paid prospect reasoning call and before any provider caption
+ * is returned to the browser. It does not add a second model call.
+ *
+ * The public tour has a deliberately compact capability brief. If provider
+ * prose claims a specific external execution path or concrete interface that
+ * is not established by that supplied truth, MEOS corrects the claim instead
+ * of letting conversational momentum promote it into product fact.
+ */
+function prospectTourTruthGateSignals(text) {
+  const normalized = normalizeProspectTourText(text, PROSPECT_TOUR_VISIBLE_SUMMARY_CHARS * 2);
+  const signals = [];
+
+  const uiImplementation =
+    /\b(?:click|tap|press|open|select|go to|from)\b[^.!?]{0,120}\b(?:button|pane|board|card|tab|menu|screen|activity|nudge)\b/i.test(normalized) ||
+    /\b(?:crew board|activity pane|nudge button|in-platform ["']?nudge["']?)\b/i.test(normalized);
+  if (uiImplementation) signals.push("unverified_interface_implementation");
+
+  const unsupportedChannel = /\b(?:sms|text(?:ing)?|calendar|scheduler|scheduling)\b/i.test(normalized);
+  const executionVerb = /\b(?:send|deliver|route|edit|change|update|reschedule|reassign|contact|message|ping|nudge|notify|hook(?:ed)? up|connect(?:ed|ion)?|automatically)\b/i.test(normalized);
+  const externalRecipient = /\b(?:crew(?: lead)?|employee|staff|vendor|customer|client|third[- ]party|external provider)\b/i.test(normalized);
+  if ((unsupportedChannel && executionVerb) || (externalRecipient && /\b(?:message|ping|nudge|notify|contact|text|sms)\b/i.test(normalized))) {
+    signals.push("unverified_external_execution");
+  }
+
+  const unsupportedConditionalPromise =
+    /\b(?:with|once|after)\b[^.!?]{0,100}\b(?:verified|right|connected|connection|provider|integration|hookup|hooked up)\b[^.!?]{0,120}\b(?:meos|we|i)\b[^.!?]{0,50}\b(?:can|will|automatically|route|send|deliver|edit|change|reschedule|nudge|notify)\b/i.test(normalized) &&
+    /\b(?:sms|text(?:ing)?|calendar|scheduler|scheduling|crew)\b/i.test(normalized);
+  if (unsupportedConditionalPromise) signals.push("unverified_conditional_execution_promise");
+
+  const unsupportedCurrentFact =
+    /\b(?:already|right now|currently|is real|are real)\b[^.!?]{0,150}\b(?:crew board|activity pane|nudge|sms|text(?:ing)?|calendar|scheduler|scheduling|crew lead)\b/i.test(normalized) ||
+    /\b(?:crew board|activity pane|in-platform ["']?nudge["']?)\b[^.!?]{0,120}\b(?:is real|exists?|available|works?|send|ping|nudge)\b/i.test(normalized);
+  if (unsupportedCurrentFact) signals.push("unsupported_current_fact");
+
+  return {
+    text: normalized,
+    signals: [...new Set(signals)],
+    blocked: signals.length > 0
+  };
+}
+
+function prospectTourHonestyChallenge(text) {
+  const normalized = normalizeProspectTourText(text, PROSPECT_TOUR_MAX_INPUT_CHARS);
+  return /\b(?:are you lying|did you lie|lying to me|made that up|making that up|is that real|is it real|prove it|show me exactly|do you actually|does that actually exist|are you sure)\b/i.test(normalized);
+}
+
+function prospectTourTruthCorrectionCaption({ honestyChallenge = false } = {}) {
+  if (honestyChallenge) {
+    return "You're right to challenge that. I overstated it. I don't have verified capability evidence for that specific feature or execution path, so I shouldn't have presented it as real. What I can verify is MEOS can monitor work it can see, surface what needs attention, and prepare the next step.";
+  }
+  return "I need to keep that precise: MEOS can monitor work it can see, flag stalled items, approvals, deadlines, and prepare next steps. I don't have verified capability evidence here for automatically contacting your crew or changing an external schedule, so I won't claim that.";
+}
+
+function prospectTourTruthResetSummary() {
+  return "Capability truth corrected: MEOS can monitor visible work, surface stalled items, approvals and deadlines, and prepare next steps. No verified crew messaging, SMS, scheduling, Crew Board, Activity pane, or Nudge execution path is established by current prospect capability truth.";
+}
+
+function prospectTourApplyCustomerFacingTruthGate({ judgment, latestUtterance, priorSummary } = {}) {
+  const original = judgment && typeof judgment === "object" ? judgment : prospectTourCheapRedirect();
+  const captionCheck = prospectTourTruthGateSignals(original.caption);
+  const summaryCheck = prospectTourTruthGateSignals(original.summary || "");
+  const priorCheck = prospectTourTruthGateSignals(priorSummary || "");
+  const honestyChallenge = prospectTourHonestyChallenge(latestUtterance);
+  const blockedSignals = [...new Set([
+    ...captionCheck.signals,
+    ...summaryCheck.signals,
+    ...(honestyChallenge ? priorCheck.signals : [])
+  ])];
+
+  if (blockedSignals.length === 0) {
+    return {
+      judgment: original,
+      audit: {
+        applied: true,
+        blocked: false,
+        providerCaptionAccepted: true,
+        priorConversationIsCapabilityEvidence: false,
+        secondProviderCallUsed: false,
+        signals: []
+      }
+    };
+  }
+
+  return {
+    judgment: {
+      ...original,
+      caption: prospectTourTruthCorrectionCaption({ honestyChallenge }),
+      office: "Executive Operations",
+      summary: prospectTourTruthResetSummary(),
+      capabilityState: "unknown_path",
+      commercialStage: "clarify",
+      commercialMove: "resolve",
+      pricingReady: false,
+      informationSufficiency: "sufficient",
+      questionNeeded: false,
+      advance: false
+    },
+    audit: {
+      applied: true,
+      blocked: true,
+      providerCaptionAccepted: false,
+      correctionIssued: true,
+      honestyChallenge,
+      priorConversationIsCapabilityEvidence: false,
+      secondProviderCallUsed: false,
+      signals: blockedSignals
+    }
+  };
+}
+
 function extractOpenAIResponseText(payload) {
   if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text.trim();
@@ -7582,9 +7696,10 @@ function prospectTourSystemInstructions() {
     "Never reveal private/local-only Maddy profiles or non-product personality settings.",
     "Capability truth: proven=current demonstrated capability; supported=current architecture supports it; adaptive=requires learning/integration/building; unknown_path=no proven path yet; governance_boundary=MEOS will not support the intended use.",
     "TRUTH BEFORE PERSUASION: never convert a general MEOS capability into an unverified industry-specific execution promise. A plausible workflow is not automatically a commissioned capability.",
-    "When describing external actions such as messaging people, ordering materials, submitting permits, approving invoices/change orders, reassigning staff, or operating a customer's third-party systems, state them as conditional on verified connected provider capabilities and customer authority unless that exact execution path is established in the supplied capability truth.",
-    "For supported or adaptive paths, use truthful conditional language such as 'with the right verified connection, MEOS can route that work' or 'that can be configured where the connected system supports it.' Never say 'MEOS will' perform an unverified external action end-to-end.",
-    "Do not pad a demonstration with invented interface details such as one-click actions, response windows, automatic pings, or industry-specific automations unless those exact details are established by the supplied capability truth.",
+    "When describing external actions such as messaging people, ordering materials, submitting permits, approving invoices/change orders, reassigning staff, editing schedules, or operating a customer's third-party systems, do not claim the action is available or merely 'connection away' unless that exact action and provider class are established in the supplied capability truth. Customer authority is separately required where applicable.",
+    "UNKNOWN IS NOT CONDITIONAL: the existence of a conceivable API, vendor, SMS service, calendar, scheduler, or future integration does not establish that MEOS currently supports that path. Say you do not have a verified path yet when the supplied truth does not establish one.",
+    "Prior conversation is not capability evidence. If a prospect challenges a capability or asks whether you were lying, re-ground against supplied capability truth. Retract an unsupported prior claim instead of defending it or inventing implementation detail.",
+    "Do not pad a demonstration with invented interface details such as one-click actions, buttons, boards, cards, panes, response windows, automatic pings, or industry-specific automations unless those exact details are established by the supplied capability truth.",
     "Never use impossible as a shortcut. Do not invent a path, prior fact, integration, result, or future success.",
     "Governance rejection is a high threshold for severe intentional harm, exploitation, or criminal abuse; do not reject ordinary lawful or unusual businesses.",
     "Remember compact prospect facts naturally and do not re-introduce yourself after the Meet Maddy handoff. Do not make them repeat known information.",
@@ -7879,12 +7994,18 @@ app.post(
     }
 
     try {
-      const judgment = await runProspectTourReasoning({
+      const providerJudgment = await runProspectTourReasoning({
         introIntent,
         latestUtterance,
         priorSummary,
         turn
       });
+      const truthGate = prospectTourApplyCustomerFacingTruthGate({
+        judgment: providerJudgment,
+        latestUtterance,
+        priorSummary
+      });
+      const judgment = truthGate.judgment;
 
       response.status(200).json({
         success: true,
@@ -7898,6 +8019,7 @@ app.post(
         remainingWindowRequests: rate.remaining,
         judgment,
         relevance,
+        truthGate: truthGate.audit,
         economics: {
           textOnly: true,
           paidCognition: true,
@@ -7943,6 +8065,54 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
 
   const instructions = prospectTourSystemInstructions();
   const cheap = prospectTourCheapRedirect();
+  const safeMonitoringJudgment = {
+    caption: "MEOS can monitor deadlines, stalled work, approvals, and meaningful changes it can see, then surface what actually needs your attention.",
+    office: "Executive Operations",
+    summary: "Monitoring and executive attention filtering established.",
+    capabilityState: "proven",
+    commercialStage: "show_capability",
+    commercialMove: "demonstrate",
+    pricingReady: false,
+    informationSufficiency: "sufficient",
+    questionNeeded: false,
+    advance: false
+  };
+  const inventedCrewUiJudgment = {
+    ...safeMonitoringJudgment,
+    caption: "Right now you nudge a crew lead from the Task card's Activity pane on the Crew Board—open the task, click the lead and tap Nudge to send an in-platform ping.",
+    summary: "MEOS already has a Crew Board Activity pane and Nudge feature for crew leads.",
+    capabilityState: "proven"
+  };
+  const inventedConditionalJudgment = {
+    ...safeMonitoringJudgment,
+    caption: "With a verified SMS or scheduling connection, MEOS can automatically deliver that nudge to the crew lead.",
+    capabilityState: "supported"
+  };
+  const defensiveHonestyJudgment = {
+    ...safeMonitoringJudgment,
+    caption: "No—I'm not lying. The in-platform Nudge is real; with a verified external provider MEOS can route those SMS or calendar nudges.",
+    capabilityState: "supported"
+  };
+  const inventedCrewUiGate = prospectTourApplyCustomerFacingTruthGate({
+    judgment: inventedCrewUiJudgment,
+    latestUtterance: "Show me exactly where in MEOS you can nudge a crew lead right now.",
+    priorSummary: ""
+  });
+  const inventedConditionalGate = prospectTourApplyCustomerFacingTruthGate({
+    judgment: inventedConditionalJudgment,
+    latestUtterance: "Do you actually support SMS or scheduling right now?",
+    priorSummary: ""
+  });
+  const defensiveHonestyGate = prospectTourApplyCustomerFacingTruthGate({
+    judgment: defensiveHonestyJudgment,
+    latestUtterance: "Are you lying to me?",
+    priorSummary: inventedCrewUiJudgment.summary
+  });
+  const safeMonitoringGate = prospectTourApplyCustomerFacingTruthGate({
+    judgment: safeMonitoringJudgment,
+    latestUtterance: "Can you keep an eye on things falling behind?",
+    priorSummary: ""
+  });
   const checks = [
     ["Hard public-tour ceiling remains six turns", PROSPECT_TOUR_MAX_TURNS === 6],
     ["Commercial progression targets four or fewer meaningful turns before the hard ceiling", PROSPECT_TOUR_TARGET_TURNS === 4 && PROSPECT_TOUR_TARGET_TURNS < PROSPECT_TOUR_MAX_TURNS],
@@ -7952,7 +8122,7 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Commissioned customer-facing cabinet is Maddy plus seven accountable offices", catalog.length === 8 && catalog.includes("Executive Operations") && catalog.includes("Finance & Economic Stewardship") && catalog.includes("Grant Development") && catalog.includes("Human Resources")],
     ["Retired prospect-tour office identities are not exposed as current cabinet offices", !catalog.includes("Strategy") && !catalog.includes("Finance") && !catalog.includes("People") && !catalog.includes("Executive Workspace")],
     ["Capability truth explicitly distinguishes proven supported adaptive unknown-path and governance boundary", capabilityStates.join("|") === "proven|supported|adaptive|unknown_path|governance_boundary"],
-    ["Industry-specific execution promises require verified capability and authority", instructions.includes("never convert a general MEOS capability into an unverified industry-specific execution promise") && instructions.includes("conditional on verified connected provider capabilities and customer authority")],
+    ["Industry-specific execution promises require exact supplied capability truth and separate authority", instructions.includes("never convert a general MEOS capability into an unverified industry-specific execution promise") && instructions.includes("do not claim the action is available or merely 'connection away'") && instructions.includes("Customer authority is separately required")],
     ["Prospect demonstrations cannot invent interface or automation details", instructions.includes("Do not pad a demonstration with invented interface details") && instructions.includes("automatic pings")],
     ["Customer-facing captions are instructed to finish complete before the visible limit", instructions.includes("ALWAYS ending as a complete sentence") && instructions.includes("Never run into the visible caption limit")],
     ["Explicit close narrates the office handoff before pricing", prospectTourExplicitCloseJudgment({ introIntent:"I'm Mike. I run three crews.", priorSummary:"Mike runs three crews." }).caption.includes("show you to your new office so we can go over pricing")],
@@ -7982,6 +8152,14 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Private/local-only Maddy profiles stay out of prospect selling", instructions.includes("Never reveal private/local-only Maddy profiles") && !prospectTourCapabilityBrief().toLowerCase().includes("gangsta")],
     ["Canonical Maddy expression identity is injected into prospect cognition", instructions.includes("MADDY EXPRESSION IDENTITY") && instructions.includes("Think as MEOS. Speak as Maddy.")],
     ["Maddy expression cannot override capability truth", instructions.includes("Your personality may change how truth sounds. It may never change what is true.") && instructions.includes("MADDY-IZE changes expression only")],
+    ["Unknown capability can no longer be promoted to connection-away execution", instructions.includes("UNKNOWN IS NOT CONDITIONAL") && instructions.includes("does not establish that MEOS currently supports that path")],
+    ["Prior conversation is explicitly non-evidence for capability truth", instructions.includes("Prior conversation is not capability evidence") && instructions.includes("Retract an unsupported prior claim")],
+    ["Invented Crew Board Activity pane and Nudge implementation is deterministically blocked", inventedCrewUiGate.audit.blocked === true && inventedCrewUiGate.audit.providerCaptionAccepted === false && inventedCrewUiGate.judgment.capabilityState === "unknown_path" && /don't have verified capability evidence/i.test(inventedCrewUiGate.judgment.caption)],
+    ["Unsupported SMS or scheduling connection promise is deterministically blocked", inventedConditionalGate.audit.blocked === true && inventedConditionalGate.audit.signals.includes("unverified_conditional_execution_promise") && inventedConditionalGate.judgment.capabilityState === "unknown_path"],
+    ["Honesty challenge retracts unsupported prior claim instead of defending provider prose", defensiveHonestyGate.audit.blocked === true && defensiveHonestyGate.audit.honestyChallenge === true && /overstated it/i.test(defensiveHonestyGate.judgment.caption) && !/Nudge is real/i.test(defensiveHonestyGate.judgment.caption)],
+    ["Truth correction removes contaminated invented feature summary from future context", defensiveHonestyGate.judgment.summary === prospectTourTruthResetSummary() && /No verified crew messaging/i.test(defensiveHonestyGate.judgment.summary)],
+    ["Verified monitoring capability passes the truth gate unchanged", safeMonitoringGate.audit.blocked === false && safeMonitoringGate.audit.providerCaptionAccepted === true && safeMonitoringGate.judgment.caption === safeMonitoringJudgment.caption],
+    ["Customer-facing truth gate adds zero provider calls", inventedCrewUiGate.audit.secondProviderCallUsed === false && inventedConditionalGate.audit.secondProviderCallUsed === false && defensiveHonestyGate.audit.secondProviderCallUsed === false],
     ["Truthful limitations may end without invented adjacent capability", instructions.includes("A truthful limitation is allowed to end") && instructions.includes("Do not rescue every limitation by inventing an adjacent MEOS workflow")],
     ["Prospect captions distinguish ownership instinct from proven execution", instructions.includes("Distinguish work I would want to own from work I can demonstrably execute now")],
     ["Maddy voice examples reject generic SaaS product copy", instructions.includes("NOT MADDY:") && instructions.includes("MADDY:") && instructions.includes("Avoid SaaS copy")],
