@@ -7319,10 +7319,10 @@ app.get("/api/customer-discovery/acceptance-test", async (request, response) => 
  *
  * No voice/TTS is authorized here.
  */
-const PROSPECT_TOUR_COMMISSION = "006.023F4";
-const PROSPECT_TOUR_VERSION = "1.5.3";
+const PROSPECT_TOUR_COMMISSION = "006.023F4B";
+const PROSPECT_TOUR_VERSION = "1.5.4";
 const PROSPECT_TOUR_BUILD_ID =
-  "PT153-CAPABILITY-TRUTH-COMPLETE-CLOSE-HANDOFF-20260815-A";
+  "PT154-ACCEPTANCE-SUFFICIENCY-ASSERTION-REPAIR-20260815-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
 const PROSPECT_TOUR_MAX_TURNS = 6;
@@ -7958,7 +7958,7 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
     ["Governance rejection remains a deliberately high threshold", instructions.includes("Governance rejection is a high threshold")],
     ["Prospect memory remains tiny factual context rather than transcript storage", instructions.includes("tiny factual carry-forward context") && instructions.includes("never a transcript")],
     ["Maddy is instructed to use memory naturally without re-introducing herself", instructions.includes("Remember compact prospect facts naturally") && instructions.includes("do not re-introduce yourself")],
-    ["Maddy stops extraction and advances when enough is known", instructions.includes("Once enough is known, stop extracting and move")],
+    ["Maddy stops extraction and advances when enough is known", instructions.includes("Once enough is known for the present commercial decision, stop extracting and move")],
     ["Tour remains adaptive rather than feature-catalog driven", instructions.includes("Do not recite a feature catalog")],
     ["Public prospect cognition grants no research tools voice action learning or durable institutional memory", instructions.includes("authorizes no research, tools, voice execution, external action, autonomous learning, or durable institutional memory")],
     ["One canonical utterance owns both answer and any needed question", instructions.includes("ONE canonical customer-facing utterance") && instructions.includes("ask it inside caption")],
