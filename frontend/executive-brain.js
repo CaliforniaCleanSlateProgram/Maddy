@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.19
- * Build: EB12519-HUMAN-STIMULUS-COGNITION-BRIDGE-20260816-A
+ * Version: 1.25.20
+ * Build: EB12520-ADVISER-ONLY-RESPONSE-OWNERSHIP-20260816-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.19";
-  const BUILD_ID = "EB12519-HUMAN-STIMULUS-COGNITION-BRIDGE-20260816-A";
+  const VERSION = "1.25.20";
+  const BUILD_ID = "EB12520-ADVISER-ONLY-RESPONSE-OWNERSHIP-20260816-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -980,6 +980,152 @@
       return this.clone(result);
     },
 
+
+
+    /*
+     * Commission 006.025B — Adviser-Only Response Ownership
+     *
+     * Providers may contribute analysis, alternatives, candidate language, and
+     * outside intelligence. They do not own Maddy's belief state or final
+     * customer-facing semantics. This reconciliation step turns a provider
+     * execution into an adviser receipt and preserves Maddy's already-owned
+     * cognition as the semantic authority for the response.
+     *
+     * This is intentionally semantic, not a phrase filter. Unknowns remain
+     * local to the proposition they describe; they do not silence unrelated
+     * known reasoning. Provider success is not evidence verification.
+     */
+    reconcileAdviserResult(requestPackage = {}, adviserResult = {}, options = {}) {
+      const cognition = requestPackage?.cognition || null;
+      const reasoning = cognition?.reasoning || null;
+      const localEvidence = Array.isArray(requestPackage?.localContext?.evidence)
+        ? requestPackage.localContext.evidence
+        : [];
+      const maddyUnknowns = Array.isArray(cognition?.unknowns)
+        ? cognition.unknowns
+        : [];
+
+      const providerResults = Array.isArray(adviserResult?.results)
+        ? adviserResult.results
+        : Array.isArray(adviserResult?.execution?.results)
+          ? adviserResult.execution.results
+          : adviserResult && typeof adviserResult === "object"
+            ? [adviserResult]
+            : [];
+
+      const successfulAdvice = providerResults.filter(item => item?.success !== false);
+      const firstAdviceObject = successfulAdvice
+        .map(item => item?.output !== undefined ? item.output : item)
+        .find(item => item !== undefined && item !== null) || null;
+
+      const providerCandidateLanguage = this.textContent(
+        firstAdviceObject?.candidateLanguage ||
+        firstAdviceObject?.suggestedLanguage ||
+        firstAdviceObject?.answer ||
+        firstAdviceObject?.text ||
+        ""
+      ).trim() || null;
+
+      const providerRecommendation =
+        firstAdviceObject?.recommendation ||
+        firstAdviceObject?.advice ||
+        firstAdviceObject?.suggestion ||
+        null;
+
+      const maddyRecommendation = reasoning?.recommendation || null;
+      const maddyFindings = Array.isArray(reasoning?.findings)
+        ? reasoning.findings
+        : [];
+      const maddyOptions = Array.isArray(reasoning?.options)
+        ? reasoning.options
+        : [];
+      const maddyRisks = Array.isArray(reasoning?.risks)
+        ? reasoning.risks
+        : [];
+
+      const localEvidenceDigest = localEvidence.slice(0, 10).map(item => ({
+        id: item?.id || item?.sourceId || null,
+        title: item?.title || null,
+        summary: item?.summary || item?.content || null,
+        authority: item?.authority || item?.evidenceClass || "unknown",
+        confidence: item?.confidence ?? null,
+        citation: item?.citation || item?.provenance?.citation || null
+      }));
+
+      const semanticParts = [];
+      const pushMeaning = (source, value, representation = "reasoning") => {
+        const text = this.textContent(
+          value?.summary || value?.statement || value?.description || value?.title || value
+        ).trim();
+        if (!text) return;
+        semanticParts.push({ source, text, representation });
+      };
+
+      pushMeaning("maddy-reasoning", maddyRecommendation, "recommendation");
+      maddyFindings.slice(0, 5).forEach(value => pushMeaning("maddy-reasoning", value, "finding"));
+      if (semanticParts.length === 0) {
+        localEvidenceDigest.slice(0, 4).forEach(value => pushMeaning("maddy-evidence", value.summary || value.title, "evidence"));
+      }
+
+      const adviserReceipt = {
+        schema: "meos.maddy.adviser-receipt.v1",
+        providerExecutionSucceeded: successfulAdvice.length > 0,
+        providerCount: providerResults.length,
+        successfulProviderCount: successfulAdvice.length,
+        recommendation: this.clone(providerRecommendation),
+        candidateLanguage: providerCandidateLanguage,
+        providerOutputIsEvidence: false,
+        providerOutputIsMaddyBelief: false,
+        providerOutputIsFinalSpeech: false,
+        receivedAt: new Date().toISOString()
+      };
+
+      const decision = {
+        success: Boolean(requestPackage?.request && cognition),
+        schema: "meos.maddy.semantic-response.v1",
+        owner: "maddy-executive-brain",
+        requestId: requestPackage?.request?.id || null,
+        cognitionId: cognition?.cognitionId || null,
+        objective: requestPackage?.request?.text || null,
+        semanticParts,
+        recommendation: this.clone(maddyRecommendation),
+        options: this.clone(maddyOptions),
+        risks: this.clone(maddyRisks),
+        unknowns: this.clone(maddyUnknowns),
+        evidence: localEvidenceDigest,
+        capabilityAwareness: this.clone(requestPackage?.selfModel?.capabilityAwareness || null),
+        adviser: adviserReceipt,
+        authority: {
+          humanApprovalRequired: Boolean(
+            requestPackage?.request?.requiresApproval ||
+            cognition?.dispatchReadiness?.authorityRequired
+          ),
+          externalActionGrantedByResponse: false,
+          providerCanGrantAuthority: false
+        },
+        speech: {
+          status: "meaning-authorized-language-pending",
+          semanticAuthority: "maddy-executive-brain",
+          candidateLanguage: providerCandidateLanguage,
+          candidateLanguageAuthorized: false,
+          finalSpeechAuthorized: false
+        },
+        truthRule:
+          "Maddy's cognition and evidence own the response meaning. Adviser output may influence judgment only after reconciliation and never becomes fact, authority, or final speech merely because the provider call succeeded.",
+        generatedAt: new Date().toISOString()
+      };
+
+      this.record("response.semantic-owned", {
+        requestId: decision.requestId,
+        cognitionId: decision.cognitionId,
+        adviserSucceeded: adviserReceipt.providerExecutionSucceeded,
+        semanticPartCount: semanticParts.length,
+        unknownCount: maddyUnknowns.length,
+        externalActionGranted: false
+      });
+      this.emit("brain:semantic-response-owned", decision);
+      return this.clone(decision);
+    },
 
 
     /*
