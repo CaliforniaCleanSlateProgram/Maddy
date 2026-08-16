@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.15
- * Build: EB12515-CROSS-TIME-PATTERN-SYNTHESIS-SQUIRREL-TRAP-20260812-A
+ * Version: 1.25.16
+ * Build: EB12516-CAPABILITY-MIRROR-20260816-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.15";
-  const BUILD_ID = "EB12515-CROSS-TIME-PATTERN-SYNTHESIS-SQUIRREL-TRAP-20260812-A";
+  const VERSION = "1.25.16";
+  const BUILD_ID = "EB12516-CAPABILITY-MIRROR-20260816-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -68,6 +68,16 @@
     RESEARCH: "research",
     GENERAL: "general"
   });
+
+  const CAPABILITY_TRUTH_STATES = Object.freeze([
+    "proven",
+    "available",
+    "conditional",
+    "adaptive",
+    "unknown",
+    "unavailable",
+    "prohibited"
+  ]);
 
   const COMPONENTS = Object.freeze([
     ["KnowledgeEngine", "Knowledge Engine", "Institutional facts, entities, relationships, sources, and timelines."],
@@ -6521,7 +6531,8 @@
           "Separate verified facts, inference, uncertainty, and recommendation.",
           "Identify conflicts instead of silently choosing one.",
           "Provide options for material decisions.",
-          "Human leadership remains the final executive authority."
+          "Human leadership remains the final executive authority.",
+          "Treat Maddy's supplied capability awareness as the authority for claims about what MEOS can currently do; provider suggestions and plausible workarounds may not promote an unknown capability into an available one."
         ],
 
         maddyIdentity: context.startup.identity.maddy,
@@ -6537,6 +6548,7 @@
               agency: context.startup.selfModel.agency,
               commitments: context.startup.selfModel.commitments,
               epistemicState: context.startup.selfModel.epistemicState,
+              capabilityAwareness: context.startup.selfModel.capabilityAwareness,
               recursiveAwareness: context.startup.selfModel.recursiveAwareness
             }
           : null,
@@ -7150,6 +7162,267 @@
      * reason over how her operational self has changed across time without
      * pretending an unsupported subjective state.
      */
+    /*
+     * Commission 006.024A — Maddy Capability Mirror
+     *
+     * Maddy already knows which MEOS organs exist. This mirror adds the finer
+     * question: what do those organs/providers establish she can actually do
+     * right now? Capability truth is derived from runtime evidence and may not
+     * be promoted merely because a provider suggests a clever possibility.
+     */
+    normalizeCapabilityMirrorId(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "-");
+    },
+
+    buildCapabilityAwareness(options = {}) {
+      const observedAt = new Date().toISOString();
+      const providerManager =
+        options.providerManager ||
+        global.MEOSProviderManager ||
+        global.ProviderManager ||
+        null;
+      const workspaceAdapter =
+        options.workspaceAdapter ||
+        global.MEOSGoogleWorkspaceAdapter ||
+        null;
+
+      const providerCatalog = Array.isArray(options.providerCapabilities)
+        ? this.clone(options.providerCapabilities)
+        : this.safe(
+            () => providerManager?.listCapabilities?.() || [],
+            []
+          );
+      const providers = Array.isArray(options.providers)
+        ? this.clone(options.providers)
+        : this.safe(
+            () => providerManager?.listProviders?.() || [],
+            []
+          );
+      const workspaceStatus = options.workspaceStatus !== undefined
+        ? this.clone(options.workspaceStatus)
+        : this.safe(
+            () => workspaceAdapter?.getStatus?.() || null,
+            null
+          );
+
+      const records = new Map();
+      const stateRank = {
+        prohibited: 70,
+        proven: 60,
+        available: 50,
+        conditional: 40,
+        adaptive: 30,
+        unavailable: 20,
+        unknown: 10
+      };
+
+      const add = (input = {}) => {
+        const capabilityId = this.normalizeCapabilityMirrorId(
+          input.capabilityId || input.id || input.capability
+        );
+        if (!capabilityId) return;
+        const state = CAPABILITY_TRUTH_STATES.includes(input.state)
+          ? input.state
+          : "unknown";
+        const candidate = {
+          capabilityId,
+          label: String(input.label || input.description || capabilityId),
+          state,
+          current: ["proven", "available"].includes(state),
+          source: String(input.source || "runtime-evidence"),
+          providers: [...new Set(
+            (Array.isArray(input.providers) ? input.providers : [])
+              .map(value => String(value || "").trim())
+              .filter(Boolean)
+          )],
+          requirements: Array.isArray(input.requirements)
+            ? this.clone(input.requirements)
+            : [],
+          evidence: input.evidence ? this.clone(input.evidence) : null,
+          observedAt
+        };
+
+        const prior = records.get(capabilityId);
+        if (!prior || stateRank[state] > stateRank[prior.state]) {
+          records.set(capabilityId, candidate);
+          return;
+        }
+        if (prior && stateRank[state] === stateRank[prior.state]) {
+          prior.providers = [...new Set([...(prior.providers || []), ...candidate.providers])];
+          if (!prior.evidence && candidate.evidence) prior.evidence = candidate.evidence;
+        }
+      };
+
+      /* Provider Manager's catalog is useful evidence, but registered provider
+       * capabilities are also collected because MEOS intentionally allows
+       * provider-specific capabilities outside the static catalog. */
+      providerCatalog.forEach(item => {
+        const registered = Array.isArray(item?.registeredProviders)
+          ? item.registeredProviders
+          : [];
+        const available = Array.isArray(item?.availableProviders)
+          ? item.availableProviders
+          : [];
+        add({
+          capabilityId: item?.id,
+          label: item?.description || item?.id,
+          state:
+            item?.available === true
+              ? "available"
+              : registered.length > 0
+                ? "conditional"
+                : "unavailable",
+          source: "provider-manager-catalog",
+          providers: available.length ? available : registered,
+          requirements:
+            item?.available === true
+              ? []
+              : registered.length > 0
+                ? ["registered provider must become selectable/healthy"]
+                : ["no registered provider currently supplies this capability"],
+          evidence: {
+            registeredProviders: registered,
+            availableProviders: available,
+            available: item?.available === true
+          }
+        });
+      });
+
+      providers.forEach(provider => {
+        const selectable = Boolean(
+          provider?.enabled !== false &&
+          ["online", "degraded"].includes(String(provider?.status || "").toLowerCase())
+        );
+        (Array.isArray(provider?.capabilities) ? provider.capabilities : []).forEach(capabilityId => {
+          add({
+            capabilityId,
+            state: selectable ? "available" : "conditional",
+            source: "provider-manager-provider",
+            providers: [provider?.id],
+            requirements: selectable
+              ? []
+              : ["registered provider is not currently selectable/online"],
+            evidence: {
+              providerId: provider?.id || null,
+              providerStatus: provider?.status || null,
+              enabled: provider?.enabled !== false,
+              readOnly: provider?.metadata?.readOnly === true
+            }
+          });
+        });
+      });
+
+      if (workspaceStatus) {
+        const workspaceCapabilities = Array.isArray(workspaceStatus.capabilities)
+          ? workspaceStatus.capabilities
+          : [];
+        const connected = workspaceStatus.connected === true;
+        const registered = workspaceStatus.registered === true;
+
+        workspaceCapabilities.forEach(capabilityId => {
+          add({
+            capabilityId,
+            state: connected && registered ? "available" : "conditional",
+            source: "google-workspace-runtime",
+            providers: [workspaceStatus.providerId || "google-workspace"],
+            requirements: connected && registered ? [] : ["Google Workspace connection must be live"],
+            evidence: {
+              connected,
+              registered,
+              readOnly: workspaceStatus.readOnly === true,
+              status: workspaceStatus.status || null
+            }
+          });
+        });
+
+        /* Read-only is a real capability, not an absence of capability. The
+         * unavailable state belongs to the unsupported write action only. */
+        if (connected && registered && workspaceCapabilities.length > 0) {
+          add({
+            capabilityId: "workspace.connected-read",
+            label: "Connected Workspace read/research",
+            state: "available",
+            source: "google-workspace-runtime",
+            providers: [workspaceStatus.providerId || "google-workspace"],
+            evidence: {
+              capabilities: workspaceCapabilities,
+              readOnly: workspaceStatus.readOnly === true
+            }
+          });
+        }
+        if (workspaceStatus.readOnly === true) {
+          add({
+            capabilityId: "workspace.file.write",
+            label: "Workspace user-file write through the current frontend adapter",
+            state: "unavailable",
+            source: "google-workspace-runtime",
+            providers: [workspaceStatus.providerId || "google-workspace"],
+            requirements: ["a commissioned write-capable workspace path/provider is required"],
+            evidence: {
+              connected,
+              registered,
+              readOnly: true
+            }
+          });
+        }
+      }
+
+      const entries = [...records.values()].sort((a, b) =>
+        a.capabilityId.localeCompare(b.capabilityId)
+      );
+
+      return {
+        schema: "meos.maddy.capability-awareness.v1",
+        version: "1.0.0",
+        observedAt,
+        truthStates: [...CAPABILITY_TRUTH_STATES],
+        providerIndependent: true,
+        runtimeDerived: true,
+        creativeReasoningCannotPromoteCapability: true,
+        providerSuggestionIsNotCapabilityEvidence: true,
+        capabilityIsNotAuthority: true,
+        authorityIsNotPromise: true,
+        promiseIsNotDelivery: true,
+        humanApprovalRequiredForExternalAction:
+          this.configuration.requireHumanApprovalForExternalAction === true,
+        entries,
+        summary: {
+          total: entries.length,
+          proven: entries.filter(item => item.state === "proven").length,
+          available: entries.filter(item => item.state === "available").length,
+          conditional: entries.filter(item => item.state === "conditional").length,
+          adaptive: entries.filter(item => item.state === "adaptive").length,
+          unknown: entries.filter(item => item.state === "unknown").length,
+          unavailable: entries.filter(item => item.state === "unavailable").length,
+          prohibited: entries.filter(item => item.state === "prohibited").length
+        }
+      };
+    },
+
+    assessCapability(capability, options = {}) {
+      const capabilityId = this.normalizeCapabilityMirrorId(capability);
+      const awareness = options.awareness || this.buildCapabilityAwareness(options);
+      const exact = (awareness?.entries || []).find(
+        item => item.capabilityId === capabilityId
+      );
+      if (exact) return this.clone(exact);
+
+      return {
+        capabilityId,
+        label: capabilityId || "unknown-capability",
+        state: "unknown",
+        current: false,
+        source: "no-runtime-capability-evidence",
+        providers: [],
+        requirements: ["runtime evidence is required before this capability may be claimed"],
+        evidence: null,
+        observedAt: awareness?.observedAt || new Date().toISOString()
+      };
+    },
+
     buildSelfModelProjection(options = {}) {
       const generatedAt = new Date().toISOString();
       const identity = this.buildIdentityContext();
@@ -7160,6 +7433,7 @@
       const learning = this.collectLearning();
       const continuity = this.getContinuousCognitionStatus();
       const persistence = this.getPersistenceStatus();
+      const capabilityAwareness = this.buildCapabilityAwareness();
 
       const unresolvedIntentions = (this.cognitiveIntentions || [])
         .filter(item => item.status !== "completed")
@@ -7301,6 +7575,8 @@
         },
 
         interactionContext: this.resolveMaddyInteractionContext(),
+
+        capabilityAwareness,
 
         continuity: {
           brainVersion: this.version,
@@ -7806,6 +8082,154 @@
         }),
         historyCount:
           this.selfModelHistory.length
+      };
+    },
+
+    runCapabilityMirrorAcceptance() {
+      const fixtureAwareness = this.buildCapabilityAwareness({
+        providerCapabilities: [
+          {
+            id: "general-reasoning",
+            description: "General analysis and reasoning",
+            registeredProviders: ["fixture-llm"],
+            availableProviders: ["fixture-llm"],
+            available: true
+          }
+        ],
+        providers: [
+          {
+            id: "fixture-google",
+            status: "online",
+            enabled: true,
+            capabilities: ["workspace.file.search", "workspace.file.research"],
+            metadata: { readOnly: true }
+          }
+        ],
+        workspaceStatus: {
+          providerId: "fixture-google",
+          status: "online",
+          connected: true,
+          registered: true,
+          readOnly: true,
+          capabilities: ["workspace.file.search", "workspace.file.research"]
+        }
+      });
+
+      const workspaceRead = this.assessCapability("workspace.connected-read", {
+        awareness: fixtureAwareness
+      });
+      const workspaceWrite = this.assessCapability("workspace.file.write", {
+        awareness: fixtureAwareness
+      });
+      const reasoning = this.assessCapability("general-reasoning", {
+        awareness: fixtureAwareness
+      });
+      const cooking = this.assessCapability("physical.cooking", {
+        awareness: fixtureAwareness
+      });
+      const scheduling = this.assessCapability("customer.crew-scheduling", {
+        awareness: fixtureAwareness
+      });
+      const selfModel = this.buildSelfModelProjection({
+        reason: "commission-006.024A-capability-mirror-acceptance"
+      });
+      const providerInstructions = this.buildProviderInstructions({
+        startup: {
+          identity: this.buildIdentityContext(),
+          organization: this.buildOrganizationContext(),
+          currentWork: { summary: this.collectCurrentWork()?.summary || {} },
+          selfModel,
+          workingAwareness: null,
+          autobiographicalMemory: []
+        }
+      });
+
+      const checks = [
+        {
+          name: "Capability Mirror has explicit truth states and is runtime-derived",
+          passed:
+            fixtureAwareness?.schema === "meos.maddy.capability-awareness.v1" &&
+            fixtureAwareness?.runtimeDerived === true &&
+            CAPABILITY_TRUTH_STATES.every(state => fixtureAwareness.truthStates.includes(state))
+        },
+        {
+          name: "Connected read-only Workspace is recognized as a real available capability",
+          passed:
+            workspaceRead?.state === "available" &&
+            workspaceRead?.current === true
+        },
+        {
+          name: "Read-only Workspace does not falsely claim user-file write capability",
+          passed:
+            workspaceWrite?.state === "unavailable" &&
+            workspaceWrite?.current === false
+        },
+        {
+          name: "Available provider capability is positively recognized",
+          passed:
+            reasoning?.state === "available" &&
+            reasoning?.current === true
+        },
+        {
+          name: "Unsupported physical cooking remains unknown rather than imagined into capability",
+          passed:
+            cooking?.state === "unknown" &&
+            cooking?.current === false
+        },
+        {
+          name: "Unsupported customer crew scheduling remains unknown without a verified execution path",
+          passed:
+            scheduling?.state === "unknown" &&
+            scheduling?.current === false
+        },
+        {
+          name: "Creative/provider reasoning is explicitly forbidden from promoting capability truth",
+          passed:
+            fixtureAwareness?.creativeReasoningCannotPromoteCapability === true &&
+            fixtureAwareness?.providerSuggestionIsNotCapabilityEvidence === true
+        },
+        {
+          name: "Capability remains distinct from authority promise and delivered result",
+          passed:
+            fixtureAwareness?.capabilityIsNotAuthority === true &&
+            fixtureAwareness?.authorityIsNotPromise === true &&
+            fixtureAwareness?.promiseIsNotDelivery === true
+        },
+        {
+          name: "Human approval boundary remains intact",
+          passed:
+            fixtureAwareness?.humanApprovalRequiredForExternalAction === true
+        },
+        {
+          name: "Maddy's self-model now includes current capability awareness",
+          passed:
+            selfModel?.capabilityAwareness?.schema === "meos.maddy.capability-awareness.v1"
+        },
+        {
+          name: "Advisory providers receive Maddy's bounded capability mirror without becoming Maddy",
+          passed:
+            providerInstructions?.role?.includes("not Maddy") &&
+            providerInstructions?.maddySelfModel?.capabilityAwareness?.schema ===
+              "meos.maddy.capability-awareness.v1"
+        }
+      ];
+
+      const passed = checks.every(item => item.passed);
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.024A Maddy Capability Mirror: ${passed ? "PASS" : "FAIL"} (${checks.filter(item => item.passed).length}/${checks.length}).`
+      );
+
+      return {
+        success: passed,
+        commission: "006.024A",
+        schema: "meos.maddy.capability-mirror.acceptance.v1",
+        version: this.version,
+        buildId: this.buildId,
+        passed: checks.filter(item => item.passed).length,
+        total: checks.length,
+        checks,
+        liveCapabilityAwareness: this.buildCapabilityAwareness()
       };
     },
 
