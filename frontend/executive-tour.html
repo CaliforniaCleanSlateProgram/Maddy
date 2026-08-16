@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- Commission 006.023F2 — Commercial Synchronization Conversion Path
-Build: ET023F2-CAPTION-EYELINE-PRICING-PATH-20260815-A
-Consumes commissioned 006.023F commercial synchronization reasoning. -->
+<!-- Commission 006.023F4A — Follow Maddy Transaction Continuity
+Build: ET023F4A-FOLLOW-MADDY-HANDOFF-20260815-A
+Consumes commissioned 006.023F4 prospect capability-truth and close-handoff reasoning. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -69,8 +69,8 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
      <span class="speaker">Maddy</span>
      <span id="words" class="words">Come on. Let me show you how this place works — and we'll keep what you told me in mind as we go.</span>
      <div id="conversionPath" class="conversion-path" aria-live="polite">
-       <span class="conversion-kicker">Ready to take the next step?</span>
-       <button id="pricingCta" class="pricing-cta" type="button">LET'S GO OVER PRICING →</button>
+       <span class="conversion-kicker">Ready to keep moving?</span>
+       <button id="pricingCta" class="pricing-cta" type="button">FOLLOW MADDY →</button>
        <span class="keep-talking">Or keep talking with Maddy.</span>
      </div>
    </div>
@@ -143,7 +143,7 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
    pricingReady=Boolean(visible);
    conversionPath.classList.toggle("show",pricingReady);
    if(pricingReady){
-     hint.textContent="Keep talking with Maddy, or go over pricing when you're ready.";
+     hint.textContent="Keep talking with Maddy, or follow her when you're ready.";
    }
  }
 
@@ -168,7 +168,7 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
    await transitionMaddy("I’ve got enough context to keep us moving. I’ll use what you’ve told me as we go.");
    if(turn >= 4 || summary) setPricingPath(true);
    hint.textContent=pricingReady
-     ? "Keep talking with Maddy, or go over pricing when you're ready."
+     ? "Keep talking with Maddy, or follow her when you're ready."
      : "Reply to Maddy when you want to keep going.";
  }
 
@@ -217,7 +217,7 @@ html,body{margin:0;min-height:100%;background:#090908;color:#fff;font-family:Int
 
      // 023F: Maddy may expose pricing once value/confidence is sufficient, but
      // she never forces the customer forward. Explicit buying intent makes the
-     // path immediately obvious and ends further selling.
+     // physical follow-Maddy path immediately obvious and ends further selling.
      if(explicitPricingReady || closeMove || ownershipStage || hardCeiling){
        readyToClose=true;
        setPricingPath(true);
