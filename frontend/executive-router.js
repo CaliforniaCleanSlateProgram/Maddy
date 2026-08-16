@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.3.2
- * Build: ER132-BROWSER-CACHE-COMPACTION-20260812-A
+ * Version: 1.4.0
+ * Build: ER140-ADVISER-ONLY-RESPONSE-OWNERSHIP-20260816-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.3.2";
-  const BUILD_ID = "ER132-BROWSER-CACHE-COMPACTION-20260812-A";
+  const VERSION = "1.4.0";
+  const BUILD_ID = "ER140-ADVISER-ONLY-RESPONSE-OWNERSHIP-20260816-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -369,20 +369,34 @@
     collect(context) {
       const result = context.dispatchResult || {};
       const rawOutput = result.output !== undefined ? result.output : result;
+      const brain = this.resolveBrain();
+      const maddyResponse =
+        brain && typeof brain.reconcileAdviserResult === "function"
+          ? brain.reconcileAdviserResult(
+              context.brainResult.package,
+              rawOutput,
+              {
+                source: result.source || "meos",
+                provider: result.provider || null
+              }
+            )
+          : null;
       const governedAnswer = this.produceGovernedAnswer({
         request: context.request,
         route: context.route,
         package: context.brainResult.package,
         source: result.source || "meos",
         provider: result.provider || null,
-        output: rawOutput
+        output: rawOutput,
+        maddyResponse
       });
 
       return {
-        success: governedAnswer.sufficientEvidence === true,
-        schema: "meos.executive-router.result.v1",
+        success: maddyResponse?.success === true || governedAnswer.sufficientEvidence === true,
+        schema: "meos.executive-router.result.v2",
         requestId: context.request.id,
         brainRequestId: context.brainResult.requestId,
+        cognitionId: context.brainResult.cognitionId || null,
         status: REQUEST_STATUS.COLLECTED,
         route: context.route.name,
         supportingRoutes: [...context.route.supportingRoutes],
@@ -391,6 +405,7 @@
         source: result.source || "meos",
         provider: result.provider || null,
         answer: governedAnswer.answer,
+        maddyResponse,
         governedAnswer,
         output: rawOutput,
         package: this.clone(context.brainResult.package),
@@ -420,7 +435,7 @@
         localEvidence,
         pkg.request?.type || "general"
       );
-      const providerAnswer = this.firstText(
+      const providerCandidate = this.firstText(
         output.answer,
         output.response?.answer,
         output.result?.answer,
@@ -430,6 +445,7 @@
         output.result?.text,
         output.output?.text
       );
+      const maddyResponse = input.maddyResponse || null;
 
       const localAnswer = this.synthesizeLocalAnswer(
         input.request?.text || pkg.request?.text || "",
@@ -437,8 +453,12 @@
         pkg
       );
 
-      const answer = providerAnswer || localAnswer ||
-        "I do not have enough verified information yet to give you a trustworthy answer.";
+      /*
+       * 006.025B: providerCandidate is advisory language only. Until Maddy's
+       * one-mouth renderer authorizes language, Router may expose only a
+       * deterministic local evidence rendering for backward compatibility.
+       */
+      const answer = localAnswer || "";
 
       const evidenceUnknowns = this.normalizeTextList(
         pkg.evidenceIntegrity?.unverifiedInformation,
@@ -456,10 +476,10 @@
       return Object.freeze({
         schema: "meos.governed-answer.v1",
         answer,
-        basis: providerAnswer
-          ? "authorized-provider-result"
-          : localAnswer
-            ? "verified-meos-local-evidence"
+        basis: localAnswer
+          ? "maddy-owned-local-rendering"
+          : maddyResponse?.success === true
+            ? "maddy-semantic-response-language-pending"
             : "insufficient-evidence",
         confidence: Number(
           output.confidence ??
@@ -482,9 +502,11 @@
         citations: [...new Set(citations)],
         source: input.source || "meos",
         provider: input.provider || null,
-        providerPaidForAnswer: Boolean(input.provider),
-        generatedBy: providerAnswer ? "provider-normalization" : "meos-local-synthesis",
-        sufficientEvidence: Boolean(providerAnswer || localAnswer),
+        providerPaidForAdvice: Boolean(input.provider),
+        providerPaidForAnswer: false,
+        providerCandidateLanguage: providerCandidate || null,
+        generatedBy: localAnswer ? "meos-local-synthesis" : "maddy-semantic-response",
+        sufficientEvidence: Boolean(localAnswer || maddyResponse?.success === true),
         generatedAt: new Date().toISOString()
       });
     },
@@ -1071,10 +1093,95 @@
     },
 
     async dispatchToProvider(payload, options = {}) {
+      const manager =
+        global.MEOSProviderManager ||
+        global.ProviderManager ||
+        null;
+
+      if (
+        manager &&
+        typeof manager.planForBrainRequest === "function" &&
+        typeof manager.executeSelection === "function"
+      ) {
+        const brainPlan = manager.planForBrainRequest(
+          {
+            success: true,
+            requestId: payload.package?.request?.id || payload.request?.id || null,
+            route: payload.route.name,
+            package: payload.package
+          },
+          {
+            allowMultiProvider: false,
+            maximumProviders: 1
+          }
+        );
+
+        if (brainPlan?.success === true) {
+          this.emit("router:provider-dispatch-started", {
+            requestId: payload.request.id,
+            provider: brainPlan.selection.providers.map(item => item.id).join(","),
+            route: payload.route.name,
+            role: "adviser"
+          });
+
+          const execution = await manager.executeSelection(
+            brainPlan.selection,
+            {
+              schema: "meos.maddy.adviser-request.v1",
+              role: "adviser-to-maddy",
+              requestId: payload.request.id,
+              objective: payload.package?.request?.text || payload.request?.text || "",
+              maddyTruth: {
+                identity: payload.package?.identity || null,
+                organization: payload.package?.organization || null,
+                authority: payload.package?.authority || null,
+                evidence: payload.package?.localContext?.evidence || [],
+                evidenceIntegrity: payload.package?.evidenceIntegrity || null,
+                selfModel: payload.package?.selfModel || null,
+                cognition: payload.package?.cognition || null
+              },
+              instructions: payload.package?.providerInstructions || null,
+              outputContract: {
+                adviceOnly: true,
+                finalSpeechOwnedByProvider: false,
+                requestedFields: [
+                  "recommendation",
+                  "alternatives",
+                  "risks",
+                  "unknowns",
+                  "candidateLanguage"
+                ]
+              }
+            },
+            {
+              source: "executive-router",
+              role: "adviser",
+              requestId: payload.request.id
+            }
+          );
+
+          this.emit("router:provider-dispatch-completed", {
+            requestId: payload.request.id,
+            provider: brainPlan.selection.providers.map(item => item.id).join(","),
+            route: payload.route.name,
+            role: "adviser",
+            success: execution?.success === true
+          });
+
+          return {
+            source: "maddy-adviser-provider-manager",
+            provider: brainPlan.selection.providers.map(item => item.id).join(",") || null,
+            output: execution
+          };
+        }
+      }
+
+      /* Legacy adapter compatibility. It remains advice-only; its prose is not
+       * promoted to Maddy speech by collect()/produceGovernedAnswer(). */
       const provider = this.selectProvider(payload, options);
       if (!provider) {
         throw new ExecutiveRouterError(
-          "No authorized intelligence provider adapter is available for this route.",
+          "No authorized intelligence adviser is available for this route.",
           ERRORS.PROVIDER_UNAVAILABLE,
           {
             route: payload.route.name,
@@ -1086,33 +1193,39 @@
       this.emit("router:provider-dispatch-started", {
         requestId: payload.request.id,
         provider: provider.name,
-        route: payload.route.name
+        route: payload.route.name,
+        role: "adviser"
       });
 
       try {
         const providerResult = await provider.execute({
-          schema: "meos.executive-router.provider-request.v1",
+          schema: "meos.maddy.adviser-request.v1",
           requestId: payload.request.id,
+          role: "adviser-to-maddy",
           route: payload.route,
-          executivePackage: payload.package,
+          maddyTruth: payload.package,
           providerInstructions: payload.package.providerInstructions,
-          responseContract: payload.package.responseContract
+          responseContract: {
+            ...payload.package.responseContract,
+            providerOutputIsFinalSpeech: false
+          }
         });
 
         this.emit("router:provider-dispatch-completed", {
           requestId: payload.request.id,
           provider: provider.name,
-          route: payload.route.name
+          route: payload.route.name,
+          role: "adviser"
         });
 
         return {
-          source: "external-intelligence-provider",
+          source: "legacy-adviser-provider",
           provider: provider.name,
           output: providerResult
         };
       } catch (error) {
         throw new ExecutiveRouterError(
-          `Provider adapter failed: ${provider.name}`,
+          `Adviser provider failed: ${provider.name}`,
           ERRORS.PROVIDER_FAILED,
           {
             provider: provider.name,
