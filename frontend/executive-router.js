@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.4.0
- * Build: ER140-ADVISER-ONLY-RESPONSE-OWNERSHIP-20260816-A
+ * Version: 1.4.1
+ * Build: ER141-EXPLICIT-ADVISER-SELECTION-PRECEDENCE-20260816-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.4.0";
-  const BUILD_ID = "ER140-ADVISER-ONLY-RESPONSE-OWNERSHIP-20260816-A";
+  const VERSION = "1.4.1";
+  const BUILD_ID = "ER141-EXPLICIT-ADVISER-SELECTION-PRECEDENCE-20260816-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -1093,6 +1093,25 @@
     },
 
     async dispatchToProvider(payload, options = {}) {
+      /*
+       * 006.025B live correction: an explicitly requested Router adviser must
+       * be honored before Provider Manager performs autonomous selection.
+       * This preserves deterministic test/debug selection and the pre-existing
+       * explicit-provider contract without making Router providers canonical.
+       * When no explicit Router adviser is requested, Provider Manager remains
+       * the default provider-selection authority.
+       */
+      const explicitlyRequestedProvider = this.normalizeName(
+        options.provider || payload.request?.options?.provider || ""
+      );
+      const explicitRouterAdviser = explicitlyRequestedProvider
+        ? this.providers.get(explicitlyRequestedProvider)
+        : null;
+
+      if (explicitRouterAdviser?.enabled) {
+        return this.executeRouterAdviser(payload, explicitRouterAdviser);
+      }
+
       const manager =
         global.MEOSProviderManager ||
         global.ProviderManager ||
@@ -1190,6 +1209,10 @@
         );
       }
 
+      return this.executeRouterAdviser(payload, provider);
+    },
+
+    async executeRouterAdviser(payload, provider) {
       this.emit("router:provider-dispatch-started", {
         requestId: payload.request.id,
         provider: provider.name,
