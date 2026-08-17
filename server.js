@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.70";
+const VERSION = "2.10.71";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7335,9 +7335,9 @@ const PROSPECT_TOUR_MODEL =
  * never final Maddy speech, authority, belief, or verification.
  */
 const MADDY_ADVISER_COMMISSION = "006.029";
-const MADDY_ADVISER_VERSION = "1.0.0";
+const MADDY_ADVISER_VERSION = "1.0.1";
 const MADDY_ADVISER_BUILD_ID =
-  "MA100-PROVIDER-NEUTRAL-ADVISER-SERVER-BRIDGE-20260816-A";
+  "MA101-FOUNDER-RUNTIME-TRUST-20260816-A";
 const MADDY_ADVISER_PROVIDER =
   String(process.env.MEOS_ADVISER_PROVIDER || "openai").trim().toLowerCase();
 const MADDY_ADVISER_MODEL =
@@ -8095,15 +8095,91 @@ function cleanupMaddyAdviserDedupe(now = Date.now()) {
   }
 }
 
-function maddyAdviserRateAllowed(accountId) {
+function maddyAdviserClientKey(request) {
+  const forwarded = String(request?.headers?.["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  const address = forwarded || request?.ip || request?.socket?.remoteAddress || "unknown";
+  const userAgent = String(request?.headers?.["user-agent"] || "unknown").slice(0, 512);
+  return crypto
+    .createHash("sha256")
+    .update(`${address}|${userAgent}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+function maddyAdviserExpectedOrigin(request) {
+  const forwardedProto = String(request?.headers?.["x-forwarded-proto"] || "")
+    .split(",")[0]
+    .trim();
+  const protocol = forwardedProto || request?.protocol || "https";
+  const host = String(request?.headers?.host || "").trim();
+  return host ? `${protocol}://${host}` : null;
+}
+
+function maddyAdviserOriginFromHeader(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  try { return new URL(text).origin; } catch (_) { return null; }
+}
+
+function maddyAdviserSameOriginRuntimeAllowed(request) {
+  const expectedOrigin = maddyAdviserExpectedOrigin(request);
+  if (!expectedOrigin) return false;
+
+  const fetchSite = String(request?.headers?.["sec-fetch-site"] || "").toLowerCase();
+  const origin = maddyAdviserOriginFromHeader(request?.headers?.origin);
+  const referer = maddyAdviserOriginFromHeader(request?.headers?.referer);
+
+  if (origin && origin !== expectedOrigin) return false;
+  if (referer && referer !== expectedOrigin) return false;
+
+  // Browser fetch metadata is the preferred founder-runtime proof. A same-origin
+  // Referer is retained as a compatibility fallback for browsers that omit it.
+  const browserSameOrigin = fetchSite === "same-origin";
+  const exactRefererFallback = !fetchSite && referer === expectedOrigin;
+  if (!browserSameOrigin && !exactRefererFallback) return false;
+
+  // Public prospect and auth pages do not receive private adviser-runtime trust.
+  const refererText = String(request?.headers?.referer || "");
+  if (/\/(?:executive-tour|sign-in|register)\.html(?:[?#]|$)/i.test(refererText)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function resolveMaddyAdviserPrincipal(request) {
+  const account = await authenticatedAccount(request);
+  if (account?.id) {
+    return {
+      id: `account:${account.id}`,
+      mode: "authenticated-account",
+      account
+    };
+  }
+
+  if (maddyAdviserSameOriginRuntimeAllowed(request)) {
+    return {
+      id: `founder-runtime:${maddyAdviserClientKey(request)}`,
+      mode: "same-origin-founder-runtime",
+      account: null
+    };
+  }
+
+  return null;
+}
+
+function maddyAdviserRateAllowed(principalId) {
+  const key = String(principalId || "untrusted");
   const now = Date.now();
-  const current = maddyAdviserRate.get(accountId) || { count: 0, resetAt: now + MADDY_ADVISER_RATE_WINDOW_MS };
+  const current = maddyAdviserRate.get(key) || { count: 0, resetAt: now + MADDY_ADVISER_RATE_WINDOW_MS };
   if (now >= current.resetAt) {
     current.count = 0;
     current.resetAt = now + MADDY_ADVISER_RATE_WINDOW_MS;
   }
   current.count += 1;
-  maddyAdviserRate.set(accountId, current);
+  maddyAdviserRate.set(key, current);
   return {
     allowed: current.count <= MADDY_ADVISER_RATE_MAX_CALLS,
     remaining: Math.max(0, MADDY_ADVISER_RATE_MAX_CALLS - current.count),
@@ -8272,10 +8348,10 @@ function cloneMaddyAdviserReplay(result) {
   };
 }
 
-async function executeMaddyAdviserForAccount(account, requestBody, validated) {
+async function executeMaddyAdviserForPrincipal(principal, requestBody, validated) {
   cleanupMaddyAdviserDedupe();
   const requestId = normalizeMaddyAdviserText(requestBody.requestId, 180) || null;
-  const dedupeKey = requestId ? `${account.id}:${requestId}` : null;
+  const dedupeKey = requestId ? `${principal.id}:${requestId}` : null;
   if (dedupeKey && maddyAdviserCache.has(dedupeKey)) {
     return cloneMaddyAdviserReplay(maddyAdviserCache.get(dedupeKey).result);
   }
@@ -8284,9 +8360,9 @@ async function executeMaddyAdviserForAccount(account, requestBody, validated) {
     return cloneMaddyAdviserReplay(result);
   }
 
-  const rate = maddyAdviserRateAllowed(account.id);
+  const rate = maddyAdviserRateAllowed(principal.id);
   if (!rate.allowed) {
-    const error = new Error("Maddy adviser rate limit reached for this authenticated account.");
+    const error = new Error("Maddy adviser rate limit reached for this trusted runtime principal.");
     error.status = 429;
     error.code = "maddy_adviser_rate_limited";
     error.rate = rate;
@@ -8315,9 +8391,14 @@ async function executeMaddyAdviserForAccount(account, requestBody, validated) {
 app.get("/api/maddy/adviser/status", async (request, response, next) => {
   response.set("Cache-Control", "no-store");
   try {
-    const account = await authenticatedAccount(request);
-    if (!account) {
-      return response.status(401).json({ success: false, configured: false, error: "authentication_required" });
+    const principal = await resolveMaddyAdviserPrincipal(request);
+    if (!principal) {
+      return response.status(401).json({
+        success: false,
+        configured: false,
+        error: "trusted_runtime_required",
+        message: "Maddy adviser cognition requires either an authenticated customer account or the trusted same-origin Executive runtime."
+      });
     }
     const providerInstalled = MADDY_ADVISER_PROVIDER === "openai";
     return response.status(providerInstalled ? 200 : 503).json({
@@ -8329,6 +8410,7 @@ app.get("/api/maddy/adviser/status", async (request, response, next) => {
       serverVersion: VERSION,
       provider: MADDY_ADVISER_PROVIDER,
       model: MADDY_ADVISER_MODEL,
+      trustMode: principal.mode,
       providerIsMaddy: false,
       finalSpeechAuthority: false,
       pricingConfigured:
@@ -8344,12 +8426,12 @@ app.post(
   async (request, response) => {
     response.set("Cache-Control", "no-store");
     try {
-      const account = await authenticatedAccount(request);
-      if (!account) {
+      const principal = await resolveMaddyAdviserPrincipal(request);
+      if (!principal) {
         return response.status(401).json({
           success: false,
-          error: "authentication_required",
-          message: "An authenticated MEOS session is required for private Maddy adviser cognition."
+          error: "trusted_runtime_required",
+          message: "Maddy adviser cognition requires either an authenticated customer account or the trusted same-origin Executive runtime."
         });
       }
       const validated = validateMaddyAdviserEnvelope(request.body);
@@ -8360,7 +8442,7 @@ app.post(
           message: "The adviser call was rejected before any paid provider cognition."
         });
       }
-      const result = await executeMaddyAdviserForAccount(account, request.body, validated);
+      const result = await executeMaddyAdviserForPrincipal(principal, request.body, validated);
       return response.status(200).json(result);
     } catch (error) {
       const status = Number(error?.status || 500);
@@ -8384,9 +8466,9 @@ app.post(
 app.get("/api/maddy/adviser/acceptance-test", async (request, response, next) => {
   response.set("Cache-Control", "no-store");
   try {
-    const account = await authenticatedAccount(request);
-    if (!account) {
-      return response.status(401).json({ success: false, error: "authentication_required" });
+    const principal = await resolveMaddyAdviserPrincipal(request);
+    if (!principal) {
+      return response.status(401).json({ success: false, error: "trusted_runtime_required" });
     }
     const validFixture = {
       schema: "meos.maddy.adviser-request.v2",
@@ -8422,7 +8504,8 @@ app.get("/api/maddy/adviser/acceptance-test", async (request, response, next) =>
     });
     const source = maddyAdviserInstructions();
     const checks = [
-      { name: "Private adviser route requires authenticated MEOS account", passed: Boolean(account?.id) },
+      { name: "Adviser route accepts either authenticated customer identity or trusted same-origin founder runtime", passed: Boolean(principal?.id) },
+      { name: "Founder runtime trust does not manufacture a customer account", passed: principal.mode !== "same-origin-founder-runtime" || principal.account === null },
       { name: "Bounded v2 adviser contract is accepted before paid cognition", passed: valid.ok === true },
       { name: "Provider final-speech ownership is rejected before paid cognition", passed: invalidSpeech.ok === false && invalidSpeech.error === "maddy_adviser_sovereignty_contract_invalid" },
       { name: "Configured vendor is explicitly not Maddy", passed: /not Maddy/i.test(source) && !/You are Maddy/i.test(source) },
@@ -8442,6 +8525,7 @@ app.get("/api/maddy/adviser/acceptance-test", async (request, response, next) =>
       buildId: MADDY_ADVISER_BUILD_ID,
       serverVersion: VERSION,
       providerCallsDuringAcceptance: 0,
+      trustMode: principal.mode,
       passed,
       total: checks.length,
       checks
