@@ -1,16 +1,23 @@
 /*
  * MEOS Executive Monitoring Engine
- * Version: 1.0.2
+ * Commission Candidate: 006.031H — Governed Monitoring & Follow-up Autonomy
+ * Version: 1.1.0
+ * Build: EM110-GOVERNED-MONITORING-FOLLOWUP-AUTONOMY-20260817-A
  *
  * Mission:
  * Continuously observe MEOS operational state, detect risks, deadline pressure,
  * stalled work, low-confidence decisions, workload imbalance, duplicate work,
- * repeated automation failures, and unresolved executive conditions.
+ * repeated automation failures, and unresolved executive conditions while
+ * preserving Durable Maddy Autonomy as the only standing autonomy authority.
  *
- * Brick boundary:
- * This engine observes, scores, alerts, and recommends. It does not approve
- * decisions, spend money, contact external parties, alter policy, or execute
- * corrective action without an authorized workflow or approval.
+ * Authority boundary:
+ * - Monitoring & Follow-up authority governs self-initiated monitoring scans.
+ * - Human-directed monitoring remains available while standing autonomy is OFF.
+ * - Browser scanning is compatibility execution only; browser timers create no authority.
+ * - Durable temporal wake is not claimed by this browser organ.
+ * - This engine observes, scores, alerts, recommends, and may make governed internal
+ *   handoffs. It does not approve decisions, spend money, contact external parties,
+ *   alter policy, sign, certify, submit, or execute corrective action without authority.
  */
 
 (function initializeExecutiveMonitoring(global) {
@@ -18,6 +25,9 @@
 
     const STORAGE_KEY = "meos.executive-monitoring.v1";
     const SCHEMA = "meos.executive-monitoring.package.v1";
+    const STATE_SCHEMA = "meos.executive-monitoring.persistence-snapshot.v1";
+    const COMMISSION = "006.031H";
+    const AUTONOMY_CAPABILITY = "monitoring";
 
     const ALERT_STATUSES = {
         OPEN: "open",
@@ -37,7 +47,9 @@
 
     const ExecutiveMonitoring = {
         name: "MEOS Executive Monitoring Engine",
-        version: "1.0.2",
+        version: "1.1.0",
+        buildId: "EM110-GOVERNED-MONITORING-FOLLOWUP-AUTONOMY-20260817-A",
+        commission: COMMISSION,
         status: "initializing",
         operatingMode: "continuous-executive-oversight",
 
@@ -63,7 +75,10 @@
             duplicateSimilarityThreshold: 0.86,
             requireExecutiveApprovalForCorrectiveAction: true,
             automaticNotificationEnabled: true,
-            automaticAutomationHandoffEnabled: true
+            automaticAutomationHandoffEnabled: true,
+            autonomyAuthorityRequired: true,
+            browserCompatibilityScannerOnly: true,
+            durableTemporalWakeCommissioned: false
         },
 
         alerts: [],
@@ -71,6 +86,15 @@
         history: [],
         eventListeners: {},
         scannerId: null,
+        autonomyAuthorityUnsubscribers: [],
+        deferredAutonomyBindingInstalled: false,
+        autonomy: {
+            lastSyncAt: null,
+            lastAuthorityRevision: null,
+            monitoringEffective: false,
+            lastReason: "authority-unproven",
+            scannerAuthority: null
+        },
         initializedAt: null,
 
         // Browser persistence is a best-effort continuity cache only.
@@ -113,23 +137,283 @@
 
             this.registerSystemKnowledge();
             this.recalculateAnalytics();
+            this.bindAutonomyAuthorityEvents();
+            this.installDeferredAutonomyBinding();
 
-            if (
-                this.configuration.scannerEnabled &&
-                options.startScanner !== false
-            ) {
-                this.startScanner();
+            if (options.startScanner !== false) {
+                this.syncAutonomyRuntime({ reason: "initialize" });
+            } else {
+                this.stopScanner({
+                    reason: "initialize-start-scanner-disabled",
+                    silent: true
+                });
             }
 
             console.info(
-                `[MEOS] ${this.name} v${this.version} ${this.status}. Build EM102-BROWSER-PERSISTENCE-RECOVERY-QUOTA-HYGIENE-20260812-A.`
+                `[MEOS] ${this.name} v${this.version} ${this.status}. Build ${this.buildId}.`
             );
 
             this.emit("monitoring:online", this.getStatus());
             return this.getStatus();
         },
 
+        getAutonomyAuthority() {
+            return (
+                global.MaddyAutonomy ||
+                global.MEOSAutonomyAuthority ||
+                null
+            );
+        },
+
+        getAutonomyIntegrationStatus(capabilityId = AUTONOMY_CAPABILITY) {
+            if (capabilityId !== AUTONOMY_CAPABILITY) {
+                return {
+                    ready: false,
+                    reason: "unsupported-monitoring-autonomy-capability",
+                    capabilityId,
+                    version: this.version,
+                    commission: this.commission,
+                    buildId: this.buildId
+                };
+            }
+
+            return {
+                ready: true,
+                reason: "governed-monitoring-followup-contract-ready",
+                capabilityId,
+                version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                legacyScannerCreatesAuthority: false,
+                humanDirectedMonitoringPreserved: true,
+                browserCompatibilityScannerAvailable: true,
+                browserIndependentRunnerCommissioned: false,
+                durableTemporalWakeCommissioned: false,
+                automaticSpendAuthorized: false,
+                externalActionAuthorized: false,
+                signatureAuthorized: false,
+                certificationAuthorized: false,
+                submissionAuthorized: false,
+                legalCommitmentAuthorized: false,
+                correctiveActionAuthorized: false,
+                persistenceSnapshotContract: STATE_SCHEMA
+            };
+        },
+
+        autonomyCapabilityStatus() {
+            const authority = this.getAutonomyAuthority();
+
+            if (
+                !authority ||
+                typeof authority.capabilityStatus !== "function"
+            ) {
+                return {
+                    id: AUTONOMY_CAPABILITY,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "maddy-autonomy-authority-unavailable"
+                };
+            }
+
+            try {
+                return authority.capabilityStatus(AUTONOMY_CAPABILITY) || {
+                    id: AUTONOMY_CAPABILITY,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "monitoring-autonomy-status-unavailable"
+                };
+            } catch (error) {
+                return {
+                    id: AUTONOMY_CAPABILITY,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "monitoring-autonomy-probe-failed",
+                    error: error?.message || String(error)
+                };
+            }
+        },
+
+        isAutonomyAuthorized() {
+            const authority = this.getAutonomyAuthority();
+            if (
+                !authority ||
+                typeof authority.isAuthorized !== "function"
+            ) {
+                return false;
+            }
+
+            try {
+                return authority.isAuthorized(AUTONOMY_CAPABILITY) === true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        captureAutonomyReceipt() {
+            const authority = this.getAutonomyAuthority();
+            const status = this.autonomyCapabilityStatus();
+            let snapshot = null;
+
+            try {
+                snapshot =
+                    typeof authority?.getSnapshot === "function"
+                        ? authority.getSnapshot()
+                        : null;
+            } catch (_error) {
+                snapshot = null;
+            }
+
+            return {
+                schema: "meos.executive-monitoring.autonomy-receipt.v1",
+                capabilityId: AUTONOMY_CAPABILITY,
+                effective: status?.effective === true,
+                uiState: status?.uiState || "BLOCKED",
+                reason: status?.reason || "authority-unproven",
+                authorityRevision:
+                    Number(snapshot?.revision || 0) ||
+                    Number(snapshot?.policy?.revision || 0) ||
+                    Number(snapshot?.serverStatus?.revision || 0) ||
+                    null,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                capturedAt: new Date().toISOString()
+            };
+        },
+
+        bindAutonomyAuthorityEvents() {
+            if (
+                Array.isArray(this.autonomyAuthorityUnsubscribers) &&
+                this.autonomyAuthorityUnsubscribers.length > 0
+            ) {
+                return true;
+            }
+
+            const authority = this.getAutonomyAuthority();
+            if (!authority || typeof authority.on !== "function") {
+                return false;
+            }
+
+            const sync = () => {
+                try {
+                    this.syncAutonomyRuntime({ reason: "authority-event" });
+                } catch (error) {
+                    console.warn(
+                        "[MEOS Executive Monitoring] Autonomy synchronization failed.",
+                        error
+                    );
+                    this.stopScanner({
+                        reason: "autonomy-sync-failed",
+                        silent: true
+                    });
+                }
+            };
+
+            try {
+                ["authority:updated", "authority:unavailable"].forEach((eventName) => {
+                    const unsubscribe = authority.on(eventName, sync);
+                    if (typeof unsubscribe === "function") {
+                        this.autonomyAuthorityUnsubscribers.push(unsubscribe);
+                    }
+                });
+                sync();
+                return true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        installDeferredAutonomyBinding() {
+            if (this.deferredAutonomyBindingInstalled) {
+                return true;
+            }
+
+            if (typeof global.addEventListener !== "function") {
+                return false;
+            }
+
+            this.deferredAutonomyBindingInstalled = true;
+            global.addEventListener("load", () => {
+                this.bindAutonomyAuthorityEvents();
+                this.syncAutonomyRuntime({ reason: "window-load" });
+            });
+            return true;
+        },
+
+        syncAutonomyRuntime(options = {}) {
+            const monitoring = this.autonomyCapabilityStatus();
+            const authority = this.getAutonomyAuthority();
+            let snapshot = null;
+
+            try {
+                snapshot =
+                    typeof authority?.getSnapshot === "function"
+                        ? authority.getSnapshot()
+                        : null;
+            } catch (_error) {
+                snapshot = null;
+            }
+
+            this.autonomy.lastSyncAt = new Date().toISOString();
+            this.autonomy.lastAuthorityRevision =
+                Number(snapshot?.revision || 0) ||
+                Number(snapshot?.policy?.revision || 0) ||
+                Number(snapshot?.serverStatus?.revision || 0) ||
+                null;
+            this.autonomy.monitoringEffective =
+                monitoring?.effective === true;
+            this.autonomy.lastReason =
+                options.reason ||
+                monitoring?.reason ||
+                "authority-unproven";
+
+            const scannerAuthorized =
+                this.configuration.scannerEnabled === true &&
+                this.autonomy.monitoringEffective;
+
+            this.autonomy.scannerAuthority = scannerAuthorized
+                ? "central-autonomy-authority"
+                : null;
+
+            if (scannerAuthorized) {
+                return {
+                    synced: true,
+                    scannerAuthorized: true,
+                    monitoring: this.clone(monitoring),
+                    scanner: this.startScanner({
+                        authoritySync: true
+                    })
+                };
+            }
+
+            return {
+                synced: true,
+                scannerAuthorized: false,
+                monitoring: this.clone(monitoring),
+                scanner: this.stopScanner({
+                    reason: "monitoring-autonomy-not-effective",
+                    silent: true
+                })
+            };
+        },
+
         scan(options = {}) {
+            const autonomous = options.humanDirected !== true;
+            let authorityReceipt = null;
+
+            if (autonomous) {
+                if (!this.isAutonomyAuthorized()) {
+                    return {
+                        success: false,
+                        blockedByAutonomy: true,
+                        reason: "monitoring-autonomy-not-authorized",
+                        monitoring: this.autonomyCapabilityStatus()
+                    };
+                }
+                authorityReceipt = this.captureAutonomyReceipt();
+            }
+
             const startedAt = Date.now();
             const snapshot = this.collectSnapshot();
 
@@ -150,7 +434,14 @@
             const refreshedAlerts = [];
 
             detections.forEach((detection) => {
-                const result = this.upsertAlert(detection);
+                const result = this.upsertAlert(detection, {
+                    autonomous,
+                    humanDirected: !autonomous,
+                    source: options.source || (autonomous
+                        ? "autonomy-monitoring-scanner"
+                        : "human-directed-monitoring"),
+                    authorityReceipt
+                });
 
                 if (result.created) {
                     createdAlerts.push(result.alert);
@@ -170,7 +461,15 @@
                 entityCounts: snapshot.entityCounts,
                 detectionCount: detections.length,
                 createdAlertCount: createdAlerts.length,
-                refreshedAlertCount: refreshedAlerts.length
+                refreshedAlertCount: refreshedAlerts.length,
+                autonomous,
+                humanDirected: !autonomous,
+                source: options.source || (autonomous
+                    ? "autonomy-monitoring-scanner"
+                    : "human-directed-monitoring"),
+                authorityReceipt: autonomous
+                    ? authorityReceipt
+                    : null
             };
 
             this.snapshots.unshift(scanRecord);
@@ -198,7 +497,14 @@
                 options.skipAutomationHandoff !== true
             ) {
                 createdAlerts.forEach((alert) =>
-                    this.handoffAlertToAutomation(alert)
+                    this.handoffAlertToAutomation(alert, {
+                        autonomous,
+                        humanDirected: !autonomous,
+                        source: autonomous
+                            ? "executive-monitoring-autonomous-handoff"
+                            : "executive-monitoring-human-handoff",
+                        authorityReceipt
+                    })
                 );
             }
 
@@ -1003,7 +1309,7 @@
             return detections;
         },
 
-        upsertAlert(detection) {
+        upsertAlert(detection, options = {}) {
             const existing = this.alerts.find(
                 (alert) =>
                     alert.key === detection.key &&
@@ -1063,7 +1369,15 @@
                 resolvedBy: null,
                 resolution: "",
                 detectionCount: 1,
-                automationHandoffId: null
+                automationHandoffId: null,
+                provenance: {
+                    autonomous: options.autonomous === true,
+                    humanDirected: options.humanDirected === true,
+                    source: options.source || null,
+                    authorityReceipt: options.autonomous === true
+                        ? this.clone(options.authorityReceipt || null)
+                        : null
+                }
             };
 
             this.alerts.unshift(alert);
@@ -1242,11 +1556,11 @@
             };
         },
 
-        handoffAlertToAutomation(alertOrId) {
+        handoffAlertToAutomation(alertOrId, options = {}) {
             const alert =
                 typeof alertOrId === "string"
                     ? this.getAlertById(alertOrId)
-                    : alertOrId;
+                    : this.getAlertById(alertOrId?.id) || alertOrId;
 
             if (!alert) {
                 return {
@@ -1287,13 +1601,31 @@
 
             try {
                 const result =
-                    automation.scan(() => [context]);
+                    automation.scan(() => [context], {
+                        humanDirected: options.humanDirected !== false &&
+                            options.autonomous !== true,
+                        autonomous: options.autonomous === true,
+                        machineInitiated: options.autonomous === true,
+                        source: options.source || (options.autonomous === true
+                            ? "executive-monitoring-autonomous-handoff"
+                            : "executive-monitoring-human-handoff")
+                    });
 
                 alert.automationHandoffId =
                     result?.results?.[0]?.run?.id ||
                     null;
                 alert.updatedAt =
                     new Date().toISOString();
+                alert.automationHandoff = {
+                    at: alert.updatedAt,
+                    autonomous: options.autonomous === true,
+                    humanDirected: options.humanDirected !== false &&
+                        options.autonomous !== true,
+                    source: options.source || null,
+                    authorityReceipt: options.autonomous === true
+                        ? this.clone(options.authorityReceipt || null)
+                        : null
+                };
 
                 return {
                     success: true,
@@ -1569,33 +1901,72 @@
             );
         },
 
-        startScanner() {
+        startScanner(options = {}) {
             if (this.scannerId) {
                 return {
                     success: true,
                     alreadyRunning: true,
                     intervalMs:
-                        this.configuration.scanIntervalMs
+                        this.configuration.scanIntervalMs,
+                    autonomyGoverned: true
                 };
             }
 
+            if (this.configuration.scannerEnabled !== true) {
+                return {
+                    success: false,
+                    started: false,
+                    reason: "monitoring-scanner-disabled"
+                };
+            }
+
+            if (!this.isAutonomyAuthorized()) {
+                this.autonomy.scannerAuthority = null;
+                return {
+                    success: false,
+                    started: false,
+                    reason: "monitoring-scanner-autonomy-not-authorized",
+                    monitoring: this.autonomyCapabilityStatus()
+                };
+            }
+
+            this.autonomy.scannerAuthority =
+                "central-autonomy-authority";
+
+            if (options.scanImmediately === true) {
+                this.scan({
+                    autonomous: true,
+                    source: "autonomy-monitoring-scanner"
+                });
+            }
+
             this.scannerId = global.setInterval(
-                () => this.scan(),
+                () => this.scan({
+                    autonomous: true,
+                    source: "autonomy-monitoring-scanner"
+                }),
                 this.configuration.scanIntervalMs
             );
 
             return {
                 success: true,
+                started: true,
                 intervalMs:
-                    this.configuration.scanIntervalMs
+                    this.configuration.scanIntervalMs,
+                autonomyGoverned: true,
+                browserCompatibilityScanner: true,
+                durableTemporalWakeCommissioned: false
             };
         },
 
-        stopScanner() {
+        stopScanner(options = {}) {
+            this.autonomy.scannerAuthority = null;
+
             if (!this.scannerId) {
                 return {
                     success: true,
-                    running: false
+                    running: false,
+                    reason: options.reason || null
                 };
             }
 
@@ -1604,7 +1975,8 @@
 
             return {
                 success: true,
-                running: false
+                running: false,
+                reason: options.reason || null
             };
         },
 
@@ -1644,7 +2016,7 @@
                 summary:
                     "Universal continuous executive oversight for deadlines, stalled work, blockers, low-confidence decisions, workload imbalance, duplicate work, approvals, collaboration, and automation failures.",
                 content:
-                    "Executive Monitoring observes MEOS operational state and produces alerts, recommendations, and controlled automation handoffs. It does not approve decisions, spend money, change policy, contact external parties, or execute corrective action without authorization.",
+                    "Executive Monitoring observes MEOS operational state and produces alerts, recommendations, and governed internal automation handoffs. Standing self-initiated monitoring requires Durable Maddy Autonomy Monitoring & Follow-up authority. Human-directed monitoring remains available while standing autonomy is off. Browser scanning is compatibility execution only and does not create authority or durable temporal wake. The engine does not approve decisions, spend money, change policy, contact external parties, sign, certify, submit, or execute corrective action without authorization.",
                 tags: [
                     "meos-core",
                     "executive-monitoring",
@@ -1666,7 +2038,11 @@
                     componentVersion: this.version,
                     organizationNeutralCore: true,
                     brickBoundary:
-                        "Observation, alerts, recommendations, and controlled handoff only; no autonomous corrective execution."
+                        "Observation, alerts, recommendations, and governed internal handoff only; no autonomous corrective execution.",
+                    autonomyAuthority: "server-durable-maddy-autonomy-authority",
+                    monitoringCapabilityId: AUTONOMY_CAPABILITY,
+                    browserAuthority: false,
+                    durableTemporalWakeCommissioned: false
                 },
                 createdBy: this.name
             });
@@ -1727,6 +2103,8 @@
                     Boolean(global.ExecutiveCollaboration),
                 executiveAutomation:
                     Boolean(global.ExecutiveAutomation),
+                maddyAutonomyAuthority:
+                    Boolean(this.getAutonomyAuthority()),
                 knowledgeEngine:
                     Boolean(global.KnowledgeEngine),
                 executiveOffices:
@@ -1744,6 +2122,8 @@
             return {
                 name: this.name,
                 version: this.version,
+                buildId: this.buildId,
+                commission: this.commission,
                 status: this.status,
                 operatingMode: this.operatingMode,
                 organizationNeutralCore:
@@ -1752,6 +2132,14 @@
                     Boolean(this.scannerId),
                 scanIntervalMs:
                     this.configuration.scanIntervalMs,
+                autonomy: {
+                    integration: this.getAutonomyIntegrationStatus(),
+                    capability: this.autonomyCapabilityStatus(),
+                    runtime: this.clone(this.autonomy),
+                    authorityAvailable: Boolean(this.getAutonomyAuthority()),
+                    browserAuthority: false,
+                    durableTemporalWakeCommissioned: false
+                },
                 connectedSources:
                     this.getConnectedSources(),
                 alertCount:
@@ -1795,8 +2183,102 @@
                             ? []
                             : this.history,
                     analytics:
-                        this.analytics
+                        this.analytics,
+                    authority: {
+                        source: "server-durable-maddy-autonomy-authority",
+                        browserAuthority: false,
+                        autonomyPolicyStoredHere: false,
+                        browserTimerCreatesAuthority: false,
+                        durableTemporalWakeCommissioned: false
+                    }
                 }
+            };
+        },
+
+        buildRunnerPersistenceSnapshot() {
+            const limit = (items, maximum) =>
+                Array.isArray(items)
+                    ? items.slice(0, Math.max(0, maximum))
+                    : [];
+
+            return {
+                schema: STATE_SCHEMA,
+                version: this.version,
+                buildId: this.buildId,
+                commission: this.commission,
+                capturedAt: new Date().toISOString(),
+                operationalConfiguration: {
+                    scanIntervalMs: this.configuration.scanIntervalMs,
+                    deadlineWarningDays: this.configuration.deadlineWarningDays,
+                    deadlineCriticalDays: this.configuration.deadlineCriticalDays,
+                    inactivityWarningHours: this.configuration.inactivityWarningHours,
+                    stalledWorkflowHours: this.configuration.stalledWorkflowHours,
+                    lowDecisionConfidenceThreshold:
+                        this.configuration.lowDecisionConfidenceThreshold,
+                    automationFailureThreshold:
+                        this.configuration.automationFailureThreshold,
+                    workloadImbalanceThreshold:
+                        this.configuration.workloadImbalanceThreshold,
+                    duplicateSimilarityThreshold:
+                        this.configuration.duplicateSimilarityThreshold
+                },
+                alerts: limit(
+                    this.alerts,
+                    this.configuration.maximumAlerts
+                ),
+                snapshots: limit(this.snapshots, 500),
+                history: limit(
+                    this.history,
+                    this.configuration.maximumHistory
+                ),
+                analytics: this.clone(this.analytics),
+                authority: {
+                    source: "server-durable-maddy-autonomy-authority",
+                    browserAuthority: false,
+                    autonomyPolicyStoredHere: false,
+                    browserTimerCreatesAuthority: false,
+                    durableTemporalWakeCommissioned: false
+                }
+            };
+        },
+
+        applyRunnerPersistenceSnapshot(snapshot, options = {}) {
+            if (!snapshot || snapshot.schema !== STATE_SCHEMA) {
+                return {
+                    success: false,
+                    applied: false,
+                    error: "Executive Monitoring runner persistence snapshot is invalid."
+                };
+            }
+
+            if (options.replace !== false) {
+                this.alerts = [];
+                this.snapshots = [];
+                this.history = [];
+            }
+
+            this.mergeById(this.alerts, snapshot.alerts || []);
+            this.mergeById(this.snapshots, snapshot.snapshots || []);
+            this.mergeById(this.history, snapshot.history || []);
+
+            if (snapshot.analytics) {
+                this.analytics = {
+                    ...this.analytics,
+                    ...snapshot.analytics
+                };
+            }
+
+            this.recalculateAnalytics();
+
+            if (options.persistBrowserCache === true) {
+                this.persistIfEnabled();
+            }
+
+            return {
+                success: true,
+                applied: true,
+                authorityImported: false,
+                status: this.getStatus()
             };
         },
 
@@ -2216,7 +2698,10 @@
                 };
             }
 
-            this.stopScanner();
+            this.stopScanner({
+                reason: "monitoring-clear",
+                silent: true
+            });
             this.alerts = [];
             this.snapshots = [];
             this.history = [];
@@ -2238,7 +2723,9 @@
             }
 
             if (this.configuration.scannerEnabled) {
-                this.startScanner();
+                this.syncAutonomyRuntime({
+                    reason: "monitoring-clear-complete"
+                });
             }
 
             return {
@@ -2355,6 +2842,327 @@
                 passed,
                 checks: rows,
                 persistence: this.clone(this.persistenceState)
+            };
+        },
+
+        runGovernedMonitoringAutonomyAcceptanceTest() {
+            const originalMaddyAutonomy = global.MaddyAutonomy;
+            const originalAuthorityAlias = global.MEOSAutonomyAuthority;
+            const originalMissionEngine = global.MEOSMissionEngine;
+            const originalAutomation = global.ExecutiveAutomation;
+            const originalAlerts = this.clone(this.alerts);
+            const originalSnapshots = this.clone(this.snapshots);
+            const originalHistory = this.clone(this.history);
+            const originalAnalytics = this.clone(this.analytics);
+            const originalAutomaticPersistence =
+                this.configuration.automaticPersistence;
+            const originalAutomaticNotification =
+                this.configuration.automaticNotificationEnabled;
+            const originalAutomaticHandoff =
+                this.configuration.automaticAutomationHandoffEnabled;
+            const scannerWasRunning = Boolean(this.scannerId);
+
+            const authorityState = {
+                monitoring: false,
+                revision: 4101
+            };
+            let handoffInvocation = null;
+
+            const fakeAuthority = {
+                capabilityStatus: (capabilityId) => ({
+                    id: capabilityId,
+                    effective:
+                        capabilityId === AUTONOMY_CAPABILITY &&
+                        authorityState.monitoring === true,
+                    uiState:
+                        capabilityId === AUTONOMY_CAPABILITY &&
+                        authorityState.monitoring === true
+                            ? "ON"
+                            : "OFF",
+                    reason:
+                        capabilityId === AUTONOMY_CAPABILITY &&
+                        authorityState.monitoring === true
+                            ? "authorized-and-effective"
+                            : "not-authorized"
+                }),
+                isAuthorized: (capabilityId) =>
+                    capabilityId === AUTONOMY_CAPABILITY &&
+                    authorityState.monitoring === true,
+                getSnapshot: () => ({
+                    revision: authorityState.revision,
+                    policy: {
+                        revision: authorityState.revision
+                    }
+                })
+            };
+
+            const checks = [];
+            const check = (name, passed, evidence = null) => {
+                checks.push({
+                    name,
+                    passed: passed === true,
+                    evidence: this.clone(evidence)
+                });
+            };
+
+            try {
+                this.stopScanner({
+                    reason: "acceptance-test-start",
+                    silent: true
+                });
+                this.configuration.automaticPersistence = false;
+                this.configuration.automaticNotificationEnabled = false;
+                this.configuration.automaticAutomationHandoffEnabled = true;
+                this.alerts = [];
+                this.snapshots = [];
+                this.history = [];
+                this.recalculateAnalytics();
+
+                global.MaddyAutonomy = fakeAuthority;
+                global.MEOSAutonomyAuthority = fakeAuthority;
+                global.MEOSMissionEngine = {
+                    missions: [
+                        {
+                            id: "acceptance-monitoring-mission",
+                            title: "Acceptance monitoring mission",
+                            status: "active",
+                            dueDate: new Date(
+                                Date.now() + 24 * 60 * 60 * 1000
+                            ).toISOString(),
+                            office: "Acceptance Office"
+                        }
+                    ]
+                };
+                global.ExecutiveAutomation = {
+                    runs: [],
+                    notifications: [],
+                    scan: (_provider, options = {}) => {
+                        handoffInvocation = this.clone(options);
+                        return {
+                            success: true,
+                            results: [
+                                {
+                                    run: {
+                                        id: "acceptance-automation-run"
+                                    }
+                                }
+                            ]
+                        };
+                    }
+                };
+
+                const integration =
+                    this.getAutonomyIntegrationStatus();
+                const scannerClosed = this.startScanner();
+                const autonomousBlocked = this.scan({
+                    autonomous: true,
+                    source: "acceptance-autonomous-off"
+                });
+                const humanDirected = this.scan({
+                    humanDirected: true,
+                    source: "acceptance-human"
+                });
+
+                this.alerts = [];
+                this.snapshots = [];
+                this.history = [];
+                handoffInvocation = null;
+
+                authorityState.monitoring = true;
+                authorityState.revision += 1;
+                this.syncAutonomyRuntime({
+                    reason: "acceptance-authority-on"
+                });
+
+                const governedScan = this.scan({
+                    autonomous: true,
+                    source: "acceptance-autonomous-on"
+                });
+                const governedAlert = governedScan?.createdAlerts?.[0] || null;
+                const runnerSnapshot =
+                    this.buildRunnerPersistenceSnapshot();
+                const scannerRunningWithAuthority =
+                    Boolean(this.scannerId);
+                const scannerAuthorityWithAuthority =
+                    this.autonomy.scannerAuthority;
+
+                authorityState.monitoring = false;
+                authorityState.revision += 1;
+                const authorityLoss = this.syncAutonomyRuntime({
+                    reason: "acceptance-authority-loss"
+                });
+
+                check(
+                    "Monitoring autonomy integration contract is first-class",
+                    integration?.ready === true &&
+                    integration?.capabilityId === AUTONOMY_CAPABILITY &&
+                    integration?.browserAuthority === false &&
+                    integration?.durableTemporalWakeCommissioned === false,
+                    integration
+                );
+                check(
+                    "Browser scanner fails closed while Monitoring authority is OFF",
+                    scannerClosed?.started === false &&
+                    scannerClosed?.reason ===
+                        "monitoring-scanner-autonomy-not-authorized",
+                    scannerClosed
+                );
+                check(
+                    "Direct autonomous monitoring cannot bypass central authority",
+                    autonomousBlocked?.blockedByAutonomy === true &&
+                    autonomousBlocked?.reason ===
+                        "monitoring-autonomy-not-authorized",
+                    autonomousBlocked
+                );
+                check(
+                    "Human-directed monitoring remains available with standing autonomy OFF",
+                    humanDirected?.success === true &&
+                    humanDirected?.scan?.humanDirected === true &&
+                    humanDirected?.scan?.autonomous === false,
+                    humanDirected?.scan
+                );
+                check(
+                    "Monitoring authority permits governed self-initiated scanning",
+                    governedScan?.success === true &&
+                    governedScan?.scan?.autonomous === true &&
+                    governedScan?.scan?.authorityReceipt?.effective === true,
+                    governedScan?.scan
+                );
+                check(
+                    "Autonomous alerts retain the durable authority revision receipt",
+                    governedAlert?.provenance?.autonomous === true &&
+                    governedAlert?.provenance?.authorityReceipt
+                        ?.authorityRevision === authorityState.revision - 1 &&
+                    governedAlert?.provenance?.authorityReceipt
+                        ?.browserAuthority === false,
+                    governedAlert?.provenance
+                );
+                check(
+                    "Autonomous Monitoring handoff is marked machine-initiated for downstream Automation governance",
+                    handoffInvocation?.autonomous === true &&
+                    handoffInvocation?.machineInitiated === true &&
+                    handoffInvocation?.humanDirected === false,
+                    handoffInvocation
+                );
+                check(
+                    "Central Monitoring authority can start the compatibility scanner",
+                    scannerRunningWithAuthority === true &&
+                    scannerAuthorityWithAuthority ===
+                        "central-autonomy-authority",
+                    {
+                        scannerWasRunningWithAuthority:
+                            scannerRunningWithAuthority,
+                        scannerAuthorityWithAuthority,
+                        scannerAuthorityAfterLoss:
+                            this.autonomy.scannerAuthority
+                    }
+                );
+                check(
+                    "Removing Monitoring authority stops autonomous scanning without erasing work",
+                    authorityLoss?.scannerAuthorized === false &&
+                    Boolean(this.scannerId) === false &&
+                    Array.isArray(this.alerts) &&
+                    this.alerts.length > 0,
+                    authorityLoss
+                );
+                check(
+                    "Runner persistence snapshot carries operational state but no autonomy policy",
+                    runnerSnapshot?.schema === STATE_SCHEMA &&
+                    runnerSnapshot?.authority
+                        ?.autonomyPolicyStoredHere === false &&
+                    runnerSnapshot?.authority?.browserAuthority === false &&
+                    runnerSnapshot?.authority
+                        ?.browserTimerCreatesAuthority === false &&
+                    runnerSnapshot?.authority
+                        ?.durableTemporalWakeCommissioned === false &&
+                    !Object.prototype.hasOwnProperty.call(
+                        runnerSnapshot,
+                        "autonomy"
+                    ),
+                    runnerSnapshot?.authority
+                );
+                check(
+                    "Legacy browser configuration cannot manufacture autonomy",
+                    this.configuration.scannerEnabled === true &&
+                    authorityState.monitoring === false &&
+                    this.startScanner()?.started === false,
+                    this.autonomyCapabilityStatus()
+                );
+                check(
+                    "Economic, external, signature, certification, submission, legal, and corrective authority remain closed",
+                    integration?.automaticSpendAuthorized === false &&
+                    integration?.externalActionAuthorized === false &&
+                    integration?.signatureAuthorized === false &&
+                    integration?.certificationAuthorized === false &&
+                    integration?.submissionAuthorized === false &&
+                    integration?.legalCommitmentAuthorized === false &&
+                    integration?.correctiveActionAuthorized === false,
+                    integration
+                );
+            } finally {
+                this.stopScanner({
+                    reason: "acceptance-test-cleanup",
+                    silent: true
+                });
+                this.alerts = originalAlerts;
+                this.snapshots = originalSnapshots;
+                this.history = originalHistory;
+                this.analytics = originalAnalytics;
+                this.configuration.automaticPersistence =
+                    originalAutomaticPersistence;
+                this.configuration.automaticNotificationEnabled =
+                    originalAutomaticNotification;
+                this.configuration.automaticAutomationHandoffEnabled =
+                    originalAutomaticHandoff;
+
+                if (originalMaddyAutonomy === undefined) {
+                    delete global.MaddyAutonomy;
+                } else {
+                    global.MaddyAutonomy = originalMaddyAutonomy;
+                }
+
+                if (originalAuthorityAlias === undefined) {
+                    delete global.MEOSAutonomyAuthority;
+                } else {
+                    global.MEOSAutonomyAuthority =
+                        originalAuthorityAlias;
+                }
+
+                if (originalMissionEngine === undefined) {
+                    delete global.MEOSMissionEngine;
+                } else {
+                    global.MEOSMissionEngine = originalMissionEngine;
+                }
+
+                if (originalAutomation === undefined) {
+                    delete global.ExecutiveAutomation;
+                } else {
+                    global.ExecutiveAutomation = originalAutomation;
+                }
+
+                if (scannerWasRunning) {
+                    this.syncAutonomyRuntime({
+                        reason: "acceptance-test-restore"
+                    });
+                }
+            }
+
+            const passed = checks.filter((item) => item.passed).length;
+            const success = passed === checks.length;
+            console.table(checks);
+            console.info(
+                `[MEOS ${this.version}] Commission ${this.commission} Governed Monitoring & Follow-up Autonomy: ${success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+            );
+
+            return {
+                schema: "meos.executive-monitoring.governed-autonomy-acceptance.v1",
+                commission: this.commission,
+                version: this.version,
+                buildId: this.buildId,
+                success,
+                passed,
+                total: checks.length,
+                checks
             };
         },
 
