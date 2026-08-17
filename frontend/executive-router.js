@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.4.4
- * Build: ER144-OWNED-SPEECH-RECEIPT-CONSUMPTION-20260816-A
+ * Version: 1.5.0
+ * Build: ER150-CANONICAL-MADDY-RESPONSE-TRANSPORT-20260816-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.4.4";
-  const BUILD_ID = "ER144-OWNED-SPEECH-RECEIPT-CONSUMPTION-20260816-A";
+  const VERSION = "1.5.0";
+  const BUILD_ID = "ER150-CANONICAL-MADDY-RESPONSE-TRANSPORT-20260816-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -62,7 +62,8 @@
     PROVIDER_FAILED: "MEOS_ROUTER_PROVIDER_FAILED",
     TIMEOUT: "MEOS_ROUTER_TIMEOUT",
     ABORTED: "MEOS_ROUTER_ABORTED",
-    DUPLICATE_REQUEST: "MEOS_ROUTER_DUPLICATE_REQUEST"
+    DUPLICATE_REQUEST: "MEOS_ROUTER_DUPLICATE_REQUEST",
+    MADDY_RESPONSE_UNAUTHORIZED: "MEOS_ROUTER_MADDY_RESPONSE_UNAUTHORIZED"
   });
 
   class ExecutiveRouterError extends Error {
@@ -173,7 +174,9 @@
         route: null,
         dispatchResult: null,
         startedAt: Date.now(),
-        status: REQUEST_STATUS.RECEIVED
+        status: REQUEST_STATUS.RECEIVED,
+        terminalized: false,
+        terminalReason: null
       };
 
       const operation = this.execute(context);
@@ -192,94 +195,73 @@
       let timeoutId = null;
       let abortHandler = null;
 
-      const work = (async () => {
-        try {
-          this.emit("router:request-received", this.publicContext(context));
-
-          const brain = this.resolveBrain();
-          if (!brain || typeof brain.routeRequest !== "function") {
-            throw new ExecutiveRouterError(
-              "The commissioned MEOS Executive Brain is unavailable or does not expose routeRequest().",
-              ERRORS.BRAIN_UNAVAILABLE,
-              { requestId: request.id }
-            );
-          }
-
-          context.brainResult = brain.routeRequest(request.text, {
-            ...request.options,
-            requestId: request.id,
-            source: request.source,
-            externalAction: request.externalAction,
-            forceResearch: request.forceResearch,
-            forceDeepResearch: request.forceDeepResearch
-          });
-
-          if (!context.brainResult?.success || !context.brainResult?.package) {
-            throw new ExecutiveRouterError(
-              context.brainResult?.error || "The Executive Brain rejected the request.",
-              ERRORS.BRAIN_REJECTED_REQUEST,
-              { requestId: request.id, brainResult: this.clone(context.brainResult) }
-            );
-          }
-
-          context.classification = {
-            type: context.brainResult.package.request.type,
-            confidence: context.brainResult.package.request.confidence,
-            requiresCurrentInternet:
-              context.brainResult.package.request.requiresCurrentInternet,
-            requiresApproval:
-              context.brainResult.package.request.requiresApproval
-          };
-          context.status = REQUEST_STATUS.CLASSIFIED;
-          this.emit("router:request-classified", this.publicContext(context));
-
-          context.route = this.selectRoute(context.brainResult);
-          context.status = REQUEST_STATUS.ROUTED;
-          this.emit("router:request-routed", this.publicContext(context));
-
-          context.dispatchResult = await this.dispatch(context);
-          context.status = REQUEST_STATUS.DISPATCHED;
-          this.emit("router:request-dispatched", this.publicContext(context));
-
-          const collected = this.collect(context);
-          context.status = REQUEST_STATUS.COLLECTED;
-          this.emit("router:result-collected", this.clone(collected));
-
-          context.status = REQUEST_STATUS.COMPLETED;
-          const completed = Object.freeze({
-            ...collected,
-            status: REQUEST_STATUS.COMPLETED
-          });
-
-          this.completedRequestIds.add(request.id);
-          this.trimCompletedRequestIds();
-          this.record(completed);
-          this.emit("router:request-completed", this.clone(completed));
-
-          return completed;
-        } catch (error) {
-          const normalized = this.normalizeError(error, context);
-          context.status = REQUEST_STATUS.FAILED;
-
-          const failed = {
-            success: false,
-            schema: "meos.executive-router.result.v1",
-            requestId: request.id,
-            status: REQUEST_STATUS.FAILED,
-            error: {
-              name: normalized.name,
-              code: normalized.code,
-              message: normalized.message,
-              details: this.clone(normalized.details),
-              timestamp: normalized.timestamp
-            },
-            durationMs: Number((Date.now() - context.startedAt).toFixed(2))
-          };
-
-          this.record(failed);
-          this.emit("router:request-failed", this.clone(failed));
-          throw normalized;
+      const assertOpen = stage => {
+        if (context.terminalized) {
+          throw new ExecutiveRouterError(
+            `Executive Router ignored a late result after ${context.terminalReason || "terminal completion"}.`,
+            context.terminalReason === "timeout" ? ERRORS.TIMEOUT : ERRORS.ABORTED,
+            { requestId: request.id, stage, lateResultQuarantined: true }
+          );
         }
+      };
+
+      const work = (async () => {
+        this.emit("router:request-received", this.publicContext(context));
+
+        const brain = this.resolveBrain();
+        if (!brain || typeof brain.routeRequest !== "function") {
+          throw new ExecutiveRouterError(
+            "The commissioned MEOS Executive Brain is unavailable or does not expose routeRequest().",
+            ERRORS.BRAIN_UNAVAILABLE,
+            { requestId: request.id }
+          );
+        }
+
+        context.brainResult = brain.routeRequest(request.text, {
+          ...request.options,
+          requestId: request.id,
+          source: request.source,
+          externalAction: request.externalAction,
+          forceResearch: request.forceResearch,
+          forceDeepResearch: request.forceDeepResearch
+        });
+
+        if (!context.brainResult?.success || !context.brainResult?.package) {
+          throw new ExecutiveRouterError(
+            context.brainResult?.error || "The Executive Brain rejected the request.",
+            ERRORS.BRAIN_REJECTED_REQUEST,
+            { requestId: request.id, brainResult: this.clone(context.brainResult) }
+          );
+        }
+
+        assertOpen("brain-route");
+        context.classification = {
+          type: context.brainResult.package.request.type,
+          confidence: context.brainResult.package.request.confidence,
+          requiresCurrentInternet: context.brainResult.package.request.requiresCurrentInternet,
+          requiresApproval: context.brainResult.package.request.requiresApproval
+        };
+        context.status = REQUEST_STATUS.CLASSIFIED;
+        this.emit("router:request-classified", this.publicContext(context));
+
+        context.route = this.selectRoute(context.brainResult);
+        context.status = REQUEST_STATUS.ROUTED;
+        this.emit("router:request-routed", this.publicContext(context));
+
+        context.dispatchResult = await this.dispatch(context);
+        assertOpen("dispatch-result");
+        context.status = REQUEST_STATUS.DISPATCHED;
+        this.emit("router:request-dispatched", this.publicContext(context));
+
+        const collected = this.collect(context);
+        assertOpen("collect");
+        context.status = REQUEST_STATUS.COLLECTED;
+        this.emit("router:result-collected", this.clone(collected));
+
+        return Object.freeze({
+          ...collected,
+          status: REQUEST_STATUS.COMPLETED
+        });
       })();
 
       const timeout = new Promise((_, reject) => {
@@ -307,7 +289,31 @@
       });
 
       try {
-        return await Promise.race([work, timeout]);
+        const completed = await Promise.race([work, timeout]);
+        context.terminalized = true;
+        context.terminalReason = "completed";
+        context.status = REQUEST_STATUS.COMPLETED;
+        this.completedRequestIds.add(request.id);
+        this.trimCompletedRequestIds();
+        this.record(completed);
+        this.emit("router:request-completed", this.clone(completed));
+        return completed;
+      } catch (error) {
+        const normalized = this.normalizeError(error, context);
+        context.terminalized = true;
+        context.terminalReason = normalized.code === ERRORS.TIMEOUT
+          ? "timeout"
+          : normalized.code === ERRORS.ABORTED
+            ? "aborted"
+            : "failed";
+        context.status = REQUEST_STATUS.FAILED;
+
+        const failed = this.buildFailureResult(context, normalized);
+        this.completedRequestIds.add(request.id);
+        this.trimCompletedRequestIds();
+        this.record(failed);
+        this.emit("router:request-failed", this.clone(failed));
+        throw normalized;
       } finally {
         global.clearTimeout(timeoutId);
         if (
@@ -320,6 +326,34 @@
       }
     },
 
+    buildFailureResult(context, error) {
+      return {
+        success: false,
+        schema: "meos.executive-router.result.v3",
+        requestId: context?.request?.id || null,
+        brainRequestId: context?.brainResult?.requestId || null,
+        cognitionId: context?.brainResult?.cognitionId || null,
+        status: REQUEST_STATUS.FAILED,
+        transportReceipt: {
+          schema: "meos.executive-router.transport-receipt.v1",
+          routeCompleted: false,
+          responseAuthorized: false,
+          providerCallSucceeded: false,
+          claimVerified: false,
+          executionVerified: false,
+          outcomeVerified: false,
+          truthMayNotBeInferredFromTransport: true
+        },
+        error: {
+          name: error.name,
+          code: error.code,
+          message: error.message,
+          details: this.clone(error.details),
+          timestamp: error.timestamp
+        },
+        durationMs: Number((Date.now() - (context?.startedAt || Date.now())).toFixed(2))
+      };
+    },
     selectRoute(brainResult) {
       const routeName = this.normalizeName(
         brainResult.route || brainResult.package?.routing?.primaryRoute
@@ -401,6 +435,10 @@
       const result = context.dispatchResult || {};
       const rawOutput = result.output !== undefined ? result.output : result;
       const brain = this.resolveBrain();
+      const expectsMaddyOwnership =
+        context.brainResult?.package?.responseContract?.responseOwnership?.semanticAuthority ===
+        "maddy-executive-brain";
+
       const semanticResponse =
         brain && typeof brain.reconcileAdviserResult === "function"
           ? brain.reconcileAdviserResult(
@@ -423,9 +461,43 @@
         maddyResponse
       });
 
+      if (
+        expectsMaddyOwnership &&
+        !(
+          maddyResponse?.owner === "maddy-executive-brain" &&
+          governedAnswer.finalSpeechAuthorized === true &&
+          governedAnswer.oneMouth === true &&
+          this.firstText(governedAnswer.answer)
+        )
+      ) {
+        throw new ExecutiveRouterError(
+          "Maddy owned the turn but no Executive-Brain-authorized speech receipt was available.",
+          ERRORS.MADDY_RESPONSE_UNAUTHORIZED,
+          {
+            requestId: context.request.id,
+            cognitionId: context.brainResult.cognitionId || null,
+            owner: maddyResponse?.owner || null,
+            finalSpeechAuthorized: governedAnswer.finalSpeechAuthorized === true,
+            oneMouth: governedAnswer.oneMouth === true
+          }
+        );
+      }
+
+      const canonicalResponse = this.buildCanonicalResponseReceipt(
+        governedAnswer,
+        maddyResponse,
+        context
+      );
+      const transportReceipt = this.buildTransportReceipt(
+        context,
+        result,
+        canonicalResponse
+      );
+
       return {
-        success: maddyResponse?.success === true || governedAnswer.sufficientEvidence === true,
-        schema: "meos.executive-router.result.v2",
+        success: canonicalResponse.authorized === true ||
+          (!expectsMaddyOwnership && governedAnswer.sufficientEvidence === true),
+        schema: "meos.executive-router.result.v3",
         requestId: context.request.id,
         brainRequestId: context.brainResult.requestId,
         cognitionId: context.brainResult.cognitionId || null,
@@ -436,16 +508,75 @@
         approvalRequired: context.route.approvalRequired,
         source: result.source || "meos",
         provider: result.provider || null,
-        answer: governedAnswer.answer,
+        answer: canonicalResponse.answer,
+        canonicalResponse,
+        presentationContract: {
+          schema: "meos.executive-router.presentation-contract.v1",
+          canonicalAnswerPath: "canonicalResponse.answer",
+          compatibilityAnswerPath: "answer",
+          rawOutputPresentationAuthorized: false,
+          providerCandidatePresentationAuthorized: false,
+          oneMouthRequired: expectsMaddyOwnership
+        },
+        transportReceipt,
+        verification: {
+          claimVerified: false,
+          executionVerified: false,
+          outcomeVerified: false,
+          providerOrRouteSuccessIsNotVerification: true
+        },
         maddyResponse,
         governedAnswer,
         output: rawOutput,
+        outputPresentationAuthorized: false,
         package: this.clone(context.brainResult.package),
         durationMs: Number((Date.now() - context.startedAt).toFixed(2)),
         completedAt: new Date().toISOString()
       };
     },
 
+    buildCanonicalResponseReceipt(governedAnswer = {}, maddyResponse = null, context = {}) {
+      const authorized = Boolean(
+        maddyResponse?.owner === "maddy-executive-brain" &&
+        governedAnswer?.finalSpeechAuthorized === true &&
+        governedAnswer?.oneMouth === true &&
+        governedAnswer?.speechAuthorizationOwner === "maddy-executive-brain" &&
+        this.firstText(governedAnswer?.answer)
+      );
+      return Object.freeze({
+        schema: "meos.maddy.canonical-response.v1",
+        owner: authorized ? "maddy-executive-brain" : null,
+        requestId: context?.request?.id || null,
+        cognitionId: context?.brainResult?.cognitionId || null,
+        answer: authorized ? this.firstText(governedAnswer.answer) : "",
+        basis: governedAnswer?.basis || null,
+        authorized,
+        finalSpeechAuthorized: authorized,
+        oneMouth: authorized,
+        speechAuthorizationOwner: authorized ? "maddy-executive-brain" : null,
+        providerPaidForAnswer: false,
+        externalActionGrantedByResponse: false,
+        generatedAt: new Date().toISOString()
+      });
+    },
+
+    buildTransportReceipt(context = {}, result = {}, canonicalResponse = {}) {
+      return Object.freeze({
+        schema: "meos.executive-router.transport-receipt.v1",
+        requestId: context?.request?.id || null,
+        route: context?.route?.name || null,
+        routeCompleted: true,
+        source: result?.source || "meos",
+        provider: result?.provider || null,
+        providerCallSucceeded: Boolean(result?.provider) && result?.output?.success !== false,
+        responseAuthorized: canonicalResponse?.authorized === true,
+        claimVerified: false,
+        executionVerified: false,
+        outcomeVerified: false,
+        truthMayNotBeInferredFromTransport: true,
+        generatedAt: new Date().toISOString()
+      });
+    },
     /*
      * Commission 006.025C2 — Router Consumes Maddy-Owned Speech Receipt
      *
@@ -478,7 +609,7 @@
     },
 
     /*
-     * Commission 006.018E — Unified Governed Answer Production
+     * Commission 006.027 — Canonical Maddy Response Transport
      *
      * The Router already owns normalized result collection. It now also owns
      * the canonical answer contract returned to every presentation surface.
@@ -600,9 +731,14 @@
           : (!maddyOwnsTurn && localAnswer)
             ? "meos-local-synthesis"
             : "maddy-semantic-response",
-        oneMouth: true,
+        oneMouth: maddyResponse?.speech?.finalSpeechAuthorized === true &&
+          maddyResponse?.speech?.oneMouth === true,
         finalSpeechAuthorized: maddyResponse?.speech?.finalSpeechAuthorized === true,
         speechAuthorizationOwner: maddyResponse?.speech?.semanticAuthority || null,
+        rawProviderOutputPresentationAuthorized: false,
+        claimVerified: false,
+        executionVerified: false,
+        outcomeVerified: false,
         sufficientEvidence: Boolean(
           maddyFinalText || (!maddyOwnsTurn && localAnswer)
         ),
@@ -1293,6 +1429,145 @@
       return result;
     },
 
+    async runCanonicalMaddyResponseTransportAcceptanceTest() {
+      const checks = [];
+      const push = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+      const fakeProviderClaim =
+        "I definitely have a Crew Board with a Nudge button and can text every crew lead automatically.";
+
+      const semantic = {
+        success: true,
+        owner: "maddy-executive-brain",
+        recommendation: {
+          state: "proceed-with-conditions",
+          rationale: "Yes—with conditions. I can help with that while keeping unverified execution paths bounded."
+        },
+        semanticParts: [{
+          source: "maddy-reasoning",
+          representation: "recommendation",
+          text: "Yes—with conditions. I can help with that while keeping unverified execution paths bounded."
+        }],
+        adviser: {
+          candidateLanguage: fakeProviderClaim,
+          providerOutputIsEvidence: false,
+          providerOutputIsMaddyBelief: false,
+          providerOutputIsFinalSpeech: false
+        },
+        speech: {
+          status: "authorized",
+          semanticAuthority: "maddy-executive-brain",
+          finalText: "Yes—with conditions. I can help with that while keeping unverified execution paths bounded.",
+          finalSpeechAuthorized: true,
+          oneMouth: true
+        }
+      };
+      const pkg = {
+        request: { id: "r027-fixture", text: "Can you help me keep up with this work?", type: "general" },
+        responseContract: { responseOwnership: { semanticAuthority: "maddy-executive-brain" } },
+        providerInstructions: {
+          maddyIdentity: { name: "Maddison Elizabeth", preferredName: "Maddy" },
+          organization: { name: "Fixture Organization" },
+          currentWork: { priorities: ["fixture"] },
+          maddySelfModel: { capabilityAwareness: { schema: "fixture" } },
+          workingAwareness: { primaryFocus: "fixture" },
+          recentAutobiographicalMemory: Array.from({ length: 10 }, (_, i) => ({ episodeId: `e${i}` })),
+          evidence: Array.from({ length: 20 }, (_, i) => ({ id: `ev${i}`, summary: `Evidence ${i}` })),
+          evidenceIntegrity: { confidence: 0.8 },
+          maddyCognition: { cognitionId: "c027" },
+          maddyResponseSemantics: [{ id: "semantic-1", kind: "recommendation" }],
+          governingRules: ["Provider is not Maddy."]
+        }
+      };
+      const governed = this.produceGovernedAnswer({
+        request: { text: pkg.request.text },
+        route: { approvalRequired: false },
+        package: pkg,
+        source: "north-star-adviser-test",
+        provider: "north-star-adviser-test",
+        output: { answer: fakeProviderClaim, citations: ["provider-citation"] },
+        maddyResponse: semantic
+      });
+      const canonical = this.buildCanonicalResponseReceipt(governed, semantic, {
+        request: { id: "r027-fixture" },
+        brainResult: { cognitionId: "c027" }
+      });
+      const transport = this.buildTransportReceipt(
+        { request: { id: "r027-fixture" }, route: { name: "executive-decision-support" } },
+        { source: "north-star-adviser-test", provider: "north-star-adviser-test", output: { success: true } },
+        canonical
+      );
+      const adviserRequest = this.buildAdviserRequest({
+        request: { id: "r027-fixture", text: pkg.request.text },
+        route: { name: "executive-decision-support" },
+        package: pkg
+      });
+
+      push("Router transports Executive-Brain-authorized speech as canonical answer",
+        canonical.authorized === true && canonical.answer === semantic.speech.finalText);
+      push("Provider candidate language cannot become canonical Maddy answer",
+        canonical.answer !== fakeProviderClaim && governed.providerCandidateLanguage === fakeProviderClaim);
+      push("Provider output remains non-presentational raw diagnostics",
+        governed.rawProviderOutputPresentationAuthorized === false);
+      push("Canonical response grants no external-action authority",
+        canonical.externalActionGrantedByResponse === false);
+      push("Transport success remains distinct from factual verification",
+        transport.responseAuthorized === true && transport.claimVerified === false &&
+        transport.executionVerified === false && transport.outcomeVerified === false);
+      push("Transport receipt explicitly forbids truth inference from route success",
+        transport.truthMayNotBeInferredFromTransport === true);
+      push("Adviser request is bounded to Brain-owned provider context",
+        adviserRequest.maddyTruth.evidence.length === 12 &&
+        adviserRequest.maddyTruth.recentAutobiographicalMemory.length === 6);
+      push("Adviser request does not ship the whole Executive Brain package",
+        !Object.prototype.hasOwnProperty.call(adviserRequest.maddyTruth, "worldModel") &&
+        !Object.prototype.hasOwnProperty.call(adviserRequest.maddyTruth, "localContext"));
+      push("Adviser contract says provider is not evidence belief speech or authority",
+        adviserRequest.responseContract.providerOutputIsEvidence === false &&
+        adviserRequest.responseContract.providerOutputIsMaddyBelief === false &&
+        adviserRequest.responseContract.providerOutputIsFinalSpeech === false &&
+        adviserRequest.responseContract.providerCanGrantAuthority === false);
+      push("Exactly one Maddy mouth remains required",
+        governed.oneMouth === true && canonical.oneMouth === true);
+      push("B2 explicit adviser route override remains present",
+        /explicitRouterAdviser\?\.enabled/.test(this.dispatch.toString()));
+      push("Provider Manager remains default selection authority when no explicit adviser is requested",
+        /MEOSProviderManager/.test(this.dispatchToProvider.toString()) &&
+        /planForBrainRequest/.test(this.dispatchToProvider.toString()));
+      push("Router success is no longer equivalent to verification",
+        !/verified\s*:\s*true/.test(this.collect.toString()) &&
+        /providerOrRouteSuccessIsNotVerification/.test(this.collect.toString()));
+      push("Maddy-owned turn fails closed if speech is unauthorized",
+        /MADDY_RESPONSE_UNAUTHORIZED/.test(this.collect.toString()));
+      push("Timed-out work cannot commit a second terminal result",
+        !/this\.record\(completed\)/.test(this.execute.toString().split('const work =')[1]?.split('const timeout =')[0] || ""));
+      push("Router owns transport only, not cognition or speech authorship",
+        this.operatingMode === "brain-governed-provider-neutral-routing" &&
+        canonical.owner === "maddy-executive-brain");
+      push("Provider is paid for advice, never answer ownership",
+        governed.providerPaidForAdvice === true && governed.providerPaidForAnswer === false);
+      push("No provider monopoly is hard-coded into Router",
+        !/openai|anthropic|claude|gemini/i.test(this.buildAdviserRequest.toString()));
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === checks.length,
+        commission: "006.027",
+        schema: "meos.executive-router.canonical-maddy-response-transport-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        canonicalResponse: canonical,
+        transportReceipt: transport,
+        checks
+      });
+      console.table(checks);
+      console.info(
+        `[MEOS ${VERSION}] Commission 006.027 Canonical Maddy Response Transport: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      return result;
+    },
+
     installDefaultRoutes() {
       this.registerRoute(ROUTES.INSTANT_MEOS_CONTEXT, async payload => {
         const relevance = this.localEvidenceMayClose(payload);
@@ -1442,6 +1717,61 @@
       return registered;
     },
 
+    buildAdviserRequest(payload = {}) {
+      const instructions = payload.package?.providerInstructions || {};
+      const evidence = Array.isArray(instructions.evidence)
+        ? instructions.evidence.slice(0, 12)
+        : [];
+      const memory = Array.isArray(instructions.recentAutobiographicalMemory)
+        ? instructions.recentAutobiographicalMemory.slice(0, 6)
+        : [];
+
+      return {
+        schema: "meos.maddy.adviser-request.v2",
+        role: "adviser-to-maddy",
+        requestId: payload.request?.id || payload.package?.request?.id || null,
+        objective: payload.package?.request?.text || payload.request?.text || "",
+        route: this.clone(payload.route || null),
+        maddyTruth: {
+          identity: this.clone(instructions.maddyIdentity || payload.package?.identity?.maddy || null),
+          authorizedHuman: this.clone(instructions.authorizedHuman || null),
+          organization: this.clone(instructions.organization || payload.package?.organization || null),
+          currentWork: this.clone(instructions.currentWork || null),
+          selfModel: this.clone(instructions.maddySelfModel || null),
+          workingAwareness: this.clone(instructions.workingAwareness || null),
+          recentAutobiographicalMemory: this.clone(memory),
+          cognition: this.clone(instructions.maddyCognition || payload.package?.cognition || null),
+          responseSemantics: this.clone(
+            instructions.maddyResponseSemantics || payload.package?.responseSemantics || []
+          ),
+          evidence: this.clone(evidence),
+          evidenceIntegrity: this.clone(instructions.evidenceIntegrity || null),
+          routing: this.clone(instructions.routing || payload.package?.routing || null)
+        },
+        governingRules: this.clone(instructions.governingRules || []),
+        responseContract: {
+          adviceOnly: true,
+          semanticAuthority: "maddy-executive-brain",
+          providerOutputIsEvidence: false,
+          providerOutputIsMaddyBelief: false,
+          providerOutputIsFinalSpeech: false,
+          providerCanGrantAuthority: false,
+          requestedRepresentations: [
+            "recommendation",
+            "option",
+            "risk",
+            "inference",
+            "fact-with-evidence-refs",
+            "capability-with-capability-id",
+            "uncertainty",
+            "relational",
+            "question",
+            "candidate-language"
+          ]
+        }
+      };
+    },
+
     async dispatchToProvider(payload, options = {}) {
       /*
        * 006.025B live correction: an explicitly requested Router adviser must
@@ -1495,33 +1825,7 @@
 
           const execution = await manager.executeSelection(
             brainPlan.selection,
-            {
-              schema: "meos.maddy.adviser-request.v1",
-              role: "adviser-to-maddy",
-              requestId: payload.request.id,
-              objective: payload.package?.request?.text || payload.request?.text || "",
-              maddyTruth: {
-                identity: payload.package?.identity || null,
-                organization: payload.package?.organization || null,
-                authority: payload.package?.authority || null,
-                evidence: payload.package?.localContext?.evidence || [],
-                evidenceIntegrity: payload.package?.evidenceIntegrity || null,
-                selfModel: payload.package?.selfModel || null,
-                cognition: payload.package?.cognition || null
-              },
-              instructions: payload.package?.providerInstructions || null,
-              outputContract: {
-                adviceOnly: true,
-                finalSpeechOwnedByProvider: false,
-                requestedFields: [
-                  "recommendation",
-                  "alternatives",
-                  "risks",
-                  "unknowns",
-                  "candidateLanguage"
-                ]
-              }
-            },
+            this.buildAdviserRequest(payload),
             {
               source: "executive-router",
               role: "adviser",
@@ -1571,18 +1875,7 @@
       });
 
       try {
-        const providerResult = await provider.execute({
-          schema: "meos.maddy.adviser-request.v1",
-          requestId: payload.request.id,
-          role: "adviser-to-maddy",
-          route: payload.route,
-          maddyTruth: payload.package,
-          providerInstructions: payload.package.providerInstructions,
-          responseContract: {
-            ...payload.package.responseContract,
-            providerOutputIsFinalSpeech: false
-          }
-        });
+        const providerResult = await provider.execute(this.buildAdviserRequest(payload));
 
         this.emit("router:provider-dispatch-completed", {
           requestId: payload.request.id,
