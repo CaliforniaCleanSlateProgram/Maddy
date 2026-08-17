@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.26.0
- * Build: EB1260-SOVEREIGN-COGNITION-RESPONSE-OWNERSHIP-20260816-A
+ * Version: 1.26.1
+ * Build: EB1261-GOVERNED-AUTONOMY-AWARE-COGNITION-20260817-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.0";
-  const BUILD_ID = "EB1260-SOVEREIGN-COGNITION-RESPONSE-OWNERSHIP-20260816-A";
+  const VERSION = "1.26.1";
+  const BUILD_ID = "EB1261-GOVERNED-AUTONOMY-AWARE-COGNITION-20260817-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -94,6 +94,7 @@
     ["ExecutiveWorkflow", "Executive Workflow", "Coordinates approved work through execution stages."],
     ["ExecutiveCollaboration", "Executive Collaboration", "Coordinates office deliberation and shared findings."],
     ["ExecutiveAutomation", "Executive Automation", "Runs authorized repeatable work."],
+    ["MEOSAutonomyAuthority", "Maddy Autonomy", "Durable human-governed authority for autonomous work and provider use."],
     ["ExecutiveSearch", "Executive Search", "Searches across connected MEOS sources."],
     ["OrganizationalProfile", "Organization Package", "Customer-specific identity, mission, leadership, and boundaries."],
     ["FounderProfile", "Founder Package", "Authorized human identity, role, authority, and preferences."]
@@ -370,6 +371,9 @@
     cognitiveReentryInFlight: new Set(),
     activeCognitiveLineages: new Map(),
     continuousCognitionSubscriptions: [],
+    autonomyAuthoritySubscriptions: [],
+    autonomyAuthorityBound: false,
+    lastAutonomyAwareness: null,
     listeners: {},
 
     profiles: {
@@ -426,6 +430,7 @@
       this.initializedAt = new Date().toISOString();
       this.status = "online";
       this.refresh({ reason: "initialization" });
+      this.bindAutonomyAuthority({ reason: "initialization" });
       this.attachContinuousCognitionListeners();
       this.attachSelfModelObservers();
       this.attachWorkingAwarenessObservers();
@@ -515,7 +520,8 @@
         temporalContinuityReady:
           this.temporalContinuity?.status === "continuous" ||
           this.temporalContinuity?.status === "checkpointed",
-        temporalContinuity: this.getTemporalContinuityStatus()
+        temporalContinuity: this.getTemporalContinuityStatus(),
+        autonomy: this.getAutonomyAwareness({ refresh: false })
       };
     },
 
@@ -547,6 +553,248 @@
           version: reported?.version || component?.version || null
         };
       });
+    },
+
+    /*
+     * Commission 006.031F — Governed Autonomy-Aware Cognition
+     *
+     * Capability is not permission. Provider availability is not permission.
+     * The interactive Brain accepts standing autonomy only from the durable
+     * Maddy Autonomy authority. The durable server runtime remains the owner of
+     * headless cognition admission and invokes this Brain only after its own
+     * server-side authority gate passes.
+     */
+    resolveAutonomyAuthority() {
+      return global.MEOSAutonomyAuthority || global.MaddyAutonomy || null;
+    },
+
+    isDurableServerRuntimeContext() {
+      return Boolean(
+        global.MEOSLocalPerception &&
+        typeof global.MEOSLocalPerception.execute === "function" &&
+        !global.location &&
+        global.document?.readyState === "loading"
+      );
+    },
+
+    getAutonomyAwareness(options = {}) {
+      const authority = this.resolveAutonomyAuthority();
+      let snapshot = null;
+      if (authority && typeof authority.getSnapshot === "function") {
+        snapshot = this.safe(() => authority.getSnapshot(), null);
+      }
+
+      const authoritative = snapshot?.authoritative === true;
+      const capabilityIds = [
+        "continuousCognition", "learning", "timeAndDeadlines", "approvedWork",
+        "officeDispatch", "monitoring", "documents", "opportunities"
+      ];
+      const providerIds = authoritative && snapshot?.providers && typeof snapshot.providers === "object"
+        ? Object.keys(snapshot.providers)
+        : [];
+      const capabilities = Object.fromEntries(capabilityIds.map(id => {
+        const status = authoritative ? snapshot?.capabilities?.[id] || null : null;
+        return [id, {
+          ready: status?.ready === true,
+          authorized: status?.authorized === true,
+          effective: status?.effective === true,
+          uiState: status?.uiState || (authoritative ? "OFF" : "UNPROVEN"),
+          reason: status?.reason || (authoritative ? "not-authorized" : "authority-unproven")
+        }];
+      }));
+      const providers = Object.fromEntries(providerIds.map(id => {
+        const status = authoritative ? snapshot?.providers?.[id] || null : null;
+        return [id, {
+          ready: status?.ready === true,
+          available: status?.available === true,
+          authorized: status?.authorized === true,
+          effective: status?.effective === true,
+          uiState: status?.uiState || (authoritative ? "OFF" : "UNPROVEN"),
+          reason: status?.reason || (authoritative ? "not-authorized" : "authority-unproven"),
+          billingOwner: status?.billingOwner || null
+        }];
+      }));
+
+      const durableServerRuntime = this.isDurableServerRuntimeContext();
+      if (!authoritative && durableServerRuntime && capabilities.continuousCognition) {
+        capabilities.continuousCognition = {
+          ready: true,
+          authorized: true,
+          effective: true,
+          uiState: "ON",
+          reason: "admitted-by-durable-server-runtime-owner"
+        };
+      }
+
+      const awareness = {
+        schema: "meos.maddy.autonomy-awareness.v1",
+        observedAt: new Date().toISOString(),
+        source: authoritative
+          ? "durable-autonomy-switchboard"
+          : (durableServerRuntime ? "durable-server-runtime-owner" : "authority-unproven"),
+        authoritative,
+        masterEnabled: authoritative && snapshot?.masterEnabled === true,
+        revision: authoritative ? snapshot?.revision ?? null : null,
+        capabilities,
+        providers,
+        economicAuthority: this.clone(snapshot?.economicAuthority || {
+          automaticSpendUsd: 0,
+          paidProviderSpendAuthorized: false
+        }),
+        externalAuthority: this.clone(snapshot?.externalAuthority || {
+          externalActionAuthorized: false,
+          legalCommitmentAuthorized: false,
+          signatureAuthorized: false,
+          certificationAuthorized: false,
+          submissionAuthorized: false,
+          consequentialActionAuthorized: false
+        }),
+        distinction: {
+          capabilityIsNotPermission: true,
+          providerAvailabilityIsNotPermission: true,
+          engineAliveIsNotAutonomy: true,
+          humanDirectionIsNotStandingAutonomy: true
+        }
+      };
+      this.lastAutonomyAwareness = this.clone(awareness);
+      return awareness;
+    },
+
+    isAutonomyAuthorized(capabilityId) {
+      const awareness = this.getAutonomyAwareness({ refresh: false });
+      return awareness.authoritative === true &&
+        awareness.masterEnabled === true &&
+        awareness.capabilities?.[capabilityId]?.effective === true;
+    },
+
+    isProviderAutonomousUseAuthorized(providerId) {
+      const awareness = this.getAutonomyAwareness({ refresh: false });
+      return awareness.authoritative === true &&
+        awareness.masterEnabled === true &&
+        awareness.providers?.[providerId]?.effective === true;
+    },
+
+    evaluateAutonomousCognitionAdmission(options = {}) {
+      if (options.humanDirected === true || options.humanDirection) {
+        return {
+          allowed: true,
+          autonomous: false,
+          source: "current-human-direction",
+          authorityRevision: this.getAutonomyAwareness({ refresh: false }).revision,
+          externalActionAuthorized: false
+        };
+      }
+
+      if (options.serverRuntimeAuthorized === true || this.isDurableServerRuntimeContext()) {
+        return {
+          allowed: true,
+          autonomous: true,
+          source: "durable-server-runtime-owner",
+          authorityRevision: null,
+          externalActionAuthorized: false,
+          serverGateRequired: true
+        };
+      }
+
+      const awareness = this.getAutonomyAwareness({ refresh: false });
+      const continuous = awareness.capabilities?.continuousCognition;
+      const additionalCapability = options.requiredCapability || null;
+      const additional = additionalCapability ? awareness.capabilities?.[additionalCapability] : null;
+      const allowed = awareness.authoritative === true &&
+        awareness.masterEnabled === true &&
+        continuous?.effective === true &&
+        (!additionalCapability || additional?.effective === true);
+
+      return {
+        allowed,
+        autonomous: true,
+        source: awareness.source,
+        authorityRevision: awareness.revision,
+        requiredCapability: additionalCapability,
+        reason: allowed
+          ? "durable-autonomy-authorized"
+          : (!awareness.authoritative
+              ? "autonomy-authority-unproven"
+              : (!awareness.masterEnabled
+                  ? "master-autonomy-off"
+                  : (continuous?.effective !== true
+                      ? "continuous-cognition-autonomy-off"
+                      : `required-autonomy-off:${additionalCapability}`))),
+        externalActionAuthorized: false
+      };
+    },
+
+    bindAutonomyAuthority(options = {}) {
+      const authority = this.resolveAutonomyAuthority();
+      if (!authority || typeof authority.on !== "function") {
+        this.autonomyAuthorityBound = false;
+        return { success: true, ready: false, reason: "autonomy-switchboard-not-loaded" };
+      }
+      if (this.autonomyAuthorityBound === true) {
+        return { success: true, ready: true, reason: "already-bound", awareness: this.getAutonomyAwareness({ refresh: false }) };
+      }
+
+      const reconcile = payload => {
+        const awareness = this.getAutonomyAwareness({ refresh: false });
+        if (awareness.capabilities?.continuousCognition?.effective !== true) {
+          for (const timerState of this.cognitiveReentryTimers.values()) {
+            if (timerState?.timerId) global.clearTimeout(timerState.timerId);
+          }
+          this.cognitiveReentryTimers.clear();
+        } else {
+          this.resumeUnresolvedCognitiveIntentions({ reason: "autonomy-authority-enabled" });
+        }
+        this.projectSelfModel({ reason: "autonomy-authority-changed", persist: false });
+        this.emit("brain:autonomy-authority-changed", {
+          awareness: this.clone(awareness),
+          sourceEvent: this.clone(payload || null)
+        });
+      };
+
+      ["authority:updated", "authority:receipt", "authority:unavailable"].forEach(eventName => {
+        const unsubscribe = authority.on(eventName, reconcile);
+        if (typeof unsubscribe === "function") this.autonomyAuthoritySubscriptions.push(unsubscribe);
+      });
+      this.autonomyAuthorityBound = true;
+      this.safe(() => authority.registerIntegrationStatus?.("continuousCognition", {
+        ready: true,
+        reason: "executive-brain-autonomy-aware",
+        evidence: {
+          organ: "ExecutiveBrain",
+          version: this.version,
+          buildId: this.buildId,
+          browserSelfInitiationRequiresDurableAuthority: true
+        }
+      }));
+      return {
+        success: true,
+        ready: true,
+        reason: options.reason || "autonomy-authority-bound",
+        awareness: this.getAutonomyAwareness({ refresh: false })
+      };
+    },
+
+    getAutonomyIntegrationStatus(capabilityId = "continuousCognition") {
+      if (capabilityId !== "continuousCognition") {
+        return {
+          ready: false,
+          reason: "executive-brain-does-not-own-capability",
+          capabilityId,
+          version: this.version,
+          buildId: this.buildId
+        };
+      }
+      return {
+        ready: true,
+        reason: "governed-autonomy-aware-cognition-ready",
+        capabilityId,
+        version: this.version,
+        buildId: this.buildId,
+        serverRuntimeOwnerRequired: true,
+        browserAuthorityRequired: true,
+        legacyConfigurationIsNotAuthority: true,
+        externalActionAuthorityAdded: false
+      };
     },
 
     buildStartupContext(options = {}) {
@@ -581,6 +829,7 @@
         autobiographicalMemory: this.getAutobiographicalMemory(8),
         metacognitiveContext: this.buildMetacognitiveContext({ limit: 6 }),
         temporalContinuity: this.getTemporalContinuityStatus(),
+        autonomy: this.getAutonomyAwareness({ refresh: false }),
         worldModel: this.getWorldModel({ refresh: false }),
 
         system: {
@@ -597,7 +846,10 @@
             null,
           externalProvidersAreAdvisory: true,
           humanApprovalRequiredForExternalAction:
-            this.configuration.requireHumanApprovalForExternalAction
+            this.configuration.requireHumanApprovalForExternalAction,
+          autonomy: this.getAutonomyAwareness({ refresh: false }),
+          capabilityIsNotPermission: true,
+          providerAvailabilityIsNotPermission: true
         }
       };
 
@@ -672,6 +924,7 @@
         workingAwareness: startup.workingAwareness,
         autobiographicalMemory: startup.autobiographicalMemory,
         temporalContinuity: startup.temporalContinuity,
+        autonomy: startup.autonomy,
         worldModel: startup.worldModel,
         system: {
           available: startup.system.manifest
@@ -2613,7 +2866,8 @@
             alert.entityId || null,
           recommendation:
             alert.recommendedAction || null
-        }
+        },
+        { requiredCapability: "monitoring" }
       );
     },
 
@@ -3527,6 +3781,15 @@
     },
 
     scheduleCognitiveIntentionRetry(intention, reason = "incomplete-cognition") {
+      const autonomyAdmission = this.evaluateAutonomousCognitionAdmission({});
+      if (autonomyAdmission.allowed !== true) {
+        this.record("cognition.intention-retry-held-by-autonomy", {
+          intentionId: intention?.intentionId || null,
+          subject: intention?.subject || null,
+          reason: autonomyAdmission.reason || "autonomy-not-authorized"
+        });
+        return false;
+      }
       if (
         !intention?.subject ||
         intention.status === "completed" ||
@@ -3552,6 +3815,10 @@
 
     resumeUnresolvedCognitiveIntentions(options = {}) {
       if (this.configuration.continuousCognitionEnabled !== true) return { success: true, resumedCount: 0 };
+      const autonomyAdmission = this.evaluateAutonomousCognitionAdmission(options);
+      if (autonomyAdmission.allowed !== true) {
+        return { success: true, resumedCount: 0, heldByAutonomy: true, reason: autonomyAdmission.reason || "autonomy-not-authorized" };
+      }
       this.retireTemporalOrientationArtifacts({ reason: options.reason || "runtime-reentry" });
       const unresolved = (this.cognitiveIntentions || []).filter(item =>
         item &&
@@ -3610,6 +3877,17 @@
           scheduled: false,
           reason:
             "continuous-cognition-disabled"
+        };
+      }
+
+      const autonomyAdmission = this.evaluateAutonomousCognitionAdmission(options);
+      if (autonomyAdmission.allowed !== true) {
+        return {
+          success: true,
+          scheduled: false,
+          heldByAutonomy: true,
+          reason: autonomyAdmission.reason || "autonomy-not-authorized",
+          authorityRevision: autonomyAdmission.authorityRevision ?? null
         };
       }
 
@@ -3801,6 +4079,17 @@
       options = {}
     ) {
       const key = this.normalize(subject);
+      const autonomyAdmission = this.evaluateAutonomousCognitionAdmission(options);
+      if (autonomyAdmission.allowed !== true) {
+        this.cognitiveReentryTimers.delete(key);
+        return {
+          success: true,
+          skipped: true,
+          heldByAutonomy: true,
+          reason: autonomyAdmission.reason || "autonomy-not-authorized",
+          authorityRevision: autonomyAdmission.authorityRevision ?? null
+        };
+      }
 
       if (this.isTemporalOrientationSubject(subject)) {
         this.cognitiveReentryTimers.delete(key);
@@ -3921,6 +4210,9 @@
                   true,
                 autoAuthorizeInternalMonitoring:
                   true,
+                autonomous: true,
+                autonomyAuthorityRevision:
+                  autonomyAdmission.authorityRevision ?? null,
                 cognitiveReentryLineageId:
                   entry.reentryId
               }
@@ -4052,12 +4344,18 @@
     },
 
     getContinuousCognitionStatus() {
+      const autonomy = this.getAutonomyAwareness({ refresh: false });
+      const browserAutonomyEffective = autonomy.capabilities?.continuousCognition?.effective === true;
       return {
         success: true,
         enabled:
           this.configuration
             .continuousCognitionEnabled ===
           true,
+        autonomousAuthorityEffective: browserAutonomyEffective,
+        autonomyAuthorityRevision: autonomy.revision,
+        autonomyAuthoritySource: autonomy.source,
+        engineCapabilityIsNotPermission: true,
         connectedSources:
           (
             this.continuousCognitionSubscriptions ||
@@ -6760,7 +7058,7 @@
             priorCheckpointId: prior?.checkpointId || null,
             changeReasons: comparison.reasons
           },
-          { immediate: true, preserveIntention: true }
+          { immediate: true, preserveIntention: true, requiredCapability: "timeAndDeadlines" }
         );
         this.retireTemporalOrientationArtifacts({ reason: "temporal-continuity-oriented" });
       }
@@ -8892,10 +9190,12 @@
             founder?.name || null,
           finalExecutiveAuthorityRole:
             founder?.role || null,
-          internalResearchAuthority:
+          internalResearchCapability:
             this.configuration.autoAuthorizeInternalResearch === true,
-          internalMonitoringAuthority:
+          internalMonitoringCapability:
             this.configuration.autoAuthorizeInternalMonitoring === true,
+          autonomy: this.getAutonomyAwareness({ refresh: false }),
+          capabilityIsNotPermission: true,
           externalActionRequiresHumanApproval:
             this.configuration
               .requireHumanApprovalForExternalAction === true,
@@ -17823,7 +18123,10 @@
         requestedCycleBudget:Number(options.cycleBudget || this.configuration.continuousCognitionCycleBudget),
         authority:{
           externalActionAuthorized:false,
-          serverRuntimeOwnerRequired:true
+          serverRuntimeOwnerRequired:true,
+          autonomy:this.getAutonomyAwareness({refresh:false}),
+          capabilityIsNotPermission:true,
+          providerAvailabilityIsNotPermission:true
         },
         truthRule:"A handoff preserves what cognition should resume; it is not proof that a browser-independent runtime is currently executing it."
       };
@@ -17832,6 +18135,17 @@
     },
 
     runContinuousCognitionCycle(options = {}) {
+      const autonomyAdmission=this.evaluateAutonomousCognitionAdmission(options);
+      if (autonomyAdmission.allowed !== true) {
+        return {
+          success:true,
+          skipped:true,
+          heldByAutonomy:true,
+          reason:autonomyAdmission.reason || "autonomy-not-authorized",
+          authorityRevision:autonomyAdmission.authorityRevision ?? null,
+          autonomy:this.getAutonomyAwareness({refresh:false})
+        };
+      }
       const startedAt=new Date().toISOString();
       const world=this.projectWorldModel({
         reason:"continuous-cognition-cycle",
@@ -17899,6 +18213,8 @@
           paidCognitionJustified:handoff.economicCadence?.paidCognitionJustified===true
         },
         authorityUnchanged:true,
+        autonomyAdmission:this.clone(autonomyAdmission),
+        autonomyAwareness:this.getAutonomyAwareness({refresh:false}),
         browserIndependentExecutionClaimed:false
       };
       cycle.fingerprint=this.fingerprintCognitiveDispatch(cycle);
@@ -18106,7 +18422,7 @@
         this.restorePersistenceSnapshot(snapshot);
 
         const restoredThread=this.cognitiveThreads.find(thread=>thread.id===firstThreadId);
-        const second=this.runContinuousCognitionCycle({});
+        const second=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
         const secondHandoff=second.handoff;
 
         const checks=[
@@ -21011,6 +21327,110 @@
         this.cognitiveIntentions = originalIntentions;
         this.startupCache = originalCache;
         this.startupCachedAt = originalCachedAt;
+      }
+    },
+
+
+    runGovernedAutonomyAwarenessAcceptanceTest() {
+      const originalAuthority = global.MEOSAutonomyAuthority;
+      const originalAlias = global.MaddyAutonomy;
+      const originalTimers = this.cognitiveReentryTimers;
+      const originalIntentions = this.clone(this.cognitiveIntentions || []);
+      const originalStatus = this.status;
+      const originalContinuous = this.configuration.continuousCognitionEnabled;
+      const originalPersistenceEnabled = this.configuration.persistenceEnabled;
+      const originalStartupCache = this.startupCache;
+      const originalStartupCachedAt = this.startupCachedAt;
+      let authorityState = { masterEnabled: false, revision: 1, continuousCognition: false, monitoring: false, publicWeb: false };
+      const fakeAuthority = {
+        getSnapshot: () => ({
+          authoritative: true,
+          masterEnabled: authorityState.masterEnabled,
+          revision: authorityState.revision,
+          capabilities: {
+            continuousCognition: { ready: true, authorized: authorityState.continuousCognition, effective: authorityState.masterEnabled && authorityState.continuousCognition, uiState: authorityState.continuousCognition ? "ON" : "OFF" },
+            learning: { ready: true, authorized: false, effective: false, uiState: "OFF" },
+            timeAndDeadlines: { ready: false, authorized: false, effective: false, uiState: "BLOCKED" },
+            approvedWork: { ready: true, authorized: false, effective: false, uiState: "OFF" },
+            officeDispatch: { ready: true, authorized: false, effective: false, uiState: "OFF" },
+            monitoring: { ready: true, authorized: authorityState.monitoring, effective: authorityState.masterEnabled && authorityState.monitoring, uiState: authorityState.monitoring ? "ON" : "OFF" },
+            documents: { ready: false, authorized: false, effective: false, uiState: "BLOCKED" },
+            opportunities: { ready: false, authorized: false, effective: false, uiState: "BLOCKED" }
+          },
+          providers: {
+            openai: { ready: true, available: true, authorized: false, effective: false, uiState: "OFF", billingOwner: "customer" },
+            elevenlabs: { ready: true, available: true, authorized: false, effective: false, uiState: "OFF", billingOwner: "customer" },
+            googleWorkspace: { ready: true, available: true, authorized: false, effective: false, uiState: "OFF", billingOwner: "customer" },
+            publicWeb: { ready: true, available: true, authorized: authorityState.publicWeb, effective: authorityState.masterEnabled && authorityState.publicWeb, uiState: authorityState.publicWeb ? "ON" : "OFF", billingOwner: "customer" }
+          },
+          economicAuthority: { automaticSpendUsd: 0, paidProviderSpendAuthorized: false },
+          externalAuthority: { externalActionAuthorized: false, signatureAuthorized: false, certificationAuthorized: false, submissionAuthorized: false, legalCommitmentAuthorized: false }
+        }),
+        on: () => () => {},
+        registerIntegrationStatus: () => true
+      };
+
+      try {
+        global.MEOSAutonomyAuthority = fakeAuthority;
+        global.MaddyAutonomy = fakeAuthority;
+        this.cognitiveReentryTimers = new Map();
+        this.cognitiveIntentions = [];
+        this.status = "online";
+        this.configuration.continuousCognitionEnabled = true;
+        this.configuration.persistenceEnabled = false;
+
+        const offAwareness = this.getAutonomyAwareness({ refresh: false });
+        const held = this.scheduleCognitiveReentry("Autonomy fixture", { source: "acceptance", event: "meaningful-change" }, {});
+
+        authorityState = { ...authorityState, masterEnabled: true, continuousCognition: true, revision: 2 };
+        const authorized = this.scheduleCognitiveReentry("Autonomy fixture", { source: "acceptance", event: "meaningful-change-authorized" }, {});
+        const timer = this.cognitiveReentryTimers.get(this.normalize("Autonomy fixture"));
+        if (timer?.timerId) global.clearTimeout(timer.timerId);
+        this.cognitiveReentryTimers.clear();
+
+        const monitoringHeld = this.scheduleCognitiveReentry("Monitoring fixture", { source: "acceptance", event: "monitoring" }, { requiredCapability: "monitoring" });
+        authorityState = { ...authorityState, monitoring: true, revision: 3 };
+        const monitoringAllowed = this.scheduleCognitiveReentry("Monitoring fixture", { source: "acceptance", event: "monitoring-authorized" }, { requiredCapability: "monitoring" });
+        const monitoringTimer = this.cognitiveReentryTimers.get(this.normalize("Monitoring fixture"));
+        if (monitoringTimer?.timerId) global.clearTimeout(monitoringTimer.timerId);
+        this.cognitiveReentryTimers.clear();
+
+        authorityState = { ...authorityState, masterEnabled: false, revision: 4 };
+        const browserCycleHeld = this.runContinuousCognitionCycle({});
+        const humanAdmission = this.evaluateAutonomousCognitionAdmission({ humanDirection: { subject: "Human-directed fixture" } });
+        const startup = this.buildStartupContext({ force: true });
+        const providerOff = this.isProviderAutonomousUseAuthorized("publicWeb") === false;
+        const externalBlocked = startup?.authority?.autonomy?.externalAuthority?.externalActionAuthorized !== true;
+
+        const checks = [
+          { name: "Executive Brain exposes autonomy as first-class cognition context", passed: startup?.autonomy?.schema === "meos.maddy.autonomy-awareness.v1" && startup?.authority?.capabilityIsNotPermission === true },
+          { name: "Master OFF blocks browser self-initiated cognitive re-entry", passed: held?.heldByAutonomy === true && held?.scheduled === false },
+          { name: "Legacy continuousCognitionEnabled capability flag cannot grant autonomy", passed: this.configuration.continuousCognitionEnabled === true && held?.heldByAutonomy === true },
+          { name: "Master plus Continuous Cognition authority permits bounded re-entry scheduling", passed: authorized?.scheduled === true && authorized?.heldByAutonomy !== true },
+          { name: "Monitoring remains a separate autonomy breaker", passed: monitoringHeld?.heldByAutonomy === true && monitoringAllowed?.scheduled === true },
+          { name: "Master OFF holds direct browser cognition cycles instead of treating engine availability as permission", passed: browserCycleHeld?.heldByAutonomy === true && browserCycleHeld?.skipped === true },
+          { name: "Current human direction remains usable while standing autonomy is OFF", passed: humanAdmission?.allowed === true && humanAdmission?.autonomous === false },
+          { name: "Provider availability remains separate from autonomous provider permission", passed: providerOff === true && offAwareness?.distinction?.providerAvailabilityIsNotPermission === true },
+          { name: "Economic authority remains zero", passed: Number(startup?.autonomy?.economicAuthority?.automaticSpendUsd || 0) === 0 && startup?.autonomy?.economicAuthority?.paidProviderSpendAuthorized !== true },
+          { name: "External action authority remains ungranted", passed: externalBlocked === true && startup?.authority?.humanApprovalRequiredForExternalAction === true },
+          { name: "Brain declares durable server runtime ownership rather than claiming browser-independent execution", passed: this.getAutonomyIntegrationStatus("continuousCognition")?.serverRuntimeOwnerRequired === true },
+          { name: "Capability, availability, autonomy, and human authority remain explicitly distinct", passed: startup?.autonomy?.distinction?.capabilityIsNotPermission === true && startup?.autonomy?.distinction?.engineAliveIsNotAutonomy === true }
+        ];
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks);
+        console.info(`[MEOS ${this.version}] Commission 006.031F governed autonomy-aware cognition: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+        return { success: passed === checks.length, commission: "006.031F", schema: "meos.executive-brain.governed-autonomy-awareness-acceptance.v1", version: this.version, buildId: this.buildId, passed, total: checks.length, checks };
+      } finally {
+        for (const timerState of this.cognitiveReentryTimers.values()) if (timerState?.timerId) global.clearTimeout(timerState.timerId);
+        this.cognitiveReentryTimers = originalTimers;
+        this.cognitiveIntentions = originalIntentions;
+        this.status = originalStatus;
+        this.configuration.continuousCognitionEnabled = originalContinuous;
+        this.configuration.persistenceEnabled = originalPersistenceEnabled;
+        this.startupCache = originalStartupCache;
+        this.startupCachedAt = originalStartupCachedAt;
+        if (originalAuthority === undefined) delete global.MEOSAutonomyAuthority; else global.MEOSAutonomyAuthority = originalAuthority;
+        if (originalAlias === undefined) delete global.MaddyAutonomy; else global.MaddyAutonomy = originalAlias;
       }
     },
 
