@@ -1,7 +1,7 @@
 /**
  * MEOS Provider Manager
- * Version: 1.1.0
- * Build: PM110-DURABLE-AUTHORITY-FLIP-20260808-A
+ * Version: 1.2.0
+ * Build: PM120-ADVISER-INTELLIGENCE-BRIDGE-20260816-A
  * Status: Commissioned Candidate
  *
  * Purpose:
@@ -25,8 +25,8 @@
   "use strict";
 
   const NAME = "MEOS Provider Manager";
-  const VERSION = "1.1.0";
-  const BUILD_ID = "PM110-DURABLE-AUTHORITY-FLIP-20260808-A";
+  const VERSION = "1.2.0";
+  const BUILD_ID = "PM120-ADVISER-INTELLIGENCE-BRIDGE-20260816-A";
   const SCHEMA = "meos.provider-manager.v1";
   const STORAGE_KEY = "meos.provider-manager.history.v1";
   const MAX_HISTORY_ITEMS = 250;
@@ -1702,7 +1702,7 @@
       version: VERSION,
       buildId: BUILD_ID,
       schema: SCHEMA,
-      status: "online",
+      status: "unavailable",
       operatingMode: "brain-governed-provider-neutral-orchestration",
       organizationNeutralCore: true,
       providerIndependent: true,
@@ -2024,6 +2024,246 @@
   }
 
   /*
+   * Commission 006.028 — Provider-neutral Adviser Intelligence Bridge
+   *
+   * This is the browser-side provider seam for Maddy cognition. The adapter is
+   * intentionally registered as a replaceable MEOS provider rather than as
+   * "Maddy" or as a vendor identity. Router gives it only the bounded adviser
+   * packet already owned by Executive Brain. The server may change vendors or
+   * models without changing Maddy identity, truth, memory, authority, or speech.
+   */
+  const SERVER_ADVISER_PROVIDER_ID = "meos-server-adviser";
+  const SERVER_ADVISER_ENDPOINT = "/api/maddy/adviser";
+  const SERVER_ADVISER_STATUS_ENDPOINT = "/api/maddy/adviser/status";
+  const SERVER_ADVISER_TIMEOUT_MS = 35_000;
+
+  function validateAdviserRequestContract(payload) {
+    if (!payload || typeof payload !== "object") {
+      throw new TypeError("Maddy adviser execution requires a bounded adviser request object.");
+    }
+    if (payload.schema !== "meos.maddy.adviser-request.v2") {
+      throw new TypeError("Maddy adviser execution requires meos.maddy.adviser-request.v2.");
+    }
+    if (payload.role !== "adviser-to-maddy") {
+      throw new TypeError("Provider execution role must remain adviser-to-maddy.");
+    }
+    if (!payload.objective || !payload.maddyTruth) {
+      throw new TypeError("Maddy-owned objective and truth are required before adviser execution.");
+    }
+    const contract = payload.responseContract || {};
+    if (
+      contract.adviceOnly !== true ||
+      contract.semanticAuthority !== "maddy-executive-brain" ||
+      contract.providerOutputIsEvidence !== false ||
+      contract.providerOutputIsMaddyBelief !== false ||
+      contract.providerOutputIsFinalSpeech !== false ||
+      contract.providerCanGrantAuthority !== false
+    ) {
+      throw new TypeError("Maddy adviser response contract is missing required sovereignty boundaries.");
+    }
+    return true;
+  }
+
+  function adviserBridgeReceipt(body = {}) {
+    const economics = body?.economics && typeof body.economics === "object"
+      ? clone(body.economics)
+      : null;
+    return {
+      role: "adviser",
+      semanticAuthority: "maddy-executive-brain",
+      providerIsMaddy: false,
+      providerOutputIsEvidence: false,
+      providerOutputIsMaddyBelief: false,
+      providerOutputIsFinalSpeech: false,
+      providerCanGrantAuthority: false,
+      claimVerified: false,
+      executionVerified: false,
+      outcomeVerified: false,
+      providerPaidForAdvice: Boolean(economics?.providerPaidForAdvice),
+      providerPaidForAnswer: false,
+      economics
+    };
+  }
+
+  async function fetchServerAdviser(payload) {
+    validateAdviserRequestContract(payload);
+    if (typeof global.fetch !== "function") {
+      throw new Error("Same-origin fetch is unavailable for the MEOS server adviser.");
+    }
+
+    const controller = typeof AbortController === "function"
+      ? new AbortController()
+      : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), SERVER_ADVISER_TIMEOUT_MS)
+      : null;
+
+    try {
+      const response = await global.fetch(SERVER_ADVISER_ENDPOINT, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        signal: controller?.signal,
+        body: JSON.stringify(payload)
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || body?.success !== true) {
+        const error = new Error(
+          body?.message || body?.error ||
+          `MEOS server adviser returned HTTP ${response.status}.`
+        );
+        error.code = body?.error || "MEOS_SERVER_ADVISER_FAILED";
+        throw error;
+      }
+      if (!body.advice || typeof body.advice !== "object") {
+        throw new Error("MEOS server adviser returned no structured advice object.");
+      }
+
+      return {
+        success: true,
+        output: clone(body.advice),
+        confidence: body.confidence ?? null,
+        metadata: {
+          adviserReceipt: adviserBridgeReceipt(body),
+          serverProvider: clone(body.provider || null),
+          requestId: body.requestId || payload.requestId || null,
+          deduplicated: body?.economics?.deduplicated === true
+        }
+      };
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        const timeout = new Error(
+          `MEOS server adviser timed out after ${SERVER_ADVISER_TIMEOUT_MS}ms.`
+        );
+        timeout.code = "MEOS_SERVER_ADVISER_TIMEOUT";
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  async function serverAdviserHealthCheck() {
+    if (typeof global.fetch !== "function") {
+      return { status: "unavailable", reason: "same-origin-fetch-unavailable" };
+    }
+    try {
+      const response = await global.fetch(SERVER_ADVISER_STATUS_ENDPOINT, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => null);
+      if (response.ok && body?.success === true && body?.configured === true) {
+        return { status: "online", reason: "authenticated-server-adviser-ready" };
+      }
+      if (response.status === 401) {
+        return { status: "unavailable", reason: "authenticated-session-required" };
+      }
+      return { status: "unavailable", reason: body?.error || `http-${response.status}` };
+    } catch (error) {
+      return { status: "degraded", reason: error?.message || String(error) };
+    }
+  }
+
+  function registerServerAdviserBridge() {
+    if (typeof global.fetch !== "function") return null;
+    return registerProvider({
+      id: SERVER_ADVISER_PROVIDER_ID,
+      name: "MEOS Server Adviser",
+      type: "language-model",
+      status: "online",
+      capabilities: ["general-reasoning", "language-generation", "synthesis"],
+      description:
+        "Replaceable server-side advisory intelligence. It cannot own Maddy identity, truth, belief, authority, memory, verification, or speech.",
+      providerGroup: "meos-advisory-intelligence",
+      priority: 0.9,
+      reliability: 0.9,
+      privacy: 0.8,
+      speed: 0.8,
+      costEfficiency: 0.9,
+      metadata: {
+        endpoint: SERVER_ADVISER_ENDPOINT,
+        providerNeutralContract: true,
+        providerIsMaddy: false,
+        finalSpeechAuthority: false,
+        durableTruthAuthority: false
+      },
+      execute: fetchServerAdviser,
+      healthCheck: serverAdviserHealthCheck
+    }, { replace: true });
+  }
+
+  function runAdviserIntelligenceBridgeAcceptanceTest() {
+    const provider = getProvider(SERVER_ADVISER_PROVIDER_ID);
+    const goodPayload = {
+      schema: "meos.maddy.adviser-request.v2",
+      role: "adviser-to-maddy",
+      requestId: "006028-acceptance",
+      objective: "Help me think through this objective.",
+      maddyTruth: { responseSemantics: [{ id: "maddy-semantic-1", kind: "objective" }] },
+      responseContract: {
+        adviceOnly: true,
+        semanticAuthority: "maddy-executive-brain",
+        providerOutputIsEvidence: false,
+        providerOutputIsMaddyBelief: false,
+        providerOutputIsFinalSpeech: false,
+        providerCanGrantAuthority: false
+      }
+    };
+    let contractAccepted = false;
+    let badContractRejected = false;
+    try { contractAccepted = validateAdviserRequestContract(goodPayload) === true; } catch (_) {}
+    try {
+      validateAdviserRequestContract({
+        ...goodPayload,
+        responseContract: { ...goodPayload.responseContract, providerOutputIsFinalSpeech: true }
+      });
+    } catch (_) { badContractRejected = true; }
+    const receipt = adviserBridgeReceipt({ economics: { providerPaidForAdvice: true } });
+    const checks = [
+      { name: "Replaceable same-origin adviser is registered", passed: provider?.id === SERVER_ADVISER_PROVIDER_ID },
+      { name: "Server adviser exposes reasoning language and synthesis capabilities", passed: ["general-reasoning", "language-generation", "synthesis"].every(item => provider?.capabilities?.includes(item)) },
+      { name: "Provider identity remains distinct from Maddy", passed: provider?.metadata?.providerIsMaddy === false },
+      { name: "Provider has no final speech authority", passed: provider?.metadata?.finalSpeechAuthority === false },
+      { name: "Valid Brain-owned adviser contract is accepted", passed: contractAccepted },
+      { name: "Contract attempting provider speech ownership is rejected", passed: badContractRejected },
+      { name: "Adviser receipt cannot become evidence or belief", passed: receipt.providerOutputIsEvidence === false && receipt.providerOutputIsMaddyBelief === false },
+      { name: "Adviser receipt cannot grant authority or verification", passed: receipt.providerCanGrantAuthority === false && receipt.claimVerified === false && receipt.executionVerified === false && receipt.outcomeVerified === false },
+      { name: "Provider may be paid for advice but never answer ownership", passed: receipt.providerPaidForAdvice === true && receipt.providerPaidForAnswer === false },
+      { name: "Server vendor remains behind a provider-neutral MEOS adapter", passed: provider?.providerGroup === "meos-advisory-intelligence" && provider?.metadata?.providerNeutralContract === true }
+    ];
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks);
+    console.log(`[MEOS ${VERSION}] Commission 006.028 Adviser Intelligence Bridge: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return deepFreeze({
+      success: passed === checks.length,
+      commission: "006.028",
+      schema: "meos.provider-manager.adviser-intelligence-bridge.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
+  }
+
+  const serverAdviserRegistration = registerServerAdviserBridge();
+  if (serverAdviserRegistration) {
+    Promise.resolve(serverAdviserHealthCheck())
+      .then(health => {
+        if (health?.status && PROVIDER_STATUSES.includes(health.status)) {
+          setProviderStatus(SERVER_ADVISER_PROVIDER_ID, health.status);
+        }
+      })
+      .catch(() => {
+        try { setProviderStatus(SERVER_ADVISER_PROVIDER_ID, "unavailable"); } catch (_) {}
+      });
+  }
+
+  /*
    * Durable authority hydrates first. Browser storage is recovery cache only.
    */
   const hydrationPromise = hydrateFromDurableAuthority();
@@ -2060,6 +2300,7 @@
     whenHydrated: () => hydrationPromise,
     retryDurablePersistence,
     runDurableAuthorityAcceptanceTest,
+    runAdviserIntelligenceBridgeAcceptanceTest,
     runSelfTest,
     addEventListener,
     removeEventListener
@@ -2069,7 +2310,7 @@
   global.MEOSProviderManager = global.ProviderManager;
 
   console.log(
-    `[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. No external providers are connected until real adapters register.`
+    `[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. Replaceable same-origin adviser bridge registered when fetch is available; external vendors remain advisory and replaceable.`
   );
 
   emit("online", getStatus());
