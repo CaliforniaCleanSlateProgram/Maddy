@@ -1,7 +1,8 @@
 /**
  * MEOS Mission Dispatcher
- * Version: 0.1.1
- * Build: MD011-PERSISTENCE-CIRCUIT-BREAKER-20260808-A
+ * Commission Candidate: 006.031E — Governed Office Dispatch Autonomy
+ * Version: 0.2.0
+ * Build: MD020-GOVERNED-OFFICE-DISPATCH-AUTONOMY-20260817-A
  *
  * Purpose:
  * The Mission Dispatcher routes organizational missions to the appropriate
@@ -15,6 +16,9 @@
  * - Missions waiting for Executive Director approval do not stop other work.
  * - Offices continue receiving the next available mission.
  * - The Dispatcher never replaces Executive Director authority.
+ * - Office Dispatch and Approved Work are separate durable authorities.
+ * - Automatic routing never creates authority from browser state or legacy timers.
+ * - Browser scanning is a compatibility runner only; durable time/runtime execution remains a later server commission.
  *
  * Required:
  * - mission-engine.js
@@ -29,8 +33,14 @@
 (function initializeMissionDispatcher(global) {
     "use strict";
 
-    const VERSION = "0.1.1";
-    const BUILD_ID = "MD011-PERSISTENCE-CIRCUIT-BREAKER-20260808-A";
+    const VERSION = "0.2.0";
+    const BUILD_ID = "MD020-GOVERNED-OFFICE-DISPATCH-AUTONOMY-20260817-A";
+    const COMMISSION = "006.031E";
+    const STATE_SCHEMA = "meos.mission-dispatcher.persistence-snapshot.v1";
+    const AUTONOMY_CAPABILITIES = Object.freeze({
+        OFFICE_DISPATCH: "officeDispatch",
+        APPROVED_WORK: "approvedWork"
+    });
     const STORAGE_KEY = "meos_mission_dispatcher_v0_1_0";
     const DEFAULT_SCAN_INTERVAL = 5000;
     const MAX_PERSISTED_DISPATCH_RECORDS = 100;
@@ -322,6 +332,14 @@
             failedAt: null,
             warningIssued: false
         },
+        autonomy: {
+            subscriptionBound: false,
+            lastSyncAt: null,
+            lastOfficeDispatchEffective: false,
+            lastApprovedWorkEffective: false,
+            lastAuthorityRevision: null,
+            lastReason: "authority-not-yet-proven"
+        },
         initializedAt: null,
         updatedAt: null
     };
@@ -365,6 +383,161 @@
 
     function getMissionEngine() {
         return global.MEOSMissionEngine || null;
+    }
+
+    function getAutonomyAuthority() {
+        return (
+            global.MaddyAutonomy ||
+            global.MEOSAutonomyAuthority ||
+            null
+        );
+    }
+
+    function autonomyCapabilityStatus(capabilityId) {
+        const authority = getAutonomyAuthority();
+
+        if (
+            !authority ||
+            typeof authority.capabilityStatus !== "function"
+        ) {
+            return {
+                id: capabilityId,
+                effective: false,
+                uiState: "BLOCKED",
+                reason: "maddy-autonomy-authority-unavailable"
+            };
+        }
+
+        try {
+            return authority.capabilityStatus(capabilityId) || {
+                id: capabilityId,
+                effective: false,
+                uiState: "BLOCKED",
+                reason: "autonomy-capability-status-unavailable"
+            };
+        } catch (error) {
+            return {
+                id: capabilityId,
+                effective: false,
+                uiState: "BLOCKED",
+                reason: "autonomy-capability-probe-failed",
+                error: error?.message || String(error)
+            };
+        }
+    }
+
+    function isAutonomyAuthorized(capabilityId) {
+        const authority = getAutonomyAuthority();
+
+        if (
+            !authority ||
+            typeof authority.isAuthorized !== "function"
+        ) {
+            return false;
+        }
+
+        try {
+            return authority.isAuthorized(capabilityId) === true;
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    function captureAutonomyReceipt(capabilityId) {
+        const authority = getAutonomyAuthority();
+        const status = autonomyCapabilityStatus(capabilityId);
+        let snapshot = null;
+
+        try {
+            snapshot =
+                typeof authority?.getSnapshot === "function"
+                    ? authority.getSnapshot()
+                    : null;
+        } catch (_error) {
+            snapshot = null;
+        }
+
+        return {
+            schema: "meos.mission-dispatcher.autonomy-receipt.v1",
+            capabilityId,
+            effective: status?.effective === true,
+            uiState: status?.uiState || "BLOCKED",
+            reason: status?.reason || null,
+            authorityRevision:
+                Number(snapshot?.revision || 0) || null,
+            authoritySource: "server-durable-maddy-autonomy-authority",
+            browserAuthority: false,
+            capturedAt: now()
+        };
+    }
+
+    function getAutonomyIntegrationStatus(
+        capabilityId = AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+    ) {
+        if (capabilityId !== AUTONOMY_CAPABILITIES.OFFICE_DISPATCH) {
+            return {
+                ready: false,
+                reason: "unsupported-dispatcher-autonomy-capability",
+                capabilityId,
+                version: VERSION,
+                commission: COMMISSION,
+                buildId: BUILD_ID
+            };
+        }
+
+        return {
+            ready: true,
+            reason: "governed-office-dispatch-contract-ready",
+            capabilityId,
+            version: VERSION,
+            commission: COMMISSION,
+            buildId: BUILD_ID,
+            authoritySource: "server-durable-maddy-autonomy-authority",
+            browserAuthority: false,
+            legacyTimerCreatesAuthority: false,
+            manualDispatchPreserved: true,
+            automaticDispatchRequiresCentralAuthority: true,
+            approvedWorkSeparatelyGoverned: true,
+            automaticSpendAuthorized: false,
+            externalActionAuthorized: false,
+            signatureAuthorized: false,
+            certificationAuthorized: false,
+            submissionAuthorized: false,
+            legalCommitmentAuthorized: false,
+            browserCompatibilityScannerAvailable: true,
+            browserIndependentRunnerCommissioned: false,
+            persistenceSnapshotContract: STATE_SCHEMA
+        };
+    }
+
+    function isMachineDispatchInvocation(options = {}) {
+        return (
+            options.autonomous === true ||
+            Boolean(options.workflowId) ||
+            Boolean(options.workflowStepId) ||
+            options.source === "automation" ||
+            options.source === "autonomy-scanner" ||
+            options.source === "workflow"
+        );
+    }
+
+    function missionHasHumanApprovalForAutonomousWork(mission) {
+        if (!mission) {
+            return false;
+        }
+
+        if (mission.approval?.required !== true) {
+            return true;
+        }
+
+        const approvalStatus = String(
+            mission.approval?.status || ""
+        ).toLowerCase();
+
+        return (
+            approvalStatus === "approved" ||
+            approvalStatus === "revisions_requested"
+        );
     }
 
     /**
@@ -885,7 +1058,8 @@
     function updateOfficeWorkingState(
         officeReference,
         mission,
-        task
+        task,
+        options = {}
     ) {
         const officeSystem = getExecutiveOfficeSystem();
 
@@ -937,7 +1111,9 @@
                 officeSystem.setOfficeStatus(
                     officeId,
                     "operational",
-                    `Working on: ${mission.title}`
+                    options.executionAuthorized === true
+                        ? `Working on: ${mission.title}`
+                        : `Mission assigned: ${mission.title}`
                 );
 
                 updated = true;
@@ -953,7 +1129,9 @@
             if (typeof officeSystem.heartbeat === "function") {
                 officeSystem.heartbeat(
                     officeId,
-                    `Mission received: ${mission.title}`
+                    options.executionAuthorized === true
+                        ? `Mission received and execution authorized: ${mission.title}`
+                        : `Mission received; awaiting Approved Work authority: ${mission.title}`
                 );
 
                 updated = true;
@@ -1047,6 +1225,50 @@
             throw new Error(`Mission not found: ${missionId}`);
         }
 
+        const machineInitiated = isMachineDispatchInvocation(options);
+        const officeDispatchAuthorized =
+            !machineInitiated ||
+            isAutonomyAuthorized(
+                AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+            );
+
+        if (!officeDispatchAuthorized) {
+            const receipt = captureAutonomyReceipt(
+                AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+            );
+
+            recordActivity("autonomous_dispatch_blocked", {
+                missionId,
+                reason: "office_dispatch_authority_not_effective",
+                authorityReceipt: receipt
+            });
+
+            return {
+                dispatched: false,
+                reason: "office_dispatch_authority_not_effective",
+                missionId,
+                autonomous: machineInitiated,
+                authorityReceipt: receipt
+            };
+        }
+
+        if (
+            machineInitiated &&
+            !missionHasHumanApprovalForAutonomousWork(mission)
+        ) {
+            recordActivity("autonomous_dispatch_blocked", {
+                missionId,
+                reason: "mission_human_approval_not_satisfied"
+            });
+
+            return {
+                dispatched: false,
+                reason: "mission_human_approval_not_satisfied",
+                missionId,
+                autonomous: true
+            };
+        }
+
         if (
             missionHasBeenDispatched(missionId) &&
             options.force !== true
@@ -1054,21 +1276,37 @@
             return {
                 dispatched: false,
                 reason: "already_dispatched",
-                missionId
+                missionId,
+                autonomous: machineInitiated
             };
         }
 
         const assignments = buildOfficeAssignments(mission);
-
         const assignedOfficeIds = unique(
             assignments.allOffices.map((office) => office.id)
         );
+        const approvedWorkAuthorized =
+            !machineInitiated ||
+            isAutonomyAuthorized(
+                AUTONOMY_CAPABILITIES.APPROVED_WORK
+            );
+        const officeDispatchReceipt = machineInitiated
+            ? captureAutonomyReceipt(
+                AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+            )
+            : null;
+        const approvedWorkReceipt = machineInitiated
+            ? captureAutonomyReceipt(
+                AUTONOMY_CAPABILITIES.APPROVED_WORK
+            )
+            : null;
 
         engine.assignMission(mission.id, {
             leadOffice: assignments.leadOffice.id,
             offices: assignedOfficeIds,
-            currentActivity:
-                "Mission routed to the Executive Offices"
+            currentActivity: approvedWorkAuthorized
+                ? "Mission routed to the Executive Offices"
+                : "Mission routed; awaiting Approved Work authority"
         });
 
         const refreshedMission = engine.getMission(mission.id);
@@ -1108,16 +1346,25 @@
                     result: updateOfficeWorkingState(
                         officeReference,
                         mission,
-                        matchingTask
+                        matchingTask,
+                        {
+                            executionAuthorized:
+                                approvedWorkAuthorized
+                        }
                     )
                 };
             }
         );
 
-        engine.startMission(
-            mission.id,
-            `Executive Offices beginning work on: ${mission.title}`
-        );
+        let executionStarted = false;
+
+        if (approvedWorkAuthorized) {
+            engine.startMission(
+                mission.id,
+                `Executive Offices beginning work on: ${mission.title}`
+            );
+            executionStarted = true;
+        }
 
         markMissionDispatched(mission.id);
 
@@ -1128,17 +1375,43 @@
             officeBridgeResults
         );
 
+        dispatchRecord.autonomy = {
+            machineInitiated,
+            officeDispatchReceipt,
+            approvedWorkReceipt,
+            executionStarted,
+            executionStartedAt:
+                executionStarted ? now() : null
+        };
+
+        const storedRecord = state.dispatchRecords.find(
+            record => record.id === dispatchRecord.id
+        );
+        if (storedRecord) {
+            storedRecord.autonomy = clone(dispatchRecord.autonomy);
+            persist();
+        }
+
         recordActivity("mission_dispatched", {
             missionId: mission.id,
             leadOffice: assignments.leadOffice.id,
             assignedOffices: assignedOfficeIds,
-            createdTaskCount: createdTasks.length
+            createdTaskCount: createdTasks.length,
+            autonomous: machineInitiated,
+            executionStarted,
+            officeDispatchReceipt,
+            approvedWorkReceipt
         });
 
         return {
             dispatched: true,
+            autonomous: machineInitiated,
+            executionStarted,
+            awaitingApprovedWork: !executionStarted,
             mission: engine.getMission(mission.id),
-            dispatchRecord: clone(dispatchRecord)
+            dispatchRecord: clone(
+                storedRecord || dispatchRecord
+            )
         };
     }
 
@@ -1155,14 +1428,149 @@
             "intake",
             "queued",
             "assigned",
+            "approved",
             "revisions_requested"
         ];
 
         return dispatchableStatuses.includes(mission.status);
     }
 
-    function scanForMissions() {
+    function canAutonomouslyDispatchMission(mission) {
+        return (
+            canDispatchMission(mission) &&
+            missionHasHumanApprovalForAutonomousWork(mission)
+        );
+    }
+
+    function markDispatchExecutionStarted(missionId) {
+        const record = state.dispatchRecords.find(
+            item => item.missionId === missionId
+        );
+
+        if (!record) {
+            return null;
+        }
+
+        record.autonomy = {
+            ...(record.autonomy || {}),
+            executionStarted: true,
+            executionStartedAt:
+                record.autonomy?.executionStartedAt || now(),
+            approvedWorkReceipt: captureAutonomyReceipt(
+                AUTONOMY_CAPABILITIES.APPROVED_WORK
+            )
+        };
+        state.updatedAt = now();
+        persist();
+        return clone(record);
+    }
+
+    function resumeRoutedMission(missionId, options = {}) {
         const engine = getMissionEngine();
+
+        if (!engine) {
+            return {
+                started: false,
+                reason: "mission_engine_unavailable",
+                missionId
+            };
+        }
+
+        if (
+            options.humanDirected !== true &&
+            !isAutonomyAuthorized(
+                AUTONOMY_CAPABILITIES.APPROVED_WORK
+            )
+        ) {
+            return {
+                started: false,
+                reason: "approved_work_authority_not_effective",
+                missionId
+            };
+        }
+
+        const mission = engine.getMission(missionId);
+
+        if (!mission) {
+            return {
+                started: false,
+                reason: "mission_not_found",
+                missionId
+            };
+        }
+
+        if (!missionHasBeenDispatched(missionId)) {
+            return {
+                started: false,
+                reason: "mission_not_dispatched",
+                missionId
+            };
+        }
+
+        if (!missionHasHumanApprovalForAutonomousWork(mission)) {
+            return {
+                started: false,
+                reason: "mission_human_approval_not_satisfied",
+                missionId
+            };
+        }
+
+        if (mission.status === "in_progress") {
+            return {
+                started: false,
+                reason: "already_in_progress",
+                missionId
+            };
+        }
+
+        if (
+            ["completed", "archived", "cancelled", "blocked", "pending_approval"]
+                .includes(mission.status)
+        ) {
+            return {
+                started: false,
+                reason: `mission_not_startable:${mission.status}`,
+                missionId
+            };
+        }
+
+        engine.startMission(
+            missionId,
+            `Approved autonomous work beginning on: ${mission.title}`
+        );
+        const record = markDispatchExecutionStarted(missionId);
+        const receipt = captureAutonomyReceipt(
+            AUTONOMY_CAPABILITIES.APPROVED_WORK
+        );
+
+        recordActivity("routed_mission_started", {
+            missionId,
+            autonomous: options.humanDirected !== true,
+            authorityReceipt: receipt
+        });
+
+        return {
+            started: true,
+            mission: engine.getMission(missionId),
+            dispatchRecord: record,
+            authorityReceipt: receipt
+        };
+    }
+
+    function scanForMissions(options = {}) {
+        const autonomous = options.humanDirected !== true;
+        const engine = getMissionEngine();
+
+        if (autonomous && !isAutonomyAuthorized(
+            AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+        )) {
+            return {
+                scanned: false,
+                reason: "office_dispatch_authority_not_effective",
+                dispatched: [],
+                started: []
+            };
+        }
 
         if (!engine) {
             recordActivity("scan_failed", {
@@ -1172,17 +1580,25 @@
             return {
                 scanned: false,
                 reason: "mission_engine_unavailable",
-                dispatched: []
+                dispatched: [],
+                started: []
             };
         }
 
         const missions = engine.getActiveMissions();
-        const dispatchableMissions = missions.filter(canDispatchMission);
+        const dispatchableMissions = autonomous
+            ? missions.filter(canAutonomouslyDispatchMission)
+            : missions.filter(canDispatchMission);
         const results = [];
 
         dispatchableMissions.forEach((mission) => {
             try {
-                const result = dispatchMission(mission.id);
+                const result = dispatchMission(mission.id, {
+                    autonomous,
+                    source: autonomous
+                        ? "autonomy-scanner"
+                        : "human-directed-scan"
+                });
                 results.push(result);
             } catch (error) {
                 console.error(
@@ -1197,19 +1613,45 @@
             }
         });
 
+        const started = [];
+
+        if (
+            !autonomous ||
+            isAutonomyAuthorized(
+                AUTONOMY_CAPABILITIES.APPROVED_WORK
+            )
+        ) {
+            missions
+                .filter(mission => missionHasBeenDispatched(mission.id))
+                .filter(mission => mission.status !== "in_progress")
+                .forEach(mission => {
+                    const result = resumeRoutedMission(
+                        mission.id,
+                        { humanDirected: !autonomous }
+                    );
+                    if (result.started) {
+                        started.push(result);
+                    }
+                });
+        }
+
         recordActivity("mission_scan_completed", {
+            autonomous,
             scannedCount: missions.length,
             dispatchableCount: dispatchableMissions.length,
             dispatchedCount: results.filter(
                 (result) => result.dispatched
-            ).length
+            ).length,
+            startedCount: started.length
         });
 
         return {
             scanned: true,
+            autonomous,
             totalMissions: missions.length,
             dispatchableMissions: dispatchableMissions.length,
-            dispatched: results
+            dispatched: results,
+            started
         };
     }
 
@@ -1232,7 +1674,7 @@
      * Work waiting for approval does not prevent the office from receiving
      * its next queued mission.
      */
-    function advanceOffice(officeId) {
+    function advanceOffice(officeId, options = {}) {
         const engine = getMissionEngine();
 
         if (!engine) {
@@ -1254,14 +1696,56 @@
             };
         }
 
+        const autonomous = options.autonomous === true;
+
+        if (autonomous && !isAutonomyAuthorized(
+            AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+        )) {
+            return {
+                officeId,
+                advanced: false,
+                reason: "office_dispatch_authority_not_effective"
+            };
+        }
+
         if (!missionHasBeenDispatched(nextMission.id)) {
-            dispatchMission(nextMission.id);
+            const dispatchResult = dispatchMission(
+                nextMission.id,
+                autonomous
+                    ? { autonomous: true, source: "office-advance" }
+                    : { humanDirected: true }
+            );
+
+            if (!dispatchResult.dispatched) {
+                return {
+                    officeId,
+                    advanced: false,
+                    reason: dispatchResult.reason || "dispatch_failed",
+                    dispatchResult
+                };
+            }
+        }
+
+        if (
+            autonomous &&
+            !isAutonomyAuthorized(
+                AUTONOMY_CAPABILITIES.APPROVED_WORK
+            )
+        ) {
+            return {
+                officeId,
+                advanced: false,
+                routed: true,
+                reason: "approved_work_authority_not_effective",
+                mission: engine.getMission(nextMission.id)
+            };
         }
 
         engine.startMission(
             nextMission.id,
             `Office ${officeId} began its next assignment`
         );
+        markDispatchExecutionStarted(nextMission.id);
 
         recordActivity("office_advanced", {
             officeId,
@@ -1284,6 +1768,21 @@
             };
         }
 
+        if (!isAutonomyAuthorized(
+            AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+        )) {
+            state.autonomy.lastSyncAt = now();
+            state.autonomy.lastOfficeDispatchEffective = false;
+            state.autonomy.lastReason =
+                "office_dispatch_authority_not_effective";
+
+            return {
+                started: false,
+                reason: "office_dispatch_authority_not_effective",
+                scanInterval: state.scanInterval
+            };
+        }
+
         const requestedInterval = Number(options.scanInterval);
 
         if (
@@ -1299,27 +1798,33 @@
         scanForMissions();
 
         state.timerId = global.setInterval(
-            scanForMissions,
+            () => scanForMissions(),
             state.scanInterval
         );
 
         recordActivity("dispatcher_started", {
-            scanInterval: state.scanInterval
+            scanInterval: state.scanInterval,
+            authorityReceipt: captureAutonomyReceipt(
+                AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+            )
         });
 
         console.log(
-            `MEOS Mission Dispatcher started. Scanning every ${state.scanInterval}ms.`
+            `MEOS Mission Dispatcher autonomy compatibility scanner started. Scanning every ${state.scanInterval}ms.`
         );
 
         persist();
 
         return {
             started: true,
-            scanInterval: state.scanInterval
+            scanInterval: state.scanInterval,
+            autonomyGoverned: true
         };
     }
 
-    function stop() {
+    function stop(options = {}) {
+        const wasRunning = state.running || state.timerId !== null;
+
         if (state.timerId !== null) {
             global.clearInterval(state.timerId);
             state.timerId = null;
@@ -1328,15 +1833,117 @@
         state.running = false;
         state.updatedAt = now();
 
-        recordActivity("dispatcher_stopped");
+        if (wasRunning || options.recordWhenAlreadyStopped === true) {
+            recordActivity("dispatcher_stopped", {
+                reason: options.reason || "stopped"
+            });
+        }
 
-        console.log("MEOS Mission Dispatcher stopped.");
+        if (wasRunning && options.silent !== true) {
+            console.log("MEOS Mission Dispatcher stopped.");
+        }
 
         persist();
 
         return {
-            stopped: true
+            stopped: true,
+            wasRunning,
+            reason: options.reason || null
         };
+    }
+
+    function syncAutonomyRuntime() {
+        const officeStatus = autonomyCapabilityStatus(
+            AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+        );
+        const approvedStatus = autonomyCapabilityStatus(
+            AUTONOMY_CAPABILITIES.APPROVED_WORK
+        );
+        const authority = getAutonomyAuthority();
+        let authoritySnapshot = null;
+
+        try {
+            authoritySnapshot =
+                typeof authority?.getSnapshot === "function"
+                    ? authority.getSnapshot()
+                    : null;
+        } catch (_error) {
+            authoritySnapshot = null;
+        }
+
+        state.autonomy.lastSyncAt = now();
+        state.autonomy.lastOfficeDispatchEffective =
+            officeStatus?.effective === true;
+        state.autonomy.lastApprovedWorkEffective =
+            approvedStatus?.effective === true;
+        state.autonomy.lastAuthorityRevision =
+            Number(authoritySnapshot?.revision || 0) || null;
+        state.autonomy.lastReason =
+            officeStatus?.reason || "authority-unproven";
+
+        if (officeStatus?.effective === true) {
+            const result = start();
+            if (approvedStatus?.effective === true) {
+                scanForMissions();
+            }
+            return {
+                synced: true,
+                running: state.running,
+                officeDispatch: clone(officeStatus),
+                approvedWork: clone(approvedStatus),
+                startResult: result
+            };
+        }
+
+        const stopResult = stop({
+            reason: "office_dispatch_authority_not_effective",
+            silent: true
+        });
+
+        return {
+            synced: true,
+            running: false,
+            officeDispatch: clone(officeStatus),
+            approvedWork: clone(approvedStatus),
+            stopResult
+        };
+    }
+
+    function bindAutonomyAuthority() {
+        if (state.autonomy.subscriptionBound) {
+            return { bound: true, alreadyBound: true };
+        }
+
+        const authority = getAutonomyAuthority();
+
+        if (!authority || typeof authority.on !== "function") {
+            return {
+                bound: false,
+                reason: "maddy-autonomy-authority-unavailable"
+            };
+        }
+
+        const sync = () => {
+            try {
+                syncAutonomyRuntime();
+            } catch (error) {
+                console.warn(
+                    "MEOS Mission Dispatcher autonomy synchronization failed.",
+                    error
+                );
+                stop({
+                    reason: "autonomy_sync_failed",
+                    silent: true
+                });
+            }
+        };
+
+        authority.on("authority:updated", sync);
+        authority.on("authority:unavailable", sync);
+        state.autonomy.subscriptionBound = true;
+        sync();
+
+        return { bound: true, alreadyBound: false };
     }
 
     function restart(options = {}) {
@@ -1378,6 +1985,16 @@
             dispatchedMissionCount:
                 state.dispatchedMissionIds.length,
             dispatchRecordCount: state.dispatchRecords.length,
+            autonomy: {
+                integration: getAutonomyIntegrationStatus(),
+                officeDispatch: autonomyCapabilityStatus(
+                    AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+                ),
+                approvedWork: autonomyCapabilityStatus(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                ),
+                runtime: clone(state.autonomy)
+            },
             initializedAt: state.initializedAt,
             updatedAt: state.updatedAt
         };
@@ -1432,6 +2049,198 @@
         console.warn("MEOS Mission Dispatcher data cleared.");
 
         return true;
+    }
+
+    function buildPersistenceSnapshot() {
+        return {
+            schema: STATE_SCHEMA,
+            version: VERSION,
+            buildId: BUILD_ID,
+            commission: COMMISSION,
+            operational: {
+                scanInterval: state.scanInterval,
+                dispatchedMissionIds: clone(
+                    state.dispatchedMissionIds
+                ),
+                dispatchRecords: clone(
+                    state.dispatchRecords.slice(
+                        0,
+                        MAX_PERSISTED_DISPATCH_RECORDS
+                    )
+                ),
+                activity: clone(
+                    state.activity.slice(
+                        0,
+                        MAX_PERSISTED_ACTIVITY
+                    )
+                ),
+                initializedAt: state.initializedAt,
+                updatedAt: state.updatedAt
+            },
+            authority: {
+                autonomyPolicyStoredHere: false,
+                sourceOfTruth:
+                    "server-durable-maddy-autonomy-authority",
+                browserAuthority: false
+            },
+            capturedAt: now()
+        };
+    }
+
+    function applyPersistenceSnapshot(snapshot = {}) {
+        if (
+            !snapshot ||
+            snapshot.schema !== STATE_SCHEMA ||
+            !snapshot.operational
+        ) {
+            return {
+                applied: false,
+                reason: "invalid-dispatcher-persistence-snapshot"
+            };
+        }
+
+        const operational = snapshot.operational;
+
+        stop({ reason: "persistence_snapshot_apply", silent: true });
+        state.scanInterval =
+            Number(operational.scanInterval) ||
+            DEFAULT_SCAN_INTERVAL;
+        state.dispatchedMissionIds = Array.isArray(
+            operational.dispatchedMissionIds
+        )
+            ? clone(operational.dispatchedMissionIds)
+            : [];
+        state.dispatchRecords = Array.isArray(
+            operational.dispatchRecords
+        )
+            ? clone(operational.dispatchRecords)
+            : [];
+        state.activity = Array.isArray(operational.activity)
+            ? clone(operational.activity)
+            : [];
+        state.initializedAt =
+            operational.initializedAt || now();
+        state.updatedAt = now();
+
+        persist();
+
+        return {
+            applied: true,
+            running: false,
+            authorityImported: false,
+            snapshot: buildPersistenceSnapshot()
+        };
+    }
+
+    function runAutonomyAcceptanceTest() {
+        const checks = [];
+        const check = (name, passed, details = null) => {
+            checks.push({
+                name,
+                passed: passed === true,
+                details
+            });
+        };
+        const integration = getAutonomyIntegrationStatus();
+        const persistenceSnapshot = buildPersistenceSnapshot();
+
+        check(
+            "Office Dispatch integration contract is present",
+            integration.ready === true &&
+                integration.browserAuthority === false
+        );
+        check(
+            "Office Dispatch and Approved Work are separate authorities",
+            integration.approvedWorkSeparatelyGoverned === true
+        );
+        check(
+            "Legacy timer cannot create autonomy",
+            integration.legacyTimerCreatesAuthority === false
+        );
+        check(
+            "Automatic dispatcher start requires central Office Dispatch authority",
+            /office_dispatch_authority_not_effective/.test(
+                start.toString()
+            ) &&
+                /isAutonomyAuthorized/.test(start.toString())
+        );
+        check(
+            "Machine dispatch requires central Office Dispatch authority",
+            /officeDispatchAuthorized/.test(
+                dispatchMission.toString()
+            ) &&
+                /isMachineDispatchInvocation/.test(
+                    dispatchMission.toString()
+                )
+        );
+        check(
+            "Autonomous dispatch requires satisfied human mission approval when required",
+            /missionHasHumanApprovalForAutonomousWork/.test(
+                dispatchMission.toString()
+            )
+        );
+        check(
+            "Routing can wait for Approved Work instead of secretly starting execution",
+            /awaitingApprovedWork/.test(
+                dispatchMission.toString()
+            ) &&
+                /approvedWorkAuthorized/.test(
+                    dispatchMission.toString()
+                )
+        );
+        check(
+            "Routed work can resume when Approved Work becomes effective",
+            typeof resumeRoutedMission === "function" &&
+                /APPROVED_WORK/.test(
+                    resumeRoutedMission.toString()
+                )
+        );
+        check(
+            "Automatic spend remains unauthorized",
+            integration.automaticSpendAuthorized === false
+        );
+        check(
+            "External action remains unauthorized",
+            integration.externalActionAuthorized === false &&
+                integration.legalCommitmentAuthorized === false
+        );
+        check(
+            "Signature/certification/submission remain unauthorized",
+            integration.signatureAuthorized === false &&
+                integration.certificationAuthorized === false &&
+                integration.submissionAuthorized === false
+        );
+        check(
+            "Persistence snapshot contains no autonomy policy authority",
+            persistenceSnapshot.authority
+                .autonomyPolicyStoredHere === false &&
+                persistenceSnapshot.authority
+                    .browserAuthority === false
+        );
+        check(
+            "Browser-independent dispatch runner is not falsely claimed",
+            integration.browserIndependentRunnerCommissioned === false
+        );
+
+        const success = checks.every(item => item.passed);
+
+        console.table(checks);
+        console.info(
+            `[MEOS ${VERSION}] Commission ${COMMISSION} autonomy acceptance: ${success ? "PASS" : "FAIL"}.`
+        );
+
+        return {
+            schema:
+                "meos.mission-dispatcher.autonomy-acceptance.v1",
+            commission: COMMISSION,
+            version: VERSION,
+            buildId: BUILD_ID,
+            success,
+            passed: checks.filter(item => item.passed).length,
+            total: checks.length,
+            checks,
+            status: getStatus()
+        };
     }
 
     function runPersistenceAcceptanceTest() {
@@ -1498,7 +2307,8 @@
 
         constants: Object.freeze({
             OFFICE_KEYS,
-            OFFICE_ALIASES
+            OFFICE_ALIASES,
+            AUTONOMY_CAPABILITIES
         }),
 
         start,
@@ -1507,22 +2317,45 @@
 
         scanForMissions,
         dispatchMission,
+        resumeRoutedMission,
         advanceOffice,
 
         getStatus,
+        getAutonomyIntegrationStatus,
+        autonomyCapabilityStatus,
+        isAutonomyAuthorized,
+        captureAutonomyReceipt,
+        syncAutonomyRuntime,
+        bindAutonomyAuthority,
         getRoutingRules,
         getDispatchRecord,
         getDispatchHistory,
         getActivityLog,
         getPersistenceStatus: persistenceStatus,
         retryPersistence,
+        buildPersistenceSnapshot,
+        applyPersistenceSnapshot,
         runPersistenceAcceptanceTest,
+        runAutonomyAcceptanceTest,
 
         resetDispatchRecord,
         clearDispatcherData
     });
 
     global.MEOSMissionDispatcher = MissionDispatcher;
+
+    // Bind when the switchboard is already present. If it is loaded later,
+    // the dashboard/bootstrap layer may call bindAutonomyAuthority(); the
+    // dispatcher remains safely stopped until durable authority is proven.
+    bindAutonomyAuthority();
+
+    if (typeof global.addEventListener === "function") {
+        global.addEventListener("load", () => {
+            if (!state.autonomy.subscriptionBound) {
+                bindAutonomyAuthority();
+            }
+        }, { once: true });
+    }
 
     console.log(
         `%cMEOS ${VERSION} Mission Dispatcher initialized. Build ${BUILD_ID}.`,
@@ -1537,5 +2370,14 @@
     console.log(
         "Executive Offices connected:",
         Boolean(getExecutiveOfficeSystem())
+    );
+
+    console.log(
+        "Maddy Autonomy connected:",
+        Boolean(getAutonomyAuthority()),
+        "| Office Dispatch effective:",
+        isAutonomyAuthorized(
+            AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+        )
     );
 })(window);
