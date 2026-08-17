@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.26.1
- * Build: EB1261-GOVERNED-AUTONOMY-AWARE-COGNITION-20260817-A
+ * Version: 1.26.2
+ * Build: EB1262-DOCUMENT-AUTONOMY-CONTEXT-BRIDGE-20260817-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.1";
-  const BUILD_ID = "EB1261-GOVERNED-AUTONOMY-AWARE-COGNITION-20260817-A";
+  const VERSION = "1.26.2";
+  const BUILD_ID = "EB1262-DOCUMENT-AUTONOMY-CONTEXT-BRIDGE-20260817-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -14051,6 +14051,51 @@
       };
     },
 
+    /*
+     * Commission 006.031K — Brain → Document Autonomy Context Bridge
+     *
+     * The Brain owns the distinction between self-initiated document cognition
+     * and a current human-directed request. It passes that execution context
+     * explicitly into classification instead of asking downstream organs to
+     * infer authority from source strings, queue state, or browser activity.
+     */
+    buildDocumentCognitionExecutionContext(options = {}) {
+      const humanDirected =
+        options.humanDirected === true ||
+        options.humanDirection === true;
+
+      if (humanDirected) {
+        return {
+          allowed:true,
+          autonomous:false,
+          machineInitiated:false,
+          humanDirected:true,
+          source:options.source || "current-human-direction",
+          requiredCapability:"documents",
+          authorityRevision:
+            this.getAutonomyAwareness({refresh:false}).revision ?? null,
+          externalActionAuthorized:false
+        };
+      }
+
+      const admission = this.evaluateAutonomousCognitionAdmission({
+        ...options,
+        requiredCapability:"documents"
+      });
+
+      return {
+        ...this.clone(admission),
+        autonomous:true,
+        machineInitiated:true,
+        humanDirected:false,
+        source:
+          admission.source ||
+          "autonomous-document-cognitive-continuation",
+        requiredCapability:"documents",
+        externalActionAuthorized:false
+      };
+    },
+
     async continueDocumentCognitionFromPerception(
       assimilation = {},
       options = {}
@@ -14086,6 +14131,24 @@
         };
       }
 
+      const execution =
+        this.buildDocumentCognitionExecutionContext(options);
+
+      if (execution.allowed !== true) {
+        return {
+          success:true,
+          continued:false,
+          blockedByAutonomy:true,
+          reason:
+            execution.reason ||
+            "document-intake-autonomy-not-authorized",
+          documentCount:documentObservations.length,
+          workflowsCreated:0,
+          humanQueue:[],
+          execution:this.clone(execution)
+        };
+      }
+
       const ingestion = global.DocumentIngestion;
       const classifier = global.DocumentClassifier;
       const workflow = global.ExecutiveWorkflow;
@@ -14117,9 +14180,34 @@
           },
           {
             actor:"MEOS Executive Brain",
-            source:"autonomous-document-cognitive-continuation",
+            source:
+              execution.autonomous === true
+                ? "autonomous-document-cognitive-continuation"
+                : "human-directed-document-cognitive-continuation",
             handoffToKnowledgeMemory:true,
-            classify:true
+            /*
+             * 006.031K owns the execution-context handoff explicitly.
+             * Ingestion catalogs evidence; the Brain calls the Classifier
+             * itself so autonomous/human provenance cannot be dropped by an
+             * older ingestion adapter.
+             */
+            classify:false,
+            machineInitiated:execution.machineInitiated === true,
+            humanDirected:execution.humanDirected === true,
+            autonomyAuthorityRevision:
+              execution.authorityRevision ?? null,
+            metadata:{
+              execution:{
+                machineInitiated:
+                  execution.machineInitiated === true,
+                humanDirected:
+                  execution.humanDirected === true,
+                requiredCapability:"documents",
+                authorityRevision:
+                  execution.authorityRevision ?? null,
+                authoritySource:execution.source || null
+              }
+            }
           }
         );
 
@@ -14150,15 +14238,48 @@
           continue;
         }
 
+        const classificationAttempt =
+          typeof classifier.classifyDocument === "function"
+            ? classifier.classifyDocument(
+                document.id,
+                {
+                  actor:"MEOS Executive Brain",
+                  text:
+                    document.metadata?.extractedText ||
+                    document.metadata?.evidenceExcerpt ||
+                    "",
+                  source:
+                    execution.autonomous === true
+                      ? "autonomous-document-cognitive-continuation"
+                      : "human-directed-document-cognitive-continuation",
+                  autonomous:execution.autonomous === true,
+                  machineInitiated:
+                    execution.machineInitiated === true,
+                  humanDirected:
+                    execution.humanDirected === true,
+                  autonomyAuthorityRevision:
+                    execution.authorityRevision ?? null
+                }
+              )
+            : null;
+
         const classification =
-          classifier.getResultForDocument(document.id);
+          classificationAttempt?.success === true
+            ? classificationAttempt.result
+            : classifier.getResultForDocument(document.id);
 
         if (!classification) {
           results.push({
             documentId:document.id,
             documentName:document.name || null,
-            status:"classification-unavailable",
-            workflowCreated:false
+            status:
+              classificationAttempt?.blockedByAutonomy === true
+                ? "classification-blocked-by-autonomy"
+                : "classification-unavailable",
+            workflowCreated:false,
+            reason:
+              classificationAttempt?.reason ||
+              "document-classification-unavailable"
           });
           continue;
         }
@@ -14237,6 +14358,12 @@
             {
               classification,
               overrideClassificationApproval:true,
+              machineInitiated:
+                execution.machineInitiated === true,
+              humanDirected:
+                execution.humanDirected === true,
+              autonomyAuthorityRevision:
+                execution.authorityRevision ?? null,
               maximumResearchQuestions:
                 Math.max(
                   0,
@@ -14284,6 +14411,12 @@
               classification,
               resolution,
               actor:"Maddy",
+              machineInitiated:
+                execution.machineInitiated === true,
+              humanDirected:
+                execution.humanDirected === true,
+              autonomyAuthorityRevision:
+                execution.authorityRevision ?? null,
               priority:
                 Math.max(
                   0,
@@ -14409,6 +14542,7 @@
         machineResolvedRequirements,
         humanQueue,
         results,
+        execution:this.clone(execution),
         paidCognitionAuthorized:false,
         documentMutationAuthorized:false,
         signatureAuthorized:false,
@@ -14426,6 +14560,12 @@
           workflowsCreated,
           machineResolvedRequirements,
           humanQueueCount:humanQueue.length,
+          machineInitiated:
+            execution.machineInitiated === true,
+          humanDirected:
+            execution.humanDirected === true,
+          autonomyAuthorityRevision:
+            execution.authorityRevision ?? null,
           externalActionAuthorized:false
         }
       );
@@ -14521,7 +14661,13 @@
                   maximumDocumentResearchQuestions:
                     options.maximumDocumentResearchQuestions,
                   documentWorkflowPriority:
-                    options.documentWorkflowPriority
+                    options.documentWorkflowPriority,
+                  humanDirected:
+                    options.humanDirected === true,
+                  humanDirection:
+                    options.humanDirection === true,
+                  serverRuntimeAuthorized:
+                    options.serverRuntimeAuthorized === true
                 }
               );
           }
@@ -14644,6 +14790,8 @@
         ingestion:global.DocumentIngestion,
         classifier:global.DocumentClassifier,
         workflow:global.ExecutiveWorkflow,
+        autonomy:global.MaddyAutonomy,
+        authority:global.MEOSAutonomyAuthority,
         intentions:this.clone(this.cognitiveIntentions || []),
         autobiography:this.clone(this.autobiographicalMemory || [])
       };
@@ -14653,6 +14801,31 @@
       try {
         this.cognitiveIntentions = [];
         this.autobiographicalMemory = [];
+
+        global.MaddyAutonomy = {
+          getSnapshot() {
+            return {
+              authoritative:true,
+              masterEnabled:true,
+              revision:17016,
+              capabilities:{
+                continuousCognition:{ready:true,authorized:true,effective:true,uiState:"ON",reason:"acceptance-authorized"},
+                documents:{ready:true,authorized:true,effective:true,uiState:"ON",reason:"acceptance-authorized"}
+              },
+              providers:{},
+              economicAuthority:{automaticSpendUsd:0,paidProviderSpendAuthorized:false},
+              externalAuthority:{
+                externalActionAuthorized:false,
+                legalCommitmentAuthorized:false,
+                signatureAuthorized:false,
+                certificationAuthorized:false,
+                submissionAuthorized:false,
+                consequentialActionAuthorized:false
+              }
+            };
+          }
+        };
+        global.MEOSAutonomyAuthority = global.MaddyAutonomy;
 
         const docs = [
           {
@@ -14689,6 +14862,13 @@
         };
 
         global.DocumentClassifier = {
+          classifyDocument(id, options = {}) {
+            return {
+              success:true,
+              result:this.getResultForDocument(id),
+              execution:this.clone ? this.clone(options) : options
+            };
+          },
           getResultForDocument(id) {
             if (id === "doc-review") {
               return {
@@ -15002,6 +15182,328 @@
         global.DocumentIngestion = original.ingestion;
         global.DocumentClassifier = original.classifier;
         global.ExecutiveWorkflow = original.workflow;
+        global.MaddyAutonomy = original.autonomy;
+        global.MEOSAutonomyAuthority = original.authority;
+        this.cognitiveIntentions = original.intentions;
+        this.autobiographicalMemory = original.autobiography;
+        brainPersistence.hydrated = priorHydrated;
+      }
+    },
+
+    async runDocumentAutonomyContextBridgeAcceptanceTest() {
+      const original = {
+        ingestion:global.DocumentIngestion,
+        classifier:global.DocumentClassifier,
+        workflow:global.ExecutiveWorkflow,
+        autonomy:global.MaddyAutonomy,
+        authority:global.MEOSAutonomyAuthority,
+        intentions:this.clone(this.cognitiveIntentions || []),
+        autobiography:this.clone(this.autobiographicalMemory || [])
+      };
+      const priorHydrated = brainPersistence.hydrated;
+      brainPersistence.hydrated = false;
+
+      let authorityState = {
+        masterEnabled:false,
+        continuousCognition:false,
+        documents:false,
+        revision:1
+      };
+      const ingestionCalls = [];
+      const classificationCalls = [];
+
+      const fakeAuthority = {
+        getSnapshot:() => ({
+          authoritative:true,
+          masterEnabled:authorityState.masterEnabled,
+          revision:authorityState.revision,
+          capabilities:{
+            continuousCognition:{
+              ready:true,
+              authorized:authorityState.continuousCognition,
+              effective:
+                authorityState.masterEnabled &&
+                authorityState.continuousCognition,
+              uiState:
+                authorityState.continuousCognition ? "ON" : "OFF"
+            },
+            documents:{
+              ready:true,
+              authorized:authorityState.documents,
+              effective:
+                authorityState.masterEnabled &&
+                authorityState.documents,
+              uiState:authorityState.documents ? "ON" : "OFF"
+            },
+            learning:{ready:true,authorized:false,effective:false,uiState:"OFF"},
+            timeAndDeadlines:{ready:false,authorized:false,effective:false,uiState:"BLOCKED"},
+            approvedWork:{ready:true,authorized:false,effective:false,uiState:"OFF"},
+            officeDispatch:{ready:true,authorized:false,effective:false,uiState:"OFF"},
+            monitoring:{ready:true,authorized:false,effective:false,uiState:"OFF"},
+            opportunities:{ready:false,authorized:false,effective:false,uiState:"BLOCKED"}
+          },
+          providers:{},
+          economicAuthority:{
+            automaticSpendUsd:0,
+            paidProviderSpendAuthorized:false
+          },
+          externalAuthority:{
+            externalActionAuthorized:false,
+            legalCommitmentAuthorized:false,
+            signatureAuthorized:false,
+            certificationAuthorized:false,
+            submissionAuthorized:false,
+            consequentialActionAuthorized:false
+          }
+        })
+      };
+
+      const document = {
+        id:"doc-031k",
+        name:"Governed Intake Fixture.pdf",
+        contentFingerprint:"031k-fixture",
+        metadata:{
+          investigationId:"investigation-031k",
+          contentSha256:"031k-fixture",
+          extractedText:"Application requirements and authorized signature."
+        }
+      };
+      const classification = {
+        id:"classification-031k",
+        status:"classified",
+        requiresExecutiveReview:false,
+        label:"Application",
+        recommendedOffice:"Operations",
+        workIntelligence:{
+          executable:true,
+          workKind:"application",
+          sourceFingerprint:"031k-fixture"
+        },
+        metadata:{
+          contentSha256:"031k-fixture"
+        }
+      };
+      const assimilation = {
+        success:true,
+        evidence:{
+          schema:"meos.maddy.local-perception-evidence.v1",
+          investigationId:"investigation-031k",
+          observations:[{
+            observed:true,
+            url:"https://example.gov/031k.pdf",
+            documentType:"pdf",
+            contentSha256:"031k-fixture",
+            evidenceExcerpt:"Application requirements and authorized signature."
+          }]
+        }
+      };
+
+      try {
+        this.cognitiveIntentions = [];
+        this.autobiographicalMemory = [];
+        global.MaddyAutonomy = fakeAuthority;
+        global.MEOSAutonomyAuthority = fakeAuthority;
+        global.DocumentIngestion = {
+          async ingestLocalPerceptionEvidence(_evidence, options = {}) {
+            ingestionCalls.push({...options});
+            return {
+              success:true,
+              results:[{success:true,added:true,document}]
+            };
+          }
+        };
+        global.DocumentClassifier = {
+          classifyDocument(_id, options = {}) {
+            classificationCalls.push({...options});
+            return {success:true,result:classification};
+          },
+          getResultForDocument() {
+            return classification;
+          }
+        };
+        global.ExecutiveWorkflow = {
+          async resolveDocumentWork(_id, options = {}) {
+            return {
+              success:true,
+              investigationId:"investigation-031k",
+              sourceFingerprint:"031k-fixture",
+              resolvedWithoutHuman:2,
+              humanQueue:[],
+              summary:{
+                total:2,
+                verifiedFacts:2,
+                reasonedAnswers:0,
+                researchResolutions:0,
+                conflicts:0,
+                humanJudgments:0,
+                humanAuthorityRequirements:0
+              },
+              receivedExecutionContext:{
+                machineInitiated:options.machineInitiated === true,
+                humanDirected:options.humanDirected === true,
+                authorityRevision:options.autonomyAuthorityRevision ?? null
+              }
+            };
+          },
+          async createFromDocumentWork(_id, options = {}) {
+            return {
+              success:true,
+              workflow:{
+                id:"workflow-031k",
+                status:"draft",
+                sourceDocumentId:"doc-031k",
+                metadata:{
+                  externalActionAuthorized:false,
+                  receivedExecutionContext:{
+                    machineInitiated:options.machineInitiated === true,
+                    humanDirected:options.humanDirected === true,
+                    authorityRevision:
+                      options.autonomyAuthorityRevision ?? null
+                  }
+                }
+              }
+            };
+          }
+        };
+
+        const off =
+          await this.continueDocumentCognitionFromPerception(
+            assimilation,
+            {persist:false}
+          );
+        const offCalls = classificationCalls.length;
+
+        const human =
+          await this.continueDocumentCognitionFromPerception(
+            assimilation,
+            {persist:false,humanDirected:true}
+          );
+        const humanCall = classificationCalls[classificationCalls.length - 1];
+        const humanIngestion = ingestionCalls[ingestionCalls.length - 1];
+
+        authorityState = {
+          masterEnabled:true,
+          continuousCognition:true,
+          documents:false,
+          revision:2
+        };
+        const docsOff =
+          await this.continueDocumentCognitionFromPerception(
+            assimilation,
+            {persist:false}
+          );
+        const docsOffCalls = classificationCalls.length;
+
+        authorityState = {
+          masterEnabled:true,
+          continuousCognition:true,
+          documents:true,
+          revision:3
+        };
+        const autonomous =
+          await this.continueDocumentCognitionFromPerception(
+            assimilation,
+            {persist:false}
+          );
+        const autonomousCall =
+          classificationCalls[classificationCalls.length - 1];
+        const autonomousIngestion =
+          ingestionCalls[ingestionCalls.length - 1];
+
+        const checks = [
+          {
+            name:"Master autonomy OFF blocks self-initiated document cognition before ingestion",
+            passed:
+              off?.blockedByAutonomy === true &&
+              off?.continued === false &&
+              offCalls === 0
+          },
+          {
+            name:"Current human direction still permits document cognition while standing autonomy is OFF",
+            passed:
+              human?.continued === true &&
+              human?.execution?.humanDirected === true &&
+              human?.execution?.machineInitiated === false
+          },
+          {
+            name:"Human-directed classification receives explicit human execution context",
+            passed:
+              humanCall?.humanDirected === true &&
+              humanCall?.machineInitiated === false &&
+              humanCall?.autonomous === false
+          },
+          {
+            name:"Brain disables ingestion-side auto-classification so execution provenance cannot be dropped",
+            passed:
+              humanIngestion?.classify === false &&
+              autonomousIngestion?.classify === false
+          },
+          {
+            name:"Continuous Cognition alone cannot grant autonomous Document Intake",
+            passed:
+              docsOff?.blockedByAutonomy === true &&
+              docsOff?.reason === "required-autonomy-off:documents" &&
+              docsOffCalls === classificationCalls.length - 1
+          },
+          {
+            name:"Continuous Cognition plus Document Intake permits Maddy-initiated document continuation",
+            passed:
+              autonomous?.success === true &&
+              autonomous?.continued === true &&
+              autonomous?.workflowsCreated === 1
+          },
+          {
+            name:"Autonomous classification receives explicit machine-initiated context",
+            passed:
+              autonomousCall?.machineInitiated === true &&
+              autonomousCall?.humanDirected === false &&
+              autonomousCall?.autonomous === true
+          },
+          {
+            name:"Durable autonomy revision crosses the Brain-to-Document boundary",
+            passed:
+              autonomous?.execution?.authorityRevision === 3 &&
+              autonomousCall?.autonomyAuthorityRevision === 3
+          },
+          {
+            name:"Browser source strings and ingestion queue state are not used as autonomy authority",
+            passed:
+              autonomous?.execution?.requiredCapability === "documents" &&
+              autonomous?.execution?.source ===
+                "durable-autonomy-switchboard"
+          },
+          {
+            name:"Document autonomy context bridge grants no external or economic authority",
+            passed:
+              autonomous?.externalActionAuthorized === false &&
+              autonomous?.submissionAuthorized === false &&
+              autonomous?.signatureAuthorized === false &&
+              autonomous?.paidCognitionAuthorized === false
+          }
+        ];
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.031K Brain → Document autonomy context bridge: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+        return {
+          success:passed === checks.length,
+          commission:"006.031K",
+          schema:"meos.executive-brain.document-autonomy-context-bridge-acceptance.v1",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          total:checks.length,
+          checks
+        };
+      } finally {
+        global.DocumentIngestion = original.ingestion;
+        global.DocumentClassifier = original.classifier;
+        global.ExecutiveWorkflow = original.workflow;
+        if (original.autonomy === undefined) delete global.MaddyAutonomy;
+        else global.MaddyAutonomy = original.autonomy;
+        if (original.authority === undefined) delete global.MEOSAutonomyAuthority;
+        else global.MEOSAutonomyAuthority = original.authority;
         this.cognitiveIntentions = original.intentions;
         this.autobiographicalMemory = original.autobiography;
         brainPersistence.hydrated = priorHydrated;
