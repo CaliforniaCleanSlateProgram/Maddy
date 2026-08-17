@@ -3,8 +3,8 @@
  * Maddy Autonomy Switchboard
  *
  * Commission Candidate: 006.031B — Maddy Autonomy Switchboard
- * Version: 1.0.0
- * Build: MAS100-SERVER-AUTHORITY-SWITCHBOARD-20260817-A
+ * Version: 1.0.1
+ * Build: MAS101-RUNTIME-BOOTSTRAP-AUTONOMY-REPAIR-20260817-A
  *
  * North outcome:
  * - Give every browser-side MEOS organ one provider-neutral authority API.
@@ -25,8 +25,8 @@
   "use strict";
 
   const NAME = "Maddy Autonomy Switchboard";
-  const VERSION = "1.0.0";
-  const BUILD_ID = "MAS100-SERVER-AUTHORITY-SWITCHBOARD-20260817-A";
+  const VERSION = "1.0.1";
+  const BUILD_ID = "MAS101-RUNTIME-BOOTSTRAP-AUTONOMY-REPAIR-20260817-A";
   const COMMISSION = "006.031B";
   const SCHEMA = "meos.maddy-autonomy-switchboard.v1";
   const SERVER_API = "/api/autonomy";
@@ -57,8 +57,8 @@
       label: "Time & Deadlines",
       section: "work",
       description: "Permit commissioned temporal work to wake and act when time itself makes work relevant.",
-      integration: "temporal",
-      probe: "MEOSTemporalIntelligence"
+      integration: "durable-maddy-time",
+      probe: "server"
     }),
     approvedWork: Object.freeze({
       id: "approvedWork",
@@ -129,7 +129,7 @@
       label: "Public Web",
       category: "research",
       billingOwnerDefault: "customer",
-      probe: "MEOSProviderManager"
+      probe: "server"
     })
   });
 
@@ -493,6 +493,18 @@
 
     if (state.providerOverrides.has(providerId)) {
       return clone(state.providerOverrides.get(providerId));
+    }
+
+    if (descriptor.probe === "server") {
+      return {
+        ready: true,
+        available: true,
+        reason: "server-integrated",
+        evidence: {
+          source: "durable-server-runtime",
+          providerId
+        }
+      };
     }
 
     if (providerId === "openai" || providerId === "publicWeb") {
@@ -1000,7 +1012,22 @@
 
   initializeBroadcast();
 
+  /*
+   * Commission 006.031R — Runtime authority bootstrap repair.
+   * Loading the switchboard is not authority, but the browser must actually
+   * read the durable server policy so later organs can distinguish OFF from
+   * UNPROVEN. This memory-only bootstrap never grants authority by itself.
+   */
+  Promise.resolve()
+    .then(() => refresh({ force: true }))
+    .catch(error => {
+      console.warn(
+        `[${NAME}] Initial durable authority read failed closed.`,
+        error
+      );
+    });
+
   console.log(
-    `[MEOS] ${NAME} v${VERSION} loaded. Server authority only; browser authority=false; customer autonomy remains OFF until durable server authority proves otherwise.`
+    `[MEOS] ${NAME} v${VERSION} loaded. Server authority only; browser authority=false; durable authority bootstrap requested.`
   );
 })(typeof window !== "undefined" ? window : globalThis);
