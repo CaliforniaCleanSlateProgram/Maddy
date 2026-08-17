@@ -1,14 +1,14 @@
 /**
  * MEOS Google Workspace Provider
  *
- * Provider Version: 1.3.1
- * Build ID: GWP131-BYTE-SAFE-REPOSITORY-METADATA-20260812-A
+ * Provider Version: 1.4.0
+ * Build ID: GWP140-GOVERNED-WORKSPACE-WRITE-AUTHORITY-20260817-A
  * Status: Commission Candidate
  *
  * Purpose:
  * - Provide one secure, reusable Google Workspace connection for MEOS.
  * - Keep Google credentials and OAuth tokens off the frontend.
- * - Preserve broad read access while adding narrowly scoped app-managed write authorization.
+ * - Preserve broad read access while adding governed Docs, Sheets, Calendar, and app-managed Drive write authorization.
  * - Recon the connected organization's real Drive capacity and storage capabilities at runtime.
  * - Provide an app-managed institutional repository primitive over Google Drive.
  * - Keep institutional storage provider-neutral above this Google adapter.
@@ -31,8 +31,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { google } from "googleapis";
 
-const VERSION = "1.3.1";
-const BUILD_ID = "GWP131-BYTE-SAFE-REPOSITORY-METADATA-20260812-A";
+const VERSION = "1.4.0";
+const BUILD_ID = "GWP140-GOVERNED-WORKSPACE-WRITE-AUTHORITY-20260817-A";
+const COMMISSION = "006.032A";
 const PROVIDER_ID = "google-workspace";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -119,9 +120,32 @@ const CONTROLLED_WRITE_SCOPES = Object.freeze([
   "https://www.googleapis.com/auth/drive.file"
 ]);
 
+/*
+ * Commission 006.032A — Governed Google Workspace Write Authority
+ *
+ * These scopes grant technical capability only. They do not grant MEOS standing
+ * autonomy, external-action authority, approval, signature, certification, or
+ * spending authority. Executive Workspace Office / Maddy Autonomy remains the
+ * policy layer above this provider.
+ *
+ * Full Drive write is intentionally NOT requested. drive.file remains the Drive
+ * write seam so MEOS can manage app-created/app-authorized files without asking
+ * for unrestricted Drive authority. Docs and Sheets receive their product-level
+ * write scopes; Calendar receives event/free-busy scopes. Gmail remains outside
+ * this commission because mailbox read/modify scopes carry a materially different
+ * authorization/verification profile and deserve their own governed seam.
+ */
+const WORKSPACE_WRITE_SCOPES = Object.freeze([
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.freebusy"
+]);
+
 const AUTHORIZATION_SCOPES = Object.freeze([
   ...READ_ONLY_SCOPES,
-  ...CONTROLLED_WRITE_SCOPES
+  ...CONTROLLED_WRITE_SCOPES,
+  ...WORKSPACE_WRITE_SCOPES
 ]);
 
 const FULL_DRIVE_WRITE_SCOPE =
@@ -148,6 +172,7 @@ let oauthClient = null;
 let driveClient = null;
 let docsClient = null;
 let sheetsClient = null;
+let calendarClient = null;
 let tokenWritePromise = Promise.resolve();
 
 function configurationStatus() {
@@ -394,6 +419,11 @@ function createClients() {
     version: "v4",
     auth: oauthClient
   });
+
+  calendarClient = google.calendar({
+    version: "v3",
+    auth: oauthClient
+  });
 }
 
 function requireInitialized() {
@@ -554,6 +584,29 @@ async function discoverInstitutionalStorage() {
   const fullDriveWriteAuthorized =
     hasScope(FULL_DRIVE_WRITE_SCOPE);
 
+  const docsWriteAuthorized =
+    hasScope("https://www.googleapis.com/auth/documents") ||
+    fullDriveWriteAuthorized;
+
+  const sheetsWriteAuthorized =
+    hasScope("https://www.googleapis.com/auth/spreadsheets") ||
+    fullDriveWriteAuthorized;
+
+  const calendarEventsAuthorized =
+    hasScope("https://www.googleapis.com/auth/calendar.events") ||
+    hasScope("https://www.googleapis.com/auth/calendar");
+
+  const calendarFreeBusyAuthorized =
+    hasScope("https://www.googleapis.com/auth/calendar.freebusy") ||
+    hasScope("https://www.googleapis.com/auth/calendar") ||
+    calendarEventsAuthorized;
+
+  const governedWorkspaceWriteAuthorized =
+    controlledWriteAuthorized &&
+    docsWriteAuthorized &&
+    sheetsWriteAuthorized &&
+    calendarEventsAuthorized;
+
   let sharedDrives = [];
   let sharedDrivesError = null;
 
@@ -628,10 +681,14 @@ async function discoverInstitutionalStorage() {
     fullDriveWriteAuthorized,
     authorizationUpgradeRequired:
       !controlledWriteAuthorized,
+    workspaceWriteAuthorizationUpgradeRequired:
+      !governedWorkspaceWriteAuthorized,
     recommendedNextState:
-      controlledWriteAuthorized
-        ? "controlled-repository-prototype-ready"
-        : "reauthorize-for-drive.file",
+      !controlledWriteAuthorized
+        ? "reauthorize-for-drive.file"
+        : (!governedWorkspaceWriteAuthorized
+            ? "reauthorize-for-governed-workspace-write"
+            : "governed-workspace-write-ready"),
     preferredAuthority:
       sharedDrives.length > 0
         ? "existing-shared-drive-or-app-managed-folder"
@@ -643,6 +700,21 @@ async function discoverInstitutionalStorage() {
           : [
               "Google OAuth token has not granted drive.file controlled write authority."
             ]
+      ),
+      ...(
+        docsWriteAuthorized
+          ? []
+          : ["Google OAuth token has not granted Google Docs write authority."]
+      ),
+      ...(
+        sheetsWriteAuthorized
+          ? []
+          : ["Google OAuth token has not granted Google Sheets write authority."]
+      ),
+      ...(
+        calendarEventsAuthorized
+          ? []
+          : ["Google OAuth token has not granted Google Calendar event write authority."]
       ),
       ...(
         capacityVisible
@@ -690,8 +762,15 @@ async function discoverInstitutionalStorage() {
       broadReadAuthorized,
       controlledWriteAuthorized,
       fullDriveWriteAuthorized,
+      docsWriteAuthorized,
+      sheetsWriteAuthorized,
+      calendarEventsAuthorized,
+      calendarFreeBusyAuthorized,
+      governedWorkspaceWriteAuthorized,
       writeModel:
-        "broad-read-plus-app-managed-write",
+        governedWorkspaceWriteAuthorized
+          ? "broad-read-plus-governed-workspace-write"
+          : "broad-read-plus-app-managed-write",
       controlledWriteScope:
         "https://www.googleapis.com/auth/drive.file",
       fullDriveWriteScope:
@@ -711,8 +790,13 @@ async function discoverInstitutionalStorage() {
     broadReadAuthorized,
     controlledWriteAuthorized,
     fullDriveWriteAuthorized,
+    docsWriteAuthorized,
+    sheetsWriteAuthorized,
+    calendarEventsAuthorized,
+    calendarFreeBusyAuthorized,
+    governedWorkspaceWriteAuthorized,
     authorizationUpgradeRequired:
-      !controlledWriteAuthorized,
+      !governedWorkspaceWriteAuthorized,
     inspectedAt: result.inspectedAt
   };
   state.institutionalStorage = result;
@@ -907,14 +991,21 @@ async function authorizeFromCallback({
     ...connection,
     durableAuthorization: {
       configured: Boolean(ENV_REFRESH_TOKEN),
+      refreshTokenIssued: Boolean(refreshToken),
       needsBootstrap:
         !ENV_REFRESH_TOKEN && Boolean(refreshToken),
+      needsRotation:
+        Boolean(ENV_REFRESH_TOKEN) && Boolean(refreshToken),
       refreshToken:
-        !ENV_REFRESH_TOKEN && refreshToken
-          ? refreshToken
-          : null,
+        refreshToken || null,
       environmentVariable:
-        "GOOGLE_WORKSPACE_REFRESH_TOKEN"
+        "GOOGLE_WORKSPACE_REFRESH_TOKEN",
+      action:
+        refreshToken
+          ? (ENV_REFRESH_TOKEN
+              ? "replace-environment-refresh-token"
+              : "set-environment-refresh-token")
+          : "no-refresh-token-issued"
     }
   };
 }
@@ -1232,6 +1323,352 @@ function requireControlledWriteAuthorization() {
     error.status = 403;
     throw error;
   }
+}
+
+
+function requireWorkspaceAuthorization(flag, label, code) {
+  requireConnected();
+
+  if (state.authorizationRecon?.[flag] !== true) {
+    const error = new Error(
+      `Google Workspace ${label} authorization is required. Reauthorize the connected account.`
+    );
+    error.code = code;
+    error.status = 403;
+    throw error;
+  }
+}
+
+function requireDocsWriteAuthorization() {
+  requireWorkspaceAuthorization(
+    "docsWriteAuthorized",
+    "Google Docs write",
+    "GOOGLE_WORKSPACE_DOCS_WRITE_NOT_AUTHORIZED"
+  );
+}
+
+function requireSheetsWriteAuthorization() {
+  requireWorkspaceAuthorization(
+    "sheetsWriteAuthorized",
+    "Google Sheets write",
+    "GOOGLE_WORKSPACE_SHEETS_WRITE_NOT_AUTHORIZED"
+  );
+}
+
+function requireCalendarEventsAuthorization() {
+  requireWorkspaceAuthorization(
+    "calendarEventsAuthorized",
+    "Google Calendar event",
+    "GOOGLE_WORKSPACE_CALENDAR_EVENTS_NOT_AUTHORIZED"
+  );
+}
+
+function requireCalendarFreeBusyAuthorization() {
+  requireWorkspaceAuthorization(
+    "calendarFreeBusyAuthorized",
+    "Google Calendar free/busy",
+    "GOOGLE_WORKSPACE_CALENDAR_FREEBUSY_NOT_AUTHORIZED"
+  );
+}
+
+function normalizeWorkspaceTitle(value, fallback = "Untitled") {
+  const title = String(value || "").trim();
+  return (title || fallback).slice(0, 240);
+}
+
+function normalizeWorkspaceId(value, label) {
+  const id = String(value || "").trim();
+  if (!id) {
+    const error = new Error(`${label} is required.`);
+    error.code = "GOOGLE_WORKSPACE_RESOURCE_ID_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+  return id;
+}
+
+async function createGoogleDocument({
+  title,
+  text = ""
+} = {}) {
+  requireDocsWriteAuthorization();
+
+  const created = await docsClient.documents.create({
+    requestBody: {
+      title: normalizeWorkspaceTitle(title, "MEOS Document")
+    }
+  });
+
+  const documentId = created.data?.documentId || null;
+  const content = String(text || "");
+
+  if (documentId && content) {
+    await docsClient.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests: [{
+          insertText: {
+            location: { index: 1 },
+            text: content
+          }
+        }]
+      }
+    });
+  }
+
+  return {
+    success: true,
+    provider: PROVIDER_ID,
+    documentId,
+    title: created.data?.title || normalizeWorkspaceTitle(title, "MEOS Document"),
+    contentInserted: Boolean(content),
+    technicalCapability: "workspace.document.create",
+    authorityNote: "Provider capability only; MEOS execution authority must be proven upstream."
+  };
+}
+
+async function updateGoogleDocument({
+  documentId,
+  requests = []
+} = {}) {
+  requireDocsWriteAuthorization();
+  const normalizedId = normalizeWorkspaceId(documentId, "Google Docs document ID");
+  const normalizedRequests = Array.isArray(requests) ? requests.filter(Boolean) : [];
+
+  if (!normalizedRequests.length) {
+    const error = new Error("At least one Google Docs batchUpdate request is required.");
+    error.code = "GOOGLE_WORKSPACE_DOCS_UPDATE_REQUEST_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+
+  const response = await docsClient.documents.batchUpdate({
+    documentId: normalizedId,
+    requestBody: { requests: normalizedRequests }
+  });
+
+  return {
+    success: true,
+    provider: PROVIDER_ID,
+    documentId: normalizedId,
+    replies: response.data?.replies || [],
+    technicalCapability: "workspace.document.update",
+    authorityNote: "Provider capability only; MEOS execution authority must be proven upstream."
+  };
+}
+
+async function createSpreadsheet({
+  title,
+  sheets = undefined
+} = {}) {
+  requireSheetsWriteAuthorization();
+
+  const requestBody = {
+    properties: {
+      title: normalizeWorkspaceTitle(title, "MEOS Spreadsheet")
+    }
+  };
+
+  if (Array.isArray(sheets) && sheets.length) {
+    requestBody.sheets = sheets;
+  }
+
+  const response = await sheetsClient.spreadsheets.create({ requestBody });
+
+  return {
+    success: true,
+    provider: PROVIDER_ID,
+    spreadsheetId: response.data?.spreadsheetId || null,
+    spreadsheetUrl: response.data?.spreadsheetUrl || null,
+    properties: response.data?.properties || null,
+    technicalCapability: "workspace.spreadsheet.create",
+    authorityNote: "Provider capability only; MEOS execution authority must be proven upstream."
+  };
+}
+
+async function writeSpreadsheetValues({
+  spreadsheetId,
+  range,
+  values,
+  valueInputOption = "USER_ENTERED"
+} = {}) {
+  requireSheetsWriteAuthorization();
+  const normalizedId = normalizeWorkspaceId(spreadsheetId, "Google Sheets spreadsheet ID");
+  const normalizedRange = String(range || "").trim();
+
+  if (!normalizedRange) {
+    const error = new Error("A Google Sheets range is required.");
+    error.code = "GOOGLE_WORKSPACE_SHEETS_RANGE_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+
+  if (!Array.isArray(values)) {
+    const error = new Error("Google Sheets values must be an array of rows.");
+    error.code = "GOOGLE_WORKSPACE_SHEETS_VALUES_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+
+  const response = await sheetsClient.spreadsheets.values.update({
+    spreadsheetId: normalizedId,
+    range: normalizedRange,
+    valueInputOption: String(valueInputOption || "USER_ENTERED"),
+    requestBody: { values }
+  });
+
+  return {
+    success: true,
+    provider: PROVIDER_ID,
+    spreadsheetId: normalizedId,
+    range: normalizedRange,
+    updatedRange: response.data?.updatedRange || null,
+    updatedRows: response.data?.updatedRows || 0,
+    updatedColumns: response.data?.updatedColumns || 0,
+    updatedCells: response.data?.updatedCells || 0,
+    technicalCapability: "workspace.spreadsheet.update",
+    authorityNote: "Provider capability only; MEOS execution authority must be proven upstream."
+  };
+}
+
+async function listCalendarEvents({
+  calendarId = "primary",
+  timeMin = new Date().toISOString(),
+  timeMax = undefined,
+  maxResults = 50,
+  singleEvents = true,
+  orderBy = "startTime"
+} = {}) {
+  requireCalendarEventsAuthorization();
+
+  const response = await calendarClient.events.list({
+    calendarId: String(calendarId || "primary"),
+    timeMin: String(timeMin || new Date().toISOString()),
+    ...(timeMax ? { timeMax: String(timeMax) } : {}),
+    maxResults: Math.max(1, Math.min(250, Number(maxResults) || 50)),
+    singleEvents: singleEvents !== false,
+    ...(singleEvents !== false ? { orderBy } : {})
+  });
+
+  return response.data;
+}
+
+async function queryCalendarFreeBusy({
+  timeMin,
+  timeMax,
+  calendarIds = ["primary"],
+  timeZone = undefined
+} = {}) {
+  requireCalendarFreeBusyAuthorization();
+
+  const start = String(timeMin || "").trim();
+  const end = String(timeMax || "").trim();
+  if (!start || !end) {
+    const error = new Error("Calendar free/busy requires timeMin and timeMax.");
+    error.code = "GOOGLE_WORKSPACE_CALENDAR_WINDOW_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+
+  const response = await calendarClient.freebusy.query({
+    requestBody: {
+      timeMin: start,
+      timeMax: end,
+      ...(timeZone ? { timeZone: String(timeZone) } : {}),
+      items: (Array.isArray(calendarIds) ? calendarIds : [calendarIds])
+        .map(id => ({ id: String(id || "").trim() }))
+        .filter(item => item.id)
+    }
+  });
+
+  return response.data;
+}
+
+async function createCalendarEvent({
+  calendarId = "primary",
+  event,
+  sendUpdates = "none"
+} = {}) {
+  requireCalendarEventsAuthorization();
+
+  if (!event || typeof event !== "object" || Array.isArray(event)) {
+    const error = new Error("A Google Calendar event object is required.");
+    error.code = "GOOGLE_WORKSPACE_CALENDAR_EVENT_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+
+  const response = await calendarClient.events.insert({
+    calendarId: String(calendarId || "primary"),
+    sendUpdates: String(sendUpdates || "none"),
+    requestBody: event
+  });
+
+  return {
+    success: true,
+    provider: PROVIDER_ID,
+    event: response.data,
+    technicalCapability: "workspace.calendar.create",
+    externalActionOccurred: true,
+    authorityNote: "Provider capability only; MEOS external-action authority must be proven upstream."
+  };
+}
+
+async function updateCalendarEvent({
+  calendarId = "primary",
+  eventId,
+  event,
+  sendUpdates = "none"
+} = {}) {
+  requireCalendarEventsAuthorization();
+  const normalizedEventId = normalizeWorkspaceId(eventId, "Google Calendar event ID");
+
+  if (!event || typeof event !== "object" || Array.isArray(event)) {
+    const error = new Error("A Google Calendar event object is required.");
+    error.code = "GOOGLE_WORKSPACE_CALENDAR_EVENT_REQUIRED";
+    error.status = 400;
+    throw error;
+  }
+
+  const response = await calendarClient.events.patch({
+    calendarId: String(calendarId || "primary"),
+    eventId: normalizedEventId,
+    sendUpdates: String(sendUpdates || "none"),
+    requestBody: event
+  });
+
+  return {
+    success: true,
+    provider: PROVIDER_ID,
+    event: response.data,
+    technicalCapability: "workspace.calendar.update",
+    externalActionOccurred: true,
+    authorityNote: "Provider capability only; MEOS external-action authority must be proven upstream."
+  };
+}
+
+async function deleteCalendarEvent({
+  calendarId = "primary",
+  eventId,
+  sendUpdates = "none"
+} = {}) {
+  requireCalendarEventsAuthorization();
+  const normalizedEventId = normalizeWorkspaceId(eventId, "Google Calendar event ID");
+
+  await calendarClient.events.delete({
+    calendarId: String(calendarId || "primary"),
+    eventId: normalizedEventId,
+    sendUpdates: String(sendUpdates || "none")
+  });
+
+  return {
+    success: true,
+    provider: PROVIDER_ID,
+    eventId: normalizedEventId,
+    technicalCapability: "workspace.calendar.delete",
+    externalActionOccurred: true,
+    authorityNote: "Provider capability only; MEOS external-action authority must be proven upstream."
+  };
 }
 
 function normalizeRepositoryKey(value) {
@@ -1915,6 +2352,95 @@ async function runInstitutionalRepositoryAcceptanceTest() {
   return result;
 }
 
+
+function runGovernedWorkspaceWriteAcceptanceTest() {
+  const source = {
+    scopes: AUTHORIZATION_SCOPES,
+    methods: {
+      createGoogleDocument,
+      updateGoogleDocument,
+      createSpreadsheet,
+      writeSpreadsheetValues,
+      listCalendarEvents,
+      queryCalendarFreeBusy,
+      createCalendarEvent,
+      updateCalendarEvent,
+      deleteCalendarEvent
+    }
+  };
+
+  const checks = [
+    {
+      name: "Full Drive write is not requested by governed Workspace write",
+      passed: !source.scopes.includes(FULL_DRIVE_WRITE_SCOPE)
+    },
+    {
+      name: "App-managed Drive write remains requested",
+      passed: source.scopes.includes("https://www.googleapis.com/auth/drive.file")
+    },
+    {
+      name: "Google Docs write scope is requested",
+      passed: source.scopes.includes("https://www.googleapis.com/auth/documents")
+    },
+    {
+      name: "Google Sheets write scope is requested",
+      passed: source.scopes.includes("https://www.googleapis.com/auth/spreadsheets")
+    },
+    {
+      name: "Google Calendar event write scope is requested",
+      passed: source.scopes.includes("https://www.googleapis.com/auth/calendar.events")
+    },
+    {
+      name: "Google Calendar free-busy scope is requested",
+      passed: source.scopes.includes("https://www.googleapis.com/auth/calendar.freebusy")
+    },
+    {
+      name: "Gmail authority is not silently added",
+      passed: !source.scopes.some(scope => /gmail|mail\.google/.test(scope))
+    },
+    {
+      name: "Docs write primitive exists",
+      passed: typeof source.methods.createGoogleDocument === "function" &&
+        typeof source.methods.updateGoogleDocument === "function"
+    },
+    {
+      name: "Sheets write primitive exists",
+      passed: typeof source.methods.createSpreadsheet === "function" &&
+        typeof source.methods.writeSpreadsheetValues === "function"
+    },
+    {
+      name: "Calendar read/write primitives exist",
+      passed: typeof source.methods.listCalendarEvents === "function" &&
+        typeof source.methods.createCalendarEvent === "function" &&
+        typeof source.methods.updateCalendarEvent === "function" &&
+        typeof source.methods.deleteCalendarEvent === "function"
+    },
+    {
+      name: "OAuth callback can surface a rotated refresh token for durable scope upgrades",
+      passed:
+        /needsRotation/.test(authorizeFromCallback.toString()) &&
+        /replace-environment-refresh-token/.test(authorizeFromCallback.toString())
+    },
+    {
+      name: "Provider methods declare upstream authority boundary",
+      passed: /MEOS execution authority must be proven upstream/.test(createGoogleDocument.toString()) &&
+        /MEOS external-action authority must be proven upstream/.test(createCalendarEvent.toString())
+    }
+  ];
+
+  const passed = checks.filter(check => check.passed).length;
+  return {
+    success: passed === checks.length,
+    commission: COMMISSION,
+    schema: "meos.google-workspace.governed-write-authority.acceptance.v1",
+    version: VERSION,
+    buildId: BUILD_ID,
+    passed,
+    total: checks.length,
+    checks
+  };
+}
+
 function getClients() {
   requireConnected();
 
@@ -1922,7 +2448,8 @@ function getClients() {
     oauth: oauthClient,
     drive: driveClient,
     docs: docsClient,
-    sheets: sheetsClient
+    sheets: sheetsClient,
+    calendar: calendarClient
   };
 }
 
@@ -1933,15 +2460,27 @@ function getStatus() {
       state.authorizationRecon
         ?.controlledWriteAuthorized
     );
+  const docsWriteAuthorized =
+    state.authorizationRecon?.docsWriteAuthorized === true;
+  const sheetsWriteAuthorized =
+    state.authorizationRecon?.sheetsWriteAuthorized === true;
+  const calendarEventsAuthorized =
+    state.authorizationRecon?.calendarEventsAuthorized === true;
+  const calendarFreeBusyAuthorized =
+    state.authorizationRecon?.calendarFreeBusyAuthorized === true;
+  const governedWorkspaceWriteAuthorized =
+    state.authorizationRecon?.governedWorkspaceWriteAuthorized === true;
 
   return {
     provider: PROVIDER_ID,
     version: VERSION,
     buildId: BUILD_ID,
     mode:
-      controlledWriteAuthorized
-        ? "read-plus-app-managed-write"
-        : "read-only",
+      governedWorkspaceWriteAuthorized
+        ? "read-plus-governed-workspace-write"
+        : (controlledWriteAuthorized
+            ? "read-plus-app-managed-write"
+            : "read-only"),
     initialized: state.initialized,
     configured: config.configured,
     missingConfiguration: config.missing,
@@ -1955,6 +2494,8 @@ function getStatus() {
       readOnly: [...READ_ONLY_SCOPES],
       controlledWrite:
         [...CONTROLLED_WRITE_SCOPES],
+      workspaceWrite:
+        [...WORKSPACE_WRITE_SCOPES],
       granted: [...state.grantedScopes]
     },
     authorization:
@@ -2026,10 +2567,13 @@ function getStatus() {
           state.authorizationRecon
             ?.fullDriveWriteAuthorized
         ),
-      docsWrite: false,
-      sheetsWrite: false,
+      docsWrite: docsWriteAuthorized,
+      sheetsWrite: sheetsWriteAuthorized,
+      calendarRead: calendarEventsAuthorized,
+      calendarAvailability: calendarFreeBusyAuthorized,
+      calendarWrite: calendarEventsAuthorized,
       gmail: false,
-      calendar: false
+      gmailSend: false
     },
     mimeTypes: {
       folder: GOOGLE_FOLDER_MIME_TYPE,
@@ -2047,6 +2591,8 @@ const GoogleWorkspaceProvider = Object.freeze({
   readOnlyScopes: READ_ONLY_SCOPES,
   controlledWriteScopes:
     CONTROLLED_WRITE_SCOPES,
+  workspaceWriteScopes:
+    WORKSPACE_WRITE_SCOPES,
   initialize,
   getStatus,
   getAuthorizationUrl,
@@ -2058,6 +2604,7 @@ const GoogleWorkspaceProvider = Object.freeze({
   readInstitutionalRecord,
   deleteInstitutionalRecord,
   runInstitutionalRepositoryAcceptanceTest,
+  runGovernedWorkspaceWriteAcceptanceTest,
   disconnect,
   getClients,
   searchDrive,
@@ -2066,7 +2613,16 @@ const GoogleWorkspaceProvider = Object.freeze({
   locateHeadquarters,
   listHeadquarters,
   readGoogleDocument,
-  readSpreadsheet
+  readSpreadsheet,
+  createGoogleDocument,
+  updateGoogleDocument,
+  createSpreadsheet,
+  writeSpreadsheetValues,
+  listCalendarEvents,
+  queryCalendarFreeBusy,
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent
 });
 
 export {
@@ -2075,6 +2631,7 @@ export {
   CONTROLLED_WRITE_SCOPES,
   PROVIDER_ID,
   READ_ONLY_SCOPES,
+  WORKSPACE_WRITE_SCOPES,
   VERSION
 };
 
