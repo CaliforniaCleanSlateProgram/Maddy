@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.0.0
+ * Server Version: 2.10.74
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -39,7 +39,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.73";
+const VERSION = "2.10.74";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -4022,6 +4022,9 @@ const AUTONOMY_AUTHORITY_BUILD_ID =
   "DAA100-DURABLE-AUTONOMY-AUTHORITY-20260817-A";
 const AUTONOMY_AUTHORITY_SCHEMA = "meos.autonomy-authority.policy.v1";
 const AUTONOMY_AUTHORITY_MAX_AUDIT_RECEIPTS = 120;
+const AUTONOMY_DURABILITY_REPAIR_COMMISSION = "006.031R";
+const AUTONOMY_DURABILITY_REPAIR_BUILD_ID =
+  "ADR100-PROVIDER-NEUTRAL-AUTONOMY-DURABILITY-20260817-A";
 const AUTONOMY_PROVIDER_BILLING_DISCLOSURE_VERSION = "1.0";
 const AUTONOMY_AUTHORITY_TENANT_ID = String(
   process.env.MEOS_TENANT_ID || "default-organization"
@@ -4093,14 +4096,19 @@ const AUTONOMY_EXTERNAL_AUTHORITY_BOUNDARY = Object.freeze({
   humanAuthorityPreserved: true
 });
 
-const AUTONOMY_AUTHORITY_DIR = path.join(
-  MEOS_DATA_DIR,
-  "autonomy-authority"
-);
-const AUTONOMY_AUTHORITY_PATH = path.join(
-  AUTONOMY_AUTHORITY_DIR,
-  `${AUTONOMY_AUTHORITY_TENANT_ID}.json`
-);
+/*
+ * Commission 006.031R — Provider-Neutral Autonomy Durability Repair
+ *
+ * Autonomy authority is institutional state, not Render filesystem state.
+ * Persist it through the already-commissioned Institutional Repository
+ * Authority so any qualified organization-owned durable provider may hold it.
+ * MEOS_DATA_DIR remains available to subsystems that explicitly choose local
+ * server storage, but it is no longer a prerequisite for Maddy autonomy.
+ */
+const AUTONOMY_AUTHORITY_REPOSITORY_NAMESPACE = "autonomy-authority";
+const AUTONOMY_AUTHORITY_REPOSITORY_KEY =
+  `tenant-${AUTONOMY_AUTHORITY_TENANT_ID}`;
+const AUTONOMY_AUTHORITY_REPOSITORY_CLASSIFICATION = "constitutional";
 let autonomyAuthorityWriteChain = Promise.resolve();
 
 function autonomyNow() {
@@ -4158,20 +4166,13 @@ const autonomyAuthorityState = {
   status: "initializing",
   policy: buildDefaultAutonomyAuthorityPolicy(),
   durableFingerprint: null,
-  providerId: "meos-server-autonomy-root",
-  authority: "server-root-autonomy-authority",
+  providerId: null,
+  authority: "provider-neutral-durable-repository",
   loadedAt: null,
   lastChangedAt: null,
   lastReceipt: null,
   lastError: null
 };
-
-async function ensureAutonomyAuthorityDirectory() {
-  await fs.mkdir(AUTONOMY_AUTHORITY_DIR, {
-    recursive: true,
-    mode: 0o700
-  });
-}
 
 
 function normalizeAutonomyPolicy(value) {
@@ -4231,50 +4232,36 @@ function normalizeAutonomyPolicy(value) {
 
 async function readAutonomyAuthorityPolicy() {
   try {
-    if (!EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED) {
-      const error = new Error(
-        "MEOS_DATA_DIR must point to persistent server storage before autonomy authority can be treated as durable."
-      );
-      error.code = "AUTONOMY_DURABLE_STORAGE_REQUIRED";
-      error.status = 503;
-      throw error;
+    registerGoogleInstitutionalRepositoryAuthority();
+
+    const result = await InstitutionalRepositoryAuthority.read({
+      namespace: AUTONOMY_AUTHORITY_REPOSITORY_NAMESPACE,
+      key: AUTONOMY_AUTHORITY_REPOSITORY_KEY,
+      classification: AUTONOMY_AUTHORITY_REPOSITORY_CLASSIFICATION
+    });
+
+    if (!result?.found) {
+      const policy = buildDefaultAutonomyAuthorityPolicy();
+      autonomyAuthorityState.status = "ready-default-off";
+      autonomyAuthorityState.policy = policy;
+      autonomyAuthorityState.durableFingerprint = null;
+      autonomyAuthorityState.providerId = result?.providerId || null;
+      autonomyAuthorityState.authority =
+        result?.authority || "provider-neutral-durable-repository";
+      autonomyAuthorityState.loadedAt = autonomyNow();
+      autonomyAuthorityState.lastChangedAt = null;
+      autonomyAuthorityState.lastReceipt = null;
+      autonomyAuthorityState.lastError = null;
+      return {
+        policy,
+        fingerprint: null,
+        providerId: autonomyAuthorityState.providerId,
+        authority: autonomyAuthorityState.authority,
+        found: false
+      };
     }
 
-    await ensureAutonomyAuthorityDirectory();
-
-    let envelope;
-    try {
-      const raw = await fs.readFile(AUTONOMY_AUTHORITY_PATH, "utf8");
-      envelope = JSON.parse(raw);
-    } catch (error) {
-      if (error?.code === "ENOENT") {
-        const policy = buildDefaultAutonomyAuthorityPolicy();
-        autonomyAuthorityState.status = "ready-default-off";
-        autonomyAuthorityState.policy = policy;
-        autonomyAuthorityState.durableFingerprint = null;
-        autonomyAuthorityState.providerId = "meos-server-autonomy-root";
-        autonomyAuthorityState.authority = "server-root-autonomy-authority";
-        autonomyAuthorityState.loadedAt = autonomyNow();
-        autonomyAuthorityState.lastError = null;
-        return {
-          policy,
-          fingerprint: null,
-          providerId: autonomyAuthorityState.providerId,
-          authority: autonomyAuthorityState.authority,
-          found: false
-        };
-      }
-      if (error instanceof SyntaxError) {
-        const parseError = new Error(
-          "Durable autonomy authority contains invalid JSON."
-        );
-        parseError.code = "AUTONOMY_DURABLE_RECORD_INVALID_JSON";
-        parseError.status = 500;
-        throw parseError;
-      }
-      throw error;
-    }
-
+    const envelope = result.value;
     if (
       !envelope ||
       envelope.schema !== "meos.autonomy-authority.durable-envelope.v1" ||
@@ -4291,8 +4278,8 @@ async function readAutonomyAuthorityPolicy() {
     }
 
     const policy = normalizeAutonomyPolicy(envelope.policy);
-    const actualFingerprint = autonomyFingerprint(policy);
-    if (actualFingerprint !== envelope.payloadFingerprint) {
+    const actualPolicyFingerprint = autonomyFingerprint(policy);
+    if (actualPolicyFingerprint !== envelope.payloadFingerprint) {
       const error = new Error(
         "Durable autonomy authority fingerprint verification failed."
       );
@@ -4303,9 +4290,11 @@ async function readAutonomyAuthorityPolicy() {
 
     autonomyAuthorityState.status = "ready";
     autonomyAuthorityState.policy = policy;
-    autonomyAuthorityState.durableFingerprint = actualFingerprint;
-    autonomyAuthorityState.providerId = "meos-server-autonomy-root";
-    autonomyAuthorityState.authority = "server-root-autonomy-authority";
+    autonomyAuthorityState.durableFingerprint =
+      result?.record?.payloadFingerprint || null;
+    autonomyAuthorityState.providerId = result?.providerId || null;
+    autonomyAuthorityState.authority =
+      result?.authority || "provider-neutral-durable-repository";
     autonomyAuthorityState.loadedAt = autonomyNow();
     autonomyAuthorityState.lastChangedAt = policy.updatedAt || null;
     autonomyAuthorityState.lastReceipt =
@@ -4316,7 +4305,7 @@ async function readAutonomyAuthorityPolicy() {
 
     return {
       policy,
-      fingerprint: actualFingerprint,
+      fingerprint: result?.record?.payloadFingerprint || null,
       providerId: autonomyAuthorityState.providerId,
       authority: autonomyAuthorityState.authority,
       found: true
@@ -4325,8 +4314,9 @@ async function readAutonomyAuthorityPolicy() {
     autonomyAuthorityState.status = "degraded-safe-off";
     autonomyAuthorityState.policy = buildDefaultAutonomyAuthorityPolicy();
     autonomyAuthorityState.durableFingerprint = null;
-    autonomyAuthorityState.providerId = "meos-server-autonomy-root";
-    autonomyAuthorityState.authority = "server-root-autonomy-authority";
+    autonomyAuthorityState.providerId = null;
+    autonomyAuthorityState.authority =
+      "provider-neutral-durable-repository";
     autonomyAuthorityState.loadedAt = autonomyNow();
     autonomyAuthorityState.lastError = {
       code: error?.code || "AUTONOMY_AUTHORITY_READ_FAILED",
@@ -4467,7 +4457,12 @@ function getAutonomyAuthorityStatus() {
       authority: autonomyAuthorityState.authority,
       providerId: autonomyAuthorityState.providerId,
       durableFingerprint: autonomyAuthorityState.durableFingerprint,
+      repositoryNamespace: AUTONOMY_AUTHORITY_REPOSITORY_NAMESPACE,
+      repositoryKey: AUTONOMY_AUTHORITY_REPOSITORY_KEY,
+      classification: AUTONOMY_AUTHORITY_REPOSITORY_CLASSIFICATION,
+      providerNeutral: true,
       dataDirectoryConfigured: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED,
+      dataDirectoryRequiredForAutonomy: false,
       browserAuthority: false
     },
     loadedAt: autonomyAuthorityState.loadedAt,
@@ -4671,78 +4666,55 @@ function applyAutonomyAuthorityPatch(currentPolicy, patch = {}, principal) {
 }
 
 async function persistAutonomyAuthorityPolicy(policy, previousFingerprint) {
-  if (!EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED) {
-    const error = new Error(
-      "Durable autonomy authority cannot be changed until MEOS_DATA_DIR points to persistent server storage."
-    );
-    error.code = "AUTONOMY_DURABLE_STORAGE_REQUIRED";
-    error.status = 503;
-    throw error;
-  }
+  registerGoogleInstitutionalRepositoryAuthority();
 
-  await ensureAutonomyAuthorityDirectory();
   const normalized = normalizeAutonomyPolicy(policy);
-
-  let currentFingerprint = null;
-  try {
-    const raw = await fs.readFile(AUTONOMY_AUTHORITY_PATH, "utf8");
-    const currentEnvelope = JSON.parse(raw);
-    currentFingerprint = currentEnvelope?.payloadFingerprint || null;
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-  }
-
-  if (
-    (previousFingerprint || null) !==
-    (currentFingerprint || null)
-  ) {
-    const error = new Error(
-      "Autonomy authority changed since it was last observed. Reload before applying another change."
-    );
-    error.code = "AUTONOMY_AUTHORITY_CONCURRENCY_CONFLICT";
-    error.status = 409;
-    error.details = {
-      expectedPreviousFingerprint: previousFingerprint || null,
-      actualPreviousFingerprint: currentFingerprint || null
-    };
-    throw error;
-  }
-
   const payloadFingerprint = autonomyFingerprint(normalized);
   const envelope = {
     schema: "meos.autonomy-authority.durable-envelope.v1",
     commission: AUTONOMY_AUTHORITY_COMMISSION,
     version: AUTONOMY_AUTHORITY_VERSION,
     buildId: AUTONOMY_AUTHORITY_BUILD_ID,
+    repairCommission: AUTONOMY_DURABILITY_REPAIR_COMMISSION,
+    repairBuildId: AUTONOMY_DURABILITY_REPAIR_BUILD_ID,
     tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
     payloadFingerprint,
     writtenAt: autonomyNow(),
     policy: normalized
   };
 
-  const temporaryPath =
-    `${AUTONOMY_AUTHORITY_PATH}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(
-    temporaryPath,
-    `${JSON.stringify(envelope, null, 2)}\n`,
-    {
-      encoding: "utf8",
-      mode: 0o600
-    }
-  );
-  await fs.rename(temporaryPath, AUTONOMY_AUTHORITY_PATH);
+  const writeResult = await InstitutionalRepositoryAuthority.write({
+    namespace: AUTONOMY_AUTHORITY_REPOSITORY_NAMESPACE,
+    key: AUTONOMY_AUTHORITY_REPOSITORY_KEY,
+    classification: AUTONOMY_AUTHORITY_REPOSITORY_CLASSIFICATION,
+    value: envelope,
+    metadata: {
+      subsystem: "maddy-autonomy-authority",
+      authorityClass: "standing-human-governed-autonomy",
+      commission: AUTONOMY_AUTHORITY_COMMISSION,
+      buildId: AUTONOMY_AUTHORITY_BUILD_ID,
+      repairCommission: AUTONOMY_DURABILITY_REPAIR_COMMISSION,
+      repairBuildId: AUTONOMY_DURABILITY_REPAIR_BUILD_ID,
+      tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+      browserAuthority: false,
+      automaticSpendUsd: 0
+    },
+    expectedPreviousFingerprint: previousFingerprint
+  });
 
-  const verifyRaw = await fs.readFile(AUTONOMY_AUTHORITY_PATH, "utf8");
-  const verifyEnvelope = JSON.parse(verifyRaw);
-  const verifiedPolicy = normalizeAutonomyPolicy(verifyEnvelope.policy);
-  const verifiedFingerprint = autonomyFingerprint(verifiedPolicy);
+  const storedEnvelope = writeResult?.record?.value;
+  const verifiedPolicy = normalizeAutonomyPolicy(storedEnvelope?.policy);
+  const verifiedPolicyFingerprint = autonomyFingerprint(verifiedPolicy);
 
   if (
-    verifyEnvelope.payloadFingerprint !== payloadFingerprint ||
-    verifiedFingerprint !== payloadFingerprint
+    storedEnvelope?.schema !== "meos.autonomy-authority.durable-envelope.v1" ||
+    storedEnvelope?.tenantId !== AUTONOMY_AUTHORITY_TENANT_ID ||
+    storedEnvelope?.payloadFingerprint !== payloadFingerprint ||
+    verifiedPolicyFingerprint !== payloadFingerprint ||
+    writeResult?.verification?.verified !== true
   ) {
     const error = new Error(
-      "Autonomy authority write failed read-after-write fingerprint verification."
+      "Autonomy authority write failed provider-neutral durable verification."
     );
     error.code = "AUTONOMY_AUTHORITY_DURABLE_VERIFY_FAILED";
     error.status = 500;
@@ -4751,15 +4723,17 @@ async function persistAutonomyAuthorityPolicy(policy, previousFingerprint) {
 
   return {
     success: true,
-    providerId: "meos-server-autonomy-root",
-    authority: "server-root-autonomy-authority",
+    providerId: writeResult?.providerId || null,
+    authority:
+      writeResult?.authority || "provider-neutral-durable-repository",
     record: {
       value: verifiedPolicy,
-      payloadFingerprint: verifiedFingerprint
+      payloadFingerprint: writeResult?.record?.payloadFingerprint || null
     },
     verification: {
       verified: true,
-      readAfterWrite: true
+      readAfterWrite: true,
+      providerNeutral: true
     }
   };
 }
@@ -15644,6 +15618,12 @@ function runAutonomyAuthorityAcceptanceTest() {
     {
       name: "Autonomy authority is server/institutional and never browser authority",
       passed: getAutonomyAuthorityStatus().persistence.browserAuthority === false
+    },
+    {
+      name: "Autonomy durability uses the provider-neutral institutional repository and does not require MEOS_DATA_DIR",
+      passed:
+        getAutonomyAuthorityStatus().persistence.providerNeutral === true &&
+        getAutonomyAuthorityStatus().persistence.dataDirectoryRequiredForAutonomy === false
     },
     {
       name: "Authority changes produce an auditable revision receipt",
