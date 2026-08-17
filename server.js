@@ -13,7 +13,9 @@
  * - Authorize and deduplicate ElevenLabs speech requests.
  * - Serve the existing MEOS frontend without changing its structure.
  * - Run durable standing office missions through Continuous Operations.
- * - Operate the autonomous Funding Intelligence Network.
+ * - Operate governed autonomous runtime capabilities only when durable authority permits.
+ * - Run durable Maddy Time commitments on the existing Continuous Operations lease/restart chassis.
+ * - Operate the Funding Intelligence Network only when its explicit capability authority is enabled.
  * - Provide secure, read-only Google Workspace authorization and access.
  */
 
@@ -37,7 +39,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.71";
+const VERSION = "2.10.73";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -3919,12 +3921,24 @@ const CONTINUOUS_COGNITION_RUNTIME_COMMISSION = "006.017D7N8";
 const CONTINUOUS_COGNITION_RUNTIME_VERSION = "1.0.9";
 const CONTINUOUS_COGNITION_RUNTIME_BUILD_ID =
   "CCR109-LOCAL-PERCEPTION-RESULT-RETURN-20260811-A";
-const AUTONOMOUS_RUNTIME_ENABLED =
+/*
+ * Commission 006.031A decouples runtime capability from customer authority.
+ * The legacy MEOS_AUTONOMOUS_RUNTIME_ENABLED flag is retained as telemetry
+ * only; it no longer grants autonomous authority. Customer/organization
+ * authority is durable policy, defaults OFF, and may later be controlled from
+ * the Executive dashboard. MEOS_AUTONOMY_RUNTIME_DISABLED is the independent
+ * emergency/maintenance hard stop for the runtime infrastructure itself.
+ */
+const LEGACY_AUTONOMOUS_RUNTIME_ENV_REQUESTED =
   String(process.env.MEOS_AUTONOMOUS_RUNTIME_ENABLED || "false")
     .trim()
     .toLowerCase() === "true";
-const CONTINUOUS_COGNITION_RUNTIME_ENABLED =
-  AUTONOMOUS_RUNTIME_ENABLED &&
+const AUTONOMY_RUNTIME_HARD_DISABLED =
+  String(process.env.MEOS_AUTONOMY_RUNTIME_DISABLED || "false")
+    .trim()
+    .toLowerCase() === "true";
+const CONTINUOUS_COGNITION_INFRASTRUCTURE_ENABLED =
+  !AUTONOMY_RUNTIME_HARD_DISABLED &&
   String(process.env.MEOS_CONTINUOUS_COGNITION_ENABLED || "true")
     .trim()
     .toLowerCase() !== "false";
@@ -3983,6 +3997,839 @@ const CONTINUOUS_COGNITION_DURABLE_CHECKPOINT_MS = Math.max(
 
 
 /* ========================================================================== */
+/* Commission 006.031A — Durable Maddy Autonomy Authority                     */
+/* ========================================================================== */
+
+/*
+ * North outcome:
+ * - MEOS may contain autonomous machinery without automatically exercising it.
+ * - Customer/organization autonomy authority defaults OFF and survives restart.
+ * - Runtime capability, capability availability, and autonomous authority are
+ *   distinct truths.
+ * - A disabled provider/capability must not silently become a different paid
+ *   provider or create spend authority.
+ * - Funding/Opportunity Patrol remains hard-blocked until canonical opportunity
+ *   ownership/storage repair is separately commissioned.
+ * - Browser state is never the authority for these controls.
+ *
+ * The legacy MEOS_AUTONOMOUS_RUNTIME_ENABLED environment variable is telemetry
+ * only in this commission. It cannot grant authority. Infrastructure has an
+ * independent maintenance hard stop: MEOS_AUTONOMY_RUNTIME_DISABLED=true.
+ */
+const AUTONOMY_AUTHORITY_COMMISSION = "006.031A";
+const AUTONOMY_AUTHORITY_VERSION = "1.0.0";
+const AUTONOMY_AUTHORITY_BUILD_ID =
+  "DAA100-DURABLE-AUTONOMY-AUTHORITY-20260817-A";
+const AUTONOMY_AUTHORITY_SCHEMA = "meos.autonomy-authority.policy.v1";
+const AUTONOMY_AUTHORITY_MAX_AUDIT_RECEIPTS = 120;
+const AUTONOMY_PROVIDER_BILLING_DISCLOSURE_VERSION = "1.0";
+const AUTONOMY_AUTHORITY_TENANT_ID = String(
+  process.env.MEOS_TENANT_ID || "default-organization"
+)
+  .trim()
+  .replace(/[^a-zA-Z0-9._:-]+/g, "-")
+  .replace(/^-+|-+$/g, "")
+  .slice(0, 120) || "default-organization";
+
+const AUTONOMY_CAPABILITY_IDS = Object.freeze([
+  "continuousCognition",
+  "learning",
+  "timeAndDeadlines",
+  "approvedWork",
+  "officeDispatch",
+  "monitoring",
+  "documents",
+  "opportunities"
+]);
+
+const AUTONOMY_PROVIDER_IDS = Object.freeze([
+  "openai",
+  "elevenlabs",
+  "googleWorkspace",
+  "publicWeb"
+]);
+
+const AUTONOMY_SERVER_BLOCKED_CAPABILITIES = Object.freeze({
+  opportunities:
+    "Canonical opportunity ownership/storage repair must be commissioned before Opportunity Patrol may run autonomously."
+});
+
+const AUTONOMY_PROVIDER_CONTROL_CONTRACT = Object.freeze({
+  semantics: "autonomous-use-authority",
+  currentCommissionScope:
+    "Provider controls in this server policy govern autonomous use only. Existing manual/cockpit provider use is unchanged until each provider integration is separately wired to the control plane.",
+  disableMeaning:
+    "Disable MEOS Use stops new integrated MEOS-initiated use after the effective authority change; it does not cancel a separate provider account or subscription and cannot guarantee all vendor charges stop.",
+  possibleResidualVendorCharges: Object.freeze([
+    "previously-incurred-usage",
+    "in-flight-requests",
+    "recurring-subscription-fees",
+    "minimum-commitments",
+    "usage-from-other-applications-or-api-keys",
+    "delayed-provider-metering",
+    "provider-side-billing-rules"
+  ]),
+  defaultBillingOwner: "customer",
+  meosAdvancesThirdPartySpend: false,
+  silentPaidFallbackAllowed: false
+});
+
+const AUTONOMY_ECONOMIC_BOUNDARY = Object.freeze({
+  automaticSpendUsd: 0,
+  paidProviderSpendAuthorized: false,
+  meosAdvancesThirdPartySpend: false,
+  negativeCustomerBalanceAllowed: false,
+  unlimitedPostpaidPassThroughAllowed: false,
+  includedOrSponsoredUsageRequiresBoundedAllowance: true
+});
+
+const AUTONOMY_EXTERNAL_AUTHORITY_BOUNDARY = Object.freeze({
+  externalActionAuthorized: false,
+  legalCommitmentAuthorized: false,
+  signatureAuthorized: false,
+  certificationAuthorized: false,
+  submissionAuthorized: false,
+  consequentialActionAuthorized: false,
+  humanAuthorityPreserved: true
+});
+
+const AUTONOMY_AUTHORITY_DIR = path.join(
+  MEOS_DATA_DIR,
+  "autonomy-authority"
+);
+const AUTONOMY_AUTHORITY_PATH = path.join(
+  AUTONOMY_AUTHORITY_DIR,
+  `${AUTONOMY_AUTHORITY_TENANT_ID}.json`
+);
+let autonomyAuthorityWriteChain = Promise.resolve();
+
+function autonomyNow() {
+  return new Date().toISOString();
+}
+
+function autonomyClone(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function autonomyFingerprint(value) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex");
+}
+
+function buildDefaultAutonomyAuthorityPolicy() {
+  const capabilities = {};
+  for (const capabilityId of AUTONOMY_CAPABILITY_IDS) {
+    capabilities[capabilityId] = false;
+  }
+
+  const providerAutonomousUse = {};
+  for (const providerId of AUTONOMY_PROVIDER_IDS) {
+    providerAutonomousUse[providerId] = false;
+  }
+
+  return {
+    schema: AUTONOMY_AUTHORITY_SCHEMA,
+    commission: AUTONOMY_AUTHORITY_COMMISSION,
+    version: AUTONOMY_AUTHORITY_VERSION,
+    buildId: AUTONOMY_AUTHORITY_BUILD_ID,
+    tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+    revision: 0,
+    masterEnabled: false,
+    capabilities,
+    providerAutonomousUse,
+    providerBillingDisclosure: {
+      version: AUTONOMY_PROVIDER_BILLING_DISCLOSURE_VERSION,
+      acknowledgedAt: null,
+      acknowledgedBy: null
+    },
+    economicAuthority: autonomyClone(AUTONOMY_ECONOMIC_BOUNDARY),
+    externalAuthority: autonomyClone(AUTONOMY_EXTERNAL_AUTHORITY_BOUNDARY),
+    auditTrail: [],
+    createdAt: null,
+    updatedAt: null,
+    updatedBy: null
+  };
+}
+
+const autonomyAuthorityState = {
+  status: "initializing",
+  policy: buildDefaultAutonomyAuthorityPolicy(),
+  durableFingerprint: null,
+  providerId: "meos-server-autonomy-root",
+  authority: "server-root-autonomy-authority",
+  loadedAt: null,
+  lastChangedAt: null,
+  lastReceipt: null,
+  lastError: null
+};
+
+async function ensureAutonomyAuthorityDirectory() {
+  await fs.mkdir(AUTONOMY_AUTHORITY_DIR, {
+    recursive: true,
+    mode: 0o700
+  });
+}
+
+
+function normalizeAutonomyPolicy(value) {
+  const defaults = buildDefaultAutonomyAuthorityPolicy();
+  const incoming =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+
+  const normalized = {
+    ...defaults,
+    ...incoming,
+    schema: AUTONOMY_AUTHORITY_SCHEMA,
+    commission: AUTONOMY_AUTHORITY_COMMISSION,
+    version: AUTONOMY_AUTHORITY_VERSION,
+    buildId: AUTONOMY_AUTHORITY_BUILD_ID,
+    tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+    revision: Math.max(0, Number(incoming.revision || 0)),
+    masterEnabled: incoming.masterEnabled === true,
+    capabilities: { ...defaults.capabilities },
+    providerAutonomousUse: { ...defaults.providerAutonomousUse },
+    providerBillingDisclosure: {
+      version: AUTONOMY_PROVIDER_BILLING_DISCLOSURE_VERSION,
+      acknowledgedAt:
+        incoming.providerBillingDisclosure?.acknowledgedAt || null,
+      acknowledgedBy:
+        incoming.providerBillingDisclosure?.acknowledgedBy || null
+    },
+    economicAuthority: autonomyClone(AUTONOMY_ECONOMIC_BOUNDARY),
+    externalAuthority: autonomyClone(AUTONOMY_EXTERNAL_AUTHORITY_BOUNDARY),
+    auditTrail: Array.isArray(incoming.auditTrail)
+      ? incoming.auditTrail
+          .filter(item => item && typeof item === "object")
+          .slice(-AUTONOMY_AUTHORITY_MAX_AUDIT_RECEIPTS)
+      : []
+  };
+
+  for (const capabilityId of AUTONOMY_CAPABILITY_IDS) {
+    normalized.capabilities[capabilityId] =
+      incoming.capabilities?.[capabilityId] === true;
+  }
+
+  for (const providerId of AUTONOMY_PROVIDER_IDS) {
+    normalized.providerAutonomousUse[providerId] =
+      incoming.providerAutonomousUse?.[providerId] === true;
+  }
+
+  // Safety/CYA invariant: blocked capability can never hydrate as enabled.
+  for (const capabilityId of Object.keys(
+    AUTONOMY_SERVER_BLOCKED_CAPABILITIES
+  )) {
+    normalized.capabilities[capabilityId] = false;
+  }
+
+  return normalized;
+}
+
+async function readAutonomyAuthorityPolicy() {
+  try {
+    if (!EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED) {
+      const error = new Error(
+        "MEOS_DATA_DIR must point to persistent server storage before autonomy authority can be treated as durable."
+      );
+      error.code = "AUTONOMY_DURABLE_STORAGE_REQUIRED";
+      error.status = 503;
+      throw error;
+    }
+
+    await ensureAutonomyAuthorityDirectory();
+
+    let envelope;
+    try {
+      const raw = await fs.readFile(AUTONOMY_AUTHORITY_PATH, "utf8");
+      envelope = JSON.parse(raw);
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        const policy = buildDefaultAutonomyAuthorityPolicy();
+        autonomyAuthorityState.status = "ready-default-off";
+        autonomyAuthorityState.policy = policy;
+        autonomyAuthorityState.durableFingerprint = null;
+        autonomyAuthorityState.providerId = "meos-server-autonomy-root";
+        autonomyAuthorityState.authority = "server-root-autonomy-authority";
+        autonomyAuthorityState.loadedAt = autonomyNow();
+        autonomyAuthorityState.lastError = null;
+        return {
+          policy,
+          fingerprint: null,
+          providerId: autonomyAuthorityState.providerId,
+          authority: autonomyAuthorityState.authority,
+          found: false
+        };
+      }
+      if (error instanceof SyntaxError) {
+        const parseError = new Error(
+          "Durable autonomy authority contains invalid JSON."
+        );
+        parseError.code = "AUTONOMY_DURABLE_RECORD_INVALID_JSON";
+        parseError.status = 500;
+        throw parseError;
+      }
+      throw error;
+    }
+
+    if (
+      !envelope ||
+      envelope.schema !== "meos.autonomy-authority.durable-envelope.v1" ||
+      envelope.tenantId !== AUTONOMY_AUTHORITY_TENANT_ID ||
+      !envelope.policy ||
+      !envelope.payloadFingerprint
+    ) {
+      const error = new Error(
+        "Durable autonomy authority envelope failed schema/tenant validation."
+      );
+      error.code = "AUTONOMY_DURABLE_RECORD_INVALID";
+      error.status = 500;
+      throw error;
+    }
+
+    const policy = normalizeAutonomyPolicy(envelope.policy);
+    const actualFingerprint = autonomyFingerprint(policy);
+    if (actualFingerprint !== envelope.payloadFingerprint) {
+      const error = new Error(
+        "Durable autonomy authority fingerprint verification failed."
+      );
+      error.code = "AUTONOMY_DURABLE_FINGERPRINT_MISMATCH";
+      error.status = 500;
+      throw error;
+    }
+
+    autonomyAuthorityState.status = "ready";
+    autonomyAuthorityState.policy = policy;
+    autonomyAuthorityState.durableFingerprint = actualFingerprint;
+    autonomyAuthorityState.providerId = "meos-server-autonomy-root";
+    autonomyAuthorityState.authority = "server-root-autonomy-authority";
+    autonomyAuthorityState.loadedAt = autonomyNow();
+    autonomyAuthorityState.lastChangedAt = policy.updatedAt || null;
+    autonomyAuthorityState.lastReceipt =
+      Array.isArray(policy.auditTrail) && policy.auditTrail.length
+        ? policy.auditTrail[policy.auditTrail.length - 1]
+        : null;
+    autonomyAuthorityState.lastError = null;
+
+    return {
+      policy,
+      fingerprint: actualFingerprint,
+      providerId: autonomyAuthorityState.providerId,
+      authority: autonomyAuthorityState.authority,
+      found: true
+    };
+  } catch (error) {
+    autonomyAuthorityState.status = "degraded-safe-off";
+    autonomyAuthorityState.policy = buildDefaultAutonomyAuthorityPolicy();
+    autonomyAuthorityState.durableFingerprint = null;
+    autonomyAuthorityState.providerId = "meos-server-autonomy-root";
+    autonomyAuthorityState.authority = "server-root-autonomy-authority";
+    autonomyAuthorityState.loadedAt = autonomyNow();
+    autonomyAuthorityState.lastError = {
+      code: error?.code || "AUTONOMY_AUTHORITY_READ_FAILED",
+      message: error?.message || String(error),
+      at: autonomyNow()
+    };
+    throw error;
+  }
+}
+
+function autonomyCapabilityEffective(capabilityId) {
+  if (AUTONOMY_RUNTIME_HARD_DISABLED) return false;
+  if (autonomyAuthorityState.policy?.masterEnabled !== true) return false;
+  if (AUTONOMY_SERVER_BLOCKED_CAPABILITIES[capabilityId]) return false;
+  return autonomyAuthorityState.policy?.capabilities?.[capabilityId] === true;
+}
+
+function autonomyProviderEffective(providerId) {
+  if (AUTONOMY_RUNTIME_HARD_DISABLED) return false;
+  if (autonomyAuthorityState.policy?.masterEnabled !== true) return false;
+  return (
+    autonomyAuthorityState.policy?.providerAutonomousUse?.[providerId] === true
+  );
+}
+
+function continuousCognitionRuntimeEnabled() {
+  return (
+    CONTINUOUS_COGNITION_INFRASTRUCTURE_ENABLED &&
+    autonomyCapabilityEffective("continuousCognition")
+  );
+}
+
+function autonomousLearningRuntimeEnabled() {
+  return (
+    AUTONOMOUS_LEARNING_INFRASTRUCTURE_ENABLED &&
+    autonomyCapabilityEffective("learning") &&
+    autonomyProviderEffective("publicWeb")
+  );
+}
+
+function continuousOperationsRuntimeEnabled() {
+  if (!CONTINUOUS_OPERATIONS_INFRASTRUCTURE_ENABLED) return false;
+  return [
+    "timeAndDeadlines",
+    "approvedWork",
+    "officeDispatch",
+    "monitoring",
+    "documents",
+    "opportunities"
+  ].some(capabilityId => autonomyCapabilityEffective(capabilityId));
+}
+
+function autonomyContinuousOperationsJobCapability(job = {}) {
+  const explicit = String(
+    job.autonomyCapability || job.metadata?.autonomyCapability || ""
+  ).trim();
+  if (AUTONOMY_CAPABILITY_IDS.includes(explicit)) return explicit;
+
+  const id = String(job.id || "").toLowerCase();
+  const handler = String(job.handler || "").toLowerCase();
+  if (
+    id.includes("funding") ||
+    handler.includes("funding-intelligence")
+  ) {
+    return "opportunities";
+  }
+
+  // Unknown standing work is never granted implicit autonomy.
+  return null;
+}
+
+function autonomyContinuousOperationsJobAuthorized(job = {}) {
+  const capabilityId = autonomyContinuousOperationsJobCapability(job);
+  return capabilityId
+    ? autonomyCapabilityEffective(capabilityId)
+    : false;
+}
+
+function publicAutonomyCapabilityStatus(capabilityId) {
+  const authorized =
+    autonomyAuthorityState.policy?.capabilities?.[capabilityId] === true;
+  const blockedReason =
+    AUTONOMY_SERVER_BLOCKED_CAPABILITIES[capabilityId] || null;
+  return {
+    id: capabilityId,
+    authorized,
+    blocked: Boolean(blockedReason),
+    blockedReason,
+    effective:
+      authorized && !blockedReason
+        ? autonomyCapabilityEffective(capabilityId)
+        : false
+  };
+}
+
+function getAutonomyAuthorityStatus() {
+  return {
+    schema: "meos.autonomy-authority.status.v1",
+    commission: AUTONOMY_AUTHORITY_COMMISSION,
+    version: AUTONOMY_AUTHORITY_VERSION,
+    buildId: AUTONOMY_AUTHORITY_BUILD_ID,
+    serverVersion: VERSION,
+    tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+    status: autonomyAuthorityState.status,
+    infrastructure: {
+      available: !AUTONOMY_RUNTIME_HARD_DISABLED,
+      hardDisabled: AUTONOMY_RUNTIME_HARD_DISABLED,
+      legacyAutonomousRuntimeEnvRequested:
+        LEGACY_AUTONOMOUS_RUNTIME_ENV_REQUESTED,
+      legacyEnvGrantsAuthority: false
+    },
+    masterEnabled: autonomyAuthorityState.policy?.masterEnabled === true,
+    revision: Number(autonomyAuthorityState.policy?.revision || 0),
+    capabilities: Object.fromEntries(
+      AUTONOMY_CAPABILITY_IDS.map(capabilityId => [
+        capabilityId,
+        publicAutonomyCapabilityStatus(capabilityId)
+      ])
+    ),
+    providerAutonomousUse: Object.fromEntries(
+      AUTONOMY_PROVIDER_IDS.map(providerId => [
+        providerId,
+        {
+          authorized:
+            autonomyAuthorityState.policy?.providerAutonomousUse?.[
+              providerId
+            ] === true,
+          effective: autonomyProviderEffective(providerId)
+        }
+      ])
+    ),
+    economicAuthority: autonomyClone(AUTONOMY_ECONOMIC_BOUNDARY),
+    externalAuthority: autonomyClone(AUTONOMY_EXTERNAL_AUTHORITY_BOUNDARY),
+    providerControlContract: autonomyClone(
+      AUTONOMY_PROVIDER_CONTROL_CONTRACT
+    ),
+    persistence: {
+      authority: autonomyAuthorityState.authority,
+      providerId: autonomyAuthorityState.providerId,
+      durableFingerprint: autonomyAuthorityState.durableFingerprint,
+      dataDirectoryConfigured: EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED,
+      browserAuthority: false
+    },
+    loadedAt: autonomyAuthorityState.loadedAt,
+    lastChangedAt: autonomyAuthorityState.lastChangedAt,
+    lastReceipt: autonomyClone(autonomyAuthorityState.lastReceipt),
+    lastError: autonomyClone(autonomyAuthorityState.lastError)
+  };
+}
+
+function normalizeAutonomyPrincipalId(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9._:@-]+/g, "-")
+    .slice(0, 180);
+}
+
+async function resolveAutonomyPrincipal(request) {
+  const account = await authenticatedAccount(request);
+  if (account?.id) {
+    return {
+      id: `account:${normalizeAutonomyPrincipalId(account.id)}`,
+      mode: "authenticated-account",
+      account: publicAuthAccount(account)
+    };
+  }
+
+  if (maddyAdviserSameOriginRuntimeAllowed(request)) {
+    return {
+      id: `founder-runtime:${maddyAdviserClientKey(request)}`,
+      mode: "same-origin-founder-runtime",
+      account: null
+    };
+  }
+
+  return null;
+}
+
+function autonomyChangedPaths(before, after) {
+  const paths = [];
+  if (before.masterEnabled !== after.masterEnabled) {
+    paths.push("masterEnabled");
+  }
+  for (const capabilityId of AUTONOMY_CAPABILITY_IDS) {
+    if (
+      before.capabilities?.[capabilityId] !==
+      after.capabilities?.[capabilityId]
+    ) {
+      paths.push(`capabilities.${capabilityId}`);
+    }
+  }
+  for (const providerId of AUTONOMY_PROVIDER_IDS) {
+    if (
+      before.providerAutonomousUse?.[providerId] !==
+      after.providerAutonomousUse?.[providerId]
+    ) {
+      paths.push(`providerAutonomousUse.${providerId}`);
+    }
+  }
+  return paths;
+}
+
+function applyAutonomyAuthorityPatch(currentPolicy, patch = {}, principal) {
+  const current = normalizeAutonomyPolicy(currentPolicy);
+  const next = autonomyClone(current);
+
+  if (patch.masterEnabled !== undefined) {
+    next.masterEnabled = patch.masterEnabled === true;
+  }
+
+  if (
+    patch.capabilities &&
+    typeof patch.capabilities === "object" &&
+    !Array.isArray(patch.capabilities)
+  ) {
+    for (const capabilityId of AUTONOMY_CAPABILITY_IDS) {
+      if (patch.capabilities[capabilityId] === undefined) continue;
+      const requested = patch.capabilities[capabilityId] === true;
+      const blockedReason =
+        AUTONOMY_SERVER_BLOCKED_CAPABILITIES[capabilityId];
+      if (requested && blockedReason) {
+        const error = new Error(blockedReason);
+        error.code = "AUTONOMY_CAPABILITY_BLOCKED";
+        error.status = 409;
+        error.details = { capabilityId, blockedReason };
+        throw error;
+      }
+      next.capabilities[capabilityId] = requested;
+    }
+  }
+
+  let providerAuthorityChanged = false;
+  if (
+    patch.providerAutonomousUse &&
+    typeof patch.providerAutonomousUse === "object" &&
+    !Array.isArray(patch.providerAutonomousUse)
+  ) {
+    for (const providerId of AUTONOMY_PROVIDER_IDS) {
+      if (patch.providerAutonomousUse[providerId] === undefined) continue;
+      const requested =
+        patch.providerAutonomousUse[providerId] === true;
+      if (next.providerAutonomousUse[providerId] !== requested) {
+        providerAuthorityChanged = true;
+      }
+      next.providerAutonomousUse[providerId] = requested;
+    }
+  }
+
+  const billingAlreadyAcknowledged =
+    Boolean(current.providerBillingDisclosure?.acknowledgedAt);
+  const billingAcknowledgedNow =
+    patch.providerBillingDisclosureAcknowledged === true;
+
+  if (
+    providerAuthorityChanged &&
+    !billingAlreadyAcknowledged &&
+    !billingAcknowledgedNow
+  ) {
+    const error = new Error(
+      "Provider controls require acknowledgement that disabling MEOS use does not cancel the separate provider account/subscription or guarantee vendor billing will stop."
+    );
+    error.code = "AUTONOMY_PROVIDER_BILLING_ACK_REQUIRED";
+    error.status = 409;
+    error.details = {
+      disclosureVersion: AUTONOMY_PROVIDER_BILLING_DISCLOSURE_VERSION,
+      disableMeaning: AUTONOMY_PROVIDER_CONTROL_CONTRACT.disableMeaning
+    };
+    throw error;
+  }
+
+  if (billingAcknowledgedNow && !billingAlreadyAcknowledged) {
+    next.providerBillingDisclosure = {
+      version: AUTONOMY_PROVIDER_BILLING_DISCLOSURE_VERSION,
+      acknowledgedAt: autonomyNow(),
+      acknowledgedBy: {
+        id: principal?.id || "unknown",
+        mode: principal?.mode || "unknown"
+      }
+    };
+  }
+
+  // No client may expand money/external-action authority through this route.
+  if (patch.economicAuthority || patch.externalAuthority) {
+    const error = new Error(
+      "Autonomy controls cannot grant spending, signature, submission, legal-commitment, certification, or consequential external-action authority."
+    );
+    error.code = "AUTONOMY_AUTHORITY_BOUNDARY_IMMUTABLE";
+    error.status = 403;
+    throw error;
+  }
+
+  next.economicAuthority = autonomyClone(AUTONOMY_ECONOMIC_BOUNDARY);
+  next.externalAuthority = autonomyClone(AUTONOMY_EXTERNAL_AUTHORITY_BOUNDARY);
+
+  const changedPaths = autonomyChangedPaths(current, next);
+  if (changedPaths.length === 0) {
+    return {
+      changed: false,
+      policy: current,
+      receipt: null,
+      changedPaths
+    };
+  }
+
+  const occurredAt = autonomyNow();
+  const receipt = {
+    schema: "meos.autonomy-authority.receipt.v1",
+    id: `autonomy-receipt-${crypto.randomUUID()}`,
+    tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+    occurredAt,
+    actor: {
+      id: principal?.id || "unknown",
+      mode: principal?.mode || "unknown"
+    },
+    previousRevision: current.revision,
+    revision: current.revision + 1,
+    changedPaths,
+    masterEnabled: next.masterEnabled,
+    economicAuthorityUnchanged: true,
+    externalAuthorityUnchanged: true,
+    providerBillingDisclosureVersion:
+      AUTONOMY_PROVIDER_BILLING_DISCLOSURE_VERSION,
+    providerBillingDisclosureAcknowledged:
+      Boolean(next.providerBillingDisclosure?.acknowledgedAt)
+  };
+
+  next.revision = current.revision + 1;
+  next.createdAt = current.createdAt || occurredAt;
+  next.updatedAt = occurredAt;
+  next.updatedBy = receipt.actor;
+  next.auditTrail = [
+    ...(Array.isArray(current.auditTrail) ? current.auditTrail : []),
+    receipt
+  ].slice(-AUTONOMY_AUTHORITY_MAX_AUDIT_RECEIPTS);
+
+  return {
+    changed: true,
+    policy: normalizeAutonomyPolicy(next),
+    receipt,
+    changedPaths
+  };
+}
+
+async function persistAutonomyAuthorityPolicy(policy, previousFingerprint) {
+  if (!EXECUTIVE_MEMORY_DATA_DIR_CONFIGURED) {
+    const error = new Error(
+      "Durable autonomy authority cannot be changed until MEOS_DATA_DIR points to persistent server storage."
+    );
+    error.code = "AUTONOMY_DURABLE_STORAGE_REQUIRED";
+    error.status = 503;
+    throw error;
+  }
+
+  await ensureAutonomyAuthorityDirectory();
+  const normalized = normalizeAutonomyPolicy(policy);
+
+  let currentFingerprint = null;
+  try {
+    const raw = await fs.readFile(AUTONOMY_AUTHORITY_PATH, "utf8");
+    const currentEnvelope = JSON.parse(raw);
+    currentFingerprint = currentEnvelope?.payloadFingerprint || null;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  if (
+    (previousFingerprint || null) !==
+    (currentFingerprint || null)
+  ) {
+    const error = new Error(
+      "Autonomy authority changed since it was last observed. Reload before applying another change."
+    );
+    error.code = "AUTONOMY_AUTHORITY_CONCURRENCY_CONFLICT";
+    error.status = 409;
+    error.details = {
+      expectedPreviousFingerprint: previousFingerprint || null,
+      actualPreviousFingerprint: currentFingerprint || null
+    };
+    throw error;
+  }
+
+  const payloadFingerprint = autonomyFingerprint(normalized);
+  const envelope = {
+    schema: "meos.autonomy-authority.durable-envelope.v1",
+    commission: AUTONOMY_AUTHORITY_COMMISSION,
+    version: AUTONOMY_AUTHORITY_VERSION,
+    buildId: AUTONOMY_AUTHORITY_BUILD_ID,
+    tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+    payloadFingerprint,
+    writtenAt: autonomyNow(),
+    policy: normalized
+  };
+
+  const temporaryPath =
+    `${AUTONOMY_AUTHORITY_PATH}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(
+    temporaryPath,
+    `${JSON.stringify(envelope, null, 2)}\n`,
+    {
+      encoding: "utf8",
+      mode: 0o600
+    }
+  );
+  await fs.rename(temporaryPath, AUTONOMY_AUTHORITY_PATH);
+
+  const verifyRaw = await fs.readFile(AUTONOMY_AUTHORITY_PATH, "utf8");
+  const verifyEnvelope = JSON.parse(verifyRaw);
+  const verifiedPolicy = normalizeAutonomyPolicy(verifyEnvelope.policy);
+  const verifiedFingerprint = autonomyFingerprint(verifiedPolicy);
+
+  if (
+    verifyEnvelope.payloadFingerprint !== payloadFingerprint ||
+    verifiedFingerprint !== payloadFingerprint
+  ) {
+    const error = new Error(
+      "Autonomy authority write failed read-after-write fingerprint verification."
+    );
+    error.code = "AUTONOMY_AUTHORITY_DURABLE_VERIFY_FAILED";
+    error.status = 500;
+    throw error;
+  }
+
+  return {
+    success: true,
+    providerId: "meos-server-autonomy-root",
+    authority: "server-root-autonomy-authority",
+    record: {
+      value: verifiedPolicy,
+      payloadFingerprint: verifiedFingerprint
+    },
+    verification: {
+      verified: true,
+      readAfterWrite: true
+    }
+  };
+}
+
+async function updateAutonomyAuthorityPolicy(patch, principal) {
+  const operation = async () => {
+    const observed = await readAutonomyAuthorityPolicy();
+    const applied = applyAutonomyAuthorityPatch(
+      observed.policy,
+      patch,
+      principal
+    );
+
+    if (!applied.changed) {
+      return {
+        changed: false,
+        policy: observed.policy,
+        receipt: null
+      };
+    }
+
+    const writeResult = await persistAutonomyAuthorityPolicy(
+      applied.policy,
+      observed.fingerprint
+    );
+    const verifiedPolicy = normalizeAutonomyPolicy(
+      writeResult?.record?.value || applied.policy
+    );
+
+    autonomyAuthorityState.status = "ready";
+    autonomyAuthorityState.policy = verifiedPolicy;
+    autonomyAuthorityState.durableFingerprint =
+      writeResult?.record?.payloadFingerprint || null;
+    autonomyAuthorityState.providerId = writeResult?.providerId || null;
+    autonomyAuthorityState.authority = writeResult?.authority || null;
+    autonomyAuthorityState.loadedAt = autonomyNow();
+    autonomyAuthorityState.lastChangedAt = verifiedPolicy.updatedAt;
+    autonomyAuthorityState.lastReceipt = applied.receipt;
+    autonomyAuthorityState.lastError = null;
+
+    await reconcileAutonomyRuntimeState();
+
+    return {
+      changed: true,
+      policy: verifiedPolicy,
+      receipt: applied.receipt
+    };
+  };
+
+  autonomyAuthorityWriteChain = autonomyAuthorityWriteChain.then(
+    operation,
+    operation
+  );
+  return autonomyAuthorityWriteChain;
+}
+
+async function initializeAutonomyAuthority() {
+  try {
+    await readAutonomyAuthorityPolicy();
+  } catch (error) {
+    // Fail closed: inability to prove durable authority means autonomy stays OFF.
+    console.warn(
+      "[MEOS Autonomy Authority] Durable policy unavailable; remaining safely OFF:",
+      error?.message || error
+    );
+  }
+  return getAutonomyAuthorityStatus();
+}
+
+/* ========================================================================== */
 /* Commission 006.017D7S4B — Autonomous Learning Internet Ignition            */
 /* ========================================================================== */
 
@@ -4001,8 +4848,8 @@ const AUTONOMOUS_LEARNING_IGNITION_VERSION = "1.0.0";
 const AUTONOMOUS_LEARNING_IGNITION_BUILD_ID =
   "ALI100-ONE-INTENT-ONE-CHEAP-RESEARCH-20260811-A";
 
-const AUTONOMOUS_LEARNING_IGNITION_ENABLED =
-  AUTONOMOUS_RUNTIME_ENABLED &&
+const AUTONOMOUS_LEARNING_INFRASTRUCTURE_ENABLED =
+  !AUTONOMY_RUNTIME_HARD_DISABLED &&
   String(process.env.MEOS_AUTONOMOUS_LEARNING_ENABLED || "true")
     .trim()
     .toLowerCase() !== "false";
@@ -4024,7 +4871,7 @@ const AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT = Math.max(
 );
 
 const autonomousLearningIgnitionState = {
-  enabled: AUTONOMOUS_LEARNING_IGNITION_ENABLED,
+  enabled: false,
   researchIntentCount: 0,
   executedCount: 0,
   suppressedDuplicateCount: 0,
@@ -4143,7 +4990,7 @@ function validateAutonomousLearningEconomicAuthority(request = {}) {
 }
 
 async function executeAutonomousLearningFromCycle(brain, cycleResult = {}) {
-  if (!AUTONOMOUS_LEARNING_IGNITION_ENABLED) {
+  if (!autonomousLearningRuntimeEnabled()) {
     return {
       executed: false,
       reason: "autonomous-learning-ignition-disabled"
@@ -4396,6 +5243,7 @@ function getAutonomousLearningIgnitionStatus() {
     version: AUTONOMOUS_LEARNING_IGNITION_VERSION,
     buildId: AUTONOMOUS_LEARNING_IGNITION_BUILD_ID,
     ...autonomousLearningIgnitionState,
+    enabled: autonomousLearningRuntimeEnabled(),
     browserIndependent: true,
     runtimeOwner: "meos-durable-server",
     researchExecutor: HEADLESS_RESEARCH_COMMISSION,
@@ -4428,7 +5276,7 @@ function getAutonomousLearningIgnitionStatus() {
 
 const continuousCognitionRuntimeState = {
   status: "initializing",
-  enabled: CONTINUOUS_COGNITION_RUNTIME_ENABLED,
+  enabled: false,
   startedAt: null,
   lastWakeAt: null,
   lastCompletedAt: null,
@@ -4994,6 +5842,16 @@ async function checkpointLocalPerceptionAssimilation(brain) {
 }
 
 function scheduleContinuousCognitionWake(nextWakeAt) {
+  if (!continuousCognitionRuntimeEnabled()) {
+    if (continuousCognitionRuntimeState.timer) {
+      clearTimeout(continuousCognitionRuntimeState.timer);
+      continuousCognitionRuntimeState.timer = null;
+    }
+    continuousCognitionRuntimeState.nextWakeAt = null;
+    continuousCognitionRuntimeState.status = "paused-by-authority";
+    return null;
+  }
+
   if (continuousCognitionRuntimeState.timer) {
     clearTimeout(continuousCognitionRuntimeState.timer);
     continuousCognitionRuntimeState.timer = null;
@@ -5061,7 +5919,7 @@ function verifyLocalPerceptionBridgeSecret(request) {
 }
 
 function requestContinuousCognitionReentry(event = {}) {
-  if (!CONTINUOUS_COGNITION_RUNTIME_ENABLED) {
+  if (!continuousCognitionRuntimeEnabled()) {
     return {
       accepted: false,
       reason: "continuous-cognition-disabled",
@@ -5119,8 +5977,8 @@ function requestContinuousCognitionReentry(event = {}) {
 }
 
 async function runContinuousCognitionHeartbeat() {
-  if (!CONTINUOUS_COGNITION_RUNTIME_ENABLED) {
-    continuousCognitionRuntimeState.status = "disabled";
+  if (!continuousCognitionRuntimeEnabled()) {
+    continuousCognitionRuntimeState.status = "paused-by-authority";
     return getContinuousCognitionRuntimeStatus();
   }
   if (continuousCognitionRuntimeState.inFlight) {
@@ -5215,7 +6073,7 @@ function getContinuousCognitionRuntimeStatus() {
     version: CONTINUOUS_COGNITION_RUNTIME_VERSION,
     buildId: CONTINUOUS_COGNITION_RUNTIME_BUILD_ID,
     status: continuousCognitionRuntimeState.status,
-    enabled: continuousCognitionRuntimeState.enabled,
+    enabled: continuousCognitionRuntimeEnabled(),
     browserIndependent: true,
     runtimeOwner: "meos-durable-server",
     cognitionSource: "commissioned-executive-brain",
@@ -5307,20 +6165,36 @@ function getContinuousCognitionRuntimeStatus() {
 }
 
 async function startContinuousCognitionRuntime() {
-  if (!CONTINUOUS_COGNITION_RUNTIME_ENABLED) {
-    continuousCognitionRuntimeState.status = "disabled";
+  if (!continuousCognitionRuntimeEnabled()) {
+    continuousCognitionRuntimeState.status = "paused-by-authority";
     return getContinuousCognitionRuntimeStatus();
   }
-  if (continuousCognitionRuntimeState.startedAt) {
+  if (continuousCognitionRuntimeState.timer || continuousCognitionRuntimeState.inFlight) {
     return getContinuousCognitionRuntimeStatus();
   }
 
-  continuousCognitionRuntimeState.startedAt = new Date().toISOString();
+  if (!continuousCognitionRuntimeState.startedAt) {
+    continuousCognitionRuntimeState.startedAt = new Date().toISOString();
+  }
   continuousCognitionRuntimeState.status = "starting";
 
-  // Wake immediately on process start. Durable hydration determines whether
-  // this is a fresh cycle or continuation of unfinished thought.
+  // Wake immediately on first start or authority resume. Durable hydration
+  // determines whether this is a fresh cycle or continuation of unfinished thought.
   scheduleContinuousCognitionWake(new Date().toISOString());
+  return getContinuousCognitionRuntimeStatus();
+}
+
+function pauseContinuousCognitionRuntime(reason = "autonomy-authority-off") {
+  if (continuousCognitionRuntimeState.timer) {
+    clearTimeout(continuousCognitionRuntimeState.timer);
+    continuousCognitionRuntimeState.timer = null;
+  }
+  continuousCognitionRuntimeState.status = "paused-by-authority";
+  continuousCognitionRuntimeState.nextWakeAt = null;
+  continuousCognitionRuntimeState.requestedNextWakeAt = null;
+  continuousCognitionRuntimeState.requestedWakeDelayMs = null;
+  continuousCognitionRuntimeState.scheduledWakeDelayMs = null;
+  continuousCognitionRuntimeState.wakeClampReason = reason;
   return getContinuousCognitionRuntimeStatus();
 }
 
@@ -6478,8 +7352,8 @@ const CONTINUOUS_OPERATIONS_DEFAULT_INTERVAL_MS = Number(
 const CONTINUOUS_OPERATIONS_MAX_RUN_HISTORY = Number(
   process.env.MEOS_CONTINUOUS_OPERATIONS_MAX_RUN_HISTORY || 100
 );
-const CONTINUOUS_OPERATIONS_ENABLED =
-  AUTONOMOUS_RUNTIME_ENABLED &&
+const CONTINUOUS_OPERATIONS_INFRASTRUCTURE_ENABLED =
+  !AUTONOMY_RUNTIME_HARD_DISABLED &&
   String(process.env.MEOS_CONTINUOUS_OPERATIONS_ENABLED || "true")
     .trim()
     .toLowerCase() !== "false";
@@ -12069,6 +12943,804 @@ async function getFundingIntelligenceStatus() {
   };
 }
 
+
+/* ========================================================================== */
+/* Commission 006.031L — Durable Maddy Time Runtime                           */
+/*                                                                            */
+/* Time is a stimulus, never permission. This runtime persists exact due       */
+/* moments and recurrence intent, then uses the already-commissioned           */
+/* Continuous Operations lease/retry/restart chassis to fire one durable       */
+/* internal temporal event. Any downstream cognition or work remains subject   */
+/* to its own autonomy capability.                                             */
+/* ========================================================================== */
+
+const MADDY_TIME_COMMISSION = "006.031L";
+const MADDY_TIME_VERSION = "1.0.0";
+const MADDY_TIME_BUILD_ID =
+  "MT100-DURABLE-MADDY-TIME-RUNTIME-20260817-A";
+const MADDY_TIME_COLLECTION = "maddy-time";
+const MADDY_TIME_HANDLER_ID = "maddy-time-temporal-event";
+const MADDY_TIME_JOB_PREFIX = "maddy-time:";
+const MADDY_TIME_MAX_EVENTS = 500;
+const MADDY_TIME_DEPENDENCY_RECHECK_MS = 5 * 60_000;
+const MADDY_TIME_ALLOWED_ACTIONS = Object.freeze([
+  "internal-attention",
+  "cognitive-reentry"
+]);
+const MADDY_TIME_ALLOWED_RECURRENCES = Object.freeze([
+  "daily",
+  "weekly",
+  "monthly"
+]);
+
+function maddyTimeNow() {
+  return new Date().toISOString();
+}
+
+function maddyTimeClone(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function maddyTimeValidTimezone(value) {
+  const zone = String(value || "UTC").trim() || "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone }).format(new Date());
+    return zone;
+  } catch {
+    const error = new Error(`Maddy Time timezone "${zone}" is invalid.`);
+    error.status = 400;
+    error.code = "MADDY_TIME_TIMEZONE_INVALID";
+    throw error;
+  }
+}
+
+function maddyTimeIso(value, field, { optional = false } = {}) {
+  if ((value === null || value === undefined || value === "") && optional) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    const error = new Error(`Maddy Time ${field} must be a valid ISO date/time.`);
+    error.status = 400;
+    error.code = "MADDY_TIME_DATE_INVALID";
+    error.details = { field };
+    throw error;
+  }
+  return new Date(parsed).toISOString();
+}
+
+function maddyTimeZonedParts(instant, timeZone) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  });
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(new Date(instant))
+      .filter(part => part.type !== "literal")
+      .map(part => [part.type, Number(part.value)])
+  );
+  return {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second
+  };
+}
+
+function maddyTimeLocalPartsToUtc(parts, timeZone) {
+  const target = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour || 0,
+    parts.minute || 0,
+    parts.second || 0,
+    0
+  );
+  let guess = target;
+  for (let index = 0; index < 5; index += 1) {
+    const actual = maddyTimeZonedParts(guess, timeZone);
+    const actualAsUtc = Date.UTC(
+      actual.year,
+      actual.month - 1,
+      actual.day,
+      actual.hour || 0,
+      actual.minute || 0,
+      actual.second || 0,
+      0
+    );
+    const delta = target - actualAsUtc;
+    guess += delta;
+    if (Math.abs(delta) < 1000) break;
+  }
+  return new Date(guess).toISOString();
+}
+
+function maddyTimeDaysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function maddyTimeAddLocal(parts, recurrence) {
+  const interval = Math.max(1, Math.floor(Number(recurrence.interval || 1)));
+  const frequency = recurrence.frequency;
+  if (frequency === "daily" || frequency === "weekly") {
+    const days = frequency === "weekly" ? interval * 7 : interval;
+    const date = new Date(Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day + days,
+      parts.hour || 0,
+      parts.minute || 0,
+      parts.second || 0
+    ));
+    return {
+      year: date.getUTCFullYear(),
+      month: date.getUTCMonth() + 1,
+      day: date.getUTCDate(),
+      hour: parts.hour || 0,
+      minute: parts.minute || 0,
+      second: parts.second || 0
+    };
+  }
+
+  const monthIndex = (parts.month - 1) + interval;
+  const targetYear = parts.year + Math.floor(monthIndex / 12);
+  const targetMonthIndex = ((monthIndex % 12) + 12) % 12;
+  const targetMonth = targetMonthIndex + 1;
+  return {
+    year: targetYear,
+    month: targetMonth,
+    day: Math.min(parts.day, maddyTimeDaysInMonth(targetYear, targetMonth)),
+    hour: parts.hour || 0,
+    minute: parts.minute || 0,
+    second: parts.second || 0
+  };
+}
+
+function maddyTimeShiftToBusinessDay(parts) {
+  let candidate = { ...parts };
+  for (let index = 0; index < 7; index += 1) {
+    const day = new Date(Date.UTC(
+      candidate.year,
+      candidate.month - 1,
+      candidate.day
+    )).getUTCDay();
+    if (day !== 0 && day !== 6) return candidate;
+    const next = new Date(Date.UTC(
+      candidate.year,
+      candidate.month - 1,
+      candidate.day + 1,
+      candidate.hour || 0,
+      candidate.minute || 0,
+      candidate.second || 0
+    ));
+    candidate = {
+      year: next.getUTCFullYear(),
+      month: next.getUTCMonth() + 1,
+      day: next.getUTCDate(),
+      hour: parts.hour || 0,
+      minute: parts.minute || 0,
+      second: parts.second || 0
+    };
+  }
+  return candidate;
+}
+
+function normalizeMaddyTimeRecurrence(input, timeZone) {
+  if (!input) return null;
+  const frequency = String(input.frequency || "").trim().toLowerCase();
+  if (!MADDY_TIME_ALLOWED_RECURRENCES.includes(frequency)) {
+    const error = new Error(
+      "Maddy Time recurrence must be daily, weekly, or monthly."
+    );
+    error.status = 400;
+    error.code = "MADDY_TIME_RECURRENCE_INVALID";
+    throw error;
+  }
+  return {
+    frequency,
+    interval: Math.max(1, Math.min(365, Math.floor(Number(input.interval || 1)))),
+    businessDaysOnly: input.businessDaysOnly === true,
+    timeZone: maddyTimeValidTimezone(input.timeZone || timeZone)
+  };
+}
+
+function normalizeMaddyTimeCommitment(input = {}, existing = null, principal = null) {
+  const id = normalizeIdentifier(input.id || existing?.id || "");
+  if (!id) {
+    const error = new Error("Maddy Time commitments require a valid ID.");
+    error.status = 400;
+    error.code = "MADDY_TIME_ID_INVALID";
+    throw error;
+  }
+  const subject = String(input.subject || existing?.subject || "").trim();
+  if (!subject) {
+    const error = new Error("Maddy Time commitments require a subject.");
+    error.status = 400;
+    error.code = "MADDY_TIME_SUBJECT_REQUIRED";
+    throw error;
+  }
+  const timeZone = maddyTimeValidTimezone(
+    input.timeZone || existing?.timeZone || "UTC"
+  );
+  const dueAt = maddyTimeIso(
+    input.dueAt || existing?.dueAt,
+    "dueAt"
+  );
+  const actionKind = String(
+    input.action?.kind || existing?.action?.kind || "internal-attention"
+  ).trim();
+  if (!MADDY_TIME_ALLOWED_ACTIONS.includes(actionKind)) {
+    const error = new Error(
+      "Maddy Time action must be internal-attention or cognitive-reentry."
+    );
+    error.status = 400;
+    error.code = "MADDY_TIME_ACTION_INVALID";
+    throw error;
+  }
+  const now = maddyTimeNow();
+  return {
+    ...existing,
+    ...input,
+    id,
+    schema: "meos.maddy-time.commitment.v1",
+    type: "maddy-time-commitment",
+    subject,
+    status: String(input.status || existing?.status || "scheduled"),
+    dueAt,
+    timeZone,
+    recurrence: normalizeMaddyTimeRecurrence(
+      input.recurrence === undefined ? existing?.recurrence : input.recurrence,
+      timeZone
+    ),
+    expiresAt: maddyTimeIso(
+      input.expiresAt === undefined ? existing?.expiresAt : input.expiresAt,
+      "expiresAt",
+      { optional: true }
+    ),
+    promiseTo:
+      input.promiseTo === undefined ? existing?.promiseTo || null : input.promiseTo,
+    relatedMissionId:
+      input.relatedMissionId === undefined
+        ? existing?.relatedMissionId || null
+        : input.relatedMissionId,
+    sourceId:
+      input.sourceId === undefined ? existing?.sourceId || null : input.sourceId,
+    dependency: input.dependency === undefined
+      ? maddyTimeClone(existing?.dependency || null)
+      : maddyTimeClone(input.dependency || null),
+    action: {
+      ...(existing?.action || {}),
+      ...(input.action || {}),
+      kind: actionKind
+    },
+    createdAt: existing?.createdAt || now,
+    createdBy: existing?.createdBy || principal?.id || "system",
+    updatedAt: now,
+    updatedBy: principal?.id || existing?.updatedBy || "system",
+    lastFiredAt: existing?.lastFiredAt || null,
+    lastOccurrenceDueAt: existing?.lastOccurrenceDueAt || null,
+    nextOccurrenceCalculatedAt: existing?.nextOccurrenceCalculatedAt || null,
+    authorityBoundary: {
+      timeIsStimulusNotPermission: true,
+      automaticSpendUsd: 0,
+      externalActionAuthorized: false,
+      signatureAuthorized: false,
+      certificationAuthorized: false,
+      submissionAuthorized: false,
+      legalCommitmentAuthorized: false
+    }
+  };
+}
+
+function calculateNextMaddyTimeOccurrence(commitment, after = Date.now()) {
+  if (!commitment?.recurrence) return null;
+  const recurrence = commitment.recurrence;
+  const timeZone = recurrence.timeZone || commitment.timeZone || "UTC";
+  let instant = commitment.dueAt;
+  for (let index = 0; index < 400; index += 1) {
+    let local = maddyTimeZonedParts(instant, timeZone);
+    local = maddyTimeAddLocal(local, recurrence);
+    if (recurrence.businessDaysOnly) {
+      local = maddyTimeShiftToBusinessDay(local);
+    }
+    instant = maddyTimeLocalPartsToUtc(local, timeZone);
+    if (Date.parse(instant) > after) return instant;
+  }
+  const error = new Error(
+    "Maddy Time could not calculate a bounded next recurrence."
+  );
+  error.code = "MADDY_TIME_RECURRENCE_BOUND_EXCEEDED";
+  throw error;
+}
+
+async function readMaddyTimeRecords() {
+  return readExecutiveMemoryCollection(MADDY_TIME_COLLECTION);
+}
+
+async function writeMaddyTimeRecords(records) {
+  return writeExecutiveMemoryCollection(MADDY_TIME_COLLECTION, records);
+}
+
+async function getMaddyTimeCommitments() {
+  const records = await readMaddyTimeRecords();
+  return records.filter(record => record?.type === "maddy-time-commitment");
+}
+
+async function getMaddyTimeEvents(limit = 100) {
+  const records = await readMaddyTimeRecords();
+  return records
+    .filter(record => record?.type === "maddy-time-event")
+    .sort((left, right) => String(right.firedAt || "").localeCompare(String(left.firedAt || "")))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 100, MADDY_TIME_MAX_EVENTS)));
+}
+
+async function syncMaddyTimeContinuousJob(commitment) {
+  const jobId = `${MADDY_TIME_JOB_PREFIX}${commitment.id}`;
+  const enabled = !["cancelled", "completed", "obsolete"].includes(commitment.status);
+  return upsertContinuousOperationsJob({
+    id: jobId,
+    office: "Executive Time",
+    mission: `Honor temporal commitment: ${commitment.subject}`,
+    handler: MADDY_TIME_HANDLER_ID,
+    autonomyCapability: "timeAndDeadlines",
+    enabled,
+    intervalMs: Math.max(60_000, CONTINUOUS_OPERATIONS_TICK_MS),
+    nextRunAt: commitment.dueAt,
+    priority: 95,
+    requiresHumanApproval: false,
+    autonomousAuthority: "temporal-stimulus-only",
+    metadata: {
+      maddyTime: true,
+      commitmentId: commitment.id,
+      autonomyCapability: "timeAndDeadlines",
+      timeZone: commitment.timeZone,
+      recurrence: maddyTimeClone(commitment.recurrence),
+      timeIsStimulusNotPermission: true
+    }
+  });
+}
+
+async function upsertMaddyTimeCommitment(input, principal = null) {
+  return withExecutiveMemoryWriteLock(
+    MADDY_TIME_COLLECTION,
+    async () => {
+      const records = await readMaddyTimeRecords();
+      const index = records.findIndex(
+        record => record?.type === "maddy-time-commitment" &&
+          record.id === normalizeIdentifier(input.id || "")
+      );
+      const existing = index >= 0 ? records[index] : null;
+      const commitment = normalizeMaddyTimeCommitment(input, existing, principal);
+      if (index >= 0) records[index] = commitment;
+      else records.push(commitment);
+      await writeMaddyTimeRecords(records);
+      await syncMaddyTimeContinuousJob(commitment);
+      if (continuousOperationsRuntimeEnabled()) {
+        void scheduleContinuousOperationsTimer({
+          reason: "maddy-time-commitment-upsert"
+        });
+      }
+      return commitment;
+    }
+  );
+}
+
+async function cancelMaddyTimeCommitment(id, principal = null, reason = "human-cancelled") {
+  const normalizedId = normalizeIdentifier(id);
+  const commitments = await getMaddyTimeCommitments();
+  const existing = commitments.find(item => item.id === normalizedId);
+  if (!existing) return null;
+  return upsertMaddyTimeCommitment({
+    ...existing,
+    status: "cancelled",
+    cancelledAt: maddyTimeNow(),
+    cancellationReason: String(reason || "human-cancelled").slice(0, 240)
+  }, principal);
+}
+
+async function acknowledgeMaddyTimeEvent(eventId, principal = null) {
+  return withExecutiveMemoryWriteLock(
+    MADDY_TIME_COLLECTION,
+    async () => {
+      const records = await readMaddyTimeRecords();
+      const index = records.findIndex(
+        record => record?.type === "maddy-time-event" && record.id === eventId
+      );
+      if (index < 0) return null;
+      records[index] = {
+        ...records[index],
+        status: "acknowledged",
+        acknowledgedAt: maddyTimeNow(),
+        acknowledgedBy: principal?.id || "system"
+      };
+      await writeMaddyTimeRecords(records);
+      return records[index];
+    }
+  );
+}
+
+async function maddyTimeDependencySatisfied(commitment, commitments) {
+  const dependency = commitment?.dependency;
+  if (!dependency?.commitmentId) {
+    return { satisfied: true, reason: "no-dependency" };
+  }
+  const related = commitments.find(
+    item => item.id === normalizeIdentifier(dependency.commitmentId)
+  );
+  if (!related) {
+    return { satisfied: false, reason: "dependency-not-found" };
+  }
+  const requiredStatus = String(dependency.requiredStatus || "completed");
+  return {
+    satisfied: related.status === requiredStatus,
+    reason: related.status === requiredStatus
+      ? "dependency-satisfied"
+      : "dependency-waiting",
+    relatedStatus: related.status,
+    requiredStatus
+  };
+}
+
+async function maddyTimeTemporalEventHandler(context = {}) {
+  const commitmentId = normalizeIdentifier(
+    context.job?.metadata?.commitmentId || ""
+  );
+  if (!commitmentId) {
+    return {
+      success: false,
+      error: {
+        code: "MADDY_TIME_COMMITMENT_ID_MISSING",
+        message: "Maddy Time job has no commitment ID."
+      }
+    };
+  }
+
+  const records = await readMaddyTimeRecords();
+  const commitments = records.filter(
+    record => record?.type === "maddy-time-commitment"
+  );
+  const index = records.findIndex(
+    record => record?.type === "maddy-time-commitment" && record.id === commitmentId
+  );
+  if (index < 0) {
+    return {
+      success: true,
+      result: { skipped: true, reason: "commitment-not-found" },
+      schedule: { enabled: false, status: "completed" }
+    };
+  }
+
+  const commitment = records[index];
+  if (["cancelled", "completed", "obsolete"].includes(commitment.status)) {
+    return {
+      success: true,
+      result: { skipped: true, reason: `commitment-${commitment.status}` },
+      schedule: { enabled: false, status: commitment.status }
+    };
+  }
+
+  const nowMs = Date.now();
+  if (commitment.expiresAt && Date.parse(commitment.expiresAt) < nowMs) {
+    records[index] = {
+      ...commitment,
+      status: "obsolete",
+      obsoletedAt: maddyTimeNow(),
+      obsoleteReason: "expired-before-useful-action",
+      updatedAt: maddyTimeNow()
+    };
+    await writeMaddyTimeRecords(records);
+    return {
+      success: true,
+      result: { skipped: true, obsolete: true },
+      schedule: { enabled: false, status: "obsolete" }
+    };
+  }
+
+  const dependency = await maddyTimeDependencySatisfied(commitment, commitments);
+  if (!dependency.satisfied) {
+    const retryAt = new Date(nowMs + Math.max(
+      60_000,
+      Number(commitment.dependency?.recheckMs || MADDY_TIME_DEPENDENCY_RECHECK_MS)
+    )).toISOString();
+    records[index] = {
+      ...commitment,
+      status: "waiting-dependency",
+      dependencyState: dependency,
+      updatedAt: maddyTimeNow()
+    };
+    await writeMaddyTimeRecords(records);
+    return {
+      success: true,
+      result: { deferred: true, dependency },
+      schedule: { enabled: true, nextRunAt: retryAt, status: "waiting-dependency" }
+    };
+  }
+
+  const occurrenceDueAt = commitment.dueAt;
+  const occurrenceKey = `${commitment.id}:${occurrenceDueAt}`;
+  let event = records.find(
+    record => record?.type === "maddy-time-event" && record.occurrenceKey === occurrenceKey
+  );
+
+  const authorityRevision = Number(autonomyAuthorityState.policy?.revision || 0);
+  let cognitionWake = null;
+  if (!event) {
+    if (commitment.action?.kind === "cognitive-reentry") {
+      cognitionWake = requestContinuousCognitionReentry({
+        source: "maddy-time",
+        reason: `Temporal commitment became due: ${commitment.subject}`,
+        commitmentId: commitment.id,
+        dueAt: occurrenceDueAt
+      });
+    }
+    event = normalizeExecutiveMemoryRecord({
+      id: createRequestId("maddy-time-event"),
+      schema: "meos.maddy-time.event.v1",
+      type: "maddy-time-event",
+      occurrenceKey,
+      commitmentId: commitment.id,
+      subject: commitment.subject,
+      dueAt: occurrenceDueAt,
+      firedAt: maddyTimeNow(),
+      status: "pending",
+      action: maddyTimeClone(commitment.action),
+      promiseTo: commitment.promiseTo || null,
+      relatedMissionId: commitment.relatedMissionId || null,
+      sourceId: commitment.sourceId || null,
+      authority: {
+        capability: "timeAndDeadlines",
+        revision: authorityRevision,
+        timeIsStimulusNotPermission: true,
+        approvedWorkAuthorized: autonomyCapabilityEffective("approvedWork"),
+        continuousCognitionAuthorized: autonomyCapabilityEffective("continuousCognition"),
+        externalActionAuthorized: false,
+        automaticSpendUsd: 0
+      },
+      cognitionWake: maddyTimeClone(cognitionWake)
+    });
+    records.push(event);
+  }
+
+  const nextDueAt = calculateNextMaddyTimeOccurrence(commitment, nowMs);
+  records[index] = {
+    ...commitment,
+    status: nextDueAt ? "scheduled" : "fired",
+    lastFiredAt: event.firedAt,
+    lastOccurrenceDueAt: occurrenceDueAt,
+    dueAt: nextDueAt || commitment.dueAt,
+    nextOccurrenceCalculatedAt: maddyTimeNow(),
+    updatedAt: maddyTimeNow()
+  };
+
+  const eventRecords = records
+    .filter(record => record?.type === "maddy-time-event")
+    .sort((left, right) => String(right.firedAt || "").localeCompare(String(left.firedAt || "")));
+  const allowedEvents = new Set(
+    eventRecords.slice(0, MADDY_TIME_MAX_EVENTS).map(record => record.id)
+  );
+  const pruned = records.filter(
+    record => record?.type !== "maddy-time-event" || allowedEvents.has(record.id)
+  );
+  await writeMaddyTimeRecords(pruned);
+
+  return {
+    success: true,
+    result: {
+      fired: true,
+      eventId: event.id,
+      occurrenceDueAt,
+      nextDueAt,
+      cognitionWake,
+      authorityRevision
+    },
+    schedule: nextDueAt
+      ? { enabled: true, nextRunAt: nextDueAt, status: "scheduled" }
+      : { enabled: false, status: "completed" }
+  };
+}
+
+registerContinuousOperationsHandler(
+  MADDY_TIME_HANDLER_ID,
+  maddyTimeTemporalEventHandler
+);
+
+async function getMaddyTimeStatus() {
+  const [commitments, events] = await Promise.all([
+    getMaddyTimeCommitments(),
+    getMaddyTimeEvents(100)
+  ]);
+  return {
+    schema: "meos.maddy-time.status.v1",
+    commission: MADDY_TIME_COMMISSION,
+    version: MADDY_TIME_VERSION,
+    buildId: MADDY_TIME_BUILD_ID,
+    serverVersion: VERSION,
+    ready: true,
+    reason: "durable-server-time-runtime-ready",
+    authority: {
+      capability: publicAutonomyCapabilityStatus("timeAndDeadlines"),
+      browserAuthority: false,
+      timeIsStimulusNotPermission: true
+    },
+    runtime: {
+      owner: "continuous-operations",
+      leaseRecovery: true,
+      restartCatchUp: true,
+      schedulerMode: "deadline-aware-timeout",
+      heartbeatCeilingMs: CONTINUOUS_OPERATIONS_TICK_MS,
+      dueMomentWakeUsesNextRunAt: true
+    },
+    totals: {
+      commitments: commitments.length,
+      scheduled: commitments.filter(item => ["scheduled", "waiting-dependency"].includes(item.status)).length,
+      pendingEvents: events.filter(item => item.status === "pending").length
+    },
+    commitments: commitments.slice(0, 100),
+    events: events.slice(0, 100),
+    authorityBoundary: {
+      automaticSpendUsd: 0,
+      externalActionAuthorized: false,
+      signatureAuthorized: false,
+      certificationAuthorized: false,
+      submissionAuthorized: false,
+      legalCommitmentAuthorized: false
+    }
+  };
+}
+
+function runMaddyTimeAcceptanceTest() {
+  const originalPolicy = autonomyAuthorityState.policy;
+  const base = buildDefaultAutonomyAuthorityPolicy();
+  const principal = { id: "acceptance:maddy-time", mode: "acceptance-test" };
+  const enabled = applyAutonomyAuthorityPatch(
+    base,
+    {
+      masterEnabled: true,
+      capabilities: { timeAndDeadlines: true }
+    },
+    principal
+  ).policy;
+  const sample = normalizeMaddyTimeCommitment({
+    id: "acceptance-time",
+    subject: "Return attention at the promised time",
+    dueAt: "2026-08-17T16:00:00.000Z",
+    timeZone: "America/Los_Angeles",
+    recurrence: {
+      frequency: "daily",
+      interval: 1,
+      businessDaysOnly: true,
+      timeZone: "America/Los_Angeles"
+    },
+    action: { kind: "cognitive-reentry" }
+  }, null, principal);
+  const next = calculateNextMaddyTimeOccurrence(
+    sample,
+    Date.parse("2026-08-17T16:00:00.000Z")
+  );
+  const friday = normalizeMaddyTimeCommitment({
+    id: "acceptance-friday",
+    subject: "Business-day recurrence",
+    dueAt: "2026-08-21T16:00:00.000Z",
+    timeZone: "America/Los_Angeles",
+    recurrence: {
+      frequency: "daily",
+      interval: 1,
+      businessDaysOnly: true,
+      timeZone: "America/Los_Angeles"
+    }
+  }, null, principal);
+  const monday = calculateNextMaddyTimeOccurrence(
+    friday,
+    Date.parse(friday.dueAt)
+  );
+  const checks = [
+    {
+      name: "Time & Deadlines remains OFF by default",
+      passed: base.capabilities.timeAndDeadlines === false
+    },
+    {
+      name: "Durable policy can authorize Time & Deadlines without granting Approved Work",
+      passed:
+        enabled.capabilities.timeAndDeadlines === true &&
+        enabled.capabilities.approvedWork === false
+    },
+    {
+      name: "Continuous Operations runtime recognizes Time & Deadlines as a runtime capability",
+      passed: /timeAndDeadlines/.test(continuousOperationsRuntimeEnabled.toString())
+    },
+    {
+      name: "Temporal jobs carry explicit Time & Deadlines authority instead of implicit job authority",
+      passed:
+        autonomyContinuousOperationsJobCapability({
+          autonomyCapability: "timeAndDeadlines"
+        }) === "timeAndDeadlines"
+    },
+    {
+      name: "Unknown jobs still receive no implicit autonomous authority",
+      passed:
+        autonomyContinuousOperationsJobCapability({
+          id: "mystery-clock",
+          handler: "mystery"
+        }) === null
+    },
+    {
+      name: "Maddy Time preserves tenant timezone as operational schedule metadata",
+      passed: sample.timeZone === "America/Los_Angeles"
+    },
+    {
+      name: "Daily recurrence produces a future exact ISO occurrence",
+      passed: Number.isFinite(Date.parse(next)) && Date.parse(next) > Date.parse(sample.dueAt)
+    },
+    {
+      name: "Business-day recurrence skips the weekend",
+      passed:
+        maddyTimeZonedParts(monday, "America/Los_Angeles").day === 24
+    },
+    {
+      name: "Only internal attention or cognition wake actions are admitted",
+      passed:
+        MADDY_TIME_ALLOWED_ACTIONS.length === 2 &&
+        !MADDY_TIME_ALLOWED_ACTIONS.includes("external-action")
+    },
+    {
+      name: "Temporal handler schedules through existing Continuous Operations instead of a parallel browser timer",
+      passed:
+        /registerContinuousOperationsHandler/.test(maddyTimeTemporalEventHandler.toString()) === false &&
+        MADDY_TIME_HANDLER_ID === "maddy-time-temporal-event"
+    },
+    {
+      name: "Temporal event cognition wake still consults separate Continuous Cognition authority",
+      passed: /requestContinuousCognitionReentry/.test(maddyTimeTemporalEventHandler.toString())
+    },
+    {
+      name: "One-time temporal work disables its durable job after firing",
+      passed: /enabled: false/.test(maddyTimeTemporalEventHandler.toString())
+    },
+    {
+      name: "Expired commitments become obsolete instead of producing stale reminders",
+      passed: /expired-before-useful-action/.test(maddyTimeTemporalEventHandler.toString())
+    },
+    {
+      name: "Dependency waits are rescheduled without claiming the dependency is satisfied",
+      passed:
+        /waiting-dependency/.test(maddyTimeTemporalEventHandler.toString()) &&
+        /dependency-waiting/.test(maddyTimeDependencySatisfied.toString())
+    },
+    {
+      name: "Maddy Time cannot grant automatic spend or external action",
+      passed:
+        sample.authorityBoundary.automaticSpendUsd === 0 &&
+        sample.authorityBoundary.externalActionAuthorized === false
+    }
+  ];
+  autonomyAuthorityState.policy = originalPolicy;
+  return {
+    success: checks.every(check => check.passed),
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    commission: MADDY_TIME_COMMISSION,
+    version: MADDY_TIME_VERSION,
+    buildId: MADDY_TIME_BUILD_ID,
+    checks,
+    sample: {
+      dueAt: sample.dueAt,
+      nextDueAt: next,
+      businessDayNextDueAt: monday
+    }
+  };
+}
+
 function continuousOperationsNow() {
   return new Date().toISOString();
 }
@@ -12137,6 +13809,14 @@ function normalizeContinuousOperationsJob(input = {}, existing = null) {
     office,
     mission,
     handler,
+    autonomyCapability:
+      String(
+        input.autonomyCapability ||
+          existing?.autonomyCapability ||
+          input.metadata?.autonomyCapability ||
+          existing?.metadata?.autonomyCapability ||
+          ""
+      ).trim() || null,
     enabled:
       input.enabled === undefined
         ? existing?.enabled !== false
@@ -12285,13 +13965,16 @@ async function upsertContinuousOperationsJob(input) {
 async function ensureContinuousOperationsStandingMissions() {
   const now = continuousOperationsNow();
 
-  const definitions = [
-    {
+  const definitions = [];
+
+  if (autonomyCapabilityEffective("opportunities")) {
+    definitions.push({
       id: "standing-funding-office-pipeline",
       office: "Funding Office",
       mission:
         "Continuously discover, investigate, preserve, and expand government, foundation, corporate-giving, sponsorship, partnership, RFP, contract, matching-gift, volunteer-grant, in-kind, award, and innovation-challenge resource intelligence.",
       handler: "funding-intelligence-network",
+      autonomyCapability: "opportunities",
       intervalMs: CONTINUOUS_OPERATIONS_DEFAULT_INTERVAL_MS,
       nextRunAt: now,
       priority: 100,
@@ -12306,8 +13989,8 @@ async function ensureContinuousOperationsStandingMissions() {
         fundingIntelligenceVersion:
           FUNDING_INTELLIGENCE_VERSION
       }
-    }
-  ];
+    });
+  }
 
   const jobs = [];
 
@@ -12701,9 +14384,21 @@ async function completeContinuousOperationsJob(
         ? 0
         : Number(current.consecutiveFailures || 0) + 1;
 
+      const handlerSchedule =
+        successful &&
+        execution?.schedule &&
+        typeof execution.schedule === "object"
+          ? execution.schedule
+          : null;
       const updatedJob = {
         ...current,
-        status: successful ? "scheduled" : "retry-scheduled",
+        enabled:
+          handlerSchedule?.enabled === undefined
+            ? current.enabled
+            : handlerSchedule.enabled === true,
+        status: successful
+          ? (handlerSchedule?.status || "scheduled")
+          : "retry-scheduled",
         lease: null,
         runCount: Number(current.runCount || 0) + 1,
         successCount:
@@ -12729,10 +14424,11 @@ async function completeContinuousOperationsJob(
                 "The office handler reported failure."
             },
         nextRunAt: successful
-          ? calculateContinuousOperationsNextRun(
-              current,
-              completedAt
-            )
+          ? (handlerSchedule?.nextRunAt ||
+              calculateContinuousOperationsNextRun(
+                current,
+                completedAt
+              ))
           : calculateContinuousOperationsRetry(
               {
                 ...current,
@@ -12884,7 +14580,7 @@ async function executeContinuousOperationsJob(job) {
 
 async function continuousOperationsTick() {
   if (
-    !CONTINUOUS_OPERATIONS_ENABLED ||
+    !continuousOperationsRuntimeEnabled() ||
     continuousOperationsState.tickInProgress
   ) {
     return;
@@ -12905,6 +14601,7 @@ async function continuousOperationsTick() {
 
         return (
           job.enabled !== false &&
+          autonomyContinuousOperationsJobAuthorized(job) &&
           (!Number.isFinite(nextRun) || nextRun <= now) &&
           !continuousOperationsState.activeJobIds.has(job.id)
         );
@@ -12941,18 +14638,69 @@ async function continuousOperationsTick() {
     );
   } finally {
     continuousOperationsState.tickInProgress = false;
-    continuousOperationsState.nextTickAt = new Date(
-      Date.now() + CONTINUOUS_OPERATIONS_TICK_MS
-    ).toISOString();
   }
 }
 
+async function calculateContinuousOperationsNextDelayMs() {
+  const heartbeatCeiling = Math.max(1000, CONTINUOUS_OPERATIONS_TICK_MS);
+  try {
+    const jobs = await getContinuousOperationsJobs();
+    const now = Date.now();
+    let earliest = Number.POSITIVE_INFINITY;
+    for (const job of jobs) {
+      if (
+        job?.enabled === false ||
+        !autonomyContinuousOperationsJobAuthorized(job) ||
+        continuousOperationsState.activeJobIds.has(job.id)
+      ) {
+        continue;
+      }
+      const nextRun = Date.parse(job.nextRunAt || 0);
+      if (!Number.isFinite(nextRun)) return 25;
+      earliest = Math.min(earliest, nextRun);
+    }
+    if (!Number.isFinite(earliest)) return heartbeatCeiling;
+    return Math.max(25, Math.min(heartbeatCeiling, earliest - now));
+  } catch {
+    return heartbeatCeiling;
+  }
+}
+
+async function scheduleContinuousOperationsTimer(options = {}) {
+  if (!continuousOperationsRuntimeEnabled()) {
+    return pauseContinuousOperationsRuntime(
+      options.reason || "autonomy-authority-off"
+    );
+  }
+
+  const delayMs = await calculateContinuousOperationsNextDelayMs();
+  if (continuousOperationsState.timer) {
+    clearTimeout(continuousOperationsState.timer);
+    continuousOperationsState.timer = null;
+  }
+  continuousOperationsState.nextTickAt = new Date(
+    Date.now() + delayMs
+  ).toISOString();
+  continuousOperationsState.timer = setTimeout(async () => {
+    continuousOperationsState.timer = null;
+    await continuousOperationsTick();
+    await scheduleContinuousOperationsTimer({ reason: "deadline-aware-loop" });
+  }, delayMs);
+  continuousOperationsState.timer.unref?.();
+  return {
+    enabled: true,
+    scheduled: true,
+    delayMs,
+    nextTickAt: continuousOperationsState.nextTickAt
+  };
+}
+
 async function startContinuousOperationsRuntime() {
-  if (!CONTINUOUS_OPERATIONS_ENABLED) {
-    continuousOperationsState.status = "disabled";
+  if (!continuousOperationsRuntimeEnabled()) {
+    continuousOperationsState.status = "paused-by-authority";
     return {
       enabled: false,
-      status: "disabled"
+      status: "paused-by-authority"
     };
   }
 
@@ -12971,20 +14719,17 @@ async function startContinuousOperationsRuntime() {
   await recoverExpiredContinuousOperationsLeases();
   await continuousOperationsTick();
 
-  continuousOperationsState.timer = setInterval(
-    () => {
-      void continuousOperationsTick();
-    },
-    CONTINUOUS_OPERATIONS_TICK_MS
-  );
-
-  continuousOperationsState.timer.unref?.();
+  const scheduled = await scheduleContinuousOperationsTimer({
+    reason: "runtime-start"
+  });
 
   return {
     enabled: true,
     status: continuousOperationsState.status,
     version: CONTINUOUS_OPERATIONS_VERSION,
-    tickMs: CONTINUOUS_OPERATIONS_TICK_MS
+    tickMs: CONTINUOUS_OPERATIONS_TICK_MS,
+    schedulerMode: "deadline-aware-timeout",
+    nextTickAt: scheduled?.nextTickAt || continuousOperationsState.nextTickAt
   };
 }
 
@@ -12995,12 +14740,13 @@ async function getContinuousOperationsStatus() {
   return {
     schema: "meos.continuous-operations.status.v1",
     version: CONTINUOUS_OPERATIONS_VERSION,
-    enabled: CONTINUOUS_OPERATIONS_ENABLED,
+    enabled: continuousOperationsRuntimeEnabled(),
     status: continuousOperationsState.status,
     startedAt: continuousOperationsState.startedAt,
     lastTickAt: continuousOperationsState.lastTickAt,
     nextTickAt: continuousOperationsState.nextTickAt,
     tickMs: CONTINUOUS_OPERATIONS_TICK_MS,
+    schedulerMode: "deadline-aware-timeout",
     leaseMs: CONTINUOUS_OPERATIONS_LEASE_MS,
     activeJobIds: [
       ...continuousOperationsState.activeJobIds
@@ -13014,8 +14760,54 @@ async function getContinuousOperationsStatus() {
     handlerIds: [
       ...continuousOperationsHandlers.keys()
     ],
-    jobs,
+    jobs: jobs.map(job => ({
+      ...job,
+      autonomyCapability: autonomyContinuousOperationsJobCapability(job),
+      autonomyAuthorized: autonomyContinuousOperationsJobAuthorized(job)
+    })),
     recentRuns: runs
+  };
+}
+
+function pauseContinuousOperationsRuntime(reason = "autonomy-authority-off") {
+  if (continuousOperationsState.timer) {
+    clearTimeout(continuousOperationsState.timer);
+    continuousOperationsState.timer = null;
+  }
+  continuousOperationsState.status = "paused-by-authority";
+  continuousOperationsState.nextTickAt = null;
+  continuousOperationsState.lastError = null;
+  return {
+    enabled: false,
+    status: continuousOperationsState.status,
+    reason
+  };
+}
+
+async function reconcileAutonomyRuntimeState() {
+  const cognition = continuousCognitionRuntimeEnabled()
+    ? await startContinuousCognitionRuntime()
+    : pauseContinuousCognitionRuntime();
+
+  const operations = continuousOperationsRuntimeEnabled()
+    ? await startContinuousOperationsRuntime()
+    : pauseContinuousOperationsRuntime();
+
+  autonomousLearningIgnitionState.enabled =
+    autonomousLearningRuntimeEnabled();
+  continuousCognitionRuntimeState.enabled =
+    continuousCognitionRuntimeEnabled();
+
+  return {
+    schema: "meos.autonomy-authority.runtime-reconciliation.v1",
+    at: autonomyNow(),
+    masterEnabled:
+      autonomyAuthorityState.policy?.masterEnabled === true,
+    cognition,
+    operations,
+    autonomousLearningEnabled: autonomousLearningRuntimeEnabled(),
+    opportunitiesHardBlocked:
+      Boolean(AUTONOMY_SERVER_BLOCKED_CAPABILITIES.opportunities)
   };
 }
 
@@ -13670,6 +15462,420 @@ app.post(
   }
 );
 
+
+/**
+ * Commission 006.031A — Maddy Autonomy Authority API
+ *
+ * The Executive dashboard will use this compact authority surface. Read/write
+ * requires either an authenticated account or the already-commissioned trusted
+ * same-origin founder runtime. No browser/localStorage state can become the
+ * authority merely by rendering a toggle.
+ */
+function publicAutonomyPolicy(policy = autonomyAuthorityState.policy) {
+  const normalized = normalizeAutonomyPolicy(policy);
+  return {
+    schema: normalized.schema,
+    commission: normalized.commission,
+    version: normalized.version,
+    buildId: normalized.buildId,
+    tenantId: normalized.tenantId,
+    revision: normalized.revision,
+    masterEnabled: normalized.masterEnabled,
+    capabilities: autonomyClone(normalized.capabilities),
+    providerAutonomousUse: autonomyClone(
+      normalized.providerAutonomousUse
+    ),
+    providerBillingDisclosure: autonomyClone(
+      normalized.providerBillingDisclosure
+    ),
+    economicAuthority: autonomyClone(normalized.economicAuthority),
+    externalAuthority: autonomyClone(normalized.externalAuthority),
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
+    updatedBy: autonomyClone(normalized.updatedBy)
+  };
+}
+
+function runAutonomyAuthorityAcceptanceTest() {
+  const base = buildDefaultAutonomyAuthorityPolicy();
+  const principal = {
+    id: "acceptance:executive",
+    mode: "acceptance-test"
+  };
+
+  const enabled = applyAutonomyAuthorityPatch(
+    base,
+    {
+      masterEnabled: true,
+      capabilities: {
+        continuousCognition: true,
+        learning: true
+      },
+      providerAutonomousUse: {
+        publicWeb: true
+      },
+      providerBillingDisclosureAcknowledged: true
+    },
+    principal
+  );
+
+  let blockedOpportunity = false;
+  try {
+    applyAutonomyAuthorityPatch(
+      base,
+      { capabilities: { opportunities: true } },
+      principal
+    );
+  } catch (error) {
+    blockedOpportunity =
+      error?.code === "AUTONOMY_CAPABILITY_BLOCKED";
+  }
+
+  let providerAckRequired = false;
+  try {
+    applyAutonomyAuthorityPatch(
+      base,
+      { providerAutonomousUse: { elevenlabs: true } },
+      principal
+    );
+  } catch (error) {
+    providerAckRequired =
+      error?.code === "AUTONOMY_PROVIDER_BILLING_ACK_REQUIRED";
+  }
+
+  let economicExpansionRejected = false;
+  try {
+    applyAutonomyAuthorityPatch(
+      base,
+      { economicAuthority: { automaticSpendUsd: 10 } },
+      principal
+    );
+  } catch (error) {
+    economicExpansionRejected =
+      error?.code === "AUTONOMY_AUTHORITY_BOUNDARY_IMMUTABLE";
+  }
+
+  const checks = [
+    {
+      name: "Every customer autonomy capability defaults OFF",
+      passed: AUTONOMY_CAPABILITY_IDS.every(
+        id => base.capabilities[id] === false
+      )
+    },
+    {
+      name: "Every provider autonomous-use authority defaults OFF",
+      passed: AUTONOMY_PROVIDER_IDS.every(
+        id => base.providerAutonomousUse[id] === false
+      )
+    },
+    {
+      name: "Master autonomy defaults OFF",
+      passed: base.masterEnabled === false
+    },
+    {
+      name: "Legacy environment flag cannot itself grant autonomy",
+      passed:
+        base.masterEnabled === false &&
+        getAutonomyAuthorityStatus().infrastructure
+          .legacyEnvGrantsAuthority === false
+    },
+    {
+      name: "A bounded authority patch can enable internal cognition without changing economic/external authority",
+      passed:
+        enabled.policy.masterEnabled === true &&
+        enabled.policy.capabilities.continuousCognition === true &&
+        enabled.policy.economicAuthority.automaticSpendUsd === 0 &&
+        enabled.policy.externalAuthority.externalActionAuthorized === false
+    },
+    {
+      name: "Autonomous learning requires separately authorized public-web use",
+      passed:
+        enabled.policy.capabilities.learning === true &&
+        enabled.policy.providerAutonomousUse.publicWeb === true
+    },
+    {
+      name: "Opportunity Patrol is hard-blocked before canonical ownership/storage repair",
+      passed: blockedOpportunity
+    },
+    {
+      name: "Dashboard policy cannot grant spending or consequential external-action authority",
+      passed: economicExpansionRejected
+    },
+    {
+      name: "Automatic MEOS spend remains zero and MEOS does not advance customer third-party spend",
+      passed:
+        AUTONOMY_ECONOMIC_BOUNDARY.automaticSpendUsd === 0 &&
+        AUTONOMY_ECONOMIC_BOUNDARY.meosAdvancesThirdPartySpend === false
+    },
+    {
+      name: "Provider disable contract explicitly does not claim to cancel third-party subscriptions",
+      passed:
+        /does not cancel/i.test(
+          AUTONOMY_PROVIDER_CONTROL_CONTRACT.disableMeaning
+        )
+    },
+    {
+      name: "First provider authority change requires the billing-control acknowledgement",
+      passed: providerAckRequired
+    },
+    {
+      name: "Accepted provider billing disclosure is durable policy state rather than a browser-only checkbox",
+      passed:
+        Boolean(enabled.policy.providerBillingDisclosure?.acknowledgedAt) &&
+        enabled.policy.providerBillingDisclosure?.version ===
+          AUTONOMY_PROVIDER_BILLING_DISCLOSURE_VERSION
+    },
+    {
+      name: "Unknown Continuous Operations jobs receive no implicit autonomous authority",
+      passed:
+        autonomyContinuousOperationsJobCapability({
+          id: "unknown-job",
+          handler: "unknown-handler"
+        }) === null
+    },
+    {
+      name: "Funding Continuous Operations jobs map to the blocked opportunities authority",
+      passed:
+        autonomyContinuousOperationsJobCapability({
+          id: "standing-funding-office-pipeline",
+          handler: "funding-intelligence-network"
+        }) === "opportunities"
+    },
+    {
+      name: "Autonomy authority is server/institutional and never browser authority",
+      passed: getAutonomyAuthorityStatus().persistence.browserAuthority === false
+    },
+    {
+      name: "Authority changes produce an auditable revision receipt",
+      passed:
+        enabled.changed === true &&
+        enabled.receipt?.revision === 1 &&
+        enabled.receipt?.changedPaths?.includes("masterEnabled")
+    }
+  ];
+
+  return {
+    success: checks.every(check => check.passed),
+    passed: checks.every(check => check.passed),
+    commission: AUTONOMY_AUTHORITY_COMMISSION,
+    schema: "meos.autonomy-authority.acceptance.v1",
+    version: AUTONOMY_AUTHORITY_VERSION,
+    buildId: AUTONOMY_AUTHORITY_BUILD_ID,
+    serverVersion: VERSION,
+    checks,
+    defaultPolicy: publicAutonomyPolicy(base),
+    currentStatus: getAutonomyAuthorityStatus()
+  };
+}
+
+app.get("/api/autonomy", async (request, response) => {
+  try {
+    const principal = await resolveAutonomyPrincipal(request);
+    if (!principal) {
+      response.status(401).json({
+        success: false,
+        error: "trusted_runtime_required",
+        message:
+          "Maddy Autonomy controls require an authenticated account or trusted same-origin Executive runtime."
+      });
+      return;
+    }
+
+    try {
+      await readAutonomyAuthorityPolicy();
+    } catch (_) {
+      // readAutonomyAuthorityPolicy already failed closed and recorded status.
+    }
+
+    response.status(200).json({
+      success: true,
+      principal: {
+        id: principal.id,
+        mode: principal.mode
+      },
+      policy: publicAutonomyPolicy(),
+      status: getAutonomyAuthorityStatus()
+    });
+  } catch (error) {
+    response.status(error?.status || 500).json({
+      success: false,
+      error: error?.code || "AUTONOMY_AUTHORITY_STATUS_FAILED",
+      message: error?.message || String(error)
+    });
+  }
+});
+
+app.put(
+  "/api/autonomy",
+  express.json({ limit: "32kb", strict: true }),
+  async (request, response) => {
+    try {
+      const principal = await resolveAutonomyPrincipal(request);
+      if (!principal) {
+        response.status(401).json({
+          success: false,
+          error: "trusted_runtime_required",
+          message:
+            "Maddy Autonomy changes require an authenticated account or trusted same-origin Executive runtime."
+        });
+        return;
+      }
+
+      const result = await updateAutonomyAuthorityPolicy(
+        request.body || {},
+        principal
+      );
+
+      response.status(200).json({
+        success: true,
+        changed: result.changed,
+        receipt: result.receipt,
+        policy: publicAutonomyPolicy(result.policy),
+        status: getAutonomyAuthorityStatus()
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        success: false,
+        error: error?.code || "AUTONOMY_AUTHORITY_UPDATE_FAILED",
+        message: error?.message || String(error),
+        details: error?.details || null,
+        status: getAutonomyAuthorityStatus()
+      });
+    }
+  }
+);
+
+app.get("/api/autonomy/acceptance-test", (request, response) => {
+  const result = runAutonomyAuthorityAcceptanceTest();
+  response.status(result.success ? 200 : 500).json(result);
+});
+
+
+/**
+ * Commission 006.031L — Durable Maddy Time API
+ *
+ * Human-directed schedule creation remains available while autonomy is OFF.
+ * Firing is controlled separately by durable Time & Deadlines authority.
+ */
+app.get("/api/maddy-time", async (request, response) => {
+  try {
+    response.status(200).json(await getMaddyTimeStatus());
+  } catch (error) {
+    response.status(error.status || 500).json({
+      error: error?.message || "Maddy Time status could not be read.",
+      code: error?.code || "MADDY_TIME_STATUS_FAILED"
+    });
+  }
+});
+
+app.get("/api/maddy-time/acceptance-test", (request, response) => {
+  const result = runMaddyTimeAcceptanceTest();
+  response.status(result.success ? 200 : 500).json(result);
+});
+
+app.put(
+  "/api/maddy-time/commitments/:commitmentId",
+  express.json({ limit: "32kb", strict: true }),
+  async (request, response) => {
+    try {
+      const principal = await resolveAutonomyPrincipal(request);
+      if (!principal) {
+        response.status(401).json({
+          error: "Maddy Time schedule changes require an authenticated or trusted same-origin executive principal.",
+          code: "MADDY_TIME_PRINCIPAL_REQUIRED"
+        });
+        return;
+      }
+      const commitment = await upsertMaddyTimeCommitment({
+        ...(request.body || {}),
+        id: request.params.commitmentId
+      }, principal);
+      response.status(200).json({
+        schema: "meos.maddy-time.commitment-write.v1",
+        commitment,
+        firingAuthorized: autonomyCapabilityEffective("timeAndDeadlines")
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error?.message || "Maddy Time commitment could not be saved.",
+        code: error?.code || "MADDY_TIME_COMMITMENT_WRITE_FAILED",
+        details: error?.details || null
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/maddy-time/commitments/:commitmentId/cancel",
+  express.json({ limit: "8kb", strict: true }),
+  async (request, response) => {
+    try {
+      const principal = await resolveAutonomyPrincipal(request);
+      if (!principal) {
+        response.status(401).json({
+          error: "Maddy Time cancellation requires an authenticated or trusted same-origin executive principal.",
+          code: "MADDY_TIME_PRINCIPAL_REQUIRED"
+        });
+        return;
+      }
+      const commitment = await cancelMaddyTimeCommitment(
+        request.params.commitmentId,
+        principal,
+        request.body?.reason || "human-cancelled"
+      );
+      if (!commitment) {
+        response.status(404).json({
+          error: "Maddy Time commitment was not found.",
+          code: "MADDY_TIME_COMMITMENT_NOT_FOUND"
+        });
+        return;
+      }
+      response.status(200).json({
+        schema: "meos.maddy-time.commitment-cancel.v1",
+        commitment
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error?.message || "Maddy Time commitment could not be cancelled.",
+        code: error?.code || "MADDY_TIME_COMMITMENT_CANCEL_FAILED"
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/maddy-time/events/:eventId/acknowledge",
+  express.json({ limit: "8kb", strict: true }),
+  async (request, response) => {
+    try {
+      const principal = await resolveAutonomyPrincipal(request);
+      if (!principal) {
+        response.status(401).json({
+          error: "Maddy Time event acknowledgement requires an authenticated or trusted same-origin executive principal.",
+          code: "MADDY_TIME_PRINCIPAL_REQUIRED"
+        });
+        return;
+      }
+      const event = await acknowledgeMaddyTimeEvent(request.params.eventId, principal);
+      if (!event) {
+        response.status(404).json({
+          error: "Maddy Time event was not found.",
+          code: "MADDY_TIME_EVENT_NOT_FOUND"
+        });
+        return;
+      }
+      response.status(200).json({
+        schema: "meos.maddy-time.event-acknowledgement.v1",
+        event
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error?.message || "Maddy Time event could not be acknowledged.",
+        code: error?.code || "MADDY_TIME_EVENT_ACK_FAILED"
+      });
+    }
+  }
+);
 
 /**
  * Continuous Operations Runtime API
@@ -18606,10 +20812,10 @@ app.get("/health", async (request, response) => {
   const continuousOperations = {
     schema: "meos.continuous-operations.health.v1",
     version: CONTINUOUS_OPERATIONS_VERSION,
-    enabled: CONTINUOUS_OPERATIONS_ENABLED,
-    status: CONTINUOUS_OPERATIONS_ENABLED
+    enabled: continuousOperationsRuntimeEnabled(),
+    status: continuousOperationsRuntimeEnabled()
       ? continuousOperationsState.status
-      : "disabled",
+      : "paused-by-authority",
     startedAt: continuousOperationsState.startedAt,
     lastTickAt: continuousOperationsState.lastTickAt,
     nextTickAt: continuousOperationsState.nextTickAt,
@@ -18641,12 +20847,21 @@ app.get("/health", async (request, response) => {
     voiceEngine: VOICE_ENGINE_VERSION,
     status: "online",
     runtimeResourceControl: {
-      mode: AUTONOMOUS_RUNTIME_ENABLED ? "autonomous" : "cockpit-only",
-      masterAutonomousRuntimeEnabled: AUTONOMOUS_RUNTIME_ENABLED,
-      continuousCognitionEnabled: CONTINUOUS_COGNITION_RUNTIME_ENABLED,
-      continuousOperationsEnabled: CONTINUOUS_OPERATIONS_ENABLED,
+      mode: autonomyAuthorityState.policy?.masterEnabled === true
+        ? "governed-autonomy"
+        : "cockpit-only",
+      autonomyInfrastructureAvailable: !AUTONOMY_RUNTIME_HARD_DISABLED,
+      hardRuntimeDisabled: AUTONOMY_RUNTIME_HARD_DISABLED,
+      legacyAutonomousRuntimeEnvRequested:
+        LEGACY_AUTONOMOUS_RUNTIME_ENV_REQUESTED,
+      legacyEnvGrantsAuthority: false,
+      masterAutonomyAuthorized:
+        autonomyAuthorityState.policy?.masterEnabled === true,
+      continuousCognitionEnabled: continuousCognitionRuntimeEnabled(),
+      continuousOperationsEnabled: continuousOperationsRuntimeEnabled(),
       healthProbePolicy: "resident-telemetry-only-no-durable-fanout"
     },
+    autonomyAuthority: getAutonomyAuthorityStatus(),
     continuousCognition: getContinuousCognitionRuntimeStatus(),
     providers: {
       openai: OPENAI_API_KEY ? "configured" : "missing",
@@ -23847,43 +26062,54 @@ app.listen(PORT, () => {
   });
 
   /*
-   * Commission 006.017D7M2 — Independent Cognitive Runtime Lifecycle
+   * Commission 006.031A — Durable Maddy Autonomy Authority Startup
    *
-   * The cognitive heartbeat is a first-class server lifecycle service. It must
-   * not wait behind unrelated startup work such as funding registry hydration,
-   * resource-office initialization, or Continuous Operations startup.
-   *
-   * The startup function is idempotent and only schedules the first bounded
-   * wake. The heartbeat itself retains all D7M authority guards.
+   * Load durable authority first, fail closed to all-OFF if it cannot be
+   * proven, then reconcile runtime services. Funding startup is no longer
+   * coupled to a broad environment flag and remains hard-blocked by this
+   * commission until Opportunity Ownership/storage repair is separately proven.
    */
-  startContinuousCognitionRuntime()
-    .then(cognitionStatus => {
-      console.log(
-        `[MEOS] Durable Cognitive Runtime ` +
-          `v${CONTINUOUS_COGNITION_RUNTIME_VERSION} ${cognitionStatus.status}. ` +
-          `enabled=${cognitionStatus.enabled}, ` +
-          `owner=${cognitionStatus.runtimeOwner}, ` +
-          `build=${CONTINUOUS_COGNITION_RUNTIME_BUILD_ID}.`
-      );
-    })
-    .catch(error => {
-      continuousCognitionRuntimeState.status = "degraded";
-      continuousCognitionRuntimeState.lastError = {
-        code: error?.code || "CONTINUOUS_COGNITION_START_FAILED",
-        message: error?.message || String(error),
-        at: new Date().toISOString()
-      };
-      console.error(
-        "[MEOS] Durable Cognitive Runtime failed to start:",
-        error
-      );
-    });
-
   (async () => {
-    if (AUTONOMOUS_RUNTIME_ENABLED) {
+    const autonomyStatus = await initializeAutonomyAuthority();
+    const runtimeReconciliation = await reconcileAutonomyRuntimeState();
+
+    console.log(
+      `[MEOS] Maddy Autonomy Authority ` +
+        `v${AUTONOMY_AUTHORITY_VERSION} ${autonomyStatus.status}. ` +
+        `master=${autonomyStatus.masterEnabled}, ` +
+        `hardDisabled=${autonomyStatus.infrastructure.hardDisabled}, ` +
+        `provider=${autonomyStatus.persistence.providerId || "none"}, ` +
+        `build=${AUTONOMY_AUTHORITY_BUILD_ID}.`
+    );
+
+    console.log(
+      `[MEOS] Durable Cognitive Runtime ` +
+        `v${CONTINUOUS_COGNITION_RUNTIME_VERSION} ` +
+        `${runtimeReconciliation.cognition.status}. ` +
+        `enabled=${runtimeReconciliation.cognition.enabled}, ` +
+        `owner=${runtimeReconciliation.cognition.runtimeOwner}, ` +
+        `build=${CONTINUOUS_COGNITION_RUNTIME_BUILD_ID}.`
+    );
+
+    console.log(
+      `[MEOS] Continuous Operations Runtime ` +
+        `v${CONTINUOUS_OPERATIONS_VERSION} ` +
+        `${runtimeReconciliation.operations.status}. ` +
+        `enabled=${runtimeReconciliation.operations.enabled}, ` +
+        `tickMs=${CONTINUOUS_OPERATIONS_TICK_MS}.`
+    );
+
+    console.log(
+      `[MEOS] Maddy Time Runtime ` +
+        `v${MADDY_TIME_VERSION} ready. ` +
+        `timeAuthority=${autonomyCapabilityEffective("timeAndDeadlines")}, ` +
+        `owner=continuous-operations, ` +
+        `build=${MADDY_TIME_BUILD_ID}.`
+    );
+
+    if (autonomyCapabilityEffective("opportunities")) {
       try {
-        const fundingRegistry =
-          await ensureFundingSourceRegistry();
+        const fundingRegistry = await ensureFundingSourceRegistry();
 
         fundingIntelligenceState.status = "online";
 
@@ -23897,21 +26123,9 @@ app.listen(PORT, () => {
           `[MEOS] Autonomous Executive Qualification ` +
             `v${FUNDING_QUALIFICATION_VERSION} ready.`
         );
-      } catch (error) {
-        fundingIntelligenceState.status = "degraded";
-        fundingIntelligenceState.lastError =
-          error?.message || String(error);
 
-        console.error(
-          "[MEOS] Funding Intelligence registry failed to initialize:",
-          error
-        );
-      }
-
-      try {
         const resourceStatus =
-          await executiveResourceDevelopmentOffice
-            .initialize();
+          await executiveResourceDevelopmentOffice.initialize();
 
         console.log(
           `[MEOS] Executive Resource Development Office ` +
@@ -23920,38 +26134,34 @@ app.listen(PORT, () => {
             `desk=${resourceStatus.executiveDeskTotal}.`
         );
       } catch (error) {
+        fundingIntelligenceState.status = "degraded";
+        fundingIntelligenceState.lastError =
+          error?.message || String(error);
+
         console.error(
-          "[MEOS] Executive Resource Development Office failed to initialize:",
+          "[MEOS] Funding Intelligence autonomous startup failed:",
           error
         );
       }
     } else {
       fundingIntelligenceState.status = "paused";
       console.log(
-        "[MEOS] Autonomous runtime is OFF. Funding registry/rebuild startup work deferred; cockpit/API remains available."
+        "[MEOS] Opportunity Patrol remains OFF/BLOCKED. Funding registry/rebuild startup work deferred; cockpit/API remains available."
       );
     }
-
-    try {
-      const runtimeStatus =
-        await startContinuousOperationsRuntime();
-
-      console.log(
-        `[MEOS] Continuous Operations Runtime ` +
-          `v${CONTINUOUS_OPERATIONS_VERSION} ${runtimeStatus.status}. ` +
-          `enabled=${runtimeStatus.enabled}, ` +
-          `tickMs=${runtimeStatus.tickMs || 0}.`
-      );
-    } catch (error) {
-      continuousOperationsState.status = "degraded";
-      continuousOperationsState.lastError =
-        error?.message || String(error);
-
-      console.error(
-        "[MEOS] Continuous Operations Runtime failed to start:",
-        error
-      );
-    }
-
-  })();
+  })().catch(error => {
+    autonomyAuthorityState.status = "degraded-safe-off";
+    autonomyAuthorityState.lastError = {
+      code: error?.code || "AUTONOMY_AUTHORITY_STARTUP_FAILED",
+      message: error?.message || String(error),
+      at: autonomyNow()
+    };
+    pauseContinuousCognitionRuntime("autonomy-startup-failure");
+    pauseContinuousOperationsRuntime("autonomy-startup-failure");
+    fundingIntelligenceState.status = "paused";
+    console.error(
+      "[MEOS] Autonomy Authority startup failed closed; autonomous execution remains OFF:",
+      error
+    );
+  });
 });
