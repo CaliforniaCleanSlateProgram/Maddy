@@ -16,7 +16,7 @@
  * - Operate governed autonomous runtime capabilities only when durable authority permits.
  * - Run durable Maddy Time commitments on the existing Continuous Operations lease/restart chassis.
  * - Operate the Funding Intelligence Network only when its explicit capability authority is enabled.
- * - Provide secure, read-only Google Workspace authorization and access.
+ * - Provide secure, governed Google Workspace read/write authorization and access.
  */
 
 import express from "express";
@@ -39,7 +39,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.74";
+const VERSION = "2.10.75";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -253,9 +253,12 @@ function registerResourceDiscoveryAdapters() {
 }
 
 
-const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.5.4";
+const GOOGLE_WORKSPACE_INTEGRATION_VERSION = "1.6.0";
 const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
-  "GWI154-INSTITUTIONAL-REPOSITORY-ACCEPTANCE-BRIDGE-20260808-A";
+  "GWI160-GOVERNED-WORKSPACE-EXECUTION-BRIDGE-20260817-A";
+const GOOGLE_WORKSPACE_EXECUTION_COMMISSION = "006.032B";
+const GOOGLE_WORKSPACE_EXECUTION_BUILD_ID =
+  "GWE100-GOVERNED-DOCS-SHEETS-CALENDAR-EXECUTION-20260817-A";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -19893,7 +19896,7 @@ app.get("/api/website-intelligence/fetch", async (request, response) => {
 
 
 /* ========================================================================== */
-/* MEOS Google Workspace Integration v1.0.0 — Read-Only Authorization Layer   */
+/* MEOS Google Workspace Integration v1.6.0 — Governed Read/Write Bridge      */
 /* ========================================================================== */
 
 app.get("/api/google/status", async (request, response) => {
@@ -20321,18 +20324,27 @@ app.get(
       const durableAuthorization =
         result?.durableAuthorization || {};
 
-      const bootstrapSection =
-        durableAuthorization.needsBootstrap &&
-        durableAuthorization.refreshToken
-          ? `<section style="margin-top:24px;padding:16px;border:2px solid #b7791f;max-width:760px;">
-    <h2>One-time free-tier durability step</h2>
-    <p>Render Free does not keep local files after a deploy. Copy the secret below into Render as an environment variable named <strong>GOOGLE_WORKSPACE_REFRESH_TOKEN</strong>. After you save it, Render will redeploy and MEOS will restore Google automatically on future restarts.</p>
+      const refreshTokenActionRequired =
+        Boolean(durableAuthorization.refreshToken) &&
+        (
+          durableAuthorization.needsBootstrap === true ||
+          durableAuthorization.needsRotation === true
+        );
+
+      const bootstrapSection = refreshTokenActionRequired
+        ? `<section style="margin-top:24px;padding:16px;border:2px solid #b7791f;max-width:760px;">
+    <h2>${durableAuthorization.needsRotation === true
+      ? "Google authorization scope upgrade — refresh token update required"
+      : "One-time Google authorization durability step"}</h2>
+    <p>${durableAuthorization.needsRotation === true
+      ? "Google issued a refresh token for the upgraded Workspace scopes. Replace the existing Render environment variable GOOGLE_WORKSPACE_REFRESH_TOKEN with the value below so the new authorization survives the next restart. This does not change Render billing."
+      : "Copy the secret below into Render as an environment variable named GOOGLE_WORKSPACE_REFRESH_TOKEN so MEOS can restore Google authorization after future restarts. This does not change Render billing."}</p>
     <p><strong>Treat this value like a password. Do not put it in GitHub or share it.</strong></p>
     <textarea readonly rows="5" style="width:100%;font-family:monospace;">${String(
       durableAuthorization.refreshToken
     ).replace(/[<>&]/g, "")}</textarea>
   </section>`
-          : `<p>Durable Google authorization is configured for server restarts.</p>`;
+        : `<p>Durable Google authorization is configured for server restarts.</p>`;
 
       response.status(200).send(`<!doctype html>
 <html lang="en">
@@ -20344,10 +20356,10 @@ app.get(
 <body>
   <main>
     <h1>Google Workspace connected.</h1>
-    <p>MEOS now has read-only access authorized by ${String(
+    <p>MEOS Google Workspace authorization was updated for ${String(
       result.account?.emailAddress || "the approved Workspace account"
     ).replace(/[<>&'"]/g, "")}.</p>
-    <p>No files can be created, changed, moved, or deleted in this release.</p>
+    <p>Granted capability is reported by the live provider status. Google OAuth permission is technical capability only; MEOS authority rules still govern whether Maddy may execute a write or external action.</p>
     ${bootstrapSection}
     <p><a href="/api/google/status">View connection status</a></p>
     <p><a href="/">Return to MEOS</a></p>
@@ -20384,6 +20396,514 @@ app.get(
   }
 );
 
+
+
+/* ========================================================================== */
+/* Commission 006.032B — Governed Google Workspace Execution Bridge           */
+/* ========================================================================== */
+
+function workspaceExecutionMode(request) {
+  const body = request?.body && typeof request.body === "object"
+    ? request.body
+    : {};
+  const execution = body.execution && typeof body.execution === "object"
+    ? body.execution
+    : {};
+  const autonomous =
+    body.autonomous === true ||
+    body.machineInitiated === true ||
+    execution.autonomous === true ||
+    execution.machineInitiated === true;
+  const humanDirected =
+    body.humanDirected === true ||
+    execution.humanDirected === true ||
+    !autonomous;
+
+  return {
+    autonomous,
+    machineInitiated: autonomous,
+    humanDirected,
+    source:
+      String(execution.source || body.source || "").trim() ||
+      (autonomous
+        ? "autonomous-workspace-execution"
+        : "human-directed-workspace-execution")
+  };
+}
+
+async function resolveGoogleWorkspaceExecutionAuthority(
+  request,
+  { externalAction = false } = {}
+) {
+  const principal = await resolveAutonomyPrincipal(request);
+  if (!principal) {
+    return {
+      allowed: false,
+      status: 401,
+      code: "GOOGLE_WORKSPACE_EXECUTION_PRINCIPAL_REQUIRED",
+      reason:
+        "Google Workspace execution requires an authenticated account or trusted same-origin Executive runtime."
+    };
+  }
+
+  const mode = workspaceExecutionMode(request);
+
+  if (externalAction && mode.autonomous) {
+    return {
+      allowed: false,
+      status: 403,
+      code: "GOOGLE_WORKSPACE_EXTERNAL_ACTION_HUMAN_AUTHORITY_REQUIRED",
+      reason:
+        "Calendar mutations are external actions and cannot be self-authorized by standing autonomy.",
+      principal,
+      mode
+    };
+  }
+
+  if (mode.autonomous) {
+    if (!autonomyCapabilityEffective("approvedWork")) {
+      return {
+        allowed: false,
+        status: 403,
+        code: "GOOGLE_WORKSPACE_APPROVED_WORK_AUTONOMY_REQUIRED",
+        reason:
+          "Autonomous Workspace execution requires effective Approved Work authority.",
+        principal,
+        mode
+      };
+    }
+
+    if (!autonomyProviderEffective("googleWorkspace")) {
+      return {
+        allowed: false,
+        status: 403,
+        code: "GOOGLE_WORKSPACE_AUTONOMOUS_PROVIDER_USE_REQUIRED",
+        reason:
+          "Autonomous Workspace execution requires effective Google Workspace provider-use authority.",
+        principal,
+        mode
+      };
+    }
+  }
+
+  return {
+    allowed: true,
+    status: 200,
+    principal,
+    mode,
+    receipt: {
+      schema: "meos.google-workspace.execution-authority-receipt.v1",
+      commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+      buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+      principal: {
+        id: principal.id,
+        mode: principal.mode
+      },
+      autonomous: mode.autonomous,
+      humanDirected: mode.humanDirected,
+      approvedWorkAuthorized:
+        mode.autonomous
+          ? autonomyCapabilityEffective("approvedWork")
+          : false,
+      googleWorkspaceAutonomousUseAuthorized:
+        mode.autonomous
+          ? autonomyProviderEffective("googleWorkspace")
+          : false,
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0,
+      capturedAt: new Date().toISOString()
+    }
+  };
+}
+
+function googleWorkspaceCapabilityReady(status, capability) {
+  return status?.connected === true && status?.capabilities?.[capability] === true;
+}
+
+function googleWorkspaceCapabilityError(capability, label) {
+  const error = new Error(
+    `${label} is not authorized by the currently granted Google Workspace OAuth scopes.`
+  );
+  error.status = 403;
+  error.code = "GOOGLE_WORKSPACE_SCOPE_NOT_GRANTED";
+  error.details = {
+    capability,
+    authorizeUrl: "/auth/google"
+  };
+  return error;
+}
+
+async function requireGoogleWorkspaceCapability(capability, label) {
+  const status = await ensureGoogleWorkspaceInitialized();
+  if (!status.connected) {
+    const error = new Error("Google Workspace authorization is required.");
+    error.status = 401;
+    error.code = "GOOGLE_WORKSPACE_NOT_CONNECTED";
+    error.details = { authorizeUrl: "/auth/google" };
+    throw error;
+  }
+  if (!googleWorkspaceCapabilityReady(status, capability)) {
+    throw googleWorkspaceCapabilityError(capability, label);
+  }
+  return status;
+}
+
+function sendWorkspaceExecutionDenied(response, authority) {
+  response.status(authority.status || 403).json({
+    schema: "meos.google-workspace.execution-denied.v1",
+    commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+    buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+    success: false,
+    error: authority.reason,
+    code: authority.code,
+    mode: authority.mode || null
+  });
+}
+
+app.post(
+  "/api/google/docs",
+  express.json({ limit: "512kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("docsWrite", "Google Docs write authority");
+      const result = await GoogleWorkspaceProvider.createGoogleDocument({
+        title: request.body?.title,
+        text: request.body?.text || ""
+      });
+      response.status(201).json({
+        schema: "meos.google-workspace.document-create.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        ...result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.document-create.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.patch(
+  "/api/google/docs/:documentId",
+  express.json({ limit: "1mb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("docsWrite", "Google Docs write authority");
+      const result = await GoogleWorkspaceProvider.updateGoogleDocument({
+        documentId: request.params.documentId,
+        requests: request.body?.requests || []
+      });
+      response.status(200).json({
+        schema: "meos.google-workspace.document-update.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        ...result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.document-update.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/google/sheets",
+  express.json({ limit: "512kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("sheetsWrite", "Google Sheets write authority");
+      const result = await GoogleWorkspaceProvider.createSpreadsheet({
+        title: request.body?.title,
+        sheets: request.body?.sheets
+      });
+      response.status(201).json({
+        schema: "meos.google-workspace.spreadsheet-create.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        ...result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.spreadsheet-create.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/google/sheets/:spreadsheetId/values",
+  express.json({ limit: "1mb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("sheetsWrite", "Google Sheets write authority");
+      const result = await GoogleWorkspaceProvider.writeSpreadsheetValues({
+        spreadsheetId: request.params.spreadsheetId,
+        range: request.body?.range,
+        values: request.body?.values,
+        valueInputOption: request.body?.valueInputOption || "USER_ENTERED"
+      });
+      response.status(200).json({
+        schema: "meos.google-workspace.spreadsheet-values-write.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        ...result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.spreadsheet-values-write.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/google/calendar/events",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("calendarRead", "Google Calendar read authority");
+      const result = await GoogleWorkspaceProvider.listCalendarEvents({
+        calendarId: request.query?.calendarId || "primary",
+        timeMin: request.query?.timeMin || new Date().toISOString(),
+        timeMax: request.query?.timeMax || undefined,
+        maxResults: request.query?.maxResults || 50
+      });
+      response.status(200).json({
+        schema: "meos.google-workspace.calendar-events.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        events: result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.calendar-events.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/google/calendar/freebusy",
+  express.json({ limit: "64kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("calendarAvailability", "Google Calendar free/busy authority");
+      const result = await GoogleWorkspaceProvider.queryCalendarFreeBusy({
+        timeMin: request.body?.timeMin,
+        timeMax: request.body?.timeMax,
+        calendarIds: request.body?.calendarIds || ["primary"],
+        timeZone: request.body?.timeZone
+      });
+      response.status(200).json({
+        schema: "meos.google-workspace.calendar-freebusy.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.calendar-freebusy.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/google/calendar/events",
+  express.json({ limit: "256kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(
+        request,
+        { externalAction: true }
+      );
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("calendarWrite", "Google Calendar write authority");
+      const result = await GoogleWorkspaceProvider.createCalendarEvent({
+        calendarId: request.body?.calendarId || "primary",
+        event: request.body?.event,
+        sendUpdates: request.body?.sendUpdates || "none"
+      });
+      response.status(201).json({
+        schema: "meos.google-workspace.calendar-event-create.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        ...result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.calendar-event-create.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.patch(
+  "/api/google/calendar/events/:eventId",
+  express.json({ limit: "256kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(
+        request,
+        { externalAction: true }
+      );
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("calendarWrite", "Google Calendar write authority");
+      const result = await GoogleWorkspaceProvider.updateCalendarEvent({
+        calendarId: request.body?.calendarId || "primary",
+        eventId: request.params.eventId,
+        event: request.body?.event,
+        sendUpdates: request.body?.sendUpdates || "none"
+      });
+      response.status(200).json({
+        schema: "meos.google-workspace.calendar-event-update.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        ...result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.calendar-event-update.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/google/calendar/events/:eventId",
+  express.json({ limit: "64kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const authority = await resolveGoogleWorkspaceExecutionAuthority(
+        request,
+        { externalAction: true }
+      );
+      if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
+      await requireGoogleWorkspaceCapability("calendarWrite", "Google Calendar write authority");
+      const result = await GoogleWorkspaceProvider.deleteCalendarEvent({
+        calendarId: request.body?.calendarId || "primary",
+        eventId: request.params.eventId,
+        sendUpdates: request.body?.sendUpdates || "none"
+      });
+      response.status(200).json({
+        schema: "meos.google-workspace.calendar-event-delete.v1",
+        commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+        authority: authority.receipt,
+        ...result
+      });
+    } catch (error) {
+      response.status(error?.status || 500).json({
+        schema: "meos.google-workspace.calendar-event-delete.v1",
+        ...googleWorkspaceErrorResponse(error)
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/google/workspace/write-acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    const status = GoogleWorkspaceProvider.getStatus();
+    const provider = GoogleWorkspaceProvider;
+    const checks = [
+      {
+        name: "Server exposes governed Google Workspace execution commission",
+        passed: GOOGLE_WORKSPACE_EXECUTION_COMMISSION === "006.032B"
+      },
+      {
+        name: "Google provider exposes Docs creation",
+        passed: typeof provider.createGoogleDocument === "function"
+      },
+      {
+        name: "Google provider exposes Docs update",
+        passed: typeof provider.updateGoogleDocument === "function"
+      },
+      {
+        name: "Google provider exposes Sheets creation",
+        passed: typeof provider.createSpreadsheet === "function"
+      },
+      {
+        name: "Google provider exposes Sheets value writes",
+        passed: typeof provider.writeSpreadsheetValues === "function"
+      },
+      {
+        name: "Google provider exposes Calendar availability",
+        passed: typeof provider.queryCalendarFreeBusy === "function"
+      },
+      {
+        name: "Google provider exposes Calendar create/update/delete",
+        passed:
+          typeof provider.createCalendarEvent === "function" &&
+          typeof provider.updateCalendarEvent === "function" &&
+          typeof provider.deleteCalendarEvent === "function"
+      },
+      {
+        name: "Automatic spend remains zero",
+        passed: AUTONOMY_ECONOMIC_BOUNDARY.automaticSpendUsd === 0
+      },
+      {
+        name: "External standing authority remains false",
+        passed: AUTONOMY_EXTERNAL_AUTHORITY_BOUNDARY.externalActionAuthorized === false
+      }
+    ];
+    const passed = checks.filter(item => item.passed).length;
+    response.status(passed === checks.length ? 200 : 500).json({
+      success: passed === checks.length,
+      schema: "meos.google-workspace.governed-write-acceptance.v1",
+      commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
+      buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
+      serverVersion: VERSION,
+      providerVersion: status?.version || provider.version || null,
+      providerBuildId: status?.buildId || provider.buildId || null,
+      connected: status?.connected === true,
+      mode: status?.mode || null,
+      capabilities: status?.capabilities || null,
+      passed,
+      total: checks.length,
+      checks
+    });
+  }
+);
 
 app.get(
   "/api/google/workspace/research",
@@ -20504,7 +21024,8 @@ app.get(
         integrationBuildId:
           GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID,
         connected: true,
-        readOnly: true,
+        readOnly: status?.capabilities?.driveAppManagedWrite !== true,
+        appManagedWrite: status?.capabilities?.driveAppManagedWrite === true,
         ...headquarters
       });
     } catch (error) {
