@@ -1,17 +1,22 @@
 /*
  * MEOS Executive Automation Engine
- * Version: 1.1.1
- * Build: EA111-PERSISTENCE-CIRCUIT-BREAKER-20260808-A
+ * Commission Candidate: 006.031G — Governed Monitoring & Time Automation
+ * Version: 1.2.0
+ * Build: EA120-GOVERNED-MONITORING-TIME-AUTOMATION-20260817-A
  *
  * Mission:
  * Detect qualifying operational conditions, apply approved automation rules,
  * create controlled actions, and keep executive work moving while preserving
- * approval gates, auditability, and human authority.
+ * approval gates, auditability, human authority, and Durable Maddy Autonomy.
  *
- * Brick boundary:
- * This engine may recommend, queue, route, and monitor approved automation.
- * It does not autonomously approve decisions, spend money, contact external
- * parties, alter policy, or bypass executive authority.
+ * Authority boundary:
+ * - Durable Maddy Autonomy Authority is the only standing autonomy authority.
+ * - Monitoring & Follow-up governs status, blocker, approval, and confidence triggers.
+ * - Time & Deadlines separately governs deadline-within and overdue triggers.
+ * - Manual human-directed automation remains available while standing autonomy is OFF.
+ * - Browser scanning is compatibility execution only; it is not durable Maddy Time.
+ * - This engine never autonomously approves decisions, spends money, contacts external
+ *   parties, alters policy, signs, certifies, submits, or bypasses executive authority.
  */
 
 (function initializeExecutiveAutomation(global) {
@@ -19,6 +24,22 @@
 
     const STORAGE_KEY = "meos.executive-automation.v1";
     const SCHEMA = "meos.executive-automation.package.v1";
+    const STATE_SCHEMA = "meos.executive-automation.persistence-snapshot.v1";
+    const COMMISSION = "006.031G";
+    const AUTONOMY_CAPABILITIES = Object.freeze({
+        MONITORING: "monitoring",
+        TIME_AND_DEADLINES: "timeAndDeadlines"
+    });
+    const TEMPORAL_TRIGGER_TYPES = new Set([
+        "deadline-within",
+        "overdue"
+    ]);
+    const MONITORING_TRIGGER_TYPES = new Set([
+        "entity-status",
+        "blocked",
+        "approval-pending",
+        "confidence-below"
+    ]);
 
     const RULE_STATUSES = {
         DRAFT: "draft",
@@ -113,8 +134,9 @@
 
     const ExecutiveAutomation = {
         name: "MEOS Executive Automation Engine",
-        version: "1.1.1",
-        buildId: "EA111-PERSISTENCE-CIRCUIT-BREAKER-20260808-A",
+        version: "1.2.0",
+        buildId: "EA120-GOVERNED-MONITORING-TIME-AUTOMATION-20260817-A",
+        commission: COMMISSION,
         status: "initializing",
         operatingMode: "controlled-proactive-automation-and-execution",
 
@@ -146,6 +168,9 @@
             defaultExecutionRetryDelayMs: 30000,
             defaultExecutionTimeoutMs: 120000,
             preserveExecutionEvidence: true,
+            autonomyAuthorityRequired: true,
+            browserCompatibilityScannerOnly: true,
+            durableTemporalWakeCommissioned: false,
             maximumPersistedRules: 250,
             maximumPersistedRuns: 250,
             maximumPersistedApprovals: 250,
@@ -168,6 +193,16 @@
         history: [],
         scannerId: null,
         eventListeners: {},
+        autonomyAuthorityUnsubscribers: [],
+        deferredAutonomyBindingInstalled: false,
+        autonomy: {
+            lastSyncAt: null,
+            lastAuthorityRevision: null,
+            monitoringEffective: false,
+            timeAndDeadlinesEffective: false,
+            lastReason: "authority-unproven",
+            scannerAuthority: null
+        },
         persistence: {
             suspended: false,
             reason: null,
@@ -207,12 +242,16 @@
             this.registerSystemKnowledge();
             this.registerDefaultExecutionTargets();
             this.recalculateAnalytics();
+            this.bindAutonomyAuthorityEvents();
+            this.installDeferredAutonomyBinding();
 
-            if (
-                this.configuration.scannerEnabled &&
-                options.startScanner !== false
-            ) {
-                this.startScanner();
+            if (options.startScanner !== false) {
+                this.syncAutonomyRuntime({ reason: "initialize" });
+            } else {
+                this.stopScanner({
+                    reason: "initialize-start-scanner-disabled",
+                    silent: true
+                });
             }
 
             console.info(
@@ -221,6 +260,341 @@
 
             this.emit("automation:online", this.getStatus());
             return this.getStatus();
+        },
+
+        getAutonomyAuthority() {
+            return (
+                global.MaddyAutonomy ||
+                global.MEOSAutonomyAuthority ||
+                null
+            );
+        },
+
+        getAutonomyIntegrationStatus(capabilityId = AUTONOMY_CAPABILITIES.MONITORING) {
+            if (
+                capabilityId !== AUTONOMY_CAPABILITIES.MONITORING &&
+                capabilityId !== AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+            ) {
+                return {
+                    ready: false,
+                    reason: "unsupported-automation-autonomy-capability",
+                    capabilityId,
+                    version: this.version,
+                    commission: this.commission,
+                    buildId: this.buildId
+                };
+            }
+
+            const temporal =
+                capabilityId === AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES;
+
+            return {
+                ready: true,
+                reason: temporal
+                    ? "governed-time-trigger-contract-ready"
+                    : "governed-monitoring-trigger-contract-ready",
+                capabilityId,
+                version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                legacyScannerCreatesAuthority: false,
+                manualHumanDirectedAutomationPreserved: true,
+                browserCompatibilityScannerAvailable: true,
+                browserIndependentRunnerCommissioned: false,
+                durableTemporalWakeCommissioned: false,
+                automaticSpendAuthorized: false,
+                externalActionAuthorized: false,
+                signatureAuthorized: false,
+                certificationAuthorized: false,
+                submissionAuthorized: false,
+                legalCommitmentAuthorized: false,
+                persistenceSnapshotContract: STATE_SCHEMA
+            };
+        },
+
+        autonomyCapabilityStatus(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+
+            if (
+                !authority ||
+                typeof authority.capabilityStatus !== "function"
+            ) {
+                return {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "maddy-autonomy-authority-unavailable"
+                };
+            }
+
+            try {
+                return authority.capabilityStatus(capabilityId) || {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "autonomy-capability-status-unavailable"
+                };
+            } catch (error) {
+                return {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "autonomy-capability-probe-failed",
+                    error: error?.message || String(error)
+                };
+            }
+        },
+
+        isAutonomyAuthorized(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+            if (
+                !authority ||
+                typeof authority.isAuthorized !== "function"
+            ) {
+                return false;
+            }
+
+            try {
+                return authority.isAuthorized(capabilityId) === true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        captureAutonomyReceipt(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+            const status = this.autonomyCapabilityStatus(capabilityId);
+            let snapshot = null;
+
+            try {
+                snapshot =
+                    typeof authority?.getSnapshot === "function"
+                        ? authority.getSnapshot()
+                        : null;
+            } catch (_error) {
+                snapshot = null;
+            }
+
+            return {
+                schema: "meos.executive-automation.autonomy-receipt.v1",
+                capabilityId,
+                effective: status?.effective === true,
+                uiState: status?.uiState || "BLOCKED",
+                reason: status?.reason || "authority-unproven",
+                authorityRevision:
+                    Number(snapshot?.revision || 0) ||
+                    Number(snapshot?.policy?.revision || 0) ||
+                    Number(snapshot?.serverStatus?.revision || 0) ||
+                    null,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                capturedAt: new Date().toISOString()
+            };
+        },
+
+        requiredAutonomyCapabilityForRule(ruleOrTrigger) {
+            const trigger = ruleOrTrigger?.trigger || ruleOrTrigger || {};
+            const type = String(trigger.type || "").trim();
+
+            if (!type || type === "manual") {
+                return null;
+            }
+
+            if (TEMPORAL_TRIGGER_TYPES.has(type)) {
+                return AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES;
+            }
+
+            if (MONITORING_TRIGGER_TYPES.has(type)) {
+                return AUTONOMY_CAPABILITIES.MONITORING;
+            }
+
+            return AUTONOMY_CAPABILITIES.MONITORING;
+        },
+
+        isAutonomousInvocation(options = {}) {
+            return (
+                options.autonomous === true ||
+                options.source === "autonomy-scanner" ||
+                options.source === "automation-scanner" ||
+                options.machineInitiated === true
+            );
+        },
+
+        evaluateAutonomousRuleAdmission(rule, options = {}) {
+            if (!this.isAutonomousInvocation(options)) {
+                return {
+                    allowed: true,
+                    autonomous: false,
+                    capabilityId: null,
+                    reason: "human-directed"
+                };
+            }
+
+            if (!rule?.approvedAt || !rule?.approvedBy) {
+                return {
+                    allowed: false,
+                    autonomous: true,
+                    capabilityId:
+                        this.requiredAutonomyCapabilityForRule(rule),
+                    reason: "automation-rule-not-human-approved"
+                };
+            }
+
+            const capabilityId =
+                this.requiredAutonomyCapabilityForRule(rule);
+
+            if (!capabilityId) {
+                return {
+                    allowed: false,
+                    autonomous: true,
+                    capabilityId: null,
+                    reason: "manual-trigger-not-autonomous"
+                };
+            }
+
+            const allowed = this.isAutonomyAuthorized(capabilityId);
+            const status = this.autonomyCapabilityStatus(capabilityId);
+
+            return {
+                allowed,
+                autonomous: true,
+                capabilityId,
+                reason: allowed
+                    ? "authorized"
+                    : status?.reason || "autonomy-not-authorized",
+                authorityReceipt: this.captureAutonomyReceipt(capabilityId)
+            };
+        },
+
+        bindAutonomyAuthorityEvents() {
+            if (
+                Array.isArray(this.autonomyAuthorityUnsubscribers) &&
+                this.autonomyAuthorityUnsubscribers.length > 0
+            ) {
+                return true;
+            }
+
+            const authority = this.getAutonomyAuthority();
+            if (!authority || typeof authority.on !== "function") {
+                return false;
+            }
+
+            const sync = () => {
+                try {
+                    this.syncAutonomyRuntime({ reason: "authority-event" });
+                } catch (error) {
+                    console.warn(
+                        "[MEOS Executive Automation] Autonomy synchronization failed.",
+                        error
+                    );
+                    this.stopScanner({
+                        reason: "autonomy-sync-failed",
+                        silent: true
+                    });
+                }
+            };
+
+            try {
+                ["authority:updated", "authority:unavailable"].forEach((eventName) => {
+                    const unsubscribe = authority.on(eventName, sync);
+                    if (typeof unsubscribe === "function") {
+                        this.autonomyAuthorityUnsubscribers.push(unsubscribe);
+                    }
+                });
+                sync();
+                return true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        installDeferredAutonomyBinding() {
+            if (this.deferredAutonomyBindingInstalled) {
+                return true;
+            }
+
+            if (typeof global.addEventListener !== "function") {
+                return false;
+            }
+
+            this.deferredAutonomyBindingInstalled = true;
+            global.addEventListener("load", () => {
+                this.bindAutonomyAuthorityEvents();
+                this.syncAutonomyRuntime({ reason: "window-load" });
+            });
+            return true;
+        },
+
+        syncAutonomyRuntime(options = {}) {
+            const monitoring = this.autonomyCapabilityStatus(
+                AUTONOMY_CAPABILITIES.MONITORING
+            );
+            const timeAndDeadlines = this.autonomyCapabilityStatus(
+                AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+            );
+            const authority = this.getAutonomyAuthority();
+            let snapshot = null;
+
+            try {
+                snapshot =
+                    typeof authority?.getSnapshot === "function"
+                        ? authority.getSnapshot()
+                        : null;
+            } catch (_error) {
+                snapshot = null;
+            }
+
+            this.autonomy.lastSyncAt = new Date().toISOString();
+            this.autonomy.lastAuthorityRevision =
+                Number(snapshot?.revision || 0) ||
+                Number(snapshot?.policy?.revision || 0) ||
+                Number(snapshot?.serverStatus?.revision || 0) ||
+                null;
+            this.autonomy.monitoringEffective =
+                monitoring?.effective === true;
+            this.autonomy.timeAndDeadlinesEffective =
+                timeAndDeadlines?.effective === true;
+            this.autonomy.lastReason =
+                options.reason ||
+                monitoring?.reason ||
+                timeAndDeadlines?.reason ||
+                "authority-unproven";
+
+            const scannerAuthorized =
+                this.configuration.scannerEnabled === true &&
+                (
+                    this.autonomy.monitoringEffective ||
+                    this.autonomy.timeAndDeadlinesEffective
+                );
+
+            this.autonomy.scannerAuthority = scannerAuthorized
+                ? "central-autonomy-authority"
+                : null;
+
+            if (scannerAuthorized) {
+                return {
+                    synced: true,
+                    scannerAuthorized: true,
+                    monitoring: this.clone(monitoring),
+                    timeAndDeadlines: this.clone(timeAndDeadlines),
+                    scanner: this.startScanner({
+                        authoritySync: true
+                    })
+                };
+            }
+
+            return {
+                synced: true,
+                scannerAuthorized: false,
+                monitoring: this.clone(monitoring),
+                timeAndDeadlines: this.clone(timeAndDeadlines),
+                scanner: this.stopScanner({
+                    reason: "autonomy-not-effective",
+                    silent: true
+                })
+            };
         },
 
         createRule(input = {}, options = {}) {
@@ -518,6 +892,26 @@
                 };
             }
 
+            const autonomyAdmission =
+                this.evaluateAutonomousRuleAdmission(rule, options);
+
+            if (autonomyAdmission.allowed !== true) {
+                this.logHistory("rule.autonomous-run-blocked", {
+                    ruleId: rule.id,
+                    capabilityId: autonomyAdmission.capabilityId,
+                    reason: autonomyAdmission.reason
+                });
+
+                return {
+                    success: false,
+                    executed: false,
+                    blockedByAutonomy: true,
+                    reason: autonomyAdmission.reason,
+                    capabilityId: autonomyAdmission.capabilityId,
+                    authorityReceipt: autonomyAdmission.authorityReceipt || null
+                };
+            }
+
             const evaluation =
                 this.evaluateRule(rule, context, options);
 
@@ -531,6 +925,17 @@
             }
 
             const run = this.createRun(rule, context);
+
+            run.autonomy = {
+                autonomous: autonomyAdmission.autonomous === true,
+                capabilityId: autonomyAdmission.capabilityId || null,
+                authorityReceipt:
+                    autonomyAdmission.authorityReceipt || null,
+                source: options.source ||
+                    (autonomyAdmission.autonomous === true
+                        ? "autonomous"
+                        : "human-directed")
+            };
 
             run.status = RUN_STATUSES.EVALUATING;
             run.startedAt = new Date().toISOString();
@@ -2967,7 +3372,46 @@
             }
         },
 
-        scan(contextProvider = null) {
+        scan(contextProvider = null, options = {}) {
+            const autonomous = options.humanDirected !== true;
+            const invocationOptions = autonomous
+                ? {
+                    ...options,
+                    autonomous: true,
+                    machineInitiated: true,
+                    source: options.source || "autonomy-scanner"
+                }
+                : {
+                    ...options,
+                    autonomous: false,
+                    humanDirected: true,
+                    source: options.source || "human-directed-scan"
+                };
+
+            if (autonomous) {
+                const monitoringAuthorized = this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.MONITORING
+                );
+                const temporalAuthorized = this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+                );
+
+                if (!monitoringAuthorized && !temporalAuthorized) {
+                    return {
+                        success: false,
+                        resultCount: 0,
+                        blockedByAutonomy: true,
+                        reason: "automation-scanner-autonomy-not-authorized",
+                        monitoring: this.autonomyCapabilityStatus(
+                            AUTONOMY_CAPABILITIES.MONITORING
+                        ),
+                        timeAndDeadlines: this.autonomyCapabilityStatus(
+                            AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+                        )
+                    };
+                }
+            }
+
             const contexts =
                 typeof contextProvider === "function"
                     ? contextProvider()
@@ -2979,6 +3423,7 @@
                     : [contexts];
 
             const results = [];
+            const blockedRules = [];
 
             this.rules
                 .filter(
@@ -2987,6 +3432,22 @@
                         RULE_STATUSES.ACTIVE
                 )
                 .forEach((rule) => {
+                    const admission =
+                        this.evaluateAutonomousRuleAdmission(
+                            rule,
+                            invocationOptions
+                        );
+
+                    if (admission.allowed !== true) {
+                        blockedRules.push({
+                            ruleId: rule.id,
+                            triggerType: rule.trigger?.type || null,
+                            capabilityId: admission.capabilityId || null,
+                            reason: admission.reason
+                        });
+                        return;
+                    }
+
                     contextList.forEach((context) => {
                         const evaluation =
                             this.evaluateRule(
@@ -2998,7 +3459,8 @@
                             results.push(
                                 this.runRule(
                                     rule.id,
-                                    context || {}
+                                    context || {},
+                                    invocationOptions
                                 )
                             );
                         }
@@ -3013,6 +3475,8 @@
 
             this.emit("automation:scan-complete", {
                 resultCount: results.length,
+                blockedRuleCount: blockedRules.length,
+                autonomous,
                 scannedAt:
                     this.analytics.lastScanAt
             });
@@ -3020,6 +3484,9 @@
             return {
                 success: true,
                 resultCount: results.length,
+                blockedRuleCount: blockedRules.length,
+                blockedRules,
+                autonomous,
                 results
             };
         },
@@ -3541,42 +4008,102 @@
                 .map((rule) => this.clone(rule));
         },
 
-        startScanner() {
+        startScanner(options = {}) {
             if (this.scannerId) {
                 return {
                     success: true,
                     alreadyRunning: true,
                     intervalMs:
-                        this.configuration.scanIntervalMs
+                        this.configuration.scanIntervalMs,
+                    autonomyGoverned: true
                 };
             }
 
+            if (this.configuration.scannerEnabled !== true) {
+                return {
+                    success: false,
+                    started: false,
+                    reason: "automation-scanner-disabled"
+                };
+            }
+
+            const monitoringAuthorized = this.isAutonomyAuthorized(
+                AUTONOMY_CAPABILITIES.MONITORING
+            );
+            const temporalAuthorized = this.isAutonomyAuthorized(
+                AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+            );
+
+            if (!monitoringAuthorized && !temporalAuthorized) {
+                this.autonomy.scannerAuthority = null;
+                return {
+                    success: false,
+                    started: false,
+                    reason: "automation-scanner-autonomy-not-authorized",
+                    monitoring: this.autonomyCapabilityStatus(
+                        AUTONOMY_CAPABILITIES.MONITORING
+                    ),
+                    timeAndDeadlines: this.autonomyCapabilityStatus(
+                        AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+                    )
+                };
+            }
+
+            this.autonomy.scannerAuthority =
+                "central-autonomy-authority";
+
+            if (options.scanImmediately === true) {
+                this.scan(null, {
+                    autonomous: true,
+                    source: "autonomy-scanner"
+                });
+            }
+
             this.scannerId = global.setInterval(
-                () => this.scan(),
+                () => this.scan(null, {
+                    autonomous: true,
+                    source: "autonomy-scanner"
+                }),
                 this.configuration.scanIntervalMs
             );
 
             return {
                 success: true,
+                started: true,
                 intervalMs:
-                    this.configuration.scanIntervalMs
+                    this.configuration.scanIntervalMs,
+                autonomyGoverned: true,
+                browserCompatibilityScanner: true,
+                durableTemporalWakeCommissioned: false
             };
         },
 
-        stopScanner() {
+        stopScanner(options = {}) {
             if (!this.scannerId) {
+                this.autonomy.scannerAuthority = null;
                 return {
                     success: true,
-                    running: false
+                    running: false,
+                    reason: options.reason || null
                 };
             }
 
             global.clearInterval(this.scannerId);
             this.scannerId = null;
+            this.autonomy.scannerAuthority = null;
+
+            if (options.silent !== true) {
+                console.info(
+                    `[MEOS Executive Automation] Scanner stopped${
+                        options.reason ? `: ${options.reason}` : "."
+                    }`
+                );
+            }
 
             return {
                 success: true,
-                running: false
+                running: false,
+                reason: options.reason || null
             };
         },
 
@@ -3642,9 +4169,9 @@
                 title:
                     "MEOS Executive Automation Engine",
                 summary:
-                    "Universal controlled proactive automation with triggers, conditions, approvals, internal actions, monitoring, escalation, and audit history.",
+                    "Universal controlled proactive automation with centrally governed monitoring/time triggers, approvals, internal actions, escalation, and audit history.",
                 content:
-                    "Executive Automation detects qualifying operational conditions and applies approved automation rules. It does not autonomously approve decisions, spend money, communicate externally, alter policy, or bypass executive authority.",
+                    "Executive Automation detects qualifying operational conditions and applies human-approved automation rules. Standing monitoring and deadline execution require Durable Maddy Autonomy Authority. Manual human-directed automation remains available while autonomy is off. Browser scanning is compatibility execution only and does not create authority or durable Maddy Time. The engine does not autonomously approve decisions, spend money, communicate externally, alter policy, sign, certify, submit, or bypass executive authority.",
                 tags: [
                     "meos-core",
                     "executive-automation",
@@ -3751,7 +4278,9 @@
                 executiveCollaboration:
                     Boolean(global.ExecutiveCollaboration),
                 knowledgeEngine:
-                    Boolean(global.KnowledgeEngine)
+                    Boolean(global.KnowledgeEngine),
+                maddyAutonomyAuthority:
+                    Boolean(this.getAutonomyAuthority())
             };
         },
 
@@ -3769,6 +4298,26 @@
                     Boolean(this.scannerId),
                 scanIntervalMs:
                     this.configuration.scanIntervalMs,
+                autonomy: {
+                    integration: {
+                        monitoring: this.getAutonomyIntegrationStatus(
+                            AUTONOMY_CAPABILITIES.MONITORING
+                        ),
+                        timeAndDeadlines: this.getAutonomyIntegrationStatus(
+                            AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+                        )
+                    },
+                    monitoring: this.autonomyCapabilityStatus(
+                        AUTONOMY_CAPABILITIES.MONITORING
+                    ),
+                    timeAndDeadlines: this.autonomyCapabilityStatus(
+                        AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+                    ),
+                    runtime: this.clone(this.autonomy),
+                    browserAuthority: false,
+                    browserIndependentRunnerCommissioned: false,
+                    durableTemporalWakeCommissioned: false
+                },
                 connectedSources:
                     this.getConnectedSources(),
                 ruleCount:
@@ -4000,7 +4549,90 @@
                     this.history,
                     this.configuration.maximumPersistedHistory
                 ),
-                analytics: this.analytics
+                analytics: this.analytics,
+                authority: {
+                    source: "server-durable-maddy-autonomy-authority",
+                    browserAuthority: false,
+                    autonomyPolicyStoredHere: false,
+                    browserTimerCreatesAuthority: false,
+                    durableTemporalWakeCommissioned: false
+                }
+            };
+        },
+
+        buildRunnerPersistenceSnapshot() {
+            const browserSnapshot = this.buildPersistenceSnapshot();
+            const { configuration, ...operational } = browserSnapshot;
+
+            return {
+                ...operational,
+                schema: STATE_SCHEMA,
+                capturedAt: new Date().toISOString(),
+                operationalConfiguration: {
+                    scanIntervalMs: this.configuration.scanIntervalMs,
+                    defaultCooldownMinutes: this.configuration.defaultCooldownMinutes,
+                    defaultPriority: this.configuration.defaultPriority,
+                    maximumActionsPerRun: this.configuration.maximumActionsPerRun
+                },
+                authority: {
+                    source: "server-durable-maddy-autonomy-authority",
+                    browserAuthority: false,
+                    autonomyPolicyStoredHere: false,
+                    browserTimerCreatesAuthority: false,
+                    durableTemporalWakeCommissioned: false
+                }
+            };
+        },
+
+        applyRunnerPersistenceSnapshot(snapshot, options = {}) {
+            if (!snapshot || snapshot.schema !== STATE_SCHEMA) {
+                return {
+                    success: false,
+                    applied: false,
+                    error: "Executive Automation runner persistence snapshot is invalid."
+                };
+            }
+
+            const replace = options.replace !== false;
+            const copy = (value) => Array.isArray(value)
+                ? this.clone(value)
+                : [];
+
+            if (replace) {
+                this.rules = copy(snapshot.rules);
+                this.runs = copy(snapshot.runs);
+                this.approvals = copy(snapshot.approvals);
+                this.notifications = copy(snapshot.notifications);
+                this.executionTargets = copy(snapshot.executionTargets);
+                this.executionJobs = copy(snapshot.executionJobs);
+                this.executionSessions = copy(snapshot.executionSessions);
+                this.executionReceipts = copy(snapshot.executionReceipts);
+                this.history = copy(snapshot.history);
+            } else {
+                this.mergeById(this.rules, copy(snapshot.rules));
+                this.mergeById(this.runs, copy(snapshot.runs));
+                this.mergeById(this.approvals, copy(snapshot.approvals));
+                this.mergeById(this.notifications, copy(snapshot.notifications));
+                this.mergeById(this.executionTargets, copy(snapshot.executionTargets));
+                this.mergeById(this.executionJobs, copy(snapshot.executionJobs));
+                this.mergeById(this.executionSessions, copy(snapshot.executionSessions));
+                this.mergeById(this.executionReceipts, copy(snapshot.executionReceipts));
+                this.history = [
+                    ...this.history,
+                    ...copy(snapshot.history)
+                ].slice(-this.configuration.maximumHistory);
+            }
+
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+
+            return {
+                success: true,
+                applied: true,
+                replaced: replace,
+                snapshotSchema: STATE_SCHEMA,
+                autonomyPolicyApplied: false,
+                browserAuthority: false
             };
         },
 
@@ -4157,6 +4789,375 @@
                 checks,
                 persistence: this.getPersistenceStatus()
             };
+        },
+
+
+        runGovernedAutonomyAcceptanceTest() {
+            const originalMaddyAutonomy = global.MaddyAutonomy;
+            const originalAuthorityAlias = global.MEOSAutonomyAuthority;
+            const originalAutomaticPersistence =
+                this.configuration.automaticPersistence;
+            const originalScannerEnabled =
+                this.configuration.scannerEnabled;
+            const originalState = {
+                rules: this.clone(this.rules),
+                runs: this.clone(this.runs),
+                approvals: this.clone(this.approvals),
+                notifications: this.clone(this.notifications),
+                executionTargets: this.clone(this.executionTargets),
+                executionJobs: this.clone(this.executionJobs),
+                executionSessions: this.clone(this.executionSessions),
+                executionReceipts: this.clone(this.executionReceipts),
+                history: this.clone(this.history),
+                analytics: this.clone(this.analytics),
+                autonomy: this.clone(this.autonomy)
+            };
+
+            this.stopScanner({
+                reason: "006.031G-acceptance-start",
+                silent: true
+            });
+
+            const authorityState = {
+                monitoring: false,
+                timeAndDeadlines: false,
+                revision: 31
+            };
+
+            const fakeAuthority = {
+                capabilityStatus: (capabilityId) => ({
+                    id: capabilityId,
+                    effective:
+                        authorityState[capabilityId] === true,
+                    authorized:
+                        authorityState[capabilityId] === true,
+                    ready: true,
+                    uiState:
+                        authorityState[capabilityId] === true
+                            ? "ON"
+                            : "OFF",
+                    reason:
+                        authorityState[capabilityId] === true
+                            ? "authorized-and-effective"
+                            : "not-authorized"
+                }),
+                isAuthorized: (capabilityId) =>
+                    authorityState[capabilityId] === true,
+                getSnapshot: () => ({
+                    revision: authorityState.revision,
+                    browserAuthority: false,
+                    economicAuthority: {
+                        automaticSpendUsd: 0,
+                        paidProviderSpendAuthorized: false
+                    },
+                    externalAuthority: {
+                        externalActionAuthorized: false,
+                        legalCommitmentAuthorized: false,
+                        signatureAuthorized: false,
+                        certificationAuthorized: false,
+                        submissionAuthorized: false
+                    }
+                }),
+                on: () => () => true
+            };
+
+            try {
+                global.MaddyAutonomy = fakeAuthority;
+                global.MEOSAutonomyAuthority = fakeAuthority;
+                this.configuration.automaticPersistence = false;
+                this.configuration.scannerEnabled = true;
+                this.rules = [];
+                this.runs = [];
+                this.approvals = [];
+                this.notifications = [];
+                this.history = [];
+
+                const action = {
+                    type: ACTION_TYPES.NOTIFY_EXECUTIVE,
+                    payload: {
+                        title: "006.031G fixture",
+                        message: "Governed automation fixture"
+                    }
+                };
+
+                const monitoringRule = this.createRule({
+                    name: "006.031G monitoring fixture",
+                    trigger: { type: "blocked" },
+                    actions: [action],
+                    cooldownMinutes: 0
+                }).rule;
+                this.approveRule(monitoringRule.id, {
+                    actor: "Acceptance Human"
+                });
+
+                const deadlineRule = this.createRule({
+                    name: "006.031G deadline fixture",
+                    trigger: { type: "overdue" },
+                    actions: [action],
+                    cooldownMinutes: 0
+                }).rule;
+                this.approveRule(deadlineRule.id, {
+                    actor: "Acceptance Human"
+                });
+
+                const manualRule = this.createRule({
+                    name: "006.031G manual fixture",
+                    trigger: { type: "manual" },
+                    actions: [action],
+                    cooldownMinutes: 0
+                }).rule;
+                this.approveRule(manualRule.id, {
+                    actor: "Acceptance Human"
+                });
+
+                const unapprovedRule = this.createRule({
+                    name: "006.031G unapproved fixture",
+                    trigger: { type: "blocked" },
+                    actions: [action],
+                    cooldownMinutes: 0
+                }).rule;
+
+                const context = {
+                    entityType: "workflow-step",
+                    subjectId: "006.031G-fixture",
+                    status: "blocked",
+                    blockerCount: 1,
+                    targetDate: new Date(Date.now() - 60000).toISOString()
+                };
+
+                const scannerClosed = this.startScanner();
+                const manualHumanRun = this.runRule(
+                    manualRule.id,
+                    context,
+                    { humanDirected: true, source: "acceptance-human" }
+                );
+                const manualRunCountBeforeScan =
+                    this.getRuleById(manualRule.id).runCount;
+
+                const monitoringBlocked = this.runRule(
+                    monitoringRule.id,
+                    context,
+                    { autonomous: true, source: "autonomy-scanner" }
+                );
+
+                const unapprovedBlocked = this.runRule(
+                    unapprovedRule.id,
+                    context,
+                    { autonomous: true, source: "autonomy-scanner" }
+                );
+
+                authorityState.monitoring = true;
+                authorityState.revision += 1;
+                const monitoringAllowed = this.runRule(
+                    monitoringRule.id,
+                    context,
+                    { autonomous: true, source: "autonomy-scanner" }
+                );
+
+                const deadlineBlocked = this.runRule(
+                    deadlineRule.id,
+                    context,
+                    { autonomous: true, source: "autonomy-scanner" }
+                );
+
+                authorityState.timeAndDeadlines = true;
+                authorityState.revision += 1;
+                const deadlineAllowed = this.runRule(
+                    deadlineRule.id,
+                    context,
+                    { autonomous: true, source: "autonomy-scanner" }
+                );
+
+                const scanResult = this.scan(
+                    () => [context],
+                    { autonomous: true, source: "autonomy-scanner" }
+                );
+                const manualRunCountAfterScan =
+                    this.getRuleById(manualRule.id).runCount;
+
+                this.stopScanner({
+                    reason: "acceptance-reset-before-runtime-test",
+                    silent: true
+                });
+                const scannerStarted = this.startScanner();
+                authorityState.monitoring = false;
+                authorityState.timeAndDeadlines = false;
+                authorityState.revision += 1;
+                const syncAfterAuthorityLoss =
+                    this.syncAutonomyRuntime({
+                        reason: "acceptance-authority-loss"
+                    });
+
+                const runnerSnapshot =
+                    this.buildRunnerPersistenceSnapshot();
+                const monitoringIntegration =
+                    this.getAutonomyIntegrationStatus(
+                        AUTONOMY_CAPABILITIES.MONITORING
+                    );
+                const temporalIntegration =
+                    this.getAutonomyIntegrationStatus(
+                        AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+                    );
+
+                const checks = [
+                    {
+                        name: "Central Maddy Autonomy contract is first-class",
+                        passed:
+                            typeof this.getAutonomyAuthority === "function" &&
+                            typeof this.getAutonomyIntegrationStatus === "function" &&
+                            typeof this.captureAutonomyReceipt === "function"
+                    },
+                    {
+                        name: "Scanner fails closed while monitoring and time authority are OFF",
+                        passed:
+                            scannerClosed?.started === false &&
+                            scannerClosed?.reason ===
+                                "automation-scanner-autonomy-not-authorized" &&
+                            this.scannerId === null
+                    },
+                    {
+                        name: "Human-directed manual automation remains available while standing autonomy is OFF",
+                        passed:
+                            manualHumanRun?.success === true &&
+                            manualHumanRun?.run?.autonomy?.autonomous === false
+                    },
+                    {
+                        name: "Direct autonomous monitoring invocation cannot bypass Monitoring authority",
+                        passed:
+                            monitoringBlocked?.blockedByAutonomy === true &&
+                            monitoringBlocked?.capabilityId ===
+                                AUTONOMY_CAPABILITIES.MONITORING
+                    },
+                    {
+                        name: "Standing autonomy cannot execute an unapproved automation rule",
+                        passed:
+                            unapprovedBlocked?.blockedByAutonomy === true &&
+                            unapprovedBlocked?.reason ===
+                                "automation-rule-not-human-approved"
+                    },
+                    {
+                        name: "Monitoring authority permits governed blocker/status automation",
+                        passed:
+                            monitoringAllowed?.success === true &&
+                            monitoringAllowed?.run?.autonomy?.capabilityId ===
+                                AUTONOMY_CAPABILITIES.MONITORING
+                    },
+                    {
+                        name: "Time & Deadlines remains an independent breaker",
+                        passed:
+                            deadlineBlocked?.blockedByAutonomy === true &&
+                            deadlineBlocked?.capabilityId ===
+                                AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES &&
+                            deadlineAllowed?.success === true &&
+                            deadlineAllowed?.run?.autonomy?.capabilityId ===
+                                AUTONOMY_CAPABILITIES.TIME_AND_DEADLINES
+                    },
+                    {
+                        name: "Manual trigger can never self-fire through autonomous scanning",
+                        passed:
+                            scanResult?.success === true &&
+                            scanResult?.blockedRules?.some(
+                                (item) =>
+                                    item.ruleId === manualRule.id &&
+                                    item.reason === "manual-trigger-not-autonomous"
+                            ) &&
+                            manualRunCountAfterScan === manualRunCountBeforeScan
+                    },
+                    {
+                        name: "Authorized browser scanner is compatibility-only and centrally governed",
+                        passed:
+                            scannerStarted?.started === true &&
+                            scannerStarted?.autonomyGoverned === true &&
+                            scannerStarted?.browserCompatibilityScanner === true &&
+                            scannerStarted?.durableTemporalWakeCommissioned === false
+                    },
+                    {
+                        name: "Authority loss stops the compatibility scanner without deleting work",
+                        passed:
+                            syncAfterAuthorityLoss?.scannerAuthorized === false &&
+                            this.scannerId === null &&
+                            this.rules.length === 4
+                    },
+                    {
+                        name: "Runner persistence stores operational state but no autonomy policy",
+                        passed:
+                            runnerSnapshot?.schema === STATE_SCHEMA &&
+                            runnerSnapshot?.authority?.autonomyPolicyStoredHere === false &&
+                            runnerSnapshot?.authority?.browserAuthority === false &&
+                            !Object.prototype.hasOwnProperty.call(
+                                runnerSnapshot,
+                                "autonomyPolicy"
+                            )
+                    },
+                    {
+                        name: "Automation does not commission durable Maddy Time by implication",
+                        passed:
+                            temporalIntegration?.durableTemporalWakeCommissioned === false &&
+                            temporalIntegration?.browserIndependentRunnerCommissioned === false
+                    },
+                    {
+                        name: "Economic and consequential external authority remain closed",
+                        passed:
+                            monitoringIntegration?.automaticSpendAuthorized === false &&
+                            monitoringIntegration?.externalActionAuthorized === false &&
+                            monitoringIntegration?.signatureAuthorized === false &&
+                            monitoringIntegration?.submissionAuthorized === false &&
+                            monitoringIntegration?.legalCommitmentAuthorized === false
+                    }
+                ];
+
+                const passed = checks.filter((check) => check.passed).length;
+                console.table(checks);
+                console.info(
+                    `[MEOS ${this.version}] Commission ${this.commission} governed monitoring & time automation: ${
+                        passed === checks.length ? "PASS" : "FAIL"
+                    } (${passed}/${checks.length}).`
+                );
+
+                return {
+                    success: passed === checks.length,
+                    commission: this.commission,
+                    schema:
+                        "meos.executive-automation.governed-autonomy-acceptance.v1",
+                    version: this.version,
+                    buildId: this.buildId,
+                    passed,
+                    total: checks.length,
+                    checks
+                };
+            } finally {
+                this.stopScanner({
+                    reason: "006.031G-acceptance-cleanup",
+                    silent: true
+                });
+                this.configuration.automaticPersistence =
+                    originalAutomaticPersistence;
+                this.configuration.scannerEnabled =
+                    originalScannerEnabled;
+                this.rules = originalState.rules;
+                this.runs = originalState.runs;
+                this.approvals = originalState.approvals;
+                this.notifications = originalState.notifications;
+                this.executionTargets = originalState.executionTargets;
+                this.executionJobs = originalState.executionJobs;
+                this.executionSessions = originalState.executionSessions;
+                this.executionReceipts = originalState.executionReceipts;
+                this.history = originalState.history;
+                this.analytics = originalState.analytics;
+                this.autonomy = originalState.autonomy;
+
+                if (originalMaddyAutonomy === undefined) {
+                    delete global.MaddyAutonomy;
+                } else {
+                    global.MaddyAutonomy = originalMaddyAutonomy;
+                }
+
+                if (originalAuthorityAlias === undefined) {
+                    delete global.MEOSAutonomyAuthority;
+                } else {
+                    global.MEOSAutonomyAuthority = originalAuthorityAlias;
+                }
+            }
         },
 
         restore() {
@@ -4454,6 +5455,10 @@
         EXECUTION_JOB_STATUSES;
     ExecutiveAutomation.EXECUTION_SESSION_STATUSES =
         EXECUTION_SESSION_STATUSES;
+    ExecutiveAutomation.AUTONOMY_CAPABILITIES =
+        AUTONOMY_CAPABILITIES;
+    ExecutiveAutomation.STATE_SCHEMA =
+        STATE_SCHEMA;
 
     global.ExecutiveAutomation =
         ExecutiveAutomation;
