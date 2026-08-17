@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.11.9
+ * Version: 4.12.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,8 +20,8 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.11.9";
-  const CABINET_RECONCILIATION_BUILD_ID = "EO4119-LEAN-CABINET-NAVIGATION-RECONCILIATION-20260815-A";
+  const DASHBOARD_VERSION = "4.12.0";
+  const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3483,7 +3483,7 @@ document
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-primary{display:none!important}
       .meos-office-maddy-dock #meosExecutiveOfficeControl .meos-voice-secondary-row{width:100%!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:5px!important}
 
-      .meos-office-nav{position:absolute;z-index:130;left:50%;top:10px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:5px;max-width:450px;padding:6px 8px;border:1px solid rgba(213,162,83,.18);border-radius:11px;background:rgba(4,10,12,.42);backdrop-filter:blur(7px)}
+      .meos-office-nav{position:absolute;z-index:130;left:50%;top:10px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:5px;max-width:560px;padding:6px 8px;border:1px solid rgba(213,162,83,.18);border-radius:11px;background:rgba(4,10,12,.42);backdrop-filter:blur(7px)}
       .meos-office-nav button{border:0;background:transparent;color:rgba(235,239,236,.74);padding:6px 8px;border-radius:7px;cursor:pointer;font:700 .56rem/1 system-ui;letter-spacing:.05em;text-transform:uppercase}
       .meos-office-nav button:hover{background:rgba(216,171,98,.12);color:#f4d39e}
 
@@ -3493,6 +3493,23 @@ document
       .meos-office-cabinet-menu[data-open="true"]{display:grid;gap:4px}
       .meos-office-cabinet-menu button{width:100%;border:1px solid rgba(213,162,83,.12);border-radius:8px;background:rgba(255,255,255,.025);color:#e9e1d6;text-align:left;padding:9px 10px;cursor:pointer;font:700 .64rem/1.25 system-ui}
       .meos-office-cabinet-menu button:hover{border-color:rgba(229,184,110,.42);background:rgba(92,67,34,.24);color:#f4d39e}
+      .meos-office-autonomy-menu{display:none;position:absolute;top:44px;left:50%;transform:translateX(-50%);width:min(430px,88vw);max-height:72vh;overflow:auto;padding:9px;border:1px solid rgba(213,162,83,.30);border-radius:12px;background:rgba(7,12,13,.97);box-shadow:0 22px 60px rgba(0,0,0,.58);backdrop-filter:blur(16px);color:#ece8df}
+      .meos-office-autonomy-menu[data-open="true"]{display:grid;gap:9px}
+      .meos-autonomy-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 8px;border-bottom:1px solid rgba(213,162,83,.18)}
+      .meos-autonomy-head strong{font:800 .72rem/1 system-ui;color:#f1d09a;letter-spacing:.04em;text-transform:uppercase}
+      .meos-autonomy-head small{display:block;margin-top:4px;color:rgba(225,232,229,.56);font:600 .54rem/1.25 system-ui}
+      .meos-autonomy-master,.meos-autonomy-toggle{border:1px solid rgba(213,162,83,.30);border-radius:8px;background:rgba(255,255,255,.035);color:#e9e1d6;padding:7px 9px;cursor:pointer;font:800 .56rem/1 system-ui;letter-spacing:.05em;text-transform:uppercase}
+      .meos-autonomy-master[data-state="ON"],.meos-autonomy-toggle[data-state="ON"]{border-color:rgba(91,215,151,.52);color:#8ee6b7;background:rgba(34,110,73,.20)}
+      .meos-autonomy-master[data-state="BLOCKED"],.meos-autonomy-toggle[data-state="BLOCKED"]{border-color:rgba(235,113,103,.38);color:#ef9b92;background:rgba(115,42,37,.16);cursor:not-allowed}
+      .meos-autonomy-section{display:grid;gap:4px}
+      .meos-autonomy-section-title{color:rgba(233,198,139,.74);font:800 .52rem/1 system-ui;letter-spacing:.13em;text-transform:uppercase;padding:3px 2px}
+      .meos-autonomy-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 8px;border:1px solid rgba(125,190,202,.10);border-radius:8px;background:rgba(255,255,255,.018)}
+      .meos-autonomy-row strong{display:block;color:#e9ece7;font:700 .63rem/1.15 system-ui}
+      .meos-autonomy-row span{display:block;margin-top:3px;color:rgba(219,228,225,.50);font:600 .52rem/1.25 system-ui;white-space:normal}
+      .meos-autonomy-boundary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 8px;border-radius:7px;background:rgba(255,255,255,.015);font:700 .57rem/1.2 system-ui;color:#dfe5df}
+      .meos-autonomy-boundary b{color:#f0c98c;font-size:.55rem;letter-spacing:.05em}
+      .meos-autonomy-message{min-height:14px;color:rgba(151,218,194,.82);font:600 .52rem/1.3 system-ui;padding:0 2px}
+      .meos-autonomy-message[data-error="true"]{color:#ef9b92}
 
       .meos-office-utility{display:grid;gap:13px;color:#ece8df}
       .meos-office-utility-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:10px;border-bottom:1px solid rgba(216,171,98,.18)}
@@ -3582,6 +3599,7 @@ document
       <div id="meosImageOfficeNavWrap" class="meos-office-nav-wrap">
         <nav id="meosImageOfficeNav" class="meos-office-nav" aria-label="Executive Office navigation"></nav>
         <div id="meosOfficeCabinetMenu" class="meos-office-cabinet-menu" data-open="false" aria-label="Executive Cabinet"></div>
+        <div id="meosOfficeAutonomyMenu" class="meos-office-autonomy-menu" data-open="false" aria-label="Maddy Autonomy"></div>
       </div>
       <button class="meos-office-look left" type="button" aria-label="Look left">‹</button>
       <button class="meos-office-look right" type="button" aria-label="Look right">›</button>
@@ -3683,6 +3701,16 @@ document
     const originalNav = getNavigationArea();
     const nav = viewport.querySelector('#meosImageOfficeNav');
     const cabinetMenu = viewport.querySelector('#meosOfficeCabinetMenu');
+    const autonomyMenu = viewport.querySelector('#meosOfficeAutonomyMenu');
+
+    const closeTopMenus = () => {
+      if (cabinetMenu) cabinetMenu.dataset.open = 'false';
+      if (autonomyMenu) autonomyMenu.dataset.open = 'false';
+      const cabinetControl = viewport.querySelector('#meosCabinetNavButton');
+      const autonomyControl = viewport.querySelector('#meosAutonomyNavButton');
+      cabinetControl?.setAttribute('aria-expanded','false');
+      autonomyControl?.setAttribute('aria-expanded','false');
+    };
 
     const addTopNavButton = (label, handler, options = {}) => {
       const button = document.createElement('button');
@@ -3695,26 +3723,170 @@ document
       return button;
     };
 
-    /* Desk is the spatial home position: the center of the Executive Director
-       nameplate is the zero point of the panorama. */
-    const deskNavButton = addTopNavButton('Desk', () => {
-      cabinetMenu.dataset.open = 'false';
-      setPan(0);
-      viewport.focus({ preventScroll:true });
-    }, { id:'meosDeskNavButton' });
-
+    /* Commission 006.031R — the Executive Office tab is the spatial home.
+       The old duplicate Desk control and legacy Knowledge/System nav buttons are
+       intentionally not recreated in the panoramic nav. */
     const executiveOfficeOriginal = originalNav?.querySelector('a[href="#executive-office"]');
     addTopNavButton('Executive Office', () => {
-      cabinetMenu.dataset.open = 'false';
+      closeTopMenus();
       executiveOfficeOriginal?.click();
       setPan(0);
+      viewport.focus({ preventScroll:true });
     });
 
     const cabinetButton = addTopNavButton('Executive Cabinet ▾', () => {
-      const open = cabinetMenu.dataset.open !== 'true';
-      cabinetMenu.dataset.open = String(open);
+      const open = cabinetMenu?.dataset.open !== 'true';
+      closeTopMenus();
+      if (cabinetMenu) cabinetMenu.dataset.open = String(open);
       cabinetButton.setAttribute('aria-expanded', String(open));
     }, { id:'meosCabinetNavButton', ariaExpanded:false });
+
+    const autonomyButton = addTopNavButton('Maddy Autonomy ▾', () => {
+      const open = autonomyMenu?.dataset.open !== 'true';
+      closeTopMenus();
+      if (autonomyMenu) autonomyMenu.dataset.open = String(open);
+      autonomyButton.setAttribute('aria-expanded', String(open));
+      if (open) void refreshAutonomyMenu({ force:true });
+    }, { id:'meosAutonomyNavButton', ariaExpanded:false });
+
+    const autonomyMessage = (text, error = false) => {
+      const target = autonomyMenu?.querySelector('#meosAutonomyMessage');
+      if (!target) return;
+      target.textContent = text || '';
+      target.dataset.error = String(error === true);
+    };
+
+    const autonomyStateText = status => {
+      if (!status) return 'BLOCKED';
+      if (status.uiState === 'BLOCKED') return 'BLOCKED';
+      if (status.effective === true) return 'ON';
+      return 'OFF';
+    };
+
+    const renderAutonomyMenu = () => {
+      if (!autonomyMenu) return;
+      const authority = window.MaddyAutonomy || window.MEOSAutonomyAuthority;
+      if (!authority?.getSnapshot) {
+        autonomyMenu.innerHTML = `<div class="meos-autonomy-head"><div><strong>Maddy Autonomy</strong><small>Switchboard unavailable</small></div><button class="meos-autonomy-master" data-state="BLOCKED" disabled>BLOCKED</button></div><div class="meos-autonomy-message" data-error="true">The runtime has not loaded the Maddy Autonomy Switchboard.</div>`;
+        return;
+      }
+
+      const snapshot = authority.getSnapshot();
+      if (snapshot?.authoritative !== true) {
+        autonomyMenu.innerHTML = `<div class="meos-autonomy-head"><div><strong>Maddy Autonomy</strong><small>Durable authority not yet proven</small></div><button class="meos-autonomy-master" data-state="BLOCKED" disabled>BLOCKED</button></div><div id="meosAutonomyMessage" class="meos-autonomy-message" data-error="true">${String(snapshot?.lastError?.message || 'Reading durable server authority…')}</div>`;
+        return;
+      }
+
+      const capabilities = authority.listCapabilities?.() || [];
+      const providers = authority.listProviders?.() || [];
+      const workRows = capabilities.map(item => {
+        const stateText = autonomyStateText(item);
+        const blocked = stateText === 'BLOCKED';
+        const authorityLabel = item?.authorized === true ? 'Allowed' : 'Off';
+        return `<div class="meos-autonomy-row"><div><strong>${item.label}</strong><span>${blocked ? String(item.reason || 'Not ready') : `${authorityLabel} · ${item.reason || 'ready'}`}</span></div><button type="button" class="meos-autonomy-toggle" data-capability-id="${item.id}" data-state="${stateText}" ${blocked ? 'disabled' : ''}>${stateText}</button></div>`;
+      }).join('');
+      const providerRows = providers.map(item => {
+        const stateText = autonomyStateText(item);
+        const blocked = stateText === 'BLOCKED';
+        return `<div class="meos-autonomy-row"><div><strong>${item.label}</strong><span>${blocked ? String(item.reason || 'Not ready') : `MEOS autonomous use ${item.authorized === true ? 'allowed' : 'off'}`}</span></div><button type="button" class="meos-autonomy-toggle" data-provider-id="${item.id}" data-state="${stateText}" ${blocked ? 'disabled' : ''}>${stateText}</button></div>`;
+      }).join('');
+      const persistence = snapshot.persistence || {};
+      const persistenceLabel = persistence.providerId
+        ? `Durable authority: ${persistence.providerId}`
+        : 'Durable authority: provider-neutral repository';
+
+      autonomyMenu.innerHTML = `
+        <div class="meos-autonomy-head">
+          <div><strong>Maddy Autonomy</strong><small>${persistenceLabel}</small></div>
+          <button id="meosAutonomyMaster" type="button" class="meos-autonomy-master" data-state="${snapshot.masterEnabled ? 'ON' : 'OFF'}">${snapshot.masterEnabled ? 'ON' : 'OFF'}</button>
+        </div>
+        <section class="meos-autonomy-section"><div class="meos-autonomy-section-title">Work</div>${workRows}</section>
+        <section class="meos-autonomy-section"><div class="meos-autonomy-section-title">Providers & Connections</div>${providerRows}</section>
+        <section class="meos-autonomy-section">
+          <div class="meos-autonomy-section-title">Authority</div>
+          <div class="meos-autonomy-boundary"><span>Automatic Spend</span><b>$0</b></div>
+          <div class="meos-autonomy-boundary"><span>External Communication</span><b>APPROVAL</b></div>
+          <div class="meos-autonomy-boundary"><span>Sign / Certify</span><b>HUMAN</b></div>
+          <div class="meos-autonomy-boundary"><span>Legal Commitment</span><b>HUMAN</b></div>
+        </section>
+        <div id="meosAutonomyMessage" class="meos-autonomy-message" data-error="false">Revision ${snapshot.revision ?? 0} · browser authority false</div>`;
+
+      autonomyMenu.querySelector('#meosAutonomyMaster')?.addEventListener('click', async event => {
+        const control = event.currentTarget;
+        control.disabled = true;
+        autonomyMessage('Saving durable autonomy authority…');
+        try {
+          await authority.setMasterEnabled(snapshot.masterEnabled !== true);
+          await refreshAutonomyMenu({ force:true });
+        } catch (error) {
+          autonomyMessage(error?.message || String(error), true);
+          control.disabled = false;
+        }
+      });
+
+      autonomyMenu.querySelectorAll('[data-capability-id]').forEach(control => {
+        control.addEventListener('click', async event => {
+          const button = event.currentTarget;
+          const id = button.dataset.capabilityId;
+          const current = authority.capabilityStatus?.(id);
+          button.disabled = true;
+          autonomyMessage(`Saving ${current?.label || id} authority…`);
+          try {
+            await authority.setCapabilityEnabled(id, current?.authorized !== true);
+            await refreshAutonomyMenu({ force:true });
+          } catch (error) {
+            autonomyMessage(error?.message || String(error), true);
+            button.disabled = false;
+          }
+        });
+      });
+
+      autonomyMenu.querySelectorAll('[data-provider-id]').forEach(control => {
+        control.addEventListener('click', async event => {
+          const button = event.currentTarget;
+          const id = button.dataset.providerId;
+          const current = authority.providerStatus?.(id);
+          const enabling = current?.authorized !== true;
+          let acknowledgeBilling = false;
+          if (enabling && current?.billingDisclosureAcknowledged !== true) {
+            const disclosure = authority.getProviderBillingDisclosure?.();
+            acknowledgeBilling = window.confirm(`${disclosure?.plainLanguage || 'Provider billing remains controlled by the provider account.'}\n\nAllow MEOS autonomous use of ${current?.label || id}?`);
+            if (!acknowledgeBilling) return;
+          }
+          button.disabled = true;
+          autonomyMessage(`Saving ${current?.label || id} autonomous-use authority…`);
+          try {
+            await authority.setProviderAutonomousUse(id, enabling, { acknowledgeBilling });
+            await refreshAutonomyMenu({ force:true });
+          } catch (error) {
+            autonomyMessage(error?.message || String(error), true);
+            button.disabled = false;
+          }
+        });
+      });
+    };
+
+    const refreshAutonomyMenu = async ({ force = false } = {}) => {
+      const authority = window.MaddyAutonomy || window.MEOSAutonomyAuthority;
+      if (!authority?.refresh) {
+        renderAutonomyMenu();
+        return null;
+      }
+      try {
+        const snapshot = await authority.refresh({ force });
+        renderAutonomyMenu();
+        return snapshot;
+      } catch (error) {
+        renderAutonomyMenu();
+        autonomyMessage(error?.message || String(error), true);
+        return null;
+      }
+    };
+
+    const autonomyAuthority = window.MaddyAutonomy || window.MEOSAutonomyAuthority;
+    autonomyAuthority?.on?.('authority:updated', () => {
+      if (autonomyMenu?.dataset.open === 'true') renderAutonomyMenu();
+    });
 
     /* Mirror the real cabinet members. Their original links already own the
        commissioned office-dashboard show(member) behavior, so we reuse it. */
@@ -3774,16 +3946,6 @@ document
     populateCabinetMenu();
     window.setTimeout(populateCabinetMenu, 600);
 
-    addTopNavButton('Knowledge', () => {
-      cabinetMenu.dataset.open = 'false';
-      openKnowledgeSurface();
-    });
-
-    addTopNavButton('System', () => {
-      cabinetMenu.dataset.open = 'false';
-      openSystemSurface();
-    });
-
     if (originalNav) {
       originalNav.style.visibility = 'hidden';
       originalNav.style.pointerEvents = 'none';
@@ -3791,8 +3953,7 @@ document
 
     document.addEventListener('pointerdown', event => {
       if (!viewport.querySelector('#meosImageOfficeNavWrap')?.contains(event.target)) {
-        cabinetMenu.dataset.open = 'false';
-        cabinetButton.setAttribute('aria-expanded','false');
+        closeTopMenus();
       }
     });
 
@@ -4034,7 +4195,7 @@ document
     let lastMoveX = null;
     let lastMoveAt = 0;
     viewport.addEventListener('pointerdown', event => {
-      if (event.target.closest('button,a,input,select,textarea,.meos-office-bay,.meos-office-nav,.meos-office-maddy-dock,.meos-desk-workspace,.meos-office-wayfinding')) return;
+      if (event.target.closest('button,a,input,select,textarea,.meos-office-bay,.meos-office-nav,.meos-office-cabinet-menu,.meos-office-autonomy-menu,.meos-office-maddy-dock,.meos-desk-workspace,.meos-office-wayfinding')) return;
       dragX = event.clientX;
       dragPan = panPx;
       dragVelocity = 0;
@@ -4060,7 +4221,7 @@ document
     viewport.addEventListener('pointerup', endDrag);
     viewport.addEventListener('pointercancel', endDrag);
     viewport.addEventListener('wheel', event => {
-      if (event.target.closest('.meos-widget,.meos-desk-workspace')) return;
+      if (event.target.closest('.meos-widget,.meos-desk-workspace,.meos-office-cabinet-menu,.meos-office-autonomy-menu')) return;
       const horizontalIntent = Math.abs(event.deltaX) > 1 ? event.deltaX : (event.shiftKey ? event.deltaY : 0);
       if (!horizontalIntent) return;
       event.preventDefault();
@@ -4151,6 +4312,9 @@ document
       ['Grant Intelligence real widget preserved', Boolean(scene?.querySelector('.meos-office-bay[data-widget="grant-intelligence"] .meos-widget[data-widget-id="grant-intelligence"]'))],
       ['Maddy Executive Office control preserved', Boolean(scene?.querySelector('#meosExecutiveOfficeControl'))],
       ['Navigation proxy controls present', (scene?.querySelectorAll('#meosImageOfficeNav button').length || 0) > 0],
+      ['Executive Office is the spatial home and duplicate Desk nav is absent', Boolean(scene?.querySelector('#meosImageOfficeNav')) && !scene?.querySelector('#meosDeskNavButton')],
+      ['Legacy Knowledge and System panoramic nav controls are absent', ![...(scene?.querySelectorAll('#meosImageOfficeNav button') || [])].some(button => /^(Knowledge|System)$/i.test(String(button.textContent || '').trim()))],
+      ['Maddy Autonomy control and compact menu are mounted', Boolean(scene?.querySelector('#meosAutonomyNavButton')) && Boolean(scene?.querySelector('#meosOfficeAutonomyMenu'))],
       ['Every mounted widget has Send to Desk control', (scene?.querySelectorAll('[data-office-tool="desk"]').length || 0) === (scene?.querySelectorAll('.meos-office-bay').length || 0)],
       ['Universal Executive Desk mounted', Boolean(scene?.querySelector('#meosDeskWorkspace #meosDeskBody'))],
       ['Left and right wayfinding mounted', Boolean(scene?.querySelector('#meosOfficeWayfindingLeft button')) && Boolean(scene?.querySelector('#meosOfficeWayfindingRight button'))],
