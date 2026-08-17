@@ -1,16 +1,28 @@
 /*
  * MEOS Document Classification Engine
- * Version: 1.1.0
+ * Commission Candidate: 006.031J — Governed Document Intake Autonomy
+ * Version: 1.2.0
+ * Build: DC120-GOVERNED-DOCUMENT-INTAKE-AUTONOMY-20260817-A
  *
  * Mission:
- * Classify cataloged documents using explainable, organization-neutral rules.
+ * Classify cataloged documents using explainable, organization-neutral rules,
+ * and continue machine-solvable classification work autonomously only when
+ * Durable Maddy Autonomy grants Document Intake authority.
  *
  * Brick boundary:
  * This engine determines likely document type, department routing, sensitivity,
  * authority level, review requirements, and whether a document represents
- * executable office work. It does not ingest files, mutate forms, sign,
- * certify, submit, replace official policy, or silently promote documents
- * into institutional memory.
+ * executable office work. It does not ingest files, mutate forms, create or
+ * approve workflows, spend, sign, certify, submit, replace official policy,
+ * or silently promote documents into institutional memory.
+ *
+ * Authority boundary:
+ * - Document Intake authority governs self-initiated queue continuation.
+ * - Human-directed classification remains available while standing autonomy is OFF.
+ * - Queue presence, browser state, legacy autoProcessQueue, and engine availability
+ *   never create standing autonomy.
+ * - Browser event/timer continuation is compatibility execution only; no durable
+ *   document runner is claimed by this browser organ.
  */
 
 (function initializeDocumentClassifier(global) {
@@ -18,6 +30,9 @@
 
     const STORAGE_KEY = "meos.document-classifier.v1";
     const SCHEMA = "meos.document-classifier.package.v1";
+    const STATE_SCHEMA = "meos.document-classifier.persistence-snapshot.v1";
+    const COMMISSION = "006.031J";
+    const AUTONOMY_CAPABILITY = "documents";
 
     const DOCUMENT_TYPES = {
         UNKNOWN: "unknown",
@@ -107,7 +122,9 @@
 
     const DocumentClassifier = {
         name: "MEOS Document Classification Engine",
-        version: "1.1.0",
+        version: "1.2.0",
+        buildId: "DC120-GOVERNED-DOCUMENT-INTAKE-AUTONOMY-20260817-A",
+        commission: COMMISSION,
         status: "initializing",
         operatingMode: "explainable-classification",
 
@@ -116,7 +133,13 @@
             automaticPersistence: true,
             localStorageKey: STORAGE_KEY,
             organizationNeutralCore: true,
+            // Legacy preference retained for compatibility only. It cannot grant autonomy.
             autoProcessQueue: false,
+            autonomousQueueContinuationEnabled: true,
+            autonomousQueueBatchSize: 25,
+            autonomyAuthorityRequired: true,
+            browserCompatibilityContinuationOnly: true,
+            browserIndependentRunnerCommissioned: false,
             minimumAutoAcceptConfidence: 0.88,
             minimumSuggestedConfidence: 0.55,
             maximumAlternativeTypes: 3,
@@ -131,6 +154,20 @@
         reviewQueue: [],
         activityLog: [],
         eventListeners: {},
+        autonomyAuthorityUnsubscribers: [],
+        ingestionQueueListener: null,
+        deferredAutonomyBindingInstalled: false,
+        autonomousContinuationId: null,
+        autonomousContinuationRunning: false,
+        autonomy: {
+            lastSyncAt: null,
+            lastAuthorityRevision: null,
+            documentsEffective: false,
+            lastReason: "authority-unproven",
+            continuationAuthority: null,
+            lastAutonomousRunAt: null,
+            lastAutonomousProcessed: 0
+        },
         initializedAt: null,
 
         initialize(options = {}) {
@@ -145,6 +182,10 @@
             this.status = "online";
 
             this.registerSystemKnowledge();
+            this.bindAutonomyAuthorityEvents();
+            this.bindIngestionQueueEvents();
+            this.installDeferredAutonomyBinding();
+            this.syncAutonomyRuntime({ reason: "initialize" });
 
             this.logActivity("classifier.initialized", {
                 version: this.version,
@@ -156,11 +197,503 @@
             });
 
             console.info(
-                `[MEOS] ${this.name} v${this.version} ${this.status}.`
+                `[MEOS] ${this.name} v${this.version} ${this.status}. Build ${this.buildId}.`
             );
 
             this.emit("classifier:online", this.getStatus());
             return this.getStatus();
+        },
+
+        getAutonomyAuthority() {
+            return (
+                global.MaddyAutonomy ||
+                global.MEOSAutonomyAuthority ||
+                null
+            );
+        },
+
+        getAutonomyIntegrationStatus(capabilityId = AUTONOMY_CAPABILITY) {
+            if (capabilityId !== AUTONOMY_CAPABILITY) {
+                return {
+                    ready: false,
+                    reason: "unsupported-document-autonomy-capability",
+                    capabilityId,
+                    version: this.version,
+                    commission: this.commission,
+                    buildId: this.buildId
+                };
+            }
+
+            const ingestionReady = Boolean(
+                global.DocumentIngestion &&
+                typeof global.DocumentIngestion.dequeueNext === "function"
+            );
+
+            return {
+                ready: ingestionReady,
+                reason: ingestionReady
+                    ? "governed-document-intake-classification-contract-ready"
+                    : "document-ingestion-integration-unavailable",
+                capabilityId,
+                version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                queuePresenceCreatesAuthority: false,
+                legacyAutoProcessQueueCreatesAuthority: false,
+                humanDirectedClassificationPreserved: true,
+                eventDrivenQueueContinuation: true,
+                browserCompatibilityContinuationOnly: true,
+                browserIndependentRunnerCommissioned: false,
+                workflowCreationAuthorized: false,
+                workflowApprovalAuthorized: false,
+                automaticSpendAuthorized: false,
+                externalActionAuthorized: false,
+                documentMutationAuthorized: false,
+                signatureAuthorized: false,
+                certificationAuthorized: false,
+                submissionAuthorized: false,
+                legalCommitmentAuthorized: false,
+                institutionalTruthPromotionAuthorized: false,
+                persistenceSnapshotContract: STATE_SCHEMA
+            };
+        },
+
+        autonomyCapabilityStatus() {
+            const authority = this.getAutonomyAuthority();
+
+            if (
+                !authority ||
+                typeof authority.capabilityStatus !== "function"
+            ) {
+                return {
+                    id: AUTONOMY_CAPABILITY,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "maddy-autonomy-authority-unavailable"
+                };
+            }
+
+            try {
+                return authority.capabilityStatus(AUTONOMY_CAPABILITY) || {
+                    id: AUTONOMY_CAPABILITY,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "document-autonomy-status-unavailable"
+                };
+            } catch (error) {
+                return {
+                    id: AUTONOMY_CAPABILITY,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "document-autonomy-probe-failed",
+                    error: error?.message || String(error)
+                };
+            }
+        },
+
+        isAutonomyAuthorized() {
+            const authority = this.getAutonomyAuthority();
+            if (!authority || typeof authority.isAuthorized !== "function") {
+                return false;
+            }
+
+            try {
+                return authority.isAuthorized(AUTONOMY_CAPABILITY) === true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        captureAutonomyReceipt() {
+            const authority = this.getAutonomyAuthority();
+            const status = this.autonomyCapabilityStatus();
+            let snapshot = null;
+
+            try {
+                snapshot =
+                    typeof authority?.getSnapshot === "function"
+                        ? authority.getSnapshot()
+                        : null;
+            } catch (_error) {
+                snapshot = null;
+            }
+
+            return {
+                schema: "meos.document-classifier.autonomy-receipt.v1",
+                capabilityId: AUTONOMY_CAPABILITY,
+                effective: status?.effective === true,
+                uiState: status?.uiState || "BLOCKED",
+                reason: status?.reason || "authority-unproven",
+                authorityRevision:
+                    Number(snapshot?.revision || 0) ||
+                    Number(snapshot?.policy?.revision || 0) ||
+                    Number(snapshot?.serverStatus?.revision || 0) ||
+                    null,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                capturedAt: new Date().toISOString()
+            };
+        },
+
+        resolveExecutionMode(options = {}) {
+            const autonomous =
+                options.autonomous === true ||
+                options.machineInitiated === true;
+            const humanDirected =
+                options.humanDirected === true || !autonomous;
+
+            return {
+                autonomous,
+                machineInitiated: autonomous,
+                humanDirected,
+                source:
+                    options.source ||
+                    (autonomous
+                        ? "autonomy-document-intake"
+                        : "human-directed-document-classification")
+            };
+        },
+
+        evaluateAutonomousAdmission(options = {}) {
+            const mode = this.resolveExecutionMode(options);
+
+            if (!mode.autonomous) {
+                return {
+                    allowed: true,
+                    mode,
+                    authorityReceipt: null,
+                    reason: "human-directed-classification"
+                };
+            }
+
+            if (!this.isAutonomyAuthorized()) {
+                return {
+                    allowed: false,
+                    blockedByAutonomy: true,
+                    mode,
+                    authorityReceipt: null,
+                    reason: "document-intake-autonomy-not-authorized",
+                    documents: this.autonomyCapabilityStatus()
+                };
+            }
+
+            const authorityReceipt = this.captureAutonomyReceipt();
+            if (authorityReceipt.effective !== true) {
+                return {
+                    allowed: false,
+                    blockedByAutonomy: true,
+                    mode,
+                    authorityReceipt,
+                    reason: "document-intake-authority-receipt-not-effective",
+                    documents: this.autonomyCapabilityStatus()
+                };
+            }
+
+            return {
+                allowed: true,
+                mode,
+                authorityReceipt,
+                reason: "durable-document-intake-authorized"
+            };
+        },
+
+        bindAutonomyAuthorityEvents() {
+            if (
+                Array.isArray(this.autonomyAuthorityUnsubscribers) &&
+                this.autonomyAuthorityUnsubscribers.length > 0
+            ) {
+                return true;
+            }
+
+            const authority = this.getAutonomyAuthority();
+            if (!authority || typeof authority.on !== "function") {
+                return false;
+            }
+
+            const sync = () => {
+                try {
+                    this.syncAutonomyRuntime({ reason: "authority-event" });
+                } catch (error) {
+                    console.warn(
+                        "[MEOS Document Classifier] Autonomy synchronization failed.",
+                        error
+                    );
+                    this.cancelAutonomousQueueContinuation({
+                        reason: "autonomy-sync-failed"
+                    });
+                }
+            };
+
+            try {
+                ["authority:updated", "authority:unavailable"].forEach((eventName) => {
+                    const unsubscribe = authority.on(eventName, sync);
+                    if (typeof unsubscribe === "function") {
+                        this.autonomyAuthorityUnsubscribers.push(unsubscribe);
+                    }
+                });
+                sync();
+                return true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        bindIngestionQueueEvents() {
+            const ingestion = global.DocumentIngestion;
+            if (!ingestion || typeof ingestion.on !== "function") {
+                return false;
+            }
+
+            if (this.ingestionQueueListener) {
+                return true;
+            }
+
+            this.ingestionQueueListener = () => {
+                if (!this.isAutonomyAuthorized()) {
+                    return;
+                }
+                this.scheduleAutonomousQueueContinuation({
+                    reason: "classification-queued"
+                });
+            };
+
+            ingestion.on(
+                "classification:queued",
+                this.ingestionQueueListener
+            );
+            return true;
+        },
+
+        installDeferredAutonomyBinding() {
+            if (this.deferredAutonomyBindingInstalled) {
+                return true;
+            }
+
+            if (typeof global.addEventListener !== "function") {
+                return false;
+            }
+
+            this.deferredAutonomyBindingInstalled = true;
+            global.addEventListener("load", () => {
+                this.bindAutonomyAuthorityEvents();
+                this.bindIngestionQueueEvents();
+                this.syncAutonomyRuntime({ reason: "window-load" });
+            });
+            return true;
+        },
+
+        syncAutonomyRuntime(options = {}) {
+            const documents = this.autonomyCapabilityStatus();
+            const authority = this.getAutonomyAuthority();
+            let snapshot = null;
+
+            try {
+                snapshot =
+                    typeof authority?.getSnapshot === "function"
+                        ? authority.getSnapshot()
+                        : null;
+            } catch (_error) {
+                snapshot = null;
+            }
+
+            this.autonomy.lastSyncAt = new Date().toISOString();
+            this.autonomy.lastAuthorityRevision =
+                Number(snapshot?.revision || 0) ||
+                Number(snapshot?.policy?.revision || 0) ||
+                Number(snapshot?.serverStatus?.revision || 0) ||
+                null;
+            this.autonomy.documentsEffective = documents?.effective === true;
+            this.autonomy.lastReason =
+                options.reason || documents?.reason || "authority-unproven";
+            this.autonomy.continuationAuthority =
+                this.autonomy.documentsEffective
+                    ? "central-autonomy-authority"
+                    : null;
+
+            if (!this.autonomy.documentsEffective) {
+                this.cancelAutonomousQueueContinuation({
+                    reason: "document-intake-authority-off"
+                });
+                return {
+                    success: true,
+                    authorized: false,
+                    scheduled: false,
+                    reason: documents?.reason || "document-intake-autonomy-off"
+                };
+            }
+
+            const scheduled =
+                this.configuration.autonomousQueueContinuationEnabled === true
+                    ? this.scheduleAutonomousQueueContinuation({
+                        reason: options.reason || "document-intake-authority-on"
+                    })
+                    : {
+                        success: true,
+                        scheduled: false,
+                        reason: "autonomous-queue-continuation-disabled"
+                    };
+
+            return {
+                success: true,
+                authorized: true,
+                scheduled: scheduled?.scheduled === true,
+                reason: scheduled?.reason || "document-intake-authorized"
+            };
+        },
+
+        queuedClassificationCount() {
+            const queue = global.DocumentIngestion?.classificationQueue;
+            return Array.isArray(queue)
+                ? queue.filter((item) => item?.status === "queued").length
+                : 0;
+        },
+
+        scheduleAutonomousQueueContinuation(options = {}) {
+            if (this.configuration.autonomousQueueContinuationEnabled !== true) {
+                return {
+                    success: true,
+                    scheduled: false,
+                    reason: "autonomous-queue-continuation-disabled"
+                };
+            }
+
+            if (!this.isAutonomyAuthorized()) {
+                this.autonomy.continuationAuthority = null;
+                return {
+                    success: false,
+                    scheduled: false,
+                    blockedByAutonomy: true,
+                    reason: "document-intake-autonomy-not-authorized"
+                };
+            }
+
+            if (this.queuedClassificationCount() === 0) {
+                return {
+                    success: true,
+                    scheduled: false,
+                    reason: "document-classification-queue-empty"
+                };
+            }
+
+            if (this.autonomousContinuationId) {
+                return {
+                    success: true,
+                    scheduled: true,
+                    alreadyScheduled: true,
+                    reason: "document-continuation-already-scheduled"
+                };
+            }
+
+            this.autonomy.continuationAuthority = "central-autonomy-authority";
+            const schedule =
+                typeof global.setTimeout === "function"
+                    ? global.setTimeout.bind(global)
+                    : setTimeout;
+
+            this.autonomousContinuationId = schedule(() => {
+                this.autonomousContinuationId = null;
+                this.runAutonomousQueueContinuation({
+                    reason: options.reason || "scheduled-document-continuation"
+                });
+            }, 0);
+
+            return {
+                success: true,
+                scheduled: true,
+                reason: options.reason || "document-continuation-scheduled"
+            };
+        },
+
+        cancelAutonomousQueueContinuation(options = {}) {
+            if (this.autonomousContinuationId) {
+                const clear =
+                    typeof global.clearTimeout === "function"
+                        ? global.clearTimeout.bind(global)
+                        : clearTimeout;
+                clear(this.autonomousContinuationId);
+                this.autonomousContinuationId = null;
+            }
+            this.autonomy.continuationAuthority = null;
+            return {
+                success: true,
+                cancelled: true,
+                reason: options.reason || "document-continuation-cancelled"
+            };
+        },
+
+        runAutonomousQueueContinuation(options = {}) {
+            if (this.autonomousContinuationRunning) {
+                return {
+                    success: true,
+                    running: true,
+                    processed: 0,
+                    reason: "document-continuation-already-running"
+                };
+            }
+
+            const admission = this.evaluateAutonomousAdmission({
+                autonomous: true,
+                machineInitiated: true,
+                source: options.source || "autonomy-document-queue-continuation"
+            });
+
+            if (!admission.allowed) {
+                this.cancelAutonomousQueueContinuation({
+                    reason: admission.reason
+                });
+                return {
+                    success: false,
+                    processed: 0,
+                    blockedByAutonomy: true,
+                    reason: admission.reason,
+                    documents: admission.documents || this.autonomyCapabilityStatus()
+                };
+            }
+
+            this.autonomousContinuationRunning = true;
+            let result;
+            try {
+                result = this.processQueue({
+                    autonomous: true,
+                    machineInitiated: true,
+                    humanDirected: false,
+                    source: options.source || "autonomy-document-queue-continuation",
+                    maximumDocuments: Math.max(
+                        1,
+                        Math.min(
+                            100,
+                            Number(
+                                options.maximumDocuments ||
+                                this.configuration.autonomousQueueBatchSize ||
+                                25
+                            )
+                        )
+                    )
+                });
+            } finally {
+                this.autonomousContinuationRunning = false;
+            }
+
+            this.autonomy.lastAutonomousRunAt = new Date().toISOString();
+            this.autonomy.lastAutonomousProcessed =
+                Number(result?.processed || result?.results?.length || 0);
+
+            if (
+                this.isAutonomyAuthorized() &&
+                this.queuedClassificationCount() > 0
+            ) {
+                this.scheduleAutonomousQueueContinuation({
+                    reason: "document-queue-remains"
+                });
+            }
+
+            return {
+                ...result,
+                autonomous: true,
+                authorityReceipt: admission.authorityReceipt
+            };
         },
 
         buildDefaultRules() {
@@ -843,6 +1376,16 @@
         },
 
         classifyDocument(documentOrId, options = {}) {
+            const admission = this.evaluateAutonomousAdmission(options);
+            if (!admission.allowed) {
+                return {
+                    success: false,
+                    blockedByAutonomy: true,
+                    reason: admission.reason,
+                    documents: admission.documents || this.autonomyCapabilityStatus()
+                };
+            }
+
             const document = this.resolveDocument(documentOrId);
 
             if (!document) {
@@ -940,7 +1483,14 @@
                     sourceLocation:
                         document.sourceLocation || null,
                     epistemicStatus:
-                        document.metadata?.epistemicStatus || null
+                        document.metadata?.epistemicStatus || null,
+                    execution: {
+                        autonomous: admission.mode.autonomous === true,
+                        machineInitiated: admission.mode.machineInitiated === true,
+                        humanDirected: admission.mode.humanDirected === true,
+                        source: admission.mode.source,
+                        authorityReceipt: admission.authorityReceipt
+                    }
                 }
             };
 
@@ -976,6 +1526,16 @@
         },
 
         processNextQueueItem(options = {}) {
+            const admission = this.evaluateAutonomousAdmission(options);
+            if (!admission.allowed) {
+                return {
+                    success: false,
+                    blockedByAutonomy: true,
+                    reason: admission.reason,
+                    documents: admission.documents || this.autonomyCapabilityStatus()
+                };
+            }
+
             const ingestion = global.DocumentIngestion;
 
             if (
@@ -1016,6 +1576,18 @@
         },
 
         processQueue(options = {}) {
+            const admission = this.evaluateAutonomousAdmission(options);
+            if (!admission.allowed) {
+                return {
+                    success: false,
+                    processed: 0,
+                    results: [],
+                    blockedByAutonomy: true,
+                    reason: admission.reason,
+                    documents: admission.documents || this.autonomyCapabilityStatus()
+                };
+            }
+
             const maximum = Math.max(
                 1,
                 Number(options.maximumDocuments) || 100
@@ -1036,7 +1608,10 @@
                 success: true,
                 processed: results.length,
                 results,
-                status: this.getStatus()
+                status: this.getStatus(),
+                autonomous: admission.mode.autonomous === true,
+                humanDirected: admission.mode.humanDirected === true,
+                authorityReceipt: admission.authorityReceipt
             };
         },
 
@@ -2076,9 +2651,9 @@
                 recordType: "system-component",
                 title: "MEOS Document Classification Engine",
                 summary:
-                    "Explainable, organization-neutral document classification with executive review controls.",
+                    "Explainable, organization-neutral document classification with executive review controls and centrally governed Document Intake autonomy.",
                 content:
-                    "The classifier recommends document type, office routing, authority, sensitivity, review requirements, and bounded document-work intelligence. It never mutates, signs, certifies, submits, or silently promotes a document into official institutional knowledge.",
+                    "The classifier recommends document type, office routing, authority, sensitivity, review requirements, and bounded document-work intelligence. Standing queue continuation requires Durable Maddy Autonomy Document Intake authority; human-directed classification remains available while autonomy is off. Queue presence, browser state, and legacy autoProcessQueue do not create authority. The classifier never mutates, creates or approves workflows, spends, signs, certifies, submits, or silently promotes a document into official institutional knowledge.",
                 tags: [
                     "meos-core",
                     "document-classification",
@@ -2097,9 +2672,13 @@
                 officeAccess: ["all"],
                 metadata: {
                     componentVersion: this.version,
+                    componentBuild: this.buildId,
+                    commission: this.commission,
                     organizationNeutralCore: true,
+                    autonomyAuthority: "server-durable-maddy-autonomy-authority",
+                    browserAuthority: false,
                     brickBoundary:
-                        "Classification and document-work recognition only; no file ingestion, document mutation, signature, certification, submission, or silent policy promotion."
+                        "Classification and document-work recognition only; no file ingestion, workflow creation/approval, document mutation, spending, signature, certification, submission, or silent policy promotion."
                 },
                 createdBy: this.name
             });
@@ -2109,12 +2688,23 @@
             return {
                 name: this.name,
                 version: this.version,
+                buildId: this.buildId,
+                commission: this.commission,
                 status: this.status,
                 operatingMode: this.operatingMode,
                 organizationNeutralCore:
                     this.configuration.organizationNeutralCore,
                 documentIngestionConnected:
                     Boolean(global.DocumentIngestion),
+                autonomy: {
+                    integration: this.getAutonomyIntegrationStatus(),
+                    capability: this.autonomyCapabilityStatus(),
+                    runtime: this.clone(this.autonomy),
+                    authorityAvailable: Boolean(this.getAutonomyAuthority()),
+                    autonomousContinuationScheduled: Boolean(this.autonomousContinuationId),
+                    autonomousContinuationRunning: this.autonomousContinuationRunning === true,
+                    queuedClassificationCount: this.queuedClassificationCount()
+                },
                 knowledgeEngineConnected:
                     Boolean(global.KnowledgeEngine),
                 ruleCount: this.rules.length,
@@ -2151,6 +2741,79 @@
                     (item) => item.status === "rejected"
                 ).length,
                 initializedAt: this.initializedAt
+            };
+        },
+
+        buildRunnerPersistenceSnapshot(options = {}) {
+            const tail = (items, maximum) =>
+                Array.isArray(items)
+                    ? this.clone(
+                        items.slice(-Math.max(1, Number(maximum) || 1000))
+                    )
+                    : [];
+
+            return {
+                schema: STATE_SCHEMA,
+                version: this.version,
+                buildId: this.buildId,
+                createdAt: new Date().toISOString(),
+                results: tail(this.results, options.maximumResults || 5000),
+                reviewQueue: tail(
+                    this.reviewQueue,
+                    options.maximumReviews || 5000
+                ),
+                activityLog:
+                    options.includeActivityLog === true
+                        ? tail(
+                            this.activityLog,
+                            options.maximumActivity || 1000
+                        )
+                        : [],
+                customRules: this.rules.filter(
+                    (rule) =>
+                        !this.buildDefaultRules().some(
+                            (defaultRule) => defaultRule.id === rule.id
+                        )
+                ),
+                authority: {
+                    source: "server-durable-maddy-autonomy-authority",
+                    browserAuthority: false,
+                    autonomyPolicyStoredHere: false,
+                    queuePresenceCreatesAuthority: false,
+                    legacyAutoProcessQueueCreatesAuthority: false,
+                    browserIndependentRunnerCommissioned: false
+                }
+            };
+        },
+
+        applyRunnerPersistenceSnapshot(snapshot, options = {}) {
+            if (!snapshot || snapshot.schema !== STATE_SCHEMA) {
+                return {
+                    success: false,
+                    error: "Document Classifier runner persistence snapshot is invalid."
+                };
+            }
+
+            if (options.replace === true) {
+                this.results = [];
+                this.reviewQueue = [];
+                this.activityLog = [];
+                this.rules = this.buildDefaultRules();
+            }
+
+            (snapshot.customRules || []).forEach((rule) => {
+                this.registerRule(rule);
+            });
+            this.mergeById(this.results, snapshot.results || []);
+            this.mergeById(this.reviewQueue, snapshot.reviewQueue || []);
+            if (options.includeActivityLog === true) {
+                this.mergeById(this.activityLog, snapshot.activityLog || []);
+            }
+
+            this.persistIfEnabled();
+            return {
+                success: true,
+                status: this.getStatus()
             };
         },
 
@@ -2438,6 +3101,432 @@
             }
 
             return JSON.parse(JSON.stringify(value));
+        },
+
+        runGovernedDocumentIntakeAutonomyAcceptanceTest() {
+            const originalMaddyAutonomy = global.MaddyAutonomy;
+            const originalAuthorityAlias = global.MEOSAutonomyAuthority;
+            const originalIngestion = global.DocumentIngestion;
+            const originalResults = this.clone(this.results);
+            const originalReviews = this.clone(this.reviewQueue);
+            const originalActivity = this.clone(this.activityLog);
+            const originalRules = this.clone(this.rules);
+            const originalAutomaticPersistence =
+                this.configuration.automaticPersistence;
+            const originalAutoProcessQueue =
+                this.configuration.autoProcessQueue;
+            const originalContinuationEnabled =
+                this.configuration.autonomousQueueContinuationEnabled;
+            const originalAuthorityUnsubscribers =
+                this.autonomyAuthorityUnsubscribers;
+            const originalIngestionListener = this.ingestionQueueListener;
+            const checks = [];
+            const check = (name, passed, detail = null) => {
+                checks.push({ name, passed: passed === true, detail });
+            };
+            const copy = (value) =>
+                value === undefined
+                    ? undefined
+                    : JSON.parse(JSON.stringify(value));
+
+            let authorityState = {
+                master: false,
+                documents: false,
+                revision: 700
+            };
+            const authorityListeners = {};
+            const fakeAuthority = {
+                capabilityStatus(id) {
+                    if (id !== AUTONOMY_CAPABILITY) return null;
+                    const effective =
+                        authorityState.master === true &&
+                        authorityState.documents === true;
+                    return {
+                        id,
+                        effective,
+                        uiState: effective ? "ON" : "OFF",
+                        reason: effective
+                            ? "authorized-for-acceptance"
+                            : "disabled-for-acceptance"
+                    };
+                },
+                isAuthorized(id) {
+                    return this.capabilityStatus(id)?.effective === true;
+                },
+                getSnapshot() {
+                    return {
+                        revision: authorityState.revision,
+                        policy: { revision: authorityState.revision }
+                    };
+                },
+                on(eventName, callback) {
+                    if (!authorityListeners[eventName]) {
+                        authorityListeners[eventName] = [];
+                    }
+                    authorityListeners[eventName].push(callback);
+                    return () => {
+                        authorityListeners[eventName] =
+                            (authorityListeners[eventName] || []).filter(
+                                (candidate) => candidate !== callback
+                            );
+                    };
+                }
+            };
+
+            const queue = [];
+            const documents = new Map();
+            const ingestionListeners = {};
+            const fakeIngestion = {
+                classificationQueue: queue,
+                on(eventName, callback) {
+                    if (!ingestionListeners[eventName]) {
+                        ingestionListeners[eventName] = [];
+                    }
+                    ingestionListeners[eventName].push(callback);
+                    return true;
+                },
+                off(eventName, callback) {
+                    ingestionListeners[eventName] =
+                        (ingestionListeners[eventName] || []).filter(
+                            (candidate) => candidate !== callback
+                        );
+                    return true;
+                },
+                getDocumentById(id) {
+                    return documents.get(id) || null;
+                },
+                dequeueNext() {
+                    const item = queue.find(
+                        (candidate) => candidate.status === "queued"
+                    );
+                    if (!item) {
+                        return {
+                            success: true,
+                            empty: true,
+                            queueItem: null,
+                            document: null
+                        };
+                    }
+                    item.status = "processing";
+                    const document = documents.get(item.documentId);
+                    if (document) document.queueStatus = "processing";
+                    return {
+                        success: true,
+                        empty: false,
+                        queueItem: copy(item),
+                        document: copy(document)
+                    };
+                },
+                completeQueueItem(queueItemId, result = {}) {
+                    const item = queue.find(
+                        (candidate) => candidate.id === queueItemId
+                    );
+                    if (!item) return { success: false };
+                    item.status = "complete";
+                    item.classifierResultId =
+                        result.classifierResultId || null;
+                    const document = documents.get(item.documentId);
+                    if (document) document.queueStatus = "complete";
+                    return { success: true, queueItem: copy(item) };
+                },
+                failQueueItem(queueItemId, error) {
+                    const item = queue.find(
+                        (candidate) => candidate.id === queueItemId
+                    );
+                    if (!item) return { success: false };
+                    item.status = "failed";
+                    item.error = error || "classification-failed";
+                    return { success: true };
+                },
+                persistIfEnabled() {
+                    return { success: true, persisted: false };
+                }
+            };
+
+            const enqueue = (id, name, tags = []) => {
+                const document = {
+                    id,
+                    logicalDocumentId: `logical-${id}`,
+                    name,
+                    normalizedName: String(name).toLowerCase(),
+                    baseName: name,
+                    extension: "pdf",
+                    mimeType: "application/pdf",
+                    sourceLocation: `acceptance://${id}`,
+                    sourceProvider: "acceptance",
+                    authority: "unreviewed",
+                    sensitivity: "internal",
+                    tags,
+                    queueStatus: "queued",
+                    metadata: { extractedText: tags.join(" ") }
+                };
+                documents.set(id, document);
+                queue.push({
+                    id: `queue-${id}`,
+                    documentId: id,
+                    office: null,
+                    status: "queued",
+                    queuedAt: new Date().toISOString(),
+                    classifierResultId: null
+                });
+                return document;
+            };
+
+            try {
+                this.cancelAutonomousQueueContinuation({
+                    reason: "acceptance-start"
+                });
+                this.results = [];
+                this.reviewQueue = [];
+                this.activityLog = [];
+                this.rules = this.buildDefaultRules();
+                this.configuration.automaticPersistence = false;
+                this.configuration.autoProcessQueue = true;
+                this.configuration.autonomousQueueContinuationEnabled = true;
+                this.autonomyAuthorityUnsubscribers = [];
+                this.ingestionQueueListener = null;
+
+                global.MaddyAutonomy = fakeAuthority;
+                global.MEOSAutonomyAuthority = fakeAuthority;
+                global.DocumentIngestion = fakeIngestion;
+
+                this.bindAutonomyAuthorityEvents();
+                this.bindIngestionQueueEvents();
+
+                const integration = this.getAutonomyIntegrationStatus();
+                enqueue(
+                    "doc-off",
+                    "Invoice.pdf",
+                    ["invoice", "vendor", "payment due"]
+                );
+
+                const blockedQueue = this.processNextQueueItem({
+                    autonomous: true,
+                    machineInitiated: true,
+                    humanDirected: false,
+                    source: "acceptance-autonomous-off"
+                });
+                const queueStillQueued =
+                    queue.find((item) => item.id === "queue-doc-off")
+                        ?.status === "queued";
+
+                const humanDirected = this.processNextQueueItem({
+                    humanDirected: true,
+                    source: "acceptance-human-directed"
+                });
+
+                enqueue(
+                    "doc-auto",
+                    "Receipt.pdf",
+                    ["receipt", "purchase", "transaction"]
+                );
+                authorityState.master = true;
+                authorityState.documents = true;
+                authorityState.revision += 1;
+                this.syncAutonomyRuntime({
+                    reason: "acceptance-authority-on"
+                });
+                this.cancelAutonomousQueueContinuation({
+                    reason: "acceptance-direct-run"
+                });
+                const governed = this.runAutonomousQueueContinuation({
+                    source: "acceptance-autonomous-on",
+                    maximumDocuments: 10
+                });
+                const autonomousResult =
+                    this.getResultForDocument("doc-auto");
+                const runnerSnapshot =
+                    this.buildRunnerPersistenceSnapshot();
+
+                enqueue(
+                    "doc-held",
+                    "Unknown Material.pdf",
+                    ["unmatched acceptance artifact"]
+                );
+                authorityState.documents = false;
+                authorityState.revision += 1;
+                const authorityLoss = this.syncAutonomyRuntime({
+                    reason: "acceptance-authority-loss"
+                });
+                const heldItem = queue.find(
+                    (item) => item.id === "queue-doc-held"
+                );
+
+                const directMachineBlocked = this.classifyDocument(
+                    "doc-held",
+                    {
+                        autonomous: true,
+                        machineInitiated: true,
+                        humanDirected: false,
+                        source: "acceptance-direct-machine"
+                    }
+                );
+
+                check(
+                    "Document Intake autonomy integration is first-class",
+                    integration?.ready === true &&
+                    integration?.capabilityId === AUTONOMY_CAPABILITY &&
+                    integration?.browserAuthority === false &&
+                    integration?.workflowCreationAuthorized === false,
+                    integration
+                );
+                check(
+                    "Legacy autoProcessQueue cannot manufacture standing autonomy",
+                    this.configuration.autoProcessQueue === true &&
+                    blockedQueue?.blockedByAutonomy === true &&
+                    queueStillQueued === true,
+                    blockedQueue
+                );
+                check(
+                    "Autonomous queue continuation cannot dequeue work while Document Intake is OFF",
+                    blockedQueue?.reason ===
+                        "document-intake-autonomy-not-authorized" &&
+                    queueStillQueued === true,
+                    blockedQueue
+                );
+                check(
+                    "Human-directed classification remains available with standing autonomy OFF",
+                    humanDirected?.success === true &&
+                    humanDirected?.classification?.result?.metadata?.execution
+                        ?.humanDirected === true &&
+                    humanDirected?.classification?.result?.metadata?.execution
+                        ?.autonomous === false,
+                    humanDirected?.classification?.result?.metadata?.execution
+                );
+                check(
+                    "Document Intake ON permits bounded autonomous queue continuation",
+                    governed?.success === true &&
+                    governed?.processed >= 1 &&
+                    queue.find((item) => item.id === "queue-doc-auto")
+                        ?.status === "complete",
+                    governed
+                );
+                check(
+                    "Autonomous classification retains durable authority revision provenance",
+                    autonomousResult?.metadata?.execution?.autonomous === true &&
+                    autonomousResult?.metadata?.execution?.authorityReceipt
+                        ?.authorityRevision === authorityState.revision - 1 &&
+                    autonomousResult?.metadata?.execution?.authorityReceipt
+                        ?.browserAuthority === false,
+                    autonomousResult?.metadata?.execution
+                );
+                check(
+                    "Direct machine-initiated classification cannot bypass Document Intake authority",
+                    directMachineBlocked?.blockedByAutonomy === true &&
+                    directMachineBlocked?.reason ===
+                        "document-intake-autonomy-not-authorized",
+                    directMachineBlocked
+                );
+                check(
+                    "Removing Document Intake authority cancels continuation without deleting queued work",
+                    authorityLoss?.authorized === false &&
+                    Boolean(this.autonomousContinuationId) === false &&
+                    heldItem?.status === "queued",
+                    { authorityLoss, heldItem }
+                );
+                check(
+                    "Classifier stays inside its brick and does not grant workflow or approval authority",
+                    integration?.workflowCreationAuthorized === false &&
+                    integration?.workflowApprovalAuthorized === false &&
+                    typeof this.createWorkflow !== "function" &&
+                    typeof this.approveWorkflow !== "function",
+                    integration
+                );
+                check(
+                    "Runner persistence snapshot carries operational state but no autonomy policy",
+                    runnerSnapshot?.schema === STATE_SCHEMA &&
+                    runnerSnapshot?.authority?.autonomyPolicyStoredHere === false &&
+                    runnerSnapshot?.authority?.browserAuthority === false &&
+                    runnerSnapshot?.authority?.queuePresenceCreatesAuthority === false &&
+                    !Object.prototype.hasOwnProperty.call(
+                        runnerSnapshot,
+                        "autonomy"
+                    ),
+                    runnerSnapshot?.authority
+                );
+                check(
+                    "Document queue presence alone never becomes authority",
+                    heldItem?.status === "queued" &&
+                    this.isAutonomyAuthorized() === false,
+                    this.autonomyCapabilityStatus()
+                );
+                check(
+                    "Economic, mutation, signature, certification, submission, legal, external, and truth-promotion authority remain closed",
+                    integration?.automaticSpendAuthorized === false &&
+                    integration?.documentMutationAuthorized === false &&
+                    integration?.signatureAuthorized === false &&
+                    integration?.certificationAuthorized === false &&
+                    integration?.submissionAuthorized === false &&
+                    integration?.legalCommitmentAuthorized === false &&
+                    integration?.externalActionAuthorized === false &&
+                    integration?.institutionalTruthPromotionAuthorized === false,
+                    integration
+                );
+                check(
+                    "Autonomous continuation is event-driven compatibility work rather than a polling authority loop",
+                    integration?.eventDrivenQueueContinuation === true &&
+                    integration?.browserCompatibilityContinuationOnly === true &&
+                    integration?.browserIndependentRunnerCommissioned === false &&
+                    !Object.prototype.hasOwnProperty.call(
+                        this.configuration,
+                        "scanIntervalMs"
+                    ),
+                    integration
+                );
+            } finally {
+                this.cancelAutonomousQueueContinuation({
+                    reason: "acceptance-cleanup"
+                });
+                this.results = originalResults;
+                this.reviewQueue = originalReviews;
+                this.activityLog = originalActivity;
+                this.rules = originalRules;
+                this.configuration.automaticPersistence =
+                    originalAutomaticPersistence;
+                this.configuration.autoProcessQueue =
+                    originalAutoProcessQueue;
+                this.configuration.autonomousQueueContinuationEnabled =
+                    originalContinuationEnabled;
+
+                if (originalMaddyAutonomy === undefined) {
+                    delete global.MaddyAutonomy;
+                } else {
+                    global.MaddyAutonomy = originalMaddyAutonomy;
+                }
+                if (originalAuthorityAlias === undefined) {
+                    delete global.MEOSAutonomyAuthority;
+                } else {
+                    global.MEOSAutonomyAuthority = originalAuthorityAlias;
+                }
+                if (originalIngestion === undefined) {
+                    delete global.DocumentIngestion;
+                } else {
+                    global.DocumentIngestion = originalIngestion;
+                }
+
+                this.autonomyAuthorityUnsubscribers =
+                    originalAuthorityUnsubscribers;
+                this.ingestionQueueListener = originalIngestionListener;
+                this.syncAutonomyRuntime({ reason: "acceptance-restore" });
+            }
+
+            const passed = checks.filter((item) => item.passed).length;
+            const success = passed === checks.length;
+            console.table(checks);
+            console.info(
+                `[MEOS ${this.version}] Commission ${this.commission} Governed Document Intake Autonomy: ${success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+            );
+
+            return {
+                schema: "meos.document-classifier.governed-autonomy-acceptance.v1",
+                commission: this.commission,
+                version: this.version,
+                buildId: this.buildId,
+                success,
+                passed,
+                total: checks.length,
+                checks
+            };
         },
 
         logActivity(action, details = {}) {
