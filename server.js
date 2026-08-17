@@ -37,7 +37,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.69";
+const VERSION = "2.10.70";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7325,6 +7325,46 @@ const PROSPECT_TOUR_BUILD_ID =
   "PT156-CUSTOMER-FACING-CAPABILITY-TRUTH-GATE-20260816-A";
 const PROSPECT_TOUR_MODEL =
   String(process.env.MEOS_PROSPECT_TOUR_MODEL || "gpt-5-mini").trim();
+
+/**
+ * Commission 006.029 — Provider-neutral Adviser Intelligence Server Bridge
+ *
+ * The vendor/model behind this seam is configuration, not Maddy identity.
+ * The browser sends only the bounded adviser contract assembled from Maddy-owned
+ * cognition. The server returns structured suggestions and economics receipts,
+ * never final Maddy speech, authority, belief, or verification.
+ */
+const MADDY_ADVISER_COMMISSION = "006.029";
+const MADDY_ADVISER_VERSION = "1.0.0";
+const MADDY_ADVISER_BUILD_ID =
+  "MA100-PROVIDER-NEUTRAL-ADVISER-SERVER-BRIDGE-20260816-A";
+const MADDY_ADVISER_PROVIDER =
+  String(process.env.MEOS_ADVISER_PROVIDER || "openai").trim().toLowerCase();
+const MADDY_ADVISER_MODEL =
+  String(process.env.MEOS_ADVISER_MODEL || "gpt-5-mini").trim();
+const MADDY_ADVISER_TIMEOUT_MS = Math.max(
+  5_000,
+  Math.min(60_000, Number(process.env.MEOS_ADVISER_TIMEOUT_MS || 30_000))
+);
+const MADDY_ADVISER_MAX_TRUTH_BYTES = 72 * 1024;
+const MADDY_ADVISER_MAX_OBJECTIVE_CHARS = 4_000;
+const MADDY_ADVISER_MAX_RESPONSE_PARTS = 8;
+const MADDY_ADVISER_DEDUPE_TTL_MS = 60_000;
+const MADDY_ADVISER_DEDUPE_MAX = 100;
+const MADDY_ADVISER_RATE_WINDOW_MS = 60_000;
+const MADDY_ADVISER_RATE_MAX_CALLS = Math.max(
+  1,
+  Math.min(120, Number(process.env.MEOS_ADVISER_RATE_MAX_CALLS || 30))
+);
+const MADDY_ADVISER_INPUT_USD_PER_MILLION = Number(
+  process.env.MEOS_ADVISER_INPUT_USD_PER_MILLION_TOKENS || ""
+);
+const MADDY_ADVISER_OUTPUT_USD_PER_MILLION = Number(
+  process.env.MEOS_ADVISER_OUTPUT_USD_PER_MILLION_TOKENS || ""
+);
+const maddyAdviserInflight = new Map();
+const maddyAdviserCache = new Map();
+const maddyAdviserRate = new Map();
 const PROSPECT_TOUR_MAX_TURNS = 6;
 const PROSPECT_TOUR_MAX_INPUT_CHARS = 900;
 const PROSPECT_TOUR_MAX_CONTEXT_CHARS = 1800;
@@ -7887,6 +7927,527 @@ async function runProspectTourReasoning({ introIntent, latestUtterance, priorSum
 
   return parseProspectTourJudgment(rawText);
 }
+
+function normalizeMaddyAdviserText(value, maximum = 4000) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maximum);
+}
+
+function maddyAdviserResponsePartSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      kind: {
+        type: "string",
+        enum: [
+          "relational", "recommendation", "opinion", "question", "inference",
+          "uncertainty", "capability", "fact"
+        ]
+      },
+      representation: {
+        type: "string",
+        enum: [
+          "relational", "recommendation", "option", "opinion", "question",
+          "inference", "possibility", "uncertainty", "unknown", "conditional",
+          "adaptive", "fact", "current", "negative"
+        ]
+      },
+      polarity: { type: "string", enum: ["neutral", "positive", "negative"] },
+      text: { type: "string" },
+      semanticRef: { type: ["string", "null"] },
+      capabilityId: { type: ["string", "null"] },
+      evidenceRefs: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 8
+      },
+      requiresAuthority: { type: "boolean" }
+    },
+    required: [
+      "kind", "representation", "polarity", "text", "semanticRef",
+      "capabilityId", "evidenceRefs", "requiresAuthority"
+    ]
+  };
+}
+
+function maddyAdviserOutputSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      responseParts: {
+        type: "array",
+        minItems: 1,
+        maxItems: MADDY_ADVISER_MAX_RESPONSE_PARTS,
+        items: maddyAdviserResponsePartSchema()
+      },
+      recommendation: { type: ["string", "null"] },
+      alternatives: { type: "array", items: { type: "string" }, maxItems: 6 },
+      risks: { type: "array", items: { type: "string" }, maxItems: 6 },
+      unknowns: { type: "array", items: { type: "string" }, maxItems: 8 }
+    },
+    required: ["responseParts", "recommendation", "alternatives", "risks", "unknowns"]
+  };
+}
+
+function maddyAdviserInstructions() {
+  return [
+    "You are a replaceable advisory intelligence worker hired by Maddy/MEOS. You are not Maddy and you never speak directly to the human.",
+    "Maddy has already established the objective, current cognition, bounded truth, evidence, capability state, uncertainty, and authority before this call.",
+    "Return structured suggestions only. Maddy may accept, reject, qualify, or ignore every suggestion.",
+    "Never invent or promote organizational facts, memories, capabilities, sources, completed actions, permissions, promises, verification events, or authority.",
+    "For recommendation, opinion, relational, question, inference, or uncertainty parts, bind semanticRef to an exact Maddy-owned response semantic ID when one supports the suggestion. If none supports it, do not fabricate a semanticRef.",
+    "For capability parts, use the exact capabilityId from Maddy truth. Match conditional, adaptive, unknown, unavailable, or prohibited states honestly; never promote them to current capability.",
+    "For fact parts, evidenceRefs must contain exact Maddy-owned evidence identifiers supplied in the truth packet. If evidence is absent, use inference or uncertainty instead of pretending the fact is established.",
+    "Do not disguise facts or capability claims as recommendations, opinions, relational language, or candidate phrasing.",
+    "requiresAuthority must be true for any suggestion that itself proposes an external action requiring human authority. You cannot grant that authority.",
+    "Candidate expression is advice only. Do not write a final answer and do not claim to speak as Maddy.",
+    "Be concise, useful, commercially and operationally intelligent, and willing to challenge weak reasoning. Provider usefulness may increase Maddy's options; it may never overwrite her truth or constitution."
+  ].join("\n");
+}
+
+function validateMaddyAdviserEnvelope(body) {
+  if (!body || typeof body !== "object") {
+    return { ok: false, error: "maddy_adviser_object_required" };
+  }
+  if (body.schema !== "meos.maddy.adviser-request.v2" || body.role !== "adviser-to-maddy") {
+    return { ok: false, error: "maddy_adviser_contract_required" };
+  }
+  const objective = normalizeMaddyAdviserText(body.objective, MADDY_ADVISER_MAX_OBJECTIVE_CHARS);
+  if (!objective || !body.maddyTruth || typeof body.maddyTruth !== "object") {
+    return { ok: false, error: "maddy_truth_and_objective_required" };
+  }
+  const contract = body.responseContract || {};
+  if (
+    contract.adviceOnly !== true ||
+    contract.semanticAuthority !== "maddy-executive-brain" ||
+    contract.providerOutputIsEvidence !== false ||
+    contract.providerOutputIsMaddyBelief !== false ||
+    contract.providerOutputIsFinalSpeech !== false ||
+    contract.providerCanGrantAuthority !== false
+  ) {
+    return { ok: false, error: "maddy_adviser_sovereignty_contract_invalid" };
+  }
+  const truthJson = JSON.stringify(body.maddyTruth);
+  if (Buffer.byteLength(truthJson, "utf8") > MADDY_ADVISER_MAX_TRUTH_BYTES) {
+    return { ok: false, error: "maddy_truth_packet_too_large" };
+  }
+  return { ok: true, objective, truthJson };
+}
+
+function normalizeMaddyAdviserAdvice(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const allowedKinds = new Set([
+    "relational", "recommendation", "opinion", "question", "inference",
+    "uncertainty", "capability", "fact"
+  ]);
+  const allowedRepresentations = new Set([
+    "relational", "recommendation", "option", "opinion", "question",
+    "inference", "possibility", "uncertainty", "unknown", "conditional",
+    "adaptive", "fact", "current", "negative"
+  ]);
+  const allowedPolarities = new Set(["neutral", "positive", "negative"]);
+  const responseParts = (Array.isArray(source.responseParts) ? source.responseParts : [])
+    .slice(0, MADDY_ADVISER_MAX_RESPONSE_PARTS)
+    .map((part, index) => ({
+      id: `adviser-part-${index + 1}`,
+      kind: allowedKinds.has(String(part?.kind || "")) ? String(part.kind) : "recommendation",
+      representation: allowedRepresentations.has(String(part?.representation || ""))
+        ? String(part.representation)
+        : "recommendation",
+      polarity: allowedPolarities.has(String(part?.polarity || ""))
+        ? String(part.polarity)
+        : "neutral",
+      text: normalizeMaddyAdviserText(part?.text, 1200),
+      semanticRef: normalizeMaddyAdviserText(part?.semanticRef, 160) || null,
+      capabilityId: normalizeMaddyAdviserText(part?.capabilityId, 160) || null,
+      evidenceRefs: (Array.isArray(part?.evidenceRefs) ? part.evidenceRefs : [])
+        .slice(0, 8)
+        .map(item => normalizeMaddyAdviserText(item, 240))
+        .filter(Boolean),
+      requiresAuthority: part?.requiresAuthority === true
+    }))
+    .filter(part => part.text);
+
+  return {
+    responseParts,
+    recommendation: normalizeMaddyAdviserText(source.recommendation, 1600) || null,
+    alternatives: (Array.isArray(source.alternatives) ? source.alternatives : [])
+      .slice(0, 6).map(item => normalizeMaddyAdviserText(item, 1000)).filter(Boolean),
+    risks: (Array.isArray(source.risks) ? source.risks : [])
+      .slice(0, 6).map(item => normalizeMaddyAdviserText(item, 1000)).filter(Boolean),
+    unknowns: (Array.isArray(source.unknowns) ? source.unknowns : [])
+      .slice(0, 8).map(item => normalizeMaddyAdviserText(item, 1000)).filter(Boolean)
+  };
+}
+
+function cleanupMaddyAdviserDedupe(now = Date.now()) {
+  for (const [key, item] of maddyAdviserCache.entries()) {
+    if (!item || now - item.cachedAt > MADDY_ADVISER_DEDUPE_TTL_MS) {
+      maddyAdviserCache.delete(key);
+    }
+  }
+  while (maddyAdviserCache.size > MADDY_ADVISER_DEDUPE_MAX) {
+    maddyAdviserCache.delete(maddyAdviserCache.keys().next().value);
+  }
+}
+
+function maddyAdviserRateAllowed(accountId) {
+  const now = Date.now();
+  const current = maddyAdviserRate.get(accountId) || { count: 0, resetAt: now + MADDY_ADVISER_RATE_WINDOW_MS };
+  if (now >= current.resetAt) {
+    current.count = 0;
+    current.resetAt = now + MADDY_ADVISER_RATE_WINDOW_MS;
+  }
+  current.count += 1;
+  maddyAdviserRate.set(accountId, current);
+  return {
+    allowed: current.count <= MADDY_ADVISER_RATE_MAX_CALLS,
+    remaining: Math.max(0, MADDY_ADVISER_RATE_MAX_CALLS - current.count),
+    resetAt: current.resetAt
+  };
+}
+
+function maddyAdviserEconomics(usage, options = {}) {
+  const inputTokens = Number(usage?.input_tokens || 0);
+  const outputTokens = Number(usage?.output_tokens || 0);
+  const pricingConfigured =
+    Number.isFinite(MADDY_ADVISER_INPUT_USD_PER_MILLION) &&
+    MADDY_ADVISER_INPUT_USD_PER_MILLION > 0 &&
+    Number.isFinite(MADDY_ADVISER_OUTPUT_USD_PER_MILLION) &&
+    MADDY_ADVISER_OUTPUT_USD_PER_MILLION > 0;
+  const estimatedCostUsd = pricingConfigured
+    ? Number((
+        inputTokens / 1_000_000 * MADDY_ADVISER_INPUT_USD_PER_MILLION +
+        outputTokens / 1_000_000 * MADDY_ADVISER_OUTPUT_USD_PER_MILLION
+      ).toFixed(6))
+    : null;
+  return {
+    providerCalls: options.providerCalls ?? 1,
+    providerPaidForAdvice: (options.providerCalls ?? 1) > 0,
+    providerPaidForAnswer: false,
+    deduplicated: options.deduplicated === true,
+    usage: usage || null,
+    estimatedCostUsd,
+    pricingConfigured,
+    pricingBasis: pricingConfigured ? "environment-configured-current-provider-pricing" : "not-configured-no-cost-claim"
+  };
+}
+
+async function callConfiguredMaddyAdviser({ objective, truthJson, requestBody, requestId }) {
+  if (MADDY_ADVISER_PROVIDER !== "openai") {
+    const error = new Error(`Configured Maddy adviser provider is not installed: ${MADDY_ADVISER_PROVIDER}.`);
+    error.status = 503;
+    error.code = "maddy_adviser_provider_not_installed";
+    throw error;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MADDY_ADVISER_TIMEOUT_MS);
+  try {
+    const providerResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: MADDY_ADVISER_MODEL,
+        instructions: maddyAdviserInstructions(),
+        input: [
+          `REQUEST_ID=${requestId || "unassigned"}`,
+          `OBJECTIVE=${objective}`,
+          `MADDY_TRUTH=${truthJson}`,
+          `GOVERNING_RULES=${JSON.stringify(requestBody.governingRules || [])}`,
+          `RESPONSE_CONTRACT=${JSON.stringify(requestBody.responseContract || {})}`
+        ].join("\n"),
+        reasoning: { effort: "medium" },
+        text: {
+          format: {
+            type: "json_schema",
+            name: "maddy_adviser_suggestions",
+            strict: true,
+            schema: maddyAdviserOutputSchema()
+          }
+        },
+        max_output_tokens: 2400
+      })
+    });
+
+    let payload = null;
+    try { payload = await providerResponse.json(); } catch (_) { payload = null; }
+    if (!providerResponse.ok) {
+      const error = new Error(
+        payload?.error?.message || `Adviser provider returned HTTP ${providerResponse.status}.`
+      );
+      error.status = 502;
+      error.code = "maddy_adviser_provider_failed";
+      throw error;
+    }
+    const raw = extractOpenAIResponseText(payload);
+    if (!raw) {
+      const error = new Error("Configured adviser returned no structured suggestions.");
+      error.status = 502;
+      error.code = "maddy_adviser_empty_response";
+      throw error;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
+    } catch (error) {
+      error.status = 502;
+      error.code = "maddy_adviser_invalid_structured_response";
+      throw error;
+    }
+    const advice = normalizeMaddyAdviserAdvice(parsed);
+    if (advice.responseParts.length === 0) {
+      const error = new Error("Configured adviser returned no usable response parts.");
+      error.status = 502;
+      error.code = "maddy_adviser_no_usable_parts";
+      throw error;
+    }
+
+    return {
+      success: true,
+      commission: MADDY_ADVISER_COMMISSION,
+      schema: "meos.maddy.adviser-response.v1",
+      version: MADDY_ADVISER_VERSION,
+      buildId: MADDY_ADVISER_BUILD_ID,
+      serverVersion: VERSION,
+      requestId: requestId || null,
+      provider: {
+        id: MADDY_ADVISER_PROVIDER,
+        model: MADDY_ADVISER_MODEL,
+        role: "adviser",
+        providerIsMaddy: false,
+        finalSpeechAuthority: false,
+        durableTruthAuthority: false,
+        authorityGrant: false
+      },
+      advice,
+      confidence: null,
+      receipt: {
+        semanticAuthority: "maddy-executive-brain",
+        providerOutputIsEvidence: false,
+        providerOutputIsMaddyBelief: false,
+        providerOutputIsFinalSpeech: false,
+        providerCanGrantAuthority: false,
+        claimVerified: false,
+        executionVerified: false,
+        outcomeVerified: false
+      },
+      economics: maddyAdviserEconomics(payload?.usage, { providerCalls: 1 })
+    };
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeout = new Error(`Maddy adviser provider timed out after ${MADDY_ADVISER_TIMEOUT_MS}ms.`);
+      timeout.status = 504;
+      timeout.code = "maddy_adviser_provider_timeout";
+      throw timeout;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function cloneMaddyAdviserReplay(result) {
+  return {
+    ...result,
+    advice: result?.advice ? structuredClone(result.advice) : null,
+    provider: result?.provider ? { ...result.provider } : null,
+    receipt: result?.receipt ? { ...result.receipt } : null,
+    economics: {
+      ...(result?.economics || {}),
+      providerCalls: 0,
+      providerPaidForAdvice: false,
+      providerPaidForAnswer: false,
+      deduplicated: true
+    }
+  };
+}
+
+async function executeMaddyAdviserForAccount(account, requestBody, validated) {
+  cleanupMaddyAdviserDedupe();
+  const requestId = normalizeMaddyAdviserText(requestBody.requestId, 180) || null;
+  const dedupeKey = requestId ? `${account.id}:${requestId}` : null;
+  if (dedupeKey && maddyAdviserCache.has(dedupeKey)) {
+    return cloneMaddyAdviserReplay(maddyAdviserCache.get(dedupeKey).result);
+  }
+  if (dedupeKey && maddyAdviserInflight.has(dedupeKey)) {
+    const result = await maddyAdviserInflight.get(dedupeKey);
+    return cloneMaddyAdviserReplay(result);
+  }
+
+  const rate = maddyAdviserRateAllowed(account.id);
+  if (!rate.allowed) {
+    const error = new Error("Maddy adviser rate limit reached for this authenticated account.");
+    error.status = 429;
+    error.code = "maddy_adviser_rate_limited";
+    error.rate = rate;
+    throw error;
+  }
+
+  const operation = callConfiguredMaddyAdviser({
+    objective: validated.objective,
+    truthJson: validated.truthJson,
+    requestBody,
+    requestId
+  });
+  if (dedupeKey) maddyAdviserInflight.set(dedupeKey, operation);
+  try {
+    const result = await operation;
+    if (dedupeKey) {
+      maddyAdviserCache.set(dedupeKey, { result, cachedAt: Date.now() });
+      cleanupMaddyAdviserDedupe();
+    }
+    return result;
+  } finally {
+    if (dedupeKey) maddyAdviserInflight.delete(dedupeKey);
+  }
+}
+
+app.get("/api/maddy/adviser/status", async (request, response, next) => {
+  response.set("Cache-Control", "no-store");
+  try {
+    const account = await authenticatedAccount(request);
+    if (!account) {
+      return response.status(401).json({ success: false, configured: false, error: "authentication_required" });
+    }
+    const providerInstalled = MADDY_ADVISER_PROVIDER === "openai";
+    return response.status(providerInstalled ? 200 : 503).json({
+      success: providerInstalled,
+      configured: providerInstalled && Boolean(OPENAI_API_KEY),
+      commission: MADDY_ADVISER_COMMISSION,
+      version: MADDY_ADVISER_VERSION,
+      buildId: MADDY_ADVISER_BUILD_ID,
+      serverVersion: VERSION,
+      provider: MADDY_ADVISER_PROVIDER,
+      model: MADDY_ADVISER_MODEL,
+      providerIsMaddy: false,
+      finalSpeechAuthority: false,
+      pricingConfigured:
+        Number.isFinite(MADDY_ADVISER_INPUT_USD_PER_MILLION) && MADDY_ADVISER_INPUT_USD_PER_MILLION > 0 &&
+        Number.isFinite(MADDY_ADVISER_OUTPUT_USD_PER_MILLION) && MADDY_ADVISER_OUTPUT_USD_PER_MILLION > 0
+    });
+  } catch (error) { next(error); }
+});
+
+app.post(
+  "/api/maddy/adviser",
+  express.json({ limit: "96kb", strict: true }),
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    try {
+      const account = await authenticatedAccount(request);
+      if (!account) {
+        return response.status(401).json({
+          success: false,
+          error: "authentication_required",
+          message: "An authenticated MEOS session is required for private Maddy adviser cognition."
+        });
+      }
+      const validated = validateMaddyAdviserEnvelope(request.body);
+      if (!validated.ok) {
+        return response.status(400).json({
+          success: false,
+          error: validated.error,
+          message: "The adviser call was rejected before any paid provider cognition."
+        });
+      }
+      const result = await executeMaddyAdviserForAccount(account, request.body, validated);
+      return response.status(200).json(result);
+    } catch (error) {
+      const status = Number(error?.status || 500);
+      if (status >= 500) {
+        console.error("[MEOS Maddy Adviser] Adviser execution failed:", {
+          code: error?.code || "maddy_adviser_failed",
+          message: error?.message || String(error)
+        });
+      }
+      return response.status(status).json({
+        success: false,
+        error: error?.code || "maddy_adviser_failed",
+        message: error?.message || String(error),
+        rate: error?.rate || undefined,
+        serverVersion: VERSION
+      });
+    }
+  }
+);
+
+app.get("/api/maddy/adviser/acceptance-test", async (request, response, next) => {
+  response.set("Cache-Control", "no-store");
+  try {
+    const account = await authenticatedAccount(request);
+    if (!account) {
+      return response.status(401).json({ success: false, error: "authentication_required" });
+    }
+    const validFixture = {
+      schema: "meos.maddy.adviser-request.v2",
+      role: "adviser-to-maddy",
+      requestId: "006028-server-acceptance",
+      objective: "Help reason about the bounded objective.",
+      maddyTruth: {
+        responseSemantics: [{ id: "semantic-objective", kind: "objective" }],
+        evidence: [],
+        capabilityAwareness: null
+      },
+      responseContract: {
+        adviceOnly: true,
+        semanticAuthority: "maddy-executive-brain",
+        providerOutputIsEvidence: false,
+        providerOutputIsMaddyBelief: false,
+        providerOutputIsFinalSpeech: false,
+        providerCanGrantAuthority: false
+      }
+    };
+    const valid = validateMaddyAdviserEnvelope(validFixture);
+    const invalidSpeech = validateMaddyAdviserEnvelope({
+      ...validFixture,
+      responseContract: { ...validFixture.responseContract, providerOutputIsFinalSpeech: true }
+    });
+    const economics = maddyAdviserEconomics({ input_tokens: 1000, output_tokens: 500 }, { providerCalls: 1 });
+    const replay = cloneMaddyAdviserReplay({
+      success: true,
+      advice: { responseParts: [{ text: "fixture" }] },
+      provider: { role: "adviser", providerIsMaddy: false },
+      receipt: { providerOutputIsEvidence: false },
+      economics
+    });
+    const source = maddyAdviserInstructions();
+    const checks = [
+      { name: "Private adviser route requires authenticated MEOS account", passed: Boolean(account?.id) },
+      { name: "Bounded v2 adviser contract is accepted before paid cognition", passed: valid.ok === true },
+      { name: "Provider final-speech ownership is rejected before paid cognition", passed: invalidSpeech.ok === false && invalidSpeech.error === "maddy_adviser_sovereignty_contract_invalid" },
+      { name: "Configured vendor is explicitly not Maddy", passed: /not Maddy/i.test(source) && !/You are Maddy/i.test(source) },
+      { name: "Adviser cannot grant authority or verification", passed: /cannot grant that authority/i.test(source) && /never invent or promote/i.test(source) },
+      { name: "Structured schema requires semantic capability and evidence bindings", passed: Boolean(maddyAdviserOutputSchema()?.properties?.responseParts) },
+      { name: "Duplicate replay adds zero provider calls", passed: replay.economics.providerCalls === 0 && replay.economics.deduplicated === true },
+      { name: "Provider may be paid for advice but never answer ownership", passed: economics.providerPaidForAdvice === true && economics.providerPaidForAnswer === false },
+      { name: "Cost is not invented when current pricing is unconfigured", passed: economics.pricingConfigured === false ? economics.estimatedCostUsd === null : true },
+      { name: "Provider-neutral server seam exposes no final speech authority", passed: MADDY_ADVISER_PROVIDER !== "" && MADDY_ADVISER_MODEL !== "" }
+    ];
+    const passed = checks.filter(check => check.passed).length;
+    return response.status(passed === checks.length ? 200 : 500).json({
+      success: passed === checks.length,
+      commission: MADDY_ADVISER_COMMISSION,
+      schema: "meos.maddy.adviser-intelligence-bridge.acceptance.v1",
+      version: MADDY_ADVISER_VERSION,
+      buildId: MADDY_ADVISER_BUILD_ID,
+      serverVersion: VERSION,
+      providerCallsDuringAcceptance: 0,
+      passed,
+      total: checks.length,
+      checks
+    });
+  } catch (error) { next(error); }
+});
 
 app.post(
   "/api/prospect-tour/turn",
