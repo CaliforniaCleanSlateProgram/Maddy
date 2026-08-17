@@ -1,6 +1,8 @@
 /*
  * MEOS Executive Workflow Engine
- * Version: 1.1.0
+ * Version: 1.2.0
+ * Commission Candidate: 006.031C — Governed Approved Work Autonomy
+ * Build: EW120-GOVERNED-APPROVED-WORK-AUTONOMY-20260817-A
  *
  * Mission:
  * Turn approved executive plans into controlled, trackable workflows that move
@@ -13,6 +15,12 @@
  * requirements cheaply before creating human work. It does not invent facts,
  * mutate or sign documents, certify representations, submit forms, spend money,
  * contact external parties, or bypass executive authority.
+ *
+ * 006.031C autonomy boundary:
+ * Approved workflow work may begin and advance without repeated human prompts
+ * only when the server-authoritative Maddy Autonomy Switchboard proves the
+ * approvedWork capability effective. Browser configuration flags are never
+ * authority. Office dispatch is separately governed by officeDispatch.
  */
 
 (function initializeExecutiveWorkflow(global) {
@@ -20,6 +28,15 @@
 
     const STORAGE_KEY = "meos.executive-workflow.v1";
     const SCHEMA = "meos.executive-workflow.package.v1";
+    const STATE_SCHEMA = "meos.executive-workflow.state.v1";
+    const VERSION = "1.2.0";
+    const COMMISSION = "006.031C";
+    const BUILD_ID =
+        "EW120-GOVERNED-APPROVED-WORK-AUTONOMY-20260817-A";
+    const AUTONOMY_CAPABILITIES = Object.freeze({
+        APPROVED_WORK: "approvedWork",
+        OFFICE_DISPATCH: "officeDispatch"
+    });
 
     const WORKFLOW_STATUSES = {
         DRAFT: "draft",
@@ -54,7 +71,9 @@
 
     const ExecutiveWorkflow = {
         name: "MEOS Executive Workflow Engine",
-        version: "1.1.0",
+        version: VERSION,
+        commission: COMMISSION,
+        buildId: BUILD_ID,
         status: "initializing",
         operatingMode: "controlled-workflow-orchestration",
 
@@ -64,11 +83,14 @@
             localStorageKey: STORAGE_KEY,
             organizationNeutralCore: true,
             requireExecutiveApproval: true,
+            // Legacy mechanics remain false and cannot grant authority.
+            // The durable Maddy Autonomy policy is the only autonomous gate.
             autoStartApprovedWorkflows: false,
-            autoAdvanceReadySteps: true,
+            autoAdvanceReadySteps: false,
             autoCompleteWorkflow: true,
             autoCreateFromApprovedPlans: false,
             autoDispatchReadySteps: false,
+            autonomyAuthorityRequired: true,
             scanIntervalMs: 5000,
             defaultStepDurationDays: 7,
             overdueGraceHours: 24,
@@ -88,6 +110,7 @@
         eventListeners: {},
         scannerId: null,
         initializedAt: null,
+        autonomyAuthorityUnsubscribe: null,
 
         analytics: {
             totalWorkflows: 0,
@@ -111,6 +134,7 @@
             this.status = "online";
 
             this.registerSystemKnowledge();
+            this.bindAutonomyAuthorityEvents();
 
             if (options.startScanner !== false) {
                 this.startScanner();
@@ -122,6 +146,171 @@
 
             this.emit("workflow:online", this.getStatus());
             return this.getStatus();
+        },
+
+        getAutonomyAuthority() {
+            return (
+                global.MaddyAutonomy ||
+                global.MEOSAutonomyAuthority ||
+                null
+            );
+        },
+
+        getAutonomyIntegrationStatus(
+            capabilityId = AUTONOMY_CAPABILITIES.APPROVED_WORK
+        ) {
+            if (
+                capabilityId !== AUTONOMY_CAPABILITIES.APPROVED_WORK
+            ) {
+                return {
+                    ready: false,
+                    reason: "unsupported-workflow-autonomy-capability",
+                    capabilityId,
+                    version: this.version,
+                    commission: this.commission,
+                    buildId: this.buildId
+                };
+            }
+
+            return {
+                ready: true,
+                reason: "governed-approved-work-contract-ready",
+                capabilityId,
+                version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                legacyConfigurationCreatesAuthority: false,
+                manualExecutionPreserved: true,
+                automaticExecutionRequiresCentralAuthority: true,
+                officeDispatchSeparatelyGoverned: true,
+                automaticSpendAuthorized: false,
+                externalActionAuthorized: false,
+                signatureAuthorized: false,
+                certificationAuthorized: false,
+                submissionAuthorized: false,
+                legalCommitmentAuthorized: false,
+                persistenceSnapshotContract: STATE_SCHEMA,
+                currentOperationalPersistence:
+                    "browser-localStorage-legacy-cache-authority-pending-migration",
+                browserIndependentRunnerCommissioned: false
+            };
+        },
+
+        autonomyCapabilityStatus(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+
+            if (
+                !authority ||
+                typeof authority.capabilityStatus !== "function"
+            ) {
+                return {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "maddy-autonomy-authority-unavailable"
+                };
+            }
+
+            try {
+                const status = authority.capabilityStatus(capabilityId);
+                return status || {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "autonomy-capability-status-unavailable"
+                };
+            } catch (error) {
+                return {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "autonomy-capability-probe-failed",
+                    error: error?.message || String(error)
+                };
+            }
+        },
+
+        isAutonomyAuthorized(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+
+            if (
+                !authority ||
+                typeof authority.isAuthorized !== "function"
+            ) {
+                return false;
+            }
+
+            try {
+                return authority.isAuthorized(capabilityId) === true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        captureAutonomyReceipt(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+            const status = this.autonomyCapabilityStatus(capabilityId);
+            let snapshot = null;
+
+            try {
+                snapshot =
+                    typeof authority?.getSnapshot === "function"
+                        ? authority.getSnapshot()
+                        : null;
+            } catch (_error) {
+                snapshot = null;
+            }
+
+            return {
+                schema: "meos.executive-workflow.autonomy-receipt.v1",
+                capabilityId,
+                effective: status?.effective === true,
+                uiState: status?.uiState || "BLOCKED",
+                reason: status?.reason || "authority-unproven",
+                authorityRevision:
+                    Number.isFinite(Number(snapshot?.revision))
+                        ? Number(snapshot.revision)
+                        : null,
+                authoritySource:
+                    snapshot?.sourceOfTruth ||
+                    "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                capturedAt: new Date().toISOString()
+            };
+        },
+
+        bindAutonomyAuthorityEvents() {
+            if (this.autonomyAuthorityUnsubscribe) {
+                return true;
+            }
+
+            const authority = this.getAutonomyAuthority();
+            if (!authority || typeof authority.on !== "function") {
+                return false;
+            }
+
+            try {
+                this.autonomyAuthorityUnsubscribe =
+                    authority.on("authority:updated", () => {
+                        // Authority changes never mutate workflow truth by
+                        // themselves. Re-scan simply lets newly authorized,
+                        // already-approved internal work become eligible.
+                        try {
+                            this.scan();
+                        } catch (error) {
+                            console.warn(
+                                "[MEOS Executive Workflow] Autonomy authority re-scan failed:",
+                                error
+                            );
+                        }
+                    });
+                return true;
+            } catch (_error) {
+                this.autonomyAuthorityUnsubscribe = null;
+                return false;
+            }
         },
 
         createWorkflow(input = {}, options = {}) {
@@ -1191,15 +1380,32 @@
 
             this.refreshStepReadiness(workflow);
 
+            const manualActivationRequested =
+                options.activate === true;
+            const autonomousActivationAuthorized =
+                this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                );
+
             if (
-                this.configuration.autoStartApprovedWorkflows ||
-                options.activate === true
+                manualActivationRequested ||
+                autonomousActivationAuthorized
             ) {
                 return this.activateWorkflow(
                     workflow.id,
                     {
                         actor:
-                            workflow.approvedBy
+                            workflow.approvedBy,
+                        autonomous:
+                            !manualActivationRequested &&
+                            autonomousActivationAuthorized,
+                        authorityReceipt:
+                            !manualActivationRequested &&
+                            autonomousActivationAuthorized
+                                ? this.captureAutonomyReceipt(
+                                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                                )
+                                : null
                     }
                 );
             }
@@ -1234,6 +1440,20 @@
             }
 
             if (
+                options.autonomous === true &&
+                !this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                )
+            ) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "approved-work-autonomy-not-authorized",
+                    workflow: this.clone(workflow)
+                };
+            }
+
+            if (
                 ![
                     WORKFLOW_STATUSES.READY,
                     WORKFLOW_STATUSES.PAUSED
@@ -1260,14 +1480,37 @@
             this.advanceWorkflow(workflow.id, {
                 actor:
                     options.actor ||
-                    "Executive Workflow Engine"
+                    "Executive Workflow Engine",
+                startReadySteps:
+                    options.autonomous === true
+                        ? undefined
+                        : options.startReadySteps !== false,
+                autonomous:
+                    options.autonomous === true,
+                authorityReceipt:
+                    options.authorityReceipt ||
+                    (options.autonomous === true
+                        ? this.captureAutonomyReceipt(
+                            AUTONOMY_CAPABILITIES.APPROVED_WORK
+                        )
+                        : null)
             });
 
             this.logHistory("workflow.activated", {
                 workflowId,
                 actor:
                     options.actor ||
-                    "Executive"
+                    "Executive",
+                autonomous: options.autonomous === true,
+                authorityReceipt:
+                    options.autonomous === true
+                        ? (
+                            options.authorityReceipt ||
+                            this.captureAutonomyReceipt(
+                                AUTONOMY_CAPABILITIES.APPROVED_WORK
+                            )
+                        )
+                        : null
             });
 
             this.recalculateAnalytics();
@@ -1425,6 +1668,21 @@
             }
 
             if (
+                options.autonomous === true &&
+                !this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                )
+            ) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "approved-work-autonomy-not-authorized",
+                    workflow: this.clone(workflow),
+                    step: this.clone(step)
+                };
+            }
+
+            if (
                 workflow.status !==
                 WORKFLOW_STATUSES.ACTIVE
             ) {
@@ -1472,18 +1730,59 @@
                 );
             }
 
+            const manualDispatchRequested =
+                options.dispatch === true;
+            const autonomousDispatchAuthorized =
+                options.autonomous === true &&
+                this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+                );
+
             if (
-                this.configuration.autoDispatchReadySteps ||
-                options.dispatch === true
+                manualDispatchRequested ||
+                autonomousDispatchAuthorized
             ) {
-                this.dispatchStep(workflow, step);
+                const dispatchResult =
+                    this.dispatchStep(workflow, step);
+
+                step.dispatch = {
+                    attemptedAt: new Date().toISOString(),
+                    autonomous:
+                        !manualDispatchRequested &&
+                        autonomousDispatchAuthorized,
+                    success:
+                        dispatchResult?.success === true,
+                    connected:
+                        dispatchResult?.connected !== false,
+                    reason:
+                        dispatchResult?.reason ||
+                        dispatchResult?.error ||
+                        null,
+                    authorityReceipt:
+                        !manualDispatchRequested &&
+                        autonomousDispatchAuthorized
+                            ? this.captureAutonomyReceipt(
+                                AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+                            )
+                            : null
+                };
             }
 
             this.logHistory("step.started", {
                 workflowId,
                 stepId,
                 office: step.office,
-                owner: step.owner
+                owner: step.owner,
+                autonomous: options.autonomous === true,
+                authorityReceipt:
+                    options.autonomous === true
+                        ? (
+                            options.authorityReceipt ||
+                            this.captureAutonomyReceipt(
+                                AUTONOMY_CAPABILITIES.APPROVED_WORK
+                            )
+                        )
+                        : null
             });
 
             this.recalculateWorkflow(workflow);
@@ -1947,10 +2246,23 @@
                         STEP_STATUSES.READY
                 );
 
-            if (
-                this.configuration.autoAdvanceReadySteps &&
-                options.startReadySteps !== false
-            ) {
+            const manualAdvanceRequested =
+                options.startReadySteps === true &&
+                options.autonomous !== true;
+            const autonomousAdvanceAuthorized =
+                options.startReadySteps !== false &&
+                this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                );
+            const shouldStartReadySteps =
+                manualAdvanceRequested ||
+                autonomousAdvanceAuthorized;
+
+            if (shouldStartReadySteps) {
+                const autonomous =
+                    !manualAdvanceRequested &&
+                    autonomousAdvanceAuthorized;
+
                 readySteps.forEach((step) => {
                     this.startStep(
                         workflow.id,
@@ -1959,9 +2271,18 @@
                             actor:
                                 options.actor ||
                                 this.name,
+                            autonomous,
                             dispatch:
-                                this.configuration
-                                    .autoDispatchReadySteps
+                                options.dispatch === true,
+                            authorityReceipt:
+                                autonomous
+                                    ? (
+                                        options.authorityReceipt ||
+                                        this.captureAutonomyReceipt(
+                                            AUTONOMY_CAPABILITIES.APPROVED_WORK
+                                        )
+                                    )
+                                    : null
                         }
                     );
                 });
@@ -2422,6 +2743,8 @@
         },
 
         scan() {
+            this.bindAutonomyAuthorityEvents();
+
             const now = Date.now();
             let overdueCount = 0;
             let blockedCount = 0;
@@ -2434,6 +2757,24 @@
                         WORKFLOW_STATUSES.READY
                     ].includes(workflow.status)
                 ) {
+                    return;
+                }
+
+                if (
+                    workflow.status === WORKFLOW_STATUSES.READY &&
+                    workflow.approvedAt &&
+                    this.isAutonomyAuthorized(
+                        AUTONOMY_CAPABILITIES.APPROVED_WORK
+                    )
+                ) {
+                    this.activateWorkflow(workflow.id, {
+                        actor: this.name,
+                        autonomous: true,
+                        authorityReceipt:
+                            this.captureAutonomyReceipt(
+                                AUTONOMY_CAPABILITIES.APPROVED_WORK
+                            )
+                    });
                     return;
                 }
 
@@ -2823,7 +3164,7 @@
                 summary:
                     "Universal controlled workflow orchestration with approvals, dependencies, handoffs, blockers, escalations, notifications, and office coordination.",
                 content:
-                    "Executive Workflow turns approved plans into trackable operational workflows. It does not autonomously approve decisions, spend money, contact external parties, or bypass executive authority.",
+                    "Executive Workflow turns approved plans into trackable operational workflows. Approved internal work may begin and advance autonomously only when Durable Maddy Autonomy Authority proves approvedWork effective. Office dispatch is separately authorized. It never autonomously approves decisions, spends money, signs or certifies, submits externally, creates legal commitments, contacts external parties outside granted authority, or bypasses executive authority.",
                 tags: [
                     "meos-core",
                     "executive-workflow",
@@ -2845,7 +3186,7 @@
                     componentVersion: this.version,
                     organizationNeutralCore: true,
                     brickBoundary:
-                        "Workflow state management only; no autonomous approval, spending, or external communication."
+                        "Governed workflow state and approved internal-work progression only; no autonomous approval, spending, signature, certification, submission, legal commitment, or ungranted external communication."
                 },
                 createdBy: this.name
             });
@@ -2853,6 +3194,8 @@
 
         getConnectedSources() {
             return {
+                maddyAutonomyAuthority:
+                    Boolean(this.getAutonomyAuthority()),
                 executivePlanning:
                     Boolean(global.ExecutivePlanning),
                 institutionalReasoning:
@@ -2878,6 +3221,8 @@
             return {
                 name: this.name,
                 version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
                 status: this.status,
                 operatingMode: this.operatingMode,
                 organizationNeutralCore:
@@ -2888,6 +3233,26 @@
                     this.configuration.scanIntervalMs,
                 connectedSources:
                     this.getConnectedSources(),
+                autonomy: {
+                    approvedWork:
+                        this.autonomyCapabilityStatus(
+                            AUTONOMY_CAPABILITIES.APPROVED_WORK
+                        ),
+                    officeDispatch:
+                        this.autonomyCapabilityStatus(
+                            AUTONOMY_CAPABILITIES.OFFICE_DISPATCH
+                        ),
+                    browserAuthority: false,
+                    legacyConfigurationCreatesAuthority: false,
+                    automaticSpendAuthorized: false,
+                    externalActionAuthorized: false
+                },
+                operationalPersistence: {
+                    currentAuthority:
+                        "browser-localStorage-legacy",
+                    stateSnapshotSchema: STATE_SCHEMA,
+                    browserIndependentRunnerCommissioned: false
+                },
                 workflowCount:
                     this.workflows.length,
                 escalationCount:
@@ -2898,6 +3263,101 @@
                     this.clone(this.analytics),
                 initializedAt:
                     this.initializedAt
+            };
+        },
+
+        buildPersistenceSnapshot(options = {}) {
+            return {
+                schema: STATE_SCHEMA,
+                version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
+                capturedAt: new Date().toISOString(),
+                workflows: this.clone(this.workflows),
+                escalations: this.clone(this.escalations),
+                notifications: this.clone(this.notifications),
+                history:
+                    options.includeHistory === false
+                        ? []
+                        : this.clone(this.history),
+                analytics: this.clone(this.analytics),
+                authority: {
+                    browserAuthority: false,
+                    autonomyPolicyStoredHere: false,
+                    automaticSpendAuthorized: false,
+                    externalActionAuthorized: false
+                }
+            };
+        },
+
+        applyPersistenceSnapshot(snapshot, options = {}) {
+            if (
+                !snapshot ||
+                snapshot.schema !== STATE_SCHEMA
+            ) {
+                return {
+                    success: false,
+                    restored: false,
+                    error:
+                        "The workflow persistence snapshot is invalid."
+                };
+            }
+
+            const workflows =
+                Array.isArray(snapshot.workflows)
+                    ? snapshot.workflows
+                    : [];
+            const escalations =
+                Array.isArray(snapshot.escalations)
+                    ? snapshot.escalations
+                    : [];
+            const notifications =
+                Array.isArray(snapshot.notifications)
+                    ? snapshot.notifications
+                    : [];
+            const history =
+                Array.isArray(snapshot.history)
+                    ? snapshot.history
+                    : [];
+
+            if (
+                workflows.length > this.configuration.maximumWorkflows
+            ) {
+                return {
+                    success: false,
+                    restored: false,
+                    error:
+                        "The workflow persistence snapshot exceeds the workflow limit."
+                };
+            }
+
+            this.workflows = this.clone(workflows);
+            this.escalations = this.clone(
+                escalations.slice(
+                    -this.configuration.maximumEscalations
+                )
+            );
+            this.notifications = this.clone(notifications);
+            this.history = this.clone(
+                history.slice(
+                    -this.configuration.maximumHistory
+                )
+            );
+
+            this.rebuildDerivedState();
+
+            if (
+                options.persistLocalCache === true &&
+                this.configuration.persistenceEnabled
+            ) {
+                this.persistIfEnabled();
+            }
+
+            return {
+                success: true,
+                restored: true,
+                workflowCount: this.workflows.length,
+                snapshotSchema: STATE_SCHEMA
             };
         },
 
@@ -3137,6 +3597,80 @@
             return {
                 success: true,
                 status: this.getStatus()
+            };
+        },
+
+        runAutonomyAcceptanceTest() {
+            const checks = [];
+            const check = (name, passed, details = null) => {
+                checks.push({
+                    name,
+                    passed: passed === true,
+                    details
+                });
+            };
+
+            const authority = this.getAutonomyAuthority();
+            const approved = this.getAutonomyIntegrationStatus(
+                AUTONOMY_CAPABILITIES.APPROVED_WORK
+            );
+
+            check(
+                "Approved Work integration contract is present",
+                approved.ready === true &&
+                    approved.browserAuthority === false
+            );
+            check(
+                "Legacy auto-start flag defaults false",
+                this.configuration.autoStartApprovedWorkflows === false
+            );
+            check(
+                "Legacy auto-advance flag defaults false",
+                this.configuration.autoAdvanceReadySteps === false
+            );
+            check(
+                "Legacy auto-dispatch flag defaults false",
+                this.configuration.autoDispatchReadySteps === false
+            );
+            check(
+                "Workflow cannot create browser authority",
+                approved.legacyConfigurationCreatesAuthority === false
+            );
+            check(
+                "Automatic spend remains unauthorized",
+                approved.automaticSpendAuthorized === false
+            );
+            check(
+                "External action remains unauthorized",
+                approved.externalActionAuthorized === false
+            );
+            check(
+                "Signature/certification/submission remain unauthorized",
+                approved.signatureAuthorized === false &&
+                    approved.certificationAuthorized === false &&
+                    approved.submissionAuthorized === false
+            );
+            check(
+                "Persistence snapshot excludes autonomy policy authority",
+                this.buildPersistenceSnapshot().authority
+                    .autonomyPolicyStoredHere === false
+            );
+            check(
+                "Central authority API is the only autonomous gate when loaded",
+                !authority ||
+                    typeof authority.isAuthorized === "function"
+            );
+
+            return {
+                schema:
+                    "meos.executive-workflow.autonomy-acceptance.v1",
+                commission: this.commission,
+                version: this.version,
+                buildId: this.buildId,
+                success: checks.every((item) => item.passed),
+                passed: checks.filter((item) => item.passed).length,
+                total: checks.length,
+                checks
             };
         },
 
