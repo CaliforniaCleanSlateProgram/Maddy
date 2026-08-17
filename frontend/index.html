@@ -469,18 +469,31 @@
     </div>
 
     <!--
+        Commission Candidate: 006.031I — Autonomy Switchboard Runtime Wiring
+        Build: INDEX031I-AUTONOMY-SWITCHBOARD-RUNTIME-WIRING-20260817-A
+        Browser authority: false. Durable server authority remains authoritative.
+    -->
+
+    <!--
         MEOS organizational loading order:
 
         1. Executive Offices establish the cabinet.
         2. Mission Engine establishes organizational work.
-        3. Mission Dispatcher routes work to the offices.
-        4. Office Dashboard displays office activity.
-        5. App initializes dashboard navigation and interface behavior.
+        3. Durable Maddy Autonomy Switchboard establishes browser-side access
+           to server-owned standing autonomy authority before autonomy-aware organs initialize.
+        4. Executive organs initialize against that shared authority contract.
+        5. Mission Dispatcher routes work to the offices within granted authority.
+        6. Office Dashboard displays office activity.
+        7. App initializes dashboard navigation and interface behavior.
+
+        006.031I: executive-autonomy.js must load before every autonomy-aware
+        browser organ. The switchboard is not browser authority; server policy remains authoritative.
     -->
 
     <script src="executive-offices.js"></script>
 
 <script src="mission-engine.js"></script>
+<script src="executive-autonomy.js"></script>
 <script src="profiles/ccsp-organizational-profile.js"></script>
 <script src="intelligence-engine.js"></script>
 <script src="knowledge-engine.js"></script>
