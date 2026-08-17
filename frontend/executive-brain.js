@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.25.22
- * Build: EB12522-OWNED-SPEECH-AUTHORIZATION-KERNEL-20260816-A
+ * Version: 1.26.0
+ * Build: EB1260-SOVEREIGN-COGNITION-RESPONSE-OWNERSHIP-20260816-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.25.22";
-  const BUILD_ID = "EB12522-OWNED-SPEECH-AUTHORIZATION-KERNEL-20260816-A";
+  const VERSION = "1.26.0";
+  const BUILD_ID = "EB1260-SOVEREIGN-COGNITION-RESPONSE-OWNERSHIP-20260816-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -773,12 +773,18 @@
       const cognitionContext = cognition
         ? this.buildInteractiveCognitionContext(cognition)
         : null;
+      const responseSemantics = this.buildOwnedResponseSemantics(
+        prepared,
+        cognitionContext || {}
+      );
       const routedPackage = {
         ...this.clone(prepared),
         cognition: cognitionContext,
+        responseSemantics,
         providerInstructions: {
           ...this.clone(prepared.providerInstructions),
           maddyCognition: cognitionContext,
+          maddyResponseSemantics: responseSemantics,
           responseOwnership: {
             semanticAuthority: "maddy-executive-brain",
             providerRole: "adviser",
@@ -821,6 +827,72 @@
         truthRule:
           "This is Maddy-owned cognition. Provider output may advise it but cannot rewrite its evidence, capability state, uncertainty, or authority."
       };
+    },
+
+    /*
+     * Commission 006.026 — Sovereign Cognition + Response Ownership
+     *
+     * The adviser never receives a blank page and never gets to invent the
+     * meaning Maddy is supposed to have.  These semantic units are the bounded
+     * meanings already owned by the human stimulus and Maddy's cognition.
+     * External advisers may attach suggestions to them, but may not create
+     * facts, capabilities, authority, completion, or durable truth by prose.
+     */
+    buildOwnedResponseSemantics(prepared = {}, cognition = {}) {
+      const units = [];
+      const textOf = value => this.textContent(
+        value?.rationale ||
+        value?.summary ||
+        value?.statement ||
+        value?.description ||
+        value?.title ||
+        value
+      ).replace(/\s+/g, " ").trim();
+      const add = (id, kind, value, source, representation = kind) => {
+        const text = textOf(value);
+        if (!text) return;
+        units.push({ id, kind, representation, text, source });
+      };
+
+      add(
+        "maddy-objective",
+        "objective",
+        prepared?.request?.text || "",
+        "human-stimulus",
+        "stated-objective"
+      );
+
+      const reasoning = cognition?.reasoning || {};
+      add(
+        "maddy-recommendation",
+        "recommendation",
+        reasoning?.recommendation,
+        "institutional-reasoning",
+        "recommendation"
+      );
+
+      (Array.isArray(reasoning?.findings) ? reasoning.findings : [])
+        .slice(0, 5)
+        .forEach((value, index) =>
+          add(`maddy-finding-${index + 1}`, "finding", value, "institutional-reasoning", "finding")
+        );
+      (Array.isArray(reasoning?.options) ? reasoning.options : [])
+        .slice(0, 4)
+        .forEach((value, index) =>
+          add(`maddy-option-${index + 1}`, "option", value, "institutional-reasoning", "possibility")
+        );
+      (Array.isArray(reasoning?.risks) ? reasoning.risks : [])
+        .slice(0, 4)
+        .forEach((value, index) =>
+          add(`maddy-risk-${index + 1}`, "risk", value, "institutional-reasoning", "risk")
+        );
+      (Array.isArray(cognition?.unknowns) ? cognition.unknowns : [])
+        .slice(0, 6)
+        .forEach((value, index) =>
+          add(`maddy-unknown-${index + 1}`, "uncertainty", value, "maddy-cognition", "uncertainty")
+        );
+
+      return units.slice(0, 20);
     },
 
 
@@ -1155,6 +1227,19 @@
         firstAdviceObject?.advice ||
         firstAdviceObject?.suggestion ||
         null;
+      const adviserParts = Array.isArray(firstAdviceObject?.responseParts)
+        ? firstAdviceObject.responseParts
+        : Array.isArray(firstAdviceObject?.parts)
+          ? firstAdviceObject.parts
+          : [];
+      const adviserPartDecisions = adviserParts.map((part, index) =>
+        this.reconcileAdviserResponsePart(part, requestPackage, { index })
+      );
+      const acceptedAdviserParts = adviserPartDecisions
+        .filter(item => item.release === true)
+        .map(item => item.part);
+      const heldAdviserParts = adviserPartDecisions
+        .filter(item => item.release !== true);
 
       const maddyRecommendation = this.buildObjectiveBoundResponseRecommendation(
         requestPackage,
@@ -1202,6 +1287,10 @@
         successfulProviderCount: successfulAdvice.length,
         recommendation: this.clone(providerRecommendation),
         candidateLanguage: providerCandidateLanguage,
+        responsePartsReceived: adviserParts.length,
+        responsePartsAccepted: acceptedAdviserParts.length,
+        responsePartsHeld: heldAdviserParts.length,
+        partDecisions: this.clone(adviserPartDecisions),
         providerOutputIsEvidence: false,
         providerOutputIsMaddyBelief: false,
         providerOutputIsFinalSpeech: false,
@@ -1222,6 +1311,8 @@
         unknowns: this.clone(maddyUnknowns),
         evidence: localEvidenceDigest,
         capabilityAwareness: this.clone(requestPackage?.selfModel?.capabilityAwareness || null),
+        acceptedAdviserParts: this.clone(acceptedAdviserParts),
+        heldAdviserParts: this.clone(heldAdviserParts),
         adviser: adviserReceipt,
         authority: {
           humanApprovalRequired: Boolean(
@@ -1253,6 +1344,151 @@
       });
       this.emit("brain:semantic-response-owned", decision);
       return this.clone(decision);
+    },
+
+
+    reconcileAdviserResponsePart(part = {}, requestPackage = {}, options = {}) {
+      const kind = String(part?.kind || part?.type || "recommendation")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-");
+      const representation = String(part?.representation || kind || "recommendation")
+        .trim()
+        .toLowerCase();
+      const polarity = String(part?.polarity || "neutral").trim().toLowerCase();
+      const text = this.textContent(part?.text || part?.content || "").trim();
+      const normalizedPart = {
+        id: part?.id || `adviser-part-${Number(options.index || 0) + 1}`,
+        kind,
+        representation,
+        polarity,
+        text,
+        semanticRef: part?.semanticRef || null,
+        capabilityId: part?.capabilityId || null,
+        evidenceRefs: Array.isArray(part?.evidenceRefs) ? this.clone(part.evidenceRefs) : [],
+        requiresAuthority: part?.requiresAuthority === true
+      };
+
+      const allow = (reason, details = {}) => ({
+        release: true,
+        disposition: "allow",
+        reason,
+        part: normalizedPart,
+        details
+      });
+      const hold = (reason, details = {}) => ({
+        release: false,
+        disposition: "hold",
+        reason,
+        part: normalizedPart,
+        details
+      });
+
+      if (!text) return hold("empty-adviser-part");
+      if (normalizedPart.requiresAuthority) {
+        return hold("adviser-part-cannot-self-authorize-external-action");
+      }
+
+      const ownedSemantics = Array.isArray(requestPackage?.responseSemantics)
+        ? requestPackage.responseSemantics
+        : this.buildOwnedResponseSemantics(requestPackage, requestPackage?.cognition || {});
+      const semantic = normalizedPart.semanticRef
+        ? ownedSemantics.find(item => item?.id === normalizedPart.semanticRef) || null
+        : null;
+      const semanticKind = String(semantic?.kind || "").toLowerCase();
+
+      if (kind === "relational") {
+        return semantic && ["objective", "finding", "recommendation", "uncertainty"].includes(semanticKind)
+          ? allow("relational-language-is-bound-to-maddy-owned-meaning", { semantic: this.clone(semantic) })
+          : hold("relational-language-requires-maddy-owned-semantic-reference");
+      }
+
+      if (kind === "recommendation") {
+        return semantic && ["recommendation", "option"].includes(semanticKind)
+          ? allow("adviser-recommendation-is-bound-to-maddy-owned-judgment", { semantic: this.clone(semantic) })
+          : hold("adviser-recommendation-requires-maddy-owned-judgment-reference");
+      }
+
+      if (kind === "opinion") {
+        return semantic && ["recommendation", "finding", "risk", "option"].includes(semanticKind)
+          ? allow("adviser-opinion-is-bound-to-maddy-owned-judgment", { semantic: this.clone(semantic) })
+          : hold("adviser-opinion-requires-maddy-owned-judgment-reference");
+      }
+
+      if (kind === "question") {
+        return semantic && ["objective", "uncertainty", "risk"].includes(semanticKind)
+          ? allow("question-is-bound-to-maddy-owned-objective-or-unknown", { semantic: this.clone(semantic) })
+          : hold("adviser-question-requires-maddy-owned-semantic-reference");
+      }
+
+      if (kind === "inference") {
+        if (!["inference", "possibility", "recommendation"].includes(representation)) {
+          return hold("inference-may-not-be-represented-as-fact");
+        }
+        return semantic && ["finding", "risk", "uncertainty", "option"].includes(semanticKind)
+          ? allow("inference-is-bound-to-maddy-owned-reasoning", { semantic: this.clone(semantic) })
+          : hold("adviser-inference-requires-maddy-owned-reasoning-reference");
+      }
+
+      if (["uncertainty", "unknown"].includes(kind)) {
+        return semantic && semanticKind === "uncertainty"
+          ? allow("bounded-uncertainty-is-bound-to-maddy-owned-unknown", { semantic: this.clone(semantic) })
+          : hold("adviser-uncertainty-requires-maddy-owned-unknown-reference");
+      }
+
+      if (kind === "capability") {
+        const awareness = requestPackage?.selfModel?.capabilityAwareness || null;
+        const assessed = this.assessCapability(normalizedPart.capabilityId, {
+          awareness: awareness?.entries ? awareness : undefined
+        });
+        const state = assessed?.state || "unknown";
+        if (["proven", "available"].includes(state)) {
+          return allow("capability-is-runtime-supported", { capability: assessed });
+        }
+        if (state === "conditional") {
+          return representation === "conditional"
+            ? allow("conditional-capability-is-releasable-with-its-condition", { capability: assessed })
+            : hold("conditional-capability-may-not-be-stated-as-unconditional", { capability: assessed });
+        }
+        if (state === "adaptive") {
+          return ["adaptive", "possibility", "inference"].includes(representation)
+            ? allow("adaptive-capability-may-be-discussed-as-an-adaptation-path", { capability: assessed })
+            : hold("adaptive-capability-may-not-be-stated-as-current", { capability: assessed });
+        }
+        if (state === "unknown") {
+          return ["uncertainty", "unknown", "possibility"].includes(representation) || polarity === "negative"
+            ? allow("unknown-capability-may-be-discussed-with-bounded-uncertainty", { capability: assessed })
+            : hold("unknown-capability-may-not-be-promoted-by-an-adviser", { capability: assessed });
+        }
+        if (["unavailable", "prohibited"].includes(state)) {
+          return polarity === "negative" || ["uncertainty", "negative"].includes(representation)
+            ? allow("negative-capability-truth-may-be-stated", { capability: assessed })
+            : hold("unavailable-or-prohibited-capability-may-not-be-claimed", { capability: assessed });
+        }
+        return hold("capability-state-not-releasable", { capability: assessed });
+      }
+
+      if (kind === "fact") {
+        const evidence = Array.isArray(requestPackage?.localContext?.evidence)
+          ? requestPackage.localContext.evidence
+          : [];
+        const availableRefs = new Set();
+        evidence.forEach(item => {
+          [item?.id, item?.sourceId, item?.citation, item?.title, item?.provenance?.citation]
+            .filter(Boolean)
+            .forEach(value => availableRefs.add(String(value)));
+        });
+        const matched = normalizedPart.evidenceRefs.filter(ref => availableRefs.has(String(ref)));
+        return normalizedPart.evidenceRefs.length > 0 && matched.length === normalizedPart.evidenceRefs.length
+          ? allow("fact-is-bound-to-maddy-owned-evidence", { matchedEvidenceRefs: matched })
+          : hold("fact-lacks-maddy-owned-evidence-receipts", { matchedEvidenceRefs: matched });
+      }
+
+      if (["verification", "action_completion", "completion", "promise"].includes(kind)) {
+        return hold("verification-completion-and-promises-require-owned-result-or-authority-receipts");
+      }
+
+      return hold("unrecognized-material-adviser-part");
     },
 
 
@@ -1375,6 +1611,164 @@
         buildId: this.buildId,
         passed,
         total: checks.length,
+        checks
+      };
+    },
+
+
+    runSovereignCognitionResponseOwnershipAcceptanceTest() {
+      const requestPackage = {
+        request: {
+          id: "006026-fixture-request",
+          text: "I manage several field teams. Can you help me keep up with them?",
+          requiresApproval: false
+        },
+        cognition: {
+          cognitionId: "006026-cognition",
+          reasoning: {
+            recommendation: {
+              state: "proceed-with-conditions",
+              confidence: 0.8,
+              rationale: "The institutional record supports movement, but material conflicts or risks must be controlled first.",
+              conditions: ["Confirm critical dependencies."],
+              executiveApprovalRequired: true
+            },
+            findings: [{ summary: "Current work is fragmented across several teams." }],
+            options: [{ summary: "Create a bounded coordination plan." }],
+            risks: [{ severity: "high", title: "Unverified execution capability" }],
+            conflicts: []
+          },
+          unknowns: [{ blocking: true, text: "Whether outbound team messaging is currently connected." }],
+          dispatchReadiness: { authorityRequired: true }
+        },
+        localContext: {
+          evidence: [{
+            id: "evidence-1",
+            title: "Current operating note",
+            summary: "Several teams require coordination.",
+            authority: "institutional-record"
+          }]
+        },
+        selfModel: {
+          capabilityAwareness: {
+            schema: "meos.maddy.capability-awareness.v1",
+            entries: [{
+              capabilityId: "team-monitoring",
+              state: "available",
+              available: true,
+              source: "fixture-runtime"
+            }]
+          }
+        }
+      };
+      requestPackage.responseSemantics = this.buildOwnedResponseSemantics(
+        requestPackage,
+        requestPackage.cognition
+      );
+
+      const adviser = {
+        success: true,
+        output: {
+          candidateLanguage: "I can text every crew lead automatically from the Crew Board.",
+          responseParts: [
+            {
+              id: "bound-recommendation",
+              kind: "recommendation",
+              representation: "recommendation",
+              semanticRef: "maddy-recommendation",
+              text: "A coordinated approach is the right direction."
+            },
+            {
+              id: "unbound-recommendation",
+              kind: "recommendation",
+              representation: "recommendation",
+              text: "Buy a specific outside product immediately."
+            },
+            {
+              id: "supported-fact",
+              kind: "fact",
+              representation: "fact",
+              text: "Several teams require coordination.",
+              evidenceRefs: ["evidence-1"]
+            },
+            {
+              id: "unsupported-fact",
+              kind: "fact",
+              representation: "fact",
+              text: "Every crew uses SMS today.",
+              evidenceRefs: ["missing-evidence"]
+            },
+            {
+              id: "supported-capability",
+              kind: "capability",
+              representation: "current",
+              capabilityId: "team-monitoring",
+              text: "Team monitoring is available."
+            },
+            {
+              id: "unknown-capability-claim",
+              kind: "capability",
+              representation: "current",
+              capabilityId: "automatic-sms-to-every-crew-lead",
+              text: "Automatic SMS to every crew lead is available."
+            },
+            {
+              id: "bounded-unknown-capability",
+              kind: "capability",
+              representation: "uncertainty",
+              capabilityId: "automatic-sms-to-every-crew-lead",
+              text: "I have not verified automatic SMS to every crew lead."
+            },
+            {
+              id: "self-authorizing-action",
+              kind: "recommendation",
+              semanticRef: "maddy-recommendation",
+              requiresAuthority: true,
+              text: "Send the messages now."
+            }
+          ]
+        }
+      };
+
+      const decision = this.reconcileAdviserResult(requestPackage, adviser, { acceptanceTest: true });
+      const speech = this.renderOwnedSemanticResponse(decision, { acceptanceTest: true });
+      const acceptedIds = new Set((decision.acceptedAdviserParts || []).map(item => item.id));
+      const heldIds = new Set((decision.heldAdviserParts || []).map(item => item?.part?.id));
+      const finalText = speech?.speech?.finalText || "";
+
+      const checks = [
+        { name: "Maddy remains semantic owner", passed: decision?.owner === "maddy-executive-brain" },
+        { name: "Provider output remains non-evidence", passed: decision?.adviser?.providerOutputIsEvidence === false },
+        { name: "Provider output remains non-belief", passed: decision?.adviser?.providerOutputIsMaddyBelief === false },
+        { name: "Provider output remains non-speech", passed: decision?.adviser?.providerOutputIsFinalSpeech === false },
+        { name: "Bound adviser recommendation may be considered", passed: acceptedIds.has("bound-recommendation") },
+        { name: "Unbound adviser recommendation is held", passed: heldIds.has("unbound-recommendation") },
+        { name: "Evidence-bound fact may be considered", passed: acceptedIds.has("supported-fact") },
+        { name: "Unsupported fact is held", passed: heldIds.has("unsupported-fact") },
+        { name: "Runtime-supported capability may be considered", passed: acceptedIds.has("supported-capability") },
+        { name: "Unknown capability cannot be promoted to current", passed: heldIds.has("unknown-capability-claim") },
+        { name: "Unknown capability may remain bounded uncertainty", passed: acceptedIds.has("bounded-unknown-capability") },
+        { name: "One held proposition does not silence the rest of Maddy cognition", passed: (decision.acceptedAdviserParts || []).length >= 4 && (decision.heldAdviserParts || []).length >= 3 },
+        { name: "Adviser cannot self-authorize external action", passed: heldIds.has("self-authorizing-action") && decision?.authority?.externalActionGrantedByResponse === false },
+        { name: "Candidate provider wording cannot enter Maddy speech", passed: speech?.speech?.finalSpeechAuthorized === true && !/Crew Board|text every crew lead automatically/i.test(finalText) },
+        { name: "One Maddy mouth remains authorized", passed: speech?.speech?.oneMouth === true && speech?.speech?.semanticAuthority === "maddy-executive-brain" }
+      ];
+
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      console.info(
+        `[MEOS ${this.version}] Commission 006.026 Sovereign Cognition + Response Ownership: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      return {
+        success: passed === checks.length,
+        commission: "006.026",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        total: checks.length,
+        finalText,
+        acceptedAdviserParts: this.clone(decision.acceptedAdviserParts || []),
+        heldAdviserParts: this.clone(decision.heldAdviserParts || []),
         checks
       };
     },
