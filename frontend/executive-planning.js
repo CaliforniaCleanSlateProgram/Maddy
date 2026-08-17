@@ -1,6 +1,8 @@
 /*
  * MEOS Executive Planning Engine
- * Version: 1.0.1
+ * Version: 1.1.0
+ * Commission Candidate: 006.031D — Governed Plan-to-Work Autonomy
+ * Build: EP110-GOVERNED-PLAN-TO-WORK-AUTONOMY-20260817-A
  *
  * Mission:
  * Convert approved executive intent and evidence-grounded recommendations into
@@ -8,8 +10,12 @@
  * milestones, approvals, and readiness checks.
  *
  * Brick boundary:
- * This engine plans work. It does not autonomously approve decisions, execute
- * missions, spend money, contact external parties, or alter source records.
+ * This engine plans work. It never autonomously approves executive intent. Once
+ * a human has approved a plan, it may convert that already-approved plan into one
+ * governed internal workflow only when Durable Maddy Autonomy Authority proves
+ * approvedWork effective. It does not spend money, sign or certify, submit
+ * externally, create legal commitments, contact external parties, or bypass
+ * executive authority. Legacy browser configuration flags are never authority.
  */
 
 (function initializeExecutivePlanning(global) {
@@ -17,6 +23,15 @@
 
     const STORAGE_KEY = "meos.executive-planning.v1";
     const SCHEMA = "meos.executive-planning.package.v1";
+    const STATE_SCHEMA = "meos.executive-planning.state.v1";
+    const VERSION = "1.1.0";
+    const COMMISSION = "006.031D";
+    const BUILD_ID =
+        "EP110-GOVERNED-PLAN-TO-WORK-AUTONOMY-20260817-A";
+    const AUTONOMY_CAPABILITIES = Object.freeze({
+        APPROVED_WORK: "approvedWork",
+        OFFICE_DISPATCH: "officeDispatch"
+    });
 
     const PLAN_STATUSES = {
         DRAFT: "draft",
@@ -47,10 +62,11 @@
 
     const ExecutivePlanning = {
         name: "MEOS Executive Planning Engine",
-        version: "1.0.1",
+        version: VERSION,
+        commission: COMMISSION,
         status: "initializing",
         operatingMode: "controlled-executive-planning",
-        buildId: "EP101-PLANNING-PERSISTENCE-AUTHORITY-CONVERGENCE-20260808-A",
+        buildId: BUILD_ID,
 
         configuration: {
             persistenceEnabled: true,
@@ -68,8 +84,11 @@
             maximumPlans: 500,
             maximumTasksPerPlan: 500,
             maximumHistory: 1000,
+            // Legacy mechanics remain false and cannot grant autonomy.
+            // Durable Maddy Autonomy Authority is the only autonomous gate.
             autoCreateMissionDrafts: false,
             autoDispatchApprovedPlans: false,
+            autonomyAuthorityRequired: true,
             includeReasoningAnalysis: true,
             includeRiskControls: true,
             includeMilestones: true,
@@ -89,6 +108,8 @@
         },
         eventListeners: {},
         initializedAt: null,
+        autonomyAuthorityUnsubscribe: null,
+        deferredAutonomyBindingInstalled: false,
 
         persistenceRuntime: {
             suspended: false,
@@ -112,6 +133,8 @@
 
             this.registerSystemKnowledge();
             this.recalculateAnalytics();
+            this.bindAutonomyAuthorityEvents();
+            this.installDeferredAutonomyBinding();
 
             console.info(
                 `[MEOS] ${this.name} v${this.version} ${this.status}.`
@@ -119,6 +142,199 @@
 
             this.emit("planning:online", this.getStatus());
             return this.getStatus();
+        },
+
+        getAutonomyAuthority() {
+            return (
+                global.MaddyAutonomy ||
+                global.MEOSAutonomyAuthority ||
+                null
+            );
+        },
+
+        getAutonomyIntegrationStatus(
+            capabilityId = AUTONOMY_CAPABILITIES.APPROVED_WORK
+        ) {
+            if (
+                capabilityId !== AUTONOMY_CAPABILITIES.APPROVED_WORK
+            ) {
+                return {
+                    ready: false,
+                    reason: "unsupported-planning-autonomy-capability",
+                    capabilityId,
+                    version: this.version,
+                    commission: this.commission,
+                    buildId: this.buildId
+                };
+            }
+
+            const workflow = global.ExecutiveWorkflow;
+            const workflowIntegration =
+                workflow &&
+                typeof workflow.getAutonomyIntegrationStatus === "function"
+                    ? workflow.getAutonomyIntegrationStatus(capabilityId)
+                    : null;
+
+            return {
+                ready: workflowIntegration?.ready === true,
+                reason:
+                    workflowIntegration?.ready === true
+                        ? "governed-plan-to-work-contract-ready"
+                        : "executive-workflow-autonomy-contract-not-ready",
+                capabilityId,
+                version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                legacyConfigurationCreatesAuthority: false,
+                planApprovalInheritedByDerivedWorkflow: true,
+                duplicateWorkflowCreationPrevented: true,
+                automaticSpendAuthorized: false,
+                externalActionAuthorized: false,
+                signatureAuthorized: false,
+                certificationAuthorized: false,
+                submissionAuthorized: false,
+                legalCommitmentAuthorized: false,
+                persistenceSnapshotContract: STATE_SCHEMA,
+                currentOperationalPersistence:
+                    "browser-localStorage-legacy-cache-authority-pending-migration",
+                browserIndependentRunnerCommissioned: false,
+                workflow: workflowIntegration
+            };
+        },
+
+        autonomyCapabilityStatus(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+
+            if (
+                !authority ||
+                typeof authority.capabilityStatus !== "function"
+            ) {
+                return {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "maddy-autonomy-authority-unavailable"
+                };
+            }
+
+            try {
+                return authority.capabilityStatus(capabilityId) || {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "autonomy-capability-status-unavailable"
+                };
+            } catch (error) {
+                return {
+                    id: capabilityId,
+                    effective: false,
+                    uiState: "BLOCKED",
+                    reason: "autonomy-capability-probe-failed",
+                    error: error?.message || String(error)
+                };
+            }
+        },
+
+        isAutonomyAuthorized(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+            if (
+                !authority ||
+                typeof authority.isAuthorized !== "function"
+            ) {
+                return false;
+            }
+
+            try {
+                return authority.isAuthorized(capabilityId) === true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        captureAutonomyReceipt(capabilityId) {
+            const authority = this.getAutonomyAuthority();
+            const status = this.autonomyCapabilityStatus(capabilityId);
+            let snapshot = null;
+
+            try {
+                snapshot =
+                    typeof authority?.getSnapshot === "function"
+                        ? authority.getSnapshot()
+                        : null;
+            } catch (_error) {
+                snapshot = null;
+            }
+
+            return {
+                schema: "meos.executive-planning.autonomy-receipt.v1",
+                capabilityId,
+                effective: status?.effective === true,
+                uiState: status?.uiState || "BLOCKED",
+                reason: status?.reason || "authority-unproven",
+                authorityRevision:
+                    snapshot?.policy?.revision ??
+                    snapshot?.serverStatus?.revision ??
+                    null,
+                authoritySource: "server-durable-maddy-autonomy-authority",
+                browserAuthority: false,
+                capturedAt: new Date().toISOString()
+            };
+        },
+
+        bindAutonomyAuthorityEvents() {
+            if (this.autonomyAuthorityUnsubscribe) {
+                return true;
+            }
+
+            const authority = this.getAutonomyAuthority();
+            if (!authority || typeof authority.on !== "function") {
+                return false;
+            }
+
+            try {
+                this.autonomyAuthorityUnsubscribe =
+                    authority.on("authority:updated", () => {
+                        if (
+                            this.isAutonomyAuthorized(
+                                AUTONOMY_CAPABILITIES.APPROVED_WORK
+                            )
+                        ) {
+                            this.continueApprovedPlansAutonomously({
+                                reason: "authority-updated"
+                            });
+                        }
+                    });
+                return true;
+            } catch (_error) {
+                return false;
+            }
+        },
+
+        installDeferredAutonomyBinding() {
+            if (this.deferredAutonomyBindingInstalled) {
+                return true;
+            }
+
+            if (typeof global.addEventListener !== "function") {
+                return false;
+            }
+
+            this.deferredAutonomyBindingInstalled = true;
+            global.addEventListener("load", () => {
+                this.bindAutonomyAuthorityEvents();
+                if (
+                    this.isAutonomyAuthorized(
+                        AUTONOMY_CAPABILITIES.APPROVED_WORK
+                    )
+                ) {
+                    this.continueApprovedPlansAutonomously({
+                        reason: "window-load-authority-ready"
+                    });
+                }
+            }, { once: true });
+            return true;
         },
 
         createPlan(input = {}, options = {}) {
@@ -193,6 +409,13 @@
                 approvedBy: null,
                 activatedAt: null,
                 completedAt: null,
+                executionWorkflowId: null,
+                executionBridge: {
+                    status: "not-created",
+                    lastAttemptAt: null,
+                    lastResult: null,
+                    authorityReceipt: null
+                },
                 phases: [],
                 milestones: [],
                 dependencies: [],
@@ -280,10 +503,7 @@
                 taskCount: plan.metrics.totalTasks
             });
 
-            if (
-                this.configuration.autoCreateMissionDrafts ||
-                options.createMissionDrafts === true
-            ) {
+            if (options.createMissionDrafts === true) {
                 this.createMissionDrafts(plan);
             }
 
@@ -909,16 +1129,50 @@
                     options.notes || "";
             }
 
+            let manualMissionDrafts = null;
             if (
-                this.configuration.autoDispatchApprovedPlans ||
-                options.dispatch === true
+                options.dispatch === true ||
+                options.createMissionDrafts === true
             ) {
-                this.createMissionDrafts(plan);
+                manualMissionDrafts = this.createMissionDrafts(plan);
+            }
+
+            let autonomousContinuation = null;
+            if (
+                options.suppressAutonomousContinuation !== true &&
+                this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                )
+            ) {
+                autonomousContinuation = this.continueApprovedPlan(
+                    plan,
+                    {
+                        autonomous: true,
+                        reason: "plan-approved",
+                        authorityReceipt:
+                            this.captureAutonomyReceipt(
+                                AUTONOMY_CAPABILITIES.APPROVED_WORK
+                            )
+                    }
+                );
             }
 
             this.logHistory("plan.approved", {
                 planId: plan.id,
-                approvedBy: plan.approvedBy
+                approvedBy: plan.approvedBy,
+                autonomousContinuation:
+                    autonomousContinuation
+                        ? {
+                            success:
+                                autonomousContinuation.success === true,
+                            blocked:
+                                autonomousContinuation.blocked === true,
+                            reason:
+                                autonomousContinuation.reason || null,
+                            workflowId:
+                                autonomousContinuation.workflowId || null
+                        }
+                        : null
             });
 
             this.recalculateAnalytics();
@@ -928,8 +1182,338 @@
             return {
                 success: true,
                 plan: this.clone(plan),
-                readiness
+                readiness,
+                manualMissionDrafts,
+                autonomousContinuation
             };
+        },
+
+        continueApprovedPlansAutonomously(options = {}) {
+            if (
+                !this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                )
+            ) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "approved-work-autonomy-not-authorized",
+                    results: []
+                };
+            }
+
+            const eligible = this.plans.filter(
+                (plan) =>
+                    [
+                        PLAN_STATUSES.APPROVED,
+                        PLAN_STATUSES.ACTIVE
+                    ].includes(plan.status)
+            );
+
+            const results = eligible.map((plan) =>
+                this.continueApprovedPlan(plan, {
+                    autonomous: true,
+                    reason:
+                        options.reason ||
+                        "approved-work-authority-effective",
+                    authorityReceipt:
+                        this.captureAutonomyReceipt(
+                            AUTONOMY_CAPABILITIES.APPROVED_WORK
+                        )
+                })
+            );
+
+            return {
+                success:
+                    results.length === 0 ||
+                    results.every(
+                        (result) =>
+                            result.success === true ||
+                            result.duplicate === true
+                    ),
+                eligiblePlanCount: eligible.length,
+                results
+            };
+        },
+
+        continueApprovedPlan(planOrId, options = {}) {
+            const plan =
+                typeof planOrId === "string"
+                    ? this.getPlanById(planOrId)
+                    : planOrId;
+
+            if (!plan) {
+                return {
+                    success: false,
+                    error: "Plan was not found."
+                };
+            }
+
+            if (
+                ![
+                    PLAN_STATUSES.APPROVED,
+                    PLAN_STATUSES.ACTIVE
+                ].includes(plan.status)
+            ) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "plan-not-approved",
+                    planId: plan.id
+                };
+            }
+
+            const autonomous = options.autonomous === true;
+            if (
+                autonomous &&
+                !this.isAutonomyAuthorized(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                )
+            ) {
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "approved-work-autonomy-not-authorized",
+                    planId: plan.id
+                };
+            }
+
+            const workflowEngine = global.ExecutiveWorkflow;
+            if (
+                !workflowEngine ||
+                typeof workflowEngine.createFromPlan !== "function" ||
+                typeof workflowEngine.approveWorkflow !== "function"
+            ) {
+                this.recordExecutionBridge(plan, {
+                    status: "blocked",
+                    reason: "executive-workflow-unavailable",
+                    authorityReceipt:
+                        options.authorityReceipt || null
+                });
+                return {
+                    success: false,
+                    blocked: true,
+                    reason: "executive-workflow-unavailable",
+                    planId: plan.id
+                };
+            }
+
+            if (autonomous) {
+                const workflowIntegration =
+                    typeof workflowEngine.getAutonomyIntegrationStatus ===
+                    "function"
+                        ? workflowEngine.getAutonomyIntegrationStatus(
+                            AUTONOMY_CAPABILITIES.APPROVED_WORK
+                        )
+                        : null;
+
+                if (workflowIntegration?.ready !== true) {
+                    this.recordExecutionBridge(plan, {
+                        status: "blocked",
+                        reason:
+                            "executive-workflow-autonomy-contract-not-ready",
+                        authorityReceipt:
+                            options.authorityReceipt || null
+                    });
+                    return {
+                        success: false,
+                        blocked: true,
+                        reason:
+                            "executive-workflow-autonomy-contract-not-ready",
+                        planId: plan.id,
+                        workflowIntegration
+                    };
+                }
+            }
+
+            let workflow = null;
+            const existing =
+                typeof workflowEngine.searchWorkflows === "function"
+                    ? workflowEngine.searchWorkflows("", {
+                        sourcePlanId: plan.id
+                    })[0] || null
+                    : null;
+
+            if (existing) {
+                workflow =
+                    workflowEngine.getWorkflowById?.(existing.id) ||
+                    existing;
+            } else {
+                const created = workflowEngine.createFromPlan(plan, {
+                    actor: plan.approvedBy || "Executive",
+                    inheritedPlanApproval: true,
+                    sourcePlanApprovalAt: plan.approvedAt,
+                    sourcePlanApprovalBy: plan.approvedBy
+                });
+
+                if (!created?.success || !created?.workflow?.id) {
+                    this.recordExecutionBridge(plan, {
+                        status: "blocked",
+                        reason:
+                            created?.error ||
+                            "workflow-creation-failed",
+                        authorityReceipt:
+                            options.authorityReceipt || null
+                    });
+                    return {
+                        success: false,
+                        blocked: true,
+                        reason:
+                            created?.error ||
+                            "workflow-creation-failed",
+                        planId: plan.id,
+                        created
+                    };
+                }
+
+                workflow =
+                    workflowEngine.getWorkflowById?.(
+                        created.workflow.id
+                    ) || created.workflow;
+            }
+
+            plan.executionWorkflowId = workflow.id;
+
+            let approvalResult = null;
+            if (
+                ["draft", "awaiting-approval"].includes(
+                    workflow.status
+                )
+            ) {
+                approvalResult = workflowEngine.approveWorkflow(
+                    workflow.id,
+                    {
+                        actor:
+                            plan.approvedBy ||
+                            "Executive",
+                        notes:
+                            `Inherited from human-approved executive plan ${plan.id}.`,
+                        inheritedPlanApproval: true,
+                        sourcePlanId: plan.id,
+                        sourcePlanApprovalAt: plan.approvedAt,
+                        authorityReceipt:
+                            options.authorityReceipt || null
+                    }
+                );
+
+                if (approvalResult?.success !== true) {
+                    this.recordExecutionBridge(plan, {
+                        status: "blocked",
+                        reason:
+                            approvalResult?.error ||
+                            approvalResult?.reason ||
+                            "workflow-approval-propagation-failed",
+                        workflowId: workflow.id,
+                        authorityReceipt:
+                            options.authorityReceipt || null
+                    });
+                    return {
+                        success: false,
+                        blocked: true,
+                        reason:
+                            approvalResult?.error ||
+                            approvalResult?.reason ||
+                            "workflow-approval-propagation-failed",
+                        planId: plan.id,
+                        workflowId: workflow.id,
+                        approvalResult
+                    };
+                }
+            }
+
+            const currentWorkflow =
+                workflowEngine.getWorkflowById?.(workflow.id) ||
+                approvalResult?.workflow ||
+                workflow;
+
+            if (
+                currentWorkflow?.status === "active" &&
+                plan.status === PLAN_STATUSES.APPROVED
+            ) {
+                plan.status = PLAN_STATUSES.ACTIVE;
+                plan.activatedAt =
+                    plan.activatedAt ||
+                    new Date().toISOString();
+            }
+
+            const duplicate = Boolean(existing);
+            const bridgeStatus =
+                currentWorkflow?.status === "active"
+                    ? "active"
+                    : currentWorkflow?.status === "complete"
+                        ? "complete"
+                        : "workflow-ready";
+
+            this.recordExecutionBridge(plan, {
+                status: bridgeStatus,
+                reason:
+                    duplicate
+                        ? "existing-plan-workflow-reused"
+                        : "approved-plan-converted-to-governed-workflow",
+                workflowId: workflow.id,
+                authorityReceipt:
+                    options.authorityReceipt || null
+            });
+
+            this.logHistory(
+                duplicate
+                    ? "plan.workflow.reused"
+                    : "plan.workflow.created",
+                {
+                    planId: plan.id,
+                    workflowId: workflow.id,
+                    autonomous,
+                    authorityReceipt:
+                        options.authorityReceipt || null
+                }
+            );
+
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+            this.emit("plan:workflow-linked", {
+                planId: plan.id,
+                workflowId: workflow.id,
+                autonomous,
+                duplicate,
+                status: bridgeStatus
+            });
+
+            return {
+                success: true,
+                duplicate,
+                planId: plan.id,
+                workflowId: workflow.id,
+                plan: this.clone(plan),
+                workflow: this.clone(currentWorkflow),
+                approvalResult,
+                authorityReceipt:
+                    options.authorityReceipt || null
+            };
+        },
+
+        recordExecutionBridge(plan, update = {}) {
+            const now = new Date().toISOString();
+            plan.executionBridge = {
+                status:
+                    update.status ||
+                    plan.executionBridge?.status ||
+                    "not-created",
+                lastAttemptAt: now,
+                lastResult: {
+                    reason: update.reason || null,
+                    workflowId:
+                        update.workflowId ||
+                        plan.executionWorkflowId ||
+                        null
+                },
+                authorityReceipt:
+                    update.authorityReceipt || null
+            };
+            if (update.workflowId) {
+                plan.executionWorkflowId = update.workflowId;
+            }
+            plan.updatedAt = now;
+            return plan.executionBridge;
         },
 
         activatePlan(planId, options = {}) {
@@ -1689,7 +2273,7 @@
                 summary:
                     "Universal controlled executive planning with phases, tasks, owners, dependencies, risks, milestones, readiness checks, and approval gates.",
                 content:
-                    "Executive Planning converts approved intent and institutional reasoning into structured execution plans. It does not autonomously approve, dispatch, spend, communicate externally, or alter source records.",
+                    "Executive Planning converts approved intent and institutional reasoning into structured execution plans. It never autonomously approves executive intent. When approvedWork is proven effective by Durable Maddy Autonomy Authority, an already human-approved plan may become one deduplicated governed internal workflow without a second approval ceremony. Planning never grants spending, signature, certification, submission, legal commitment, or external-action authority.",
                 tags: [
                     "meos-core",
                     "executive-planning",
@@ -1711,7 +2295,7 @@
                     componentVersion: this.version,
                     organizationNeutralCore: true,
                     brickBoundary:
-                        "Planning only; no autonomous approval, spending, external communication, or mission execution."
+                        "No autonomous executive approval. Approved-plan continuation requires central approvedWork authority; no autonomous spend, signature, certification, submission, legal commitment, or external action."
                 },
                 createdBy: this.name
             });
@@ -1802,7 +2386,14 @@
                 missionEngine:
                     Boolean(global.MEOSMissionEngine),
                 missionDispatcher:
-                    Boolean(global.MEOSMissionDispatcher)
+                    Boolean(global.MEOSMissionDispatcher),
+                executiveWorkflow:
+                    Boolean(global.ExecutiveWorkflow),
+                maddyAutonomy:
+                    Boolean(
+                        global.MaddyAutonomy ||
+                        global.MEOSAutonomyAuthority
+                    )
             };
         },
 
@@ -1814,6 +2405,8 @@
             return {
                 name: this.name,
                 version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
                 status: this.status,
                 operatingMode: this.operatingMode,
                 organizationNeutralCore:
@@ -1826,6 +2419,15 @@
                     this.plans.length,
                 analytics:
                     this.clone(this.analytics),
+                autonomy: {
+                    approvedWork:
+                        this.autonomyCapabilityStatus(
+                            AUTONOMY_CAPABILITIES.APPROVED_WORK
+                        ),
+                    browserAuthority: false,
+                    legacyConfigurationCreatesAuthority: false,
+                    planApprovalInheritance: true
+                },
                 persistence: {
                     authority:
                         this.configuration.persistenceAuthority,
@@ -2250,6 +2852,369 @@
             };
         },
 
+        buildPersistenceSnapshot(options = {}) {
+            return {
+                schema: STATE_SCHEMA,
+                version: this.version,
+                commission: this.commission,
+                buildId: this.buildId,
+                capturedAt: new Date().toISOString(),
+                plans: this.clone(this.plans),
+                planningHistory:
+                    options.includeHistory === false
+                        ? []
+                        : this.clone(this.planningHistory),
+                analytics: this.clone(this.analytics),
+                authority: {
+                    browserAuthority: false,
+                    autonomyPolicyStoredHere: false,
+                    automaticSpendAuthorized: false,
+                    externalActionAuthorized: false,
+                    signatureAuthorized: false,
+                    certificationAuthorized: false,
+                    submissionAuthorized: false,
+                    legalCommitmentAuthorized: false
+                }
+            };
+        },
+
+        applyPersistenceSnapshot(snapshot, options = {}) {
+            if (
+                !snapshot ||
+                snapshot.schema !== STATE_SCHEMA
+            ) {
+                return {
+                    success: false,
+                    restored: false,
+                    error:
+                        "Executive Planning persistence snapshot schema is invalid."
+                };
+            }
+
+            const result = this.importPlanning(
+                {
+                    schema: SCHEMA,
+                    version: snapshot.version || this.version,
+                    plans:
+                        Array.isArray(snapshot.plans)
+                            ? snapshot.plans
+                            : [],
+                    planningHistory:
+                        Array.isArray(snapshot.planningHistory)
+                            ? snapshot.planningHistory
+                            : [],
+                    analytics:
+                        snapshot.analytics || {}
+                },
+                {
+                    replace: options.replace !== false,
+                    persist: false
+                }
+            );
+
+            return {
+                ...result,
+                restored: result.success === true,
+                authorityImported: false,
+                browserAuthority: false
+            };
+        },
+
+        runAutonomyAcceptanceTest() {
+            const checks = [];
+            const check = (name, passed, details = null) => {
+                checks.push({
+                    name,
+                    passed: passed === true,
+                    details
+                });
+            };
+
+            const originalPlans = this.clone(this.plans);
+            const originalHistory = this.clone(this.planningHistory);
+            const originalAnalytics = this.clone(this.analytics);
+            const originalConfiguration = {
+                ...this.configuration
+            };
+            const originalAuthority = global.MaddyAutonomy;
+            const originalAliasAuthority =
+                global.MEOSAutonomyAuthority;
+            const originalWorkflow = global.ExecutiveWorkflow;
+            const originalMission = global.MEOSMissionEngine;
+            let authorityEnabled = false;
+            let missionCreates = 0;
+            let workflowCreates = 0;
+            const testWorkflows = [];
+
+            const fakeAuthority = {
+                isAuthorized: (capabilityId) =>
+                    capabilityId ===
+                        AUTONOMY_CAPABILITIES.APPROVED_WORK &&
+                    authorityEnabled,
+                capabilityStatus: (capabilityId) => ({
+                    id: capabilityId,
+                    effective:
+                        capabilityId ===
+                            AUTONOMY_CAPABILITIES.APPROVED_WORK &&
+                        authorityEnabled,
+                    uiState:
+                        authorityEnabled ? "ON" : "OFF",
+                    reason:
+                        authorityEnabled
+                            ? "effective"
+                            : "not-authorized"
+                }),
+                getSnapshot: () => ({
+                    policy: {
+                        revision: 42,
+                        masterEnabled: authorityEnabled
+                    }
+                }),
+                on: () => () => {}
+            };
+
+            const fakeWorkflow = {
+                getAutonomyIntegrationStatus: () => ({
+                    ready: true,
+                    browserAuthority: false
+                }),
+                searchWorkflows: (_query, filters = {}) =>
+                    testWorkflows
+                        .filter(
+                            (workflow) =>
+                                !filters.sourcePlanId ||
+                                workflow.sourcePlanId ===
+                                    filters.sourcePlanId
+                        )
+                        .map((workflow) =>
+                            JSON.parse(JSON.stringify(workflow))
+                        ),
+                getWorkflowById: (workflowId) =>
+                    testWorkflows.find(
+                        (workflow) => workflow.id === workflowId
+                    ) || null,
+                createFromPlan: (plan) => {
+                    workflowCreates += 1;
+                    const workflow = {
+                        id: `workflow-test-${workflowCreates}`,
+                        sourcePlanId: plan.id,
+                        status: "draft",
+                        steps: []
+                    };
+                    testWorkflows.push(workflow);
+                    return {
+                        success: true,
+                        workflow:
+                            JSON.parse(JSON.stringify(workflow))
+                    };
+                },
+                approveWorkflow: (workflowId) => {
+                    const workflow =
+                        testWorkflows.find(
+                            (item) => item.id === workflowId
+                        );
+                    workflow.status =
+                        authorityEnabled
+                            ? "active"
+                            : "ready";
+                    return {
+                        success: true,
+                        workflow:
+                            JSON.parse(JSON.stringify(workflow))
+                    };
+                }
+            };
+
+            global.MaddyAutonomy = fakeAuthority;
+            global.MEOSAutonomyAuthority = fakeAuthority;
+            global.ExecutiveWorkflow = fakeWorkflow;
+            global.MEOSMissionEngine = {
+                createMission: () => {
+                    missionCreates += 1;
+                    return {
+                        id: `mission-test-${missionCreates}`
+                    };
+                }
+            };
+
+            this.plans = [];
+            this.planningHistory = [];
+            // Acceptance must not contaminate the browser continuity cache.
+            this.configuration.automaticPersistence = false;
+            this.configuration.autoCreateMissionDrafts = true;
+            this.configuration.autoDispatchApprovedPlans = true;
+
+            const offPlan = this.createPlan(
+                {
+                    title: "Authority off test plan",
+                    objective: "Prove approval does not self-execute while autonomy is off.",
+                    phases: [
+                        {
+                            title: "Phase",
+                            objective: "Test",
+                            tasks: [
+                                {
+                                    title: "Task",
+                                    description: "Test task",
+                                    office: "Maddy"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                { skipReasoning: true }
+            );
+
+            check(
+                "Legacy planning flags cannot create mission drafts",
+                missionCreates === 0,
+                { missionCreates }
+            );
+
+            const offApproval = this.approvePlan(
+                offPlan.plan.id,
+                {
+                    actor: "Executive",
+                    overrideReadiness: true
+                }
+            );
+
+            check(
+                "Human plan approval does not continue autonomously while Approved Work is OFF",
+                offApproval.success === true &&
+                    workflowCreates === 0 &&
+                    this.getPlanById(offPlan.plan.id)?.status ===
+                        PLAN_STATUSES.APPROVED,
+                {
+                    workflowCreates,
+                    planStatus:
+                        this.getPlanById(offPlan.plan.id)?.status
+                }
+            );
+
+            authorityEnabled = true;
+            const resumed =
+                this.continueApprovedPlansAutonomously({
+                    reason: "acceptance-test"
+                });
+            const linkedPlan =
+                this.getPlanById(offPlan.plan.id);
+
+            check(
+                "Turning Approved Work ON converts already-approved plan into governed work",
+                resumed.results?.[0]?.success === true &&
+                    workflowCreates === 1 &&
+                    linkedPlan?.executionWorkflowId ===
+                        "workflow-test-1" &&
+                    linkedPlan?.status === PLAN_STATUSES.ACTIVE,
+                resumed
+            );
+
+            const duplicateRun = this.continueApprovedPlan(
+                linkedPlan.id,
+                {
+                    autonomous: true,
+                    authorityReceipt:
+                        this.captureAutonomyReceipt(
+                            AUTONOMY_CAPABILITIES.APPROVED_WORK
+                        )
+                }
+            );
+
+            check(
+                "Repeated continuation reuses one source-plan workflow instead of duplicating work",
+                duplicateRun.success === true &&
+                    duplicateRun.duplicate === true &&
+                    workflowCreates === 1,
+                {
+                    duplicateRun,
+                    workflowCreates
+                }
+            );
+
+            authorityEnabled = false;
+            const blocked = this.continueApprovedPlan(
+                linkedPlan.id,
+                { autonomous: true }
+            );
+            check(
+                "Authority loss immediately blocks further autonomous planning continuation",
+                blocked.blocked === true &&
+                    blocked.reason ===
+                        "approved-work-autonomy-not-authorized",
+                blocked
+            );
+
+            check(
+                "Planning integration never grants spending or consequential external authority",
+                this.getAutonomyIntegrationStatus(
+                    AUTONOMY_CAPABILITIES.APPROVED_WORK
+                ).automaticSpendAuthorized === false &&
+                    this.getAutonomyIntegrationStatus(
+                        AUTONOMY_CAPABILITIES.APPROVED_WORK
+                    ).externalActionAuthorized === false &&
+                    this.getAutonomyIntegrationStatus(
+                        AUTONOMY_CAPABILITIES.APPROVED_WORK
+                    ).signatureAuthorized === false &&
+                    this.getAutonomyIntegrationStatus(
+                        AUTONOMY_CAPABILITIES.APPROVED_WORK
+                    ).submissionAuthorized === false
+            );
+
+            const snapshot = this.buildPersistenceSnapshot();
+            check(
+                "Planning persistence snapshot stores operational state but no autonomy policy",
+                snapshot.schema === STATE_SCHEMA &&
+                    snapshot.authority?.autonomyPolicyStoredHere ===
+                        false &&
+                    snapshot.authority?.browserAuthority === false
+            );
+
+            check(
+                "Legacy automatic planning configuration remains OFF by product default",
+                originalConfiguration.autoCreateMissionDrafts === false &&
+                    originalConfiguration.autoDispatchApprovedPlans === false
+            );
+
+            this.plans = originalPlans;
+            this.planningHistory = originalHistory;
+            this.analytics = originalAnalytics;
+            this.configuration = originalConfiguration;
+            global.MaddyAutonomy = originalAuthority;
+            global.MEOSAutonomyAuthority =
+                originalAliasAuthority;
+            global.ExecutiveWorkflow = originalWorkflow;
+            global.MEOSMissionEngine = originalMission;
+            this.recalculateAnalytics();
+
+            const failed = checks.filter(
+                (item) => !item.passed
+            );
+            const passed = failed.length === 0;
+
+            console.table(
+                checks.map((item) => ({
+                    name: item.name,
+                    passed: item.passed
+                }))
+            );
+            console.info(
+                `[MEOS ${this.version}] Commission ${this.commission} governed plan-to-work autonomy acceptance: ${passed ? "PASS" : "FAIL"}.`
+            );
+
+            return {
+                schema:
+                    "meos.executive-planning.autonomy-acceptance.v1",
+                commission: this.commission,
+                version: this.version,
+                buildId: this.buildId,
+                passed,
+                checks,
+                failed,
+                status: this.getStatus()
+            };
+        },
+
         clear(options = {}) {
             if (options.confirm !== true) {
                 return {
@@ -2496,6 +3461,10 @@
         TASK_STATUSES;
     ExecutivePlanning.PRIORITIES =
         PRIORITIES;
+    ExecutivePlanning.AUTONOMY_CAPABILITIES =
+        AUTONOMY_CAPABILITIES;
+    ExecutivePlanning.STATE_SCHEMA =
+        STATE_SCHEMA;
 
     global.ExecutivePlanning =
         ExecutivePlanning;
