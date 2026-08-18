@@ -39,7 +39,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.76";
+const VERSION = "2.10.77";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -20406,6 +20406,7 @@ app.get(
 
 /* ========================================================================== */
 /* Commission 006.032C — Durable Google Workspace Mutation Idempotency         */
+/* 006.032C1 — Idempotency Acceptance Truth Repair; runtime mutation semantics unchanged. */
 /* ========================================================================== */
 
 /*
@@ -21350,6 +21351,24 @@ app.get(
     response.set("Cache-Control", "no-store");
     registerGoogleInstitutionalRepositoryAuthority();
     const repositoryStatus = InstitutionalRepositoryAuthority.getStatus();
+
+    // Commission 006.032C1 — Idempotency Acceptance Truth Repair
+    // getStatus() reports registered-provider metadata; it does not expose
+    // available/durableAvailable booleans. Prove operational durability by
+    // asking the repository authority to select a healthy durable provider for
+    // an OPERATIONAL write. Provider selection performs health/capability checks
+    // only; it does not write a repository record or touch a Google document.
+    let healthyRepositoryProvider = null;
+    let repositoryHealthError = null;
+    try {
+      healthyRepositoryProvider = await InstitutionalRepositoryAuthority.selectProvider({
+        classification: "operational",
+        operation: "write"
+      });
+    } catch (error) {
+      repositoryHealthError = error;
+    }
+
     const checks = [
       {
         name: "Durable Workspace mutation idempotency commission is active",
@@ -21387,8 +21406,8 @@ app.get(
           )
       },
       {
-        name: "Repository authority is available for durable idempotency",
-        passed: repositoryStatus?.available === true || repositoryStatus?.durableAvailable === true
+        name: "Repository authority is healthy and durable for operational idempotency",
+        passed: Boolean(healthyRepositoryProvider?.id)
       },
       {
         name: "Automatic spend remains zero",
@@ -21406,9 +21425,17 @@ app.get(
       browserAuthority: false,
       automaticSpendUsd: AUTONOMY_ECONOMIC_BOUNDARY.automaticSpendUsd,
       repository: {
-        authority: repositoryStatus?.authority || null,
-        providerId: repositoryStatus?.selectedProviderId || repositoryStatus?.providerId || null,
-        available: repositoryStatus?.available === true || repositoryStatus?.durableAvailable === true
+        authority: repositoryStatus?.durableStateAuthority || null,
+        status: repositoryStatus?.status || null,
+        providerId: healthyRepositoryProvider?.id || null,
+        available: Boolean(healthyRepositoryProvider?.id),
+        durableProviderCount: Number(repositoryStatus?.durableProviderCount || 0),
+        healthError: repositoryHealthError
+          ? {
+              code: repositoryHealthError?.code || null,
+              message: String(repositoryHealthError?.message || repositoryHealthError)
+            }
+          : null
       },
       passed,
       total: checks.length,
