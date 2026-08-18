@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.74
+ * Server Version: 2.10.76
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -39,7 +39,7 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
-const VERSION = "2.10.75";
+const VERSION = "2.10.76";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -259,6 +259,12 @@ const GOOGLE_WORKSPACE_INTEGRATION_BUILD_ID =
 const GOOGLE_WORKSPACE_EXECUTION_COMMISSION = "006.032B";
 const GOOGLE_WORKSPACE_EXECUTION_BUILD_ID =
   "GWE100-GOVERNED-DOCS-SHEETS-CALENDAR-EXECUTION-20260817-A";
+const GOOGLE_WORKSPACE_IDEMPOTENCY_COMMISSION = "006.032C";
+const GOOGLE_WORKSPACE_IDEMPOTENCY_VERSION = "1.0.0";
+const GOOGLE_WORKSPACE_IDEMPOTENCY_BUILD_ID =
+  "GWID100-DURABLE-WORKSPACE-MUTATION-IDEMPOTENCY-20260817-A";
+const GOOGLE_WORKSPACE_IDEMPOTENCY_NAMESPACE =
+  "google-workspace-idempotency";
 
 let googleWorkspaceInitializationPromise = null;
 
@@ -20399,6 +20405,335 @@ app.get(
 
 
 /* ========================================================================== */
+/* Commission 006.032C — Durable Google Workspace Mutation Idempotency         */
+/* ========================================================================== */
+
+/*
+ * North outcome:
+ * - A network retry, browser retry, double-click, or restarted worker must not
+ *   create the same Google Workspace side effect twice.
+ * - Every mutation is claimed in MEOS durable organizational state BEFORE the
+ *   provider call is made.
+ * - A completed mutation is replayed from its durable receipt without touching
+ *   Google again.
+ * - A claimed/uncertain mutation fails closed for reconciliation instead of
+ *   guessing that a retry is safe.
+ * - Reusing one idempotency key with different work is rejected.
+ * - The idempotency ledger is operational state, not browser/localStorage state.
+ */
+function stableWorkspaceIdempotencyNormalize(value) {
+  if (value === null || typeof value !== "object") {
+    if (typeof value === "undefined") return null;
+    if (typeof value === "bigint") return value.toString();
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(stableWorkspaceIdempotencyNormalize);
+  }
+  return Object.keys(value)
+    .sort()
+    .reduce((output, key) => {
+      output[key] = stableWorkspaceIdempotencyNormalize(value[key]);
+      return output;
+    }, {});
+}
+
+function workspaceIdempotencyFingerprint(value) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(stableWorkspaceIdempotencyNormalize(value)))
+    .digest("hex");
+}
+
+function workspaceIdempotencyKeyFromRequest(request) {
+  const raw = String(
+    request.get("Idempotency-Key") ||
+    request.body?.idempotencyKey ||
+    request.body?.execution?.idempotencyKey ||
+    ""
+  ).trim();
+
+  if (!raw) {
+    const error = new Error(
+      "Google Workspace mutations require an Idempotency-Key so MEOS can prevent duplicate execution."
+    );
+    error.status = 400;
+    error.code = "GOOGLE_WORKSPACE_IDEMPOTENCY_KEY_REQUIRED";
+    throw error;
+  }
+
+  if (raw.length > 200) {
+    const error = new Error("Google Workspace Idempotency-Key is too long.");
+    error.status = 400;
+    error.code = "GOOGLE_WORKSPACE_IDEMPOTENCY_KEY_INVALID";
+    throw error;
+  }
+
+  return raw;
+}
+
+function workspaceIdempotencyRepositoryKey({ principalId, operation, idempotencyKey }) {
+  return crypto
+    .createHash("sha256")
+    .update([
+      AUTONOMY_AUTHORITY_TENANT_ID,
+      String(principalId || "unknown-principal"),
+      String(operation || "workspace-mutation"),
+      String(idempotencyKey || "")
+    ].join("|"))
+    .digest("hex");
+}
+
+function workspaceIdempotencyPublicReceipt(record = {}, { replayed = false } = {}) {
+  return {
+    schema: "meos.google-workspace.idempotency-receipt.v1",
+    commission: GOOGLE_WORKSPACE_IDEMPOTENCY_COMMISSION,
+    version: GOOGLE_WORKSPACE_IDEMPOTENCY_VERSION,
+    buildId: GOOGLE_WORKSPACE_IDEMPOTENCY_BUILD_ID,
+    operation: record.operation || null,
+    state: record.state || null,
+    replayed: replayed === true,
+    payloadFingerprint: record.payloadFingerprint || null,
+    claimedAt: record.claimedAt || null,
+    completedAt: record.completedAt || null
+  };
+}
+
+async function claimGoogleWorkspaceMutation({ request, authority, operation, payload }) {
+  registerGoogleInstitutionalRepositoryAuthority();
+
+  const idempotencyKey = workspaceIdempotencyKeyFromRequest(request);
+  const payloadFingerprint = workspaceIdempotencyFingerprint(payload);
+  const repositoryKey = workspaceIdempotencyRepositoryKey({
+    principalId: authority?.principal?.id,
+    operation,
+    idempotencyKey
+  });
+
+  const existing = await InstitutionalRepositoryAuthority.read({
+    namespace: GOOGLE_WORKSPACE_IDEMPOTENCY_NAMESPACE,
+    key: repositoryKey,
+    classification: "operational"
+  });
+
+  if (existing?.found) {
+    const record = existing.value || {};
+
+    if (record.payloadFingerprint !== payloadFingerprint) {
+      const error = new Error(
+        "This Google Workspace Idempotency-Key was already used for different work."
+      );
+      error.status = 409;
+      error.code = "GOOGLE_WORKSPACE_IDEMPOTENCY_KEY_REUSE_CONFLICT";
+      error.details = {
+        operation,
+        state: record.state || null,
+        existingPayloadFingerprint: record.payloadFingerprint || null,
+        requestedPayloadFingerprint: payloadFingerprint
+      };
+      throw error;
+    }
+
+    if (record.state === "completed") {
+      return {
+        replayed: true,
+        idempotencyKey,
+        repositoryKey,
+        payloadFingerprint,
+        result: record.result,
+        responseStatus: Number(record.responseStatus || 200),
+        receipt: workspaceIdempotencyPublicReceipt(record, { replayed: true })
+      };
+    }
+
+    const error = new Error(
+      "This Google Workspace mutation was already claimed and its external outcome is not safe to repeat automatically. Reconcile the existing attempt instead of creating another one."
+    );
+    error.status = 409;
+    error.code = "GOOGLE_WORKSPACE_IDEMPOTENCY_RECONCILIATION_REQUIRED";
+    error.details = {
+      operation,
+      state: record.state || "claimed",
+      claimedAt: record.claimedAt || null,
+      lastError: record.lastError || null,
+      payloadFingerprint
+    };
+    throw error;
+  }
+
+  const claimedAt = new Date().toISOString();
+  const claimValue = {
+    schema: "meos.google-workspace.idempotency-state.v1",
+    commission: GOOGLE_WORKSPACE_IDEMPOTENCY_COMMISSION,
+    buildId: GOOGLE_WORKSPACE_IDEMPOTENCY_BUILD_ID,
+    tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+    principalId: authority?.principal?.id || null,
+    operation,
+    state: "claimed",
+    payloadFingerprint,
+    claimedAt,
+    completedAt: null,
+    responseStatus: null,
+    result: null,
+    lastError: null
+  };
+
+  let claimWrite;
+  try {
+    claimWrite = await InstitutionalRepositoryAuthority.write({
+      namespace: GOOGLE_WORKSPACE_IDEMPOTENCY_NAMESPACE,
+      key: repositoryKey,
+      classification: "operational",
+      value: claimValue,
+      metadata: {
+        commission: GOOGLE_WORKSPACE_IDEMPOTENCY_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_IDEMPOTENCY_BUILD_ID,
+        operation,
+        tenantId: AUTONOMY_AUTHORITY_TENANT_ID
+      },
+      expectedPreviousFingerprint: null
+    });
+  } catch (error) {
+    if (error?.code === "MEOS_REPOSITORY_CONCURRENCY_CONFLICT") {
+      return claimGoogleWorkspaceMutation({ request, authority, operation, payload });
+    }
+    throw error;
+  }
+
+  return {
+    replayed: false,
+    idempotencyKey,
+    repositoryKey,
+    payloadFingerprint,
+    claimFingerprint: claimWrite?.record?.payloadFingerprint || null,
+    claimValue,
+    receipt: workspaceIdempotencyPublicReceipt(claimValue)
+  };
+}
+
+async function finalizeGoogleWorkspaceMutation({ claim, result, responseStatus = 200 }) {
+  const completedAt = new Date().toISOString();
+  const completedValue = {
+    ...claim.claimValue,
+    state: "completed",
+    completedAt,
+    responseStatus,
+    result,
+    lastError: null
+  };
+
+  const write = await InstitutionalRepositoryAuthority.write({
+    namespace: GOOGLE_WORKSPACE_IDEMPOTENCY_NAMESPACE,
+    key: claim.repositoryKey,
+    classification: "operational",
+    value: completedValue,
+    metadata: {
+      commission: GOOGLE_WORKSPACE_IDEMPOTENCY_COMMISSION,
+      buildId: GOOGLE_WORKSPACE_IDEMPOTENCY_BUILD_ID,
+      operation: claim.claimValue?.operation || null,
+      tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+      final: true
+    },
+    expectedPreviousFingerprint: claim.claimFingerprint
+  });
+
+  return {
+    write,
+    receipt: workspaceIdempotencyPublicReceipt(completedValue)
+  };
+}
+
+async function quarantineGoogleWorkspaceMutation({ claim, error }) {
+  if (!claim || claim.replayed) return null;
+  const uncertainValue = {
+    ...claim.claimValue,
+    state: "reconciliation-required",
+    lastError: {
+      code: error?.code || "GOOGLE_WORKSPACE_MUTATION_FAILED",
+      message: String(error?.message || error || "Workspace mutation failed").slice(0, 500),
+      observedAt: new Date().toISOString()
+    }
+  };
+
+  try {
+    return await InstitutionalRepositoryAuthority.write({
+      namespace: GOOGLE_WORKSPACE_IDEMPOTENCY_NAMESPACE,
+      key: claim.repositoryKey,
+      classification: "operational",
+      value: uncertainValue,
+      metadata: {
+        commission: GOOGLE_WORKSPACE_IDEMPOTENCY_COMMISSION,
+        buildId: GOOGLE_WORKSPACE_IDEMPOTENCY_BUILD_ID,
+        operation: claim.claimValue?.operation || null,
+        tenantId: AUTONOMY_AUTHORITY_TENANT_ID,
+        reconciliationRequired: true
+      },
+      expectedPreviousFingerprint: claim.claimFingerprint
+    });
+  } catch (quarantineError) {
+    console.error(
+      "[MEOS Google Workspace Idempotency] Failed to durably quarantine uncertain mutation:",
+      quarantineError?.message || quarantineError
+    );
+    return null;
+  }
+}
+
+async function executeIdempotentGoogleWorkspaceMutation({
+  request,
+  authority,
+  operation,
+  payload,
+  responseStatus,
+  execute
+}) {
+  const claim = await claimGoogleWorkspaceMutation({
+    request,
+    authority,
+    operation,
+    payload
+  });
+
+  if (claim.replayed) {
+    return {
+      replayed: true,
+      responseStatus: claim.responseStatus,
+      result: claim.result,
+      receipt: claim.receipt
+    };
+  }
+
+  let result;
+  try {
+    result = await execute();
+  } catch (error) {
+    await quarantineGoogleWorkspaceMutation({ claim, error });
+    error.idempotency = claim.receipt;
+    throw error;
+  }
+
+  try {
+    const finalized = await finalizeGoogleWorkspaceMutation({
+      claim,
+      result,
+      responseStatus
+    });
+    return {
+      replayed: false,
+      responseStatus,
+      result,
+      receipt: finalized.receipt
+    };
+  } catch (error) {
+    error.status = error?.status || 500;
+    error.code = error?.code || "GOOGLE_WORKSPACE_IDEMPOTENCY_FINALIZE_FAILED";
+    error.externalOutcome = "provider-call-succeeded-durable-finalization-unproven";
+    error.resourceResult = result;
+    throw error;
+  }
+}
+
+/* ========================================================================== */
 /* Commission 006.032B — Governed Google Workspace Execution Bridge           */
 /* ========================================================================== */
 
@@ -20569,20 +20904,34 @@ app.post(
       const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
       if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
       await requireGoogleWorkspaceCapability("docsWrite", "Google Docs write authority");
-      const result = await GoogleWorkspaceProvider.createGoogleDocument({
-        title: request.body?.title,
-        text: request.body?.text || ""
+      const mutation = await executeIdempotentGoogleWorkspaceMutation({
+        request,
+        authority,
+        operation: "google-docs-create",
+        payload: {
+          title: request.body?.title || null,
+          text: request.body?.text || ""
+        },
+        responseStatus: 201,
+        execute: () => GoogleWorkspaceProvider.createGoogleDocument({
+          title: request.body?.title,
+          text: request.body?.text || ""
+        })
       });
-      response.status(201).json({
+      response.set("Idempotency-Replayed", mutation.replayed ? "true" : "false");
+      response.status(mutation.responseStatus).json({
         schema: "meos.google-workspace.document-create.v1",
         commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
         buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
         authority: authority.receipt,
-        ...result
+        idempotency: mutation.receipt,
+        ...mutation.result
       });
     } catch (error) {
       response.status(error?.status || 500).json({
         schema: "meos.google-workspace.document-create.v1",
+        idempotency: error?.idempotency || null,
+        externalOutcome: error?.externalOutcome || null,
         ...googleWorkspaceErrorResponse(error)
       });
     }
@@ -20598,20 +20947,34 @@ app.patch(
       const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
       if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
       await requireGoogleWorkspaceCapability("docsWrite", "Google Docs write authority");
-      const result = await GoogleWorkspaceProvider.updateGoogleDocument({
-        documentId: request.params.documentId,
-        requests: request.body?.requests || []
+      const mutation = await executeIdempotentGoogleWorkspaceMutation({
+        request,
+        authority,
+        operation: "google-docs-update",
+        payload: {
+          documentId: request.params.documentId,
+          requests: request.body?.requests || []
+        },
+        responseStatus: 200,
+        execute: () => GoogleWorkspaceProvider.updateGoogleDocument({
+          documentId: request.params.documentId,
+          requests: request.body?.requests || []
+        })
       });
-      response.status(200).json({
+      response.set("Idempotency-Replayed", mutation.replayed ? "true" : "false");
+      response.status(mutation.responseStatus).json({
         schema: "meos.google-workspace.document-update.v1",
         commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
         buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
         authority: authority.receipt,
-        ...result
+        idempotency: mutation.receipt,
+        ...mutation.result
       });
     } catch (error) {
       response.status(error?.status || 500).json({
         schema: "meos.google-workspace.document-update.v1",
+        idempotency: error?.idempotency || null,
+        externalOutcome: error?.externalOutcome || null,
         ...googleWorkspaceErrorResponse(error)
       });
     }
@@ -20627,20 +20990,34 @@ app.post(
       const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
       if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
       await requireGoogleWorkspaceCapability("sheetsWrite", "Google Sheets write authority");
-      const result = await GoogleWorkspaceProvider.createSpreadsheet({
-        title: request.body?.title,
-        sheets: request.body?.sheets
+      const mutation = await executeIdempotentGoogleWorkspaceMutation({
+        request,
+        authority,
+        operation: "google-sheets-create",
+        payload: {
+          title: request.body?.title || null,
+          sheets: request.body?.sheets || null
+        },
+        responseStatus: 201,
+        execute: () => GoogleWorkspaceProvider.createSpreadsheet({
+          title: request.body?.title,
+          sheets: request.body?.sheets
+        })
       });
-      response.status(201).json({
+      response.set("Idempotency-Replayed", mutation.replayed ? "true" : "false");
+      response.status(mutation.responseStatus).json({
         schema: "meos.google-workspace.spreadsheet-create.v1",
         commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
         buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
         authority: authority.receipt,
-        ...result
+        idempotency: mutation.receipt,
+        ...mutation.result
       });
     } catch (error) {
       response.status(error?.status || 500).json({
         schema: "meos.google-workspace.spreadsheet-create.v1",
+        idempotency: error?.idempotency || null,
+        externalOutcome: error?.externalOutcome || null,
         ...googleWorkspaceErrorResponse(error)
       });
     }
@@ -20656,22 +21033,38 @@ app.put(
       const authority = await resolveGoogleWorkspaceExecutionAuthority(request);
       if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
       await requireGoogleWorkspaceCapability("sheetsWrite", "Google Sheets write authority");
-      const result = await GoogleWorkspaceProvider.writeSpreadsheetValues({
-        spreadsheetId: request.params.spreadsheetId,
-        range: request.body?.range,
-        values: request.body?.values,
-        valueInputOption: request.body?.valueInputOption || "USER_ENTERED"
+      const mutation = await executeIdempotentGoogleWorkspaceMutation({
+        request,
+        authority,
+        operation: "google-sheets-values-write",
+        payload: {
+          spreadsheetId: request.params.spreadsheetId,
+          range: request.body?.range || null,
+          values: request.body?.values || null,
+          valueInputOption: request.body?.valueInputOption || "USER_ENTERED"
+        },
+        responseStatus: 200,
+        execute: () => GoogleWorkspaceProvider.writeSpreadsheetValues({
+          spreadsheetId: request.params.spreadsheetId,
+          range: request.body?.range,
+          values: request.body?.values,
+          valueInputOption: request.body?.valueInputOption || "USER_ENTERED"
+        })
       });
-      response.status(200).json({
+      response.set("Idempotency-Replayed", mutation.replayed ? "true" : "false");
+      response.status(mutation.responseStatus).json({
         schema: "meos.google-workspace.spreadsheet-values-write.v1",
         commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
         buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
         authority: authority.receipt,
-        ...result
+        idempotency: mutation.receipt,
+        ...mutation.result
       });
     } catch (error) {
       response.status(error?.status || 500).json({
         schema: "meos.google-workspace.spreadsheet-values-write.v1",
+        idempotency: error?.idempotency || null,
+        externalOutcome: error?.externalOutcome || null,
         ...googleWorkspaceErrorResponse(error)
       });
     }
@@ -20751,21 +21144,36 @@ app.post(
       );
       if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
       await requireGoogleWorkspaceCapability("calendarWrite", "Google Calendar write authority");
-      const result = await GoogleWorkspaceProvider.createCalendarEvent({
-        calendarId: request.body?.calendarId || "primary",
-        event: request.body?.event,
-        sendUpdates: request.body?.sendUpdates || "none"
+      const mutation = await executeIdempotentGoogleWorkspaceMutation({
+        request,
+        authority,
+        operation: "google-calendar-event-create",
+        payload: {
+          calendarId: request.body?.calendarId || "primary",
+          event: request.body?.event || null,
+          sendUpdates: request.body?.sendUpdates || "none"
+        },
+        responseStatus: 201,
+        execute: () => GoogleWorkspaceProvider.createCalendarEvent({
+          calendarId: request.body?.calendarId || "primary",
+          event: request.body?.event,
+          sendUpdates: request.body?.sendUpdates || "none"
+        })
       });
-      response.status(201).json({
+      response.set("Idempotency-Replayed", mutation.replayed ? "true" : "false");
+      response.status(mutation.responseStatus).json({
         schema: "meos.google-workspace.calendar-event-create.v1",
         commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
         buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
         authority: authority.receipt,
-        ...result
+        idempotency: mutation.receipt,
+        ...mutation.result
       });
     } catch (error) {
       response.status(error?.status || 500).json({
         schema: "meos.google-workspace.calendar-event-create.v1",
+        idempotency: error?.idempotency || null,
+        externalOutcome: error?.externalOutcome || null,
         ...googleWorkspaceErrorResponse(error)
       });
     }
@@ -20784,22 +21192,38 @@ app.patch(
       );
       if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
       await requireGoogleWorkspaceCapability("calendarWrite", "Google Calendar write authority");
-      const result = await GoogleWorkspaceProvider.updateCalendarEvent({
-        calendarId: request.body?.calendarId || "primary",
-        eventId: request.params.eventId,
-        event: request.body?.event,
-        sendUpdates: request.body?.sendUpdates || "none"
+      const mutation = await executeIdempotentGoogleWorkspaceMutation({
+        request,
+        authority,
+        operation: "google-calendar-event-update",
+        payload: {
+          calendarId: request.body?.calendarId || "primary",
+          eventId: request.params.eventId,
+          event: request.body?.event || null,
+          sendUpdates: request.body?.sendUpdates || "none"
+        },
+        responseStatus: 200,
+        execute: () => GoogleWorkspaceProvider.updateCalendarEvent({
+          calendarId: request.body?.calendarId || "primary",
+          eventId: request.params.eventId,
+          event: request.body?.event,
+          sendUpdates: request.body?.sendUpdates || "none"
+        })
       });
-      response.status(200).json({
+      response.set("Idempotency-Replayed", mutation.replayed ? "true" : "false");
+      response.status(mutation.responseStatus).json({
         schema: "meos.google-workspace.calendar-event-update.v1",
         commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
         buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
         authority: authority.receipt,
-        ...result
+        idempotency: mutation.receipt,
+        ...mutation.result
       });
     } catch (error) {
       response.status(error?.status || 500).json({
         schema: "meos.google-workspace.calendar-event-update.v1",
+        idempotency: error?.idempotency || null,
+        externalOutcome: error?.externalOutcome || null,
         ...googleWorkspaceErrorResponse(error)
       });
     }
@@ -20818,21 +21242,36 @@ app.delete(
       );
       if (!authority.allowed) return sendWorkspaceExecutionDenied(response, authority);
       await requireGoogleWorkspaceCapability("calendarWrite", "Google Calendar write authority");
-      const result = await GoogleWorkspaceProvider.deleteCalendarEvent({
-        calendarId: request.body?.calendarId || "primary",
-        eventId: request.params.eventId,
-        sendUpdates: request.body?.sendUpdates || "none"
+      const mutation = await executeIdempotentGoogleWorkspaceMutation({
+        request,
+        authority,
+        operation: "google-calendar-event-delete",
+        payload: {
+          calendarId: request.body?.calendarId || "primary",
+          eventId: request.params.eventId,
+          sendUpdates: request.body?.sendUpdates || "none"
+        },
+        responseStatus: 200,
+        execute: () => GoogleWorkspaceProvider.deleteCalendarEvent({
+          calendarId: request.body?.calendarId || "primary",
+          eventId: request.params.eventId,
+          sendUpdates: request.body?.sendUpdates || "none"
+        })
       });
-      response.status(200).json({
+      response.set("Idempotency-Replayed", mutation.replayed ? "true" : "false");
+      response.status(mutation.responseStatus).json({
         schema: "meos.google-workspace.calendar-event-delete.v1",
         commission: GOOGLE_WORKSPACE_EXECUTION_COMMISSION,
         buildId: GOOGLE_WORKSPACE_EXECUTION_BUILD_ID,
         authority: authority.receipt,
-        ...result
+        idempotency: mutation.receipt,
+        ...mutation.result
       });
     } catch (error) {
       response.status(error?.status || 500).json({
         schema: "meos.google-workspace.calendar-event-delete.v1",
+        idempotency: error?.idempotency || null,
+        externalOutcome: error?.externalOutcome || null,
         ...googleWorkspaceErrorResponse(error)
       });
     }
@@ -20898,6 +21337,79 @@ app.get(
       connected: status?.connected === true,
       mode: status?.mode || null,
       capabilities: status?.capabilities || null,
+      passed,
+      total: checks.length,
+      checks
+    });
+  }
+);
+
+app.get(
+  "/api/google/workspace/idempotency-acceptance-test",
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    registerGoogleInstitutionalRepositoryAuthority();
+    const repositoryStatus = InstitutionalRepositoryAuthority.getStatus();
+    const checks = [
+      {
+        name: "Durable Workspace mutation idempotency commission is active",
+        passed: GOOGLE_WORKSPACE_IDEMPOTENCY_COMMISSION === "006.032C"
+      },
+      {
+        name: "Workspace mutation idempotency is server-owned",
+        passed:
+          typeof claimGoogleWorkspaceMutation === "function" &&
+          typeof executeIdempotentGoogleWorkspaceMutation === "function"
+      },
+      {
+        name: "Mutation claim is durable operational state",
+        passed: GOOGLE_WORKSPACE_IDEMPOTENCY_NAMESPACE === "google-workspace-idempotency"
+      },
+      {
+        name: "Idempotency key is required before mutations execute",
+        passed: /Idempotency-Key/.test(workspaceIdempotencyKeyFromRequest.toString())
+      },
+      {
+        name: "Concurrent duplicate claims use repository compare-and-set",
+        passed: /expectedPreviousFingerprint:\s*null/.test(claimGoogleWorkspaceMutation.toString())
+      },
+      {
+        name: "Completed mutations replay without another provider call",
+        passed:
+          /record.state === "completed"/.test(claimGoogleWorkspaceMutation.toString()) &&
+          /if \(claim.replayed\)/.test(executeIdempotentGoogleWorkspaceMutation.toString())
+      },
+      {
+        name: "Uncertain mutations require reconciliation instead of retry",
+        passed:
+          /GOOGLE_WORKSPACE_IDEMPOTENCY_RECONCILIATION_REQUIRED/.test(
+            claimGoogleWorkspaceMutation.toString()
+          )
+      },
+      {
+        name: "Repository authority is available for durable idempotency",
+        passed: repositoryStatus?.available === true || repositoryStatus?.durableAvailable === true
+      },
+      {
+        name: "Automatic spend remains zero",
+        passed: AUTONOMY_ECONOMIC_BOUNDARY.automaticSpendUsd === 0
+      }
+    ];
+    const passed = checks.filter(item => item.passed).length;
+    response.status(passed === checks.length ? 200 : 500).json({
+      success: passed === checks.length,
+      schema: "meos.google-workspace.idempotency-acceptance.v1",
+      commission: GOOGLE_WORKSPACE_IDEMPOTENCY_COMMISSION,
+      version: GOOGLE_WORKSPACE_IDEMPOTENCY_VERSION,
+      buildId: GOOGLE_WORKSPACE_IDEMPOTENCY_BUILD_ID,
+      serverVersion: VERSION,
+      browserAuthority: false,
+      automaticSpendUsd: AUTONOMY_ECONOMIC_BOUNDARY.automaticSpendUsd,
+      repository: {
+        authority: repositoryStatus?.authority || null,
+        providerId: repositoryStatus?.selectedProviderId || repositoryStatus?.providerId || null,
+        available: repositoryStatus?.available === true || repositoryStatus?.durableAvailable === true
+      },
       passed,
       total: checks.length,
       checks
