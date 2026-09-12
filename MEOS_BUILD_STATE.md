@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32151512/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32151888/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -462,6 +462,66 @@ Required direction includes:
 The long-term North Star is not constrained to the capabilities of the current laptop or current budget.
 
 Build the architecture so capability can scale when resources scale, without designing today's system as if unlimited resources already exist.
+
+## Maddy independence, privacy, and economic scale doctrine
+
+Maddy / MEOS is being built toward its own independent system, platform, and company — not as a permanent wrapper around external search engines, model vendors, cloud vendors, advertising networks, or other outside services.
+
+The architectural preference is:
+
+**Maddy-owned capability first → free/local/reused capability where practical → open/public infrastructure where useful → replaceable outside vendor only when Maddy cannot yet perform the capability herself.**
+
+External providers may accelerate capability, provide fallback coverage, or bridge a temporary gap. They must not silently become Maddy's identity, memory, reasoning authority, institutional truth authority, or permanent architectural dependency. When Maddy develops an adequate native capability, architecture should permit that external dependency to be reduced or replaced.
+
+This doctrine applies directly to Maddy Search / MEOS Internet. The commissioned Internet Node is the beginning of Maddy-owned Internet capability. External public-search discovery remains fallback infrastructure while Maddy develops her own discovery, crawl frontier, indexing, ranking, freshness, recrawl, retrieval, and search infrastructure. The long-term direction is an increasingly independent Maddy-owned search system rather than a branded wrapper around another search provider.
+
+### Governing privacy boundary
+
+**Maddy keeps data private and exists to serve the user.**
+
+Maddy may collect, remember, analyze, learn from, and act on information when doing so serves the user or organization and remains within applicable authority, law, safety, and governance. Private user and institutional information is not advertising inventory merely because it may have commercial value.
+
+Maddy's private memory, institutional history, preferences, relationships, searches, operational context, and learned context must not be exposed or sold to third parties for behavioral advertising profiles. Maddy may use private context internally to serve the user better without disclosing that private context to advertisers or other unrelated parties.
+
+Privacy does not require Maddy to be amnesic. Memory and learning are core capabilities. The architectural requirement is that private data remains governed for the user's benefit rather than becoming a third-party surveillance product.
+
+### Revenue architecture direction
+
+Maddy must be capable of becoming economically self-sustaining without making sale of private user data the foundation of the company. Architecture should preserve multiple independent revenue paths so survival does not create pressure to compromise the privacy boundary.
+
+Potential revenue paths include, without limiting future models:
+
+- privacy-preserving contextual search advertising and clearly identified sponsored results based on present context or intent rather than sale of private behavioral histories;
+- a future Maddy-owned advertiser / business marketplace rather than permanent dependence on an outside advertising network;
+- individual Maddy / MEOS subscriptions;
+- nonprofit, business, enterprise, and institutional MEOS subscriptions or deployments;
+- lawful transaction, referral, marketplace, fulfillment, or outcome-based revenue where appropriate and transparently governed;
+- APIs and platform services;
+- enterprise and private deployments;
+- OEM, embodied-system, and other Maddy licensing;
+- additional Maddy-owned products, infrastructure, and economic systems developed as capability expands.
+
+Paid placement, sponsorship, or commercial participation must not silently become institutional truth, evidence authority, or organic relevance. Search and reasoning architecture should preserve a machine-readable distinction between organic evidence/relevance and paid commercial placement so future monetization does not require rebuilding Maddy's epistemic core.
+
+Maddy may collect privacy-preserving operational, aggregate, contextual, performance, and economic measurements needed to operate and improve the service, provided those measurements remain consistent with the governing privacy boundary and applicable law.
+
+### Economic scale target
+
+The Executive Director's long-range directional economic target is:
+
+**$1 billion per month in Maddy / MEOS revenue ($12 billion annualized run-rate).**
+
+This is an ambitious architecture and company-building target, not a current forecast, valuation, promise, or claim of near-term revenue.
+
+Development should move toward that scale quickly without pretending today's infrastructure or customer base already supports it. The practical engineering implication is to build with today's pennies while avoiding needless architectural dead ends that would require wholesale rewrites if Maddy reaches very large scale.
+
+The $1B/month target is not permission to violate privacy, law, evidence integrity, organizational authority, economic stewardship, or the Spooky standard. Revenue exists to sustain and expand Maddy's ability to serve users; users do not exist merely to feed a revenue system.
+
+### Revenue-aware engineering rule
+
+When designing new Maddy capabilities, especially Search / MEOS Internet, preserve clean seams for future monetization, measurement, business participation, and scale when doing so can be accomplished without distorting the current commission. Do not prematurely build speculative advertising infrastructure merely because it may be useful later. Do not entangle private memory with monetization. Do not entangle sponsored placement with organic evidence.
+
+The goal is to avoid a future million-line retrofit while also avoiding premature complexity today.
 
 ## Learning / native intelligence direction
 
@@ -943,6 +1003,9 @@ A managed design-partner release may precede fully automated self-service SaaS d
 - Economic stewardship is part of executive cognition.
 - Saleability does not justify architectural regression.
 - Professional optics do not lower the Spooky standard.
+- Maddy keeps data private and exists to serve the user.
+- Maddy-owned capability is preferred over permanent external-provider dependency.
+- Monetization must not silently convert private memory into advertising inventory or paid placement into institutional truth.
 - Existing governing language must not be changed without Executive Director approval.
 - Do not lower the Spooky standard to fit current software.
 - **Always Push Forward.**
