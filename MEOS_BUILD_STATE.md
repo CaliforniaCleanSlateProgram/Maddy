@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE (1).md](https://github.com/user-attachments/files/32150304/MEOS_BUILD_STATE.1.md)
+[MEOS_BUILD_STATE-NODE-002-CHECKPOINT.md](https://github.com/user-attachments/files/32150673/MEOS_BUILD_STATE-NODE-002-CHECKPOINT.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -246,17 +246,27 @@ This section records the current committed/runtime state established by the auth
 - MEOS Internet Node:
   - Version: `0.1.0`
   - Build: `MIN001-SEEDED-CRAWL-LOCAL-INDEX-20260912-A`
-  - Commission: `MEOS-INTERNET-NODE-001 — Provider-Independent Web Core`
+  - Core Commission: `MEOS-INTERNET-NODE-001 — Provider-Independent Web Core`
+  - Server Mount Commission: `MEOS-INTERNET-NODE-002 — Server API Mount`
   - Adds a standalone provider-independent public-web perception core with explicit seed URLs, bounded crawling, MEOS-owned local indexing, local search, provenance, observation timestamps, robots.txt awareness, and private/loopback destination blocking.
+  - Node-002 mounts the existing Internet Node through `server.js` at `/api/internet` without replacing the commissioned core.
+  - Mounted routes: `GET /api/internet/status`, `GET /api/internet/search`, and `POST /api/internet/crawl`.
   - Public-web observations remain evidence inputs, not institutional truth authority.
-  - This commission does not mount HTTP routes, modify `server.js`, connect the Maddy cognitive runtime, or replace existing external-search fallbacks.
-  - Core acceptance passed: syntax check PASS; local-index search returned the expected construction/crews document from `meos-owned-index`.
+  - Live runtime acceptance on the Render deployment passed:
+    - status PASS: `ok: true`, capability `meos-internet-node`, provider-independent search true, institutional truth authority false;
+    - crawl PASS: `https://example.com/` attempted `1`, indexed `1`;
+    - search PASS: query `Example Domain` returned `https://example.com/` from `meos-owned-index`.
+  - First live crawl attempt exposed an argument-binding mismatch in the router: the route received `seeds` but called the object-based `node.crawl()` contract positionally, producing HTTP `400` / `At least one seed URL is required.`
+  - Repair `MEOS-INTERNET-NODE-002 — Fix Crawl Argument Binding` passed syntax and live runtime acceptance by binding `seeds`, `maxPages`, `maxDepth`, and `sameOriginOnly` through the existing crawl options object.
+  - Node-002 does not connect the Maddy cognitive runtime or replace existing external-search fallbacks.
+  - Node-001 core acceptance remains passed: syntax check PASS; local-index search returned the expected construction/crews document from `meos-owned-index`.
 
 - Mission Engine:
   - Version: `0.1.9`
   - Build: `ME019-MISSION-CANONICALIZATION-DUPLICATE-QUARANTINE-20260812-A`
   - Mission canonicalization and duplicate quarantine are implemented.
-  - Latest proven runtime after cleanup: `11` active missions rather than the prior runaway population in the approximately `575-576` range.
+  - Cleanup acceptance previously proved `11` active missions rather than the prior runaway population in the approximately `575-576` range.
+  - Latest observed live runtime during MEOS-INTERNET-NODE-002 acceptance reports `12` active missions; this observation is recorded as runtime evidence and has not yet been investigated as a separate repair commission.
   - Durable authority hydration reports READY.
 
 - Mission Dispatcher:
