@@ -39,6 +39,8 @@ import WatershedCoastalResourceDiscoveryAdapter from "./watershed-coastal-resour
 import GoogleWorkspaceProvider from "./google-workspace-provider.js";
 import InstitutionalRepositoryAuthority from "./institutional-repository-authority.js";
 
+import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
+
 const VERSION = "2.10.77";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
@@ -1251,6 +1253,13 @@ if (!OPENAI_API_KEY) {
 }
 
 const app = express();
+
+// MEOS-INTERNET-NODE-002 — Server API Mount.
+// Public-web observation remains evidence, not institutional truth authority.
+const meosInternetNode = new MEOSInternetNode({
+  dataDirectory: process.env.MEOS_DATA_DIR
+});
+app.use("/api/internet", createMeosInternetRouter({ express, node: meosInternetNode }));
 
 app.disable("x-powered-by");
 
