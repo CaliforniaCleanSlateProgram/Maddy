@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32150271/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -241,6 +242,15 @@ This section records the current committed/runtime state established by the auth
   - Build: `ALI100-ONE-INTENT-ONE-CHEAP-RESEARCH-20260811-A`
   - Commission: `006.017D7S4B — Autonomous Learning Internet Ignition`
   - Preserves provider-neutral public research and the current cheap-research/economic-stewardship path.
+
+- MEOS Internet Node:
+  - Version: `0.1.0`
+  - Build: `MIN001-SEEDED-CRAWL-LOCAL-INDEX-20260912-A`
+  - Commission: `MEOS-INTERNET-NODE-001 — Provider-Independent Web Core`
+  - Adds a standalone provider-independent public-web perception core with explicit seed URLs, bounded crawling, MEOS-owned local indexing, local search, provenance, observation timestamps, robots.txt awareness, and private/loopback destination blocking.
+  - Public-web observations remain evidence inputs, not institutional truth authority.
+  - This commission does not mount HTTP routes, modify `server.js`, connect the Maddy cognitive runtime, or replace existing external-search fallbacks.
+  - Core acceptance passed: syntax check PASS; local-index search returned the expected construction/crews document from `meos-owned-index`.
 
 - Mission Engine:
   - Version: `0.1.9`
