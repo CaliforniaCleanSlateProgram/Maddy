@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32151414/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32151512/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -243,6 +243,17 @@ This section records the current committed/runtime state established by the auth
   - Build: `ALI100-ONE-INTENT-ONE-CHEAP-RESEARCH-20260811-A`
   - Commission: `006.017D7S4B — Autonomous Learning Internet Ignition`
   - Preserves provider-neutral public research and the current cheap-research/economic-stewardship path.
+
+- Knowledge Engine:
+  - Runtime Version: `1.2.1`
+  - Runtime Build: `KE121-DURABLE-HYDRATION-PERSISTENCE-BARRIER-20260912-A`
+  - Commission: `MEOS Knowledge Engine 1.2.1 — Durable Hydration Persistence Barrier`
+  - Post-Node-003 audit traced the observed Executive Memory `409 Conflict` through the existing Knowledge Engine persistence path and demonstrated a startup hydration-order gap: automatic persistence could be scheduled by startup knowledge registration before the Knowledge Engine's existing durable restore promise had completed.
+  - The durable repository concurrency rejection was preserved as a protective authority boundary; no blind `409` retry or overwrite behavior was introduced.
+  - The focused repair changes only `frontend/knowledge-engine.js` and makes automatic scheduled persistence wait for the existing durable restore promise to settle while preserving the newest scheduled persistence generation. Direct `persist()` remains available to the existing restore/migration path so the repair does not create a restore/persist deadlock.
+  - Focused pre-deploy acceptance passed: `node --check frontend/knowledge-engine.js`; controlled hydration-order test proved zero durable writes before restore completion and persistence after restore completion.
+  - Final live runtime acceptance passed on the Render deployment: Knowledge Engine reported `v1.2.1` / `KE121-DURABLE-HYDRATION-PERSISTENCE-BARRIER-20260912-A`; Mission Engine durable authority hydration reached READY; the captured startup sequence did not reproduce the prior HTTP `409 Conflict`, `Repository write rejected`, or `Executive Memory persistence failed` condition.
+  - This commissions the Knowledge Engine hydration persistence barrier. It does not change Executive Memory authority, Institutional Repository authority, Mission Dispatcher authority, Internet Node behavior, or unrelated cognition.
 
 - MEOS Internet Node:
   - Version: `0.1.0`
@@ -754,9 +765,24 @@ Key result:
 
 This closes the specific Node-003 missing synapse. It does not imply the broader end-to-end cognitive-organism audit is finished.
 
+## Knowledge Engine durable hydration audit result
+
+The post-Node-003 no-code audit followed the observed Knowledge Engine `409 Conflict` into the existing durable persistence seam before proposing code.
+
+Key result:
+
+- The Institutional Repository's optimistic-concurrency rejection prevented a stale durable write from silently replacing newer authority. That guard remains correct and was not weakened.
+- The Knowledge Engine's own startup ordering was incomplete: its durable restore began asynchronously while other startup organs, including Executive Learning system-knowledge registration, could mutate Knowledge Engine state and schedule automatic persistence.
+- Automatic scheduled persistence did not have a hydration barrier, so a pre-hydration browser projection could attempt a durable write before Knowledge Engine restore completed.
+- The smallest repair was therefore inside the existing Knowledge Engine scheduler, not a new engine and not a server-side overwrite/retry mechanism.
+- `MEOS Knowledge Engine 1.2.1 — Durable Hydration Persistence Barrier` makes scheduled automatic persistence wait for the existing restore promise and suppresses superseded scheduled generations while hydration is pending.
+- Focused acceptance proved no durable writes occurred before restore completion. Final live startup acceptance loaded Knowledge Engine v1.2.1 and did not reproduce the prior startup `409 Conflict` or Executive Memory persistence failure.
+
+This closes the demonstrated startup hydration-order gap. It does not claim that every possible multi-writer concurrency case is solved; the durable repository conflict guard remains authoritative for future stale-write conditions.
+
 ## Active engineering mission
 
-Node-003 is commissioned. The immediate mission returns to the governing no-code connection/gap audit rather than starting another isolated feature.
+Node-003 and the subsequent Knowledge Engine durable hydration persistence barrier are commissioned. The immediate mission returns to the governing no-code connection/gap audit rather than starting another isolated feature.
 
 The current engineering investigation is:
 
@@ -782,14 +808,14 @@ Current observed items requiring audit, not automatic repair:
 - Mission Dispatcher runtime is connected to Mission Engine, Executive Offices, and Maddy Autonomy, but office dispatch authority is not effective and dispatcher startup is stopped with `office_dispatch_authority_not_effective`. Determine whether this is correct governed authority or a broken authority seam before proposing code.
 - Mission Engine currently reports `12` active missions. The prior cleanup proved `11`; determine whether the additional active mission is legitimate current work or renewed accumulation before proposing code.
 - Durable Internet index path binding is repaired in code, but cross-deploy durability depends on deployment storage configuration. Verify persistent deployment storage before treating cross-instance continuity as proven.
-- Immediately after the successful Node-003 headless-research acceptance, Knowledge Engine attempted `PUT /api/executive-memory/investigation-history/knowledge-engine-entities-0001` and received HTTP `409 Conflict`. Runtime reported: `Repository write rejected because the durable record changed since the caller last observed it.` Knowledge Engine then logged `Executive Memory persistence failed`. This is recorded as an unresolved optimistic-concurrency/durable-memory observation, not attributed to Node-003 and not yet classified as a defect. Audit the Knowledge Engine → Executive Memory version/read-modify-write seam before proposing a repair.
+- The post-Node-003 Knowledge Engine → Executive Memory `409 Conflict` has now been audited and repaired as `MEOS Knowledge Engine 1.2.1 — Durable Hydration Persistence Barrier`. The demonstrated gap was startup ordering: automatic persistence could run before Knowledge Engine durable restore completed. Final live startup acceptance on v1.2.1 did not reproduce the prior `409 Conflict` or Executive Memory persistence failure. Continue to treat the repository concurrency guard itself as protective authority; do not replace it with blind stale-snapshot retries.
 - The known `/api/internet/search` route passes an options object to a numeric `limit` parameter; custom-limit behavior remains uncommissioned and must not be silently folded into another task.
 
 The next feature commission must still be the smallest commission that closes the highest-leverage real missing connection demonstrated by this continuing audit.
 
 ## Exact next step after this ledger is commissioned
 
-Resume the no-code connection/gap audit from the post-Node-003 live architecture.
+Resume the no-code connection/gap audit from the post-Node-003 / Knowledge Engine v1.2.1 live architecture.
 
 At minimum re-evaluate:
 
@@ -797,7 +823,7 @@ At minimum re-evaluate:
 - Mission Dispatcher authority and whether `office_dispatch_authority_not_effective` is correct governance or a broken seam;
 - verified consequence → Monitoring → Learning → changed future behavior;
 - autobiographical/institutional memory re-entry into future cognition;
-- Knowledge Engine → Executive Memory durable write concurrency/version handling after the observed `409 Conflict`, including whether a legitimate concurrent update is safely reconciled or causes learning/knowledge persistence loss;
+- Knowledge Engine → Executive Memory continuity beyond the commissioned startup hydration barrier, including whether future legitimate concurrent writers are safely rejected/reconciled without learning or knowledge loss;
 - active Mission recognition, deduplication, disposition, and release at the current `12`-mission runtime state;
 - owned Internet evidence continuity across service replacement once deployment persistence configuration is verified;
 - customer-facing continuity from natural executive intent through Maddy/HUD without exposing disconnected engines.
