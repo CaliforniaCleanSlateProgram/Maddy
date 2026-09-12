@@ -193,7 +193,16 @@ function scoreDocument(doc, terms) {
 export class MEOSInternetNode {
   constructor(options = {}) {
     this.options = { ...DEFAULTS, ...options };
-    this.indexPath = options.indexPath || process.env.MEOS_INTERNET_INDEX_PATH || path.resolve("./data/meos-internet-index.json");
+    const dataDirectory =
+      options.dataDirectory ||
+      process.env.MEOS_DATA_DIR ||
+      path.resolve("./data");
+
+    this.indexPath =
+      options.indexPath ||
+      process.env.MEOS_INTERNET_INDEX_PATH ||
+      path.join(dataDirectory, "meos-internet-index.json");
+
     this.documents = new Map();
     this.loaded = false;
     this.lastCrawl = null;
