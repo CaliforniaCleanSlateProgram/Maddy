@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE-NODE-002-CHECKPOINT.md](https://github.com/user-attachments/files/32150673/MEOS_BUILD_STATE-NODE-002-CHECKPOINT.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32151414/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -12,6 +12,7 @@
 
 -   Authoritative repository snapshot at this checkpoint:
     `Maddy-main (25)(1).zip`.
+-   Current repository basis supplied by the Executive Director for the Node-003 connection/gap audit: `Maddy-main (1)(3).zip`. Live GitHub/runtime includes the subsequent commissioned Node-003 commits and therefore supersedes that ZIP where runtime evidence differs.
 -   Product: **MEOS --- Maddy Executive Operating System**.
 -   Current proving deployment: CCSP organization package.
 -   Current development standard: **Spooky**.
@@ -232,10 +233,10 @@ This section records the current committed/runtime state established by the auth
 ### Core cognition / executive runtime
 
 - Executive Brain:
-  - Version: `1.25.11`
-  - Build: `EB12511-AUTONOMOUS-LEARNING-INTENT-ECONOMIC-STEWARDSHIP-20260811-A`
-  - Commission: `006.017D7S4A — Autonomous Learning Intent + Economic Stewardship`
-  - Contains the current commissioned Executive Brain path for persistent cognition, autonomous learning intent, and economic stewardship.
+  - Runtime Version: `1.26.2`
+  - Runtime Build: `EB1262-DOCUMENT-AUTONOMY-CONTEXT-BRIDGE-20260817-A`
+  - Historical commission retained: `006.017D7S4A — Autonomous Learning Intent + Economic Stewardship`
+  - Contains the commissioned Executive Brain path for persistent cognition, autonomous learning intent, economic stewardship, document-autonomy context, continuous cognition, durable hydration, unresolved-intention resumption, cognitive dispatch, consequence closure, learning feedback, and cognitive re-entry.
 
 - Server:
   - Version: `2.10.52`
@@ -248,18 +249,33 @@ This section records the current committed/runtime state established by the auth
   - Build: `MIN001-SEEDED-CRAWL-LOCAL-INDEX-20260912-A`
   - Core Commission: `MEOS-INTERNET-NODE-001 — Provider-Independent Web Core`
   - Server Mount Commission: `MEOS-INTERNET-NODE-002 — Server API Mount`
+  - Cognitive Bridge Commission: `MEOS-INTERNET-NODE-003 — Cognitive Research Bridge`
   - Adds a standalone provider-independent public-web perception core with explicit seed URLs, bounded crawling, MEOS-owned local indexing, local search, provenance, observation timestamps, robots.txt awareness, and private/loopback destination blocking.
   - Node-002 mounts the existing Internet Node through `server.js` at `/api/internet` without replacing the commissioned core.
   - Mounted routes: `GET /api/internet/status`, `GET /api/internet/search`, and `POST /api/internet/crawl`.
   - Public-web observations remain evidence inputs, not institutional truth authority.
-  - Live runtime acceptance on the Render deployment passed:
+  - Node-003 closes the highest-leverage missing synapse identified by the no-code connection/gap audit: the commissioned MEOS-owned Internet Node existed and was live, but Maddy's existing headless public-research cognition bypassed it and went directly to the replaceable public-search path.
+  - Node-003 connects the existing headless research discovery stage to `meosInternetNode` first. The MEOS-owned index is consulted before external search, and the existing external public-search path remains a bounded fallback when owned-index evidence is insufficient.
+  - Node-003 adds provider-trace evidence for research discovery: `sourceMode`, `ownedIndexHits`, and `externalSearchUsed`.
+  - Node-003 creates no new research engine, persistence authority, institutional truth authority, paid-search authority, or external-action authority. Evidence Integrity and Institutional Reasoning retain their existing governance roles.
+  - Initial Node-003 runtime acceptance exposed a persistence-path defect: `server.js` supplied `dataDirectory: process.env.MEOS_DATA_DIR`, but the Internet Node constructor ignored `dataDirectory` and defaulted its index to `./data/meos-internet-index.json`. After a Render redeploy, the previously indexed Example Domain observation was absent and the research trace correctly fell back externally with `ownedIndexHits: 0`.
+  - Repair `MEOS-INTERNET-NODE-003 — Fix Durable Internet Index Path` binds the Internet Node's default index location to the supplied MEOS data directory while preserving explicit `indexPath` / `MEOS_INTERNET_INDEX_PATH` precedence.
+  - Node-003 final live acceptance on the Render deployment passed:
+    - crawl PASS: `https://example.com/` returned `ok: true`, attempted `1`, indexed `1`;
+    - status PASS: `ok: true`, `indexedPages: 1`;
+    - headless research PASS: subject `Example Domain`, `success: true`;
+    - search discovery used the MEOS-owned index: `sourceMode: "meos-owned-index"`;
+    - indexed discovery returned `https://example.com/` as `search-discovery`;
+    - the retrieval provider then independently retrieved `https://example.com/` as `retrieved-public-source`;
+    - external search was not required for that discovery path.
+  - Node-002 live acceptance remains historical proof:
     - status PASS: `ok: true`, capability `meos-internet-node`, provider-independent search true, institutional truth authority false;
     - crawl PASS: `https://example.com/` attempted `1`, indexed `1`;
     - search PASS: query `Example Domain` returned `https://example.com/` from `meos-owned-index`.
-  - First live crawl attempt exposed an argument-binding mismatch in the router: the route received `seeds` but called the object-based `node.crawl()` contract positionally, producing HTTP `400` / `At least one seed URL is required.`
+  - Node-002 first live crawl attempt exposed an argument-binding mismatch in the router: the route received `seeds` but called the object-based `node.crawl()` contract positionally, producing HTTP `400` / `At least one seed URL is required.`
   - Repair `MEOS-INTERNET-NODE-002 — Fix Crawl Argument Binding` passed syntax and live runtime acceptance by binding `seeds`, `maxPages`, `maxDepth`, and `sameOriginOnly` through the existing crawl options object.
-  - Node-002 does not connect the Maddy cognitive runtime or replace existing external-search fallbacks.
   - Node-001 core acceptance remains passed: syntax check PASS; local-index search returned the expected construction/crews document from `meos-owned-index`.
+  - Durable cross-deploy continuity still depends on deployment infrastructure supplying `MEOS_DATA_DIR` to storage that survives service replacement; this code checkpoint records the path binding but does not claim an unverified Render disk configuration.
 
 - Mission Engine:
   - Version: `0.1.9`
@@ -270,23 +286,28 @@ This section records the current committed/runtime state established by the auth
   - Durable authority hydration reports READY.
 
 - Mission Dispatcher:
-  - Version: `0.1.1`
-  - Build: `MD011-PERSISTENCE-CIRCUIT-BREAKER-20260808-A`
-  - Runtime dispatch remains active.
+  - Runtime Version: `0.2.0`
+  - Runtime Build: `MD020-GOVERNED-OFFICE-DISPATCH-AUTONOMY-20260817-A`
+  - Mission Engine connected: true.
+  - Executive Offices connected: true.
+  - Maddy Autonomy connected: true.
+  - Latest observed runtime reports `Office Dispatch effective: false`, `running: false`, startup reason `office_dispatch_authority_not_effective`.
+  - This is recorded as runtime authority evidence, not automatically classified as a defect; it requires governance/authority inspection before any repair commission.
   - Browser persistence is not institutional authority.
 
 - Executive Router:
-  - Version: `1.3.2`
-  - Build: `ER132-BROWSER-CACHE-COMPACTION-20260812-A`
-  - Natural-language intent normalization, answer/evidence binding, and compact non-authoritative browser continuity are implemented.
-  - Router browser cache was reduced from approximately `8,354,156 bytes` to approximately `25,678 bytes` while governed answers and source provenance remained intact.
+  - Runtime Version: `1.5.0`
+  - Runtime Build: `ER150-CANONICAL-MADDY-RESPONSE-TRANSPORT-20260816-A`
+  - Natural-language intent normalization, answer/evidence binding, compact non-authoritative browser continuity, and canonical Maddy response transport are implemented.
+  - Historical Router browser-cache repair reduced browser storage from approximately `8,354,156 bytes` to approximately `25,678 bytes` while governed answers and source provenance remained intact.
   - Commission `006.018L4` runtime acceptance passed `8/8`.
 
 - Executive Monitoring:
-  - Version: `1.0.2`
-  - Build: `EM102-BROWSER-PERSISTENCE-RECOVERY-QUOTA-HYGIENE-20260812-A`
+  - Runtime Version: `1.1.0`
+  - Runtime Build: `EM110-GOVERNED-MONITORING-FOLLOWUP-AUTONOMY-20260817-A`
   - Full live monitoring capacity remains separate from bounded, non-authoritative browser continuity storage.
-  - Commission `006.018L3` runtime acceptance passed `8/8`.
+  - Governed monitoring/follow-up autonomy is present in the current runtime.
+  - Historical Commission `006.018L3` runtime acceptance passed `8/8`.
 
 - Executive Hallway:
   - Runtime Version: `1.4.2`
@@ -300,8 +321,9 @@ This section records the current committed/runtime state established by the auth
   - No workspace provider is assumed.
 
 - Executive Dashboard / HUD:
-  - Runtime Version: `4.10.5`
-  - Commission: `006.018K — Integrated Answer Integrity Sweep`
+  - Runtime Version: `4.12.0`
+  - Runtime Commission: `006.022C — Lean Cabinet Navigation Reconciliation`
+  - Historical answer-integrity commission retained: `006.018K — Integrated Answer Integrity Sweep`.
   - The HUD owns the primary human-facing governed answer surface.
   - Executive Workspace remains a separate optional deep-work surface.
   - Conversational cognition must not flood executive attention surfaces merely because internal work records exist.
@@ -718,19 +740,33 @@ Do not allow sale-readiness work to turn MEOS into an ordinary SaaS AI wrapper.
 
 Do not allow long-range research to prevent shipping a credible paid release.
 
+## Node-003 connection/gap audit result
+
+The no-code connection/gap audit was performed against the current repository basis supplied by the Executive Director.
+
+Key result:
+
+- Executive Brain, Evidence Integrity, Institutional Reasoning, Planning, Decision, Hallway, Learning, Monitoring, Mission/office routing, provider management, memory, recall/search, and the server-side durable cognition path already contain substantial commissioned connection logic.
+- Server-side continuous cognition already includes durable hydration, durable checkpointing, temporal wake/re-entry, local perception handoff, and unresolved-intention continuation; therefore a new temporal-wake engine was not justified.
+- The highest-leverage demonstrated bypass was the MEOS Internet Node: it was commissioned, mounted, and able to crawl/search its own index, but Maddy's headless public-research cognition still discovered sources through the external public-search adapter without consulting that owned Internet memory.
+- `MEOS-INTERNET-NODE-003 — Cognitive Research Bridge` closed that bypass by reusing owned Internet evidence before external discovery while retaining evidence governance and fallback behavior.
+- Final runtime acceptance proved owned-index discovery followed by independent live retrieval of the source.
+
+This closes the specific Node-003 missing synapse. It does not imply the broader end-to-end cognitive-organism audit is finished.
+
 ## Active engineering mission
 
-The immediate mission is no longer another isolated engine feature.
+Node-003 is commissioned. The immediate mission returns to the governing no-code connection/gap audit rather than starting another isolated feature.
 
 The current engineering investigation is:
 
-> Trace one real executive stimulus through the existing Maddy cognitive organism end to end and identify the highest-leverage missing or bypassed connection preventing Maddy from behaving as one continuous, economically responsible, persistent executive entity.
+> Continue tracing real executive stimuli through the existing Maddy cognitive organism end to end, now with owned Internet memory connected to research discovery, and identify the next highest-leverage missing or bypassed connection preventing Maddy from behaving as one continuous, economically responsible, persistent executive entity.
 
 Trace:
 
 Stimulus → Executive Brain → Evidence Integrity → Institutional Reasoning → World Model / self context → attention/economic stewardship → intention → Planning / Decision → Executive Hallway → appropriate Office / provider → work / consequence → Monitoring → verification → Learning → autobiographical/institutional memory → changed world/self model → unresolved intention / next cognitive moment.
 
-The investigation must distinguish:
+The investigation must continue to distinguish:
 
 - capability that is actually connected and exercised at runtime;
 - capability that exists but is bypassed;
@@ -741,61 +777,34 @@ The investigation must distinguish:
 - capability that does not return through Maddy/HUD;
 - capability that blocks a credible saleable customer experience.
 
-Questions to answer before the next feature commission:
+Current observed items requiring audit, not automatic repair:
 
-- Does one stimulus actually travel through the intended cognitive path?
-- Where does routing bypass existing reasoning organs?
-- Where does evidence enter and where can provenance be lost?
-- Where does World Model context genuinely affect cognition?
-- Where does self-model context genuinely affect cognition?
-- Where does attention decide whether something deserves work?
-- Where does economic stewardship decide whether spending is justified?
-- Where is an intention created, recognized, deduplicated, persisted, revisited, resolved, and released?
-- Where does Planning become actual office work?
-- Where does office work produce a real consequence?
-- Where is that consequence verified?
-- Where does Learning alter future behavior rather than merely record a history item?
-- Where does autobiographical memory form?
-- Where does changed knowledge/world state re-enter cognition?
-- Where can Maddy initiate valuable work without a human prompt?
-- Where does authority correctly stop Maddy and request Executive Director approval?
-- Where does the customer experience expose disconnected engines instead of one Maddy?
-- What single missing synapse currently creates the greatest combined North Star and sale-readiness gap?
+- Mission Dispatcher runtime is connected to Mission Engine, Executive Offices, and Maddy Autonomy, but office dispatch authority is not effective and dispatcher startup is stopped with `office_dispatch_authority_not_effective`. Determine whether this is correct governed authority or a broken authority seam before proposing code.
+- Mission Engine currently reports `12` active missions. The prior cleanup proved `11`; determine whether the additional active mission is legitimate current work or renewed accumulation before proposing code.
+- Durable Internet index path binding is repaired in code, but cross-deploy durability depends on deployment storage configuration. Verify persistent deployment storage before treating cross-instance continuity as proven.
+- Immediately after the successful Node-003 headless-research acceptance, Knowledge Engine attempted `PUT /api/executive-memory/investigation-history/knowledge-engine-entities-0001` and received HTTP `409 Conflict`. Runtime reported: `Repository write rejected because the durable record changed since the caller last observed it.` Knowledge Engine then logged `Executive Memory persistence failed`. This is recorded as an unresolved optimistic-concurrency/durable-memory observation, not attributed to Node-003 and not yet classified as a defect. Audit the Knowledge Engine → Executive Memory version/read-modify-write seam before proposing a repair.
+- The known `/api/internet/search` route passes an options object to a numeric `limit` parameter; custom-limit behavior remains uncommissioned and must not be silently folded into another task.
+
+The next feature commission must still be the smallest commission that closes the highest-leverage real missing connection demonstrated by this continuing audit.
 
 ## Exact next step after this ledger is commissioned
 
-Perform a no-code connection/gap audit against the authoritative `Maddy-main (25)(1).zip`.
+Resume the no-code connection/gap audit from the post-Node-003 live architecture.
 
-At minimum inspect:
+At minimum re-evaluate:
 
-- `frontend/executive-brain.js`
-- `frontend/institutional-reasoning.js`
-- `frontend/executive-evidence-integrity.js`
-- `frontend/executive-planning.js`
-- `frontend/executive-decision.js`
-- `frontend/executive-learning.js`
-- `frontend/executive-monitoring.js`
-- `frontend/executive-hallway.js`
-- `frontend/mission-engine.js`
-- `frontend/mission-dispatcher.js`
-- `frontend/executive-router.js`
-- `frontend/executive-workspace-office.js`
-- `frontend/provider-manager.js`
-- `frontend/executive-opportunity-office.js`
-- `frontend/executive-resource-acquisition-engine.js`
-- `frontend/grant-office.js`
-- `frontend/knowledge-engine.js`
-- `frontend/knowledge-memory.js`
-- `frontend/executive-search.js`
-- `frontend/executive-recall.js`
-- `frontend/ccsp-organizational-profile.js`
-- `frontend/ccsp-long-term-strategy.js`
-- `frontend/office-dashboard.js`
-- relevant `server.js` cognition, durable authority, public research, opportunity, workspace, monitoring, and provider paths.
+- Executive Brain → Planning / Decision → Hallway → Office execution continuity;
+- Mission Dispatcher authority and whether `office_dispatch_authority_not_effective` is correct governance or a broken seam;
+- verified consequence → Monitoring → Learning → changed future behavior;
+- autobiographical/institutional memory re-entry into future cognition;
+- Knowledge Engine → Executive Memory durable write concurrency/version handling after the observed `409 Conflict`, including whether a legitimate concurrent update is safely reconciled or causes learning/knowledge persistence loss;
+- active Mission recognition, deduplication, disposition, and release at the current `12`-mission runtime state;
+- owned Internet evidence continuity across service replacement once deployment persistence configuration is verified;
+- customer-facing continuity from natural executive intent through Maddy/HUD without exposing disconnected engines.
 
-Produce the connection/gap analysis before writing the next feature commission.
+Do not write the next feature commission until the next highest-leverage missing connection is demonstrated.
 
-Then select the smallest commission that closes the highest-leverage real missing connection.
+Then select the smallest commission that closes that real missing connection.
 
 The selection must be evaluated simultaneously against:
 
