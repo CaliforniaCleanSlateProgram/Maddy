@@ -1,6 +1,6 @@
 /**
- * MEOS Internet Node v0.1.0
- * Commission: MEOS-INTERNET-NODE-001
+ * MEOS Internet Node v0.2.0
+ * Commission: MEOS-INTERNET-NODE-004 — Storage-Aware Independent Discovery
  *
  * Purpose:
  * - Give Maddy a provider-independent web perception/search substrate.
@@ -23,8 +23,8 @@ import path from "path";
 import crypto from "crypto";
 import net from "net";
 
-export const MEOS_INTERNET_NODE_VERSION = "0.1.0";
-export const MEOS_INTERNET_NODE_BUILD_ID = "MIN001-SEEDED-CRAWL-LOCAL-INDEX-20260912-A";
+export const MEOS_INTERNET_NODE_VERSION = "0.2.0";
+export const MEOS_INTERNET_NODE_BUILD_ID = "MIN004-STORAGE-AWARE-INDEPENDENT-DISCOVERY-20260912-A";
 
 const DEFAULTS = Object.freeze({
   maxPagesPerCrawl: 40,
@@ -32,6 +32,8 @@ const DEFAULTS = Object.freeze({
   maxBytesPerPage: 2 * 1024 * 1024,
   timeoutMs: 12000,
   delayMs: 150,
+  maxIndexBytes: 256 * 1024 * 1024,
+  discoverySeedLimit: 12,
   userAgent: "MEOS-Internet-Node/0.1 (+provider-independent-public-web-perception)"
 });
 
@@ -235,13 +237,53 @@ export class MEOSInternetNode {
     await fs.rename(tmp, this.indexPath);
   }
 
+  indexBytes() {
+    let total = 0;
+    for (const doc of this.documents.values()) total += Buffer.byteLength(JSON.stringify(doc), "utf8");
+    return total;
+  }
+
+  configuredMaxIndexBytes() {
+    const configured = Number(process.env.MEOS_INTERNET_MAX_INDEX_BYTES || this.options.maxIndexBytes);
+    return Math.max(8 * 1024 * 1024, Number.isFinite(configured) ? configured : DEFAULTS.maxIndexBytes);
+  }
+
+  duplicateUrlForHash(sha256, exceptUrl = null) {
+    for (const doc of this.documents.values()) {
+      if (doc?.sha256 === sha256 && doc?.url !== exceptUrl) return doc.url;
+    }
+    return null;
+  }
+
+  discoverySeeds(limit = this.options.discoverySeedLimit) {
+    const count = Math.max(1, Math.min(50, Number(limit) || this.options.discoverySeedLimit));
+    return [...this.documents.values()]
+      .sort((a, b) => String(a.observedAt || "").localeCompare(String(b.observedAt || "")))
+      .slice(0, count)
+      .map(doc => doc.url);
+  }
+
+  async discover({ maxPages = 20, maxDepth = 1, seedLimit } = {}) {
+    await this.load();
+    const seeds = this.discoverySeeds(seedLimit);
+    if (!seeds.length) throw new Error("MEOS-owned discovery requires at least one previously indexed page. Seed the index once with /crawl first.");
+    return this.crawl({ seeds, maxPages, maxDepth, sameOriginOnly: false });
+  }
+
   status() {
+    const indexBytes = this.indexBytes();
+    const maxIndexBytes = this.configuredMaxIndexBytes();
     return {
       schema: "meos.internet-node.status.v1",
       version: MEOS_INTERNET_NODE_VERSION,
       buildId: MEOS_INTERNET_NODE_BUILD_ID,
       coreReady: true,
       indexedPages: this.documents.size,
+      indexBytes,
+      maxIndexBytes,
+      storageUtilization: Number((indexBytes / maxIndexBytes).toFixed(6)),
+      storageBudgetRemainingBytes: Math.max(0, maxIndexBytes - indexBytes),
+      discoveryReady: this.documents.size > 0,
       lastCrawl: this.lastCrawl,
       providerIndependentSearch: true,
       paidSearchProviderRequired: false,
@@ -309,7 +351,7 @@ export class MEOSInternetNode {
         const finalUrl = new URL(fetched.finalUrl || item.url).toString();
         const sha256 = crypto.createHash("sha256").update(text).digest("hex");
         const observedAt = new Date().toISOString();
-        this.documents.set(finalUrl, {
+        const document = {
           schema: "meos.internet-document.v1",
           url: finalUrl,
           title,
@@ -319,8 +361,23 @@ export class MEOSInternetNode {
           contentType: fetched.contentType,
           provenance: { acquisition: "direct-public-web-crawl", seedOrigins: [...seedOrigins] },
           institutionalTruthAuthority: false
-        });
-        results.push({ url: finalUrl, indexed: true, title, bytesOfText: Buffer.byteLength(text), sha256 });
+        };
+        const duplicateUrl = this.duplicateUrlForHash(sha256, finalUrl);
+        const previous = this.documents.get(finalUrl);
+        const currentBytes = this.indexBytes();
+        const previousBytes = previous ? Buffer.byteLength(JSON.stringify(previous), "utf8") : 0;
+        const documentBytes = Buffer.byteLength(JSON.stringify(document), "utf8");
+        const projectedBytes = currentBytes - previousBytes + documentBytes;
+        const maxIndexBytes = this.configuredMaxIndexBytes();
+
+        if (duplicateUrl) {
+          results.push({ url: finalUrl, indexed: false, reason: "duplicate-content", duplicateOf: duplicateUrl, sha256 });
+        } else if (projectedBytes > maxIndexBytes) {
+          results.push({ url: finalUrl, indexed: false, reason: "storage-budget-reached", projectedBytes, maxIndexBytes, sha256 });
+        } else {
+          this.documents.set(finalUrl, document);
+          results.push({ url: finalUrl, indexed: true, title, bytesOfText: Buffer.byteLength(text), storedBytes: documentBytes, sha256 });
+        }
 
         if (item.depth < depthLimit) {
           for (const link of extractLinks(fetched.body, finalUrl)) {
@@ -345,7 +402,11 @@ export class MEOSInternetNode {
       indexed: results.filter(item => item.indexed).length,
       maxPages: pageLimit,
       maxDepth: depthLimit,
-      sameOriginOnly
+      sameOriginOnly,
+      indexBytes: this.indexBytes(),
+      maxIndexBytes: this.configuredMaxIndexBytes(),
+      duplicateContentSkipped: results.filter(item => item.reason === "duplicate-content").length,
+      storageBudgetSkipped: results.filter(item => item.reason === "storage-budget-reached").length
     };
     await this.save();
     return { ...this.lastCrawl, results };
@@ -375,6 +436,19 @@ export function createMeosInternetRouter({ express, node }) {
     const limit = Math.max(1, Math.min(50, Number(req.query?.limit) || 10));
     if (!query) return res.status(400).json({ ok: false, error: "query_required", message: "Provide ?q=<search terms>." });
     return res.json({ ok: true, query, source: "meos-owned-index", results: node.search(query, { limit }) });
+  });
+
+  router.post("/discover", express.json({ limit: "64kb" }), async (req, res) => {
+    try {
+      const result = await node.discover({
+        maxPages: req.body?.maxPages,
+        maxDepth: req.body?.maxDepth,
+        seedLimit: req.body?.seedLimit
+      });
+      return res.json({ ok: true, source: "meos-owned-frontier", externalSearchProviderUsed: false, ...result });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: "discovery_failed", message: error?.message || "MEOS Internet Node discovery failed." });
+    }
   });
 
   router.post("/crawl", express.json({ limit: "64kb" }), async (req, res) => {
