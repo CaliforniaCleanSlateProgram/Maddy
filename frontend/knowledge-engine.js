@@ -1,7 +1,7 @@
 /*
  * MEOS Knowledge Engine
- * Version: 1.2.0
- * Build: KE120-OPPORTUNITY-CASE-INGESTION-20260808-A
+ * Version: 1.2.1
+ * Build: KE121-DURABLE-HYDRATION-PERSISTENCE-BARRIER-20260912-A
  *
  * Purpose:
  * Provide the universal institutional-memory layer for MEOS.
@@ -21,8 +21,8 @@
 
     const KnowledgeEngine = {
         name: "MEOS Knowledge Engine",
-        version: "1.2.0",
-        buildId: "KE120-OPPORTUNITY-CASE-INGESTION-20260808-A",
+        version: "1.2.1",
+        buildId: "KE121-DURABLE-HYDRATION-PERSISTENCE-BARRIER-20260912-A",
         status: "online",
         operatingMode: "continuous",
 
@@ -2419,14 +2419,43 @@
                 global.clearTimeout(this.persistenceTimer);
             }
 
-            this.persistenceTimer = global.setTimeout(() => {
+            const scheduledTimer = global.setTimeout(async () => {
+                /*
+                 * Commission KE121 — Durable Hydration Persistence Barrier
+                 *
+                 * Knowledge Engine initialization begins durable restore before
+                 * other MEOS organs register startup knowledge. Automatic
+                 * persistence must not snapshot and write that startup state
+                 * until the durable restore has settled, or a pre-hydration
+                 * browser projection can race the institutional authority.
+                 *
+                 * Keep the timer identity as a generation token while waiting.
+                 * If a newer mutation reschedules persistence during hydration,
+                 * this older callback exits and only the newest snapshot writes.
+                 * Direct persist() remains available to the legacy-migration path
+                 * inside restore(), avoiding a restore -> persist -> restore
+                 * deadlock.
+                 */
+                const restorePromise = this.restorePromise;
+
+                if (restorePromise) {
+                    await restorePromise.catch(() => null);
+                }
+
+                if (this.persistenceTimer !== scheduledTimer) {
+                    return;
+                }
+
                 this.persistenceTimer = null;
                 void this.persist();
             }, this.configuration.persistenceDebounceMs);
 
+            this.persistenceTimer = scheduledTimer;
+
             return {
                 success: true,
-                scheduled: true
+                scheduled: true,
+                waitsForDurableHydration: Boolean(this.restorePromise)
             };
         },
 
