@@ -342,3 +342,46 @@ export class MEOSInternetNode {
     return { ...this.lastCrawl, results };
   }
 }
+
+export function createMeosInternetRouter({ express, node }) {
+  if (!express || typeof express.Router !== "function") throw new Error("MEOS Internet Node router requires Express.");
+  if (!node) throw new Error("MEOS Internet Node router requires a node instance.");
+
+  const router = express.Router();
+
+  router.get("/status", (_req, res) => {
+    res.json({
+      ok: true,
+      capability: "meos-internet-node",
+      version: MEOS_INTERNET_NODE_VERSION,
+      build: MEOS_INTERNET_NODE_BUILD_ID,
+      sourceAuthority: "public-web-observation",
+      institutionalTruthAuthority: false,
+      index: node.status()
+    });
+  });
+
+  router.get("/search", (req, res) => {
+    const query = String(req.query?.q || "").trim();
+    const limit = Math.max(1, Math.min(50, Number(req.query?.limit) || 10));
+    if (!query) return res.status(400).json({ ok: false, error: "query_required", message: "Provide ?q=<search terms>." });
+    return res.json({ ok: true, query, source: "meos-owned-index", results: node.search(query, { limit }) });
+  });
+
+  router.post("/crawl", express.json({ limit: "64kb" }), async (req, res) => {
+    try {
+      const seeds = Array.isArray(req.body?.seeds) ? req.body.seeds : [];
+      if (!seeds.length) return res.status(400).json({ ok: false, error: "seeds_required", message: "Provide a non-empty seeds array of public http(s) URLs." });
+      const result = await node.crawl(seeds, {
+        maxPages: req.body?.maxPages,
+        maxDepth: req.body?.maxDepth,
+        sameOriginOnly: req.body?.sameOriginOnly
+      });
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: "crawl_failed", message: error?.message || "MEOS Internet Node crawl failed." });
+    }
+  });
+
+  return router;
+}
