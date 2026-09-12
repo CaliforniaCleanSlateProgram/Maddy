@@ -2479,7 +2479,10 @@ async function executeHeadlessResearchPass(request = {}) {
         operation: stage.operation,
         providerId: capability.id,
         providerKind: capability.kind,
-        success: result?.success === true
+        success: result?.success === true,
+        sourceMode: result?.sourceMode || null,
+        ownedIndexHits: Number(result?.ownedIndexHits || 0),
+        externalSearchUsed: result?.externalSearchUsed === true
       });
 
       if (Array.isArray(result?.evidence)) {
@@ -2700,6 +2703,19 @@ function parseDuckDuckGoHtml(html = "") {
   return results;
 }
 
+/*
+ * MEOS-INTERNET-NODE-003 — Cognitive Research Bridge.
+ *
+ * The commissioned MEOS-owned Internet index is the first discovery memory
+ * consulted by headless public research. Previously observed public-web
+ * evidence is reused before another external search is attempted. If the owned
+ * index cannot satisfy the bounded discovery need, the existing replaceable
+ * public-search fallback remains available.
+ *
+ * This bridge does not promote public-web observations to institutional truth,
+ * does not grant external-action authority, and does not create a new research
+ * engine or persistence authority.
+ */
 registerHeadlessResearchCapability({
   id: PUBLIC_WEB_ADAPTER_ID,
   name: "Public Web Search",
@@ -2712,35 +2728,81 @@ registerHeadlessResearchCapability({
       context.subject
     ].filter(Boolean).slice(0, 4);
 
+    const maxSources = Math.max(
+      1,
+      Math.min(12, Number(context.limits?.maxSources || 12))
+    );
     const evidence = [];
     const seen = new Set();
+    let ownedIndexHits = 0;
+    let externalSearchUsed = false;
 
-    for (const query of queries) {
-      const searchUrl =
-        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-      const response = await fetch(searchUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; MEOS-Maddy-Research/1.0)",
-          "Accept": "text/html"
+    /*
+     * Cheap-first / memory-first discovery: reuse MEOS-owned observations
+     * before asking an external search surface to rediscover the same sources.
+     */
+    try {
+      await meosInternetNode.load();
+      for (const query of queries) {
+        const indexed = meosInternetNode.search(query, maxSources);
+        for (const item of indexed) {
+          const source = normalizePublicUrl(item?.url);
+          if (!source || seen.has(source)) continue;
+          seen.add(source);
+          ownedIndexHits += 1;
+          evidence.push({
+            source,
+            title: item.title || null,
+            excerpt: item.excerpt || null,
+            retrievedAt: item.observedAt || new Date().toISOString(),
+            evidenceStatus: "search-discovery",
+            acquisition: "meos-owned-index",
+            sha256: item.sha256 || null
+          });
+          if (evidence.length >= maxSources) break;
         }
-      });
-      if (!response.ok) continue;
-      const html = await response.text();
-      for (const item of parseDuckDuckGoHtml(html)) {
-        if (seen.has(item.source)) continue;
-        seen.add(item.source);
-        evidence.push(item);
-        if (evidence.length >= Number(context.limits?.maxSources || 12)) {
-          break;
-        }
+        if (evidence.length >= maxSources) break;
       }
-      if (evidence.length >= Number(context.limits?.maxSources || 12)) break;
+    } catch {
+      /*
+       * Owned-index unavailability degrades to the existing replaceable search
+       * path; it must not make bounded public research unavailable.
+       */
+    }
+
+    if (evidence.length < maxSources) {
+      externalSearchUsed = true;
+      for (const query of queries) {
+        const searchUrl =
+          `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+        const response = await fetch(searchUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (compatible; MEOS-Maddy-Research/1.0)",
+            "Accept": "text/html"
+          }
+        });
+        if (!response.ok) continue;
+        const html = await response.text();
+        for (const item of parseDuckDuckGoHtml(html)) {
+          if (seen.has(item.source)) continue;
+          seen.add(item.source);
+          evidence.push(item);
+          if (evidence.length >= maxSources) break;
+        }
+        if (evidence.length >= maxSources) break;
+      }
     }
 
     return {
       success: evidence.length > 0,
-      evidence
+      evidence,
+      sourceMode:
+        ownedIndexHits > 0
+          ? (externalSearchUsed ? "meos-owned-index+external-fallback" : "meos-owned-index")
+          : (externalSearchUsed ? "external-fallback" : "none"),
+      ownedIndexHits,
+      externalSearchUsed
     };
   }
 });
