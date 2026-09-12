@@ -372,7 +372,8 @@ export function createMeosInternetRouter({ express, node }) {
     try {
       const seeds = Array.isArray(req.body?.seeds) ? req.body.seeds : [];
       if (!seeds.length) return res.status(400).json({ ok: false, error: "seeds_required", message: "Provide a non-empty seeds array of public http(s) URLs." });
-      const result = await node.crawl(seeds, {
+      const result = await node.crawl({
+        seeds,
         maxPages: req.body?.maxPages,
         maxDepth: req.body?.maxDepth,
         sameOriginOnly: req.body?.sameOriginOnly
