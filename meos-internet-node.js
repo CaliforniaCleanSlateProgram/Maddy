@@ -1,0 +1,344 @@
+/**
+ * MEOS Internet Node v0.1.0
+ * Commission: MEOS-INTERNET-NODE-001
+ *
+ * Purpose:
+ * - Give Maddy a provider-independent web perception/search substrate.
+ * - Crawl explicitly seeded public HTTP(S) sites without Google/Bing/DDG search.
+ * - Build a small MEOS-owned local index with provenance.
+ * - Search that index locally without a paid model or search provider.
+ *
+ * Governance:
+ * - Public-web evidence only; this node is NOT institutional truth authority.
+ * - No semantic/executive conclusion authority.
+ * - This core module exposes no HTTP routes and performs no authentication.
+ * - Server/API authority will be mounted in a separate commission.
+ * - robots.txt is honored when available.
+ * - Private/loopback/link-local destinations are blocked.
+ */
+
+import dns from "dns/promises";
+import fs from "fs/promises";
+import path from "path";
+import crypto from "crypto";
+import net from "net";
+
+export const MEOS_INTERNET_NODE_VERSION = "0.1.0";
+export const MEOS_INTERNET_NODE_BUILD_ID = "MIN001-SEEDED-CRAWL-LOCAL-INDEX-20260912-A";
+
+const DEFAULTS = Object.freeze({
+  maxPagesPerCrawl: 40,
+  maxDepth: 2,
+  maxBytesPerPage: 2 * 1024 * 1024,
+  timeoutMs: 12000,
+  delayMs: 150,
+  userAgent: "MEOS-Internet-Node/0.1 (+provider-independent-public-web-perception)"
+});
+
+function cleanText(value = "") {
+  return String(value)
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<!--([\s\S]*?)-->/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractTitle(html = "") {
+  const match = String(html).match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  return cleanText(match?.[1] || "").slice(0, 300);
+}
+
+function extractLinks(html = "", baseUrl) {
+  const links = new Set();
+  const re = /<a\b[^>]*?href\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
+  let match;
+  while ((match = re.exec(String(html)))) {
+    const raw = match[1] || match[2] || match[3] || "";
+    try {
+      const url = new URL(raw, baseUrl);
+      url.hash = "";
+      if (!["http:", "https:"].includes(url.protocol)) continue;
+      links.add(url.toString());
+    } catch (_) {}
+  }
+  return [...links];
+}
+
+function tokenize(text = "") {
+  return String(text)
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter(token => token.length > 1)
+    .slice(0, 100000);
+}
+
+function isPrivateIp(address) {
+  if (!net.isIP(address)) return true;
+  if (net.isIPv4(address)) {
+    const [a, b] = address.split(".").map(Number);
+    return (
+      a === 10 || a === 127 || a === 0 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      a >= 224
+    );
+  }
+  const value = address.toLowerCase();
+  return value === "::1" || value === "::" || value.startsWith("fe80:") || value.startsWith("fc") || value.startsWith("fd");
+}
+
+async function assertPublicUrl(rawUrl) {
+  const url = new URL(rawUrl);
+  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Only HTTP(S) URLs are allowed.");
+  if (!url.hostname) throw new Error("URL hostname is required.");
+  const records = await dns.lookup(url.hostname, { all: true, verbatim: true });
+  if (!records.length) throw new Error("Hostname did not resolve.");
+  if (records.some(record => isPrivateIp(record.address))) throw new Error("Private/reserved destinations are blocked.");
+  return url;
+}
+
+async function fetchBounded(url, { timeoutMs, maxBytes, userAgent }) {
+  await assertPublicUrl(url);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: controller.signal,
+      headers: { "User-Agent": userAgent, Accept: "text/html,text/plain;q=0.9,*/*;q=0.1" }
+    });
+
+    if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
+      const next = new URL(response.headers.get("location"), url).toString();
+      await assertPublicUrl(next);
+      return fetchBounded(next, { timeoutMs, maxBytes, userAgent });
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!/(text\/html|text\/plain|application\/xhtml\+xml)/i.test(contentType)) {
+      throw new Error(`Unsupported content type: ${contentType || "unknown"}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) return { finalUrl: response.url || url, contentType, body: "" };
+    const chunks = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) throw new Error("Page exceeded MEOS byte limit.");
+      chunks.push(value);
+    }
+    const bytes = Buffer.concat(chunks.map(v => Buffer.from(v)));
+    return { finalUrl: response.url || url, contentType, body: bytes.toString("utf8") };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function robotsAllows(targetUrl, options) {
+  try {
+    const target = new URL(targetUrl);
+    const robotsUrl = `${target.protocol}//${target.host}/robots.txt`;
+    const result = await fetchBounded(robotsUrl, { ...options, maxBytes: Math.min(options.maxBytes, 512 * 1024) });
+    const lines = result.body.split(/\r?\n/);
+    let relevant = false;
+    const disallow = [];
+    for (const line of lines) {
+      const clean = line.replace(/#.*/, "").trim();
+      if (!clean) continue;
+      const [rawKey, ...rest] = clean.split(":");
+      const key = rawKey.trim().toLowerCase();
+      const value = rest.join(":").trim();
+      if (key === "user-agent") relevant = value === "*" || /meos/i.test(value);
+      else if (relevant && key === "disallow" && value) disallow.push(value);
+    }
+    return !disallow.some(prefix => target.pathname.startsWith(prefix));
+  } catch (_) {
+    return true;
+  }
+}
+
+function scoreDocument(doc, terms) {
+  const titleTokens = tokenize(doc.title || "");
+  const bodyTokens = tokenize(doc.text || "");
+  const titleSet = new Set(titleTokens);
+  const bodyFreq = new Map();
+  for (const token of bodyTokens) bodyFreq.set(token, (bodyFreq.get(token) || 0) + 1);
+  let score = 0;
+  for (const term of terms) {
+    if (titleSet.has(term)) score += 7;
+    const freq = bodyFreq.get(term) || 0;
+    if (freq) score += 1 + Math.log2(1 + freq);
+    if ((doc.url || "").toLowerCase().includes(term)) score += 2;
+  }
+  return score;
+}
+
+export class MEOSInternetNode {
+  constructor(options = {}) {
+    this.options = { ...DEFAULTS, ...options };
+    this.indexPath = options.indexPath || process.env.MEOS_INTERNET_INDEX_PATH || path.resolve("./data/meos-internet-index.json");
+    this.documents = new Map();
+    this.loaded = false;
+    this.lastCrawl = null;
+  }
+
+  async load() {
+    if (this.loaded) return;
+    try {
+      const parsed = JSON.parse(await fs.readFile(this.indexPath, "utf8"));
+      for (const doc of parsed.documents || []) this.documents.set(doc.url, doc);
+      this.lastCrawl = parsed.lastCrawl || null;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    this.loaded = true;
+  }
+
+  async save() {
+    await fs.mkdir(path.dirname(this.indexPath), { recursive: true });
+    const payload = {
+      schema: "meos.internet-index.v1",
+      version: MEOS_INTERNET_NODE_VERSION,
+      buildId: MEOS_INTERNET_NODE_BUILD_ID,
+      savedAt: new Date().toISOString(),
+      lastCrawl: this.lastCrawl,
+      documents: [...this.documents.values()]
+    };
+    const tmp = `${this.indexPath}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(payload), "utf8");
+    await fs.rename(tmp, this.indexPath);
+  }
+
+  status() {
+    return {
+      schema: "meos.internet-node.status.v1",
+      version: MEOS_INTERNET_NODE_VERSION,
+      buildId: MEOS_INTERNET_NODE_BUILD_ID,
+      coreReady: true,
+      indexedPages: this.documents.size,
+      lastCrawl: this.lastCrawl,
+      providerIndependentSearch: true,
+      paidSearchProviderRequired: false,
+      institutionalTruthAuthority: false,
+      semanticConclusionAuthority: false
+    };
+  }
+
+  search(query, limit = 10) {
+    const terms = [...new Set(tokenize(query))].slice(0, 24);
+    if (!terms.length) return [];
+    return [...this.documents.values()]
+      .map(doc => ({ doc, score: scoreDocument(doc, terms) }))
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score || String(b.doc.observedAt).localeCompare(String(a.doc.observedAt)))
+      .slice(0, Math.max(1, Math.min(50, Number(limit) || 10)))
+      .map(({ doc, score }) => ({
+        url: doc.url,
+        title: doc.title,
+        excerpt: doc.text.slice(0, 800),
+        observedAt: doc.observedAt,
+        sha256: doc.sha256,
+        score: Number(score.toFixed(3)),
+        source: "meos-owned-index"
+      }));
+  }
+
+  async crawl({ seeds, maxPages, maxDepth, sameOriginOnly = true }) {
+    await this.load();
+    const normalizedSeeds = [...new Set((seeds || []).map(value => new URL(value).toString()))];
+    if (!normalizedSeeds.length) throw new Error("At least one seed URL is required.");
+    const pageLimit = Math.max(1, Math.min(250, Number(maxPages) || this.options.maxPagesPerCrawl));
+    const depthLimit = Math.max(0, Math.min(5, Number(maxDepth) || this.options.maxDepth));
+    const seedOrigins = new Set(normalizedSeeds.map(value => new URL(value).origin));
+    const queue = normalizedSeeds.map(url => ({ url, depth: 0 }));
+    const seen = new Set();
+    const results = [];
+
+    while (queue.length && results.length < pageLimit) {
+      const item = queue.shift();
+      if (!item || seen.has(item.url)) continue;
+      seen.add(item.url);
+      let current;
+      try { current = new URL(item.url); } catch (_) { continue; }
+      if (sameOriginOnly && !seedOrigins.has(current.origin)) continue;
+
+      const allowed = await robotsAllows(item.url, {
+        timeoutMs: this.options.timeoutMs,
+        maxBytes: this.options.maxBytesPerPage,
+        userAgent: this.options.userAgent
+      });
+      if (!allowed) {
+        results.push({ url: item.url, indexed: false, reason: "robots-disallowed" });
+        continue;
+      }
+
+      try {
+        const fetched = await fetchBounded(item.url, {
+          timeoutMs: this.options.timeoutMs,
+          maxBytes: this.options.maxBytesPerPage,
+          userAgent: this.options.userAgent
+        });
+        const title = extractTitle(fetched.body);
+        const text = cleanText(fetched.body).slice(0, 200000);
+        const finalUrl = new URL(fetched.finalUrl || item.url).toString();
+        const sha256 = crypto.createHash("sha256").update(text).digest("hex");
+        const observedAt = new Date().toISOString();
+        this.documents.set(finalUrl, {
+          schema: "meos.internet-document.v1",
+          url: finalUrl,
+          title,
+          text,
+          observedAt,
+          sha256,
+          contentType: fetched.contentType,
+          provenance: { acquisition: "direct-public-web-crawl", seedOrigins: [...seedOrigins] },
+          institutionalTruthAuthority: false
+        });
+        results.push({ url: finalUrl, indexed: true, title, bytesOfText: Buffer.byteLength(text), sha256 });
+
+        if (item.depth < depthLimit) {
+          for (const link of extractLinks(fetched.body, finalUrl)) {
+            try {
+              const linkUrl = new URL(link);
+              if (sameOriginOnly && !seedOrigins.has(linkUrl.origin)) continue;
+              if (!seen.has(linkUrl.toString())) queue.push({ url: linkUrl.toString(), depth: item.depth + 1 });
+            } catch (_) {}
+          }
+        }
+      } catch (error) {
+        results.push({ url: item.url, indexed: false, reason: error?.message || String(error) });
+      }
+
+      if (this.options.delayMs > 0) await new Promise(resolve => setTimeout(resolve, this.options.delayMs));
+    }
+
+    this.lastCrawl = {
+      startedFrom: normalizedSeeds,
+      completedAt: new Date().toISOString(),
+      attempted: results.length,
+      indexed: results.filter(item => item.indexed).length,
+      maxPages: pageLimit,
+      maxDepth: depthLimit,
+      sameOriginOnly
+    };
+    await this.save();
+    return { ...this.lastCrawl, results };
+  }
+}
