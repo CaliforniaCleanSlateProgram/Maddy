@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32170612/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32170942/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32153443/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
@@ -1533,9 +1533,9 @@ This sequence is a continuity plan, not permission to create disconnected engine
 
 1. **Epistemic data contract — COMMISSIONED.** Claims carry provenance, source/actor, evidence, independence, contradiction, uncertainty, freshness, epistemic status, and falsifiers rather than becoming naked facts.
 2. **Reality Reconstruction — COMMISSIONED.** Conflicting accounts preserve competing hypotheses and discriminating/disconfirming evidence; repetition is not independent corroboration.
-3. **Counterparty Intelligence — NEXT CANDIDATE.** Evolve existing relationship/world/evidence structures so Maddy can accumulate evidence-grounded contextual reliability, incentives, promises versus outcomes, and human/AI/mixed counterparty context without reducing an actor to a simplistic global trust score.
-4. **Self-correction / calibration.** Connect predictions and conclusions to later outcomes so Maddy can investigate her own errors and recalibrate future judgment.
-5. **Cross-Maddy epistemic integration.** Preserve epistemic state through Search → Brain → Evidence → Planning → Decision → Hallway → Monitoring → Learning → Memory rather than losing it between organs.
+3. **Counterparty Intelligence — COMMISSIONED.** Existing evidence structures now construct evidence-grounded contextual counterparty understanding from claims, independent evidentiary chains, incentives, contradictions, promises, observed outcomes, and known human/AI/mixed context without collapsing an actor into a simplistic global trust score.
+4. **Self-correction / user-benefit calibration — COMMISSIONED.** Existing Executive Learning now connects prior beliefs, predictions, confidence, recommendations, intended user benefit, observed outcomes, realized user benefit, and bounded contextual recalibration so reality can change future judgment without silently rewriting authority or policy.
+5. **Cross-Maddy epistemic integration — NEXT CANDIDATE.** Preserve epistemic state through Search → Brain → Evidence → Planning → Decision → Hallway → Monitoring → Learning → Memory rather than losing it between organs.
 6. **The Shop truth surface.** Expose verified/disputed/inferred/marketed/unknown, Maddy's conclusion, supporting basis, what could change it, and recommendation naturally without turning the HUD into another widget pile.
 
 Progressively test this path against scams, circular sourcing, many narratives of one event, synthetic identities, AI-to-AI claims, coordinated misinformation, legitimate marketing, stale truth, contradictory primary records, and Maddy's own incorrect conclusions.
@@ -1543,13 +1543,130 @@ Progressively test this path against scams, circular sourcing, many narratives o
 ### Current authoritative live versions — epistemic path addition
 
 As of live runtime acceptance on 2026-09-13:
-- Executive Evidence Integrity: `1.2.0` / `EEI120-REALITY-RECONSTRUCTION-20260913-A`
-- Epistemic Identity Contract acceptance: **8/8 PASS**
-- Reality Reconstruction acceptance: **8/8 PASS**
+- Executive Evidence Integrity: `1.3.0` / `EEI130-COUNTERPARTY-INTELLIGENCE-20260913-A`
+- Executive Learning: `1.2.0` / `EL120-SELF-CORRECTION-BENEFIT-CALIBRATION-20260913-A`
+- Epistemic Identity Contract acceptance: **8/8 PASS** (initial commission; regression also passed under Executive Evidence Integrity 1.3.0).
+- Reality Reconstruction acceptance: **8/8 PASS** at its commissioned 1.2.0 checkpoint.
+- Counterparty Intelligence acceptance: **8/8 PASS** under Executive Evidence Integrity 1.3.0.
+- Self-Correction / User-Benefit Calibration acceptance: **8/8 PASS** under Executive Learning 1.2.0.
 
-The previously recorded separate live concerns remain separate unless later runtime evidence changes them, including Mission active-state accumulation, office dispatch authority state, and other unrelated persistence/runtime issues. Do not silently absorb them into the epistemic path.
+The previously recorded separate live concerns remain separate unless later runtime evidence changes them, including Mission active-state accumulation, office dispatch authority state, cross-deploy Internet persistence, and other unrelated persistence/runtime issues. The earlier `/api/executive-learning-state` HTTP 500 was not reproduced in the latest supplied runtime log, but absence in one run is not proof that the persistence defect is repaired. Do not silently treat that separate endpoint concern as commissioned/fixed without direct persistence acceptance evidence.
 
 ### Exact next step after this checkpoint
 
-Before coding Counterparty Intelligence, inspect the current live/repository relationship, evidence, institutional reasoning, monitoring, learning, knowledge/memory, and world-state seams. Determine where counterparty history and contextual reliability already exist or can be represented without a duplicate engine or duplicate persistence authority. Then choose one bounded file/idea whose runtime test proves Maddy can reason about an actor's claims, incentives, provenance, promises, and observed outcomes contextually while preserving uncertainty and avoiding a simplistic universal trust score.
+Before coding Cross-Maddy Epistemic Integration, inspect the current live/repository seams across Executive Search, Executive Brain, Executive Evidence Integrity, Institutional Reasoning, Executive Planning, Executive Decision, Executive Hallway, Executive Monitoring, Executive Learning, Knowledge Engine / Knowledge Memory, Executive Recall, and the current durable cognition/persistence path. Identify where epistemic state is preserved, translated, downgraded, dropped, or duplicated as information crosses organs. Then choose one bounded file/idea whose runtime test proves that material provenance, uncertainty, contradiction, evidentiary independence, counterparty context, falsifiers/disconfirming evidence, and calibration-relevant outcome context survive a real cross-organ cognitive path without creating a duplicate epistemic authority.
 
+
+
+## Commissioned checkpoint — Counterparty Intelligence + Self-Correction / User-Benefit Calibration — 2026-09-13
+
+Status: **COMMISSIONED — live runtime acceptance passed for both bounded commissions.**
+
+This checkpoint is additive under the existing Project Maddy North Star, immutable Spooky standard, QDPA deeper-structure direction, epistemic identity doctrine, evidence-integrity requirements, authority boundaries, privacy boundary, economic stewardship, provider neutrality, and continuity rules. It does not create a separate Counterparty Intelligence engine, truth engine, benefit engine, personality engine, or calibration authority.
+
+### Identity-level user-benefit orientation
+
+The Executive Director clarified that Maddy's epistemic personality must not stop at determining what appears true. When Maddy's understanding of reality materially changes, she should determine what that change means for the authorized user or organization.
+
+Standing executive instinct:
+
+> **For every material change in Maddy's understanding of reality, determine whether it creates meaningful benefit, risk, opportunity, leverage, required action, attention protection, or no meaningful change for the user. If it does, determine the highest-value governed response. If it does not, do not consume the user's attention merely to demonstrate activity.**
+
+This is not a command to manufacture a benefit or action for every observation. Protecting the user's attention, waiting for better evidence, avoiding a bad deal, declining unnecessary action, or concluding that nothing material changed can be the highest-value response.
+
+The target cognitive loop is therefore:
+
+**reality → consequence for the user → benefit / risk / opportunity / leverage / required action / no meaningful change → recommendation → governed action when authorized → observed outcome → realized user benefit or harm → learning → changed future judgment.**
+
+This user-benefit orientation belongs to Maddy's executive identity and future cross-organ cognition. It must not be implemented as a superficial personality slogan that is disconnected from evidence, consequence, authority, outcome measurement, and learning.
+
+### Commission 3 of 6 — Executive Evidence Integrity 1.3.0 — Counterparty Intelligence
+
+Version / build:
+- Executive Evidence Integrity `1.3.0`
+- `EEI130-COUNTERPARTY-INTELLIGENCE-20260913-A`
+
+Commission objective:
+- Evolve the existing epistemic/evidence organ so Maddy can understand counterparties as evidence-grounded, context-specific relationships rather than static trust scores.
+- Connect actor claims, provenance, evidentiary independence, incentives, contradictions, promises, observed outcomes, and known human/AI/mixed context without treating any single signal as proof of deception or reliability.
+
+Commissioned behavior:
+- Counterparty understanding is contextual rather than a universal trust percentage.
+- Shared-origin repetition remains one evidentiary chain rather than false corroboration.
+- Incentives are relevant evidence but are not proof of deception.
+- Disagreement and different perspective are not automatically dishonesty.
+- Unreliable performance does not automatically mean deceptive intent.
+- Promises and later outcomes can become evidence for future contextual judgments.
+- Known human, machine, synthetic, or mixed counterparty context can remain explicit where evidence supports it.
+- Sparse history preserves uncertainty rather than manufacturing a confident reputation.
+- The capability remains inside Executive Evidence Integrity rather than creating a disconnected Counterparty Intelligence engine or duplicate persistence authority.
+
+Live runtime acceptance evidence:
+- Runtime loaded Executive Evidence Integrity `1.3.0` / `EEI130-COUNTERPARTY-INTELLIGENCE-20260913-A`.
+- `ExecutiveEvidenceIntegrity.runCounterpartyIntelligenceAcceptanceTest()` returned `success: true`, `passed: 8`, `total: 8`.
+- `ExecutiveEvidenceIntegrity.runEpistemicIdentityAcceptanceTest()` also returned `success: true`, `passed: 8`, `total: 8` under version `1.3.0`, proving the epistemic identity foundation remained intact after the Counterparty Intelligence addition.
+- Reality Reconstruction remains a previously commissioned `8/8` capability from Executive Evidence Integrity 1.2.0; no new claim of a separate 1.3.0 live Reality Reconstruction regression is made here without explicit runtime output.
+- Status: **COMMISSIONED.**
+
+### Commission 4 of 6 — Executive Learning 1.2.0 — Self-Correction & User-Benefit Calibration
+
+Version / build:
+- Executive Learning `1.2.0`
+- `EL120-SELF-CORRECTION-BENEFIT-CALIBRATION-20260913-A`
+
+Commission objective:
+- Connect Maddy's prior belief, prediction, confidence, recommendation, intended user benefit, later observed outcome, and realized user benefit so reality can change future judgment.
+- Make self-correction contextual and evidence-grounded rather than rewriting history or reducing Maddy to a global intelligence/trust score.
+
+Commissioned behavior:
+- Prior beliefs, predictions, and confidence are preserved rather than rewritten after the outcome becomes known.
+- Intended user benefit remains explicit and separate from realized benefit.
+- Observed outcome remains separate from the prior prediction so hindsight cannot silently alter the original forecast.
+- Prediction error and benefit gap can inform later contextual calibration.
+- Wrong high-confidence predictions can lower future confidence in the relevant context.
+- Successful predictions can support bounded upward calibration in the relevant context.
+- Calibration remains domain/context-specific rather than becoming a universal Maddy score.
+- Repeated overconfidence can change future guidance while one outcome cannot silently rewrite policy, authority, or truth.
+- The established Executive Learning persistence package carries calibration records through the existing persistence path; this commission creates no new persistence authority.
+
+Live runtime acceptance evidence:
+- Runtime loaded Executive Learning `1.2.0` / `EL120-SELF-CORRECTION-BENEFIT-CALIBRATION-20260913-A`.
+- `ExecutiveLearning.runSelfCorrectionAcceptanceTest()` returned `success: true`, `passed: 8`, `total: 8`.
+- Acceptance returned contextual calibration guidance for `grant-fit-forecasting` with three observations/resolved predictions while preserving the bounded domain-specific calibration model.
+- Status: **COMMISSIONED.**
+
+### Self-correction doctrine
+
+Maddy's self-correction target is not merely:
+
+**Was I right or wrong?**
+
+It is:
+
+**What did I believe? → what did I predict? → what did I recommend? → why did I believe that would benefit the user? → what action occurred? → what actually happened? → did the user actually benefit? → what did I get right or wrong? → what should change in future judgment?**
+
+Maddy must apply the same investigative discipline to her own conclusions that she applies to external actors. Her prior recommendation, confidence, source choice, reconstruction, counterparty judgment, or prediction does not become privileged truth merely because it was Maddy's.
+
+### Current six-commission epistemic moat status
+
+1. **Epistemic Identity Contract — COMMISSIONED.**
+2. **Reality Reconstruction — COMMISSIONED.**
+3. **Counterparty Intelligence — COMMISSIONED.**
+4. **Self-Correction / User-Benefit Calibration — COMMISSIONED.**
+5. **Cross-Maddy Epistemic Integration — NEXT CANDIDATE.**
+6. **The Shop Truth Surface — PLANNED AFTER CROSS-MADDY INTEGRATION.**
+
+The sequence remains one connected identity/cognition architecture. Do not implement the remaining steps as disconnected engines merely because they have separate commission names.
+
+### Separate live-state concerns remain separate
+
+- Mission Dispatcher continues to report `office_dispatch_authority_not_effective`; do not infer authorization or defect without a separate authority investigation.
+- Recent runtime continues to report `totalActive: 20` Missions; active-state accumulation remains a separate concern and must not be silently repaired inside the epistemic sequence.
+- Cross-deploy Internet index/frontier persistence remains unproven/previously observed absent after deployment.
+- An earlier runtime showed `PUT /api/executive-learning-state` returning HTTP `500`. The latest supplied runtime log did not reproduce that error, but one clean run is not sufficient evidence that durable Executive Learning persistence is repaired. Treat persistence verification/repair as separate until direct runtime evidence proves durable write/read continuity.
+
+### Exact next step after this checkpoint
+
+Re-anchor to the repository after this Build State checkpoint is committed. Then perform the no-code Cross-Maddy Epistemic Integration trace before writing Commission 5. Follow a real material claim/reconstruction/counterparty judgment through the existing Search → Brain → Evidence → Institutional Reasoning → Planning → Decision → Hallway → Monitoring → Learning → Knowledge/Memory/Recall path and identify exactly where epistemic structure is lost, flattened, duplicated, or disconnected.
+
+The next bounded commission must close the highest-leverage demonstrated cross-organ epistemic break while preserving the rule: **one idea → one file → one commit → one test → commission.**
