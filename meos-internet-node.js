@@ -1,6 +1,6 @@
 /**
- * MEOS Internet Node v0.2.0
- * Commission: MEOS-INTERNET-NODE-004 — Storage-Aware Independent Discovery
+ * MEOS Internet Node v0.3.0
+ * Commission: MEOS-INTERNET-NODE-005 — Persistent Discovery Frontier
  *
  * Purpose:
  * - Give Maddy a provider-independent web perception/search substrate.
@@ -23,8 +23,8 @@ import path from "path";
 import crypto from "crypto";
 import net from "net";
 
-export const MEOS_INTERNET_NODE_VERSION = "0.2.0";
-export const MEOS_INTERNET_NODE_BUILD_ID = "MIN004-STORAGE-AWARE-INDEPENDENT-DISCOVERY-20260912-A";
+export const MEOS_INTERNET_NODE_VERSION = "0.3.0";
+export const MEOS_INTERNET_NODE_BUILD_ID = "MIN005-PERSISTENT-DISCOVERY-FRONTIER-20260912-A";
 
 const DEFAULTS = Object.freeze({
   maxPagesPerCrawl: 40,
@@ -34,6 +34,7 @@ const DEFAULTS = Object.freeze({
   delayMs: 150,
   maxIndexBytes: 256 * 1024 * 1024,
   discoverySeedLimit: 12,
+  maxFrontierEntries: 5000,
   userAgent: "MEOS-Internet-Node/0.1 (+provider-independent-public-web-perception)"
 });
 
@@ -206,6 +207,7 @@ export class MEOSInternetNode {
       path.join(dataDirectory, "meos-internet-index.json");
 
     this.documents = new Map();
+    this.frontier = new Map();
     this.loaded = false;
     this.lastCrawl = null;
   }
@@ -215,6 +217,9 @@ export class MEOSInternetNode {
     try {
       const parsed = JSON.parse(await fs.readFile(this.indexPath, "utf8"));
       for (const doc of parsed.documents || []) this.documents.set(doc.url, doc);
+      for (const entry of parsed.frontier || []) {
+        if (entry?.url) this.frontier.set(entry.url, entry);
+      }
       this.lastCrawl = parsed.lastCrawl || null;
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
@@ -230,6 +235,7 @@ export class MEOSInternetNode {
       buildId: MEOS_INTERNET_NODE_BUILD_ID,
       savedAt: new Date().toISOString(),
       lastCrawl: this.lastCrawl,
+      frontier: [...this.frontier.values()],
       documents: [...this.documents.values()]
     };
     const tmp = `${this.indexPath}.${process.pid}.tmp`;
@@ -255,18 +261,67 @@ export class MEOSInternetNode {
     return null;
   }
 
+  frontierLimit() {
+    return Math.max(100, Math.min(50000, Number(this.options.maxFrontierEntries) || DEFAULTS.maxFrontierEntries));
+  }
+
+  frontierPriority(rawUrl, sourceUrl = null) {
+    try {
+      const url = new URL(rawUrl);
+      let score = 10;
+      if (url.protocol === "https:") score += 3;
+      if (/\.(gov|edu)$/i.test(url.hostname)) score += 5;
+      if (sourceUrl && new URL(sourceUrl).origin === url.origin) score += 2;
+      if (/[?&](utm_|fbclid|gclid|ref=)/i.test(url.toString())) score -= 4;
+      return score;
+    } catch (_) { return 0; }
+  }
+
+  rememberFrontier(rawUrl, { discoveredFrom = null, depth = 0 } = {}) {
+    let url;
+    try {
+      url = new URL(rawUrl);
+      url.hash = "";
+      if (!["http:", "https:"].includes(url.protocol)) return false;
+    } catch (_) { return false; }
+    const normalized = url.toString();
+    if (this.documents.has(normalized)) return false;
+    const existing = this.frontier.get(normalized);
+    if (existing) {
+      if (discoveredFrom && !existing.discoveredFrom?.includes(discoveredFrom)) {
+        existing.discoveredFrom = [...(existing.discoveredFrom || []), discoveredFrom].slice(-8);
+      }
+      existing.priority = Math.max(existing.priority || 0, this.frontierPriority(normalized, discoveredFrom));
+      return false;
+    }
+    if (this.frontier.size >= this.frontierLimit()) return false;
+    this.frontier.set(normalized, {
+      schema: "meos.internet-frontier-entry.v1", url: normalized,
+      discoveredAt: new Date().toISOString(),
+      discoveredFrom: discoveredFrom ? [discoveredFrom] : [],
+      depth: Math.max(0, Number(depth) || 0),
+      priority: this.frontierPriority(normalized, discoveredFrom),
+      attempts: 0, lastAttemptAt: null, lastResult: "pending"
+    });
+    return true;
+  }
+
   discoverySeeds(limit = this.options.discoverySeedLimit) {
     const count = Math.max(1, Math.min(50, Number(limit) || this.options.discoverySeedLimit));
+    const pending = [...this.frontier.values()]
+      .filter(entry => entry?.lastResult !== "indexed")
+      .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0) || Number(a.attempts || 0) - Number(b.attempts || 0) || String(a.discoveredAt || "").localeCompare(String(b.discoveredAt || "")))
+      .slice(0, count).map(entry => entry.url);
+    if (pending.length) return pending;
     return [...this.documents.values()]
       .sort((a, b) => String(a.observedAt || "").localeCompare(String(b.observedAt || "")))
-      .slice(0, count)
-      .map(doc => doc.url);
+      .slice(0, count).map(doc => doc.url);
   }
 
   async discover({ maxPages = 20, maxDepth = 1, seedLimit } = {}) {
     await this.load();
     const seeds = this.discoverySeeds(seedLimit);
-    if (!seeds.length) throw new Error("MEOS-owned discovery requires at least one previously indexed page. Seed the index once with /crawl first.");
+    if (!seeds.length) throw new Error("MEOS-owned discovery requires at least one previously indexed page or persistent frontier entry. Seed the index once with /crawl first.");
     return this.crawl({ seeds, maxPages, maxDepth, sameOriginOnly: false });
   }
 
@@ -283,7 +338,10 @@ export class MEOSInternetNode {
       maxIndexBytes,
       storageUtilization: Number((indexBytes / maxIndexBytes).toFixed(6)),
       storageBudgetRemainingBytes: Math.max(0, maxIndexBytes - indexBytes),
-      discoveryReady: this.documents.size > 0,
+      discoveryReady: this.documents.size > 0 || this.frontier.size > 0,
+      frontierEntries: this.frontier.size,
+      frontierPending: [...this.frontier.values()].filter(entry => entry?.lastResult !== "indexed").length,
+      frontierLimit: this.frontierLimit(),
       lastCrawl: this.lastCrawl,
       providerIndependentSearch: true,
       paidSearchProviderRequired: false,
@@ -326,6 +384,12 @@ export class MEOSInternetNode {
       const item = queue.shift();
       if (!item || seen.has(item.url)) continue;
       seen.add(item.url);
+      const frontierEntry = this.frontier.get(item.url);
+      if (frontierEntry) {
+        frontierEntry.attempts = Number(frontierEntry.attempts || 0) + 1;
+        frontierEntry.lastAttemptAt = new Date().toISOString();
+        frontierEntry.lastResult = "attempting";
+      }
       let current;
       try { current = new URL(item.url); } catch (_) { continue; }
       if (sameOriginOnly && !seedOrigins.has(current.origin)) continue;
@@ -372,24 +436,29 @@ export class MEOSInternetNode {
 
         if (duplicateUrl) {
           results.push({ url: finalUrl, indexed: false, reason: "duplicate-content", duplicateOf: duplicateUrl, sha256 });
+          if (frontierEntry) frontierEntry.lastResult = "duplicate-content";
         } else if (projectedBytes > maxIndexBytes) {
           results.push({ url: finalUrl, indexed: false, reason: "storage-budget-reached", projectedBytes, maxIndexBytes, sha256 });
+          if (frontierEntry) frontierEntry.lastResult = "storage-budget-reached";
         } else {
           this.documents.set(finalUrl, document);
+          this.frontier.delete(finalUrl);
+          if (item.url !== finalUrl) this.frontier.delete(item.url);
           results.push({ url: finalUrl, indexed: true, title, bytesOfText: Buffer.byteLength(text), storedBytes: documentBytes, sha256 });
         }
 
-        if (item.depth < depthLimit) {
-          for (const link of extractLinks(fetched.body, finalUrl)) {
-            try {
-              const linkUrl = new URL(link);
-              if (sameOriginOnly && !seedOrigins.has(linkUrl.origin)) continue;
-              if (!seen.has(linkUrl.toString())) queue.push({ url: linkUrl.toString(), depth: item.depth + 1 });
-            } catch (_) {}
-          }
+        for (const link of extractLinks(fetched.body, finalUrl)) {
+          try {
+            const linkUrl = new URL(link);
+            if (sameOriginOnly && !seedOrigins.has(linkUrl.origin)) continue;
+            this.rememberFrontier(linkUrl.toString(), { discoveredFrom: finalUrl, depth: item.depth + 1 });
+            if (item.depth < depthLimit && !seen.has(linkUrl.toString())) queue.push({ url: linkUrl.toString(), depth: item.depth + 1 });
+          } catch (_) {}
         }
       } catch (error) {
-        results.push({ url: item.url, indexed: false, reason: error?.message || String(error) });
+        const reason = error?.message || String(error);
+        results.push({ url: item.url, indexed: false, reason });
+        if (frontierEntry) frontierEntry.lastResult = reason;
       }
 
       if (this.options.delayMs > 0) await new Promise(resolve => setTimeout(resolve, this.options.delayMs));
@@ -406,7 +475,9 @@ export class MEOSInternetNode {
       indexBytes: this.indexBytes(),
       maxIndexBytes: this.configuredMaxIndexBytes(),
       duplicateContentSkipped: results.filter(item => item.reason === "duplicate-content").length,
-      storageBudgetSkipped: results.filter(item => item.reason === "storage-budget-reached").length
+      storageBudgetSkipped: results.filter(item => item.reason === "storage-budget-reached").length,
+      frontierEntries: this.frontier.size,
+      frontierPending: [...this.frontier.values()].filter(entry => entry?.lastResult !== "indexed").length
     };
     await this.save();
     return { ...this.lastCrawl, results };
