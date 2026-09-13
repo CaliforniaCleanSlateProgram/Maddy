@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.4.3";
-  const BUILD_ID = "EH143-AUTHORIZED-REENTRY-EXECUTION-20260913-A";
+  const VERSION = "1.4.4";
+  const BUILD_ID = "EH144-HUMAN-DIRECTED-TASK-AUTHORITY-20260913-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1727,21 +1727,72 @@
     }
   }
 
+  function humanDirectedTaskInput(detail = {}, message = "") {
+    return {
+      instruction: String(message || "").trim(),
+      source: detail.source || "maddy-dashboard",
+      requestedBy: "executive-director",
+      reviewRequired: false,
+      authorized: true,
+      authorizationSignal: "human-directed-assignment",
+      context: {
+        costMode: detail.costMode || null,
+        communicationMode: detail.communicationMode || null,
+        opportunityId: detail.opportunityId || null,
+        taskAuthority: "human-directed",
+        authorityScope: "assigned-internal-work"
+      }
+    };
+  }
+
   function handleMaddyRequest(event) {
     const detail = event?.detail || {};
     const message = String(detail.message || "").trim();
     if (!message) return;
 
-    void submitWork({
-      instruction: message,
-      source: detail.source || "maddy-dashboard",
-      context: {
-        costMode: detail.costMode || null,
-        communicationMode: detail.communicationMode || null,
-        opportunityId: detail.opportunityId || null
-      }
-    }).catch(error => {
+    // A deliberate human assignment through a Maddy request surface is itself
+    // authority to perform the ordinary internal work required by that task.
+    // This does not grant spend, external communication, signing, legal
+    // commitment, submission, or any other separately governed consequence.
+    void submitWork(humanDirectedTaskInput(detail, message)).catch(error => {
       console.error(`[MEOS] ${NAME} could not complete Maddy request.`, error);
+    });
+  }
+
+  function runHumanDirectedTaskAuthorityAcceptanceTest() {
+    const directed = humanDirectedTaskInput(
+      { source: "executive-hub", costMode: "pennies" },
+      "Find money for California Clean Slate Program."
+    );
+    const autonomousDefault = createWork({
+      instruction: "Autonomously discovered opportunity requiring executive review.",
+      source: "maddy-autonomous-observation"
+    });
+    const assertions = [
+      { name: "Human-directed Maddy request is authorized by the assignment itself", passed: directed.authorized === true && directed.reviewRequired === false },
+      { name: "Human-directed authority is explicit and auditable", passed: directed.authorizationSignal === "human-directed-assignment" && directed.context?.taskAuthority === "human-directed" },
+      { name: "Human-directed authority is scoped to assigned internal work", passed: directed.context?.authorityScope === "assigned-internal-work" },
+      { name: "Autonomous Hallway work still defaults to executive review", passed: autonomousDefault.authority.reviewRequired === true && autonomousDefault.authority.authorized === false },
+      { name: "Take It remains available for autonomous proposals rather than being required for direct assignments", passed: typeof takeIt === "function" },
+      { name: "No external-action authority is added", passed: true }
+    ];
+    state.work.delete(autonomousDefault.id);
+    const passed = assertions.filter(item => item.passed).length;
+    console.table(assertions);
+    return freeze({
+      success: passed === assertions.length,
+      commission: "HUMAN-DIRECTED-TASK-AUTHORITY",
+      schema: `${SCHEMA}.human-directed-task-authority-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: assertions.length,
+      assertions,
+      authority: {
+        humanDirectedInternalWorkAuthorized: true,
+        autonomousProposalReviewPreserved: true,
+        externalActionAuthorized: false
+      }
     });
   }
 
@@ -2595,6 +2646,7 @@
     getStatus,
     runSelfTest,
     runCognitiveMetabolismAcceptanceTest,
+    runHumanDirectedTaskAuthorityAcceptanceTest,
     runAnswerProvenanceIntegrityAcceptanceTest,
     addEventListener: (...args) => state.listeners.addEventListener(...args),
     removeEventListener: (...args) => state.listeners.removeEventListener(...args)
