@@ -1,7 +1,7 @@
 /**
  * MEOS Mission Engine
- * Version: 0.1.9
- * Build: ME019-MISSION-CANONICALIZATION-DUPLICATE-QUARANTINE-20260812-A
+ * Version: 0.2.0
+ * Build: ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A
  *
  * Purpose:
  * The Mission Engine is the central work-management system for MEOS.
@@ -22,8 +22,8 @@
 (function initializeMissionEngine(global) {
     "use strict";
 
-    const VERSION = "0.1.9";
-    const BUILD_ID = "ME019-MISSION-CANONICALIZATION-DUPLICATE-QUARANTINE-20260812-A";
+    const VERSION = "0.2.0";
+    const BUILD_ID = "ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A";
     const STORAGE_KEY = "meos_mission_engine_v0_1_0";
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -2566,6 +2566,289 @@
         };
     }
 
+    /*
+     * Historical Mission Reconciliation
+     *
+     * Active state is a model of present organizational intention, not a
+     * museum. Durable history remains valuable, but stale development tests,
+     * completed conversational work, recursive outcome shells, and other
+     * historical residue must not occupy Maddy's present attention merely
+     * because they were once persisted.
+     *
+     * This boundary deliberately does NOT guess that work is inactive from a
+     * title, age, office, or model score. The Executive Director supplies the
+     * present-intent fact. MEOS then performs a bounded, auditable transition
+     * from active state to archived institutional history.
+     */
+    function buildHistoricalMissionReconciliationPlan(
+        missions = state.missions,
+        options = {}
+    ) {
+        const currentIntent = normalizeText(options.currentIntent).toLowerCase();
+        const noActiveWorkDeclared = currentIntent === "none";
+        const active = Array.isArray(missions) ? missions : [];
+
+        return {
+            success: true,
+            schema: "meos.mission-engine.historical-reconciliation-plan.v1",
+            generatedAt: now(),
+            currentIntent: noActiveWorkDeclared ? "none" : "unspecified",
+            authorityBasis: noActiveWorkDeclared
+                ? "executive-director-present-intent-declaration"
+                : "none",
+            executable: noActiveWorkDeclared,
+            activeBefore: active.length,
+            candidates: noActiveWorkDeclared
+                ? active.map(mission => ({
+                    missionId: mission.id,
+                    title: mission.title,
+                    status: mission.status,
+                    source: mission.source || null,
+                    sourceReference: mission.sourceReference || null,
+                    createdAt: mission.createdAt || null,
+                    updatedAt: mission.updatedAt || null,
+                    disposition: "archive-preserve-history",
+                    reason: "not-current-organizational-intent"
+                }))
+                : [],
+            projectedActiveAfter: noActiveWorkDeclared ? 0 : active.length,
+            destructiveDelete: false,
+            preservesMissionRecords: true,
+            grantsExecutionAuthority: false,
+            confirmationRequired: "RECONCILE_NO_ACTIVE_WORK"
+        };
+    }
+
+    function previewHistoricalMissionReconciliation(options = {}) {
+        return buildHistoricalMissionReconciliationPlan(state.missions, options);
+    }
+
+    function reconcileHistoricalMissions(options = {}) {
+        const plan = buildHistoricalMissionReconciliationPlan(state.missions, options);
+        const confirmation = String(options.confirm || "");
+        const expectedActiveCount = Number(options.expectedActiveCount);
+
+        if (!plan.executable) {
+            return {
+                success: false,
+                executed: false,
+                reason: "present_intent_not_declared",
+                message:
+                    "No Mission state was changed. Historical reconciliation requires currentIntent: 'none' from the Executive Director.",
+                plan
+            };
+        }
+
+        if (confirmation !== plan.confirmationRequired) {
+            return {
+                success: false,
+                executed: false,
+                reason: "confirmation_required",
+                confirmationRequired: plan.confirmationRequired,
+                message: "No Mission state was changed. Explicit reconciliation confirmation is required.",
+                plan
+            };
+        }
+
+        if (!Number.isInteger(expectedActiveCount) || expectedActiveCount !== plan.activeBefore) {
+            return {
+                success: false,
+                executed: false,
+                reason: "active_state_changed_or_not_confirmed",
+                expectedActiveCount: Number.isInteger(expectedActiveCount)
+                    ? expectedActiveCount
+                    : null,
+                actualActiveCount: plan.activeBefore,
+                message:
+                    "No Mission state was changed. Re-preview active state and confirm its exact count before reconciliation.",
+                plan
+            };
+        }
+
+        const reconciledAt = now();
+        const archived = [];
+        const activeSnapshot = [...state.missions];
+
+        activeSnapshot.forEach(mission => {
+            removeApprovalQueueEntry(mission.id);
+            mission.status = MISSION_STATUS.ARCHIVED;
+            mission.archivedAt = reconciledAt;
+            mission.currentActivity = "Historical record — not current organizational intent";
+            mission.reconciliation = {
+                schema: "meos.mission-engine.historical-reconciliation.v1",
+                reconciledAt,
+                requestedBy: normalizeText(options.requestedBy, "Executive Director"),
+                authorityBasis: "executive-director-present-intent-declaration",
+                declaredCurrentIntent: "none",
+                priorStatus: plan.candidates.find(item => item.missionId === mission.id)?.status || null,
+                disposition: "archive-preserve-history",
+                reason: "not-current-organizational-intent",
+                historicalRecordPreserved: true
+            };
+
+            addMissionHistory(
+                mission,
+                "historical_mission_reconciled",
+                "Mission left active state because the Executive Director declared that the organization currently has no active work represented by this Mission set. Historical record preserved.",
+                clone(mission.reconciliation)
+            );
+
+            archived.push(mission);
+        });
+
+        state.missions = [];
+        state.approvalQueue = state.approvalQueue.filter(entry =>
+            !archived.some(mission => mission.id === entry?.missionId)
+        );
+        state.archivedMissions = [
+            ...archived,
+            ...state.archivedMissions.filter(existing =>
+                !archived.some(mission => mission.id === existing?.id)
+            )
+        ];
+
+        recordActivity("historical_mission_reconciliation", {
+            requestedBy: normalizeText(options.requestedBy, "Executive Director"),
+            authorityBasis: "executive-director-present-intent-declaration",
+            declaredCurrentIntent: "none",
+            activeBefore: plan.activeBefore,
+            archivedCount: archived.length,
+            activeAfter: state.missions.length,
+            destructiveDelete: false,
+            historicalRecordPreserved: true
+        });
+
+        sortActiveMissions();
+        sortApprovalQueue();
+        persist();
+
+        return {
+            success: true,
+            executed: true,
+            commission: "MADDY-HISTORICAL-MISSION-RECONCILIATION",
+            schema: "meos.mission-engine.historical-reconciliation-result.v1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            activeBefore: plan.activeBefore,
+            archivedCount: archived.length,
+            activeAfter: state.missions.length,
+            archivedMissionIds: archived.map(mission => mission.id),
+            historicalRecordPreserved: true,
+            destructiveDelete: false,
+            authorityGranted: false
+        };
+    }
+
+    function runHistoricalMissionReconciliationAcceptanceTest() {
+        const fixture = [
+            {
+                id: "TEST-OLD-LAPTOP",
+                title: "Why do wombats have cube-shaped poop?",
+                status: MISSION_STATUS.IN_PROGRESS,
+                source: MISSION_SOURCE.EXECUTIVE_DIRECTOR,
+                sourceReference: "hallway-work:test-old-laptop",
+                createdAt: "2026-08-12T17:02:42.248Z"
+            },
+            {
+                id: "TEST-RECURSIVE-OUTCOME",
+                title: "Executive Outcome — Executive Outcome — Research CCSP",
+                status: MISSION_STATUS.QUEUED,
+                source: MISSION_SOURCE.EXECUTIVE_DIRECTOR,
+                sourceReference: "hallway-work:test-recursive-outcome",
+                createdAt: "2026-09-12T23:48:54.724Z"
+            },
+            {
+                id: "TEST-PLAUSIBLE-WORK",
+                title: "Find money for California Clean Slate Program",
+                status: MISSION_STATUS.QUEUED,
+                source: MISSION_SOURCE.EXECUTIVE_DIRECTOR,
+                sourceReference: "hallway-work:test-plausible-work",
+                createdAt: "2026-09-13T14:24:42.356Z"
+            }
+        ];
+
+        const noDeclaration = buildHistoricalMissionReconciliationPlan(fixture, {});
+        const declaredNone = buildHistoricalMissionReconciliationPlan(fixture, {
+            currentIntent: "none"
+        });
+        const implementation = reconcileHistoricalMissions.toString();
+
+        const checks = [
+            {
+                name: "Historical reconciliation does not infer inactivity from titles or age",
+                passed:
+                    noDeclaration.executable === false &&
+                    noDeclaration.candidates.length === 0
+            },
+            {
+                name: "Executive Director present-intent declaration can reconcile the whole active set",
+                passed:
+                    declaredNone.executable === true &&
+                    declaredNone.candidates.length === fixture.length &&
+                    declaredNone.projectedActiveAfter === 0
+            },
+            {
+                name: "Plausible-sounding CCSP work is not privileged over explicit present intent",
+                passed: declaredNone.candidates.some(item =>
+                    item.missionId === "TEST-PLAUSIBLE-WORK" &&
+                    item.disposition === "archive-preserve-history"
+                )
+            },
+            {
+                name: "Reconciliation archives rather than deleting durable Mission history",
+                passed:
+                    declaredNone.destructiveDelete === false &&
+                    declaredNone.preservesMissionRecords === true &&
+                    /state\.archivedMissions/.test(implementation) &&
+                    !/clearMissionData\(/.test(implementation)
+            },
+            {
+                name: "Every reconciled Mission receives an auditable history event and reconciliation metadata",
+                passed:
+                    /historical_mission_reconciled/.test(implementation) &&
+                    /mission\.reconciliation/.test(implementation)
+            },
+            {
+                name: "Execution requires an exact confirmation token",
+                passed: /RECONCILE_NO_ACTIVE_WORK/.test(
+                    buildHistoricalMissionReconciliationPlan.toString()
+                ) && /confirmation_required/.test(implementation)
+            },
+            {
+                name: "Execution requires exact active-count confirmation to prevent stale-preview mutation",
+                passed:
+                    /expectedActiveCount/.test(implementation) &&
+                    /active_state_changed_or_not_confirmed/.test(implementation)
+            },
+            {
+                name: "Reconciliation grants no dispatch, approval, truth, or external-action authority",
+                passed:
+                    declaredNone.grantsExecutionAuthority === false &&
+                    !/approveMission\(/.test(implementation) &&
+                    !/MissionDispatcher/.test(implementation)
+            }
+        ];
+
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks);
+        console.info(
+            `[MEOS ${VERSION}] Historical Mission Reconciliation: ` +
+            `${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+
+        return {
+            success: passed === checks.length,
+            commission: "MADDY-HISTORICAL-MISSION-RECONCILIATION",
+            schema: "meos.mission-engine.historical-reconciliation-acceptance.v1",
+            version: VERSION,
+            buildId: BUILD_ID,
+            passed,
+            total: checks.length,
+            checks,
+            fixturePlan: declaredNone
+        };
+    }
+
     function createMission(options = {}) {
         const title = normalizeText(options.title);
 
@@ -3880,6 +4163,9 @@
         previewDuplicateMissionQuarantine,
         quarantineDuplicateMissionShells,
         runMissionCanonicalizationAcceptanceTest,
+        previewHistoricalMissionReconciliation,
+        reconcileHistoricalMissions,
+        runHistoricalMissionReconciliationAcceptanceTest,
 
         exportMissionData,
         clearMissionData,
