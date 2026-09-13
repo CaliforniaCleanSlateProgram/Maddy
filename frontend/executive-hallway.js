@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.4.2";
-  const BUILD_ID = "EH142-STRICT-ANSWER-PROVENANCE-20260812-A";
+  const VERSION = "1.4.3";
+  const BUILD_ID = "EH143-AUTHORIZED-REENTRY-EXECUTION-20260913-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -569,12 +569,77 @@
         );
 
       if (existing) {
+        const currentWorkMissionId =
+          work.mission?.id || null;
+        const isCurrentWorkReentry =
+          Boolean(currentWorkMissionId) &&
+          String(currentWorkMissionId) ===
+            String(existing.id);
+
         work.mission = {
           engine: "mission-engine",
           id: existing.id,
           status: existing.status,
           sourceReference
         };
+
+        /*
+         * A Hallway work item legitimately re-enters its route after the
+         * Executive Director authorizes it with Take It. The Mission mirror
+         * created during planning is the same work's coordination record, not
+         * evidence that another unchanged cognitive dispatch already ran.
+         *
+         * Before EH143 this same-work re-entry was misclassified as
+         * previously-seen work, so Take It could immediately release the work
+         * as done without executing the authorized route. Preserve durable
+         * recognition for genuinely separate duplicate work, but never let a
+         * work item recognize its own Mission mirror as a duplicate.
+         */
+        if (isCurrentWorkReentry) {
+          work.recognition = {
+            schema:
+              "meos.executive-hallway.recognition.v1",
+            recognized: false,
+            unchanged: false,
+            disposition:
+              "current-work-reentry",
+            sourceReference,
+            missionId:
+              existing.id,
+            missionStatus:
+              existing.status || null,
+            recognizedAt: now()
+          };
+
+          work.evidence.push({
+            type:
+              "durable-work-reentry",
+            source:
+              "mission-engine",
+            sourceReference,
+            missionId:
+              existing.id,
+            missionStatus:
+              existing.status || null,
+            message:
+              "Current Hallway work re-entered its authorized route using its existing Mission mirror; execution remains eligible.",
+            at: now()
+          });
+
+          record(
+            "work.current-mission-reentry",
+            {
+              workId: work.id,
+              missionId:
+                existing.id,
+              missionStatus:
+                existing.status || null,
+              sourceReference
+            }
+          );
+
+          return existing;
+        }
 
         work.recognition = {
           schema:
@@ -1897,6 +1962,31 @@
         {
           createCount,
           firstMission,
+          recognition:
+            first.recognition
+        }
+      );
+
+      const authorizedReentryMission =
+        registerMissionMirror(
+          first
+        );
+
+      check(
+        "Current Hallway work can re-enter after authorization without recognizing its own Mission mirror as duplicate work",
+        createCount === 1 &&
+        authorizedReentryMission?.id ===
+          firstMission?.id &&
+        first.recognition
+          ?.recognized === false &&
+        first.recognition
+          ?.unchanged === false &&
+        first.recognition
+          ?.disposition ===
+          "current-work-reentry",
+        {
+          createCount,
+          authorizedReentryMission,
           recognition:
             first.recognition
         }
