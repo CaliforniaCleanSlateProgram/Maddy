@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE (2).md](https://github.com/user-attachments/files/32152391/MEOS_BUILD_STATE.2.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32152605/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -1108,4 +1108,72 @@ Current limitation / next engineering direction:
 
 Commission result:
 **MEOS-INTERNET-NODE-005 — Persistent Discovery Frontier is commissioned.**
+
+## Commissioned checkpoint — MEOS-INTERNET-NODE-006 — Frontier Retry Governance — 2026-09-12
+
+Status: **COMMISSIONED — runtime acceptance passed.**
+
+Version / build:
+- MEOS Internet Node `0.3.1`
+- `MIN006-FRONTIER-RETRY-GOVERNANCE-20260912-A`
+
+Commission objective:
+- Repair the concrete Node-005 frontier-governance defect in which a frontier URL that had already produced `duplicate-content` could remain eligible for discovery and be selected repeatedly.
+- Prevent Maddy from wasting network, compute, and discovery cycles on known terminal frontier outcomes while preserving bounded retry behavior for transient failures.
+- Preserve all existing Internet Node authority boundaries: public-web observation/evidence only; no institutional truth authority, semantic conclusion authority, or independent action authority is granted by this commission.
+
+Commissioned behavior:
+- Frontier entries are governed through explicit operational dispositions: eligible, cooldown, or terminal.
+- `pending` frontier entries are eligible for discovery.
+- Transiently failed frontier entries are held in cooldown before they can become eligible for retry.
+- Default retry cooldown is 6 hours (`21600000` milliseconds).
+- Frontier retry attempts are bounded to 3 by default.
+- Entries reaching the maximum attempt count become terminal.
+- Known terminal result states include `indexed`, `duplicate-content`, `robots-disallowed`, and `storage-budget-reached`.
+- `discoverySeeds()` selects only eligible frontier entries.
+- Internet status exposes `frontierPending`, `frontierCooldown`, `frontierTerminal`, `maxFrontierAttempts`, and `frontierRetryCooldownMs`.
+- Existing persistent frontier behavior, 5,000-entry default frontier bound, 256 MB default index ceiling, SHA-256 content deduplication, robots awareness, private/loopback blocking, provenance, bounded crawling, storage-budget enforcement, and provider-independent search architecture remain in force.
+- Existing unrelated `/search` custom-limit mismatch remains deliberately unmodified.
+- Existing unrelated explicit `maxDepth: 0` parameter behavior remains deliberately unmodified: current numeric fallback logic causes explicit zero to fall back to the configured/default crawl depth.
+
+Runtime acceptance evidence:
+- After deployment, `/api/internet/status` reported version `0.3.1` and build `MIN006-FRONTIER-RETRY-GOVERNANCE-20260912-A`.
+- The first post-deployment status showed `indexedPages: 0`, `frontierEntries: 0`, `indexBytes: 0`, and `discoveryReady: false`; therefore the previous Internet index/frontier had not survived the Render deployment. Cross-deploy Internet persistence remains unverified / unresolved and was not mixed into this focused commission.
+- A controlled crawl of `https://californiacleanslateprogram.org/` rebuilt the proving state: 1 page attempted, 1 page indexed, 17 frontier entries, 17 pending, 0 cooldown, 0 terminal, and 7,044 index bytes.
+- The first controlled owned-frontier discovery selected `https://californiacleanslateprogram.org/index.html`.
+- That candidate resolved to content already held in the Internet index and produced `duplicateContentSkipped: 1`.
+- Node-006 governance moved the known duplicate out of the eligible population: `frontierPending` decreased from 17 to 16 and `frontierTerminal` increased from 0 to 1.
+- The immediately following discovery did not select the known duplicate again.
+- Maddy instead selected `https://californiacleanslateprogram.org/project-beachfront.html` from the MEOS-owned frontier.
+- That second candidate produced new retained knowledge: `indexed: 1`, `duplicateContentSkipped: 0`, and index storage increased from 7,044 bytes to 9,562 bytes.
+- Both controlled discovery calls reported `source: "meos-owned-frontier"` and `externalSearchProviderUsed: false`.
+- This proves the targeted operational chain: discover candidate → recognize duplicate knowledge → classify the candidate terminal → remove it from immediate eligibility → independently select another eligible frontier candidate → acquire new knowledge without an external search provider choosing the destination.
+
+Autonomy / authority observation:
+- During runtime acceptance, dashboard/runtime office-dispatch autonomy remained effectively off: the Mission Dispatcher reported `office_dispatch_authority_not_effective`.
+- Node-006 acceptance used explicit controlled Internet API calls and did not require enabling office-dispatch autonomy.
+- No autonomy authority was expanded or bypassed by this commission.
+
+Architectural identity boundary remains in force:
+- **Maddy works for CCSP. Maddy is not CCSP.**
+- California Clean Slate Program remains the current employer/client/proving organization and supplied the controlled public-web doorway used in this acceptance test.
+- CCSP does not define Maddy's identity, Internet, cognition, worldview, or universal MEOS Core.
+- Organization-specific authority and private knowledge must remain separated from universal Maddy/MEOS Core as the architecture expands to future organizations.
+
+Known limitation / separate infrastructure evidence:
+- The Render deployment preceding runtime acceptance started Node-006 with an empty Internet index and empty frontier despite Node-005 having previously created both.
+- This is evidence that cross-deploy persistence of the MEOS Internet index/frontier is not currently proven and appears absent in the tested deployment configuration.
+- This persistence issue is separate from Node-006 retry governance and must not be silently repaired inside this commissioned checkpoint.
+- The Node-006 terminal treatment of `storage-budget-reached` and `robots-disallowed` is intentionally conservative for the present implementation; future freshness/recrawl governance may need to revisit whether such terminal states can become eligible again after relevant conditions change.
+
+Post-commission direction:
+- Node-006 closes the demonstrated retry-governance defect.
+- Do not automatically begin Node-007 or continue Internet feature work mechanically.
+- Before the next coding commission, re-read `PROJECT_MADDY_NORTH_STAR.md` and this Build State in full, re-anchor to the latest live repository authority plus commissioned changes, and identify the highest-leverage whole-system missing connection.
+- Evaluate the next commission simultaneously against the North Star, Spooky standard, persistence, evidence integrity, economic stewardship, provider independence, executive authority, first-customer value, reliable operation, sale/demo conversion, and paid-release credibility.
+- The newly observed cross-deploy Internet persistence gap must be considered during that re-evaluation, but it is not automatically the next commission.
+- Continue the infrastructure principle: **Storage is scarce; knowledge is valuable. Maddy should optimize for retained knowledge per byte, not pages collected.**
+
+Commission result:
+**MEOS-INTERNET-NODE-006 — Frontier Retry Governance is commissioned.**
 
