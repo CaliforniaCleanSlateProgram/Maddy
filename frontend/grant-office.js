@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.12.0
- * Build: GO1120-ORGANIZATION-NEUTRAL-ADAPTIVE-ACQUISITION-20260815-A
+ * Version: 1.12.1
+ * Build: GO1121-HUMAN-DOCUMENT-DEPENDENCY-RESUME-20260913-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.12.0";
-    const BUILD_ID = "GO1120-ORGANIZATION-NEUTRAL-ADAPTIVE-ACQUISITION-20260815-A";
+    const VERSION = "1.12.1";
+    const BUILD_ID = "GO1121-HUMAN-DOCUMENT-DEPENDENCY-RESUME-20260913-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -3902,6 +3902,86 @@
                     ? opportunity.preparation.readyAt ||
                       this.now()
                     : null;
+
+            // Human-document dependency is a resumable work state, not a failed application.
+            // Only document/attachment blockers are surfaced here; certifications, signatures,
+            // spending, and final submission retain their separate governance boundaries.
+            const documentBlockers = requiredItems
+                .filter((item) =>
+                    item.complete !== true &&
+                    (
+                        String(item.id || "").startsWith("required-document-") ||
+                        /required document|attachment|ein|irs|articles|incorporation|oag|attorney general|w-9|990|insurance|bylaws|financial|budget/i.test(
+                            String(item.label || "")
+                        )
+                    )
+                )
+                .map((item) => ({
+                    id: item.id,
+                    document: String(item.label || "Required document")
+                        .replace(/^Required document:\s*/i, ""),
+                    requirement: item.label,
+                    source: item.source || "opportunity requirement"
+                }));
+
+            const previousDependency = opportunity.preparation.humanDependency || null;
+
+            if (documentBlockers.length > 0) {
+                const dependency = {
+                    schema: "meos.grant-office.human-document-dependency.v1",
+                    state: "waiting-on-human-document",
+                    reason: "missing-required-document",
+                    opportunityId: opportunity.id || null,
+                    opportunityTitle: opportunity.title || "Untitled opportunity",
+                    missingDocuments: documentBlockers,
+                    requestedAt:
+                        previousDependency?.state === "waiting-on-human-document"
+                            ? previousDependency.requestedAt
+                            : this.now(),
+                    updatedAt: this.now(),
+                    resumePolicy: "resume-preparation-when-required-documents-satisfied",
+                    humanMessage:
+                        documentBlockers.length === 1
+                            ? `Maddy needs one required document before she can finish this application: ${documentBlockers[0].document}.`
+                            : `Maddy needs ${documentBlockers.length} required documents before she can finish this application: ${documentBlockers.map(item => item.document).join(", ")}.`
+                };
+
+                opportunity.preparation.humanDependency = dependency;
+                opportunity.missingDocuments = documentBlockers.map(item => item.document);
+
+                if (
+                    previousDependency?.state !== "waiting-on-human-document" ||
+                    JSON.stringify(previousDependency?.missingDocuments || []) !==
+                        JSON.stringify(dependency.missingDocuments)
+                ) {
+                    try {
+                        global.dispatchEvent?.(new global.CustomEvent(
+                            "meos:grant-office:human-document-required",
+                            { detail: this.clone(dependency) }
+                        ));
+                    } catch (_) {
+                        // Event delivery is advisory; durable opportunity state remains authoritative.
+                    }
+                }
+            } else if (previousDependency?.state === "waiting-on-human-document") {
+                opportunity.preparation.humanDependency = {
+                    ...previousDependency,
+                    state: "satisfied-resuming",
+                    satisfiedAt: this.now(),
+                    updatedAt: this.now(),
+                    humanMessage: "Required document dependency satisfied. Maddy can resume application preparation."
+                };
+                opportunity.missingDocuments = [];
+
+                try {
+                    global.dispatchEvent?.(new global.CustomEvent(
+                        "meos:grant-office:human-document-satisfied",
+                        { detail: this.clone(opportunity.preparation.humanDependency) }
+                    ));
+                } catch (_) {
+                    // Event delivery is advisory; durable opportunity state remains authoritative.
+                }
+            }
 
             return readiness;
         },
@@ -14645,6 +14725,91 @@
                 this.opportunities = this.opportunities.filter(
                     opportunity => opportunity.id !== testId
                 );
+                this.configuration.automaticPersistence = originalPersistence;
+            }
+        },
+
+        runHumanDocumentDependencyAcceptanceTest() {
+            const originalPersistence = this.configuration.automaticPersistence;
+            const testId = this.createId("human-document-dependency-acceptance");
+            this.configuration.automaticPersistence = false;
+
+            try {
+                const opportunity = this.addOpportunity({
+                    id: testId,
+                    title: "MEOS Human Document Dependency Acceptance Test",
+                    provider: "MEOS Test Funder",
+                    sourceUrl: "https://example.org/test",
+                    verified: true,
+                    deadline: new Date(Date.now() + 30 * 86400000).toISOString(),
+                    eligibleApplicants: ["501(c)(3) nonprofits"],
+                    requiredDocuments: ["Articles of Incorporation", "EIN confirmation letter"]
+                });
+
+                const stored = this.getOpportunityById(opportunity.id);
+                stored.pipelineStage = PIPELINE_STAGES.ON_DESK;
+                stored.pipelineHistory = this.normalizePipelineHistory(null, PIPELINE_STAGES.ON_DESK, this.now());
+
+                this.authorizePursuit(opportunity.id, { authorizedBy: "Acceptance Test Executive" });
+                this.beginPreparation(opportunity.id, { actor: "Acceptance Test Executive" });
+
+                let current = this.getOpportunityById(opportunity.id);
+                const waiting = this.clone(current.preparation.humanDependency);
+                const documentItems = current.preparation.checklist.filter(item =>
+                    String(item.id || "").startsWith("required-document-")
+                );
+
+                documentItems.forEach(item => {
+                    this.updatePreparationItem(opportunity.id, item.id, {
+                        complete: true,
+                        completedBy: "Acceptance Test Document Intake"
+                    });
+                });
+
+                current = this.getOpportunityById(opportunity.id);
+                const resumed = this.clone(current.preparation.humanDependency);
+
+                const checks = [
+                    {
+                        name: "Missing required documents create a human dependency instead of failing preparation",
+                        passed: waiting?.state === "waiting-on-human-document" && current.pipelineStage === PIPELINE_STAGES.PREPARING
+                    },
+                    {
+                        name: "Human notification names the exact missing documents",
+                        passed: waiting?.missingDocuments?.length === 2 && waiting.missingDocuments.some(item => item.document === "Articles of Incorporation") && waiting.missingDocuments.some(item => item.document === "EIN confirmation letter")
+                    },
+                    {
+                        name: "Waiting state is exposed through opportunity missingDocuments for existing dashboard classification",
+                        passed: Array.isArray(waiting?.missingDocuments) && waiting.missingDocuments.length === 2
+                    },
+                    {
+                        name: "Document dependency has an explicit automatic resume policy",
+                        passed: waiting?.resumePolicy === "resume-preparation-when-required-documents-satisfied"
+                    },
+                    {
+                        name: "Supplying all required documents satisfies the dependency and resumes preparation state",
+                        passed: resumed?.state === "satisfied-resuming" && Array.isArray(current.missingDocuments) && current.missingDocuments.length === 0
+                    },
+                    {
+                        name: "Pursuit authorization remains separate from final submission authority",
+                        passed: current.pursuitAuthorization?.authorized === true && current.pipelineStage === PIPELINE_STAGES.PREPARING && !current.submission
+                    }
+                ];
+
+                console.table(checks);
+                const passed = checks.filter(check => check.passed).length;
+                return {
+                    success: passed === checks.length,
+                    commission: "HUMAN-DOCUMENT-DEPENDENCY-RESUME",
+                    schema: "meos.grant-office.human-document-dependency-acceptance.v1",
+                    version: VERSION,
+                    buildId: BUILD_ID,
+                    passed,
+                    total: checks.length,
+                    checks
+                };
+            } finally {
+                this.opportunities = this.opportunities.filter(opportunity => opportunity.id !== testId);
                 this.configuration.automaticPersistence = originalPersistence;
             }
         },
