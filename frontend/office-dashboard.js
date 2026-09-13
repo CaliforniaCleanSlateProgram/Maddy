@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.13.0
+ * Version: 4.13.1
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,10 +20,11 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.0";
+  const DASHBOARD_VERSION = "4.13.1";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
+  const CONSEQUENCE_RECOGNITION_BUILD_ID = "OD4131-CONSEQUENCE-RECOGNITION-GATE-20260913-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -7292,9 +7293,44 @@ document
     return compileExecutiveAttention(snapshot).winner;
   }
 
+  function normalizeExecutiveOutcomeTitle(value) {
+    let title = String(value || "the executive signal").trim();
+    // A returned consequence may already have been labeled by the HUD. Strip
+    // every inherited presentation prefix before constructing any new work
+    // title so presentation cannot recursively manufacture intention identity.
+    while (/^Executive Outcome\s*[—-]\s*/i.test(title)) {
+      title = title.replace(/^Executive Outcome\s*[—-]\s*/i, "").trim();
+    }
+    return title || "the executive signal";
+  }
+
+  function executiveOutcomeAdvancePolicy(outcome) {
+    const kind = String(outcome?.kind || "unknown").toLowerCase();
+
+    if (kind === "funding") {
+      return { advanceable: true, disposition: "new-investigation-eligible", reason: "A funding signal may justify a new governed investigation when it is not already in motion." };
+    }
+    if (kind === "blocked") {
+      return { advanceable: true, disposition: "blocker-resolution-eligible", reason: "A blocker may justify bounded resolution work when no equivalent work already exists." };
+    }
+    if (kind === "deliverable") {
+      return { advanceable: false, disposition: "returned-consequence", reason: "Completed work is a consequence of existing intention, not a fresh intention." };
+    }
+    if (kind === "approval") {
+      return { advanceable: false, disposition: "authority-boundary", reason: "A pending approval must be resolved through its existing governed work, not mirrored into another Mission." };
+    }
+    if (kind === "work") {
+      return { advanceable: false, disposition: "existing-work", reason: "Active work is already in motion and must not be promoted into another Mission." };
+    }
+    if (kind === "watch") {
+      return { advanceable: false, disposition: "observe-only", reason: "Observation without an action threshold does not earn active work." };
+    }
+    return { advanceable: false, disposition: "fail-closed-unknown-kind", reason: "Unknown attention signals do not create durable work without an explicit lifecycle rule." };
+  }
+
   function executiveOutcomeFingerprint(outcome) {
     const recordId = String(outcome?.record?.id || outcome?.record?.opportunityId || "").trim();
-    const identity = recordId || String(outcome?.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
+    const identity = recordId || normalizeExecutiveOutcomeTitle(outcome?.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
     return `hq-attention:${String(outcome?.kind || "unknown")}:${identity || "unidentified"}`;
   }
 
@@ -7310,7 +7346,7 @@ document
   }
 
   function executiveOutcomeInstruction(outcome) {
-    const title = String(outcome?.title || "the executive signal").trim();
+    const title = normalizeExecutiveOutcomeTitle(outcome?.title);
     if (outcome?.kind === "funding") {
       return `Investigate and advance the funding opportunity "${title}". Verify current eligibility, deadline, requirements, strategic fit, resource value, risks, missing information, and the highest-leverage next step. Use existing MEOS evidence first, research consequential unknowns when needed, and return a verified executive recommendation. Do not submit, spend, sign, publish, contact externally, or create an external commitment without required human authority.`;
     }
@@ -7320,10 +7356,46 @@ document
     return `Advance the executive outcome "${title}". Verify the underlying evidence, determine the highest-leverage next step, coordinate the appropriate MEOS office or engine, and return a verified outcome or clearly stated blocker. Preserve all human authority boundaries.`;
   }
 
+  function prepareExecutiveOutcomeDispatch(outcome) {
+    const policy = executiveOutcomeAdvancePolicy(outcome);
+    if (!policy.advanceable) return { policy, dispatch: null };
+
+    const cleanTitle = normalizeExecutiveOutcomeTitle(outcome?.title);
+    const fingerprint = executiveOutcomeFingerprint({ ...outcome, title: cleanTitle });
+    return {
+      policy,
+      dispatch: {
+        title: `Executive Outcome — ${cleanTitle}`,
+        instruction: executiveOutcomeInstruction({ ...outcome, title: cleanTitle }),
+        source: "maddy-executive-attention",
+        requestedBy: "executive-director",
+        reviewRequired: true,
+        authorized: false,
+        context: {
+          attentionFingerprint: fingerprint,
+          sourceRecordId: outcome?.record?.id || null,
+          sourceKind: outcome?.kind || null,
+          sourceEvidence: outcome?.evidence || null,
+          sourceValue: outcome?.value || null,
+          consequenceRecognitionDisposition: policy.disposition,
+          originatedFrom: "executive-headquarters-attention-compiler"
+        }
+      }
+    };
+  }
+
   async function advanceExecutiveOutcome(outcome, snapshot, button) {
-    if (!outcome || outcome.kind === "watch") {
-      executeExecutiveOutcome(outcome, snapshot);
-      return { success: false, reason: "watch-posture" };
+    if (!outcome) return { success: false, routed: false, reason: "missing-outcome" };
+
+    const preparedDispatch = prepareExecutiveOutcomeDispatch(outcome);
+    if (!preparedDispatch.policy.advanceable) {
+      return {
+        success: true,
+        routed: false,
+        recognized: true,
+        disposition: preparedDispatch.policy.disposition,
+        reason: preparedDispatch.policy.reason
+      };
     }
 
     const hallway = getExecutiveHallway();
@@ -7352,24 +7424,8 @@ document
       button.textContent = "Routing to Maddy…";
     }
 
-    const fingerprint = executiveOutcomeFingerprint(outcome);
     try {
-      const work = await hallway.submitWork({
-        title: `Executive Outcome — ${outcome.title}`,
-        instruction: executiveOutcomeInstruction(outcome),
-        source: "maddy-executive-attention",
-        requestedBy: "executive-director",
-        reviewRequired: true,
-        authorized: false,
-        context: {
-          attentionFingerprint: fingerprint,
-          sourceRecordId: outcome.record?.id || null,
-          sourceKind: outcome.kind,
-          sourceEvidence: outcome.evidence || null,
-          sourceValue: outcome.value || null,
-          originatedFrom: "executive-headquarters-attention-compiler"
-        }
-      });
+      const work = await hallway.submitWork(preparedDispatch.dispatch);
 
       state.hallway.currentWorkId = work?.id || state.hallway.currentWorkId;
       state.hallway.currentState = work?.state || state.hallway.currentState;
@@ -7389,6 +7445,42 @@ document
       }
       return { success: false, error: state.hallway.lastError };
     }
+  }
+
+  function runConsequenceRecognitionGateAcceptanceTest() {
+    const returned = prepareExecutiveOutcomeDispatch({ kind: "deliverable", title: "Executive Outcome — Returned research" });
+    const approval = prepareExecutiveOutcomeDispatch({ kind: "approval", title: "Approve the existing mission" });
+    const active = prepareExecutiveOutcomeDispatch({ kind: "work", title: "Existing mission in progress" });
+    const watch = prepareExecutiveOutcomeDispatch({ kind: "watch", title: "No intervention justified" });
+    const funding = prepareExecutiveOutcomeDispatch({ kind: "funding", title: "Executive Outcome — Executive Outcome — Local hygiene grant", record: { id: "grant-1" }, evidence: "source-of-record", value: "$25,000" });
+    const blocked = prepareExecutiveOutcomeDispatch({ kind: "blocked", title: "Provider capability blocked", record: { id: "block-1" } });
+    const unknown = prepareExecutiveOutcomeDispatch({ kind: "unexpected-kind", title: "Unknown signal" });
+
+    const checks = [
+      { name: "Returned deliverables are recognized as consequences instead of promoted into new Missions", passed: returned.policy.disposition === "returned-consequence" && returned.dispatch === null },
+      { name: "Pending approvals remain authority boundaries on their existing work", passed: approval.policy.disposition === "authority-boundary" && approval.dispatch === null },
+      { name: "Existing active work is not recursively promoted into another Mission", passed: active.policy.disposition === "existing-work" && active.dispatch === null },
+      { name: "Watch posture creates no manufactured active work", passed: watch.policy.disposition === "observe-only" && watch.dispatch === null },
+      { name: "Only action-eligible funding signals can form a new governed investigation", passed: funding.policy.advanceable === true && Boolean(funding.dispatch) && funding.dispatch.context?.sourceKind === "funding" },
+      { name: "A real blocker can form bounded resolution work without bypassing governance", passed: blocked.policy.advanceable === true && blocked.dispatch?.reviewRequired === true && blocked.dispatch?.authorized === false },
+      { name: "Inherited Executive Outcome labels collapse to one presentation prefix instead of recursively multiplying", passed: funding.dispatch?.title === "Executive Outcome — Local hygiene grant" && !/Executive Outcome\s*[—-]\s*Executive Outcome/i.test(funding.dispatch?.title || "") },
+      { name: "Unknown attention kinds fail closed and the gate grants no execution authority", passed: unknown.dispatch === null && funding.dispatch?.authorized === false && blocked.dispatch?.authorized === false }
+    ];
+
+    const result = {
+      success: checks.every((check) => check.passed),
+      commission: "MADDY-MISSION-LIFECYCLE-CONSEQUENCE-RECOGNITION",
+      schema: "meos.dashboard.consequence-recognition-gate-acceptance.v1",
+      version: DASHBOARD_VERSION,
+      buildId: CONSEQUENCE_RECOGNITION_BUILD_ID,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks,
+      authority: { externalActionAuthorized: false, missionCreationRestrictedToActionEligibleSignals: true }
+    };
+    console.table(checks);
+    console.log(`[MEOS ${DASHBOARD_VERSION}] Consequence Recognition Gate: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
   }
 
   function executeExecutiveOutcome(outcome, snapshot) {
@@ -7440,7 +7532,7 @@ document
       ${alternatives.length ? `<details style="margin:.25rem 0 .65rem;font-size:.76rem;"><summary style="cursor:pointer;">Why not the other ${attention.candidateCount - 1} signal${attention.candidateCount - 1 === 1 ? "" : "s"}?</summary><div style="padding-top:.35rem;">${alternatives.map((item) => `<div style="margin:.25rem 0;"><strong>${escapeHtml(item.title)}</strong><br><span class="meos-muted">${escapeHtml(item.kind)} · attention score ${item.score}</span></div>`).join("")}${attention.candidateCount > 4 ? `<div class="meos-muted">+ ${attention.candidateCount - 4} lower-ranked runtime signals suppressed from executive attention.</div>` : ""}</div></details>` : ""}
       <div style="display:flex;gap:.45rem;flex-wrap:wrap;">
         <button id="meosExecutiveOutcomeAction" class="meos-action-button" type="button">${escapeHtml(outcome.action)}</button>
-        ${outcome.kind !== "watch" ? `<button id="meosExecutiveOutcomeAdvance" class="meos-action-button" type="button">${findExistingOutcomeWork(outcome, snapshot) ? "Already In Motion" : "Put Maddy On It"}</button>` : ""}
+        ${executiveOutcomeAdvancePolicy(outcome).advanceable ? `<button id="meosExecutiveOutcomeAdvance" class="meos-action-button" type="button">${findExistingOutcomeWork(outcome, snapshot) ? "Already In Motion" : "Put Maddy On It"}</button>` : ""}
       </div>`;
     document.getElementById("meosExecutiveOutcomeAction")?.addEventListener("click", () => executeExecutiveOutcome(outcome, snapshot));
     document.getElementById("meosExecutiveOutcomeAdvance")?.addEventListener("click", (event) => advanceExecutiveOutcome(outcome, snapshot, event.currentTarget));
@@ -9137,18 +9229,19 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online.`
     );
   }
 
   window.MEOSOfficeDashboard = Object.freeze({
     version: DASHBOARD_VERSION,
-    buildId: SHOP_TRUTH_SURFACE_BUILD_ID,
+    buildId: CONSEQUENCE_RECOGNITION_BUILD_ID,
     show: showOfficeDashboard,
     hide: hideOfficeDashboard,
     refresh: renderOfficeDashboard,
     buildShopTruthSurfaceModel,
-    runShopTruthSurfaceAcceptanceTest
+    runShopTruthSurfaceAcceptanceTest,
+    runConsequenceRecognitionGateAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
