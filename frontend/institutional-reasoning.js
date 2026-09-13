@@ -1,7 +1,7 @@
 /*
  * MEOS Institutional Reasoning Engine
- * Version: 1.2.0
- * Build: IR120-CROSS-MADDY-EPISTEMIC-INTEGRATION-20260913-A
+ * Version: 1.3.0
+ * Build: IR130-RECALLED-EXPERIENCE-FUTURE-COGNITION-20260913-A
  *
  * Mission:
  * Turn supported institutional evidence into explainable executive analysis,
@@ -41,8 +41,8 @@
 
     const InstitutionalReasoning = {
         name: "MEOS Institutional Reasoning Engine",
-        version: "1.2.0",
-        buildId: "IR120-CROSS-MADDY-EPISTEMIC-INTEGRATION-20260913-A",
+        version: "1.3.0",
+        buildId: "IR130-RECALLED-EXPERIENCE-FUTURE-COGNITION-20260913-A",
         status: "initializing",
         operatingMode: "evidence-grounded-reasoning",
 
@@ -1659,6 +1659,13 @@
                 epistemicClaims: [],
                 realityReconstruction: null,
                 counterpartyIntelligence: null,
+                priorExperience: [],
+                experienceInfluence: {
+                    present: false,
+                    count: 0,
+                    role: "challengeable-prior-experience",
+                    rule: "Prior Maddy experience may inform future judgment but never becomes truth authority."
+                },
                 conflicts: [],
                 preservationRule:
                     "Epistemic structure must remain attached across cognition; unavailable evidence governance is reported rather than silently fabricated.",
@@ -1670,6 +1677,18 @@
             }
 
             try {
+                /*
+                 * QDPA Commission 5D — Recalled Experience → Future Cognition
+                 *
+                 * A recalled institutional lesson is not merely a fresh source. It is
+                 * Maddy's prior experience: a consequence-linked record that may carry
+                 * the epistemic conditions under which it was learned. Preserve that
+                 * lineage separately so future cognition can be changed by experience
+                 * without promoting memory into unquestionable truth.
+                 */
+                const priorExperience =
+                    this.extractRecalledEpistemicExperience(sourceEvidence);
+
                 const prepared = integrity.prepare(
                     {
                         subject: String(question || ""),
@@ -1735,6 +1754,14 @@
                         this.clone(
                             prepared.counterpartyIntelligence || null
                         ),
+                    priorExperience:
+                        this.clone(priorExperience),
+                    experienceInfluence: {
+                        present: priorExperience.length > 0,
+                        count: priorExperience.length,
+                        role: "challengeable-prior-experience",
+                        rule: "Prior Maddy experience may change future judgment through the existing evidence path, but remains evidence with provenance, uncertainty, and falsifiers—not truth authority."
+                    },
                     conflicts:
                         this.clone(prepared.conflicts || []),
                     preservationRule:
@@ -1750,6 +1777,200 @@
                         error?.message ||
                         "Epistemic continuity preparation failed."
                 };
+            }
+        },
+
+        extractRecalledEpistemicExperience(evidence = []) {
+            const experiences = [];
+            const seen = new Set();
+
+            for (const item of Array.isArray(evidence) ? evidence : []) {
+                const candidates = [
+                    item?.epistemicContinuity,
+                    item?.metadata?.epistemicContinuity,
+                    item?.raw?.epistemicContinuity,
+                    item?.raw?.metadata?.epistemicContinuity
+                ].filter(Boolean);
+
+                for (const continuity of candidates) {
+                    if (
+                        continuity?.schema !== EPISTEMIC_CONTINUITY_SCHEMA ||
+                        continuity?.preserved !== true
+                    ) {
+                        continue;
+                    }
+
+                    const lineage =
+                        item?.raw?.metadata?.learningLineage ||
+                        item?.metadata?.learningLineage ||
+                        item?.raw?.learningLineage ||
+                        null;
+                    const key = String(
+                        lineage?.lessonId ||
+                        item?.sourceId ||
+                        item?.id ||
+                        `${continuity.subject || "experience"}:${continuity.generatedAt || "unknown"}`
+                    );
+
+                    if (seen.has(key)) {
+                        continue;
+                    }
+                    seen.add(key);
+
+                    experiences.push({
+                        experienceId: key,
+                        sourceType: item?.sourceType || null,
+                        sourceId: item?.sourceId || item?.id || null,
+                        title: item?.title || null,
+                        confidence: Number(item?.confidence) || 0,
+                        authority: item?.authority || "unreviewed",
+                        learnedAt:
+                            lineage?.learnedAt ||
+                            item?.raw?.updatedAt ||
+                            item?.date ||
+                            null,
+                        learningLineage: this.clone(lineage),
+                        epistemicContinuity: this.clone(continuity),
+                        challengeable: true,
+                        truthAuthority: false,
+                        falsifiers: this.clone(
+                            continuity?.epistemicClaims?.flatMap(
+                                (claim) => claim?.falsifiers || []
+                            ) || []
+                        ),
+                        discriminatingEvidence: this.clone(
+                            continuity?.realityReconstruction?.discriminatingEvidence || []
+                        )
+                    });
+                }
+            }
+
+            return experiences;
+        },
+
+        runRecalledExperienceFutureCognitionAcceptanceTest() {
+            const recall = global.ExecutiveRecall;
+            if (!recall?.recall) {
+                return {
+                    success: false,
+                    commission: "MADDY-CROSS-MADDY-EPISTEMIC-INTEGRATION-RECALLED-EXPERIENCE-FUTURE-COGNITION",
+                    error: "Executive Recall is required for the acceptance test."
+                };
+            }
+
+            const originalRecall = recall.recall;
+            const originalPersistence = this.configuration.automaticPersistence;
+            const now = new Date().toISOString();
+            const continuity = {
+                schema: EPISTEMIC_CONTINUITY_SCHEMA,
+                available: true,
+                preserved: true,
+                subject: "Prior vendor delivery experience",
+                sourceEvidenceCount: 3,
+                governedEvidenceCount: 3,
+                packageConfidence: 0.81,
+                epistemicClaims: [{
+                    claim: "The vendor delivered late after promising the target date.",
+                    falsifiers: ["A source-of-record delivery receipt proving on-time delivery"]
+                }],
+                realityReconstruction: {
+                    status: "unresolved-competing-explanations",
+                    leadingHypothesis: null,
+                    discriminatingEvidence: ["Carrier source-of-record scan history"]
+                },
+                counterpartyIntelligence: {
+                    counterparties: [{ actorId: "vendor-fixture", contextualReliability: "mixed" }]
+                },
+                conflicts: [],
+                generatedAt: now
+            };
+            const fresh = {
+                id: "fresh-claim",
+                sourceType: "search",
+                sourceId: "fresh-claim",
+                title: "Fresh unreviewed vendor claim",
+                summary: "Vendor says the new delivery will be on time.",
+                content: "Vendor says the new delivery will be on time.",
+                confidence: 0.4,
+                authority: "unreviewed",
+                date: null,
+                citation: null
+            };
+            const learned = {
+                id: "learned-experience",
+                sourceType: "knowledge",
+                sourceId: "learned-experience",
+                title: "Prior observed delivery outcome",
+                summary: "Prior delivery was late after an on-time promise.",
+                content: "Prior delivery was late after an on-time promise.",
+                confidence: 1,
+                authority: "official",
+                date: now,
+                citation: { sourceType: "knowledge", sourceId: "learned-experience", title: "Prior observed delivery outcome" },
+                raw: {
+                    id: "learned-experience",
+                    updatedAt: now,
+                    metadata: {
+                        epistemicContinuity: continuity,
+                        learningLineage: {
+                            lessonId: "lesson-vendor-delivery",
+                            learnedAt: now,
+                            origin: "executive-learning"
+                        }
+                    }
+                }
+            };
+
+            const makeRecall = (items) => ({
+                success: true,
+                subject: "Should we rely on the vendor's new delivery promise?",
+                confidence: items.length > 1 ? 0.8 : 0.4,
+                evidence: items,
+                citations: items.map((item) => item.citation).filter(Boolean),
+                decisions: [], openLoops: [], dependencies: [], conflicts: []
+            });
+
+            try {
+                this.configuration.automaticPersistence = false;
+                recall.recall = () => makeRecall([fresh]);
+                const withoutExperience = this.analyze("Should we rely on the vendor's new delivery promise?");
+
+                recall.recall = () => makeRecall([fresh, learned]);
+                const withExperience = this.analyze("Should we rely on the vendor's new delivery promise?");
+                const envelope = withExperience?.evidenceAssessment?.epistemicContinuity;
+                const prior = envelope?.priorExperience?.[0];
+
+                const checks = [
+                    ["Future cognition recognizes recalled learned knowledge as prior Maddy experience", envelope?.experienceInfluence?.present === true && envelope?.priorExperience?.length === 1],
+                    ["Prior experience retains its original epistemic continuity instead of becoming a naked fact", prior?.epistemicContinuity?.schema === EPISTEMIC_CONTINUITY_SCHEMA && prior?.epistemicContinuity?.preserved === true],
+                    ["Unresolved competing explanations survive re-entry into future cognition", prior?.epistemicContinuity?.realityReconstruction?.leadingHypothesis === null],
+                    ["Falsifying and discriminating evidence remain available to challenge Maddy's own memory", prior?.falsifiers?.length === 1 && prior?.discriminatingEvidence?.length === 1],
+                    ["Counterparty context survives the complete consequence-memory-cognition loop", prior?.epistemicContinuity?.counterpartyIntelligence?.counterparties?.[0]?.actorId === "vendor-fixture"],
+                    ["Prior experience changes future evidence-grounded judgment through existing reasoning rather than a hidden override", withoutExperience?.recommendation?.state === RECOMMENDATION_STATES.HOLD && withExperience?.recommendation?.state !== withoutExperience?.recommendation?.state && withExperience?.evidenceAssessment?.score > withoutExperience?.evidenceAssessment?.score],
+                    ["Maddy's prior experience remains challengeable rather than becoming truth authority", prior?.challengeable === true && prior?.truthAuthority === false && envelope?.experienceInfluence?.role === "challengeable-prior-experience"],
+                    ["Experience changes judgment without granting execution or approval authority", withExperience?.recommendation?.executiveApprovalRequired === true && !envelope?.authorityGranted && !prior?.authorityGranted]
+                ].map(([name, passed]) => ({ name, passed: passed === true }));
+
+                const passed = checks.filter((check) => check.passed).length;
+                console.table(checks);
+                console.info(`[MEOS ${this.version}] Recalled Experience → Future Cognition: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+                return {
+                    success: passed === checks.length,
+                    commission: "MADDY-CROSS-MADDY-EPISTEMIC-INTEGRATION-RECALLED-EXPERIENCE-FUTURE-COGNITION",
+                    schema: "meos.institutional-reasoning.recalled-experience-future-cognition-acceptance.v1",
+                    version: this.version,
+                    buildId: this.buildId,
+                    passed,
+                    total: checks.length,
+                    checks,
+                    before: { recommendation: withoutExperience?.recommendation?.state, evidenceScore: withoutExperience?.evidenceAssessment?.score },
+                    after: { recommendation: withExperience?.recommendation?.state, evidenceScore: withExperience?.evidenceAssessment?.score },
+                    priorExperience: this.clone(prior || null),
+                    completedAt: new Date().toISOString()
+                };
+            } finally {
+                recall.recall = originalRecall;
+                this.configuration.automaticPersistence = originalPersistence;
             }
         },
 
