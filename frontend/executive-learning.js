@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Learning Engine
- * Version: 1.2.0
+ * Version: 1.3.0
  *
  * Mission:
  * Convert completed work, outcomes, feedback, decisions, alerts, and executive
@@ -18,8 +18,8 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.2.0";
-    const BUILD_ID = "EL120-SELF-CORRECTION-BENEFIT-CALIBRATION-20260913-A";
+    const VERSION = "1.3.0";
+    const BUILD_ID = "EL130-CROSS-MADDY-EPISTEMIC-MEMORY-BRIDGE-20260913-A";
     const CALIBRATION_SCHEMA = "meos.maddy.self-correction-calibration.v1";
 
     const INDEXED_DB_NAME = "meos-local-executive-repository";
@@ -341,6 +341,26 @@
             return this.getStatus();
         },
 
+        extractEpistemicContinuity(input = {}) {
+            const candidates = [
+                input?.epistemicContinuity,
+                input?.metadata?.epistemicContinuity,
+                input?.evidenceAssessment?.epistemicContinuity,
+                input?.reasoningContext?.evidenceAssessment?.epistemicContinuity,
+                input?.raw?.epistemicContinuity,
+                input?.raw?.metadata?.epistemicContinuity
+            ];
+
+            const continuity = candidates.find(
+                (candidate) =>
+                    candidate &&
+                    typeof candidate === "object" &&
+                    candidate.schema === "meos.maddy.epistemic-continuity.v1"
+            );
+
+            return continuity ? this.clone(continuity) : null;
+        },
+
         observe(input = {}, options = {}) {
             const sourceType = String(
                 input.sourceType ||
@@ -421,6 +441,8 @@
                     Array.isArray(input.citations)
                         ? input.citations
                         : [],
+                epistemicContinuity:
+                    this.extractEpistemicContinuity(input),
                 confidence:
                     this.normalizeConfidence(
                         input.confidence
@@ -909,6 +931,12 @@
                                 observation.office,
                             citations:
                                 observation.citations,
+                            epistemicContinuity:
+                                this.clone(observation.epistemicContinuity),
+                            metadata: {
+                                epistemicContinuity:
+                                    this.clone(observation.epistemicContinuity)
+                            },
                             tags: [
                                 "institutional-learning",
                                 observation.outcomeType
@@ -966,6 +994,19 @@
                     this.recalculateLessonConfidence(
                         duplicate
                     );
+                const incomingContinuity =
+                    this.extractEpistemicContinuity(input);
+
+                if (incomingContinuity) {
+                    duplicate.epistemicContinuity =
+                        this.clone(incomingContinuity);
+                    duplicate.metadata = {
+                        ...(duplicate.metadata || {}),
+                        epistemicContinuity:
+                            this.clone(incomingContinuity)
+                    };
+                }
+
                 duplicate.updatedAt =
                     new Date().toISOString();
 
@@ -1039,6 +1080,8 @@
                         : [],
                 tags:
                     this.uniqueStrings(input.tags),
+                epistemicContinuity:
+                    this.extractEpistemicContinuity(input),
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 createdBy:
@@ -1053,11 +1096,18 @@
                 supersededAt: null,
                 supersededBy: null,
                 knowledgeRecordId: null,
-                metadata:
-                    input.metadata &&
+                metadata: {
+                    ...(input.metadata &&
                     typeof input.metadata === "object"
                         ? { ...input.metadata }
-                        : {}
+                        : {}),
+                    ...(this.extractEpistemicContinuity(input)
+                        ? {
+                            epistemicContinuity:
+                                this.extractEpistemicContinuity(input)
+                        }
+                        : {})
+                }
             };
 
             this.lessons.unshift(lesson);
@@ -1755,11 +1805,15 @@
                         alert.office ||
                         null,
                     confidence: 0.75,
+                    epistemicContinuity:
+                        this.extractEpistemicContinuity(alert),
                     metadata: {
                         category:
                             alert.category,
                         severity:
-                            alert.severityLabel
+                            alert.severityLabel,
+                        epistemicContinuity:
+                            this.extractEpistemicContinuity(alert)
                     }
                 }));
         },
@@ -2044,7 +2098,17 @@
                     validatedBy:
                         lesson.validatedBy,
                     citations:
-                        lesson.citations
+                        lesson.citations,
+                    epistemicContinuity:
+                        this.extractEpistemicContinuity(lesson),
+                    epistemicLineage: {
+                        sourceType: lesson.sourceType || null,
+                        sourceId: lesson.sourceId || null,
+                        sourceObservationIds:
+                            this.clone(lesson.sourceObservationIds || []),
+                        rule:
+                            "Institutional lessons must preserve the epistemic conditions under which they were learned so future recall can distinguish supported knowledge from flattened hindsight."
+                    }
                 },
                 createdBy: this.name
             };
@@ -3305,6 +3369,245 @@
             this.history = saved.history;
             this.analytics = saved.analytics;
             this.configuration.automaticPersistence = saved.automaticPersistence;
+            this.recalculateAnalytics();
+
+            return result;
+        },
+
+        runEpistemicMemoryRoundTripAcceptanceTest() {
+            const monitoring = global.ExecutiveMonitoring;
+            const knowledge = global.KnowledgeEngine;
+            const recall = global.ExecutiveRecall;
+
+            if (!monitoring || !knowledge?.createRecord || !recall?.recall) {
+                return {
+                    success: false,
+                    commission:
+                        "MADDY-CROSS-MADDY-EPISTEMIC-INTEGRATION-LEARNING-MEMORY-BRIDGE",
+                    version: this.version,
+                    buildId: this.buildId,
+                    error:
+                        "Executive Monitoring, Knowledge Engine, and Executive Recall are required for this acceptance test."
+                };
+            }
+
+            const saved = {
+                observations: this.clone(this.observations),
+                lessons: this.clone(this.lessons),
+                history: this.clone(this.history),
+                analytics: this.clone(this.analytics),
+                automaticPersistence:
+                    this.configuration.automaticPersistence,
+                monitoringAlerts:
+                    this.clone(monitoring.alerts || []),
+                knowledgeRecords:
+                    this.clone(knowledge.records || []),
+                knowledgeActivityLog:
+                    this.clone(knowledge.activityLog || []),
+                knowledgeAutomaticPersistence:
+                    knowledge.configuration?.automaticPersistence
+            };
+
+            this.configuration.automaticPersistence = false;
+            if (knowledge.configuration) {
+                knowledge.configuration.automaticPersistence = false;
+            }
+            this.observations = [];
+            this.lessons = [];
+
+            const subject =
+                "Epistemic Continuity Round Trip Fixture";
+            const continuity = {
+                schema: "meos.maddy.epistemic-continuity.v1",
+                available: true,
+                preserved: true,
+                subject,
+                sourceEvidenceCount: 3,
+                governedEvidenceCount: 3,
+                packageConfidence: 0.58,
+                epistemicClaims: [
+                    {
+                        claim: "The observed outcome supports hypothesis A only partially.",
+                        epistemicStatus: "supported-inference",
+                        sourceIndependence: {
+                            independentChainCount: 2
+                        },
+                        falsifiers: [
+                            "An authoritative record showing hypothesis B occurred."
+                        ]
+                    }
+                ],
+                realityReconstruction: {
+                    status: "unresolved-competing-explanations",
+                    leadingHypothesis: null,
+                    hypotheses: [
+                        { id: "hypothesis-a", status: "plausible" },
+                        { id: "hypothesis-b", status: "plausible" }
+                    ],
+                    discriminatingEvidence: [
+                        "Obtain the authoritative event record."
+                    ]
+                },
+                counterpartyIntelligence: {
+                    counterparties: [
+                        {
+                            actorId: "fixture-counterparty",
+                            contextualReliability: {
+                                status: "uncertain"
+                            }
+                        }
+                    ]
+                },
+                conflicts: [
+                    {
+                        summary: "Two plausible explanations remain unresolved."
+                    }
+                ],
+                preservationRule:
+                    "Preserve provenance, uncertainty, competing explanations, counterparty context, and falsifiers across learning and memory."
+            };
+
+            monitoring.alerts = [
+                {
+                    id: "fixture-epistemic-monitoring-alert",
+                    status: "resolved",
+                    title: subject,
+                    message:
+                        "The monitored decision produced an outcome that requires epistemic learning.",
+                    resolution:
+                        "The condition resolved, but the causal explanation remains uncertain.",
+                    category: "low-confidence-decision",
+                    severityLabel: "medium",
+                    recommendedAction:
+                        "Preserve uncertainty and seek discriminating evidence before repeating the decision pattern.",
+                    office: "Maddy",
+                    epistemicContinuity:
+                        this.clone(continuity)
+                }
+            ];
+
+            const scanned = this.scanResolvedAlerts();
+            const observationInput = scanned[0] || null;
+            const observed = observationInput
+                ? this.observe(observationInput, { actor: "Maddy" })
+                : { success: false };
+            const lesson = observed?.lessons?.[0] || null;
+            const knowledgeWrite = lesson
+                ? this.writeLessonToKnowledge(lesson)
+                : { success: false };
+            const knowledgeRecordId =
+                knowledgeWrite?.record?.id ||
+                knowledgeWrite?.id ||
+                lesson?.knowledgeRecordId ||
+                null;
+            const knowledgeRecord =
+                knowledgeRecordId && knowledge.getRecordById
+                    ? knowledge.getRecordById(knowledgeRecordId)
+                    : (knowledge.records || []).find(
+                        (item) => item.id === knowledgeRecordId
+                    ) || null;
+            const recalled = recall.recall(subject, {
+                limit: 20,
+                includeRelated: true
+            });
+            const recalledEvidence =
+                (recalled?.evidence || []).find(
+                    (item) =>
+                        item?.raw?.metadata?.epistemicContinuity?.schema ===
+                        "meos.maddy.epistemic-continuity.v1"
+                ) || null;
+            const recalledContinuity =
+                recalledEvidence?.raw?.metadata?.epistemicContinuity || null;
+
+            const checks = [
+                {
+                    name: "Resolved Monitoring alert enters Learning with the epistemic continuity envelope intact",
+                    passed:
+                        observationInput?.epistemicContinuity?.schema ===
+                        "meos.maddy.epistemic-continuity.v1"
+                },
+                {
+                    name: "Learning observation preserves the epistemic conditions of the observed consequence",
+                    passed:
+                        observed?.observation?.epistemicContinuity?.realityReconstruction?.status ===
+                        "unresolved-competing-explanations"
+                },
+                {
+                    name: "Derived institutional lesson preserves uncertainty instead of becoming flattened hindsight",
+                    passed:
+                        lesson?.epistemicContinuity?.realityReconstruction?.leadingHypothesis === null
+                },
+                {
+                    name: "Disconfirming and discriminating evidence survives into the learned lesson",
+                    passed:
+                        Array.isArray(lesson?.epistemicContinuity?.realityReconstruction?.discriminatingEvidence) &&
+                        lesson.epistemicContinuity.realityReconstruction.discriminatingEvidence.length === 1 &&
+                        Array.isArray(lesson?.epistemicContinuity?.epistemicClaims?.[0]?.falsifiers)
+                },
+                {
+                    name: "Counterparty context survives consequence learning",
+                    passed:
+                        lesson?.epistemicContinuity?.counterpartyIntelligence?.counterparties?.[0]?.actorId ===
+                        "fixture-counterparty"
+                },
+                {
+                    name: "Knowledge Engine record retains epistemic continuity and learning lineage",
+                    passed:
+                        knowledgeRecord?.metadata?.epistemicContinuity?.schema ===
+                        "meos.maddy.epistemic-continuity.v1" &&
+                        knowledgeRecord?.metadata?.epistemicLineage?.sourceType ===
+                        "monitoring-alert"
+                },
+                {
+                    name: "Executive Recall returns the learned knowledge with its epistemic continuity still machine-readable",
+                    passed:
+                        recalled?.success === true &&
+                        recalledContinuity?.realityReconstruction?.status ===
+                        "unresolved-competing-explanations" &&
+                        recalledContinuity?.epistemicClaims?.[0]?.falsifiers?.length === 1
+                },
+                {
+                    name: "Learning-memory continuity preserves uncertainty without creating new truth or execution authority",
+                    passed:
+                        recalledContinuity?.realityReconstruction?.leadingHypothesis === null &&
+                        knowledgeRecord?.authority !== "authoritative" &&
+                        knowledgeRecord?.metadata?.epistemicContinuity?.preserved === true
+                }
+            ];
+
+            const result = {
+                success: checks.every((item) => item.passed),
+                commission:
+                    "MADDY-CROSS-MADDY-EPISTEMIC-INTEGRATION-LEARNING-MEMORY-BRIDGE",
+                schema:
+                    "meos.executive-learning.epistemic-memory-round-trip-acceptance.v1",
+                version: this.version,
+                buildId: this.buildId,
+                passed: checks.filter((item) => item.passed).length,
+                total: checks.length,
+                checks,
+                observationContinuity:
+                    this.clone(observed?.observation?.epistemicContinuity || null),
+                lessonContinuity:
+                    this.clone(lesson?.epistemicContinuity || null),
+                recalledContinuity:
+                    this.clone(recalledContinuity),
+                completedAt: new Date().toISOString()
+            };
+
+            this.observations = saved.observations;
+            this.lessons = saved.lessons;
+            this.history = saved.history;
+            this.analytics = saved.analytics;
+            this.configuration.automaticPersistence =
+                saved.automaticPersistence;
+            monitoring.alerts = saved.monitoringAlerts;
+            knowledge.records = saved.knowledgeRecords;
+            knowledge.activityLog = saved.knowledgeActivityLog;
+            if (knowledge.configuration) {
+                knowledge.configuration.automaticPersistence =
+                    saved.knowledgeAutomaticPersistence;
+            }
             this.recalculateAnalytics();
 
             return result;
