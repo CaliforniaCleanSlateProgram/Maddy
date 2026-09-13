@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32170942/MEOS_BUILD_STATE.md)
+[Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32153443/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
@@ -1670,3 +1670,173 @@ The sequence remains one connected identity/cognition architecture. Do not imple
 Re-anchor to the repository after this Build State checkpoint is committed. Then perform the no-code Cross-Maddy Epistemic Integration trace before writing Commission 5. Follow a real material claim/reconstruction/counterparty judgment through the existing Search → Brain → Evidence → Institutional Reasoning → Planning → Decision → Hallway → Monitoring → Learning → Knowledge/Memory/Recall path and identify exactly where epistemic structure is lost, flattened, duplicated, or disconnected.
 
 The next bounded commission must close the highest-leverage demonstrated cross-organ epistemic break while preserving the rule: **one idea → one file → one commit → one test → commission.**
+
+## Commissioned checkpoint — QDPA Epistemic Moat Complete — 2026-09-13
+
+Status: **COMMISSIONED — six-commission live runtime sequence complete.**
+
+This checkpoint records completion of the connected QDPA epistemic sequence. It does not replace, shorten, reinterpret, or weaken the Project Maddy North Star, Spooky standard, persistence authority, privacy boundary, provider-neutrality doctrine, or existing governance language.
+
+### Governing epistemic identity
+
+Maddy does not inherit truth from a model, source, majority, authority, counterparty, search ranking, advertisement, repeated claim, or her own prior conclusion. She constructs and continuously revises the best evidence-grounded model of reality available to her, preserving provenance, uncertainty, contradiction, perspective, incentives, temporal validity, competing explanations, and outcomes. She actively seeks evidence capable of changing important beliefs. What reality subsequently reveals becomes experience that changes how Maddy evaluates future reality.
+
+QDPA Reality Principle:
+
+**Do not stop at the observable story. Search for the deeper structure capable of explaining the observations, test competing structures against reality, and revise the model when reality disagrees.**
+
+Standing user-benefit orientation:
+
+**For every material change in Maddy's understanding of reality, determine whether it creates meaningful benefit, risk, opportunity, leverage, required action, attention protection, or no meaningful change for the user. If it does, determine the highest-value governed response. If it does not, do not consume the user's attention merely to demonstrate activity.**
+
+### Commission 1 of 6 — Epistemic Identity Contract — COMMISSIONED
+
+- Executive Evidence Integrity `1.1.0` / `EEI110-EPISTEMIC-IDENTITY-CONTRACT-20260913-A` established `meos.maddy.epistemic-claim.v1`.
+- Material claims can carry provenance, source/actor context, evidence lineage, independence, contradiction, uncertainty, freshness, epistemic status, and evidence capable of changing belief rather than being stored as naked facts.
+- Live acceptance passed `8/8`.
+
+### Commission 2 of 6 — Reality Reconstruction — COMMISSIONED
+
+- Executive Evidence Integrity `1.2.0` / `EEI120-REALITY-RECONSTRUCTION-20260913-A` established `meos.maddy.reality-reconstruction.v1`.
+- Competing narratives remain live when evidence does not justify certainty.
+- Shared-origin repetition collapses to evidentiary lineage instead of becoming false corroboration.
+- Different perspective does not automatically mean deception; identical stories do not automatically mean truth.
+- Discriminating and disconfirming evidence remains explicit.
+- Live acceptance passed `8/8`.
+
+### Commission 3 of 6 — Counterparty Intelligence — COMMISSIONED
+
+- Executive Evidence Integrity `1.3.0` / `EEI130-COUNTERPARTY-INTELLIGENCE-20260913-A` established `meos.maddy.counterparty-intelligence.v1` inside the existing evidence organ rather than as a disconnected engine.
+- Counterparties are modeled as evolving evidence-grounded relationships with contextual reliability, incentives, commitments, contradictions, outcomes, actor context, and evidence-chain independence.
+- No universal trust score was created.
+- Live acceptance passed `8/8`.
+
+### Commission 4 of 6 — Self-Correction & User-Benefit Calibration — COMMISSIONED
+
+- Executive Learning `1.2.0` / `EL120-SELF-CORRECTION-BENEFIT-CALIBRATION-20260913-A` established `meos.maddy.self-correction-calibration.v1` inside the existing Learning organ.
+- Maddy can preserve prior belief, prediction, confidence, recommendation, intended user benefit, later observed outcome, realized benefit, prediction error, benefit gap, falsifiers, and bounded contextual recalibration.
+- Prior beliefs are not rewritten after outcomes become known.
+- Calibration remains contextual and cannot silently change authority.
+- Live acceptance passed `8/8`.
+
+### Commission 5 of 6 — Cross-Maddy Epistemic Integration — COMMISSIONED
+
+The epistemic structure is proven across the cognitive round trip rather than ending inside Evidence Integrity.
+
+#### 5A — Institutional Reasoning Bridge
+- Institutional Reasoning `1.2.0` / `IR120-CROSS-MADDY-EPISTEMIC-INTEGRATION-20260913-A`.
+- Existing `meos.maddy.epistemic-continuity.v1` envelope survives Evidence Integrity → Institutional Reasoning → Planning → Decision.
+- Live acceptance passed `8/8`.
+
+#### 5B — Monitoring Bridge
+- Executive Monitoring `1.2.0` / `EM120-EPISTEMIC-CONTINUITY-MONITORING-BRIDGE-20260913-A`.
+- Decision monitoring preserves competing explanations, uncertainty, discriminating evidence, counterparty context, conflicts, provenance-linked structure, and package confidence rather than flattening a material decision to a scalar confidence alert.
+- Governed Automation handoff preserves the same envelope without creating new execution authority.
+- Live acceptance passed `8/8`.
+
+#### 5C — Learning / Memory Bridge
+- Executive Learning `1.3.0` / `EL130-CROSS-MADDY-EPISTEMIC-MEMORY-BRIDGE-20260913-A`.
+- Resolved monitored consequence enters Learning with epistemic conditions intact.
+- Derived institutional lessons preserve unresolved uncertainty rather than becoming flattened hindsight.
+- Knowledge Engine records retain epistemic continuity and learning lineage.
+- Executive Recall returns learned knowledge with the continuity machine-readable.
+- Live acceptance passed `8/8`.
+
+#### 5D — Recalled Experience → Future Cognition
+- Institutional Reasoning `1.3.0` / `IR130-RECALLED-EXPERIENCE-FUTURE-COGNITION-20260913-A`.
+- Recalled consequence-grounded lessons re-enter future reasoning as challengeable prior Maddy experience rather than automatic truth or ordinary flattened fresh evidence.
+- Prior experience preserves its original uncertainty, competing explanations, falsifiers, discriminating evidence, counterparty context, and provenance.
+- Live acceptance passed `8/8` and demonstrated an actual future-judgment change through the ordinary evidence-grounded reasoning path: the controlled fixture moved from `HOLD` at evidence score `0.18` to `PROCEED WITH CONDITIONS` at `0.59` when relevant consequence-grounded prior experience returned.
+- The experience did not grant new execution or approval authority.
+
+Commission 5 closed-loop proof:
+
+**Evidence → Reality Reconstruction → Institutional Reasoning → Planning → Decision → Monitoring → Learning → Knowledge → Recall → Future Reasoning.**
+
+Maddy's memory is not truth. Maddy's experience is evidence that Maddy herself remains capable of challenging.
+
+### Commission 6 of 6 — The Shop Truth Surface — COMMISSIONED
+
+Version / build:
+- Office Dashboard `4.13.0`
+- `OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A`
+
+Commission objective:
+- Expose the commissioned epistemic cognition through the existing Maddy-centered Executive Workspace / The Shop without creating a second truth authority, disconnected dashboard, or decorative intelligence surface.
+
+Commissioned behavior:
+- The Shop reads the commissioned `meos.maddy.epistemic-continuity.v1` envelope.
+- Verified, disputed, inferred, marketed, supported, and unknown conditions remain distinguishable rather than collapsing into polished certainty.
+- Apparent source count remains distinct from independent evidentiary chains so repetition cannot visually masquerade as corroboration.
+- Competing explanations can remain unresolved on the executive surface.
+- Discriminating and falsifying evidence remains visible as what could change Maddy's mind.
+- Counterparty context and prior consequence-grounded Maddy experience can survive into the human-facing work surface.
+- The surface connects reality to user benefit rather than merely displaying epistemic metadata.
+- If epistemic continuity is absent, the truth surface degrades visibly rather than manufacturing certainty from presentation.
+- The Shop creates no truth, execution, approval, or persistence authority.
+
+Live runtime acceptance evidence:
+- Runtime loaded Office Dashboard `4.13.0` with The Shop Truth Surface build `OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A` online.
+- `MEOSOfficeDashboard.runShopTruthSurfaceAcceptanceTest()` returned `success: true`, `passed: 8`, `total: 8`, exact version `4.13.0`, exact build `OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A`.
+- All eight acceptance checks passed, including commissioned-envelope reuse, epistemic-state distinction, source-independence display, unresolved competing explanations, change-my-mind evidence, counterparty/prior-experience continuity, user-benefit connection, and preservation of authority boundaries.
+
+Commission result:
+
+**The six-part QDPA epistemic sequence is COMMISSIONED.**
+
+This is a connected epistemic architecture, not six independent features:
+
+**provenance → claim/evidence independence → competing explanations → counterparty context → uncertainty → governed reasoning → consequence → learning → recalled experience → changed future judgment → human-visible truth state.**
+
+### What this checkpoint does not claim
+
+- It does not claim artificial phenomenal consciousness has been demonstrated.
+- It does not make Maddy infallible or convert confidence into truth.
+- It does not make Maddy's memory or prior conclusions privileged truth.
+- It does not make The Shop a truth authority.
+- It does not complete the larger persistent Case/workroom architecture for The Shop.
+- It does not resolve unrelated Mission authority, active-state, Internet deployment persistence, or other separate runtime concerns.
+- It does not lower the requirement that future work continue pushing the North Star and exact Spooky standard.
+
+### Separate live-state concerns remain separate
+
+Latest supplied live runtime during The Shop Truth Surface acceptance reports:
+- Mission Engine durable authority hydration: `READY` from `meos-institutional-repository`.
+- Mission Engine `totalActive: 20`.
+- Mission Dispatcher `running: false`.
+- Dispatcher startup reason: `office_dispatch_authority_not_effective`.
+
+These are runtime evidence requiring their own investigation. Do not infer that `20` active Missions are legitimate or defective without tracing them. Do not infer that stopped office dispatch is correct governance or a broken seam without authority inspection. Do not silently repair either condition inside an unrelated commission.
+
+Cross-deploy Internet index/frontier persistence also remains a separate infrastructure proof obligation unless durable deployment storage has been directly verified across service replacement.
+
+### Post-QDPA engineering position
+
+The epistemic moat is now a commissioned foundation, not the end of Project Maddy.
+
+The governing continuous cognitive target remains:
+
+**Experience → awareness → attention → recall → world context + self context → meaning → recursive reasoning → intention → choice → action through the Executive Hallway and offices → real consequence → verification → reflection → learning → memory formation/consolidation → changed world model + changed self-model → unresolved intentions carried forward → next cognitive moment.**
+
+The next Spooky frontier must be selected by evidence rather than by feature enthusiasm. Before another feature commission, resume the no-code connection/gap audit against the now-commissioned epistemic architecture and current live runtime.
+
+At minimum investigate:
+- whether `office_dispatch_authority_not_effective` is correct governed authority or a broken execution seam;
+- whether `totalActive: 20` represents legitimate current work or renewed active-state accumulation;
+- whether real organizational work, not only acceptance fixtures, carries the commissioned epistemic envelope through consequence and future cognition;
+- whether The Shop should next evolve toward the persistent Case/workroom model where Maddy's intentions, who-has-the-ball, dependencies, external waiting, follow-up, outcomes, learning, and consequence propagation remain continuous;
+- whether world-model / causal / temporal / portfolio cognition now represents the highest-leverage missing connection;
+- whether durable Internet knowledge/frontier survives actual service replacement;
+- whether the first saleable customer path remains honest, governed, provider-neutral, economically responsible, and visibly one Maddy rather than a collection of engines.
+
+Do not code the next feature until the highest-leverage real missing connection is demonstrated.
+
+Then choose the smallest bounded commission that closes that demonstrated gap under:
+
+**one idea → one file → one commit → one test → commission.**
+
+And continue to apply the exact Spooky gate:
+
+**edge of what's possible---sometimes past what is seemingly impossible today; as Einstein put it "Spooky stuff" or from a distance; beyond human thought process---that is the bar.**
+
+**Always Push Forward.**
