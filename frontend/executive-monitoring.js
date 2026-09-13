@@ -1,8 +1,8 @@
 /*
  * MEOS Executive Monitoring Engine
  * Commission Candidate: 006.031H — Governed Monitoring & Follow-up Autonomy
- * Version: 1.1.0
- * Build: EM110-GOVERNED-MONITORING-FOLLOWUP-AUTONOMY-20260817-A
+ * Version: 1.2.0
+ * Build: EM120-EPISTEMIC-CONTINUITY-MONITORING-BRIDGE-20260913-A
  *
  * Mission:
  * Continuously observe MEOS operational state, detect risks, deadline pressure,
@@ -47,8 +47,8 @@
 
     const ExecutiveMonitoring = {
         name: "MEOS Executive Monitoring Engine",
-        version: "1.1.0",
-        buildId: "EM110-GOVERNED-MONITORING-FOLLOWUP-AUTONOMY-20260817-A",
+        version: "1.2.0",
+        buildId: "EM120-EPISTEMIC-CONTINUITY-MONITORING-BRIDGE-20260913-A",
         commission: COMMISSION,
         status: "initializing",
         operatingMode: "continuous-executive-oversight",
@@ -895,15 +895,37 @@
                         "Maddy",
                     recommendedAction:
                         "Gather stronger evidence, resolve conflicts, or request executive collaboration before approval.",
+                    epistemicContinuity:
+                        this.extractEpistemicContinuity(decision),
                     metadata: {
                         confidence:
                             decision.recommendation?.confidence ||
                             0,
                         recommendationType:
                             decision.recommendation?.type ||
-                            null
+                            null,
+                        epistemicContinuity:
+                            this.extractEpistemicContinuity(decision)
                     }
                 }));
+        },
+
+        extractEpistemicContinuity(entity = {}) {
+            const candidates = [
+                entity?.epistemicContinuity,
+                entity?.evidenceAssessment?.epistemicContinuity,
+                entity?.reasoningContext?.evidenceAssessment?.epistemicContinuity,
+                entity?.reasoningContext?.epistemicContinuity,
+                entity?.metadata?.epistemicContinuity
+            ];
+
+            const continuity = candidates.find((candidate) =>
+                candidate &&
+                typeof candidate === "object" &&
+                candidate.schema === "meos.maddy.epistemic-continuity.v1"
+            );
+
+            return continuity ? this.clone(continuity) : null;
         },
 
         detectAutomationFailures(snapshot) {
@@ -1328,6 +1350,12 @@
                 existing.message = detection.message;
                 existing.recommendedAction =
                     detection.recommendedAction;
+                existing.epistemicContinuity =
+                    this.clone(
+                        detection.epistemicContinuity ||
+                        detection.metadata?.epistemicContinuity ||
+                        null
+                    );
                 existing.metadata = detection.metadata || {};
                 existing.lastDetectedAt = timestamp;
                 existing.detectionCount =
@@ -1359,6 +1387,12 @@
                     detection.metricValue ?? null,
                 recommendedAction:
                     detection.recommendedAction || "",
+                epistemicContinuity:
+                    this.clone(
+                        detection.epistemicContinuity ||
+                        detection.metadata?.epistemicContinuity ||
+                        null
+                    ),
                 metadata: detection.metadata || {},
                 firstDetectedAt: timestamp,
                 lastDetectedAt: timestamp,
@@ -1596,6 +1630,8 @@
                 message: alert.message,
                 recommendedAction:
                     alert.recommendedAction,
+                epistemicContinuity:
+                    this.clone(alert.epistemicContinuity || null),
                 raw: alert
             };
 
@@ -3160,6 +3196,128 @@
                 version: this.version,
                 buildId: this.buildId,
                 success,
+                passed,
+                total: checks.length,
+                checks
+            };
+        },
+
+        runEpistemicContinuityMonitoringAcceptanceTest() {
+            const originalDecision = global.ExecutiveDecision;
+            const originalAutomation = global.ExecutiveAutomation;
+            const originalAlerts = this.alerts;
+            const originalSnapshots = this.snapshots;
+            const originalHistory = this.history;
+            const originalNotification = this.configuration.automaticNotificationEnabled;
+            const originalHandoff = this.configuration.automaticAutomationHandoffEnabled;
+            const checks = [];
+            let handedOffContext = null;
+
+            const continuity = {
+                schema: "meos.maddy.epistemic-continuity.v1",
+                available: true,
+                preserved: true,
+                subject: "Which Three Bears explanation is best supported?",
+                sourceEvidenceCount: 3,
+                independentEvidenceChains: 2,
+                epistemicClaims: [
+                    { id: "claim-a", epistemicStatus: "disputed", confidence: 0.52 }
+                ],
+                realityReconstruction: {
+                    status: "unresolved-competing-explanations",
+                    leadingHypothesis: null,
+                    competingHypotheses: ["hypothesis-a", "hypothesis-b"],
+                    discriminatingEvidence: ["timestamped-camera-record"]
+                },
+                counterpartyIntelligence: {
+                    counterpartiesObserved: 2
+                },
+                conflicts: ["witness accounts disagree"],
+                packageConfidence: 0.52
+            };
+
+            try {
+                this.alerts = [];
+                this.snapshots = [];
+                this.history = [];
+                this.configuration.automaticNotificationEnabled = false;
+                this.configuration.automaticAutomationHandoffEnabled = false;
+
+                global.ExecutiveDecision = {
+                    decisions: [{
+                        id: "decision-epistemic-monitoring-fixture",
+                        title: "Three Bears explanation",
+                        status: "awaiting-approval",
+                        executiveOwner: "Maddy",
+                        recommendation: {
+                            type: "defer-for-evidence",
+                            confidence: 0.52
+                        },
+                        evidenceAssessment: {
+                            score: 0.52,
+                            epistemicContinuity: this.clone(continuity)
+                        }
+                    }]
+                };
+
+                global.ExecutiveAutomation = {
+                    scan: (provider) => {
+                        const items = provider();
+                        handedOffContext = items?.[0] || null;
+                        return {
+                            success: true,
+                            results: [{ run: { id: "automation-run-epistemic-fixture" } }]
+                        };
+                    }
+                };
+
+                const snapshot = this.collectSnapshot();
+                const detections = this.detectLowConfidenceDecisions(snapshot);
+                const detection = detections[0] || null;
+                const upsert = detection
+                    ? this.upsertAlert(detection, {
+                        humanDirected: true,
+                        source: "acceptance-test"
+                    })
+                    : null;
+                const alert = upsert?.alert || null;
+                const handoff = alert
+                    ? this.handoffAlertToAutomation(alert, {
+                        humanDirected: true,
+                        source: "acceptance-test"
+                    })
+                    : null;
+
+                const add = (name, passed) => checks.push({ name, passed: passed === true });
+                add("Monitoring detects the material low-confidence decision", detections.length === 1);
+                add("Detection preserves the epistemic continuity envelope", detection?.epistemicContinuity?.schema === "meos.maddy.epistemic-continuity.v1");
+                add("Competing explanations remain unresolved instead of being flattened into the confidence scalar", detection?.epistemicContinuity?.realityReconstruction?.leadingHypothesis === null && detection?.epistemicContinuity?.realityReconstruction?.competingHypotheses?.length === 2);
+                add("Discriminating evidence survives the monitoring boundary", detection?.epistemicContinuity?.realityReconstruction?.discriminatingEvidence?.includes("timestamped-camera-record") === true);
+                add("Counterparty context survives the monitoring boundary", detection?.epistemicContinuity?.counterpartyIntelligence?.counterpartiesObserved === 2);
+                add("Persisted monitoring alert retains the same epistemic continuity envelope", alert?.epistemicContinuity?.schema === "meos.maddy.epistemic-continuity.v1" && alert?.epistemicContinuity?.packageConfidence === 0.52);
+                add("Governed automation handoff carries epistemic continuity instead of only an alert string", handoff?.success === true && handedOffContext?.epistemicContinuity?.realityReconstruction?.status === "unresolved-competing-explanations");
+                add("Monitoring does not convert epistemic continuity into authority", alert?.provenance?.humanDirected === true && alert?.provenance?.autonomous === false && handedOffContext?.raw?.status === ALERT_STATUSES.OPEN);
+            } finally {
+                global.ExecutiveDecision = originalDecision;
+                global.ExecutiveAutomation = originalAutomation;
+                this.alerts = originalAlerts;
+                this.snapshots = originalSnapshots;
+                this.history = originalHistory;
+                this.configuration.automaticNotificationEnabled = originalNotification;
+                this.configuration.automaticAutomationHandoffEnabled = originalHandoff;
+            }
+
+            const passed = checks.filter((item) => item.passed).length;
+            const success = passed === checks.length;
+            console.table(checks);
+            console.info(`[MEOS ${this.version}] Cross-Maddy Epistemic Monitoring Bridge: ${success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+
+            return {
+                success,
+                commission: "MADDY-CROSS-MADDY-EPISTEMIC-INTEGRATION-MONITORING-BRIDGE",
+                schema: "meos.executive-monitoring.cross-maddy-epistemic-integration-acceptance.v1",
+                version: this.version,
+                buildId: this.buildId,
                 passed,
                 total: checks.length,
                 checks
