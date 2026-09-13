@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Grant Office
  *
- * Version: 1.12.1
- * Build: GO1121-HUMAN-DOCUMENT-DEPENDENCY-RESUME-20260913-A
+ * Version: 1.12.2
+ * Build: GO1122-DOCUMENT-DEPENDENCY-CLASSIFICATION-FIX-20260913-A
  *
  * Mission:
  * Protect executive time by converting large volumes of possible funding
@@ -24,8 +24,8 @@
     "use strict";
 
     const NAME = "MEOS Grant Office";
-    const VERSION = "1.12.1";
-    const BUILD_ID = "GO1121-HUMAN-DOCUMENT-DEPENDENCY-RESUME-20260913-A";
+    const VERSION = "1.12.2";
+    const BUILD_ID = "GO1122-DOCUMENT-DEPENDENCY-CLASSIFICATION-FIX-20260913-A";
     const STORAGE_KEY = "meos.grant-office.v1";
     const SCHEMA = "meos.grant-office.opportunity.v1";
 
@@ -3907,15 +3907,29 @@
             // Only document/attachment blockers are surfaced here; certifications, signatures,
             // spending, and final submission retain their separate governance boundaries.
             const documentBlockers = requiredItems
-                .filter((item) =>
-                    item.complete !== true &&
-                    (
-                        String(item.id || "").startsWith("required-document-") ||
-                        /required document|attachment|ein|irs|articles|incorporation|oag|attorney general|w-9|990|insurance|bylaws|financial|budget/i.test(
-                            String(item.label || "")
-                        )
-                    )
-                )
+                .filter((item) => {
+                    if (item.complete === true) {
+                        return false;
+                    }
+
+                    const id = String(item.id || "");
+                    const source = String(item.source || "");
+                    const label = String(item.label || "");
+
+                    // A preparation task that happens to mention a document-like word
+                    // is not itself a missing institutional document. For example,
+                    // "Project budget completed and approved" is preparation work,
+                    // while a funder-required budget attachment enters through the
+                    // required-document/custom attachment path. Keep this dependency
+                    // boundary structural so Maddy only interrupts the human for
+                    // actual missing files/records.
+                    return (
+                        id.startsWith("required-document-") ||
+                        /document|attachment/i.test(source) ||
+                        /^Required document:/i.test(label) ||
+                        /^Required attachment:/i.test(label)
+                    );
+                })
                 .map((item) => ({
                     id: item.id,
                     document: String(item.label || "Required document")
