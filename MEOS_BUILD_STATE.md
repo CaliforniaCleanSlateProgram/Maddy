@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE(1).md](https://github.com/user-attachments/files/32152208/MEOS_BUILD_STATE.1.md)
+[MEOS_BUILD_STATE (2).md](https://github.com/user-attachments/files/32152391/MEOS_BUILD_STATE.2.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -1056,3 +1056,56 @@ Current limitation / next engineering direction:
 
 Commission result:
 **MEOS-INTERNET-NODE-004 — Storage-Aware Independent Discovery is commissioned.**
+
+## Commissioned checkpoint — MEOS-INTERNET-NODE-005 — Persistent Discovery Frontier — 2026-09-12
+
+Status: **COMMISSIONED — runtime acceptance passed.**
+
+Version / build:
+- MEOS Internet Node `0.3.0`
+- `MIN005-PERSISTENT-DISCOVERY-FRONTIER-20260912-A`
+
+Commission objective:
+- Advance Node-004 owned-frontier initiation into a bounded persistent discovery frontier so public-web links discovered by Maddy can survive individual crawl cycles and become candidates for later Maddy-owned discovery.
+- Continue reducing dependence on external search providers without attempting whole-Internet crawling on current laptop-scale infrastructure.
+- Preserve the Internet Node as public-web observation/evidence infrastructure only; it does not become institutional truth authority, semantic conclusion authority, or independent action authority.
+
+Commissioned behavior:
+- Public-web links discovered during crawling can persist as MEOS-owned frontier entries beyond the crawl that discovered them.
+- Frontier entries retain discovery provenance and operational state including discovery time, priority, depth, attempt history, last attempt, and result state.
+- Owned discovery prioritizes pending frontier candidates before falling back to revisitation of already-indexed pages.
+- Frontier growth is bounded to 5,000 entries by default to prevent uncontrolled laptop-scale resource consumption.
+- Existing 256 MB default index storage ceiling remains in force unless explicitly configured otherwise.
+- Existing SHA-256 content deduplication remains in force so equivalent content is not needlessly retained under multiple URLs.
+- Existing robots awareness, public-address safety restrictions, provenance, bounded crawling, storage-budget enforcement, and provider-independent search architecture remain in force.
+- `POST /api/internet/discover` can select a persisted Maddy-discovered URL without the caller supplying that URL and without an external search provider choosing the next destination.
+- The Node-004 discovery-seed duplicate-return artifact was corrected as part of the persistent-frontier implementation.
+
+Runtime acceptance evidence:
+- `/api/internet/status` reported version `0.3.0` and build `MIN005-PERSISTENT-DISCOVERY-FRONTIER-20260912-A`.
+- A controlled crawl was initiated from `https://californiacleanslateprogram.org/` with one page requested.
+- The crawl attempted 1 page, indexed 1 page, and retained 17 frontier entries with 17 pending.
+- The indexed CCSP page occupied 7,044 bytes of the bounded Internet index.
+- Runtime reported zero storage-budget skips and zero duplicate-content skips during the initial CCSP crawl.
+- A subsequent `POST /api/internet/discover` call supplied no destination URL.
+- Maddy selected `https://californiacleanslateprogram.org/index.html` from her MEOS-owned persistent frontier.
+- The discovery response reported `source: "meos-owned-frontier"` and `externalSearchProviderUsed: false`.
+- Retrieval recognized that the selected URL resolved to content already held by Maddy and reported `duplicateContentSkipped: 1`, preventing unnecessary duplicate storage.
+- This proves the operational chain: human supplies one public doorway → Maddy crawls it → Maddy discovers additional Internet doors → Maddy persists those candidates → Maddy independently selects a later door from her own frontier → Maddy retrieves it without an external search provider choosing the destination → duplicate knowledge is rejected rather than wasting storage.
+
+Architectural identity boundary remains in force:
+- **Maddy works for CCSP. Maddy is not CCSP.**
+- California Clean Slate Program was used as the real-world proving doorway for this acceptance test because it is the current proving organization.
+- CCSP does not define Maddy's Internet, identity, cognition, worldview, or MEOS Core boundary.
+- Organization-specific authority and private knowledge must remain separated from universal Maddy/MEOS Core as the architecture expands to future organizations.
+
+Current limitation / next engineering direction:
+- Node-005 proves persistence and reuse of discovered frontier candidates; it does not yet constitute a mature autonomous search engine or whole-Internet discovery system.
+- The next Internet commission must be selected from the live repository authority after re-reading the North Star and this Build State.
+- Likely next leverage is intelligent frontier quality: stronger candidate normalization/filtering, usefulness/freshness/authority prioritization, selective recrawl/freshness policy, and additional provider-independent public discovery signals where justified.
+- Do not mechanically increase crawl volume merely to create activity. Discovery must remain bounded, storage-aware, economically governed, useful to Maddy's work, and progressively less dependent on external search providers.
+- Continue the infrastructure principle: **Storage is scarce; knowledge is valuable. Maddy should optimize for retained knowledge per byte, not pages collected.**
+
+Commission result:
+**MEOS-INTERNET-NODE-005 — Persistent Discovery Frontier is commissioned.**
+
