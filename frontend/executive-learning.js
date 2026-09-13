@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Learning Engine
- * Version: 1.1.0
+ * Version: 1.2.0
  *
  * Mission:
  * Convert completed work, outcomes, feedback, decisions, alerts, and executive
@@ -18,8 +18,9 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.1.0";
-    const BUILD_ID = "EL110-DURABLE-AUTHORITY-FLIP-20260808-A";
+    const VERSION = "1.2.0";
+    const BUILD_ID = "EL120-SELF-CORRECTION-BENEFIT-CALIBRATION-20260913-A";
+    const CALIBRATION_SCHEMA = "meos.maddy.self-correction-calibration.v1";
 
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -278,6 +279,7 @@
             maximumLessons: 5000,
             maximumObservations: 10000,
             maximumFeedbackRecords: 5000,
+            maximumCalibrationRecords: 5000,
             maximumHistory: 5000,
             duplicateSimilarityThreshold: 0.88,
             defaultConfidence: 0.5,
@@ -291,6 +293,7 @@
         observations: [],
         lessons: [],
         feedback: [],
+        calibrations: [],
         history: [],
         eventListeners: {},
         scannerId: null,
@@ -303,6 +306,8 @@
             validatedLessons: 0,
             rejectedLessons: 0,
             totalFeedback: 0,
+            totalCalibrations: 0,
+            lastCalibrationAt: null,
             lastScanAt: null,
             lastLessonAt: null
         },
@@ -514,6 +519,267 @@
                     this.clone(observation),
                 lessons:
                     this.clone(lessons)
+            };
+        },
+
+        normalizeBenefit(input = {}) {
+            const source =
+                typeof input === "string"
+                    ? { description: input }
+                    : (input && typeof input === "object" ? input : {});
+
+            const value = Number(source.value ?? source.amount);
+
+            return {
+                type: String(source.type || source.category || "unspecified").trim() || "unspecified",
+                description: String(source.description || source.summary || "").trim(),
+                value: Number.isFinite(value) ? value : null,
+                unit: String(source.unit || "").trim() || null,
+                direction: ["increase", "decrease", "avoid", "protect", "neutral"].includes(String(source.direction || "").toLowerCase())
+                    ? String(source.direction).toLowerCase()
+                    : "neutral"
+            };
+        },
+
+        assessBenefit(intended = {}, realized = {}) {
+            const comparable =
+                intended.value !== null &&
+                realized.value !== null &&
+                (!intended.unit || !realized.unit || intended.unit === realized.unit);
+
+            let status = "unknown";
+            let gap = null;
+
+            if (comparable) {
+                gap = Number((realized.value - intended.value).toFixed(6));
+                if (realized.value < 0) {
+                    status = "harm";
+                } else if (intended.value === 0) {
+                    status = realized.value > 0 ? "realized" : "neutral";
+                } else {
+                    const ratio = realized.value / intended.value;
+                    status = ratio >= 0.9
+                        ? "realized"
+                        : ratio > 0
+                            ? "partially-realized"
+                            : "not-realized";
+                }
+            } else if (realized.description) {
+                status = "observed-unquantified";
+            }
+
+            return {
+                status,
+                comparable,
+                gap,
+                rule: "A material change in Maddy's understanding is incomplete until she evaluates whether it created benefit, risk, opportunity, leverage, required action, or no meaningful change for the user."
+            };
+        },
+
+        assessPrediction(input = {}) {
+            const explicit = String(
+                input.predictionResult ||
+                input.predictionAssessment ||
+                ""
+            ).trim().toLowerCase();
+
+            const aliases = {
+                correct: "supported",
+                supported: "supported",
+                true: "supported",
+                incorrect: "missed",
+                wrong: "missed",
+                missed: "missed",
+                false: "missed",
+                partial: "partially-supported",
+                "partially-supported": "partially-supported",
+                unresolved: "unresolved",
+                unknown: "unresolved"
+            };
+
+            let status = aliases[explicit] || null;
+
+            if (!status && typeof input.predictionWasCorrect === "boolean") {
+                status = input.predictionWasCorrect ? "supported" : "missed";
+            }
+
+            if (!status) {
+                status = "unresolved";
+            }
+
+            return {
+                status,
+                resolved: status !== "unresolved",
+                score: status === "supported" ? 1 : status === "missed" ? 0 : status === "partially-supported" ? 0.5 : null
+            };
+        },
+
+        recordCalibration(input = {}, options = {}) {
+            const domain = String(
+                input.domain ||
+                input.context?.domain ||
+                input.subjectType ||
+                "general"
+            ).trim() || "general";
+
+            const predictionStatement = String(
+                input.prediction?.statement ||
+                input.prediction ||
+                input.expectedOutcome ||
+                ""
+            ).trim();
+
+            const actualSummary = String(
+                input.actualOutcome?.summary ||
+                input.actualOutcome ||
+                input.result ||
+                ""
+            ).trim();
+
+            if (!predictionStatement || !actualSummary) {
+                return {
+                    success: false,
+                    error: "A prior prediction and observed actual outcome are required for self-correction calibration."
+                };
+            }
+
+            if (this.calibrations.length >= this.configuration.maximumCalibrationRecords) {
+                return {
+                    success: false,
+                    error: "The self-correction calibration limit has been reached."
+                };
+            }
+
+            const predictionConfidence = this.normalizeConfidence(
+                input.prediction?.confidence ??
+                input.predictionConfidence ??
+                input.confidence
+            );
+            const predictionAssessment = this.assessPrediction(input);
+            const intendedUserBenefit = this.normalizeBenefit(
+                input.intendedUserBenefit || input.expectedUserBenefit || {}
+            );
+            const realizedUserBenefit = this.normalizeBenefit(
+                input.realizedUserBenefit || input.actualUserBenefit || {}
+            );
+            const benefitAssessment = this.assessBenefit(
+                intendedUserBenefit,
+                realizedUserBenefit
+            );
+            const causalConfidence = this.normalizeConfidence(
+                input.causalConfidence ?? 0.5
+            );
+
+            const rawSuggestedDelta = !predictionAssessment.resolved
+                ? 0
+                : (predictionAssessment.score - predictionConfidence) *
+                    0.2 *
+                    causalConfidence;
+            const suggestedDelta = Number(
+                Math.max(-0.15, Math.min(0.15, rawSuggestedDelta)).toFixed(6)
+            );
+
+            const timestamp = new Date().toISOString();
+            const calibration = {
+                id: this.createId("maddy-calibration"),
+                schema: CALIBRATION_SCHEMA,
+                domain,
+                context: {
+                    domain,
+                    decisionType: input.context?.decisionType || input.decisionType || null,
+                    counterpartyId: input.context?.counterpartyId || input.counterpartyId || null,
+                    caseId: input.context?.caseId || input.caseId || null,
+                    organizationId: input.context?.organizationId || input.organizationId || null
+                },
+                priorBelief: {
+                    statement: String(input.priorBelief?.statement || input.belief || "").trim(),
+                    confidence: this.normalizeConfidence(input.priorBelief?.confidence ?? predictionConfidence)
+                },
+                prediction: {
+                    statement: predictionStatement,
+                    confidence: predictionConfidence
+                },
+                recommendation: {
+                    action: String(input.recommendation?.action || input.recommendation || "").trim(),
+                    rationale: String(input.recommendation?.rationale || "").trim()
+                },
+                intendedUserBenefit,
+                actualOutcome: {
+                    summary: actualSummary,
+                    outcomeType: this.normalizeOutcomeType(input.actualOutcome?.outcomeType || input.outcomeType || input.outcome)
+                },
+                realizedUserBenefit,
+                benefitAssessment,
+                predictionAssessment,
+                causalConfidence,
+                recalibration: {
+                    priorConfidence: predictionConfidence,
+                    suggestedConfidence: this.normalizeConfidence(predictionConfidence + suggestedDelta),
+                    delta: suggestedDelta,
+                    automaticAuthorityChange: false,
+                    rule: "Observed reality may recalibrate future judgment, but one outcome does not become automatic truth, policy, or authority. Context and causal uncertainty must survive."
+                },
+                falsifiers: this.uniqueStrings(input.falsifiers || input.whatWouldChangeMyMind),
+                sourceObservationIds: this.uniqueStrings(input.sourceObservationIds),
+                evidence: Array.isArray(input.evidence) ? this.clone(input.evidence) : [],
+                createdAt: timestamp,
+                createdBy: options.actor || input.observedBy || this.name,
+                metadata: input.metadata && typeof input.metadata === "object" ? { ...input.metadata } : {}
+            };
+
+            this.calibrations.unshift(calibration);
+            this.analytics.lastCalibrationAt = timestamp;
+            this.logHistory("calibration.recorded", {
+                calibrationId: calibration.id,
+                domain,
+                predictionAssessment: predictionAssessment.status,
+                benefitAssessment: benefitAssessment.status,
+                recalibrationDelta: suggestedDelta
+            });
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+            this.emit("learning:self-correction-recorded", this.clone(calibration));
+
+            return {
+                success: true,
+                calibration: this.clone(calibration),
+                guidance: this.getCalibrationGuidance({ domain })
+            };
+        },
+
+        getCalibrationGuidance(context = {}) {
+            const domain = String(context.domain || "general").trim() || "general";
+            const relevant = this.calibrations.filter((item) => item.domain === domain);
+            const resolved = relevant.filter((item) => item.predictionAssessment?.resolved === true);
+            const scored = resolved.filter((item) => Number.isFinite(item.predictionAssessment?.score));
+            const benefits = relevant.filter((item) => !["unknown"].includes(item.benefitAssessment?.status));
+
+            const averageConfidence = scored.length
+                ? scored.reduce((sum, item) => sum + Number(item.prediction?.confidence || 0), 0) / scored.length
+                : null;
+            const hitRate = scored.length
+                ? scored.reduce((sum, item) => sum + Number(item.predictionAssessment.score), 0) / scored.length
+                : null;
+            const calibrationBias = averageConfidence === null || hitRate === null
+                ? null
+                : Number((averageConfidence - hitRate).toFixed(6));
+            const confidenceAdjustment = calibrationBias === null
+                ? 0
+                : Number(Math.max(-0.15, Math.min(0.15, -calibrationBias * 0.25)).toFixed(6));
+
+            return {
+                schema: "meos.maddy.contextual-calibration-guidance.v1",
+                domain,
+                observations: relevant.length,
+                resolvedPredictions: resolved.length,
+                averagePredictionConfidence: averageConfidence === null ? null : Number(averageConfidence.toFixed(6)),
+                observedHitRate: hitRate === null ? null : Number(hitRate.toFixed(6)),
+                calibrationBias,
+                suggestedConfidenceAdjustment: confidenceAdjustment,
+                benefitObservations: benefits.length,
+                preserveUncertainty: relevant.length < 3 || resolved.length < 3,
+                userBenefitRule: "Use truth to improve the user's outcome, protect the user's attention, surface material risk or opportunity, or deliberately recommend no action when no meaningful benefit exists.",
+                calibrationRule: "Calibration is contextual. Maddy must not convert one actor, domain, success, failure, or prior mistake into a universal trust or confidence score."
             };
         },
 
@@ -2155,6 +2421,8 @@
                 ).length;
             this.analytics.totalFeedback =
                 this.feedback.length;
+            this.analytics.totalCalibrations =
+                this.calibrations.length;
 
             return this.analytics;
         },
@@ -2202,6 +2470,8 @@
                     this.lessons.length,
                 feedbackCount:
                     this.feedback.length,
+                calibrationCount:
+                    this.calibrations.length,
                 analytics:
                     this.clone(this.analytics),
                 initializedAt:
@@ -2227,6 +2497,8 @@
                         this.lessons,
                     feedback:
                         this.feedback,
+                    calibrations:
+                        this.calibrations,
                     history:
                         options.includeHistory === false
                             ? []
@@ -2264,6 +2536,7 @@
                 this.observations = [];
                 this.lessons = [];
                 this.feedback = [];
+                this.calibrations = [];
                 this.history = [];
             }
 
@@ -2278,6 +2551,10 @@
             this.mergeById(
                 this.feedback,
                 data.feedback || []
+            );
+            this.mergeById(
+                this.calibrations,
+                data.calibrations || []
             );
             this.mergeById(
                 this.history,
@@ -2688,6 +2965,8 @@
                                 this.lessons.length,
                             feedback:
                                 this.feedback.length,
+                            calibrations:
+                                this.calibrations.length,
                             history:
                                 this.history.length
                         }
@@ -2851,6 +3130,186 @@
             );
         },
 
+        runSelfCorrectionAcceptanceTest() {
+            const saved = {
+                calibrations: this.clone(this.calibrations),
+                history: this.clone(this.history),
+                analytics: this.clone(this.analytics),
+                automaticPersistence: this.configuration.automaticPersistence
+            };
+
+            this.configuration.automaticPersistence = false;
+            this.calibrations = [];
+
+            const first = this.recordCalibration({
+                domain: "grant-fit-forecasting",
+                priorBelief: {
+                    statement: "The opportunity is likely to produce useful funding for the user.",
+                    confidence: 0.9
+                },
+                prediction: {
+                    statement: "The application is likely to reach award review.",
+                    confidence: 0.9
+                },
+                recommendation: {
+                    action: "Pursue the opportunity.",
+                    rationale: "Strong apparent eligibility and mission fit."
+                },
+                intendedUserBenefit: {
+                    type: "funding",
+                    description: "Increase resources available to the user's organization.",
+                    value: 100000,
+                    unit: "USD",
+                    direction: "increase"
+                },
+                actualOutcome: {
+                    summary: "The application was rejected at eligibility screening.",
+                    outcomeType: "failure"
+                },
+                realizedUserBenefit: {
+                    type: "funding",
+                    description: "No funding was realized.",
+                    value: 0,
+                    unit: "USD",
+                    direction: "increase"
+                },
+                predictionResult: "incorrect",
+                causalConfidence: 0.9,
+                falsifiers: ["official award or eligibility correction"]
+            }, { actor: "Maddy" });
+
+            const second = this.recordCalibration({
+                domain: "grant-fit-forecasting",
+                prediction: {
+                    statement: "A second opportunity is likely to reach award review.",
+                    confidence: 0.8
+                },
+                recommendation: "Pursue after document verification.",
+                intendedUserBenefit: {
+                    type: "funding",
+                    description: "Increase resources available to the user's organization.",
+                    value: 50000,
+                    unit: "USD"
+                },
+                actualOutcome: {
+                    summary: "The opportunity was ruled ineligible before submission.",
+                    outcomeType: "failure"
+                },
+                realizedUserBenefit: {
+                    type: "attention-protection",
+                    description: "Maddy stopped the pursuit before consuming more executive time."
+                },
+                predictionResult: "incorrect",
+                causalConfidence: 0.8
+            }, { actor: "Maddy" });
+
+            const third = this.recordCalibration({
+                domain: "grant-fit-forecasting",
+                prediction: {
+                    statement: "A verified opportunity is likely to reach award review.",
+                    confidence: 0.7
+                },
+                recommendation: "Pursue after eligibility verification.",
+                intendedUserBenefit: {
+                    type: "funding",
+                    description: "Increase resources available to the user's organization.",
+                    value: 25000,
+                    unit: "USD"
+                },
+                actualOutcome: {
+                    summary: "The application reached award review.",
+                    outcomeType: "success"
+                },
+                realizedUserBenefit: {
+                    type: "funding",
+                    description: "Award review created a live funding opportunity.",
+                    value: 25000,
+                    unit: "USD"
+                },
+                predictionResult: "correct",
+                causalConfidence: 0.8
+            }, { actor: "Maddy" });
+
+            const unrelated = this.recordCalibration({
+                domain: "vendor-delivery",
+                prediction: {
+                    statement: "The vendor will deliver on time.",
+                    confidence: 0.6
+                },
+                intendedUserBenefit: {
+                    type: "time",
+                    description: "Avoid project delay."
+                },
+                actualOutcome: {
+                    summary: "Delivery timing remains unresolved.",
+                    outcomeType: "unknown"
+                },
+                realizedUserBenefit: {},
+                predictionResult: "unresolved",
+                causalConfidence: 0.3
+            }, { actor: "Maddy" });
+
+            const guidance = this.getCalibrationGuidance({ domain: "grant-fit-forecasting" });
+            const record = first.calibration;
+            const checks = [
+                {
+                    name: "Maddy preserves the prior belief and prediction instead of rewriting history after the outcome",
+                    passed: record?.priorBelief?.statement.includes("likely") === true && record?.prediction?.confidence === 0.9
+                },
+                {
+                    name: "Maddy records why the recommendation was expected to benefit the user",
+                    passed: record?.intendedUserBenefit?.type === "funding" && record?.intendedUserBenefit?.value === 100000
+                },
+                {
+                    name: "Observed reality is recorded separately from the prediction",
+                    passed: record?.actualOutcome?.outcomeType === OUTCOME_TYPES.FAILURE && record?.predictionAssessment?.status === "missed"
+                },
+                {
+                    name: "Realized user benefit is measured against intended benefit rather than assumed",
+                    passed: record?.benefitAssessment?.status === "not-realized" && record?.benefitAssessment?.gap === -100000
+                },
+                {
+                    name: "A wrong high-confidence prediction produces bounded downward recalibration",
+                    passed: record?.recalibration?.delta < 0 && record?.recalibration?.suggestedConfidence < record?.recalibration?.priorConfidence
+                },
+                {
+                    name: "Calibration remains contextual instead of becoming a universal Maddy confidence score",
+                    passed: guidance?.domain === "grant-fit-forecasting" && guidance?.observations === 3 && unrelated.calibration?.domain === "vendor-delivery"
+                },
+                {
+                    name: "Repeated overconfidence changes future contextual guidance while preserving uncertainty rules",
+                    passed: guidance?.suggestedConfidenceAdjustment < 0 && guidance?.resolvedPredictions === 3 && guidance?.preserveUncertainty === false
+                },
+                {
+                    name: "Self-correction cannot silently rewrite policy or authority",
+                    passed: record?.recalibration?.automaticAuthorityChange === false && record?.recalibration?.rule.includes("does not become automatic truth") === true
+                }
+            ];
+
+            const success = checks.every((item) => item.passed);
+            const result = {
+                success,
+                commission: "MADDY-SELF-CORRECTION-BENEFIT-CALIBRATION",
+                schema: "meos.executive-learning.self-correction-acceptance.v1",
+                version: this.version,
+                buildId: this.buildId,
+                passed: checks.filter((item) => item.passed).length,
+                total: checks.length,
+                checks,
+                calibration: this.clone(record),
+                guidance: this.clone(guidance),
+                completedAt: new Date().toISOString()
+            };
+
+            this.calibrations = saved.calibrations;
+            this.history = saved.history;
+            this.analytics = saved.analytics;
+            this.configuration.automaticPersistence = saved.automaticPersistence;
+            this.recalculateAnalytics();
+
+            return result;
+        },
+
         async runDurableAuthorityAcceptanceTest() {
             const checks = [];
 
@@ -2908,6 +3367,8 @@
                         snapshot.lessons.length &&
                     durableRead?.value?.state?.feedback?.length ===
                         snapshot.feedback.length &&
+                    durableRead?.value?.state?.calibrations?.length ===
+                        snapshot.calibrations.length &&
                     durableRead?.value?.state?.history?.length ===
                         snapshot.history.length
             });
@@ -3002,6 +3463,7 @@
             this.observations = [];
             this.lessons = [];
             this.feedback = [];
+            this.calibrations = [];
             this.history = [];
             this.analytics = {
                 totalObservations: 0,
@@ -3010,6 +3472,8 @@
                 validatedLessons: 0,
                 rejectedLessons: 0,
                 totalFeedback: 0,
+                totalCalibrations: 0,
+                lastCalibrationAt: null,
                 lastScanAt: null,
                 lastLessonAt: null
             };
@@ -3185,6 +3649,8 @@
         OUTCOME_TYPES;
     ExecutiveLearning.FEEDBACK_TYPES =
         FEEDBACK_TYPES;
+    ExecutiveLearning.CALIBRATION_SCHEMA =
+        CALIBRATION_SCHEMA;
 
     global.ExecutiveLearning =
         ExecutiveLearning;
