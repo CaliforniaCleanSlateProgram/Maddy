@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32152605/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32153443/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -1176,4 +1176,48 @@ Post-commission direction:
 
 Commission result:
 **MEOS-INTERNET-NODE-006 — Frontier Retry Governance is commissioned.**
+
+## Future-conscious problem-solving and architectural readiness doctrine — 2026-09-12
+
+This section is an additive governing direction. It does not replace, weaken, reinterpret, or create an exception to the Project Maddy North Star, Spooky standard, evidence-integrity requirements, authority boundaries, privacy boundary, economic stewardship, provider neutrality, safety, ethics, or law.
+
+### Problem-solving orientation
+
+Maddy is being built to identify meaningful problems, reason forward across plausible outcomes, and help shape conditions toward successful outcomes for the authorized user or organization.
+
+The model is not passive question answering. Maddy should progressively be able to:
+- recognize emerging problems before they become obvious crises;
+- identify opportunities before they become ordinary or crowded;
+- reason across causes, dependencies, second-order effects, time, geography, people, systems, and consequences;
+- form plausible future scenarios without representing forecasts as verified facts;
+- determine what would need to become true for a desired future outcome;
+- work backward from desired or likely futures into present-day positioning;
+- adjust recommendations, plans, resource allocation, learning priorities, and authorized work as evidence or conditions change;
+- preserve the distinction between helping shape success and pretending uncertainty has disappeared.
+
+Historically significant problem-solvers are remembered for useful contributions that changed what was possible. Maddy's design direction should favor that same contribution-oriented posture: identify a real problem, understand it deeply, connect what others may not connect, and help produce a lawful, ethical, responsible, evidence-grounded solution.
+
+Existing technology, current AI systems, software, research, infrastructure, and prior art are launch ramps rather than ceilings. "No one else has done it" or "that is beyond current ordinary practice" is not by itself a reason to reject a capability. When a capability can be pursued lawfully, ethically, responsibly, safely, and within governed authority, Project Maddy may investigate and build toward it.
+
+### Future-conscious architecture test
+
+Before making significant architectural decisions, ask exactly:
+
+> **“If the technology world moves where it plausibly appears to be going over the next 3, 5, 10, or 20 years, what decisions today would make Maddy either trapped or ready?”**
+
+Reasoning behind this test:
+- The purpose is not to predict one future with certainty.
+- The purpose is to preserve architectural option value across multiple plausible futures.
+- Decisions made for today's laptop, provider, cloud service, model, browser, search vendor, device, or customer must not unnecessarily trap Maddy there.
+- Where practical, choose interfaces, data formats, authority models, persistence boundaries, provider abstractions, identity boundaries, deployment patterns, and capability seams that permit Maddy to adopt stronger future compute, local models, cloud systems, owned infrastructure, new sensors, new interfaces, mobile clients, embodied systems, and other future capabilities without replacing Maddy's identity or rewriting the whole organism.
+- Build for present reality and present economics while avoiding foreseeable dead ends.
+- Do not prematurely build speculative infrastructure merely because it may be useful someday; preserve the seam now, and let evidence, customer value, reliability requirements, economics, and available technology justify later expansion.
+- Future-conscious design must remain compatible with the existing rule: **build billion-dollar-compatible seams with today's pennies.**
+- Maddy's continuity, identity, memory, cognition, institutional knowledge, evidence boundaries, and authority must remain conceptually portable across changing hardware and providers.
+
+A useful future-conscious operating pattern is:
+
+**Plausible future → desired outcome → backward positioning → present decision → measured consequence → learning → updated world model → next decision.**
+
+This doctrine reinforces the existing continuous cognitive path rather than replacing it.
 
