@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.4.4";
-  const BUILD_ID = "EH144-HUMAN-DIRECTED-TASK-AUTHORITY-20260913-A";
+  const VERSION = "1.5.0";
+  const BUILD_ID = "EH150-RESOURCE-QUALIFICATION-PURSUIT-HANDOFF-20260913-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -168,6 +168,10 @@
 
   function workspaceOffice() {
     return global.MEOSExecutiveWorkspaceOffice || null;
+  }
+
+  function grantOffice() {
+    return global.GrantOffice || null;
   }
 
   function organizationalProfile() {
@@ -326,6 +330,151 @@
     return [...merged.values()];
   }
 
+  function firstEvidenceValue(items = []) {
+    const first = Array.isArray(items) ? items.find(item => item && (item.value || item.context)) : null;
+    return first?.value || first?.context || null;
+  }
+
+  function qualifiedOpportunityRecord(sourceRecord = {}, opportunityCase = {}) {
+    const intelligence = opportunityCase.opportunityIntelligence || {};
+    const source = opportunityCase.source || {};
+    const officialUrl = source.officialUrl || resourceRecordUrl(sourceRecord);
+    const eligibilityVerified = opportunityCase.evidence?.checks?.eligibilityVerified === true;
+    const fundedActivitiesVerified = opportunityCase.evidence?.checks?.fundedActivitiesVerified === true;
+    const applicationPathVerified = opportunityCase.evidence?.checks?.applicationPathVerified === true;
+    const currentCycleActionable = opportunityCase.evidence?.checks?.currentCycleActionable === true;
+    const deadline = firstEvidenceValue(intelligence.deadlineEvidence) || firstEvidenceValue(intelligence.dateEvidence);
+    const amount = firstEvidenceValue(intelligence.individualAwardEvidence) || firstEvidenceValue(intelligence.moneyEvidence);
+    const evidenceUrls = Array.isArray(opportunityCase.whatMaddyRead?.evidenceLedger)
+      ? opportunityCase.whatMaddyRead.evidenceLedger.map(item => item?.url).filter(Boolean)
+      : [];
+
+    return {
+      id: `qualified:${sourceRecord.id || source.id || resourceRecordTitle(sourceRecord)}`,
+      title: source.title || resourceRecordTitle(sourceRecord),
+      provider: sourceRecord.provider || sourceRecord.sourceName || resourceRecordTitle(sourceRecord),
+      sourceName: sourceRecord.sourceName || sourceRecord.provider || null,
+      resourceType: source.resourceType || sourceRecord.resourceType || "grant",
+      resourceChannels: source.resourceChannels || sourceRecord.resourceChannels || ["grant"],
+      geography: source.geography || sourceRecord.geography || null,
+      url: officialUrl,
+      officialUrl,
+      description: opportunityCase.nextAction || sourceRecord.description || sourceRecord.summary || null,
+      summary: opportunityCase.promotion?.reason || opportunityCase.disposition?.recommendation || null,
+      deadline,
+      amount,
+      eligibilityVerified,
+      discoveryStatus: "qualified-opportunity",
+      qualificationStatus: "qualified-for-pursuit-review",
+      recommendation: "pursue",
+      externalActionAuthorized: false,
+      evidenceUrls,
+      unknowns: Array.isArray(opportunityCase.unknowns) ? [...opportunityCase.unknowns] : [],
+      qualification: clone(opportunityCase),
+      resourceDevelopment: {
+        discoveryStatus: "qualified-opportunity",
+        executiveDecision: "pursue",
+        eligibilityVerified,
+        fundedActivitiesVerified,
+        applicationPathVerified,
+        currentCycleActionable,
+        evidenceCoverage: Number(opportunityCase.evidence?.coverage || 0),
+        executiveBrief: {
+          whyOnDesk: opportunityCase.promotion?.reason || "Decision-grade opportunity evidence supports pursuit review.",
+          nextAction: "Executive Director pursuit authorization required before application preparation begins.",
+          geography: source.geography || sourceRecord.geography || null
+        }
+      }
+    };
+  }
+
+  async function investigateLocalResourceCandidates(records = [], fetchImpl) {
+    const investigations = [];
+    const qualified = [];
+    const rejected = [];
+
+    for (const record of records.slice(0, 8)) {
+      const sourceId = String(record?.id || "").trim();
+      if (!sourceId || !resourceRecordUrl(record)) {
+        rejected.push({ sourceId: sourceId || null, title: resourceRecordTitle(record), reason: "authoritative-source-unavailable" });
+        continue;
+      }
+      try {
+        const response = await fetchImpl(`/api/resource-discovery/local/investigate?sourceId=${encodeURIComponent(sourceId)}`, {
+          method: "GET",
+          headers: { Accept: "application/json" }
+        });
+        if (!response.ok) {
+          rejected.push({ sourceId, title: resourceRecordTitle(record), reason: `investigation-http-${response.status}` });
+          continue;
+        }
+        const body = await response.json();
+        const opportunityCase = body?.opportunityCase || null;
+        investigations.push({ sourceId, title: resourceRecordTitle(record), opportunityCase: clone(opportunityCase) });
+        if (opportunityCase?.promotion?.executiveDeskReady === true) {
+          qualified.push(qualifiedOpportunityRecord(record, opportunityCase));
+        } else {
+          rejected.push({
+            sourceId,
+            title: resourceRecordTitle(record),
+            reason: opportunityCase?.promotion?.reason || opportunityCase?.disposition?.recommendation || "not-qualified-for-pursuit",
+            unknowns: clone(opportunityCase?.unknowns || [])
+          });
+        }
+      } catch (error) {
+        rejected.push({ sourceId, title: resourceRecordTitle(record), reason: error?.message || String(error) });
+      }
+    }
+
+    return { investigations, qualified, rejected };
+  }
+
+  function broaderInvestigationRecords(body = {}) {
+    const active = Array.isArray(body.active) ? body.active : [];
+    return active.filter(record =>
+      record?.disposition === "pursue" &&
+      record?.evidence?.eligibilityVerified === true &&
+      record?.evidence?.specificOpportunityVerified === true
+    ).map(record => ({
+      ...record,
+      discoveryStatus: "qualified-opportunity",
+      qualificationStatus: record.qualificationStatus || "qualified-for-pursuit-review",
+      recommendation: "pursue",
+      externalActionAuthorized: false,
+      url: record.officialUrl || record.url || null,
+      resourceDevelopment: {
+        ...(record.resourceDevelopment || {}),
+        discoveryStatus: "qualified-opportunity",
+        executiveDecision: "pursue",
+        executiveBrief: {
+          ...(record.resourceDevelopment?.executiveBrief || {}),
+          whyOnDesk: record.executiveReason || record.summary || "Qualified Resource Development opportunity.",
+          nextAction: "Executive Director pursuit authorization required before application preparation begins."
+        }
+      }
+    }));
+  }
+
+  async function broadenQualifiedResourceSearch(fetchImpl) {
+    try {
+      const response = await fetchImpl("/api/resource-development/investigate?resourceType=grant&limit=40", {
+        method: "GET",
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok) return { success: false, records: [], reason: `investigation-http-${response.status}` };
+      const body = await response.json();
+      return {
+        success: true,
+        records: broaderInvestigationRecords(body),
+        geography: clone(body?.request?.geography || null),
+        status: body?.status || null,
+        source: "resource-development-investigation"
+      };
+    } catch (error) {
+      return { success: false, records: [], reason: error?.message || String(error) };
+    }
+  }
+
   function normalizeResourceDeliverables(work, result = {}) {
     const records = Array.isArray(result.records) ? result.records : [];
     records.slice(0, 10).forEach(record => {
@@ -415,18 +564,48 @@
       }
     }
 
-    const records = mergeResourceRecords(matchingDeskRecords, matchingDiscoveryRecords);
+    const discoveredCandidates = mergeResourceRecords(matchingDeskRecords, matchingDiscoveryRecords);
+    let qualification = null;
+    let records = discoveredCandidates;
+
+    if (wantsGrant) {
+      const localQualification = await investigateLocalResourceCandidates(matchingDiscoveryRecords, fetchImpl);
+      let qualifiedRecords = [...localQualification.qualified];
+      let broader = null;
+
+      if (qualifiedRecords.length === 0) {
+        broader = await broadenQualifiedResourceSearch(fetchImpl);
+        qualifiedRecords = mergeResourceRecords(qualifiedRecords, broader.records || []);
+      }
+
+      records = qualifiedRecords;
+      qualification = {
+        schema: "meos.executive-hallway.resource-qualification.v1",
+        candidateSources: discoveredCandidates.length,
+        investigatedLocalSources: localQualification.investigations.length,
+        rejectedOrHeldLocalSources: localQualification.rejected.length,
+        qualifiedOpportunities: qualifiedRecords.length,
+        localInvestigations: clone(localQualification.investigations),
+        rejectedOrHeld: clone(localQualification.rejected),
+        geographicExpansion: clone(broader),
+        recommendedOpportunity: clone(qualifiedRecords[0] || null),
+        truthRule: "A funding source is not a pursuit recommendation. Maddy may recommend pursuit only after evidence supports a specific actionable opportunity and applicant eligibility; unresolved candidates remain investigation or monitoring work.",
+        externalActionAuthorized: false
+      };
+    }
 
     return {
       success: true,
-      schema: "meos.executive-hallway.resource-search.v1",
+      schema: "meos.executive-hallway.resource-search.v2",
       query: work.instruction,
       geography: { scope: interpretation?.geography?.scope || "unspecified", serviceArea },
       resourceTypes: [...(interpretation?.resourceTypes || [])],
       total: records.length,
       deskMatches: matchingDeskRecords.length,
       discoveryMatches: matchingDiscoveryRecords.length,
+      candidateSources: discoveredCandidates.length,
       records: records.slice(0, 25),
+      qualification,
       discovery,
       searchedAt: now()
     };
@@ -468,11 +647,145 @@
     work.evidence.push({ type: "resource-development-search", verifiedAt: now(), result: clone(result) });
     transition(work, "verifying");
     normalizeResourceDeliverables(work, result);
+
+    const recommendation = result?.qualification?.recommendedOpportunity || null;
+    if (recommendation) {
+      work.context = {
+        ...work.context,
+        pursuitRecommendation: clone(recommendation),
+        researchTaskAuthoritySatisfied: true,
+        pursuitAuthorityRequired: true
+      };
+      work.authority.reviewRequired = true;
+      work.authority.authorized = false;
+      work.authority.authorizedAt = null;
+      work.authority.authorizationSignal = null;
+      work.options = ["take-it", "review-evidence", "request-revisions", "archive"];
+      return transition(work, "awaiting-review", {
+        outcome: {
+          success: true,
+          verified: true,
+          reason: "qualified-opportunity-awaiting-pursuit-authorization",
+          recommendation: clone(recommendation),
+          externalActionAuthorized: false,
+          result: clone(result)
+        }
+      });
+    }
+
     work.options = work.deliverables.length
       ? ["open-deliverable", "use-in-task", "archive"]
       : ["broaden-search", "review-sources", "archive"];
     return transition(work, "done", {
-      outcome: { success: true, verified: true, result: clone(result) }
+      outcome: {
+        success: true,
+        verified: true,
+        reason: wantsQualifiedResourceReason(result),
+        result: clone(result)
+      }
+    });
+  }
+
+  function wantsQualifiedResourceReason(result = {}) {
+    return result?.qualification && !result.qualification.recommendedOpportunity
+      ? "research-complete-no-qualified-pursuit-recommendation"
+      : "resource-research-complete";
+  }
+
+  async function authorizeRecommendedResourcePursuit(work, options = {}) {
+    const recommendation = clone(work.context?.pursuitRecommendation || null);
+    if (!recommendation) throw new Error("No qualified pursuit recommendation is attached to this work.");
+
+    const office = grantOffice();
+    if (!office?.addOpportunity || !office?.authorizePursuit || !office?.beginPreparation) {
+      work.options = ["retry", "review-evidence", "archive"];
+      return transition(work, "blocked", {
+        outcome: { success: false, reason: "grant-office-pursuit-bridge-unavailable" }
+      });
+    }
+
+    const opportunityId = `hallway-${String(recommendation.id || work.id).replace(/[^a-z0-9._:-]+/gi, "-")}`;
+    let opportunity = office.getOpportunityById?.(opportunityId) || null;
+    if (!opportunity) {
+      opportunity = office.addOpportunity({
+        id: opportunityId,
+        type: "grant",
+        title: recommendation.title,
+        provider: recommendation.provider || recommendation.sourceName || "Verified funding source",
+        sourceUrl: recommendation.officialUrl || recommendation.url || "",
+        sourceType: "maddy-qualified-research",
+        description: recommendation.summary || recommendation.description || "",
+        geography: recommendation.geography || "",
+        deadline: typeof recommendation.deadline === "string" ? recommendation.deadline : "",
+        verified: recommendation.eligibilityVerified === true,
+        confidence: recommendation.resourceDevelopment?.evidenceCoverage
+          ? Math.max(0, Math.min(1, Number(recommendation.resourceDevelopment.evidenceCoverage) / 100))
+          : 0.8,
+        requiredDocuments: [],
+        provenance: {
+          hallwayWorkId: work.id,
+          qualification: clone(recommendation.qualification || null),
+          evidenceUrls: clone(recommendation.evidenceUrls || [])
+        }
+      });
+    }
+
+    const authorization = office.authorizePursuit(opportunity.id, {
+      authorizedBy: options.authorizedBy || work.requestedBy || "Executive Director",
+      authorizedAt: now(),
+      note: options.note || "Take It — pursue the Maddy-qualified opportunity and prepare the application.",
+      scope: "prepare-application-with-separate-final-submission-authorization"
+    });
+
+    if (authorization?.success !== true) {
+      work.options = ["retry", "review-evidence", "archive"];
+      return transition(work, "blocked", {
+        outcome: { success: false, reason: authorization?.code || "grant-pursuit-authorization-failed", authorization: clone(authorization) }
+      });
+    }
+
+    const preparation = office.beginPreparation(opportunity.id, {
+      actor: options.authorizedBy || work.requestedBy || "Executive Director",
+      note: "Pursuit authorized through Executive Hallway Take It; application preparation begins. Final submission remains separately governed."
+    });
+
+    work.execution = {
+      ...(work.execution || {}),
+      pursuit: { authorization: clone(authorization), preparation: clone(preparation) }
+    };
+    work.evidence.push({
+      type: "grant-pursuit-authorization",
+      verifiedAt: now(),
+      opportunityId: opportunity.id,
+      finalSubmissionAuthorized: false
+    });
+    work.context = {
+      ...work.context,
+      pursuitAuthorityRequired: false,
+      pursuitAuthorized: true,
+      grantOpportunityId: opportunity.id
+    };
+    work.options = ["open-deliverable", "review-preparation", "archive"];
+
+    addDeliverable(work, {
+      title: `${recommendation.title} — pursuit authorized`,
+      kind: "grant-pursuit-status",
+      openUrl: recommendation.officialUrl || recommendation.url || null,
+      summary: "Pursuit is authorized and application preparation has begun. Final external submission is not authorized and remains a separate Take It boundary.",
+      provider: "meos-grant-office",
+      source: "executive-hallway",
+      data: { opportunityId: opportunity.id, authorization: clone(authorization), preparation: clone(preparation) }
+    });
+
+    return transition(work, preparation?.success === false ? "blocked" : "done", {
+      outcome: {
+        success: preparation?.success !== false,
+        verified: preparation?.success !== false,
+        reason: preparation?.success === false ? (preparation?.code || "grant-preparation-start-failed") : "pursuit-authorized-preparation-started",
+        grantOpportunityId: opportunity.id,
+        finalSubmissionAuthorized: false,
+        externalActionAuthorized: false
+      }
     });
   }
 
@@ -1348,6 +1661,18 @@
     work.authority.authorizedAt = now();
     work.authority.authorizationSignal = options.signal || "Take It!";
     transition(work, "authorized");
+
+    if (work.route === "resource-development" && work.context?.pursuitRecommendation) {
+      try {
+        return freeze(await authorizeRecommendedResourcePursuit(work, options));
+      } catch (error) {
+        work.options = ["retry", "review-evidence", "archive"];
+        return freeze(transition(work, "failed", {
+          error: error?.message || String(error),
+          outcome: { success: false, reason: "resource-pursuit-handoff-failed" }
+        }));
+      }
+    }
 
     if (work.route === "resource-development") {
       const interpretation = interpretResourceDevelopmentRequest(work.instruction) || {
@@ -2593,6 +2918,125 @@
     });
   }
 
+  async function runResearchContinuationQualificationAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed, detail = null) => checks.push({ name, passed: passed === true, detail: clone(detail) });
+    const calls = [];
+    const sourceRecord = {
+      id: "local-source:fixture-foundation",
+      title: "Fixture Community Foundation",
+      sourceName: "Fixture Community Foundation",
+      provider: "Fixture Community Foundation",
+      resourceType: "grant",
+      resourceChannels: ["grant"],
+      geography: "Santa Cruz County, California",
+      url: "https://foundation.example/grants",
+      discoveryStatus: "source-identified"
+    };
+    const opportunityCase = {
+      schema: "meos.executive-opportunity-case.v1",
+      source: {
+        id: sourceRecord.id,
+        title: "Fixture Hygiene Support Grant",
+        geography: sourceRecord.geography,
+        resourceType: "grant",
+        resourceChannels: ["grant"],
+        officialUrl: "https://foundation.example/grants/apply"
+      },
+      whatMaddyRead: { evidenceLedger: [{ url: "https://foundation.example/grants/apply" }] },
+      opportunityIntelligence: {
+        eligibilityEvidence: [{ context: "Eligible 501(c)(3) nonprofits serving Santa Cruz County." }],
+        fundedActivityEvidence: [{ context: "Supports homelessness and public health services." }],
+        applicationEvidence: [{ context: "Applications are open." }],
+        deadlineEvidence: [{ value: "October 15, 2026", context: "Applications due October 15, 2026." }],
+        individualAwardEvidence: [{ value: "$25,000", context: "Awards up to $25,000." }]
+      },
+      evidence: {
+        coverage: 100,
+        checks: {
+          officialMaterialRead: true,
+          specificProgramEvidence: true,
+          individualAwardVerified: true,
+          currentCycleActionable: true,
+          eligibilityVerified: true,
+          fundedActivitiesVerified: true,
+          applicationPathVerified: true
+        }
+      },
+      unknowns: [],
+      disposition: { disposition: "candidate-for-qualification", recommendation: "Continue organization-specific qualification." },
+      promotion: { executiveDeskReady: true, reason: "Decision-grade evidence supports organization-specific qualification." },
+      nextAction: "Compare against the organization and request pursuit authorization."
+    };
+
+    const fakeFetch = async url => {
+      calls.push(String(url));
+      if (String(url).startsWith("/api/resource-development/desk")) {
+        return { ok: true, status: 200, json: async () => ({ records: [] }) };
+      }
+      if (String(url) === "/api/resource-discovery/local") {
+        return { ok: true, status: 200, json: async () => ({ schema: "fixture", status: "online", source: { name: "fixture-local" }, records: [sourceRecord] }) };
+      }
+      if (String(url).startsWith("/api/resource-discovery/local/investigate")) {
+        return { ok: true, status: 200, json: async () => ({ opportunityCase }) };
+      }
+      if (String(url).startsWith("/api/resource-development/investigate")) {
+        return { ok: true, status: 200, json: async () => ({ active: [] }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+
+    const fixtureWork = { instruction: "Find local grant funding for the organization." };
+    const fixtureInterpretation = {
+      geography: { scope: "local", serviceArea: "Santa Cruz County, California" },
+      resourceTypes: ["grant"]
+    };
+    const result = await executeResourceDevelopmentSearch(fixtureWork, fixtureInterpretation, { fetch: fakeFetch });
+
+    check("Source discovery is followed by authoritative opportunity investigation", calls.some(url => url.includes("/api/resource-discovery/local/investigate?sourceId=")), calls);
+    check("A source-level discovery record is not returned as a completed grant opportunity", !result.records.some(record => record.discoveryStatus === "source-identified"), result.records);
+    check("Decision-grade evidence promotes a specific opportunity for pursuit review", result.qualification?.recommendedOpportunity?.qualificationStatus === "qualified-for-pursuit-review", result.qualification);
+    check("Qualification preserves verified eligibility, deadline, amount, and evidence provenance", result.records[0]?.eligibilityVerified === true && result.records[0]?.deadline === "October 15, 2026" && result.records[0]?.amount === "$25,000" && result.records[0]?.evidenceUrls?.[0]?.includes("foundation.example"), result.records[0]);
+    check("Research qualification grants no external-action authority", result.qualification?.externalActionAuthorized === false && result.records[0]?.externalActionAuthorized === false);
+
+    const originalGrantOffice = global.GrantOffice;
+    const events = [];
+    const fakeOpportunity = { id: "fixture-opportunity" };
+    global.GrantOffice = {
+      getOpportunityById: () => null,
+      addOpportunity: input => { events.push("add"); fakeOpportunity.id = input.id; return fakeOpportunity; },
+      authorizePursuit: idValue => { events.push("authorize"); return { success: true, opportunity: { id: idValue }, authorization: { authorized: true } }; },
+      beginPreparation: idValue => { events.push("prepare"); return { success: true, opportunity: { id: idValue }, submission: null }; }
+    };
+    try {
+      const work = {
+        id: "fixture-work", requestedBy: "executive-director", state: "authorized", route: "resource-development",
+        authority: { reviewRequired: true, authorized: true, authorizedAt: now(), authorizationSignal: "Take It!" },
+        context: { pursuitRecommendation: clone(result.qualification.recommendedOpportunity) },
+        execution: {}, evidence: [], deliverables: [], options: [], updatedAt: now()
+      };
+      const pursued = await authorizeRecommendedResourcePursuit(work, { authorizedBy: "Executive Director" });
+      check("Take It on the qualified recommendation authorizes pursuit and begins preparation", events.join(",") === "add,authorize,prepare" && pursued.outcome?.reason === "pursuit-authorized-preparation-started", { events, outcome: pursued.outcome });
+      check("Pursuit Take It still does not authorize final submission", pursued.outcome?.finalSubmissionAuthorized === false && pursued.outcome?.externalActionAuthorized === false, pursued.outcome);
+    } finally {
+      global.GrantOffice = originalGrantOffice;
+    }
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks.map(({ name, passed }) => ({ name, passed })));
+    return freeze({
+      success: passed === checks.length,
+      commission: "RESOURCE-CONTINUATION-QUALIFICATION-PURSUIT-HANDOFF",
+      schema: `${SCHEMA}.resource-qualification-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      externalActionAuthorized: false,
+      checks
+    });
+  }
+
   function runAnswerProvenanceIntegrityAcceptanceTest() {
     const fixture = {
       success: true,
@@ -2647,6 +3091,7 @@
     runSelfTest,
     runCognitiveMetabolismAcceptanceTest,
     runHumanDirectedTaskAuthorityAcceptanceTest,
+    runResearchContinuationQualificationAcceptanceTest,
     runAnswerProvenanceIntegrityAcceptanceTest,
     addEventListener: (...args) => state.listeners.addEventListener(...args),
     removeEventListener: (...args) => state.listeners.removeEventListener(...args)
