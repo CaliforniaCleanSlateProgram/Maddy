@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32153443/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
@@ -1221,3 +1222,227 @@ A useful future-conscious operating pattern is:
 
 This doctrine reinforces the existing continuous cognitive path rather than replacing it.
 
+
+## Continuity checkpoint — Maddy governed executive work, funding pursuit, and Spooky engineering enforcement — 2026-09-13
+
+Status: **CURRENT THROUGH LIVE RUNTIME ACCEPTANCE OF EXECUTIVE HALLWAY 1.5.0.**
+
+This checkpoint is additive. It does not rewrite, shorten, weaken, reinterpret, or replace any previously ratified North Star, Spooky, future-conscious, infrastructure-independence, provider-neutrality, trust, evidence, privacy, economic-stewardship, or continuity language above.
+
+### Spooky engineering enforcement clarification
+
+The existing ratified Spooky definition remains authoritative and unchanged:
+
+**edge of what's possible---sometimes past what is seemingly impossible today; as Einstein put it "Spooky stuff" or from a distance; beyond human thought process---that is the bar.**
+
+The Executive Director clarified the operational engineering test that must be applied under that existing definition:
+
+> **Before every commission: Have we been holding ourselves to the push to the edge of what is possible? Is there a better, more advanced way? Can we optimize this? Does it meet or go above the bar—never below it?**
+
+Spooky must clear the edge of what is possible. MEOS/Maddy must not merely use open-source code, conventional AI patterns, existing frameworks, or established software practices to reproduce the same old capability in another wrapper.
+
+A proposed Maddy capability must pursue an implementation that is:
+- **new** — materially advances beyond ordinary reproduction of existing software behavior;
+- **exciting** — creates a capability or experience meaningfully beyond the expected baseline;
+- **valuable** — produces real executive, organizational, user, economic, cognitive, or strategic value;
+- **cutting-edge** — deliberately investigates and uses the strongest practical architecture available rather than defaulting to familiar patterns;
+- **functional** — works under real runtime acceptance and evidence, rather than existing only as novelty, aspiration, simulation, or presentation;
+- **edge-pushing** — asks what can be achieved at the edge of present possibility and designs toward that boundary without lowering governance, evidence integrity, safety, ethics, lawfulness, economic discipline, or human authority.
+
+Operational engineering rule:
+
+> **Reuse what is ordinary. Invent what must be extraordinary.**
+
+Open-source software, standards, libraries, protocols, models, research, and existing systems may be used as commodity infrastructure or launch ramps when doing so is the strongest engineering choice. They do not define Maddy's ceiling. Do not reinvent commodity plumbing merely to claim originality. Conversely, do not stop at the capability ceiling of available open source, vendor products, frameworks, models, or conventional architecture when the Spooky target requires more.
+
+If the capability required to clear the Spooky bar does not exist in available software, Project Maddy may design and engineer the necessary architecture and code from first principles. The pre-code question is:
+
+> **What should Maddy be able to do at the edge of what is possible, and what architecture gets us there?**
+
+If a materially better feasible architecture exists, continue designing rather than settling for the easier conventional implementation. Novelty without function does not clear the bar. Function that merely reproduces the ordinary does not clear the bar. The target is useful, evidence-grounded advancement that works.
+
+This clarification is an enforcement mechanism under the existing Spooky standard, not a replacement definition and not permission to add speculative complexity, fake intelligence, unsafe authority, unnecessary cost, or disconnected features.
+
+### Commissioned runtime checkpoint — Maddy Response Surface — 2026-09-13
+
+Status: **COMMISSIONED — runtime acceptance passed.**
+
+Version / build:
+- Executive Hub / Office Dashboard `4.12.1`
+- `OD4121-MADDY-RESPONSE-SURFACE-20260913-A`
+
+Commissioned behavior:
+- Maddy has a dedicated governed response surface rather than burying executive answers inside generic dashboard activity.
+- Awaiting-review work is represented as an assignment awaiting authorization, not falsely presented as an answer.
+- Completed deliverables can surface the actual governed answer with evidence and source access.
+- Multiple returned results can be navigated without creating a second conversation or execution transport.
+- Blocked and failed work remain visibly distinct from completed answers.
+
+### Commissioned runtime checkpoint — Executive Hallway 1.4.3 — Authorized Re-entry Execution — 2026-09-13
+
+Status: **COMMISSIONED — runtime acceptance passed 10/10.**
+
+Version / build:
+- Executive Hallway `1.4.3`
+- `EH143-AUTHORIZED-REENTRY-EXECUTION-20260913-A`
+
+Commissioned behavior:
+- A work item that created its Mission mirror during planning is no longer mistaken for a separate duplicate when that same work re-enters the Hallway after authorization.
+- Same-work authorized re-entry reuses the existing Mission mirror and remains execution-eligible.
+- Genuine duplicate cognition remains subject to recognition/quarantine behavior.
+
+### Commissioned runtime checkpoint — Executive Hallway 1.4.4 — Human-Directed Task Authority — 2026-09-13
+
+Status: **COMMISSIONED — runtime acceptance passed 6/6.**
+
+Version / build:
+- Executive Hallway `1.4.4`
+- `EH144-HUMAN-DIRECTED-TASK-AUTHORITY-20260913-A`
+
+Ratified authority distinction:
+- When a human deliberately assigns Maddy a task through the authorized Maddy task-input path, that human direction is the authority for Maddy to begin the ordinary internal work necessary to perform the assignment.
+- Do not force a redundant Take It merely to begin work the human just explicitly assigned.
+- Maddy-initiated opportunities, problems, or proposed pursuits remain subject to a Take It boundary before Maddy undertakes the governed pursuit.
+- Human-directed task authority does not silently authorize spending, signing, certification, legal commitment, external submission, or other separately governed consequential action.
+
+Operational distinction:
+
+**Human-directed work:** human assigns → task authority exists → Maddy begins authorized internal work → result or next legitimate authority/dependency boundary.
+
+**Maddy-initiated work:** Maddy discovers/recognizes → Maddy investigates enough to form a decision-grade recommendation → human reviews → Take It authorizes the governed pursuit → Maddy executes within that authority envelope.
+
+### Superseded attempt — Grant Office 1.12.1 — Human Document Dependency & Resume — 2026-09-13
+
+Status: **NOT COMMISSIONED — runtime acceptance failed 3/6 and was superseded by 1.12.2.**
+
+Version / build:
+- Grant Office `1.12.1`
+- `GO1121-HUMAN-DOCUMENT-DEPENDENCY-RESUME-20260913-A`
+
+Runtime exposed a document-classification false positive. Ordinary preparation work containing document-like words could be misclassified as a missing institutional document, causing incorrect human notification, incorrect `missingDocuments` state, and failure to resume after the actual required documents were supplied.
+
+This failed attempt must remain recorded so a refresh or future reconstruction does not resurrect it as commissioned authority.
+
+### Commissioned runtime checkpoint — Grant Office 1.12.2 — Document Dependency Classification Fix — 2026-09-13
+
+Status: **COMMISSIONED — runtime acceptance passed 6/6.**
+
+Version / build:
+- Grant Office `1.12.2`
+- `GO1122-DOCUMENT-DEPENDENCY-CLASSIFICATION-FIX-20260913-A`
+
+Commissioned behavior:
+- Missing required application documents create a specific human dependency rather than failing the application-preparation work.
+- Human notification names the exact missing required document or documents.
+- Opportunity state exposes `missingDocuments` for the existing waiting-for-documents workflow.
+- The dependency carries an explicit automatic-resume policy.
+- When all required documents are supplied, the dependency can be satisfied and preparation resumes rather than requiring the human to restart the application.
+- Pursuit authorization remains separate from final submission authority.
+- Ordinary preparation work is not treated as a missing human document merely because its label contains a document-like word such as `budget`.
+
+Document handling direction:
+- After pursuit authorization, Maddy should determine the specific application requirements and assemble the organization's verified current documents that are actually required.
+- Examples may include Articles of Incorporation, EIN/IRS documentation, California Attorney General/OAG documentation, bylaws, board information, budgets, financials, insurance, W-9, program material, letters, or other attachments when the specific application requires them.
+- Maddy must not blindly attach every institutional document.
+- Missing, expired, illegible, inconsistent, or unverifiable required material must be surfaced as a precise human dependency while all unaffected work remains preserved.
+- Once the dependency is satisfied, Maddy resumes from the preserved work state.
+
+### Commissioned runtime checkpoint — Executive Hallway 1.5.0 — Resource Qualification & Pursuit Handoff — 2026-09-13
+
+Status: **COMMISSIONED — live runtime acceptance passed 7/7.**
+
+Version / build:
+- Executive Hallway `1.5.0`
+- `EH150-RESOURCE-QUALIFICATION-PURSUIT-HANDOFF-20260913-A`
+
+Runtime acceptance proved:
+- source discovery is followed by authoritative opportunity investigation;
+- a source-level discovery record is not returned as though it were a completed grant opportunity;
+- decision-grade evidence can promote a specific opportunity for pursuit review;
+- qualification preserves verified eligibility, deadline, amount, and evidence provenance;
+- research qualification grants no external-action authority;
+- Take It on the qualified recommendation authorizes pursuit and begins Grant Office preparation;
+- pursuit Take It still does not authorize final submission.
+
+### Funding/resource-acquisition authority lifecycle
+
+The current governed target workflow is:
+
+**need / assignment → discover → investigate authoritative sources → qualify or reject → compare → select strongest actionable opportunity → recommend pursuit → TAKE IT (pursuit authority) → prepare complete application → resolve document and other human dependencies → validate submission-ready package → present final package for human review → TAKE IT (submission authority) → submit/file through authorized provider or portal → verify receipt/status → monitor/follow up → learn from outcome → change future strategy.**
+
+The human should make the executive decisions and supply irreducible human-only dependencies. Maddy should perform the work she is technically and legally capable of performing within the granted authority envelope.
+
+A funding website, foundation homepage, government department, or other source-level discovery is evidence/navigation, not by itself a completed funding recommendation. Maddy must continue until she has a sufficiently qualified opportunity or an honest evidence-grounded conclusion that the current search did not produce one within the bounded investigation.
+
+### Funding pursuit Take It boundaries
+
+There are two distinct Take It boundaries in the target funding lifecycle:
+
+1. **Pursuit Take It** — authorizes Maddy to pursue and prepare the specific qualified opportunity she recommended. It authorizes the internal preparation work within the defined authority envelope. It does not authorize final external submission.
+2. **Submission Take It** — occurs only after Maddy presents the completed, validated submission package and identifies any certifications, signatures, attestations, spending, legal commitments, or other separately governed acts. This Take It authorizes the final external submission only to the extent permitted by the applicable authority envelope.
+
+Do not collapse these boundaries into one generic approval. Do not ask for pursuit Take It before Maddy has done the research necessary to present a decision-grade opportunity recommendation. Do not ask for a redundant Take It merely to begin a human-directed research assignment.
+
+### Spooky target for resource acquisition
+
+Passing the current qualification and handoff tests proves architectural seams; it is not the final Spooky bar for resource acquisition.
+
+The forward target is a connected Maddy capability in which she can progressively:
+- understand the organization's actual resource needs and strategic state;
+- recognize or anticipate resource gaps and opportunities;
+- search locally first when appropriate and expand geography/domain intelligently rather than mechanically;
+- use Maddy-owned search/index knowledge plus replaceable external discovery when needed;
+- connect funding signals, organizational facts, timing, geography, relationships, public policy, funder behavior, eligibility, competition, effort, and likely consequences that a human may not know to connect;
+- distinguish source discovery from verified opportunity knowledge;
+- qualify and reject candidates without wasting executive attention;
+- estimate strategic value, effort, timing, uncertainty, and competitiveness without manufacturing certainty;
+- recommend the strongest actionable opportunity with preserved evidence;
+- after pursuit authority, assemble and draft the application from verified institutional knowledge and required documents;
+- identify missing dependencies precisely and request only irreducible human input;
+- resume automatically when dependencies are satisfied;
+- critique, validate, and improve the application against the funder's actual requirements before requesting submission authority;
+- after submission authority, submit through the appropriate governed capability, verify receipt, monitor consequences and follow-up, and learn from award, rejection, or changed conditions;
+- use that learning to change future search, qualification, positioning, preparation, and organizational strategy.
+
+Do not implement this as a disconnected grant bot or conventional grant-search wrapper. Connect and evolve the existing Resource Acquisition Engine, Opportunity Office, Grant Office, Executive Hallway, Evidence Integrity, Institutional Reasoning, Knowledge/Memory, Learning, Monitoring, provider adapters, Maddy Internet/search infrastructure, and other existing organs where they can carry the behavior. Create new architecture only when a real gap remains after inspecting those organs and when the new design clears the Spooky engineering gate.
+
+### Known live-state observations / separate concerns
+
+- Mission Dispatcher remains connected but `office_dispatch_authority_not_effective`; autonomous office dispatch is not being treated as implicitly authorized by human-directed task authority.
+- Recent runtime reported `totalActive: 20` Missions. Active-state accumulation remains a separate flagged concern. Do not silently repair it inside unrelated funding work without demonstrating the cause and scoping a commission.
+- The Maddy Response Surface previously rendered some deadline values as `[object Object]`. This remains a separate presentation/data-shape defect unless later runtime evidence shows it has changed. Do not confuse fixing that display with completing deeper research capability.
+- Cross-deploy persistence for the Maddy Internet index/frontier remains unverified/previously observed as a gap. Do not represent owned Internet persistence as proven across deploys until runtime evidence proves it.
+
+### Current authoritative live versions relevant to the active path
+
+As of the runtime evidence accepted on 2026-09-13:
+- Executive Hallway: `1.5.0` / `EH150-RESOURCE-QUALIFICATION-PURSUIT-HANDOFF-20260913-A`
+- Grant Office: `1.12.2` / `GO1122-DOCUMENT-DEPENDENCY-CLASSIFICATION-FIX-20260913-A`
+- Office Dashboard / Maddy Response Surface: `4.12.1` / `OD4121-MADDY-RESPONSE-SURFACE-20260913-A`
+- Knowledge Engine: `1.2.1` / `KE121-DURABLE-HYDRATION-PERSISTENCE-BARRIER-20260912-A`
+- Mission Engine: `0.1.9` / `ME019-MISSION-CANONICALIZATION-DUPLICATE-QUARANTINE-20260812-A`
+- Mission Dispatcher: `0.2.0` / `MD020-GOVERNED-OFFICE-DISPATCH-AUTONOMY-20260817-A`
+- Executive Brain: `1.26.2` / `EB1262-DOCUMENT-AUTONOMY-CONTEXT-BRIDGE-20260817-A`
+- Provider Manager: `1.2.0` / `PM120-ADVISER-INTELLIGENCE-BRIDGE-20260816-A`
+- Executive Resource Acquisition Engine: `3.1.0` / `ERAE310-FAST-TRACK-BANKABILITY-PORTFOLIO-20260815-A`
+- Executive Opportunity Office: `2.2.0` / `EOO220-ORGANIZATION-NEUTRAL-DISCOVERY-20260815-A`
+- MEOS Internet Node: `0.3.1` / `MIN006-FRONTIER-RETRY-GOVERNANCE-20260912-A`
+
+### Active engineering mission after this continuity checkpoint
+
+Do not immediately add another funding feature merely because the last seam passed.
+
+Before the next coding commission:
+1. read `PROJECT_MADDY_NORTH_STAR.md` in full;
+2. read this Build State in full;
+3. inspect the live/repository organs relevant to the proposed next behavior;
+4. apply the Spooky engineering enforcement questions above;
+5. identify the strongest feasible architecture rather than the easiest conventional implementation;
+6. prove the exact gap before creating a new engine or abstraction;
+7. preserve one idea → one file → one commit → one test → commission whenever the change can be bounded that way.
+
+For the resource-acquisition path, the next decision should be selected only after inspecting the actual post-1.5.0 execution chain. Candidate gaps include deeper multi-stage qualification/competitive reasoning, complete application construction and institutional-document retrieval, final package validation, governed submission execution/verification, monitoring/learning feedback, and the previously observed mission accumulation concern. The next commission must be chosen by evidence and Spooky value, not by checklist momentum.
+
+### Exact next step after this ledger checkpoint is committed
+
+Re-anchor to the updated repository containing this Build State and the commissioned runtime versions above. Then inspect the actual end-to-end funding execution path from qualified pursuit recommendation through Grant Office preparation and determine the highest-leverage missing behavior that clears the Spooky engineering gate. Present that scoped commission before coding; do not silently broaden it.
