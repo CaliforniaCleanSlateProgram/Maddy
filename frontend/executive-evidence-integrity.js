@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Evidence Integrity Engine
  *
- * Version: 1.1.0
- * Build: EEI110-EPISTEMIC-IDENTITY-CONTRACT-20260913-A
+ * Version: 1.2.0
+ * Build: EEI120-REALITY-RECONSTRUCTION-20260913-A
  * Status: Commissioned
  *
  * Governing motto:
@@ -23,10 +23,11 @@
   "use strict";
 
   const NAME = "MEOS Executive Evidence Integrity Engine";
-  const VERSION = "1.1.0";
-  const BUILD_ID = "EEI110-EPISTEMIC-IDENTITY-CONTRACT-20260913-A";
+  const VERSION = "1.2.0";
+  const BUILD_ID = "EEI120-REALITY-RECONSTRUCTION-20260913-A";
   const SCHEMA = "meos.executive-evidence-integrity.package.v1";
   const EPISTEMIC_SCHEMA = "meos.maddy.epistemic-claim.v1";
+  const REALITY_RECONSTRUCTION_SCHEMA = "meos.maddy.reality-reconstruction.v1";
 
   const EVIDENCE_CLASSES = Object.freeze({
     OFFICIAL_RECORD: "official-institutional-record",
@@ -523,8 +524,205 @@
       freshness,
       status,
       confidence: clampConfidence(item.confidence ?? provenance.confidence, 0.5),
+      propositionId: item.propositionId || item.claimGroupId || item.raw?.propositionId || item.raw?.claimGroupId || null,
+      observationKind: item.observationKind || item.raw?.observationKind || "claim",
+      perspective: clone(item.perspective || item.raw?.perspective || null),
+      stance: String(item.stance || item.evidenceRole || item.raw?.stance || "observes"),
+      hypothesisIds: uniqueStrings(item.hypothesisIds || item.supportsHypothesisIds || item.raw?.hypothesisIds || []),
+      falsifiesHypothesisIds: uniqueStrings(item.falsifiesHypothesisIds || item.contradictsHypothesisIds || item.raw?.falsifiesHypothesisIds || []),
+      factKey: item.factKey || item.raw?.factKey || null,
+      factValue: item.factValue ?? item.raw?.factValue ?? null,
       falsifiers: uniqueStrings(item.falsifiers || item.wouldChangeBelief || item.raw?.falsifiers || []),
       observedAt: provenance.retrievedAt || nowIso()
+    };
+  }
+
+  function evidenceChainKey(item = {}) {
+    const claim = item.epistemicClaim || {};
+    const independence = claim.independence || item.sourceIndependence || {};
+    if (independence.groupId) return `origin:${independence.groupId}`;
+
+    const lineage = Array.isArray(claim.sourceLineage) ? claim.sourceLineage : [];
+    const declaredRoot = lineage.find((entry) => entry?.relation === "original" || entry?.relation === "root-source");
+    if (declaredRoot?.sourceId || declaredRoot?.sourceUrl) {
+      return `root:${declaredRoot.sourceId || declaredRoot.sourceUrl}`;
+    }
+
+    const firstDerived = lineage.find((entry) => entry?.relation === "derived-from" || entry?.relation === "repeats");
+    if (firstDerived?.sourceId || firstDerived?.sourceUrl) {
+      return `root:${firstDerived.sourceId || firstDerived.sourceUrl}`;
+    }
+
+    return `source:${item.provenance?.sourceId || item.provenance?.sourceUrl || item.id}`;
+  }
+
+  function normalizeHypothesis(entry, fallbackId = null) {
+    if (!entry) return null;
+    if (typeof entry === "string") {
+      return { id: fallbackId || normalizeText(entry).replace(/\s+/g, "-").slice(0, 80), label: entry, description: entry, discriminators: [] };
+    }
+    const label = String(entry.label || entry.title || entry.description || entry.statement || "").trim();
+    const id = entry.id || entry.hypothesisId || fallbackId || normalizeText(label).replace(/\s+/g, "-").slice(0, 80);
+    if (!id && !label) return null;
+    return {
+      id: String(id || `hypothesis-${Math.random().toString(36).slice(2, 8)}`),
+      label: label || String(id),
+      description: String(entry.description || entry.statement || label || id),
+      discriminators: uniqueStrings(entry.discriminators || entry.testEvidence || entry.wouldDistinguish || []),
+      priorConfidence: entry.priorConfidence == null ? null : clampConfidence(entry.priorConfidence, 0.5)
+    };
+  }
+
+  function collectHypotheses(items = [], inputHypotheses = []) {
+    const hypotheses = new Map();
+    const add = (entry, fallbackId = null) => {
+      const normalized = normalizeHypothesis(entry, fallbackId);
+      if (!normalized) return;
+      const existing = hypotheses.get(normalized.id);
+      hypotheses.set(normalized.id, existing ? {
+        ...existing,
+        ...normalized,
+        label: normalized.label === normalized.id && existing.label ? existing.label : normalized.label,
+        description: normalized.description === normalized.id && existing.description ? existing.description : normalized.description,
+        discriminators: uniqueStrings([...(existing.discriminators || []), ...(normalized.discriminators || [])])
+      } : normalized);
+    };
+
+    (Array.isArray(inputHypotheses) ? inputHypotheses : [inputHypotheses]).filter(Boolean).forEach((entry) => add(entry));
+
+    items.forEach((item) => {
+      const raw = item.original || {};
+      (Array.isArray(raw.hypotheses) ? raw.hypotheses : [raw.hypothesis]).filter(Boolean).forEach((entry) => add(entry));
+      const narrativeId = raw.narrativeId || raw.hypothesisId || null;
+      const narrativeLabel = raw.narrativeLabel || raw.hypothesisLabel || null;
+      if (narrativeId || narrativeLabel) add({ id: narrativeId, label: narrativeLabel || narrativeId }, narrativeId);
+      [...(item.epistemicClaim?.hypothesisIds || []), ...(item.epistemicClaim?.falsifiesHypothesisIds || [])].forEach((id) => add({ id, label: id }, id));
+    });
+
+    return Array.from(hypotheses.values());
+  }
+
+  function chainWeight(chain) {
+    if (!chain?.members?.length) return 0;
+    const best = chain.members.reduce((winner, item) => {
+      const score = item.confidence * Math.max(0.2, item.authorityRank / 100);
+      const winnerScore = winner ? winner.confidence * Math.max(0.2, winner.authorityRank / 100) : -1;
+      return score > winnerScore ? item : winner;
+    }, null);
+    if (!best) return 0;
+    const stalePenalty = best.freshness?.status === "stale" ? 0.55 : 1;
+    return Number((best.confidence * Math.max(0.2, best.authorityRank / 100) * stalePenalty).toFixed(4));
+  }
+
+  function buildRealityReconstruction(items = [], subject = "", options = {}) {
+    const chainMap = new Map();
+    items.forEach((item) => {
+      const key = evidenceChainKey(item);
+      if (!chainMap.has(key)) chainMap.set(key, { id: key, members: [] });
+      chainMap.get(key).members.push(item);
+    });
+
+    const chains = Array.from(chainMap.values()).map((chain) => ({
+      id: chain.id,
+      memberClaimIds: chain.members.map((item) => item.epistemicClaim?.claimId || item.id),
+      apparentSourceCount: chain.members.length,
+      representativeSourceId: chain.members[0]?.provenance?.sourceId || chain.members[0]?.id || null,
+      weight: chainWeight(chain),
+      members: chain.members
+    }));
+
+    const hypotheses = collectHypotheses(items, options.hypotheses || []);
+    const hypothesisResults = hypotheses.map((hypothesis) => {
+      let support = 0;
+      let challenge = 0;
+      const supportingChains = [];
+      const challengingChains = [];
+
+      chains.forEach((chain) => {
+        const supports = chain.members.some((item) => item.epistemicClaim?.hypothesisIds?.includes(hypothesis.id));
+        const falsifies = chain.members.some((item) => item.epistemicClaim?.falsifiesHypothesisIds?.includes(hypothesis.id));
+        if (supports) { support += chain.weight; supportingChains.push(chain.id); }
+        if (falsifies) { challenge += chain.weight; challengingChains.push(chain.id); }
+      });
+
+      const denominator = Math.max(1, support + challenge);
+      const evidenceBalance = (support - challenge) / denominator;
+      const score = Number(Math.max(0, Math.min(1, 0.5 + evidenceBalance * 0.5)).toFixed(3));
+      return {
+        ...hypothesis,
+        score,
+        supportWeight: Number(support.toFixed(4)),
+        challengeWeight: Number(challenge.toFixed(4)),
+        independentSupportingChains: supportingChains,
+        independentChallengingChains: challengingChains
+      };
+    }).sort((a, b) => b.score - a.score || b.supportWeight - a.supportWeight);
+
+    const factGroups = new Map();
+    items.forEach((item) => {
+      const claim = item.epistemicClaim || {};
+      if (!claim.factKey) return;
+      const valueKey = JSON.stringify(claim.factValue);
+      const key = `${claim.factKey}::${valueKey}`;
+      if (!factGroups.has(key)) factGroups.set(key, { factKey: claim.factKey, factValue: clone(claim.factValue), chains: new Set(), claimIds: [] });
+      const group = factGroups.get(key);
+      group.chains.add(evidenceChainKey(item));
+      group.claimIds.push(claim.claimId);
+    });
+
+    const commonGround = Array.from(factGroups.values())
+      .filter((group) => group.chains.size >= 2)
+      .map((group) => ({ factKey: group.factKey, factValue: group.factValue, independentChains: group.chains.size, claimIds: group.claimIds }));
+
+    const discriminatingEvidence = uniqueStrings([
+      ...items.flatMap((item) => item.epistemicClaim?.falsifiers || []),
+      ...hypothesisResults.flatMap((hypothesis) => hypothesis.discriminators || []),
+      ...(Array.isArray(options.discriminatingEvidence) ? options.discriminatingEvidence : [])
+    ]);
+
+    const apparentSources = items.length;
+    const independentChains = chains.length;
+    const collapsedDependentSources = Math.max(0, apparentSources - independentChains);
+    const top = hypothesisResults[0] || null;
+    const second = hypothesisResults[1] || null;
+    const margin = top ? Number((top.score - (second?.score ?? 0)).toFixed(3)) : 0;
+    const materiallySupported = top && top.supportWeight >= 0.55 && top.score >= 0.68 && margin >= 0.18;
+    const status = hypothesisResults.length === 0
+      ? "evidence-organized"
+      : materiallySupported
+        ? "provisional-leading-hypothesis"
+        : "unresolved-competing-explanations";
+
+    return {
+      schema: REALITY_RECONSTRUCTION_SCHEMA,
+      subject,
+      status,
+      reconstructionRule: "Surface appearance is evidence, not truth. Reconstruct the best-supported underlying reality without converting repetition, authority, disagreement, or Maddy's prior conclusion into automatic truth.",
+      narrativeRule: "Different stories do not automatically imply deception; identical stories do not automatically provide independent corroboration.",
+      apparentSources,
+      independentEvidenceChains: independentChains,
+      collapsedDependentSources,
+      repetitionAnalysis: { apparentSources, independentChains, collapsedDependentSources, repetitionIsNotCorroboration: true },
+      commonGround,
+      hypotheses: hypothesisResults,
+      leadingHypothesis: materiallySupported ? clone(top) : null,
+      uncertaintyPreserved: !materiallySupported,
+      discriminatingEvidence,
+      antiConfirmationBias: {
+        active: true,
+        rule: "Seek evidence that could distinguish competing explanations or prove the leading explanation wrong.",
+        requiredEvidence: discriminatingEvidence
+      },
+      observations: items.map((item) => ({
+        claimId: item.epistemicClaim?.claimId || item.id,
+        statement: item.epistemicClaim?.statement || item.summary,
+        actor: clone(item.epistemicClaim?.actor || null),
+        perspective: clone(item.epistemicClaim?.perspective || null),
+        observationKind: item.epistemicClaim?.observationKind || "claim",
+        epistemicStatus: item.epistemicStatus,
+        evidenceChainId: evidenceChainKey(item)
+      })),
+      generatedAt: nowIso()
     };
   }
 
@@ -919,6 +1117,10 @@
     const conflicts = detectConflicts(normalized);
     const terminologyLocks = buildTerminologyLocks(normalized);
     const missionRelationships = inferMissionRelationships(normalized);
+    const realityReconstruction = buildRealityReconstruction(normalized, subject, {
+      hypotheses: input.hypotheses || options.hypotheses || [],
+      discriminatingEvidence: input.discriminatingEvidence || options.discriminatingEvidence || []
+    });
 
     const packageData = {
       success: true,
@@ -966,6 +1168,7 @@
         .filter(Boolean),
       allEvidence: normalized,
       epistemicClaims: normalized.map((item) => clone(item.epistemicClaim)),
+      realityReconstruction,
       confidence: calculatePackageConfidence(normalized, conflicts),
       generatedAt: nowIso()
     };
@@ -1287,6 +1490,95 @@
     };
   }
 
+  function runRealityReconstructionAcceptanceTest() {
+    const result = prepare({
+      subject: "What most likely happened at the bears' house?",
+      hypotheses: [
+        { id: "intentional-trespass", label: "Goldilocks knowingly entered an occupied home without permission", discriminators: ["contemporaneous statement showing she knew the home was occupied"] },
+        { id: "lost-seeking-help", label: "Goldilocks was lost and entered believing the house was unoccupied while seeking help", discriminators: ["location history showing whether she was lost before arrival"] }
+      ],
+      evidence: [
+        {
+          id: "bear-account",
+          claim: "The porridge was eaten and the house had been entered without our permission.",
+          sourceType: "witness-statement",
+          authority: "working",
+          confidence: 0.84,
+          actor: { id: "bear-family", name: "Bear family", type: "witness" },
+          perspective: { role: "resident", vantage: "returned-after-event" },
+          originGroupId: "bear-family-account",
+          independent: false,
+          hypothesisIds: ["intentional-trespass"],
+          factKey: "porridge-eaten", factValue: true,
+          falsifiers: ["evidence Goldilocks reasonably believed the house was abandoned"]
+        },
+        {
+          id: "newspaper-repeat",
+          claim: "Goldilocks knowingly trespassed and ate the bears' porridge.",
+          sourceType: "news-summary",
+          authority: "working",
+          confidence: 0.7,
+          originGroupId: "bear-family-account",
+          independent: false,
+          sourceLineage: [{ sourceId: "bear-account", relation: "repeats" }],
+          hypothesisIds: ["intentional-trespass"]
+        },
+        {
+          id: "goldilocks-account",
+          claim: "I was lost, thought the house was empty, and went inside looking for help.",
+          sourceType: "witness-statement",
+          authority: "working",
+          confidence: 0.78,
+          actor: { id: "goldilocks", name: "Goldilocks", type: "witness" },
+          perspective: { role: "visitor", vantage: "present-during-event" },
+          independent: true,
+          hypothesisIds: ["lost-seeking-help"],
+          factKey: "porridge-eaten", factValue: true,
+          falsifiers: ["contemporaneous statement showing she knew the home was occupied"]
+        },
+        {
+          id: "door-sensor",
+          claim: "The front door opened normally; no forced-entry alert was recorded.",
+          sourceType: "device-record",
+          authority: "verified",
+          verified: true,
+          confidence: 0.96,
+          independent: true,
+          observationKind: "instrument-record",
+          factKey: "forced-entry", factValue: false,
+          falsifiers: ["sensor integrity failure during the event window"]
+        }
+      ]
+    });
+
+    const reconstruction = result.realityReconstruction;
+    const bearObservation = reconstruction.observations.find((item) => item.claimId === "bear-account");
+    const goldilocksObservation = reconstruction.observations.find((item) => item.claimId === "goldilocks-account");
+    const checks = [
+      { name: "Reality Reconstruction is intrinsic to every prepared evidence package", passed: reconstruction?.schema === REALITY_RECONSTRUCTION_SCHEMA },
+      { name: "Repeated telling from one origin collapses to one evidentiary chain", passed: reconstruction.apparentSources === 4 && reconstruction.independentEvidenceChains === 3 && reconstruction.collapsedDependentSources === 1 },
+      { name: "Repetition is explicitly not treated as independent corroboration", passed: reconstruction.repetitionAnalysis.repetitionIsNotCorroboration === true },
+      { name: "Competing narratives remain live when evidence does not justify certainty", passed: reconstruction.status === "unresolved-competing-explanations" && reconstruction.leadingHypothesis === null && reconstruction.hypotheses.length === 2 },
+      { name: "Different perspectives survive reconstruction instead of being labeled deception", passed: bearObservation?.perspective?.role === "resident" && goldilocksObservation?.perspective?.role === "visitor" },
+      { name: "Independent agreement can become explicit common ground", passed: reconstruction.commonGround.some((fact) => fact.factKey === "porridge-eaten" && fact.factValue === true && fact.independentChains >= 2) },
+      { name: "Maddy actively preserves evidence that could disprove or distinguish stories", passed: reconstruction.antiConfirmationBias.active === true && reconstruction.discriminatingEvidence.includes("contemporaneous statement showing she knew the home was occupied") },
+      { name: "Uncertainty is preserved rather than manufacturing a winner", passed: reconstruction.uncertaintyPreserved === true }
+    ];
+
+    return {
+      success: checks.every((check) => check.passed),
+      commission: "MADDY-REALITY-RECONSTRUCTION",
+      schema: "meos.executive-evidence-integrity.reality-reconstruction-acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks,
+      reconstruction: clone(reconstruction),
+      completedAt: nowIso()
+    };
+  }
+
   const api = Object.freeze({
     name: NAME,
     version: VERSION,
@@ -1295,11 +1587,14 @@
     EVIDENCE_CLASSES,
     REPRESENTATION_MODES,
     EPISTEMIC_SCHEMA,
+    REALITY_RECONSTRUCTION_SCHEMA,
     prepare,
+    buildRealityReconstruction,
     classifyEvidence,
     recordCorrection,
     runSelfTest,
     runEpistemicIdentityAcceptanceTest,
+    runRealityReconstructionAcceptanceTest,
     getStatus,
     on
   });
