@@ -1,7 +1,7 @@
 /*
  * MEOS Institutional Reasoning Engine
- * Version: 1.1.2
- * Build: IR112-POSITIONING-TARGET-ACQUISITION-GUARD-20260810-A
+ * Version: 1.2.0
+ * Build: IR120-CROSS-MADDY-EPISTEMIC-INTEGRATION-20260913-A
  *
  * Mission:
  * Turn supported institutional evidence into explainable executive analysis,
@@ -17,6 +17,7 @@
 
     const STORAGE_KEY = "meos.institutional-reasoning.v1";
     const SCHEMA = "meos.institutional-reasoning.package.v1";
+    const EPISTEMIC_CONTINUITY_SCHEMA = "meos.maddy.epistemic-continuity.v1";
 
     const REASONING_MODES = {
         EXECUTIVE: "executive",
@@ -40,8 +41,8 @@
 
     const InstitutionalReasoning = {
         name: "MEOS Institutional Reasoning Engine",
-        version: "1.1.2",
-        buildId: "IR112-POSITIONING-TARGET-ACQUISITION-GUARD-20260810-A",
+        version: "1.2.0",
+        buildId: "IR120-CROSS-MADDY-EPISTEMIC-INTEGRATION-20260913-A",
         status: "initializing",
         operatingMode: "evidence-grounded-reasoning",
 
@@ -133,6 +134,28 @@
                 ? recall.evidence || []
                 : [];
 
+            /*
+             * QDPA Commission 5A — Cross-Maddy Epistemic Integration / Reasoning Bridge
+             *
+             * Recall/search evidence historically entered Institutional Reasoning as a
+             * flat evidence array. That meant the richer Epistemic Identity, Reality
+             * Reconstruction, and Counterparty Intelligence structures created by the
+             * existing Executive Evidence Integrity organ could disappear at the
+             * reasoning boundary. Preserve one bounded epistemic continuity envelope
+             * here and place it inside evidenceAssessment, a field already retained by
+             * Executive Planning and Executive Decision. No new truth engine or
+             * persistence authority is created.
+             */
+            const epistemicContinuity =
+                this.prepareEpistemicContinuity(
+                    question,
+                    evidence,
+                    {
+                        ...options,
+                        recall
+                    }
+                );
+
             const citations = recall.success
                 ? recall.citations || []
                 : [];
@@ -161,6 +184,9 @@
                     recallConfidence:
                         recall.confidence || 0
                 });
+
+            evidenceAssessment.epistemicContinuity =
+                this.clone(epistemicContinuity);
 
             const findings = this.buildFindings({
                 question,
@@ -245,6 +271,8 @@
                         conflicts
                     }),
                 evidenceAssessment,
+                epistemicContinuity:
+                    this.clone(epistemicContinuity),
                 findings,
                 options: optionsList,
                 risks,
@@ -1610,6 +1638,450 @@
                 ...options,
                 mode: REASONING_MODES.STRATEGIC
             });
+        },
+
+        prepareEpistemicContinuity(question, evidence = [], options = {}) {
+            const integrity = global.ExecutiveEvidenceIntegrity;
+            const sourceEvidence = Array.isArray(evidence)
+                ? evidence
+                : [];
+
+            const unavailable = {
+                schema: EPISTEMIC_CONTINUITY_SCHEMA,
+                available: false,
+                preserved: false,
+                subject: String(question || ""),
+                sourceEvidenceCount: sourceEvidence.length,
+                governedEvidenceCount: 0,
+                integrityVersion: null,
+                integrityBuildId: null,
+                packageConfidence: null,
+                epistemicClaims: [],
+                realityReconstruction: null,
+                counterpartyIntelligence: null,
+                conflicts: [],
+                preservationRule:
+                    "Epistemic structure must remain attached across cognition; unavailable evidence governance is reported rather than silently fabricated.",
+                generatedAt: new Date().toISOString()
+            };
+
+            if (!integrity || typeof integrity.prepare !== "function") {
+                return unavailable;
+            }
+
+            try {
+                const prepared = integrity.prepare(
+                    {
+                        subject: String(question || ""),
+                        evidence: sourceEvidence,
+                        hypotheses:
+                            Array.isArray(options.hypotheses)
+                                ? options.hypotheses
+                                : [],
+                        discriminatingEvidence:
+                            Array.isArray(options.discriminatingEvidence)
+                                ? options.discriminatingEvidence
+                                : [],
+                        counterparties:
+                            options.counterparties || {}
+                    },
+                    {
+                        subject: String(question || ""),
+                        hypotheses:
+                            Array.isArray(options.hypotheses)
+                                ? options.hypotheses
+                                : [],
+                        discriminatingEvidence:
+                            Array.isArray(options.discriminatingEvidence)
+                                ? options.discriminatingEvidence
+                                : [],
+                        counterparties:
+                            options.counterparties || {}
+                    }
+                );
+
+                if (prepared?.success !== true) {
+                    return {
+                        ...unavailable,
+                        error:
+                            prepared?.error ||
+                            "Executive Evidence Integrity did not produce an epistemic package."
+                    };
+                }
+
+                return {
+                    schema: EPISTEMIC_CONTINUITY_SCHEMA,
+                    available: true,
+                    preserved: true,
+                    subject: String(question || ""),
+                    sourceEvidenceCount: sourceEvidence.length,
+                    governedEvidenceCount:
+                        Array.isArray(prepared.allEvidence)
+                            ? prepared.allEvidence.length
+                            : 0,
+                    integrityVersion:
+                        prepared.engine?.version || null,
+                    integrityBuildId:
+                        prepared.engine?.buildId || null,
+                    packageConfidence:
+                        prepared.confidence ?? null,
+                    epistemicClaims:
+                        this.clone(prepared.epistemicClaims || []),
+                    realityReconstruction:
+                        this.clone(
+                            prepared.realityReconstruction || null
+                        ),
+                    counterpartyIntelligence:
+                        this.clone(
+                            prepared.counterpartyIntelligence || null
+                        ),
+                    conflicts:
+                        this.clone(prepared.conflicts || []),
+                    preservationRule:
+                        "Search/Recall evidence may be summarized for executive reasoning, but provenance, independence, contradiction, uncertainty, competing explanations, counterparty context, and falsifiers must remain machine-readable across the handoff.",
+                    generatedAt:
+                        prepared.generatedAt ||
+                        new Date().toISOString()
+                };
+            } catch (error) {
+                return {
+                    ...unavailable,
+                    error:
+                        error?.message ||
+                        "Epistemic continuity preparation failed."
+                };
+            }
+        },
+
+        runCrossMaddyEpistemicIntegrationAcceptanceTest() {
+            const recall = global.ExecutiveRecall;
+            const planning = global.ExecutivePlanning;
+            const decision = global.ExecutiveDecision;
+
+            if (!recall?.recall) {
+                return {
+                    success: false,
+                    commission:
+                        "MADDY-CROSS-MADDY-EPISTEMIC-INTEGRATION-REASONING-BRIDGE",
+                    version: this.version,
+                    buildId: this.buildId,
+                    error:
+                        "Executive Recall is required for this acceptance test."
+                };
+            }
+
+            const originalRecall = recall.recall;
+            const savedPlans = Array.isArray(planning?.plans)
+                ? this.clone(planning.plans)
+                : null;
+            const savedDecisions = Array.isArray(decision?.decisions)
+                ? this.clone(decision.decisions)
+                : null;
+            const planningPersistence =
+                planning?.configuration?.automaticPersistence;
+            const decisionPersistence =
+                decision?.configuration?.automaticPersistence;
+
+            const evidence = [
+                {
+                    id: "fixture-bear-original",
+                    title: "Bear family account",
+                    content:
+                        "The family reports that a visitor entered the house while they were away.",
+                    sourceType: "witness-account",
+                    sourceId: "bear-family",
+                    authority: "reported",
+                    confidence: 0.82,
+                    actor: {
+                        id: "bear-family",
+                        name: "Bear family",
+                        type: "human"
+                    },
+                    propositionId: "entry-event",
+                    stance: "supports",
+                    hypothesisIds: ["intentional-entry"],
+                    sourceLineage: [
+                        {
+                            sourceId: "bear-family-original",
+                            relation: "original"
+                        }
+                    ],
+                    citation: {
+                        sourceType: "witness-account",
+                        sourceId: "bear-family",
+                        title: "Bear family account"
+                    }
+                },
+                {
+                    id: "fixture-bear-repeat",
+                    title: "Newspaper retelling",
+                    content:
+                        "A newspaper repeats the bear family's account.",
+                    sourceType: "news-report",
+                    sourceId: "newspaper-repeat",
+                    authority: "reported",
+                    confidence: 0.78,
+                    actor: {
+                        id: "newspaper",
+                        name: "Newspaper",
+                        type: "human"
+                    },
+                    propositionId: "entry-event",
+                    stance: "supports",
+                    hypothesisIds: ["intentional-entry"],
+                    sourceLineage: [
+                        {
+                            sourceId: "bear-family-original",
+                            relation: "repeats"
+                        }
+                    ],
+                    citation: {
+                        sourceType: "news-report",
+                        sourceId: "newspaper-repeat",
+                        title: "Newspaper retelling"
+                    }
+                },
+                {
+                    id: "fixture-goldilocks",
+                    title: "Goldilocks account",
+                    content:
+                        "Goldilocks says she believed the house was abandoned and entered seeking help.",
+                    sourceType: "witness-account",
+                    sourceId: "goldilocks",
+                    authority: "reported",
+                    confidence: 0.74,
+                    actor: {
+                        id: "goldilocks",
+                        name: "Goldilocks",
+                        type: "human"
+                    },
+                    propositionId: "entry-event",
+                    stance: "supports",
+                    hypothesisIds: ["seeking-help"],
+                    sourceLineage: [
+                        {
+                            sourceId: "goldilocks-original",
+                            relation: "original"
+                        }
+                    ],
+                    citation: {
+                        sourceType: "witness-account",
+                        sourceId: "goldilocks",
+                        title: "Goldilocks account"
+                    }
+                }
+            ];
+
+            recall.recall = () => ({
+                success: true,
+                subject: "Three Bears fixture",
+                confidence: 0.77,
+                evidence: this.clone(evidence),
+                citations: evidence.map((item) =>
+                    this.clone(item.citation)
+                ),
+                decisions: [],
+                openLoops: [],
+                dependencies: [],
+                conflicts: []
+            });
+
+            if (planning?.configuration) {
+                planning.configuration.automaticPersistence = false;
+            }
+            if (decision?.configuration) {
+                decision.configuration.automaticPersistence = false;
+            }
+
+            try {
+                const hypotheses = [
+                    {
+                        id: "intentional-entry",
+                        title: "Intentional entry",
+                        description:
+                            "The visitor knowingly entered an occupied private home."
+                    },
+                    {
+                        id: "seeking-help",
+                        title: "Seeking help",
+                        description:
+                            "The visitor reasonably believed the home was abandoned and entered seeking help."
+                    }
+                ];
+
+                const reasoning = this.analyze(
+                    "What most likely happened in the Three Bears fixture?",
+                    {
+                        hypotheses,
+                        discriminatingEvidence: [
+                            "Evidence showing whether Goldilocks knew the house was occupied before entry."
+                        ],
+                        includeImplementation: false
+                    }
+                );
+
+                const continuity =
+                    reasoning?.evidenceAssessment
+                        ?.epistemicContinuity;
+
+                const planResult = planning?.createPlan
+                    ? planning.createPlan(
+                        {
+                            objective:
+                                "Investigate the Three Bears fixture",
+                            reasoningMode: "strategic"
+                        },
+                        {
+                            skipReasoning: false,
+                            actor: "Maddy acceptance fixture"
+                        }
+                    )
+                    : null;
+
+                const decisionResult = decision?.createDecision
+                    ? decision.createDecision(
+                        {
+                            question:
+                                "Which Three Bears explanation is best supported?",
+                            options: [
+                                {
+                                    id: "intentional-entry",
+                                    title: "Intentional entry"
+                                },
+                                {
+                                    id: "seeking-help",
+                                    title: "Seeking help"
+                                }
+                            ],
+                            reasoningMode: "decision"
+                        },
+                        {
+                            actor: "Maddy acceptance fixture"
+                        }
+                    )
+                    : null;
+
+                const planContinuity =
+                    planResult?.plan?.reasoningContext
+                        ?.evidenceAssessment
+                        ?.epistemicContinuity;
+                const decisionContinuity =
+                    decisionResult?.decision
+                        ?.evidenceAssessment
+                        ?.epistemicContinuity;
+
+                const reconstruction =
+                    continuity?.realityReconstruction;
+
+                const checks = [
+                    {
+                        name: "Institutional Reasoning preserves a machine-readable epistemic continuity envelope",
+                        passed:
+                            continuity?.schema ===
+                                EPISTEMIC_CONTINUITY_SCHEMA &&
+                            continuity?.preserved === true
+                    },
+                    {
+                        name: "The continuity envelope comes from the commissioned Executive Evidence Integrity organ",
+                        passed:
+                            continuity?.integrityVersion ===
+                                global.ExecutiveEvidenceIntegrity
+                                    ?.getStatus?.().version &&
+                            Boolean(continuity?.integrityBuildId)
+                    },
+                    {
+                        name: "Repeated tellings sharing one origin remain collapsed rather than becoming false corroboration",
+                        passed:
+                            reconstruction
+                                ?.independentEvidenceChains === 2 &&
+                            reconstruction
+                                ?.collapsedDependentSources === 1
+                    },
+                    {
+                        name: "Competing explanations and uncertainty survive the reasoning boundary",
+                        passed:
+                            Array.isArray(
+                                reconstruction?.hypotheses
+                            ) &&
+                            reconstruction.hypotheses.length === 2 &&
+                            reconstruction.leadingHypothesis === null &&
+                            reconstruction.uncertaintyPreserved === true
+                    },
+                    {
+                        name: "Discriminating evidence capable of changing the conclusion remains machine-readable",
+                        passed:
+                            Array.isArray(
+                                reconstruction
+                                    ?.discriminatingEvidence
+                            ) &&
+                            reconstruction.discriminatingEvidence
+                                .join(" ")
+                                .includes("knew the house was occupied")
+                    },
+                    {
+                        name: "Executive Planning retains the epistemic continuity envelope through its existing reasoningContext seam",
+                        passed:
+                            planContinuity?.schema ===
+                                EPISTEMIC_CONTINUITY_SCHEMA &&
+                            planContinuity?.preserved === true
+                    },
+                    {
+                        name: "Executive Decision retains the epistemic continuity envelope through its existing evidenceAssessment seam",
+                        passed:
+                            decisionContinuity?.schema ===
+                                EPISTEMIC_CONTINUITY_SCHEMA &&
+                            decisionContinuity?.preserved === true
+                    },
+                    {
+                        name: "The bridge preserves epistemic structure without granting execution or truth authority",
+                        passed:
+                            continuity?.preservationRule
+                                ?.includes("must remain machine-readable") ===
+                                true &&
+                            reasoning?.approvalRequired === true
+                    }
+                ];
+
+                const passed = checks.filter(
+                    (check) => check.passed
+                ).length;
+
+                return {
+                    success: passed === checks.length,
+                    commission:
+                        "MADDY-CROSS-MADDY-EPISTEMIC-INTEGRATION-REASONING-BRIDGE",
+                    schema:
+                        "meos.institutional-reasoning.cross-maddy-epistemic-integration-acceptance.v1",
+                    version: this.version,
+                    buildId: this.buildId,
+                    passed,
+                    total: checks.length,
+                    checks,
+                    epistemicContinuity:
+                        this.clone(continuity),
+                    planningContinuity:
+                        this.clone(planContinuity),
+                    decisionContinuity:
+                        this.clone(decisionContinuity),
+                    completedAt: new Date().toISOString()
+                };
+            } finally {
+                recall.recall = originalRecall;
+                if (planning && savedPlans) {
+                    planning.plans = savedPlans;
+                }
+                if (decision && savedDecisions) {
+                    decision.decisions = savedDecisions;
+                }
+                if (planning?.configuration) {
+                    planning.configuration.automaticPersistence =
+                        planningPersistence;
+                }
+                if (decision?.configuration) {
+                    decision.configuration.automaticPersistence =
+                        decisionPersistence;
+                }
+            }
         },
 
         runRecall(question, options = {}) {
