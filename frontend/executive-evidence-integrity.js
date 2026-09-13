@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Evidence Integrity Engine
  *
- * Version: 1.0.1
- * Build: EEI101-TERMINOLOGY-REFINEMENT-20260801-A
+ * Version: 1.1.0
+ * Build: EEI110-EPISTEMIC-IDENTITY-CONTRACT-20260913-A
  * Status: Commissioned
  *
  * Governing motto:
@@ -23,9 +23,10 @@
   "use strict";
 
   const NAME = "MEOS Executive Evidence Integrity Engine";
-  const VERSION = "1.0.1";
-  const BUILD_ID = "EEI101-TERMINOLOGY-REFINEMENT-20260801-A";
+  const VERSION = "1.1.0";
+  const BUILD_ID = "EEI110-EPISTEMIC-IDENTITY-CONTRACT-20260913-A";
   const SCHEMA = "meos.executive-evidence-integrity.package.v1";
+  const EPISTEMIC_SCHEMA = "meos.maddy.epistemic-claim.v1";
 
   const EVIDENCE_CLASSES = Object.freeze({
     OFFICIAL_RECORD: "official-institutional-record",
@@ -426,6 +427,107 @@
     };
   }
 
+  function normalizeActor(item = {}) {
+    const raw = item.raw || {};
+    const actor = item.actor || item.assertedBy || raw.actor || raw.assertedBy || null;
+    if (!actor) return null;
+    if (typeof actor === "string") return { id: null, name: actor, type: "unknown", role: "asserter" };
+    return {
+      id: actor.id || actor.actorId || null,
+      name: actor.name || actor.label || actor.title || null,
+      type: actor.type || actor.actorType || "unknown",
+      role: actor.role || "asserter"
+    };
+  }
+
+  function normalizeLineage(item = {}, provenance = {}) {
+    const raw = item.raw || {};
+    const lineage = item.sourceLineage || item.lineage || raw.sourceLineage || raw.lineage || [];
+    const normalized = (Array.isArray(lineage) ? lineage : [lineage])
+      .filter(Boolean)
+      .map((entry) => typeof entry === "string"
+        ? { sourceId: entry, relation: "derived-from" }
+        : {
+            sourceId: entry.sourceId || entry.id || null,
+            sourceUrl: entry.sourceUrl || entry.url || null,
+            relation: entry.relation || "derived-from"
+          });
+    if (provenance.sourceId || provenance.sourceUrl) {
+      normalized.unshift({
+        sourceId: provenance.sourceId || null,
+        sourceUrl: provenance.sourceUrl || null,
+        relation: "observed-source"
+      });
+    }
+    return normalized;
+  }
+
+  function deriveIndependence(item = {}, lineage = []) {
+    const explicit = item.independence || item.sourceIndependence || item.raw?.independence;
+    if (explicit && typeof explicit === "object") {
+      return {
+        status: explicit.status || "unknown",
+        groupId: explicit.groupId || explicit.originGroupId || null,
+        basis: explicit.basis || null
+      };
+    }
+    const groupId = item.originGroupId || item.canonicalSourceId || item.raw?.originGroupId || null;
+    return {
+      status: item.independent === true ? "independent" : item.independent === false ? "dependent" : "unknown",
+      groupId,
+      basis: groupId ? "shared-origin-group" : lineage.length > 1 ? "declared-lineage" : null
+    };
+  }
+
+  function deriveFreshness(item = {}, provenance = {}) {
+    const explicit = item.freshness || item.raw?.freshness;
+    const validFrom = item.validFrom || explicit?.validFrom || null;
+    const validUntil = item.validUntil || item.expiresAt || explicit?.validUntil || null;
+    const observedAt = provenance.retrievedAt || nowIso();
+    const now = Date.now();
+    const until = validUntil ? Date.parse(validUntil) : NaN;
+    const status = explicit?.status || (Number.isFinite(until) && until < now ? "stale" : "unknown");
+    return { status, observedAt, validFrom, validUntil };
+  }
+
+  function deriveEpistemicStatus(item = {}, evidenceClass, independence, freshness) {
+    const explicit = item.epistemicStatus || item.truthStatus || item.raw?.epistemicStatus;
+    if (explicit) return String(explicit);
+    if (freshness.status === "stale") return "stale";
+    if (evidenceClass === EVIDENCE_CLASSES.EXECUTIVE_INFERENCE) return "inferred";
+    if (evidenceClass === EVIDENCE_CLASSES.EXECUTIVE_RECOMMENDATION) return "recommended";
+    if (evidenceClass === EVIDENCE_CLASSES.UNVERIFIED) return "unverified";
+    if (independence.status === "dependent") return "supported-dependent";
+    return "supported";
+  }
+
+  function buildEpistemicClaim(item = {}, index = 0, evidenceClass, provenance) {
+    const statement = String(item.claim || item.statement || item.content || item.text || item.summary || "").trim();
+    const actor = normalizeActor(item);
+    const sourceLineage = normalizeLineage(item, provenance);
+    const independence = deriveIndependence(item, sourceLineage);
+    const freshness = deriveFreshness(item, provenance);
+    const contradictions = clone(item.contradictions || item.raw?.contradictions || []);
+    const incentives = clone(item.incentives || actor?.incentives || item.raw?.incentives || []);
+    const status = deriveEpistemicStatus(item, evidenceClass, independence, freshness);
+    return {
+      schema: EPISTEMIC_SCHEMA,
+      claimId: item.claimId || item.id || item.sourceId || `epistemic-claim-${index + 1}`,
+      statement,
+      actor,
+      provenance: clone(provenance),
+      sourceLineage,
+      independence,
+      contradictions: Array.isArray(contradictions) ? contradictions : [contradictions].filter(Boolean),
+      incentives: Array.isArray(incentives) ? incentives : [incentives].filter(Boolean),
+      freshness,
+      status,
+      confidence: clampConfidence(item.confidence ?? provenance.confidence, 0.5),
+      falsifiers: uniqueStrings(item.falsifiers || item.wouldChangeBelief || item.raw?.falsifiers || []),
+      observedAt: provenance.retrievedAt || nowIso()
+    };
+  }
+
   function normalizeEvidenceItem(item = {}, index = 0) {
     const content = String(
       item.content ||
@@ -446,6 +548,7 @@
     const evidenceClass = classifyEvidence(item);
     const representationMode = detectRepresentationMode(item);
     const provenance = buildProvenance(item);
+    const epistemicClaim = buildEpistemicClaim(item, index, evidenceClass, provenance);
 
     return {
       id:
@@ -467,6 +570,10 @@
         ...(item.tags || [])
       ]),
       provenance,
+      epistemicClaim,
+      epistemicStatus: epistemicClaim.status,
+      sourceIndependence: epistemicClaim.independence,
+      freshness: epistemicClaim.freshness,
       authorityRank: authorityRank(provenance.authority),
       confidence: provenance.confidence,
       original: clone(item)
@@ -858,6 +965,7 @@
         .map((item) => item.provenance.citation)
         .filter(Boolean),
       allEvidence: normalized,
+      epistemicClaims: normalized.map((item) => clone(item.epistemicClaim)),
       confidence: calculatePackageConfidence(normalized, conflicts),
       generatedAt: nowIso()
     };
@@ -1113,6 +1221,72 @@
     };
   }
 
+  function runEpistemicIdentityAcceptanceTest() {
+    const result = prepare({
+      subject: "Is Acme's market adoption claim independently established?",
+      evidence: [
+        {
+          id: "acme-marketing",
+          claim: "Acme serves 40,000 enterprise customers.",
+          content: "Acme serves 40,000 enterprise customers.",
+          sourceType: "company-marketing",
+          authority: "working",
+          confidence: 0.62,
+          actor: { id: "acme", name: "Acme", type: "company" },
+          originGroupId: "acme-press-release-2026",
+          independent: false,
+          incentives: ["increase perceived market adoption"],
+          falsifiers: ["audited customer-count disclosure"]
+        },
+        {
+          id: "affiliate-repeat",
+          content: "Acme serves 40,000 enterprise customers.",
+          sourceType: "external-marketing",
+          authority: "working",
+          confidence: 0.55,
+          originGroupId: "acme-press-release-2026",
+          independent: false,
+          sourceLineage: [{ sourceId: "acme-marketing", relation: "repeats" }]
+        },
+        {
+          id: "filing",
+          content: "Acme reports 12,400 active enterprise accounts.",
+          sourceType: "government-record",
+          authority: "official",
+          verified: true,
+          confidence: 0.98,
+          independent: true,
+          contradictions: [{ claimId: "acme-marketing", relation: "materially-conflicts" }],
+          validUntil: "2099-01-01T00:00:00.000Z"
+        }
+      ]
+    });
+    const marketing = result.allEvidence.find((item) => item.id === "acme-marketing");
+    const affiliate = result.allEvidence.find((item) => item.id === "affiliate-repeat");
+    const filing = result.allEvidence.find((item) => item.id === "filing");
+    const checks = [
+      { name: "Every evidence item carries the Maddy epistemic claim contract", passed: result.epistemicClaims.length === 3 && result.epistemicClaims.every((claim) => claim.schema === EPISTEMIC_SCHEMA) },
+      { name: "Claims retain the asserting actor instead of becoming naked facts", passed: marketing?.epistemicClaim.actor?.name === "Acme" },
+      { name: "Repeated marketing can be marked dependent on a shared origin", passed: marketing?.sourceIndependence.status === "dependent" && affiliate?.sourceIndependence.groupId === "acme-press-release-2026" },
+      { name: "Source lineage survives normalization", passed: affiliate?.epistemicClaim.sourceLineage.some((entry) => entry.sourceId === "acme-marketing") === true },
+      { name: "Contradictory evidence remains machine-readable", passed: filing?.epistemicClaim.contradictions.some((entry) => entry.claimId === "acme-marketing") === true },
+      { name: "Incentive context remains attached to the claim", passed: marketing?.epistemicClaim.incentives.includes("increase perceived market adoption") === true },
+      { name: "Falsifiers preserve what could change Maddy's belief", passed: marketing?.epistemicClaim.falsifiers.includes("audited customer-count disclosure") === true },
+      { name: "Freshness/validity is carried as epistemic state", passed: filing?.freshness.validUntil === "2099-01-01T00:00:00.000Z" }
+    ];
+    return {
+      success: checks.every((check) => check.passed),
+      commission: "MADDY-EPISTEMIC-IDENTITY-CONTRACT",
+      schema: "meos.executive-evidence-integrity.epistemic-identity-acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks,
+      completedAt: nowIso()
+    };
+  }
+
   const api = Object.freeze({
     name: NAME,
     version: VERSION,
@@ -1120,10 +1294,12 @@
     schema: SCHEMA,
     EVIDENCE_CLASSES,
     REPRESENTATION_MODES,
+    EPISTEMIC_SCHEMA,
     prepare,
     classifyEvidence,
     recordCorrection,
     runSelfTest,
+    runEpistemicIdentityAcceptanceTest,
     getStatus,
     on
   });
