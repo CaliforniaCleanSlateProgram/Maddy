@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32170612/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32153443/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
@@ -1446,3 +1447,109 @@ For the resource-acquisition path, the next decision should be selected only aft
 ### Exact next step after this ledger checkpoint is committed
 
 Re-anchor to the updated repository containing this Build State and the commissioned runtime versions above. Then inspect the actual end-to-end funding execution path from qualified pursuit recommendation through Grant Office preparation and determine the highest-leverage missing behavior that clears the Spooky engineering gate. Present that scoped commission before coding; do not silently broaden it.
+
+## Commissioned checkpoint — Maddy Epistemic Identity + Reality Reconstruction — 2026-09-13
+
+Status: **COMMISSIONED — live runtime acceptance passed for both bounded commissions.**
+
+### Governing direction — epistemic identity is Maddy, not a separate truth engine
+
+This checkpoint records an additive engineering direction under the existing North Star and immutable Spooky standard. It does not replace, shorten, reinterpret, or weaken existing governing language.
+
+Maddy must not inherit truth merely because a model, source, majority, authority, counterparty, search ranking, advertisement, repeated claim, or Maddy's own prior conclusion asserts it. Important beliefs should preserve enough machine-readable epistemic structure for Maddy to construct and continuously revise the best evidence-grounded model of reality available to her.
+
+**Surface appearance is evidence, not truth.**
+
+Different stories do not automatically imply deception. Identical stories do not automatically provide independent corroboration. One underlying reality may generate many narratives because observers can have different perspectives, information, incentives, interpretations, omissions, memories, or access to evidence. Consensus therefore cannot be treated as proof of independent corroboration without provenance analysis.
+
+QDPA deeper-structure reasoning applies here as an identity-level reasoning discipline rather than branding or a disconnected engine: observe surface effects, preserve claims and provenance, determine evidentiary independence, preserve competing explanations, seek discriminating and disconfirming evidence, reconstruct the best-supported underlying reality, preserve uncertainty when evidence does not justify certainty, observe later consequences, and revise Maddy's model when reality disagrees.
+
+Anti-confirmation-bias rule:
+
+**Do not only search for evidence that proves Maddy's current theory. Preserve and seek evidence capable of proving the leading explanation wrong or distinguishing it from credible alternatives.**
+
+The long-range moat is not a standalone Counterparty Intelligence or Truth Engine. Counterparty Intelligence, Reality Reconstruction, scam resistance, synthetic-information resistance, contradiction detection, source verification, causal discovery, and prediction calibration are intended to emerge as behaviors of one Maddy whose epistemic state survives across her existing cognitive organs.
+
+Steel-ship test for this path:
+
+**Would this architecture survive a hostile, noisy, synthetic, agent-saturated information environment—or does it only work while the Internet is mostly human and cooperative?**
+
+### Commission 1 of 6 — Executive Evidence Integrity 1.1.0 — Maddy Epistemic Identity Contract
+
+Version / build:
+- Executive Evidence Integrity `1.1.0`
+- `EEI110-EPISTEMIC-IDENTITY-CONTRACT-20260913-A`
+
+Commission objective:
+- Begin making epistemic discipline intrinsic to Maddy by evolving the existing Executive Evidence Integrity organ rather than creating a disconnected truth/counterparty engine.
+- Prevent important information from collapsing into naked facts when provenance, actor/source context, evidentiary independence, contradiction, uncertainty, freshness, incentives, or falsifiers materially affect what Maddy should believe.
+
+Commissioned behavior:
+- Prepared evidence can carry machine-readable claims and asserting actors.
+- Provenance and source lineage can remain attached to evidence.
+- Source independence/shared origin can be represented so repeated tellings need not be mistaken for independent corroboration.
+- Contradictions, incentives, freshness/validity, epistemic status, and confidence can remain explicit.
+- Evidence can preserve what would change or falsify Maddy's current belief.
+- This capability lives inside existing Executive Evidence Integrity and does not create a new truth engine.
+
+Live runtime acceptance evidence:
+- Runtime loaded Executive Evidence Integrity `1.1.0` / `EEI110-EPISTEMIC-IDENTITY-CONTRACT-20260913-A`.
+- `ExecutiveEvidenceIntegrity.runEpistemicIdentityAcceptanceTest()` returned `success: true`, `passed: 8`, `total: 8`.
+- Status: **COMMISSIONED.**
+
+### Commission 2 of 6 — Executive Evidence Integrity 1.2.0 — Reality Reconstruction
+
+Version / build:
+- Executive Evidence Integrity `1.2.0`
+- `EEI120-REALITY-RECONSTRUCTION-20260913-A`
+
+Commission objective:
+- Make Reality Reconstruction intrinsic to evidence preparation so Maddy can reason across multiple narratives without equating repetition with corroboration or disagreement with deception.
+- Preserve unresolved competing explanations and uncertainty until evidence justifies stronger conclusions.
+
+Commissioned behavior:
+- Every prepared evidence package can carry a `meos.maddy.reality-reconstruction.v1` reconstruction.
+- Apparent sources are distinguished from independent evidentiary chains.
+- Repeated tellings sharing one origin collapse into a shared evidentiary chain rather than inflating corroboration.
+- Competing hypotheses remain live when evidence does not justify a winner.
+- Different actor perspectives survive reconstruction rather than being automatically labeled deceptive.
+- Independently supported agreement can become explicit common ground.
+- Discriminating/disconfirming evidence is preserved as part of the reconstruction.
+- Uncertainty is preserved rather than manufacturing certainty.
+- The reconstruction rule explicitly prevents repetition, authority, disagreement, or Maddy's own prior conclusion from becoming automatic truth.
+
+Live runtime acceptance evidence:
+- Runtime loaded Executive Evidence Integrity `1.2.0` / `EEI120-REALITY-RECONSTRUCTION-20260913-A`.
+- `ExecutiveEvidenceIntegrity.runRealityReconstructionAcceptanceTest()` returned `success: true`, `passed: 8`, `total: 8`.
+- The acceptance fixture demonstrated the "many tellings of the Three Bears" problem: `4` apparent sources were reduced to `3` independent evidentiary chains because one repeated telling shared an origin.
+- Runtime confirmed `repetitionIsNotCorroboration: true`.
+- Runtime preserved two competing hypotheses with `leadingHypothesis: null` and `status: "unresolved-competing-explanations"` because evidence did not justify selecting a winner.
+- Runtime preserved explicit anti-confirmation-bias evidence capable of distinguishing or disproving the competing explanations.
+- Status: **COMMISSIONED.**
+
+### Planned first implementation sequence for the epistemic moat
+
+This sequence is a continuity plan, not permission to create disconnected engines. Repository/runtime inspection governs the exact seam for each commission.
+
+1. **Epistemic data contract — COMMISSIONED.** Claims carry provenance, source/actor, evidence, independence, contradiction, uncertainty, freshness, epistemic status, and falsifiers rather than becoming naked facts.
+2. **Reality Reconstruction — COMMISSIONED.** Conflicting accounts preserve competing hypotheses and discriminating/disconfirming evidence; repetition is not independent corroboration.
+3. **Counterparty Intelligence — NEXT CANDIDATE.** Evolve existing relationship/world/evidence structures so Maddy can accumulate evidence-grounded contextual reliability, incentives, promises versus outcomes, and human/AI/mixed counterparty context without reducing an actor to a simplistic global trust score.
+4. **Self-correction / calibration.** Connect predictions and conclusions to later outcomes so Maddy can investigate her own errors and recalibrate future judgment.
+5. **Cross-Maddy epistemic integration.** Preserve epistemic state through Search → Brain → Evidence → Planning → Decision → Hallway → Monitoring → Learning → Memory rather than losing it between organs.
+6. **The Shop truth surface.** Expose verified/disputed/inferred/marketed/unknown, Maddy's conclusion, supporting basis, what could change it, and recommendation naturally without turning the HUD into another widget pile.
+
+Progressively test this path against scams, circular sourcing, many narratives of one event, synthetic identities, AI-to-AI claims, coordinated misinformation, legitimate marketing, stale truth, contradictory primary records, and Maddy's own incorrect conclusions.
+
+### Current authoritative live versions — epistemic path addition
+
+As of live runtime acceptance on 2026-09-13:
+- Executive Evidence Integrity: `1.2.0` / `EEI120-REALITY-RECONSTRUCTION-20260913-A`
+- Epistemic Identity Contract acceptance: **8/8 PASS**
+- Reality Reconstruction acceptance: **8/8 PASS**
+
+The previously recorded separate live concerns remain separate unless later runtime evidence changes them, including Mission active-state accumulation, office dispatch authority state, and other unrelated persistence/runtime issues. Do not silently absorb them into the epistemic path.
+
+### Exact next step after this checkpoint
+
+Before coding Counterparty Intelligence, inspect the current live/repository relationship, evidence, institutional reasoning, monitoring, learning, knowledge/memory, and world-state seams. Determine where counterparty history and contextual reliability already exist or can be represented without a duplicate engine or duplicate persistence authority. Then choose one bounded file/idea whose runtime test proves Maddy can reason about an actor's claims, incentives, provenance, promises, and observed outcomes contextually while preserving uncertainty and avoiding a simplistic universal trust score.
+
