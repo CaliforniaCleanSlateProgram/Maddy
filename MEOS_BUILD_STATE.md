@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32151923/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE(1).md](https://github.com/user-attachments/files/32152208/MEOS_BUILD_STATE.1.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/31000256/MEOS_BUILD_STATE.md)
 # MEOS Build State
 
@@ -1009,3 +1009,50 @@ A managed design-partner release may precede fully automated self-service SaaS d
 - Existing governing language must not be changed without Executive Director approval.
 - Do not lower the Spooky standard to fit current software.
 - **Always Push Forward.**
+
+## Commissioned checkpoint — MEOS-INTERNET-NODE-004 — Storage-Aware Independent Discovery — 2026-09-12
+
+Status: **COMMISSIONED — runtime acceptance passed.**
+
+Version / build:
+- MEOS Internet Node `0.2.0`
+- `MIN004-STORAGE-AWARE-INDEPENDENT-DISCOVERY-20260912-A`
+
+Commission objective:
+- Advance Maddy's provider-independent Internet capability from seeded/local indexing toward bounded independent discovery while respecting current storage and economic constraints.
+- Preserve the Internet Node as public-web observation/evidence infrastructure only; it does not become institutional truth authority, semantic conclusion authority, or independent action authority.
+
+Commissioned behavior:
+- MEOS-owned index reports serialized storage usage and a configurable hard storage budget.
+- Default storage budget is 256 MB unless explicitly configured otherwise.
+- Duplicate public-web content is detected by SHA-256 and skipped instead of needlessly consuming index storage.
+- Storage-budget overflow is rejected rather than allowing unbounded local growth.
+- Discovery can select starting URLs from Maddy's existing owned index instead of requiring an external search provider to supply the starting frontier.
+- Discovery seeds prioritize older observed indexed material for bounded revisitation/discovery.
+- `POST /api/internet/discover` exposes the owned-frontier discovery cycle.
+- Existing crawl, search, status, robots awareness, private/loopback blocking, provenance, and bounded-crawl behavior remain in force.
+- Existing Node-003 cognitive research bridge remains intact: Maddy-owned index is consulted first and external discovery remains a fallback while owned coverage is insufficient.
+
+Runtime acceptance evidence:
+- `/api/internet/status` reported version `0.2.0` and build `MIN004-STORAGE-AWARE-INDEPENDENT-DISCOVERY-20260912-A`.
+- Controlled crawl of `https://example.com/` attempted 1 page and indexed 1 page.
+- Indexed document stored with SHA-256 provenance; runtime index size was 515 bytes.
+- Runtime reported `maxIndexBytes: 268435456`, zero storage-budget skips, and zero duplicate-content skips for the initial controlled page.
+- After indexing, status reported `indexedPages: 1` and `discoveryReady: true`.
+- Controlled `POST /api/internet/discover` returned `ok: true`, `source: "meos-owned-frontier"`, and `externalSearchProviderUsed: false`.
+- This proves Maddy can initiate a bounded public-web discovery cycle from knowledge already held in her own Internet index without asking an external search engine where to begin.
+
+Architectural identity boundary reaffirmed during commission closeout:
+- **Maddy works for CCSP. Maddy is not CCSP.**
+- California Clean Slate Program is the current proving organization / organizational context, not Maddy's identity and not the boundary of MEOS Core.
+- CCSP's organizational profile, missions, documents, website, strategies, and institutional knowledge may inform Maddy's work for CCSP, but they do not define Maddy's identity, Internet, cognition, or universal worldview.
+- The same MEOS/Maddy architecture must be capable of serving future organizations with organization-specific authority and private knowledge separated from universal Maddy/MEOS Core.
+
+Current limitation / next engineering direction:
+- Node-004 proves owned-frontier initiation, not a mature autonomous web search platform and not whole-Internet coverage.
+- The next Internet/search direction is to turn the owned frontier into an intelligent, bounded, persistent discovery frontier: discover links and other public discovery signals, prioritize useful/fresh/authoritative candidates, deduplicate aggressively, respect robots/safety/storage/economic limits, recrawl selectively, and progressively reduce external discovery dependence.
+- Do not attempt to crawl or retain the whole Internet on current laptop-scale infrastructure. Optimize for retained knowledge per byte and expand infrastructure only when demonstrated usage, reliability requirements, and economics justify it.
+- CCSP's public website may serve as a real-world proving doorway for work performed on behalf of CCSP, but it must not become a CCSP-centered definition of Maddy's Internet.
+
+Commission result:
+**MEOS-INTERNET-NODE-004 — Storage-Aware Independent Discovery is commissioned.**
