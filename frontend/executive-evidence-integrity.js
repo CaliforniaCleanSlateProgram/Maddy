@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Evidence Integrity Engine
  *
- * Version: 1.2.0
- * Build: EEI120-REALITY-RECONSTRUCTION-20260913-A
+ * Version: 1.3.0
+ * Build: EEI130-COUNTERPARTY-INTELLIGENCE-20260913-A
  * Status: Commissioned
  *
  * Governing motto:
@@ -23,11 +23,12 @@
   "use strict";
 
   const NAME = "MEOS Executive Evidence Integrity Engine";
-  const VERSION = "1.2.0";
-  const BUILD_ID = "EEI120-REALITY-RECONSTRUCTION-20260913-A";
+  const VERSION = "1.3.0";
+  const BUILD_ID = "EEI130-COUNTERPARTY-INTELLIGENCE-20260913-A";
   const SCHEMA = "meos.executive-evidence-integrity.package.v1";
   const EPISTEMIC_SCHEMA = "meos.maddy.epistemic-claim.v1";
   const REALITY_RECONSTRUCTION_SCHEMA = "meos.maddy.reality-reconstruction.v1";
+  const COUNTERPARTY_INTELLIGENCE_SCHEMA = "meos.maddy.counterparty-intelligence.v1";
 
   const EVIDENCE_CLASSES = Object.freeze({
     OFFICIAL_RECORD: "official-institutional-record",
@@ -726,6 +727,122 @@
     };
   }
 
+  function counterpartyKey(actor = {}) {
+    const id = String(actor.id || "").trim();
+    if (id) return `id:${id}`;
+    const name = normalizeText(actor.name || "");
+    const type = normalizeText(actor.type || "unknown");
+    return name ? `name:${name}|type:${type}` : null;
+  }
+
+  function normalizeBehaviorObservation(item = {}) {
+    const raw = item.original || {};
+    const behavior = raw.behaviorObservation || raw.counterpartyObservation || raw.relationshipObservation || null;
+    if (!behavior || typeof behavior !== "object") return null;
+    const domain = String(behavior.domain || behavior.context || raw.relationshipDomain || "general").trim() || "general";
+    const kind = String(behavior.kind || behavior.type || "observed-behavior").trim();
+    const outcome = String(behavior.outcome || behavior.result || "unknown").trim();
+    const promiseKept = behavior.promiseKept === true ? true : behavior.promiseKept === false ? false : null;
+    return {
+      domain,
+      kind,
+      outcome,
+      promiseKept,
+      expected: behavior.expected ?? null,
+      actual: behavior.actual ?? null,
+      observedAt: behavior.observedAt || item.provenance?.retrievedAt || nowIso(),
+      evidenceClaimId: item.epistemicClaim?.claimId || item.id,
+      evidenceChainId: evidenceChainKey(item)
+    };
+  }
+
+  function buildCounterpartyIntelligence(items = [], options = {}) {
+    const counterparties = new Map();
+    const ensure = (actor) => {
+      const key = counterpartyKey(actor || {});
+      if (!key) return null;
+      if (!counterparties.has(key)) {
+        counterparties.set(key, {
+          key,
+          actor: clone(actor),
+          claims: [],
+          evidenceChains: new Set(),
+          incentives: new Set(),
+          contradictions: [],
+          behavior: [],
+          domains: new Map()
+        });
+      }
+      return counterparties.get(key);
+    };
+
+    items.forEach((item) => {
+      const claim = item.epistemicClaim || {};
+      const actor = claim.actor;
+      const profile = ensure(actor);
+      if (!profile) return;
+      const chainId = evidenceChainKey(item);
+      profile.evidenceChains.add(chainId);
+      (claim.incentives || []).forEach((value) => profile.incentives.add(String(value)));
+      (claim.contradictions || []).forEach((value) => profile.contradictions.push(clone(value)));
+      profile.claims.push({
+        claimId: claim.claimId,
+        statement: claim.statement,
+        status: claim.status,
+        confidence: claim.confidence,
+        evidenceChainId: chainId,
+        perspective: clone(claim.perspective || null),
+        observedAt: claim.observedAt
+      });
+      const observation = normalizeBehaviorObservation(item);
+      if (observation) {
+        profile.behavior.push(observation);
+        if (!profile.domains.has(observation.domain)) profile.domains.set(observation.domain, []);
+        profile.domains.get(observation.domain).push(observation);
+      }
+    });
+
+    const profiles = Array.from(counterparties.values()).map((profile) => {
+      const contextualReliability = Array.from(profile.domains.entries()).map(([domain, observations]) => {
+        const scored = observations.filter((entry) => entry.promiseKept !== null);
+        const kept = scored.filter((entry) => entry.promiseKept === true).length;
+        const missed = scored.filter((entry) => entry.promiseKept === false).length;
+        return {
+          domain,
+          observations: observations.length,
+          scoredCommitments: scored.length,
+          commitmentsKept: kept,
+          commitmentsMissed: missed,
+          observedPattern: scored.length === 0 ? "insufficient-outcome-evidence" : missed === 0 ? "commitments-observed-kept" : kept === 0 ? "commitments-observed-missed" : "mixed-observed-performance",
+          evidenceClaimIds: uniqueStrings(observations.map((entry) => entry.evidenceClaimId))
+        };
+      });
+      const actorType = normalizeText(profile.actor?.type || "unknown");
+      return {
+        actor: clone(profile.actor),
+        originContext: ["ai", "agent", "synthetic"].includes(actorType) ? "machine-or-synthetic" : actorType === "mixed" ? "mixed-human-machine" : actorType === "human" ? "human" : "unresolved",
+        independentEvidenceChains: profile.evidenceChains.size,
+        claimsObserved: profile.claims.length,
+        claims: profile.claims,
+        incentives: Array.from(profile.incentives),
+        contradictions: profile.contradictions,
+        contextualReliability,
+        assessmentRule: "Assess counterparties by context-specific evidence, incentives, commitments, contradictions, and outcomes. Do not collapse a person or agent into a universal trust score.",
+        deceptionRule: "Unreliable does not mean deceptive. Different perspective does not mean dishonest. Deception requires evidence beyond disagreement or error.",
+        certainty: profile.behavior.length || profile.contradictions.length ? "evidence-bounded" : "insufficient-history"
+      };
+    });
+
+    return {
+      schema: COUNTERPARTY_INTELLIGENCE_SCHEMA,
+      identityRule: "Maddy models counterparties as evolving evidence-grounded relationships, not static trust scores.",
+      provenanceRule: "Repeated claims sharing one origin remain one evidentiary chain even when repeated by or about a counterparty.",
+      counterparties: profiles,
+      counterpartiesObserved: profiles.length,
+      generatedAt: nowIso()
+    };
+  }
+
   function normalizeEvidenceItem(item = {}, index = 0) {
     const content = String(
       item.content ||
@@ -1122,6 +1239,8 @@
       discriminatingEvidence: input.discriminatingEvidence || options.discriminatingEvidence || []
     });
 
+    const counterpartyIntelligence = buildCounterpartyIntelligence(normalized, input.counterparties || options.counterparties || {});
+
     const packageData = {
       success: true,
       schema: SCHEMA,
@@ -1169,6 +1288,7 @@
       allEvidence: normalized,
       epistemicClaims: normalized.map((item) => clone(item.epistemicClaim)),
       realityReconstruction,
+      counterpartyIntelligence,
       confidence: calculatePackageConfidence(normalized, conflicts),
       generatedAt: nowIso()
     };
@@ -1579,6 +1699,81 @@
     };
   }
 
+  function runCounterpartyIntelligenceAcceptanceTest() {
+    const result = prepare({
+      subject: "Should Maddy rely on Northstar Logistics' delivery representations?",
+      evidence: [
+        {
+          id: "vendor-claim-1",
+          claim: "Northstar Logistics says delivery normally takes five days.",
+          actor: { id: "northstar", name: "Northstar Logistics", type: "organization", role: "vendor" },
+          sourceType: "vendor-marketing",
+          authority: "external",
+          confidence: 0.72,
+          originGroupId: "northstar-marketing",
+          incentives: ["win-contract"],
+          behaviorObservation: { domain: "delivery-estimates", kind: "commitment-outcome", outcome: "arrived-after-promised-window", promiseKept: false, expected: "5 days", actual: "12 days" }
+        },
+        {
+          id: "vendor-claim-copy",
+          claim: "Northstar Logistics delivers in five days.",
+          actor: { id: "northstar", name: "Northstar Logistics", type: "organization", role: "vendor" },
+          sourceType: "directory-copy",
+          authority: "external",
+          confidence: 0.65,
+          originGroupId: "northstar-marketing",
+          incentives: ["affiliate-referral"]
+        },
+        {
+          id: "vendor-outcome-2",
+          claim: "A later Northstar delivery arrived inside the promised seven-day window.",
+          actor: { id: "northstar", name: "Northstar Logistics", type: "organization", role: "vendor" },
+          sourceType: "institutional-outcome-record",
+          authority: "verified-institutional",
+          verified: true,
+          confidence: 0.96,
+          independent: true,
+          behaviorObservation: { domain: "delivery-estimates", kind: "commitment-outcome", outcome: "arrived-as-promised", promiseKept: true, expected: "7 days", actual: "6 days" }
+        },
+        {
+          id: "agent-claim",
+          claim: "Procurement Agent A recommends Northstar based on the copied five-day claim.",
+          actor: { id: "procurement-agent-a", name: "Procurement Agent A", type: "ai", role: "adviser" },
+          sourceType: "agent-recommendation",
+          authority: "external",
+          confidence: 0.61,
+          sourceLineage: [{ sourceId: "vendor-claim-copy", relation: "derived-from" }]
+        }
+      ]
+    });
+    const ci = result.counterpartyIntelligence;
+    const vendor = ci.counterparties.find((entry) => entry.actor?.id === "northstar");
+    const agent = ci.counterparties.find((entry) => entry.actor?.id === "procurement-agent-a");
+    const delivery = vendor?.contextualReliability?.find((entry) => entry.domain === "delivery-estimates");
+    const checks = [
+      { name: "Counterparty Intelligence is intrinsic to prepared evidence packages", passed: ci?.schema === COUNTERPARTY_INTELLIGENCE_SCHEMA },
+      { name: "Counterparty identity aggregates claims without inventing a separate trust engine", passed: vendor?.claimsObserved === 3 },
+      { name: "Shared-origin repetition remains collapsed for counterparty evidence", passed: vendor?.independentEvidenceChains === 2 },
+      { name: "Reliability is contextual rather than a universal trust score", passed: delivery?.observedPattern === "mixed-observed-performance" && !("trustScore" in vendor) },
+      { name: "Promises and outcomes remain evidence-linked", passed: delivery?.commitmentsKept === 1 && delivery?.commitmentsMissed === 1 && delivery?.evidenceClaimIds?.length === 2 },
+      { name: "Incentives are preserved without being treated as proof of deception", passed: vendor?.incentives?.includes("win-contract") && vendor?.deceptionRule?.includes("requires evidence") },
+      { name: "Machine counterparties are explicitly represented when known", passed: agent?.originContext === "machine-or-synthetic" },
+      { name: "Sparse counterparty history preserves uncertainty", passed: agent?.certainty === "insufficient-history" }
+    ];
+    return {
+      success: checks.every((check) => check.passed),
+      commission: "MADDY-COUNTERPARTY-INTELLIGENCE",
+      schema: "meos.executive-evidence-integrity.counterparty-intelligence-acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks,
+      counterpartyIntelligence: clone(ci),
+      completedAt: nowIso()
+    };
+  }
+
   const api = Object.freeze({
     name: NAME,
     version: VERSION,
@@ -1588,13 +1783,16 @@
     REPRESENTATION_MODES,
     EPISTEMIC_SCHEMA,
     REALITY_RECONSTRUCTION_SCHEMA,
+    COUNTERPARTY_INTELLIGENCE_SCHEMA,
     prepare,
     buildRealityReconstruction,
+    buildCounterpartyIntelligence,
     classifyEvidence,
     recordCorrection,
     runSelfTest,
     runEpistemicIdentityAcceptanceTest,
     runRealityReconstructionAcceptanceTest,
+    runCounterpartyIntelligenceAcceptanceTest,
     getStatus,
     on
   });
