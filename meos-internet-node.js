@@ -1,6 +1,6 @@
 /**
- * MEOS Internet Node v0.3.0
- * Commission: MEOS-INTERNET-NODE-005 — Persistent Discovery Frontier
+ * MEOS Internet Node v0.3.1
+ * Commission: MEOS-INTERNET-NODE-006 — Frontier Retry Governance
  *
  * Purpose:
  * - Give Maddy a provider-independent web perception/search substrate.
@@ -23,8 +23,8 @@ import path from "path";
 import crypto from "crypto";
 import net from "net";
 
-export const MEOS_INTERNET_NODE_VERSION = "0.3.0";
-export const MEOS_INTERNET_NODE_BUILD_ID = "MIN005-PERSISTENT-DISCOVERY-FRONTIER-20260912-A";
+export const MEOS_INTERNET_NODE_VERSION = "0.3.1";
+export const MEOS_INTERNET_NODE_BUILD_ID = "MIN006-FRONTIER-RETRY-GOVERNANCE-20260912-A";
 
 const DEFAULTS = Object.freeze({
   maxPagesPerCrawl: 40,
@@ -35,6 +35,8 @@ const DEFAULTS = Object.freeze({
   maxIndexBytes: 256 * 1024 * 1024,
   discoverySeedLimit: 12,
   maxFrontierEntries: 5000,
+  maxFrontierAttempts: 3,
+  frontierRetryCooldownMs: 6 * 60 * 60 * 1000,
   userAgent: "MEOS-Internet-Node/0.1 (+provider-independent-public-web-perception)"
 });
 
@@ -306,10 +308,31 @@ export class MEOSInternetNode {
     return true;
   }
 
+  maxFrontierAttempts() {
+    return Math.max(1, Math.min(10, Number(this.options.maxFrontierAttempts) || DEFAULTS.maxFrontierAttempts));
+  }
+
+  frontierRetryCooldownMs() {
+    return Math.max(60 * 1000, Number(this.options.frontierRetryCooldownMs) || DEFAULTS.frontierRetryCooldownMs);
+  }
+
+  frontierDisposition(entry, now = Date.now()) {
+    if (!entry) return "terminal";
+    const result = String(entry.lastResult || "pending");
+    if (["indexed", "duplicate-content", "robots-disallowed", "storage-budget-reached"].includes(result)) return "terminal";
+    const attempts = Number(entry.attempts || 0);
+    if (attempts >= this.maxFrontierAttempts()) return "terminal";
+    if (result === "pending") return "eligible";
+    const lastAttempt = Date.parse(entry.lastAttemptAt || "");
+    if (Number.isFinite(lastAttempt) && now - lastAttempt < this.frontierRetryCooldownMs()) return "cooldown";
+    return "eligible";
+  }
+
   discoverySeeds(limit = this.options.discoverySeedLimit) {
     const count = Math.max(1, Math.min(50, Number(limit) || this.options.discoverySeedLimit));
+    const now = Date.now();
     const pending = [...this.frontier.values()]
-      .filter(entry => entry?.lastResult !== "indexed")
+      .filter(entry => this.frontierDisposition(entry, now) === "eligible")
       .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0) || Number(a.attempts || 0) - Number(b.attempts || 0) || String(a.discoveredAt || "").localeCompare(String(b.discoveredAt || "")))
       .slice(0, count).map(entry => entry.url);
     if (pending.length) return pending;
@@ -340,8 +363,12 @@ export class MEOSInternetNode {
       storageBudgetRemainingBytes: Math.max(0, maxIndexBytes - indexBytes),
       discoveryReady: this.documents.size > 0 || this.frontier.size > 0,
       frontierEntries: this.frontier.size,
-      frontierPending: [...this.frontier.values()].filter(entry => entry?.lastResult !== "indexed").length,
+      frontierPending: [...this.frontier.values()].filter(entry => this.frontierDisposition(entry) === "eligible").length,
+      frontierCooldown: [...this.frontier.values()].filter(entry => this.frontierDisposition(entry) === "cooldown").length,
+      frontierTerminal: [...this.frontier.values()].filter(entry => this.frontierDisposition(entry) === "terminal").length,
       frontierLimit: this.frontierLimit(),
+      maxFrontierAttempts: this.maxFrontierAttempts(),
+      frontierRetryCooldownMs: this.frontierRetryCooldownMs(),
       lastCrawl: this.lastCrawl,
       providerIndependentSearch: true,
       paidSearchProviderRequired: false,
@@ -477,7 +504,9 @@ export class MEOSInternetNode {
       duplicateContentSkipped: results.filter(item => item.reason === "duplicate-content").length,
       storageBudgetSkipped: results.filter(item => item.reason === "storage-budget-reached").length,
       frontierEntries: this.frontier.size,
-      frontierPending: [...this.frontier.values()].filter(entry => entry?.lastResult !== "indexed").length
+      frontierPending: [...this.frontier.values()].filter(entry => this.frontierDisposition(entry) === "eligible").length,
+      frontierCooldown: [...this.frontier.values()].filter(entry => this.frontierDisposition(entry) === "cooldown").length,
+      frontierTerminal: [...this.frontier.values()].filter(entry => this.frontierDisposition(entry) === "terminal").length
     };
     await this.save();
     return { ...this.lastCrawl, results };
