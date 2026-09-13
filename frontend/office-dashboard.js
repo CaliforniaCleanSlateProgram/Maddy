@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.12.1
+ * Version: 4.13.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,9 +20,10 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.12.1";
+  const DASHBOARD_VERSION = "4.13.0";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
+  const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -1201,6 +1202,11 @@
       .meos-workspace-main{padding:28px 30px}.meos-workspace-main-kicker{font-size:.61rem;letter-spacing:.18em}.meos-workspace-main h2{margin:7px 0 10px;font-size:clamp(1.45rem,2.2vw,2.2rem);font-weight:720;letter-spacing:-.025em}.meos-workspace-summary{max-width:920px;margin-bottom:20px;font-size:.9rem;line-height:1.68;color:#c8dee7}
       .meos-workspace-grid{gap:10px}.meos-workspace-field{min-height:78px;padding:12px 13px;border-color:rgba(105,239,255,.12);background:linear-gradient(145deg,rgba(7,28,47,.72),rgba(4,19,34,.78));box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}.meos-workspace-field-label{letter-spacing:.13em}.meos-workspace-field-value{margin-top:7px;font-size:.79rem;line-height:1.48}
       .meos-workspace-judgment{margin-top:18px;padding:16px 17px;border-color:rgba(105,239,255,.22);background:linear-gradient(135deg,rgba(8,38,59,.72),rgba(6,27,45,.72));box-shadow:inset 3px 0 0 rgba(105,239,255,.45)}.meos-workspace-judgment p{font-size:.82rem;line-height:1.62}
+      .meos-shop-truth{margin:18px 0 2px;border:1px solid rgba(105,239,255,.22);border-radius:14px;background:linear-gradient(145deg,rgba(4,22,38,.92),rgba(7,31,46,.80));overflow:hidden;box-shadow:inset 3px 0 0 rgba(105,239,255,.52),0 14px 32px rgba(0,0,0,.16)}
+      .meos-shop-truth-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:14px 16px 12px;border-bottom:1px solid rgba(105,239,255,.12)}.meos-shop-truth-kicker{font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#76e4f6}.meos-shop-truth-head h3{margin:4px 0 0;font-size:.98rem;color:#f2fcff}.meos-shop-truth-confidence{min-width:88px;text-align:right;font-size:.62rem;color:#91b7c5}.meos-shop-truth-confidence strong{display:block;margin-top:2px;font-size:.88rem;color:#f2fcff}
+      .meos-shop-truth-status{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px;border-bottom:1px solid rgba(105,239,255,.09);background:rgba(1,12,23,.32)}.meos-shop-truth-pill{display:inline-flex;gap:6px;align-items:center;padding:5px 8px;border:1px solid rgba(132,194,216,.18);border-radius:999px;font-size:.56rem;letter-spacing:.07em;text-transform:uppercase;color:#a9cbd8;background:rgba(7,29,45,.58)}.meos-shop-truth-pill b{color:#f4fcff}.meos-shop-truth-pill[data-status="verified"]{border-color:rgba(92,224,164,.32);color:#91e9bd}.meos-shop-truth-pill[data-status="disputed"]{border-color:rgba(255,170,112,.32);color:#ffc08e}.meos-shop-truth-pill[data-status="inferred"]{border-color:rgba(139,177,255,.34);color:#aec8ff}.meos-shop-truth-pill[data-status="marketed"]{border-color:rgba(228,169,255,.32);color:#e5b7ff}.meos-shop-truth-pill[data-status="unknown"]{border-color:rgba(183,193,200,.24);color:#bcc7cc}
+      .meos-shop-truth-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:rgba(105,239,255,.08)}.meos-shop-truth-cell{padding:13px 15px;background:rgba(4,20,34,.92);min-height:86px}.meos-shop-truth-cell strong{display:block;font-size:.57rem;letter-spacing:.12em;text-transform:uppercase;color:#76b6c8}.meos-shop-truth-cell p{margin:6px 0 0;font-size:.75rem;line-height:1.52;color:#d9edf4;white-space:pre-wrap}.meos-shop-truth-cell[data-wide="true"]{grid-column:1/-1}.meos-shop-truth-integrity{padding:10px 15px;border-top:1px solid rgba(105,239,255,.10);font-size:.59rem;line-height:1.5;color:#7598a7;background:rgba(2,14,25,.58)}.meos-shop-truth[data-available="false"]{box-shadow:inset 3px 0 0 rgba(255,184,107,.48),0 14px 32px rgba(0,0,0,.16)}
+      @media(max-width:720px){.meos-shop-truth-body{grid-template-columns:1fr}.meos-shop-truth-cell[data-wide="true"]{grid-column:auto}.meos-shop-truth-head{display:block}.meos-shop-truth-confidence{text-align:left;margin-top:8px}}
       .meos-workspace-presence{padding:20px 16px;background:radial-gradient(circle at 50% 24%,rgba(76,202,255,.18),transparent 39%),linear-gradient(180deg,rgba(4,19,35,.90),rgba(2,12,24,.96))}.meos-workspace-maddy::after{content:"";position:absolute;left:12%;right:12%;bottom:8px;height:1px;background:linear-gradient(90deg,transparent,rgba(105,239,255,.48),transparent);box-shadow:0 0 20px rgba(105,239,255,.25)}
       .meos-workspace-presence-state{padding:11px 12px;background:rgba(7,31,50,.66)}.meos-workspace-actions h3{margin:16px 0 4px;font-size:.82rem;letter-spacing:.06em}.meos-workspace-actions>p{margin:0 0 12px}.meos-workspace-action{padding:11px 12px;background:linear-gradient(180deg,rgba(17,60,91,.76),rgba(8,35,57,.82));transition:transform .15s ease,border-color .15s ease,background .15s ease}.meos-workspace-action:not(:disabled):hover{transform:translateX(2px)}
       .meos-maddy-brief{max-width:760px;padding:15px 16px;border-color:rgba(105,239,255,.30);background:linear-gradient(145deg,rgba(2,15,29,.96),rgba(5,27,43,.94));box-shadow:0 22px 60px rgba(0,0,0,.36)}.meos-maddy-brief-title{font-size:1rem}.meos-maddy-brief-summary{font-size:.79rem;line-height:1.58}.meos-maddy-brief-field{padding:8px 0}.meos-maddy-brief-value{margin-top:4px;font-size:.73rem}
@@ -6746,6 +6752,263 @@ document
   }
 
 
+  function findShopEpistemicContinuity(value, depth = 0, seen = new Set()) {
+    if (!value || typeof value !== "object" || depth > 8 || seen.has(value)) return null;
+    seen.add(value);
+    if (value.schema === "meos.maddy.epistemic-continuity.v1") return value;
+
+    const preferred = [
+      "epistemicContinuity", "evidenceAssessment", "reasoningContext", "metadata",
+      "data", "result", "output", "response", "learning", "lesson", "observation",
+      "raw", "priorExperience", "recalledContinuity"
+    ];
+    for (const key of preferred) {
+      if (!(key in value)) continue;
+      const found = findShopEpistemicContinuity(value[key], depth + 1, seen);
+      if (found) return found;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (preferred.includes(key)) continue;
+      const found = findShopEpistemicContinuity(child, depth + 1, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function shopCompactList(values, fallback = "Not established from the returned evidence.", limit = 4) {
+    const flat = [];
+    const visit = (value) => {
+      if (value == null || value === "") return;
+      if (Array.isArray(value)) return value.forEach(visit);
+      if (typeof value === "object") {
+        const candidate = firstBriefValue(value.title, value.statement, value.claim, value.description, value.summary, value.name, value.id);
+        if (candidate) flat.push(briefText(candidate));
+        return;
+      }
+      const text = String(value).trim();
+      if (text) flat.push(text);
+    };
+    visit(values);
+    const unique = [...new Set(flat)].slice(0, limit);
+    return unique.length ? unique.join(" · ") : fallback;
+  }
+
+  function classifyShopTruthClaim(claim = {}) {
+    const status = String(claim.epistemicStatus || claim.status || claim.truthStatus || "").toLowerCase();
+    const evidenceClass = String(claim.evidenceClass || claim.classification || claim.sourceCategory || "").toLowerCase();
+    const sourceType = String(claim.sourceType || claim.provenance?.sourceType || claim.source?.type || "").toLowerCase();
+    const contradictions = Array.isArray(claim.contradictions) ? claim.contradictions : [];
+    const commercial = claim.paidPlacement === true || claim.sponsored === true || claim.marketed === true || /market|advert|sponsor|promot|paid/.test(`${status} ${evidenceClass} ${sourceType}`);
+
+    if (commercial) return "marketed";
+    if (contradictions.length || /disput|contradict|conflict/.test(status)) return "disputed";
+    if (/verified/.test(status) || /verified/.test(evidenceClass)) return "verified";
+    if (/infer|recommend|forecast|hypothes/.test(`${status} ${evidenceClass}`)) return "inferred";
+    if (/unknown|unverified|stale|insufficient/.test(status) || !status) return "unknown";
+    return "supported";
+  }
+
+  function shopClaimText(claim = {}) {
+    return briefText(firstBriefValue(claim.statement, claim.claim, claim.content, claim.text, claim.summary, claim.title), "Claim detail unavailable");
+  }
+
+  function buildShopTruthSurfaceModel(source = {}) {
+    const continuity = findShopEpistemicContinuity(source);
+    const sourceData = source?.data || source?.raw?.data || source || {};
+    const claims = Array.isArray(continuity?.epistemicClaims) ? continuity.epistemicClaims : [];
+    const reconstruction = continuity?.realityReconstruction || {};
+    const counterparties = continuity?.counterpartyIntelligence?.counterparties || continuity?.counterpartyIntelligence?.profiles || [];
+    const buckets = { verified: [], disputed: [], inferred: [], marketed: [], unknown: [], supported: [] };
+    claims.forEach((claim) => buckets[classifyShopTruthClaim(claim)].push(claim));
+
+    const hypothesisTitles = Array.isArray(reconstruction?.hypotheses)
+      ? reconstruction.hypotheses.map((item) => firstBriefValue(item?.title, item?.description, item?.id)).filter(Boolean)
+      : [];
+    const unresolved = reconstruction?.leadingHypothesis == null && hypothesisTitles.length > 1;
+    const discriminatingEvidence = Array.isArray(reconstruction?.discriminatingEvidence) ? reconstruction.discriminatingEvidence : [];
+    const falsifiers = claims.flatMap((claim) => Array.isArray(claim?.falsifiers) ? claim.falsifiers : []);
+    const whatWouldChange = [...new Set([...discriminatingEvidence, ...falsifiers].map((item) => briefText(item)).filter(Boolean))];
+    const contradictionCount = claims.reduce((sum, claim) => sum + (Array.isArray(claim?.contradictions) ? claim.contradictions.length : 0), 0) + (Array.isArray(continuity?.conflicts) ? continuity.conflicts.length : 0);
+    const chainCount = Number.isFinite(Number(reconstruction?.independentEvidenceChains)) ? Number(reconstruction.independentEvidenceChains) : null;
+    const apparentCount = Number.isFinite(Number(reconstruction?.apparentSourceCount)) ? Number(reconstruction.apparentSourceCount) : (continuity?.sourceEvidenceCount ?? claims.length);
+    const confidenceRaw = firstBriefValue(continuity?.packageConfidence, reconstruction?.confidence, sourceData?.confidence, source?.confidence);
+    const confidenceNumber = Number(confidenceRaw);
+    const confidence = Number.isFinite(confidenceNumber)
+      ? `${Math.round((confidenceNumber <= 1 ? confidenceNumber * 100 : confidenceNumber))}%`
+      : "Not stated";
+
+    const leading = reconstruction?.leadingHypothesis;
+    const leadingLabel = leading && typeof leading === "object"
+      ? firstBriefValue(leading.title, leading.description, leading.id)
+      : leading;
+    const conclusion = unresolved
+      ? `Unresolved. Competing explanations remain live: ${shopCompactList(hypothesisTitles, "Competing explanations remain live.")}`
+      : briefText(firstBriefValue(leadingLabel, sourceData?.conclusion, sourceData?.judgment, sourceData?.recommendation, source?.summary), "Maddy has not established a stronger conclusion from the returned evidence.");
+
+    const basisParts = [];
+    if (chainCount != null) basisParts.push(`${chainCount} independent evidence chain${chainCount === 1 ? "" : "s"}`);
+    if (apparentCount != null && apparentCount !== chainCount) basisParts.push(`${apparentCount} apparent source${apparentCount === 1 ? "" : "s"}`);
+    if (contradictionCount) basisParts.push(`${contradictionCount} contradiction/conflict signal${contradictionCount === 1 ? "" : "s"}`);
+    if (continuity?.integrityVersion) basisParts.push(`Evidence Integrity ${continuity.integrityVersion}`);
+
+    const priorExperience = firstBriefValue(
+      sourceData?.priorExperience?.title,
+      sourceData?.learningLineage?.summary,
+      sourceData?.learning?.lineage?.summary,
+      sourceData?.lesson?.title,
+      source?.priorExperience?.title,
+      continuity?.learningLineage?.summary
+    );
+    const userBenefit = firstBriefValue(
+      sourceData?.userBenefit,
+      sourceData?.intendedUserBenefit,
+      sourceData?.realizedUserBenefit,
+      sourceData?.benefit,
+      sourceData?.recommendation,
+      sourceData?.nextAction,
+      source?.recommendation,
+      source?.nextAction
+    );
+
+    return {
+      schema: "meos.dashboard.shop-truth-surface.v1",
+      buildId: SHOP_TRUTH_SURFACE_BUILD_ID,
+      available: Boolean(continuity),
+      epistemicSchema: continuity?.schema || null,
+      preserved: continuity?.preserved === true,
+      confidence,
+      counts: Object.fromEntries(Object.entries(buckets).map(([key, list]) => [key, list.length])),
+      whatMaddyKnows: shopCompactList(buckets.verified.map(shopClaimText), continuity ? "No claim is explicitly verified in this package." : "Epistemic continuity was not returned; verification cannot be inferred from presentation."),
+      whatIsSupported: shopCompactList(buckets.supported.map(shopClaimText), "No additional supported-only claim is stated."),
+      whatIsDisputed: shopCompactList(buckets.disputed.map(shopClaimText), unresolved ? `Competing explanations remain unresolved: ${shopCompactList(hypothesisTitles)}` : "No explicit contradiction is carried in the returned epistemic package."),
+      whatMaddyInfers: shopCompactList(buckets.inferred.map(shopClaimText), conclusion),
+      marketedClaims: shopCompactList(buckets.marketed.map(shopClaimText), "No claim is explicitly marked as paid, sponsored, promotional, or marketed."),
+      unknowns: shopCompactList(buckets.unknown.map(shopClaimText), unresolved ? "The leading explanation remains unknown." : "No explicit unknown claim is carried in this package."),
+      conclusion,
+      basis: basisParts.length ? basisParts.join(" · ") : (continuity ? "Epistemic continuity is present, but source-independence counts were not returned." : "No epistemic continuity envelope was returned for this work item."),
+      whatWouldChangeMind: shopCompactList(whatWouldChange, "No discriminating or falsifying evidence was returned. Maddy should not imply that the current conclusion is unchangeable."),
+      counterpartyContext: shopCompactList(counterparties.map((item) => firstBriefValue(item?.actor?.name, item?.name, item?.actorId, item?.id)), "No material counterparty context is carried in this package."),
+      priorExperience: briefText(priorExperience, "No prior consequence-grounded Maddy experience is explicitly attached to this work item."),
+      userBenefit: briefText(userBenefit, "No material user-benefit consequence is stated. Maddy should not consume executive attention merely to demonstrate activity."),
+      integrityNote: continuity
+        ? "Maddy's conclusion is a current evidence-grounded position, not truth authority. Provenance, uncertainty, contradiction, competing explanations, counterparty context, and falsifiers remain challengeable."
+        : "Truth surface degraded: the work item does not carry the commissioned epistemic continuity envelope. The Shop must show this absence rather than manufacture certainty.",
+      authorityGranted: false,
+      continuity
+    };
+  }
+
+  function renderShopTruthSurface(source = {}) {
+    const model = buildShopTruthSurfaceModel(source);
+    const root = document.createElement("section");
+    root.className = "meos-shop-truth";
+    root.dataset.available = model.available ? "true" : "false";
+    root.dataset.epistemicSchema = model.epistemicSchema || "unavailable";
+
+    const head = document.createElement("div"); head.className = "meos-shop-truth-head";
+    const heading = document.createElement("div");
+    heading.innerHTML = `<div class="meos-shop-truth-kicker">The Shop · Maddy's Reality Position</div><h3>${escapeHtml(model.conclusion)}</h3>`;
+    const confidence = document.createElement("div"); confidence.className = "meos-shop-truth-confidence"; confidence.innerHTML = `Current confidence<strong>${escapeHtml(model.confidence)}</strong>`;
+    head.append(heading, confidence);
+
+    const status = document.createElement("div"); status.className = "meos-shop-truth-status";
+    ["verified", "disputed", "inferred", "marketed", "unknown"].forEach((name) => {
+      const pill = document.createElement("span"); pill.className = "meos-shop-truth-pill"; pill.dataset.status = name;
+      pill.innerHTML = `${escapeHtml(name)} <b>${model.counts[name] || 0}</b>`;
+      status.appendChild(pill);
+    });
+
+    const body = document.createElement("div"); body.className = "meos-shop-truth-body";
+    const cells = [
+      ["What Maddy knows", model.whatMaddyKnows],
+      ["What remains disputed / unknown", `${model.whatIsDisputed}\n${model.unknowns}`],
+      ["Why this is the current position", model.basis],
+      ["What could change Maddy's mind", model.whatWouldChangeMind],
+      ["Counterparty / incentive context", model.counterpartyContext],
+      ["What reality taught Maddy before", model.priorExperience],
+      ["What this means for you", model.userBenefit, true]
+    ];
+    cells.forEach(([label, value, wide]) => {
+      const cell = document.createElement("div"); cell.className = "meos-shop-truth-cell"; if (wide) cell.dataset.wide = "true";
+      const l = document.createElement("strong"); l.textContent = label;
+      const p = document.createElement("p"); p.textContent = value;
+      cell.append(l, p); body.appendChild(cell);
+    });
+
+    const integrity = document.createElement("div"); integrity.className = "meos-shop-truth-integrity"; integrity.textContent = model.integrityNote;
+    root.append(head, status, body, integrity);
+    return { element: root, model };
+  }
+
+  function runShopTruthSurfaceAcceptanceTest() {
+    const fixture = {
+      title: "The Shop truth fixture",
+      data: {
+        recommendation: "Proceed only after source-of-record eligibility confirmation.",
+        intendedUserBenefit: "Avoid wasting executive time on an attractive but unverified opportunity.",
+        priorExperience: { title: "A prior vendor promise failed until independently verified." },
+        evidenceAssessment: {
+          epistemicContinuity: {
+            schema: "meos.maddy.epistemic-continuity.v1",
+            available: true,
+            preserved: true,
+            sourceEvidenceCount: 7,
+            packageConfidence: 0.68,
+            integrityVersion: "1.3.0",
+            epistemicClaims: [
+              { statement: "The source-of-record filing date is September 1.", epistemicStatus: "verified", evidenceClass: "verified-external-source", falsifiers: ["A superseding source-of-record filing"] },
+              { statement: "The opportunity is currently eligible.", epistemicStatus: "supported", contradictions: ["Published eligibility language is narrower"] },
+              { statement: "Pursuit is likely worthwhile if eligibility is confirmed.", epistemicStatus: "inferred" },
+              { statement: "The sponsor describes the program as best-in-class.", epistemicStatus: "marketed", sourceType: "marketing" },
+              { statement: "Final award probability is known.", epistemicStatus: "unknown" }
+            ],
+            realityReconstruction: {
+              status: "unresolved-competing-explanations",
+              apparentSourceCount: 7,
+              independentEvidenceChains: 3,
+              leadingHypothesis: null,
+              uncertaintyPreserved: true,
+              hypotheses: [
+                { id: "eligible", title: "CCSP is eligible" },
+                { id: "not-eligible", title: "CCSP is outside the current eligibility class" }
+              ],
+              discriminatingEvidence: ["Source-of-record eligibility determination"]
+            },
+            counterpartyIntelligence: {
+              counterparties: [{ actorId: "sponsor-fixture", actor: { name: "Sponsor Fixture" } }]
+            },
+            conflicts: ["Eligibility language conflict"]
+          }
+        }
+      }
+    };
+    const model = buildShopTruthSurfaceModel(fixture);
+    const checks = [
+      { name: "The Shop reads the commissioned epistemic continuity envelope instead of inventing a second truth authority", passed: model.available === true && model.epistemicSchema === "meos.maddy.epistemic-continuity.v1" && model.preserved === true },
+      { name: "Verified, disputed, inferred, marketed, and unknown claims remain visibly distinct", passed: model.counts.verified === 1 && model.counts.disputed === 1 && model.counts.inferred === 1 && model.counts.marketed === 1 && model.counts.unknown === 1 },
+      { name: "Source repetition does not masquerade as corroboration on the executive surface", passed: model.basis.includes("3 independent evidence chains") && model.basis.includes("7 apparent sources") },
+      { name: "Competing explanations remain unresolved instead of being converted into a confident answer", passed: model.conclusion.includes("Unresolved") && model.conclusion.includes("CCSP is eligible") && model.conclusion.includes("outside the current eligibility class") },
+      { name: "Discriminating and falsifying evidence stays visible as what could change Maddy's mind", passed: model.whatWouldChangeMind.includes("Source-of-record eligibility determination") && model.whatWouldChangeMind.includes("superseding source-of-record filing") },
+      { name: "Counterparty context and prior Maddy experience survive into The Shop", passed: model.counterpartyContext.includes("Sponsor Fixture") && model.priorExperience.includes("prior vendor promise") },
+      { name: "The truth surface connects reality to user benefit instead of merely displaying epistemic metadata", passed: model.userBenefit.includes("Avoid wasting executive time") },
+      { name: "The Shop exposes cognition without creating truth, execution, or approval authority", passed: model.authorityGranted === false && model.integrityNote.includes("not truth authority") }
+    ];
+    const result = {
+      success: checks.every((check) => check.passed),
+      commission: "MADDY-THE-SHOP-TRUTH-SURFACE",
+      schema: "meos.dashboard.shop-truth-surface-acceptance.v1",
+      version: DASHBOARD_VERSION,
+      buildId: SHOP_TRUTH_SURFACE_BUILD_ID,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks,
+      fixtureModel: model
+    };
+    console.table(checks);
+    console.log(`[MEOS ${DASHBOARD_VERSION}] The Shop Truth Surface: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
   function closeMaddyExecutiveWorkspace() {
     const workspace = document.getElementById("meosExecutiveWorkspace");
     if (workspace) workspace.dataset.open = "false";
@@ -6765,7 +7028,7 @@ document
     workspace.setAttribute("aria-label", "Maddy Executive Workspace");
     workspace.innerHTML = `
       <div class="meos-workspace-top">
-        <div><div class="meos-workspace-kicker">Maddy Executive Workspace</div><h2 class="meos-workspace-title" id="meosWorkspacePackageTitle">Work Package</h2></div>
+        <div><div class="meos-workspace-kicker">The Shop · Maddy Executive Workspace</div><h2 class="meos-workspace-title" id="meosWorkspacePackageTitle">Work Package</h2></div>
         <button class="meos-workspace-close" id="meosWorkspaceClose" type="button">Collapse Workspace</button>
       </div>
       <aside class="meos-workspace-package">
@@ -6837,6 +7100,7 @@ document
       const kicker = document.createElement("div"); kicker.className = "meos-workspace-main-kicker"; kicker.textContent = view.kicker;
       const title = document.createElement("h2"); title.textContent = view.title;
       const summary = document.createElement("p"); summary.className = "meos-workspace-summary"; summary.textContent = view.summary;
+      const truthSurface = renderShopTruthSurface(selected);
       const grid = document.createElement("div"); grid.className = "meos-workspace-grid";
       view.fields.forEach(([label, value]) => {
         const field = document.createElement("div"); field.className = "meos-workspace-field";
@@ -6848,7 +7112,7 @@ document
       const judgmentLabel = document.createElement("strong"); judgmentLabel.textContent = view.type === "research" ? "Maddy's Interpretation" : "Maddy's Executive Judgment";
       const judgmentText = document.createElement("p"); judgmentText.textContent = view.judgment;
       judgment.append(judgmentLabel, judgmentText);
-      main.append(kicker, title, summary, grid, judgment);
+      main.append(kicker, title, summary, truthSurface.element, grid, judgment);
     }
 
     const actions = workspace.querySelector("#meosWorkspaceActions");
@@ -8873,15 +9137,18 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online.`
     );
   }
 
   window.MEOSOfficeDashboard = Object.freeze({
     version: DASHBOARD_VERSION,
+    buildId: SHOP_TRUTH_SURFACE_BUILD_ID,
     show: showOfficeDashboard,
     hide: hideOfficeDashboard,
-    refresh: renderOfficeDashboard
+    refresh: renderOfficeDashboard,
+    buildShopTruthSurfaceModel,
+    runShopTruthSurfaceAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
@@ -9016,6 +9283,11 @@ document
       refresh: renderHallwayMini,
       getState: () => ({ ...state.hallway }),
       runAcceptanceTest: runHallwayDashboardAcceptanceTest
+    }),
+    shop: Object.freeze({
+      buildId: SHOP_TRUTH_SURFACE_BUILD_ID,
+      buildTruthSurfaceModel: buildShopTruthSurfaceModel,
+      runTruthSurfaceAcceptanceTest: runShopTruthSurfaceAcceptanceTest
     }),
     workspace: Object.freeze({
       open: openMaddyExecutiveWorkspace,
