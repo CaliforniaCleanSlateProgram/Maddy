@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.0";
-  const BUILD_ID = "EH150-RESOURCE-QUALIFICATION-PURSUIT-HANDOFF-20260913-A";
+  const VERSION = "1.5.1";
+  const BUILD_ID = "EH151-TERMINAL-FAILURE-MISSION-RELEASE-20260913-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1096,6 +1096,109 @@
     );
   }
 
+  /*
+   * Terminal Failure Mission Release
+   *
+   * A Hallway work item that reaches a terminal failure must not leave its
+   * durable Mission mirror in active state. The failed attempt remains fully
+   * auditable in Hallway work/history and Mission history, but present
+   * organizational intention is released so a timeout or provider failure
+   * cannot slowly rebuild the active-mission museum we already reconciled.
+   *
+   * This helper does not retry work, grant authority, or delete history. A
+   * later retry is a new deliberate work attempt.
+   */
+  function releaseMissionAfterTerminalFailure(work, failure = {}) {
+    const engine = missionEngine();
+    const missionId = work?.mission?.id || null;
+
+    if (!engine || !missionId) return null;
+
+    const failureMessage = String(
+      failure?.message ||
+      failure?.reason ||
+      work?.error ||
+      "Hallway work ended in terminal failure."
+    ).trim();
+    const failureCode = String(failure?.code || "terminal-failure").trim();
+
+    try {
+      let mission = engine.getMission?.(missionId) || null;
+      if (!mission) return null;
+
+      const alreadyReleased = ["archived", "completed", "cancelled"].includes(
+        String(mission.status || "").toLowerCase()
+      );
+
+      if (!alreadyReleased && typeof engine.blockMission === "function") {
+        mission = engine.blockMission(
+          missionId,
+          `Terminal Hallway failure — ${failureMessage}`
+        ) || mission;
+      }
+
+      if (!alreadyReleased && typeof engine.archiveMission === "function") {
+        mission = engine.archiveMission(
+          missionId,
+          "Maddy / Executive Hallway — terminal failure"
+        ) || mission;
+      }
+
+      const released = ["archived", "completed", "cancelled"].includes(
+        String(mission?.status || "").toLowerCase()
+      );
+
+      work.mission = {
+        ...work.mission,
+        status: mission?.status || work.mission?.status || null
+      };
+
+      work.lifecycle = {
+        schema: "meos.executive-hallway.lifecycle.v1",
+        terminal: released,
+        disposition: released
+          ? "released-terminal-failure"
+          : "terminal-failure-release-unavailable",
+        reason: failureMessage,
+        failureCode,
+        missionId,
+        resolvedAt: released ? now() : null
+      };
+
+      work.evidence.push({
+        type: "terminal-failure-mission-disposition",
+        source: "mission-engine",
+        missionId,
+        missionStatus: work.mission.status,
+        failureCode,
+        failureMessage,
+        historicalRecordPreserved: true,
+        destructiveDelete: false,
+        releasedAt: released ? work.lifecycle.resolvedAt : null,
+        at: now()
+      });
+
+      record("work.lifecycle-disposition", {
+        workId: work.id,
+        missionId,
+        signal: "terminal-failure",
+        lifecycleDisposition: work.lifecycle.disposition,
+        missionStatus: work.mission.status,
+        failureCode
+      });
+
+      return clone(work.lifecycle);
+    } catch (error) {
+      work.evidence.push({
+        type: "coordination-warning",
+        source: "mission-engine",
+        message: `Terminal failure Mission release failed: ${error?.message || String(error)}`,
+        at: now()
+      });
+      return null;
+    }
+  }
+
   function applyMissionDisposition(
     work,
     feedback
@@ -1621,8 +1724,13 @@
       });
     } catch (error) {
       work.options = ["retry", "reassign", "cancel"];
+      const lifecycle = releaseMissionAfterTerminalFailure(work, {
+        message: error?.message || String(error),
+        code: error?.code || "executive-router-failed"
+      });
       return transition(work, "failed", {
         error: error?.message || String(error),
+        lifecycle: lifecycle || work.lifecycle || null,
         outcome: { success: false, reason: error?.code || "executive-router-failed" }
       });
     }
@@ -2714,6 +2822,161 @@
     return result;
   }
 
+  async function runTerminalFailureMissionReleaseAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed, detail = null) => checks.push({
+      name,
+      passed: passed === true,
+      detail: clone(detail)
+    });
+
+    const previousMissionEngine = global.MEOSMissionEngine;
+    const previousRouter = global.ExecutiveRouter;
+    const active = [];
+    const archived = [];
+    const trace = [];
+    let fixtureWork = null;
+
+    const removeById = (collection, missionId) => {
+      const index = collection.findIndex(item => item.id === missionId);
+      return index >= 0 ? collection.splice(index, 1)[0] : null;
+    };
+
+    const mockEngine = {
+      createMissionFromIntake(intake = {}) {
+        const mission = {
+          id: "TERMINAL-FAILURE-MISSION-1",
+          title: intake.missionTitle || "Timeout fixture",
+          sourceReference: intake.intakeId || null,
+          status: "queued",
+          approval: { required: false, status: "not-required" },
+          history: []
+        };
+        active.push(mission);
+        trace.push("create");
+        return clone(mission);
+      },
+      getActiveMissions: () => clone(active),
+      getCompletedMissions: () => [],
+      getArchivedMissions: () => clone(archived),
+      getMission(missionId) {
+        return clone([...active, ...archived].find(item => item.id === missionId) || null);
+      },
+      blockMission(missionId, reason) {
+        const mission = active.find(item => item.id === missionId);
+        if (!mission) return null;
+        mission.status = "blocked";
+        mission.history.push({ action: "mission_blocked", reason });
+        trace.push("block");
+        return clone(mission);
+      },
+      archiveMission(missionId, archivedBy) {
+        const mission = removeById(active, missionId);
+        if (!mission) return null;
+        mission.status = "archived";
+        mission.history.push({ action: "mission_archived", archivedBy });
+        archived.unshift(mission);
+        trace.push("archive");
+        return clone(mission);
+      }
+    };
+
+    const timeoutError = new Error("Executive Router request timed out after 45000ms.");
+    timeoutError.code = "MEOS_ROUTER_TIMEOUT";
+
+    try {
+      global.MEOSMissionEngine = mockEngine;
+      global.ExecutiveRouter = {
+        async handle() {
+          trace.push("router-timeout");
+          throw timeoutError;
+        }
+      };
+
+      fixtureWork = createWork({
+        id: "terminal-failure-work-1",
+        instruction: "Research why octopuses have three hearts.",
+        source: "maddy-executive-desk",
+        requestedBy: "executive-director",
+        reviewRequired: false,
+        authorized: true
+      });
+
+      const result = await routeExecutiveWork(fixtureWork);
+
+      check(
+        "Router timeout remains an explicit failed Hallway result",
+        result?.state === "failed" &&
+        result?.outcome?.reason === "MEOS_ROUTER_TIMEOUT",
+        result
+      );
+      check(
+        "Terminal failure releases the Mission from active state",
+        active.length === 0 && archived.length === 1,
+        { active: clone(active), archived: clone(archived) }
+      );
+      check(
+        "Failed Mission history is preserved before archival",
+        archived[0]?.history?.some(item => item.action === "mission_blocked") === true &&
+        archived[0]?.history?.some(item => item.action === "mission_archived") === true,
+        archived[0]?.history
+      );
+      check(
+        "Hallway records terminal release instead of pretending success",
+        result?.lifecycle?.terminal === true &&
+        result?.lifecycle?.disposition === "released-terminal-failure" &&
+        result?.mission?.status === "archived",
+        result?.lifecycle
+      );
+      check(
+        "Timeout evidence remains attached to the failed work",
+        result?.evidence?.some(item =>
+          item.type === "terminal-failure-mission-disposition" &&
+          item.failureCode === "MEOS_ROUTER_TIMEOUT" &&
+          item.historicalRecordPreserved === true &&
+          item.destructiveDelete === false
+        ) === true,
+        result?.evidence
+      );
+      check(
+        "Failure release does not retry or execute a second provider request",
+        trace.filter(item => item === "router-timeout").length === 1 &&
+        trace.filter(item => item === "create").length === 1,
+        trace
+      );
+      check(
+        "Failure release grants no approval or external-action authority",
+        !trace.includes("approve") &&
+        result?.authority?.authorized === true &&
+        result?.authority?.authorizationSignal === null,
+        { trace, authority: result?.authority }
+      );
+    } finally {
+      global.MEOSMissionEngine = previousMissionEngine;
+      global.ExecutiveRouter = previousRouter;
+      if (fixtureWork?.id) state.work.delete(fixtureWork.id);
+    }
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks.map(({ name, passed }) => ({ name, passed })));
+    const result = freeze({
+      success: passed === checks.length,
+      commission: "MADDY-TERMINAL-FAILURE-MISSION-RELEASE",
+      schema: `${SCHEMA}.terminal-failure-mission-release-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks,
+      authorityGranted: false,
+      destructiveDelete: false
+    });
+    console.info(
+      `[MEOS ${VERSION}] Terminal Failure Mission Release: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+    );
+    return result;
+  }
+
   function runSelfTest() {
     const assertions = [];
     const check = (name, passed, details = {}) => assertions.push({ name, passed: Boolean(passed), details });
@@ -3089,6 +3352,7 @@
     getSnapshot,
     getStatus,
     runSelfTest,
+    runTerminalFailureMissionReleaseAcceptanceTest,
     runCognitiveMetabolismAcceptanceTest,
     runHumanDirectedTaskAuthorityAcceptanceTest,
     runResearchContinuationQualificationAcceptanceTest,
