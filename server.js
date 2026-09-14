@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.79
+ * Server Version: 2.10.80
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.79";
+const VERSION = "2.10.80";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1298,7 +1298,8 @@ const EXECUTIVE_MEMORY_COLLECTIONS = new Set([
   "discovered-sources",
   "opportunity-state",
   "grant-recommendations",
-  "investigation-history"
+  "investigation-history",
+  "durable-execution-spine"
 ]);
 
 const EXECUTIVE_MEMORY_MAX_RECORDS = Number(
@@ -13824,6 +13825,19 @@ const DURABLE_EXECUTION_SPINE_STATES = Object.freeze([
   "resolved"
 ]);
 
+
+/* Commission 006.031P — Durable Execution Persistence Collection Contract
+ *
+ * The Durable Execution Spine intentionally reuses Executive Memory's existing
+ * institutional repository authority. Its collection must therefore be an
+ * explicitly commissioned Executive Memory collection, not an ad-hoc bypass
+ * around collection validation.
+ */
+const DURABLE_EXECUTION_PERSISTENCE_COLLECTION_COMMISSION = "006.031P";
+const DURABLE_EXECUTION_PERSISTENCE_COLLECTION_VERSION = "1.0.0";
+const DURABLE_EXECUTION_PERSISTENCE_COLLECTION_BUILD_ID =
+  "DEPC100-DURABLE-EXECUTION-PERSISTENCE-COLLECTION-20260913-A";
+
 function durableExecutionClone(value) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
@@ -14184,6 +14198,77 @@ function runDurableExecutionSpineAcceptanceTest() {
       firstLeaseId: firstClaim.record.lease?.id || null,
       resumedLeaseId: resumed.record.lease?.id || null
     }
+  };
+}
+
+
+function runDurableExecutionPersistenceCollectionAcceptanceTest() {
+  let commissionedCollectionAccepted = false;
+  let unsupportedCollectionRejected = false;
+  let unsupportedErrorCode = null;
+
+  try {
+    commissionedCollectionAccepted =
+      validateExecutiveMemoryCollection(DURABLE_EXECUTION_SPINE_COLLECTION) ===
+      DURABLE_EXECUTION_SPINE_COLLECTION;
+  } catch {
+    commissionedCollectionAccepted = false;
+  }
+
+  try {
+    validateExecutiveMemoryCollection("durable-execution-uncommissioned");
+  } catch (error) {
+    unsupportedCollectionRejected =
+      error?.code === "EXECUTIVE_MEMORY_COLLECTION_INVALID";
+    unsupportedErrorCode = error?.code || null;
+  }
+
+  const checks = [
+    {
+      name: "The commissioned Durable Execution collection is accepted by Executive Memory",
+      passed: commissionedCollectionAccepted
+    },
+    {
+      name: "Durable Execution reuses the existing Executive Memory collection authority",
+      passed:
+        EXECUTIVE_MEMORY_COLLECTIONS.has(DURABLE_EXECUTION_SPINE_COLLECTION) &&
+        readDurableExecutionRecords.toString().includes(
+          "readExecutiveMemoryCollection(DURABLE_EXECUTION_SPINE_COLLECTION)"
+        ) &&
+        upsertDurableExecutionRecord.toString().includes(
+          "writeExecutiveMemoryCollection"
+        )
+    },
+    {
+      name: "Collection validation remains fail-closed for uncommissioned collections",
+      passed: unsupportedCollectionRejected,
+      detail: { unsupportedErrorCode }
+    },
+    {
+      name: "The fix does not create a second persistence authority",
+      passed:
+        !/localStorage|sessionStorage/.test(
+          `${readDurableExecutionRecords}${upsertDurableExecutionRecord}`
+        )
+    },
+    {
+      name: "Durable Execution persistence still grants no new external-action or spend authority",
+      passed:
+        durableExecutionAuthorityBoundary({}).externalActionAuthorized === false &&
+        durableExecutionAuthorityBoundary({}).automaticSpendUsd === 0 &&
+        durableExecutionAuthorityBoundary({}).grantsNewAuthority === false
+    }
+  ];
+
+  return {
+    success: checks.every(check => check.passed),
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    commission: DURABLE_EXECUTION_PERSISTENCE_COLLECTION_COMMISSION,
+    version: DURABLE_EXECUTION_PERSISTENCE_COLLECTION_VERSION,
+    buildId: DURABLE_EXECUTION_PERSISTENCE_COLLECTION_BUILD_ID,
+    collection: DURABLE_EXECUTION_SPINE_COLLECTION,
+    checks
   };
 }
 
@@ -16768,6 +16853,14 @@ app.get(
         code: error?.code || "DURABLE_EXECUTION_STATUS_FAILED"
       });
     }
+  }
+);
+
+app.get(
+  "/api/durable-execution/persistence-acceptance-test",
+  (request, response) => {
+    const result = runDurableExecutionPersistenceCollectionAcceptanceTest();
+    response.status(result.success ? 200 : 500).json(result);
   }
 );
 
