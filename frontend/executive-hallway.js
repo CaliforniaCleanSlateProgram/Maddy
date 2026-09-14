@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.5";
-  const BUILD_ID = "EH155-DURABLE-RETURN-REINTEGRATION-20260914-A";
+  const VERSION = "1.5.6";
+  const BUILD_ID = "EH156-DURABLE-RETURN-RECONCILIATION-API-20260914-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -2222,6 +2222,75 @@
     return finishExecutiveRouterSuccess(work, governed);
   }
 
+  /*
+   * Commission 006.031S — Durable Return Reconciliation API Surface
+   *
+   * Public, execution-ID-addressable entry point for a persisted durable return.
+   * This is intentionally only an adapter over the already commissioned 006.031R
+   * reintegration path. It creates no Mission, execution, retry, research request,
+   * provider authority, spend authority, or external-action authority.
+   */
+  const DURABLE_RETURN_RECONCILIATION_API_COMMISSION = "006.031S";
+  const DURABLE_RETURN_RECONCILIATION_API_SCHEMA =
+    "meos.executive-hallway.durable-return-reconciliation-api.v1";
+
+  async function reconcileDurableExecutionReturn(executionIdValue, options = {}) {
+    const executionId = String(executionIdValue || "").trim();
+    if (!executionId) {
+      throw new TypeError("Durable return reconciliation requires an execution ID.");
+    }
+
+    let work = null;
+    for (const candidate of state.work.values()) {
+      const candidateExecutionId = String(
+        candidate?.execution?.executionId || durableExecutionId(candidate) || ""
+      ).trim();
+      if (candidateExecutionId === executionId) {
+        work = candidate;
+        break;
+      }
+    }
+
+    if (!work && executionId.startsWith("execution-")) {
+      const hallwayWorkId = executionId.slice("execution-".length).trim();
+      if (hallwayWorkId) work = state.work.get(hallwayWorkId) || null;
+
+      if (!work) {
+        const engine = missionEngine();
+        const active = engine?.getActiveMissions?.();
+        if (Array.isArray(active)) {
+          const sourceReference = `hallway-work:${hallwayWorkId}`;
+          const mission = active.find(item => String(item?.sourceReference || "").trim() === sourceReference);
+          if (mission) work = recoverHallwayProjectionFromMission(mission);
+        }
+      }
+    }
+
+    if (!work) {
+      const error = new Error("No active Hallway/Mission work matches the requested durable execution ID.");
+      error.code = "DURABLE_RETURN_WORK_NOT_FOUND";
+      throw error;
+    }
+
+    const expectedExecutionId = String(
+      work?.execution?.executionId || durableExecutionId(work) || ""
+    ).trim();
+    if (expectedExecutionId !== executionId) {
+      const error = new Error("Durable execution ID does not match the recovered Hallway work.");
+      error.code = "DURABLE_RETURN_EXECUTION_ID_MISMATCH";
+      throw error;
+    }
+
+    record("work.durable-return-reconciliation-requested", {
+      workId: work.id,
+      missionId: work.mission?.id || null,
+      executionId,
+      commission: DURABLE_RETURN_RECONCILIATION_API_COMMISSION
+    });
+
+    return reintegrateDurableExecutionReturn(work, options);
+  }
+
   async function reconcileDurableExecutionReturns(options = {}) {
     const candidates = new Map();
     for (const work of state.work.values()) {
@@ -4373,6 +4442,128 @@
     return result;
   }
 
+  async function runDurableReturnReconciliationApiAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed, details = null) => checks.push({ name, passed: Boolean(passed), details });
+    const previousRouter = global.ExecutiveRouter;
+    const previousMissionEngine = global.MEOSMissionEngine;
+    const previousFetch = global.fetch;
+    const workId = "hallway-work-durable-return-api-fixture";
+    const missionId = "mission-durable-return-api-fixture";
+    const executionId = `execution-${workId}`;
+    const cognitionId = `human-intent-${workId}`;
+    let governanceCalls = 0;
+    let routerHandleCalls = 0;
+    let completeCalls = 0;
+    let statusReads = 0;
+
+    const mission = {
+      id: missionId,
+      status: "in-progress",
+      sourceReference: `hallway-work:${workId}`,
+      objective: "Why do octopuses have three hearts?",
+      approvalRequired: false
+    };
+    const returnedRecord = {
+      executionId,
+      state: "returned",
+      executor: "headless-public-research",
+      lineage: { missionId, cognitionId, hallwayWorkId: workId },
+      result: { success: true, synthesis: { answerFacts: [{ claim: "Evidence-bound API fixture fact." }] } }
+    };
+
+    try {
+      state.work.delete(workId);
+      global.MEOSMissionEngine = {
+        getActiveMissions: () => [clone(mission)],
+        getCompletedMissions: () => [],
+        getArchivedMissions: () => [],
+        getMission: idValue => idValue === missionId ? clone(mission) : null,
+        completeMission: idValue => {
+          completeCalls += 1;
+          return { ...clone(mission), id: idValue, status: "completed" };
+        }
+      };
+      global.ExecutiveRouter = {
+        handle() { routerHandleCalls += 1; throw new Error("Direct reconciliation must not redispatch research."); },
+        async reintegrateDurableResearchResult(recordValue, optionsValue) {
+          governanceCalls += 1;
+          return {
+            success: true,
+            source: "meos-headless-public-research",
+            answer: "Governed durable-return API fixture answer.",
+            output: { type: "public-research-result" },
+            governedAnswer: {
+              answer: "Governed durable-return API fixture answer.",
+              citations: ["https://science.example/durable-return-api"],
+              finalSpeechAuthorized: true,
+              oneMouth: true
+            },
+            durableExecution: {
+              executionId: recordValue.executionId,
+              lineage: clone(optionsValue.lineage),
+              browserExecutedResearch: false,
+              rawServerOutputPresentationAuthorized: false
+            }
+          };
+        }
+      };
+      global.fetch = async url => {
+        statusReads += 1;
+        check("Execution-ID API reads only the exact requested durable status URL",
+          String(url) === `/api/durable-execution/status/${executionId}`, { url });
+        return { ok: true, status: 200, json: async () => ({ record: clone(returnedRecord) }) };
+      };
+
+      const result = await reconcileDurableExecutionReturn(executionId);
+      const work = state.work.get(workId);
+      check("Execution ID recovers the existing active Mission's Hallway projection",
+        work?.id === workId && work?.mission?.id === missionId);
+      check("Public API re-enters Router durable-return governance exactly once",
+        governanceCalls === 1, { governanceCalls });
+      check("Public API never invokes Router handle or redispatches research",
+        routerHandleCalls === 0, { routerHandleCalls });
+      check("Original Mission/cognition/Hallway/execution lineage survives direct reconciliation",
+        result?.outcome?.result?.durableExecution?.executionId === executionId &&
+        result?.outcome?.result?.durableExecution?.lineage?.missionId === missionId &&
+        result?.outcome?.result?.durableExecution?.lineage?.cognitionId === cognitionId &&
+        result?.outcome?.result?.durableExecution?.lineage?.hallwayWorkId === workId);
+      check("Direct reconciliation uses one durable status read and creates no retry",
+        statusReads === 1 && result?.execution?.retryCreated !== true, { statusReads });
+      check("Governed informational return still auto-resolves the existing Mission",
+        completeCalls === 1 && result?.lifecycle?.disposition === "resolved-informational-return",
+        { completeCalls, lifecycle: clone(result?.lifecycle) });
+      check("Unknown execution IDs fail closed instead of creating replacement work",
+        await (async () => {
+          try { await reconcileDurableExecutionReturn("execution-hallway-work-not-real"); return false; }
+          catch (error) { return error?.code === "DURABLE_RETURN_WORK_NOT_FOUND"; }
+        })());
+    } finally {
+      state.work.delete(workId);
+      for (const [deliverableId, deliverable] of state.deliverables.entries()) {
+        if (deliverable?.workId === workId) state.deliverables.delete(deliverableId);
+      }
+      global.ExecutiveRouter = previousRouter;
+      global.MEOSMissionEngine = previousMissionEngine;
+      global.fetch = previousFetch;
+    }
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks);
+    const result = freeze({
+      success: passed === checks.length,
+      commission: DURABLE_RETURN_RECONCILIATION_API_COMMISSION,
+      schema: `${SCHEMA}.durable-return-reconciliation-api-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
+    console.log(`[MEOS ${VERSION}] Commission ${DURABLE_RETURN_RECONCILIATION_API_COMMISSION} Durable Return Reconciliation API: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
   function runAnswerProvenanceIntegrityAcceptanceTest() {
     const fixture = {
       success: true,
@@ -4430,7 +4621,9 @@
     runLongRunningExecutionContinuityAcceptanceTest,
     runDurableExecutionSpineHandoffAcceptanceTest,
     runDurableReturnReintegrationAcceptanceTest,
+    runDurableReturnReconciliationApiAcceptanceTest,
     reintegrateDurableExecutionReturn,
+    reconcileDurableExecutionReturn,
     reconcileDurableExecutionReturns,
     runCognitiveMetabolismAcceptanceTest,
     runHumanDirectedTaskAuthorityAcceptanceTest,
