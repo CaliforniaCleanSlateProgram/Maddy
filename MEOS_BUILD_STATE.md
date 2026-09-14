@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32180452/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32195168/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
@@ -2548,6 +2548,232 @@ This checkpoint is the recovery point if conversation context is lost.
 The architectural objective remains:
 
 **continuity of intention through time — with returned evidence becoming Maddy's governed cognition rather than a detached worker result.**
+
+
+**Always Push Forward.**
+
+---
+
+## 2026-09-14 — Durable Research Execution-and-Return Loop — COMMISSIONED
+
+This checkpoint supersedes the incomplete return-reintegration boundary recorded immediately above. The Durable Execution Spine public-research path has now been proven live through governed return, informational resolution, Mission completion, and active-state release under the original durable lineage.
+
+It does **not** replace or weaken the Project Maddy North Star, Spooky standard, existing authority boundaries, provider neutrality, or the one-fix / one-commit / one-test discipline. Where older statements in this Build State say that the durable return path or full Hallway-to-Maddy completion path is not yet proven, this newer runtime evidence governs.
+
+### Latest commissioned runtime baseline
+
+- Mission Engine: `0.2.0` / `ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A`
+- Executive Brain: `1.26.3` / `EB1263-EVIDENCE-BOUND-RESEARCH-SPEECH-20260913-A`
+- Executive Router: `1.5.2` / `ER152-DURABLE-RESEARCH-RETURN-GOVERNANCE-20260914-A`
+- Executive Hallway: `1.5.6` / `EH156-DURABLE-RETURN-RECONCILIATION-API-20260914-A`
+- Server durable execution persistence contract: `2.10.80` / `DEPC100-DURABLE-EXECUTION-PERSISTENCE-COLLECTION-20260913-A`
+- Office Dashboard returned-work surface remains `4.13.2` / `OD4132-RETURNED-WORK-DISPOSITION-SURFACE-20260913-A`
+- Mission Dispatcher remains `running: false` with startup reason `office_dispatch_authority_not_effective`; this remains a separate authority/governance matter and was not modified by the durable-return commissions.
+
+### Commission 006.031Q — Executive Router 1.5.2 Durable Research Return Governance — COMMISSIONED
+
+**Build:** `ER152-DURABLE-RESEARCH-RETURN-GOVERNANCE-20260914-A`
+
+**File:** `frontend/executive-router.js`
+
+The Router now contains the bounded governance adapter for a persisted Durable Execution Spine research return.
+
+Commissioned behavior:
+
+- accepts only a returned durable research record under the expected durable executor and lineage;
+- verifies execution, Mission, cognition, and Hallway identity before using the result;
+- fails closed on lineage mismatch or invalid durable state;
+- does **not** redispatch public research;
+- does **not** call the ordinary Router `handle()` path to manufacture a second execution;
+- converts successful durable research synthesis/evidence into evidence-bound material for the existing Executive Brain cognition path;
+- re-enters the existing Brain reconciliation / one-mouth speech machinery rather than presenting raw server synthesis directly;
+- preserves `browserExecutedResearch: false` and `rawServerOutputPresentationAuthorized: false`;
+- grants no new paid-spend, provider, or external-action authority.
+
+**Isolated acceptance:** PASS `10/10`.
+
+Architectural meaning: a server-owned worker result is not Maddy's answer. Returned evidence must re-enter Maddy's existing governed cognition before it can become Maddy-owned presentation.
+
+### Commission 006.031R — Executive Hallway 1.5.5 Durable Return Reintegration — COMMISSIONED
+
+**Build:** `EH155-DURABLE-RETURN-REINTEGRATION-20260914-A`
+
+**File:** `frontend/executive-hallway.js`
+
+Hallway 1.5.5 connected persisted durable return to the existing governed completion path without creating replacement work.
+
+Commissioned behavior:
+
+- reads the exact persisted durable execution status;
+- recovers the existing Hallway projection from the active durable Mission after browser reload when necessary;
+- preserves the original Mission, cognition, Hallway work, and deterministic execution lineage;
+- creates no replacement Mission, research execution, or retry;
+- sends returned research through Executive Router durable-return governance;
+- requires Router → Executive Brain governance before Maddy presentation;
+- explicitly forbids raw server synthesis from becoming presentation authority;
+- preserves server ownership of research execution while the browser remains only an observer/presentation surface;
+- reuses the existing Hallway informational auto-resolution path after the governed answer exists;
+- releases completed informational Missions without granting new authority.
+
+**Isolated acceptance:** PASS `10/10`.
+
+Regression acceptance retained:
+
+- Hallway 1.5.2 Informational Return Auto-Resolution: PASS `8/8`;
+- Hallway 1.5.3 Long-Running Execution Continuity: PASS `8/8`;
+- Hallway 1.5.4 Durable Execution Spine Handoff: PASS `8/8`.
+
+Architectural meaning: return reintegration is a continuation of the original intention, not the creation of a new task after a detached worker finishes.
+
+### Commission 006.031S — Executive Hallway 1.5.6 Durable Return Reconciliation API Surface — COMMISSIONED
+
+**Build:** `EH156-DURABLE-RETURN-RECONCILIATION-API-20260914-A`
+
+**File:** `frontend/executive-hallway.js`
+
+Hallway 1.5.6 exposes an execution-ID-addressable public reconciliation entry point for an already-persisted durable return while reusing the commissioned 006.031R reintegration logic.
+
+Commissioned behavior:
+
+- exposes `MEOSExecutiveHallway.reconcileDurableExecutionReturn(executionId)`;
+- resolves only the exact requested durable execution identity;
+- recovers only the matching existing Mission/Hallway projection;
+- reuses the 006.031R governed reintegration path;
+- re-enters Router durable-return governance exactly once;
+- never invokes a research redispatch or creates a replacement execution;
+- creates no replacement Mission and no retry;
+- preserves original Mission / cognition / Hallway / execution lineage;
+- fails closed for unknown execution IDs instead of manufacturing work;
+- preserves existing informational auto-resolution and authority boundaries.
+
+**Live runtime acceptance:** PASS `8/8`.
+
+The live acceptance specifically proved:
+
+1. exact execution-ID status lookup;
+2. recovery of the existing active Mission's Hallway projection;
+3. exactly one Router durable-return governance re-entry;
+4. no Router `handle()` / no research redispatch;
+5. original Mission / cognition / Hallway / execution lineage preservation;
+6. one durable status read and no retry creation;
+7. governed informational return still auto-resolves the existing Mission;
+8. unknown execution IDs fail closed.
+
+### Real persisted octopus execution — FULL LIVE COMPLETION PROOF
+
+The live proof used the original human-directed instruction:
+
+`Maddy, research why octopuses have three hearts. Use public evidence, tell me what you learned, and give me your conclusion.`
+
+Original durable lineage:
+
+- Hallway work: `hallway-work-cb14186e-6bb5-4beb-9721-5544813a6ddf`
+- Mission: `MIS-MU0S4U98-KL3DBI`
+- durable execution: `execution-hallway-work-cb14186e-6bb5-4beb-9721-5544813a6ddf`
+- original durable cognition/intention lineage: `human-intent-hallway-work-cb14186e-6bb5-4beb-9721-5544813a6ddf`
+- durable executor: `headless-public-research`
+- durable execution owner: `meos-server-durable-execution-spine`
+- browser execution owner: false
+- retry created: false
+- automatic spend: `$0`
+- external action authority: false
+
+The execution had already completed server-side and persisted as `returned` before the final reconciliation. No second human research prompt was issued and no second research execution was created.
+
+The live 1.5.6 reconciliation call returned the **same Hallway work ID** and the **same Mission ID**. The recovered work carried the original octopus instruction and completed as:
+
+- Hallway state: `done`;
+- lifecycle terminal: `true`;
+- lifecycle disposition: `resolved-informational-return`;
+- Mission status: `completed`;
+- governed Router execution present;
+- deliverable present;
+- source: `maddy-durable-mission-recovery`;
+- no replacement Mission;
+- no replacement durable execution;
+- no retry.
+
+The Mission Engine was then queried through its actual exported runtime surface and proved final release:
+
+- `getActiveMissions().length === 0`;
+- original Mission is **not** present in active Missions;
+- `getMission("MIS-MU0S4U98-KL3DBI").status === "completed"`;
+- original Mission progress: `100`;
+- original Mission `sourceReference` remains `hallway-work:hallway-work-cb14186e-6bb5-4beb-9721-5544813a6ddf`;
+- original Mission objective remains the original octopus research instruction;
+- original Mission contains the returned deliverable;
+- Mission completion timestamp: `2026-09-14T13:23:36.234Z`.
+
+This closes the live durable research execution-and-return loop under the original identity:
+
+**Human request → Maddy → governed cognition/intention → original Mission → original Hallway work → Durable Execution Spine → server-owned public research → evidence + durable learning → persisted durable return → browser/session loss survivable → original Mission/Hallway recovered → Executive Router return governance → Executive Brain → governed Maddy result → deliverable → informational auto-resolution → original Mission completed → active Mission released**
+
+### What is now proven
+
+For the commissioned bounded public-research capability, browser lifetime is no longer the execution authority.
+
+A human-directed research intention can:
+
+- enter Maddy's governed work path;
+- acquire one durable Mission / Hallway / execution lineage;
+- hand execution ownership to the server;
+- execute and persist evidence/result independently of browser Promise lifetime;
+- survive later browser/session recovery;
+- re-enter the original Hallway and governed cognition path without a duplicate research request;
+- become a governed Maddy answer rather than raw worker output;
+- produce a deliverable;
+- resolve the original informational Mission;
+- release active Mission state back to zero.
+
+The commissioned continuity invariant is therefore:
+
+**one intention → one Mission lineage → one Hallway lineage → one durable execution identity → server-owned execution → persisted returned evidence → governed Maddy cognition → one resolved informational outcome.**
+
+This is a concrete commissioned step toward the larger architectural objective:
+
+**continuity of intention through time.**
+
+### Anti-overstatement / remaining boundaries
+
+This proof commissions the bounded Durable Execution Spine path for human-directed provider-neutral public research. It does **not** mean every MEOS capability is now durable or autonomous.
+
+Do not generalize this executor's authority to:
+
+- paid provider use;
+- external mutations/actions;
+- approval-bearing work;
+- grant submission;
+- Workspace mutation;
+- unrestricted office dispatch;
+- arbitrary autonomous execution.
+
+Those remain governed by their existing authority contracts and require separate proof where applicable.
+
+The live research evidence set included unrelated confirmation-bias material. That remains a separate research-planning / search-quality concern unless causal inspection demonstrates a shared root with another commission. Do not reopen the now-proven durable return architecture merely to tune evidence selection.
+
+Mission Dispatcher remains stopped because office dispatch authority is not effective. This durable research proof did not require or alter that authority boundary.
+
+### Recovery / next-commission protocol
+
+The Durable Research Execution-and-Return Loop is **COMMISSIONED**. Do not keep adding code to this seam merely because additional code is possible.
+
+Before selecting the next coding commission:
+
+1. re-read `PROJECT_MADDY_NORTH_STAR.md` in full;
+2. re-read this Build State in full;
+3. re-anchor to the live repository/runtime versions above;
+4. inspect the actual whole-system path before choosing the next missing synapse;
+5. select the smallest high-leverage demonstrated gap that advances Maddy toward the North Star and clears the exact Spooky engineering gate;
+6. preserve **one fix → one commit → one test → commission**;
+7. do not silently broaden authority, create duplicate organs, or replace working commissioned architecture without demonstrated need.
+
+Potential future work must be selected from evidence, not momentum. The unrelated research-source quality observation, stopped Mission Dispatcher authority, broader continuous-cognition connections, and other open architectural questions remain separate candidates only after inspection establishes which is the highest-leverage real gap.
+
+This checkpoint is the canonical recovery point for the completed 006.031 durable research loop if conversation context is lost.
+
+The governing bar remains exactly:
+
+**edge of what's possible---sometimes past what is seemingly impossible today; as Einstein put it "Spooky stuff" or from a distance; beyond human thought process---that is the bar.**
 
 
 **Always Push Forward.**
