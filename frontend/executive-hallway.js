@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.3";
-  const BUILD_ID = "EH153-LONG-RUNNING-EXECUTION-CONTINUITY-20260913-A";
+  const VERSION = "1.5.4";
+  const BUILD_ID = "EH154-DURABLE-EXECUTION-SPINE-HANDOFF-20260913-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1905,6 +1905,159 @@
     return clone(work);
   }
 
+  /*
+   * Commission 006.031O — Durable Execution Spine Hallway Handoff
+   *
+   * Human-directed public research is no longer allowed to begin as a
+   * browser-owned Router Promise. The Hallway preserves its commissioned
+   * Mission/work lineage, derives one stable originating-intent identity, and
+   * hands the execution to the server-owned Durable Execution Spine. The
+   * server is then the execution owner; closing this tab cannot revoke that
+   * ownership. This commission intentionally stops at the ownership boundary:
+   * returned durable evidence is reintegrated through Maddy's governed
+   * Router/Brain conclusion path by the next commission rather than being
+   * presented as naked server output here.
+   */
+  const DURABLE_EXECUTION_HANDOFF_COMMISSION = "006.031O";
+  const DURABLE_EXECUTION_HANDOFF_SCHEMA =
+    "meos.executive-hallway.durable-execution-handoff.v1";
+
+  function durablePublicResearchContract(work) {
+    const router = executiveRouter();
+    if (typeof router?.researchIntentExecutionContract !== "function") {
+      return { required: false, reason: "research-contract-unavailable" };
+    }
+    try {
+      return router.researchIntentExecutionContract({
+        request: { text: work?.instruction || "" },
+        package: { request: { text: work?.instruction || "" } }
+      }) || { required: false, reason: "research-contract-not-required" };
+    } catch (_) {
+      return { required: false, reason: "research-contract-evaluation-failed" };
+    }
+  }
+
+  function durableExecutionLineage(work) {
+    const missionId = String(work?.mission?.id || "").trim();
+    const hallwayWorkId = String(work?.id || "").trim();
+    const cognitionId = String(
+      work?.context?.cognitionId ||
+      work?.context?.cognitiveDispatchKey ||
+      `human-intent-${hallwayWorkId}`
+    ).trim();
+    if (!missionId || !hallwayWorkId || !cognitionId) {
+      throw new Error("Durable execution handoff requires Mission, cognition/intention, and Hallway work lineage.");
+    }
+    return { missionId, cognitionId, hallwayWorkId };
+  }
+
+  function durableExecutionId(work) {
+    return `execution-${String(work?.id || "").trim()}`;
+  }
+
+  async function dispatchDurablePublicResearch(work, researchContract) {
+    if (typeof global.fetch !== "function") {
+      throw new Error("Durable execution handoff requires same-origin server access.");
+    }
+    const lineage = durableExecutionLineage(work);
+    const executionId = durableExecutionId(work);
+    const response = await global.fetch("/api/durable-execution/dispatch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({
+        executionId,
+        lineage,
+        executor: "headless-public-research",
+        request: {
+          subject: work.instruction,
+          question: work.instruction,
+          reason: researchContract?.reason || "human-directed-public-research",
+          maxSources: 8,
+          maxDepth: 2,
+          maxAdditionalPasses: 1,
+          authority: {
+            externalActionAuthorized: false,
+            paidProviderAuthorized: false,
+            humanAuthorityPreserved: true
+          }
+        },
+        authority: {
+          humanDirected: work.requestedBy === "executive-director" || work.source === "maddy-executive-desk",
+          publicReadResearchAuthorized: true,
+          paidSpendAuthorized: false,
+          externalActionAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      })
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.accepted !== true || !payload?.record?.executionId) {
+      const error = new Error(
+        payload?.error || `Durable execution handoff failed with HTTP ${response.status}.`
+      );
+      error.code = payload?.code || "DURABLE_EXECUTION_HANDOFF_FAILED";
+      throw error;
+    }
+    return payload.record;
+  }
+
+  function markDurableExecutionOwnedByServer(work, record, researchContract) {
+    work.execution = {
+      schema: DURABLE_EXECUTION_HANDOFF_SCHEMA,
+      commission: DURABLE_EXECUTION_HANDOFF_COMMISSION,
+      executionId: record.executionId,
+      state: record.state || "queued",
+      owner: "meos-server-durable-execution-spine",
+      executor: record.executor || "headless-public-research",
+      lineage: clone(record.lineage || durableExecutionLineage(work)),
+      checkpoint: clone(record.checkpoint || null),
+      serverOwned: true,
+      browserExecutionOwner: false,
+      retryCreated: false,
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0,
+      handedOffAt: now()
+    };
+    work.options = ["view-status"];
+    work.lifecycle = {
+      schema: "meos.executive-hallway.lifecycle.v1",
+      terminal: false,
+      disposition: "execution-owned-by-durable-server",
+      reason: "Human-directed public research was accepted by the server-owned Durable Execution Spine.",
+      missionId: work.mission?.id || null,
+      executionId: record.executionId,
+      continuedAt: now()
+    };
+    work.evidence.push({
+      type: "durable-execution-handoff",
+      source: "executive-hallway",
+      executionId: record.executionId,
+      lineage: clone(record.lineage || null),
+      researchReason: researchContract?.reason || null,
+      serverOwned: true,
+      browserExecutionOwner: false,
+      retryCreated: false,
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0,
+      message: "The server accepted ownership of this governed research execution under the original Mission/Hallway lineage.",
+      at: now()
+    });
+    recordActivityDurableHandoff(work);
+    emit("work-updated", work);
+    return clone(work);
+  }
+
+  function recordActivityDurableHandoff(work) {
+    record("work.durable-execution-handed-off", {
+      workId: work.id,
+      missionId: work.mission?.id || null,
+      executionId: work.execution?.executionId || null,
+      serverOwned: true
+    });
+  }
+
   async function routeExecutiveWork(work, options = {}) {
     const router = executiveRouter();
     if (!router?.handle) {
@@ -1924,6 +2077,18 @@
 
     transition(work, "understanding");
     transition(work, "executing");
+
+    const researchContract = durablePublicResearchContract(work);
+    if (researchContract.required === true) {
+      try {
+        const durableRecord = await dispatchDurablePublicResearch(work, researchContract);
+        return markDurableExecutionOwnedByServer(work, durableRecord, researchContract);
+      } catch (error) {
+        // Required public research fails closed. Never fall back to a browser-owned
+        // Router Promise after the durable ownership boundary has been selected.
+        return finishExecutiveRouterFailure(work, error);
+      }
+    }
 
     const startedAt = now();
     const presentationWaitMs = executivePresentationWaitMs(options);
@@ -3763,6 +3928,133 @@
     return result;
   }
 
+  async function runDurableExecutionSpineHandoffAcceptanceTest() {
+    const previousMissionEngine = global.MEOSMissionEngine;
+    const previousRouter = global.ExecutiveRouter;
+    const previousFetch = global.fetch;
+    const checks = [];
+    const check = (name, passed, detail = null) => checks.push({ name, passed: Boolean(passed), detail });
+    const active = [];
+    let routerCalls = 0;
+    let dispatchCalls = 0;
+    let dispatchedBody = null;
+
+    const mockEngine = {
+      getActiveMissions: () => active,
+      getCompletedMissions: () => [],
+      getArchivedMissions: () => [],
+      createMissionFromIntake(input) {
+        const mission = {
+          id: "mission-durable-handoff-001",
+          status: "active",
+          sourceReference: input.intakeId
+        };
+        active.push(mission);
+        return mission;
+      },
+      blockMission() {},
+      archiveMission(missionId) {
+        const index = active.findIndex(item => item.id === missionId);
+        if (index >= 0) active.splice(index, 1);
+        return { id: missionId, status: "archived" };
+      }
+    };
+    const mockRouter = {
+      researchIntentExecutionContract(payload) {
+        return /research|public evidence/i.test(payload?.request?.text || "")
+          ? { required: true, reason: "explicit-public-research-intent" }
+          : { required: false, reason: "ordinary-work" };
+      },
+      async handle() {
+        routerCalls += 1;
+        return { success: true, source: "meos", answer: "ordinary result" };
+      }
+    };
+
+    let work = null;
+    try {
+      global.MEOSMissionEngine = mockEngine;
+      global.ExecutiveRouter = mockRouter;
+      global.fetch = async (url, options = {}) => {
+        dispatchCalls += 1;
+        dispatchedBody = JSON.parse(options.body || "{}");
+        return {
+          ok: true,
+          status: 202,
+          async json() {
+            return {
+              accepted: true,
+              record: {
+                executionId: dispatchedBody.executionId,
+                state: "queued",
+                executor: "headless-public-research",
+                lineage: clone(dispatchedBody.lineage),
+                checkpoint: { stage: "queued" }
+              }
+            };
+          }
+        };
+      };
+
+      work = createWork({
+        id: "hallway-durable-handoff-001",
+        instruction: "Maddy, research why octopuses have three hearts. Use public evidence.",
+        source: "maddy-executive-desk",
+        requestedBy: "executive-director",
+        reviewRequired: false,
+        authorized: true
+      });
+      const returned = await routeExecutiveWork(work);
+
+      check("Human-directed public research is handed to the durable server endpoint",
+        dispatchCalls === 1 && returned?.execution?.serverOwned === true,
+        { dispatchCalls, execution: returned?.execution });
+      check("The original Mission, originating intent, and Hallway work identity are bound into one lineage",
+        dispatchedBody?.lineage?.missionId === "mission-durable-handoff-001" &&
+        dispatchedBody?.lineage?.hallwayWorkId === work.id &&
+        dispatchedBody?.lineage?.cognitionId === `human-intent-${work.id}`,
+        dispatchedBody?.lineage);
+      check("The durable execution identity is deterministic for the original Hallway work",
+        dispatchedBody?.executionId === `execution-${work.id}`);
+      check("The handoff uses only the commissioned headless public-research executor",
+        dispatchedBody?.executor === "headless-public-research");
+      check("The handoff grants no paid-spend or external-action authority",
+        dispatchedBody?.authority?.paidSpendAuthorized === false &&
+        dispatchedBody?.authority?.externalActionAuthorized === false &&
+        Number(dispatchedBody?.authority?.automaticSpendUsd || 0) === 0);
+      check("Public research execution is no longer started as a browser-owned Router Promise",
+        routerCalls === 0 && returned?.execution?.browserExecutionOwner === false,
+        { routerCalls, execution: returned?.execution });
+      check("The Mission remains active while the server owns unfinished execution",
+        active.length === 1 && returned?.state === "executing" &&
+        returned?.lifecycle?.disposition === "execution-owned-by-durable-server",
+        { active: clone(active), lifecycle: returned?.lifecycle });
+      check("The Hallway does not manufacture a retry when the server accepts ownership",
+        returned?.execution?.retryCreated === false);
+    } finally {
+      if (work?.id) state.work.delete(work.id);
+      global.MEOSMissionEngine = previousMissionEngine;
+      global.ExecutiveRouter = previousRouter;
+      global.fetch = previousFetch;
+    }
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks.map(({ name, passed }) => ({ name, passed })));
+    const result = freeze({
+      success: passed === checks.length,
+      commission: "MADDY-DURABLE-EXECUTION-SPINE-HANDOFF",
+      commissionId: DURABLE_EXECUTION_HANDOFF_COMMISSION,
+      schema: `${SCHEMA}.durable-execution-spine-handoff-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
+    console.log(`[MEOS ${VERSION}] Durable Execution Spine Hallway Handoff: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
   function runAnswerProvenanceIntegrityAcceptanceTest() {
     const fixture = {
       success: true,
@@ -3818,6 +4110,7 @@
     runTerminalFailureMissionReleaseAcceptanceTest,
     runInformationalReturnAutoResolutionAcceptanceTest,
     runLongRunningExecutionContinuityAcceptanceTest,
+    runDurableExecutionSpineHandoffAcceptanceTest,
     runCognitiveMetabolismAcceptanceTest,
     runHumanDirectedTaskAuthorityAcceptanceTest,
     runResearchContinuationQualificationAcceptanceTest,
