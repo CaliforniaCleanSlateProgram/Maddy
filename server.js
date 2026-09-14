@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.86
+ * Server Version: 2.10.87
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.86";
+const VERSION = "2.10.87";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -18310,6 +18310,652 @@ app.get(
   }
 );
 
+
+/* Commission 006.032F6 — LinkedIn Member Publishing Adapter + OAuth Bridge
+ *
+ * The first provider-specific publishing hand remains underneath the F1-F5
+ * provider-neutral substrate. LinkedIn OAuth tokens are encrypted through F5,
+ * runtime truth is advertised only through F4, and every consequential post
+ * still executes through F2. This adapter grants no authority of its own.
+ */
+const LINKEDIN_PUBLISHING_COMMISSION = "006.032F6";
+const LINKEDIN_PUBLISHING_VERSION = "1.0.0";
+const LINKEDIN_PUBLISHING_BUILD_ID =
+  "LPA100-LINKEDIN-MEMBER-OAUTH-PUBLISHING-ADAPTER-20260914-A";
+const LINKEDIN_PUBLISHING_SCHEMA = "meos.server.linkedin-member-publishing.v1";
+const LINKEDIN_CHANNEL = "linkedin";
+const LINKEDIN_ADAPTER_PREFIX = "linkedin-member-";
+const LINKEDIN_OAUTH_SLOT = "oauth";
+const LINKEDIN_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const linkedinOAuthStates = new Map();
+
+function linkedinPublishingConfig(env = process.env) {
+  const clientId = String(env.MEOS_LINKEDIN_CLIENT_ID || "").trim();
+  const clientSecret = String(env.MEOS_LINKEDIN_CLIENT_SECRET || "").trim();
+  const redirectUri = String(env.MEOS_LINKEDIN_REDIRECT_URI || "").trim();
+  const apiVersion = String(env.MEOS_LINKEDIN_API_VERSION || "").trim();
+  const scope = String(
+    env.MEOS_LINKEDIN_SCOPES || "r_liteprofile w_member_social"
+  ).trim();
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+    apiVersion,
+    scope,
+    configured: Boolean(
+      clientId && clientSecret && redirectUri && /^20\d{4}$/.test(apiVersion)
+    )
+  };
+}
+
+function linkedinConnectionIdentity(input = {}) {
+  const organizationId = publishingCredentialRequiredText(
+    input.organizationId,
+    "organizationId"
+  );
+  const principalId = publishingCredentialRequiredText(
+    input.principalId || "default",
+    "principalId"
+  );
+  const digest = crypto
+    .createHash("sha256")
+    .update(`${organizationId}|${principalId}`)
+    .digest("hex")
+    .slice(0, 20);
+  const adapterId = `${LINKEDIN_ADAPTER_PREFIX}${digest}`;
+  return {
+    organizationId,
+    principalId,
+    adapterId,
+    capabilityId: `external-publishing.linkedin-member.${digest}`,
+    slot: LINKEDIN_OAUTH_SLOT
+  };
+}
+
+function normalizeLinkedInStoredCredential(secret) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(secret || ""));
+  } catch (_) {
+    parsed = null;
+  }
+  const accessToken = String(parsed?.accessToken || "").trim();
+  const authorUrn = String(parsed?.authorUrn || "").trim();
+  const scope = String(parsed?.scope || "").trim();
+  if (!accessToken || !/^urn:li:person:[^\s]+$/.test(authorUrn)) {
+    const error = new Error("LinkedIn credential record is incomplete or invalid.");
+    error.code = "LINKEDIN_CREDENTIAL_INVALID";
+    throw error;
+  }
+  return {
+    accessToken,
+    authorUrn,
+    scope,
+    expiresAt: parsed?.expiresAt || null,
+    providerSubject: parsed?.providerSubject || null
+  };
+}
+
+function linkedinExtractCommentary(envelope = {}) {
+  const adaptation = envelope?.creative?.channelAdaptation || {};
+  const candidates = [
+    adaptation.message,
+    adaptation.commentary,
+    adaptation.text,
+    envelope?.creative?.message,
+    envelope?.creative?.text
+  ];
+  const commentary = candidates
+    .map(value => String(value || "").trim())
+    .find(Boolean);
+  if (!commentary) {
+    const error = new Error(
+      "LinkedIn publishing requires channel-adapted text in the governed creative envelope."
+    );
+    error.code = "LINKEDIN_COMMENTARY_REQUIRED";
+    throw error;
+  }
+  return commentary;
+}
+
+function linkedinRequestHeaders(accessToken, apiVersion) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "Linkedin-Version": apiVersion,
+    "X-Restli-Protocol-Version": "2.0.0"
+  };
+}
+
+async function linkedinJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch (_) { return { raw: text.slice(0, 1000) }; }
+}
+
+function createLinkedInRuntimeAdapter(identityInput = {}, options = {}) {
+  const identity = linkedinConnectionIdentity(identityInput);
+  const fetchImpl = options.fetchImpl || fetch;
+  const configProvider = options.configProvider || (() => linkedinPublishingConfig());
+  const credentialResolver = options.credentialResolver || (async () => {
+    const secret = await resolvePublishingCredential(identity);
+    return normalizeLinkedInStoredCredential(secret);
+  });
+
+  return {
+    adapterId: identity.adapterId,
+    capabilityId: identity.capabilityId,
+    channel: LINKEDIN_CHANNEL,
+    channelFamily: "social",
+    credentialBoundary: "server-side-only",
+    verifyConnection: async () => {
+      const config = configProvider();
+      if (!config.configured) {
+        const error = new Error(
+          "LinkedIn publishing application configuration is incomplete."
+        );
+        error.code = "LINKEDIN_APP_CONFIGURATION_INCOMPLETE";
+        throw error;
+      }
+      const credential = await credentialResolver();
+      const scopeSet = new Set(
+        String(credential.scope || "")
+          .split(/[\s,]+/)
+          .map(value => value.trim())
+          .filter(Boolean)
+      );
+      if (!scopeSet.has("w_member_social")) {
+        const error = new Error(
+          "LinkedIn credential does not prove w_member_social permission."
+        );
+        error.code = "LINKEDIN_PUBLISH_PERMISSION_NOT_GRANTED";
+        throw error;
+      }
+      if (credential.expiresAt && Date.parse(credential.expiresAt) <= Date.now()) {
+        const error = new Error("LinkedIn publishing credential is expired.");
+        error.code = "LINKEDIN_CREDENTIAL_EXPIRED";
+        throw error;
+      }
+      return { connected: true, grantedOperations: ["publish"] };
+    },
+    execute: async ({ publishingEnvelope, idempotencyKey }) => {
+      const envelope = normalizeDurablePublishingEnvelope(publishingEnvelope);
+      if (envelope.channel !== LINKEDIN_CHANNEL) {
+        const error = new Error("LinkedIn adapter received a different channel.");
+        error.code = "LINKEDIN_CHANNEL_MISMATCH";
+        throw error;
+      }
+      if (envelope.lineage.organizationId !== identity.organizationId) {
+        const error = new Error("LinkedIn adapter organization boundary mismatch.");
+        error.code = "LINKEDIN_ORGANIZATION_MISMATCH";
+        throw error;
+      }
+      const config = configProvider();
+      if (!config.configured) {
+        const error = new Error("LinkedIn publishing application configuration is incomplete.");
+        error.code = "LINKEDIN_APP_CONFIGURATION_INCOMPLETE";
+        throw error;
+      }
+      const credential = await credentialResolver();
+      const commentary = linkedinExtractCommentary(envelope);
+      const providerResponse = await fetchImpl("https://api.linkedin.com/rest/posts", {
+        method: "POST",
+        headers: linkedinRequestHeaders(credential.accessToken, config.apiVersion),
+        body: JSON.stringify({
+          author: credential.authorUrn,
+          commentary,
+          visibility: "PUBLIC",
+          distribution: {
+            feedDistribution: "MAIN_FEED",
+            targetEntities: [],
+            thirdPartyDistributionChannels: []
+          },
+          lifecycleState: "PUBLISHED",
+          isReshareDisabledByAuthor: false
+        })
+      });
+      const providerBody = await linkedinJsonResponse(providerResponse);
+      if (!providerResponse.ok) {
+        return {
+          success: false,
+          error: {
+            code: `LINKEDIN_HTTP_${providerResponse.status}`,
+            message: "LinkedIn rejected the authorized publication request.",
+            providerStatus: providerResponse.status,
+            providerBody
+          }
+        };
+      }
+      const providerPublicationId = String(
+        providerResponse.headers.get("x-restli-id") || providerBody?.id || ""
+      ).trim();
+      if (!providerPublicationId) {
+        return {
+          success: false,
+          error: {
+            code: "LINKEDIN_RECEIPT_ID_MISSING",
+            message: "LinkedIn reported success without a provider publication id."
+          }
+        };
+      }
+      return {
+        success: true,
+        receipt: {
+          schema: DURABLE_PUBLISHING_RECEIPT_SCHEMA,
+          receiptId: `linkedin:${providerPublicationId}`,
+          authorizationId: envelope.lineage.authorizationId,
+          capabilityId: identity.capabilityId,
+          channel: LINKEDIN_CHANNEL,
+          idempotencyKey,
+          provider: "linkedin",
+          providerPublicationId,
+          executedAt: new Date().toISOString(),
+          executionIsCommercialOutcome: false
+        }
+      };
+    }
+  };
+}
+
+async function registerLinkedInConnection(identityInput = {}, options = {}) {
+  const adapter = createLinkedInRuntimeAdapter(identityInput, options);
+  registerRuntimePublishingAdapter(adapter, { replace: true });
+  return refreshRuntimePublishingAdapter(adapter.adapterId);
+}
+
+async function restoreLinkedInPublishingAdapters() {
+  const status = await getPublishingCredentialVaultStatus();
+  const eligible = status.records.filter(record =>
+    String(record?.adapterId || "").startsWith(LINKEDIN_ADAPTER_PREFIX) &&
+    record?.slot === LINKEDIN_OAUTH_SLOT
+  );
+  const restored = [];
+  for (const record of eligible) {
+    try {
+      restored.push(await registerLinkedInConnection({
+        organizationId: record.organizationId,
+        principalId: record.principalId
+      }));
+    } catch (error) {
+      restored.push({
+        adapterId: record.adapterId,
+        available: false,
+        error: { code: error?.code || "LINKEDIN_RESTORE_FAILED", message: error?.message || String(error) }
+      });
+    }
+  }
+  return restored;
+}
+
+function cleanLinkedInOAuthStates(now = Date.now()) {
+  for (const [state, record] of linkedinOAuthStates.entries()) {
+    if (!record?.expiresAt || record.expiresAt <= now) linkedinOAuthStates.delete(state);
+  }
+}
+
+function createLinkedInOAuthStart(input = {}, options = {}) {
+  const config = options.config || linkedinPublishingConfig();
+  if (!config.configured) {
+    const error = new Error(
+      "LinkedIn publishing requires MEOS_LINKEDIN_CLIENT_ID, MEOS_LINKEDIN_CLIENT_SECRET, MEOS_LINKEDIN_REDIRECT_URI, and a YYYYMM MEOS_LINKEDIN_API_VERSION."
+    );
+    error.status = 503;
+    error.code = "LINKEDIN_APP_CONFIGURATION_INCOMPLETE";
+    throw error;
+  }
+  const identity = linkedinConnectionIdentity(input);
+  cleanLinkedInOAuthStates();
+  const state = crypto.randomBytes(32).toString("base64url");
+  linkedinOAuthStates.set(state, {
+    ...identity,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + LINKEDIN_OAUTH_STATE_TTL_MS
+  });
+  const url = new URL("https://www.linkedin.com/oauth/v2/authorization");
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", config.clientId);
+  url.searchParams.set("redirect_uri", config.redirectUri);
+  url.searchParams.set("state", state);
+  url.searchParams.set("scope", config.scope);
+  return {
+    success: true,
+    schema: LINKEDIN_PUBLISHING_SCHEMA,
+    version: LINKEDIN_PUBLISHING_VERSION,
+    buildId: LINKEDIN_PUBLISHING_BUILD_ID,
+    organizationId: identity.organizationId,
+    principalId: identity.principalId,
+    authorizationUrl: url.toString(),
+    expiresInSeconds: Math.floor(LINKEDIN_OAUTH_STATE_TTL_MS / 1000),
+    credentialBoundary: "server-side-only",
+    grantsPublicationAuthority: false
+  };
+}
+
+async function completeLinkedInOAuth(input = {}, options = {}) {
+  cleanLinkedInOAuthStates();
+  const state = String(input.state || "").trim();
+  const code = String(input.code || "").trim();
+  const pending = linkedinOAuthStates.get(state);
+  if (!state || !code || !pending) {
+    const error = new Error("LinkedIn OAuth state is missing, expired, or invalid.");
+    error.status = 400;
+    error.code = "LINKEDIN_OAUTH_STATE_INVALID";
+    throw error;
+  }
+  linkedinOAuthStates.delete(state);
+  const config = options.config || linkedinPublishingConfig();
+  const fetchImpl = options.fetchImpl || fetch;
+  const tokenBody = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    redirect_uri: config.redirectUri
+  });
+  const tokenResponse = await fetchImpl("https://www.linkedin.com/oauth/v2/accessToken", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: tokenBody.toString()
+  });
+  const tokenPayload = await linkedinJsonResponse(tokenResponse);
+  if (!tokenResponse.ok || !tokenPayload?.access_token) {
+    const error = new Error("LinkedIn OAuth token exchange failed.");
+    error.status = 502;
+    error.code = "LINKEDIN_OAUTH_TOKEN_EXCHANGE_FAILED";
+    throw error;
+  }
+  const accessToken = String(tokenPayload.access_token).trim();
+  const profileResponse = await fetchImpl("https://api.linkedin.com/v2/me", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "X-Restli-Protocol-Version": "2.0.0"
+    }
+  });
+  const profile = await linkedinJsonResponse(profileResponse);
+  if (!profileResponse.ok || !profile?.id) {
+    const error = new Error(
+      "LinkedIn could not verify the authenticated member person id required for a Person URN."
+    );
+    error.status = 502;
+    error.code = "LINKEDIN_MEMBER_ID_VERIFICATION_FAILED";
+    throw error;
+  }
+  const grantedScope = String(tokenPayload.scope || config.scope || "").trim();
+  if (!grantedScope.split(/[\s,]+/).includes("w_member_social")) {
+    const error = new Error("LinkedIn did not grant w_member_social.");
+    error.status = 403;
+    error.code = "LINKEDIN_PUBLISH_PERMISSION_NOT_GRANTED";
+    throw error;
+  }
+  const expiresIn = Number(tokenPayload.expires_in || 0);
+  const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
+    ? new Date(Date.now() + expiresIn * 1000).toISOString()
+    : null;
+  await upsertPublishingCredential({
+    ...pending,
+    secret: JSON.stringify({
+      accessToken,
+      authorUrn: `urn:li:person:${profile.id}`,
+      providerSubject: String(profile.id),
+      scope: grantedScope,
+      expiresAt
+    })
+  });
+  const adapter = await registerLinkedInConnection(pending);
+  return {
+    success: adapter.available === true,
+    schema: LINKEDIN_PUBLISHING_SCHEMA,
+    version: LINKEDIN_PUBLISHING_VERSION,
+    buildId: LINKEDIN_PUBLISHING_BUILD_ID,
+    adapter,
+    credentialBoundary: "server-side-only",
+    credentialPlaintextReturned: false,
+    grantsPublicationAuthority: false
+  };
+}
+
+async function runLinkedInPublishingAcceptanceTest() {
+  const identity = {
+    organizationId: "org-linkedin-acceptance",
+    principalId: "principal-linkedin-acceptance"
+  };
+  const derived = linkedinConnectionIdentity(identity);
+  const envelope = {
+    schema: DURABLE_PUBLISHING_ENVELOPE_SCHEMA,
+    capabilityId: derived.capabilityId,
+    channel: LINKEDIN_CHANNEL,
+    lineage: {
+      organizationId: identity.organizationId,
+      campaignId: "campaign-linkedin-acceptance",
+      creativeHypothesisId: "hypothesis-linkedin-acceptance",
+      assetId: "asset-linkedin-acceptance",
+      authorizationId: "authorization-linkedin-acceptance"
+    },
+    authority: {
+      authorized: true,
+      authorizationId: "authorization-linkedin-acceptance",
+      scope: { channel: LINKEDIN_CHANNEL, maxPublications: 1 },
+      capabilityCanExpandScope: false
+    },
+    creative: {
+      assetId: "asset-linkedin-acceptance",
+      claimRestrictions: ["evidence-bound"],
+      evidenceSourceIds: ["evidence-linkedin-acceptance"],
+      channelAdaptation: { message: "Acceptance fixture — not transmitted to LinkedIn." }
+    },
+    expectation: { predictedConsequence: { metric: "qualified-interest", direction: "increase" } },
+    credentials: { boundary: "server-side-only", included: false, modelVisible: false, browserPersisted: false },
+    receiptRequired: true,
+    receiptSchema: DURABLE_PUBLISHING_RECEIPT_SCHEMA,
+    outcomeStatus: "unknown-until-observed",
+    executionIsOutcome: false
+  };
+  const calls = [];
+  const fakeFetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    return {
+      ok: true,
+      status: 201,
+      headers: { get: name => String(name).toLowerCase() === "x-restli-id" ? "urn:li:share:acceptance-123" : null },
+      text: async () => ""
+    };
+  };
+  const fakeCredential = async () => ({
+    accessToken: "acceptance-token-never-persisted",
+    authorUrn: "urn:li:person:acceptance-member",
+    scope: "r_liteprofile w_member_social",
+    expiresAt: new Date(Date.now() + 3600000).toISOString()
+  });
+  const fakeConfig = () => ({
+    configured: true,
+    clientId: "fixture-client",
+    clientSecret: "fixture-secret",
+    redirectUri: "https://example.test/callback",
+    apiVersion: "202608",
+    scope: "r_liteprofile w_member_social"
+  });
+  const adapter = createLinkedInRuntimeAdapter(identity, {
+    fetchImpl: fakeFetch,
+    credentialResolver: fakeCredential,
+    configProvider: fakeConfig
+  });
+  registerRuntimePublishingAdapter(adapter, { replace: true });
+  const publicState = await refreshRuntimePublishingAdapter(adapter.adapterId);
+  const terminal = await executeDurableExecutionPayload({
+    executionId: "execution-linkedin-acceptance",
+    lineage: {
+      missionId: "mission-linkedin-acceptance",
+      cognitionId: "cognition-linkedin-acceptance",
+      hallwayWorkId: "hallway-linkedin-acceptance"
+    },
+    executor: DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING,
+    request: { publishingEnvelope: normalizeDurablePublishingEnvelope(envelope) }
+  });
+  unregisterRuntimePublishingAdapter(adapter.adapterId);
+  const request = calls[0] || {};
+  const body = JSON.parse(request.init?.body || "{}");
+  const headers = request.init?.headers || {};
+  let wrongOrgRejected = false;
+  try {
+    await adapter.execute({
+      publishingEnvelope: {
+        ...envelope,
+        lineage: { ...envelope.lineage, organizationId: "org-other" }
+      },
+      idempotencyKey: "fixture"
+    });
+  } catch (error) {
+    wrongOrgRejected = error?.code === "LINKEDIN_ORGANIZATION_MISMATCH";
+  }
+  let missingPermissionRejected = false;
+  const noPermissionAdapter = createLinkedInRuntimeAdapter(identity, {
+    credentialResolver: async () => ({ ...(await fakeCredential()), scope: "r_liteprofile" }),
+    configProvider: fakeConfig,
+    fetchImpl: fakeFetch
+  });
+  try { await noPermissionAdapter.verifyConnection(); } catch (error) {
+    missingPermissionRejected = error?.code === "LINKEDIN_PUBLISH_PERMISSION_NOT_GRANTED";
+  }
+  let missingTextRejected = false;
+  try { linkedinExtractCommentary({ creative: { channelAdaptation: {} } }); } catch (error) {
+    missingTextRejected = error?.code === "LINKEDIN_COMMENTARY_REQUIRED";
+  }
+  const start = createLinkedInOAuthStart(identity, { config: fakeConfig() });
+  const startUrl = new URL(start.authorizationUrl);
+  const checks = [
+    { name: "LinkedIn adapter contract is versioned beneath Maddy", passed: LINKEDIN_PUBLISHING_VERSION === "1.0.0" && LINKEDIN_PUBLISHING_SCHEMA.includes("linkedin-member-publishing") },
+    { name: "Adapter identity is deterministic per organization and principal", passed: derived.adapterId === linkedinConnectionIdentity(identity).adapterId },
+    { name: "Provider capability remains external-publishing and replaceable", passed: derived.capabilityId.startsWith(DURABLE_PUBLISHING_CAPABILITY_PREFIX) },
+    { name: "Runtime discovery advertises LinkedIn only after publish permission verification", passed: publicState.available === true && publicState.grantedOperations.includes("publish") },
+    { name: "Public adapter state exposes no credential material", passed: publicState.credentialsExposed === false && publicState.credentialBoundary === "server-side-only" },
+    { name: "w_member_social is required before capability becomes usable", passed: missingPermissionRejected },
+    { name: "Organization isolation is enforced again at provider execution boundary", passed: wrongOrgRejected },
+    { name: "Channel-adapted creative text is required", passed: missingTextRejected },
+    { name: "Execution uses LinkedIn REST Posts API", passed: request.url === "https://api.linkedin.com/rest/posts" && request.init?.method === "POST" },
+    { name: "LinkedIn-Version remains explicit and configuration-driven", passed: headers["Linkedin-Version"] === "202608" },
+    { name: "Rest.li protocol header is explicit", passed: headers["X-Restli-Protocol-Version"] === "2.0.0" },
+    { name: "OAuth bearer credential stays inside server transport headers", passed: headers.Authorization === "Bearer acceptance-token-never-persisted" && !JSON.stringify(envelope).includes("acceptance-token-never-persisted") },
+    { name: "Provider post author is the verified Person URN", passed: body.author === "urn:li:person:acceptance-member" },
+    { name: "Provider post body carries exactly the governed channel-adapted commentary", passed: body.commentary === envelope.creative.channelAdaptation.message },
+    { name: "Provider post is an organic public main-feed publication", passed: body.visibility === "PUBLIC" && body.distribution?.feedDistribution === "MAIN_FEED" && body.lifecycleState === "PUBLISHED" },
+    { name: "LinkedIn provider receipt is normalized into the F2 receipt contract", passed: terminal.result?.receipt?.schema === DURABLE_PUBLISHING_RECEIPT_SCHEMA && terminal.result?.receipt?.providerPublicationId === "urn:li:share:acceptance-123" },
+    { name: "Exact authorization identity survives provider execution", passed: terminal.result?.receipt?.authorizationId === envelope.lineage.authorizationId },
+    { name: "Execution evidence remains distinct from commercial outcome", passed: terminal.result?.executionIsCommercialOutcome === false && terminal.checkpoint?.commercialOutcomeStillUnknown === true },
+    { name: "OAuth start uses authorization-code flow with CSRF state", passed: startUrl.origin === "https://www.linkedin.com" && startUrl.pathname === "/oauth/v2/authorization" && startUrl.searchParams.get("response_type") === "code" && Boolean(startUrl.searchParams.get("state")) },
+    { name: "OAuth start requests member publishing permission without granting action authority", passed: startUrl.searchParams.get("scope").includes("w_member_social") && start.grantsPublicationAuthority === false },
+    { name: "OAuth redirect is exact and provider client secret is never returned", passed: startUrl.searchParams.get("redirect_uri") === fakeConfig().redirectUri && !JSON.stringify(start).includes(fakeConfig().clientSecret) },
+    { name: "Real adapter still relies on F5 encrypted credential resolution rather than envelope credentials", passed: adapter.credentialBoundary === "server-side-only" && envelope.credentials.included === false },
+    { name: "Real adapter remains behind F2 durable consequential execution", passed: terminal.state === "returned" && terminal.checkpoint?.stage === "publication-receipt-returned" },
+    { name: "Adapter itself grants no publication authority", passed: start.grantsPublicationAuthority === false && publicState.capabilityGrantsAuthority === false }
+  ];
+  const passed = checks.filter(check => check.passed).length;
+  return {
+    success: passed === checks.length,
+    commission: LINKEDIN_PUBLISHING_COMMISSION,
+    schema: "meos.server.linkedin-member-publishing.acceptance.v1",
+    version: LINKEDIN_PUBLISHING_VERSION,
+    buildId: LINKEDIN_PUBLISHING_BUILD_ID,
+    passed,
+    total: checks.length,
+    checks,
+    sample: {
+      adapter: publicState,
+      providerPublicationId: terminal.result?.receipt?.providerPublicationId || null,
+      liveLinkedInRequestSent: false
+    }
+  };
+}
+
+app.get("/api/publishing/linkedin/status", async (request, response) => {
+  try {
+    const organizationId = String(request.query.organizationId || "").trim();
+    const principalId = String(request.query.principalId || "default").trim();
+    const config = linkedinPublishingConfig();
+    let adapter = null;
+    if (organizationId) {
+      const identity = linkedinConnectionIdentity({ organizationId, principalId });
+      adapter = listRuntimePublishingAdapters().find(item => item.adapterId === identity.adapterId) || null;
+    }
+    response.status(200).json({
+      success: true,
+      schema: LINKEDIN_PUBLISHING_SCHEMA,
+      version: LINKEDIN_PUBLISHING_VERSION,
+      buildId: LINKEDIN_PUBLISHING_BUILD_ID,
+      applicationConfigured: config.configured,
+      apiVersionConfigured: /^20\d{4}$/.test(config.apiVersion),
+      credentialBoundary: "server-side-only",
+      grantsPublicationAuthority: false,
+      adapter
+    });
+  } catch (error) {
+    response.status(error?.status || 500).json({ success: false, code: error?.code || "LINKEDIN_STATUS_FAILED", error: error?.message || String(error) });
+  }
+});
+
+app.post(
+  "/api/publishing/linkedin/oauth/start",
+  express.json({ limit: "8kb", strict: true }),
+  async (request, response) => {
+    try {
+      const principal = await resolveAutonomyPrincipal(request);
+      if (!principal) {
+        response.status(401).json({ error: "LinkedIn connection requires an authenticated or trusted same-origin executive principal.", code: "LINKEDIN_EXECUTIVE_PRINCIPAL_REQUIRED" });
+        return;
+      }
+      response.status(200).json(createLinkedInOAuthStart(request.body || {}));
+    } catch (error) {
+      response.status(error?.status || 500).json({ success: false, code: error?.code || "LINKEDIN_OAUTH_START_FAILED", error: error?.message || String(error) });
+    }
+  }
+);
+
+app.get("/api/publishing/linkedin/oauth/callback", async (request, response) => {
+  try {
+    const result = await completeLinkedInOAuth(request.query || {});
+    response.status(result.success ? 200 : 502).json(result);
+  } catch (error) {
+    response.status(error?.status || 500).json({ success: false, code: error?.code || "LINKEDIN_OAUTH_CALLBACK_FAILED", error: error?.message || String(error) });
+  }
+});
+
+app.post(
+  "/api/publishing/linkedin/disconnect",
+  express.json({ limit: "8kb", strict: true }),
+  async (request, response) => {
+    try {
+      const principal = await resolveAutonomyPrincipal(request);
+      if (!principal) {
+        response.status(401).json({ error: "LinkedIn disconnection requires an authenticated or trusted same-origin executive principal.", code: "LINKEDIN_EXECUTIVE_PRINCIPAL_REQUIRED" });
+        return;
+      }
+      const identity = linkedinConnectionIdentity(request.body || {});
+      const revoked = await revokePublishingCredential(identity);
+      unregisterRuntimePublishingAdapter(identity.adapterId);
+      response.status(200).json({ success: true, revoked: revoked.revoked, adapterId: identity.adapterId, capabilityRevoked: true, publicationAuthorityGranted: false });
+    } catch (error) {
+      response.status(error?.status || 500).json({ success: false, code: error?.code || "LINKEDIN_DISCONNECT_FAILED", error: error?.message || String(error) });
+    }
+  }
+);
+
+app.get("/api/publishing/linkedin/acceptance-test", async (_request, response) => {
+  try {
+    const result = await runLinkedInPublishingAcceptanceTest();
+    response.status(result.success ? 200 : 500).json(result);
+  } catch (error) {
+    response.status(500).json({
+      success: false,
+      commission: LINKEDIN_PUBLISHING_COMMISSION,
+      schema: "meos.server.linkedin-member-publishing.acceptance.v1",
+      version: LINKEDIN_PUBLISHING_VERSION,
+      buildId: LINKEDIN_PUBLISHING_BUILD_ID,
+      code: error?.code || "LINKEDIN_ACCEPTANCE_FAILED",
+      error: error?.message || String(error)
+    });
+  }
+});
+
 app.get("/api/publishing/adapters", (_request, response) => {
   response.status(200).json({
     success: true,
@@ -29613,6 +30259,19 @@ app.listen(PORT, () => {
 
 
     if (status.status === "ready") {
+      restoreLinkedInPublishingAdapters()
+        .then(restored => {
+          if (restored.length > 0) {
+            console.log(
+              `[MEOS] LinkedIn Publishing Adapter v${LINKEDIN_PUBLISHING_VERSION} restored. ` +
+                `connections=${restored.length}, build=${LINKEDIN_PUBLISHING_BUILD_ID}.`
+            );
+          }
+        })
+        .catch(error => {
+          console.error("[MEOS] LinkedIn publishing adapter restore failed closed:", error);
+        });
+
       resumeQueuedDurableExecutions()
         .then(resumed => {
           console.log(
