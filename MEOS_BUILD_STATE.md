@@ -1,3 +1,4 @@
+[Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -3032,6 +3033,94 @@ The future dashboard should let the Executive Director and Maddy answer, without
 
 The dashboard is a truth surface and decision surface, not merely a marketing analytics display.
 
+## Competitive supremacy / open-source implementation doctrine — LOCKED 2026-09-14
+
+Maddy does not change her North Star to chase competitors. The Project Maddy North Star and exact Spooky standard remain the governing ceiling. Competitors establish evidence about the current capability floor. When a serious competitor or respectable open-source system demonstrates a capability materially useful to Maddy's mission, MEOS must evaluate it for implementation and, where relevant, Maddy must acquire an equivalent or superior Maddy-native capability.
+
+The governing competitive posture is:
+
+**discover relevant proven competitor capability → understand why users value it and where it falls short → inspect lawful/open implementation evidence where available → BUILD the capability into Maddy through the correct existing organs → preserve identity, evidence, authority, continuity, provider neutrality, organization isolation, and economic stewardship → push the implementation beyond conventional parity under the Spooky bar → benchmark against relevant alternatives → learn → improve again.**
+
+This is an implementation requirement, not a study-only doctrine. Relevant competitive capability is not satisfied by documenting, admiring, or referencing it. Where the capability materially advances Maddy, it enters the MEOS engineering destination and must be built, connected, tested, and commissioned through the established one-fix/one-commit/one-test discipline.
+
+Competitor roadmaps still do not become Maddy's roadmap. Sequence remains governed by architectural dependency, leverage, current commission scope, and the North Star. But already-commissioned organs are not frozen forever: **backward strengthening is explicitly allowed and required when a newly adopted capability exposes a real missing seam or when an existing organ must evolve for the capability to work correctly as part of one Maddy.** Do not preserve an inferior seam merely because it was previously commissioned.
+
+**Competitive Supremacy Requirement:** Maddy should offer the relevant useful capabilities demonstrated by serious competitors and then exceed conventional implementations through deeper cognition, continuity, learning, initiative, institutional understanding, self-correction, portability, or economic agency. Feature parity is a floor, not completion.
+
+**Spooky Differentiation Requirement:** After acquiring a relevant competitive capability, ask what Maddy-native advance makes it materially harder to reproduce with an ordinary assistant plus prompts and tools. If there is no meaningful Maddy-native advance, continue engineering before calling the competitive objective complete.
+
+The product-quality aspiration is **5/5 customer-level usefulness and satisfaction**. This is an aspiration to be earned through actual customer experience, reliability, outcomes, and evidence—not a rating Maddy may claim without real external support.
+
+### Vellum Assistant — respectable MIT-licensed engineering source / active implementation input
+
+Vellum Assistant and relevant MIT-licensed Vellum plugins are approved as respectable open-source engineering sources and active implementation inputs where their demonstrated capabilities are relevant to Maddy. Their architecture does not replace MEOS. Lawful source reuse/adaptation must preserve required license/copyright notices and be reviewed for architectural fit before incorporation.
+
+As of the 2026-09-14 competitive review, the following Vellum-demonstrated capabilities are now explicit Maddy engineering requirements to implement at an equivalent-or-superior Maddy-native level, using backward strengthening of existing organs where necessary:
+
+- dynamic skills/capabilities that can be loaded without permanently bloating the core assistant;
+- skill-defined tools and sandboxed execution;
+- dynamic skill authoring and capability reseeding;
+- permission/risk gates around skill-origin tools and self-modifying capability source;
+- credential isolation through a separate credential-execution boundary;
+- browser/computer-use capability;
+- multi-channel continuity;
+- multi-provider model/TTS/provider abstraction;
+- proactive operation;
+- structured memory and retrieval;
+- organization/user configurable personality/identity surfaces; and
+- an MIT-licensed `marketing-expert` capability covering positioning, demand/pipeline planning, launches, content, copy, web/visual assets, email, brand voice, SEO/GEO, competitive teardown, executive reporting, and deterministic marketing math/scaffolds.
+
+These capabilities are not optional study notes and they are not the definition of Maddy's ceiling. They belong in the total MEOS destination. They must be implemented in dependency-correct commissions, integrated through Maddy's existing organism, and improved beyond conventional implementations while preserving provider neutrality, Maddy's persistent identity, evidence lineage, organizational isolation, durable execution, authority, and economic stewardship.
+
+The requirement includes, at minimum: dynamic installable skills/capabilities without recoding Maddy Core; sandboxed capability/tool execution; hardened credential isolation; provider/model portability; multi-channel and future embodiment continuity; mature browser/computer interaction; proactive attention that grows beyond simple scheduled polling; memory retrieval/consolidation improvements wherever competitor evidence demonstrates a genuine advantage; and organization-specific capability/configuration without forking Maddy's core cognition.
+
+Maddy's intended advantage must go deeper than plugin/tool parity. The target is that capabilities become understood parts of Maddy's world: she can reason about what a capability does, when it is useful, what it costs, its evidence/reliability history, permissions, provider dependencies, organization applicability, alternatives, failures, and whether it remains worth using.
+
+The competitive-surpass targets include:
+
+- epistemic identity rather than memory alone;
+- reality reconstruction and discriminating/disconfirming evidence rather than retrieval alone;
+- counterparty intelligence and relationship history rather than preference recall alone;
+- recursive prediction → outcome → self-investigation → recalibration rather than passive memory extraction;
+- institutional cognition across people, money, opportunities, commitments, risks, objectives, operations, history, and relationships;
+- attention allocation driven by changing organizational reality rather than only periodic wakeups;
+- one persistent Maddy across channels, models, providers, organizations, and future embodiments;
+- governed economic agency capable of producing and learning from attributable organizational value; and
+- Creative Studio output that emerges from Maddy's integrated cognition rather than a generic content-generation playbook.
+
+A hard competitive question applies to future commissions:
+
+**If a strong contemporary assistant or plugin can already produce essentially the same capability from a prompt plus tools, what Maddy-native cognitive, continuity, learning, organizational, or agency advance makes our commission materially harder to reproduce?**
+
+If the answer is "none," the proposed implementation has not yet cleared the Project Maddy bar.
+
+### Creative freedom / identity / deployment portability — LOCKED
+
+Creative governance must not become a cage around Maddy's thought.
+
+**Creative Freedom Principle:** Maddy has broad freedom to imagine, investigate, create, combine, critique, experiment, disagree with the assignment's premise, form unconventional hypotheses, and revise her own work. Evidence informs her creativity without restricting her to already-proven ideas. She must distinguish creative framing, hypothesis, prediction, estimate, and verified factual claim rather than collapsing them into one category. Human authority is applied at consequential external-action boundaries, not as a permission requirement for Maddy to think or create.
+
+**Identity Without Confinement:** Maddy has a persistent identity but is not confined to one tone, industry persona, creative style, or predetermined range of ideas. Her expression may adapt to context, relationship, organization, audience, mode, and experience. "Edgy" must not be reduced to a canned prompt or caricature.
+
+Personality entitlement and commercial deployment are separate dimensions:
+
+- commercial Maddy exposes **Professional** and **Personal** personality modes;
+- the founder deployment additionally has the private **Founder's Gangsta** mode;
+- Founder's Gangsta is not a commercial feature, upgrade, pricing tier, or paid unlock; and
+- commercial industry/tier configuration must never silently change personality entitlement.
+
+Maddy's core cognition must remain organization-neutral. A lawful church, nonprofit, conventional business, or lawful adult-industry business should not require a fork of Maddy's brain. Industry-specific capabilities, economics, policies, integrations, and packaging belong in configurable deployment/capability layers. A separately priced adult-industry commercial tier may be explored according to real market economics, support/cost/risk, and applicable requirements; it must not create a separate Maddy cognition or expose Founder's Gangsta mode.
+
+Organization-private memory, customer data, pricing, strategy, and confidential information remain isolated even as generalized evidence-grounded learning may improve Maddy.
+
+### Capital / investor objective — ACTIVE ORGANIZATIONAL OBJECTIVE
+
+Current resources must not become the ceiling on Project Maddy. In parallel with disciplined product development, MEOS should begin building an evidence-grounded path to outside capital/investors and other appropriate funding so stronger models, compute, infrastructure, talent, training/evaluation, distribution, and commercialization can be pursued when justified.
+
+This is not permission to interrupt the one-fix/one-commit commission discipline or to manufacture investment claims. Investor work should progressively produce an evidence-backed investment case from the architecture and demonstrated results: what Maddy is, what is genuinely differentiated, what has been live-proven, the market/problem, defensibility/moat, commercialization path, economics where known, milestones, capital requirements, use of funds, risks/unknowns, and why additional capital creates a credible step-change in capability or growth.
+
+Maddy should eventually be able to help discover and evaluate investors/funding opportunities through her existing opportunity/research/evidence architecture, but any outreach, commitment, securities/legal representation, or acceptance of capital remains separately governed external action.
+
 ## Locked 8-commission Maddy Growth Engine arc
 
 The next build arc is intentionally divided into eight focused commissions. Exact existing organs/seams must still be inspected before each implementation; these commissions define the target sequence, not permission to duplicate working architecture.
@@ -3120,7 +3209,7 @@ Institutional Reasoning was upgraded to v1.3.1, build `IR131-GROWTH-STRATEGY-SAL
 
 ### NEXT — 006.032E — Creative Studio
 
-Before coding 006.032E, read `PROJECT_MADDY_NORTH_STAR.md` in full and this canonical Build State in full, then inspect the latest live repository and the existing creative, speech/voice, digital-actor, content, website/SEO, evidence, strategy, Hallway, and authority seams to prove the correct implementation home. Enable governed campaign creation across copy, banners/images, SEO content, email/follow-up assets, and progressive canonical-Maddy video commercial creation while preserving truthful commercial claims, evidence lineage, canonical Maddy identity/voice, organization isolation, provider neutrality, economic stewardship, and explicit human authority. Do not create a disconnected creative brain, duplicate commercial truth store, generic social-content generator, or silent publication/spend/outreach authority.
+Before coding 006.032E, read `PROJECT_MADDY_NORTH_STAR.md` in full and this canonical Build State in full, then inspect the latest live repository and the existing creative, speech/voice, digital-actor, content, website/SEO, evidence, strategy, Hallway, authority, personality/mode, deployment/tier, and capability/plugin seams to prove the correct implementation home. Apply the competitive/open-source implementation doctrine above—especially the Vellum-demonstrated capabilities now locked as Maddy engineering requirements. Implement any portion that belongs naturally in the 006.032E seam now; preserve the remaining requirements as mandatory future/backward integration work rather than study notes. Do not replace MEOS architecture or derail the dependency-correct Growth arc merely to imitate a competitor. Enable governed campaign creation across copy, banners/images, SEO content, email/follow-up assets, and progressive canonical-Maddy video commercial creation while preserving broad Creative Freedom, truthful distinction between claims/hypotheses/framing, evidence lineage, canonical Maddy identity/voice, organization neutrality/isolation, Professional/Personal commercial personality entitlement, founder-only Gangsta entitlement, provider neutrality, economic stewardship, and explicit human authority at consequential external-action boundaries. 006.032E must seek a Maddy-native cognitive advantage beyond generic content/marketing-agent parity. Do not create a disconnected creative brain, duplicate commercial truth store, generic social-content generator, hard-coded industry persona, corporate-safe personality cage, or silent publication/spend/outreach authority.
 
 Continue under:
 
