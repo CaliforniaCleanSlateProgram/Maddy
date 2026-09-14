@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32211155/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
@@ -3232,6 +3233,38 @@ Hard 006.032F question:
 **If a contemporary social scheduler or AI agent can post the same content to the same channels, what does Maddy understand, preserve, predict, govern, observe, and learn across that act that the scheduler does not?**
 
 If the answer is only "she can publish too," the commission has not cleared Spooky.
+
+### 006.032F1 — COMMISSIONED / LIVE-PROVEN 20/20
+
+Provider Manager was upgraded to v1.2.1, build `PM121-GOVERNED-PUBLISHING-CAPABILITY-CONTRACT-20260914-A`. The existing provider/capability seam now carries a provider-neutral governed publishing capability contract rather than introducing a publishing brain or hard-coding channel vendors into Maddy Core. Publishing capabilities can be registered and discovered at runtime; channel identity remains capability metadata rather than Maddy identity; and external channel providers remain replaceable underneath one persistent Maddy.
+
+The commissioned publishing envelope preserves organization, campaign, creative-hypothesis, asset, claim/evidence restriction, authorization-scope, and predicted-consequence lineage into the execution boundary. Explicit publication authorization is mandatory. A publishing capability cannot grant publication authority or expand the authorization scope it receives. Credential material is rejected from the governed publishing envelope; the credential boundary is server-side-only and credentials are not model-visible publishing truth or browser-persisted publishing state.
+
+Execution truth is also separated from commercial truth. A normalized execution receipt is mandatory, but successful publication execution is not mislabeled as successful campaign outcome. This preserves the 006.032 commercial experiment chain: strategy → creative hypothesis → authorized channel action → verified execution → later observed consequence → attribution/learning.
+
+Live runtime acceptance on 2026-09-14 loaded Provider Manager v1.2.1 / `PM121-GOVERNED-PUBLISHING-CAPABILITY-CONTRACT-20260914-A` and `ProviderManager.runGovernedPublishingCapabilityContractAcceptanceTest()` passed **20/20**. Status: **COMMISSIONED.**
+
+Repository checkpoint supplied after live acceptance (`Maddy-main (9).zip`) contains the commissioned Provider Manager build and acceptance method. Runtime evidence remains authoritative.
+
+Architectural meaning: Maddy Core no longer needs a fixed vendor list to represent governed publishing. The capability contract establishes the portable handoff boundary, but it does not yet prove a real channel execution traveling durably through Hallway and returning a verified receipt. That is the next dependency-correct gap.
+
+### NEXT — 006.032F2 — Durable Governed Publishing Execution Spine
+
+Before coding 006.032F2, read `PROJECT_MADDY_NORTH_STAR.md` and this canonical Build State in full, then inspect the latest repository in full enough to prove the smallest existing execution seam. Prefer strengthening the commissioned Executive Hallway / durable execution architecture over creating another publishing executor when the existing spine can carry the work.
+
+The objective is to make a 006.032F1 publishing envelope capable of becoming one durable, organization-bound, authorization-bound execution identity that survives browser/session interruption, reaches only a runtime-discovered authorized publishing capability, produces a normalized execution receipt, and returns that receipt through the existing Maddy/Hallway lineage without confusing transport success with campaign success.
+
+The commission must preserve exact authority and idempotency. A retry, reconnect, provider failover, browser refresh, or delayed return must not silently duplicate a consequential publication. Capability discovery must not grant authority. Provider/channel substitution must not broaden the authorized destination, audience, content, timing, spend, or action scope. Credentials remain behind the server-side execution boundary. Failure must return as governed execution truth rather than disappear or be cosmetically converted into success.
+
+006.032F2 is not permission to integrate every social platform. Prove the durable universal execution seam first with a controlled/mock publishing capability if necessary; commission real channel adapters individually afterward against their actual APIs, permissions, policies, receipts, and failure modes. Do not pretend all platforms share identical semantics merely because they can all publish content.
+
+The Spooky target is continuity of intention and consequence, not API fan-out. The same Maddy who formed the commercial hypothesis must be able to recognize the returned execution as the consequence-bearing act she authorized, preserve why it was performed, know what outcome was predicted, and later reconnect observed reality to that experiment.
+
+Hard 006.032F2 question:
+
+**If the browser disappears after authorization and the provider retries, fails over, or returns later, can one persistent Maddy still know exactly what she intended, what she was authorized to do, whether the consequential action occurred once, what evidence proves it, and what future consequence must be watched—without a human reconstructing the story?**
+
+If not, governed multi-channel publishing has not yet cleared the continuity bar.
 
 Continue under:
 
