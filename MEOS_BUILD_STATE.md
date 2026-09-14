@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32211155/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32211841/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
@@ -3248,23 +3248,80 @@ Repository checkpoint supplied after live acceptance (`Maddy-main (9).zip`) cont
 
 Architectural meaning: Maddy Core no longer needs a fixed vendor list to represent governed publishing. The capability contract establishes the portable handoff boundary, but it does not yet prove a real channel execution traveling durably through Hallway and returning a verified receipt. That is the next dependency-correct gap.
 
-### NEXT — 006.032F2 — Durable Governed Publishing Execution Spine
+### 006.032F2 — COMMISSIONED / LIVE-PROVEN 20/20
 
-Before coding 006.032F2, read `PROJECT_MADDY_NORTH_STAR.md` and this canonical Build State in full, then inspect the latest repository in full enough to prove the smallest existing execution seam. Prefer strengthening the commissioned Executive Hallway / durable execution architecture over creating another publishing executor when the existing spine can carry the work.
+The server-side Durable Execution Spine was strengthened with `DPE100-DURABLE-GOVERNED-PUBLISHING-EXECUTION-SPINE-20260914-A` and the live deployment acceptance passed **20/20**. Governed publishing is now a commissioned durable execution type rather than a browser-bound action or ad hoc channel call.
 
-The objective is to make a 006.032F1 publishing envelope capable of becoming one durable, organization-bound, authorization-bound execution identity that survives browser/session interruption, reaches only a runtime-discovered authorized publishing capability, produces a normalized execution receipt, and returns that receipt through the existing Maddy/Hallway lineage without confusing transport success with campaign success.
+The commissioned path preserves Mission, cognition, Executive Hallway, organization, campaign, creative-hypothesis, asset, claim/evidence restriction, authorization, channel-capability, idempotency, and predicted-consequence lineage through the consequential publication boundary. Credentials remain server-side and are rejected from the durable publishing envelope. A publishing capability may execute only the exact upstream-authorized act and cannot broaden destination, content, audience, timing, spend, or authority.
 
-The commission must preserve exact authority and idempotency. A retry, reconnect, provider failover, browser refresh, or delayed return must not silently duplicate a consequential publication. Capability discovery must not grant authority. Provider/channel substitution must not broaden the authorized destination, audience, content, timing, spend, or action scope. Credentials remain behind the server-side execution boundary. Failure must return as governed execution truth rather than disappear or be cosmetically converted into success.
+Publication idempotency is a hard invariant. Each consequential publication receives a deterministic publication identity, duplicate publication dispatch is atomically suppressed, and one authorization cannot silently fan out into multiple publication acts. Once a provider call has begun, an expired lease or uncertain return is **not** automatically retried; the execution moves to a governed waiting/reconciliation state rather than risking a duplicate public action.
 
-006.032F2 is not permission to integrate every social platform. Prove the durable universal execution seam first with a controlled/mock publishing capability if necessary; commission real channel adapters individually afterward against their actual APIs, permissions, policies, receipts, and failure modes. Do not pretend all platforms share identical semantics merely because they can all publish content.
+This anti-duplication rule does **not** mean one campaign is limited to one platform. Maddy may coordinate one campaign across multiple channels, but each platform/channel publication is a separate governed consequential act with its own exact authorization, channel adaptation, execution identity, receipt, and consequence lineage under the shared campaign. Multi-channel reach must never be implemented as an uncontrolled broadcast fan-out.
 
-The Spooky target is continuity of intention and consequence, not API fan-out. The same Maddy who formed the commercial hypothesis must be able to recognize the returned execution as the consequence-bearing act she authorized, preserve why it was performed, know what outcome was predicted, and later reconnect observed reality to that experiment.
+A normalized publication execution receipt is evidence that the authorized act occurred; it is not evidence that the commercial campaign succeeded. The predicted consequence remains attached after execution so Monitoring, Attribution, Learning, and future cognition can compare expected versus observed reality.
 
-Hard 006.032F2 question:
+Live runtime acceptance on 2026-09-14 returned:
+- `success: true`;
+- `commission: "006.032F2"`;
+- `version: "1.0.0"`;
+- `buildId: "DPE100-DURABLE-GOVERNED-PUBLISHING-EXECUTION-SPINE-20260914-A"`;
+- `passed: 20`;
+- `total: 20`.
 
-**If the browser disappears after authorization and the provider retries, fails over, or returns later, can one persistent Maddy still know exactly what she intended, what she was authorized to do, whether the consequential action occurred once, what evidence proves it, and what future consequence must be watched—without a human reconstructing the story?**
+Status: **COMMISSIONED.**
 
-If not, governed multi-channel publishing has not yet cleared the continuity bar.
+Architectural meaning: Maddy can now carry an authorized publication intention through durable server-owned execution with exactly-once protection strong enough to prefer uncertainty/reconciliation over accidental duplicate posting. The next dependency-correct gap is no longer "can one publication survive interruption?" It is whether one persistent Maddy can deliberately coordinate multiple channel-specific publication acts as one campaign without degrading into a spam scheduler.
+
+### Anti-spam / audience-respect invariant — GOVERNING
+
+Maddy must not treat increased channel access as permission to maximize posting volume.
+
+A commercially useful Maddy must be capable of deciding **not to publish yet**, **not to repeat**, **not to contact this audience again**, or **not to use this channel** when evidence, policy, audience fatigue, duplication risk, opt-out state, campaign economics, or authority makes further activity unjustified.
+
+Multi-channel campaign execution must preserve at minimum:
+
+- one campaign intention with channel-specific publication acts rather than uncontrolled fan-out;
+- duplicate-message and near-duplicate awareness across channels and time;
+- frequency/cadence governance;
+- audience fatigue / diminishing-return awareness when evidence exists;
+- recipient/platform opt-out, unsubscribe, block, suppression, and policy state where applicable;
+- exact human-authorized scope for each consequential publication or outreach act;
+- channel-specific adaptation rather than blind copy-paste;
+- cost and expected consequence per channel where measurable;
+- no automatic repost merely because a schedule slot exists;
+- no automatic retry when publication outcome is uncertain;
+- no silent expansion from publication authority into direct-message, comment, email, paid-ad, or other outreach authority;
+- the ability to stop or recommend stopping when measured economics, engagement quality, trust, or policy no longer justify continued activity.
+
+**The objective is coordinated commercial intelligence, not volume.**
+
+### NEXT — 006.032F3 — Governed Multi-Channel Campaign Orchestration
+
+Before coding 006.032F3, read `PROJECT_MADDY_NORTH_STAR.md` and this canonical Build State in full, then inspect the latest repository and prove the smallest existing seam that should own campaign-level channel orchestration. Do not create a disconnected social scheduler or a second campaign brain.
+
+The dependency-correct objective is to let one commissioned campaign/hypothesis intentionally produce multiple channel-specific governed publication plans while preserving one Maddy, one campaign lineage, one commercial theory, exact authority, and independent execution identities per channel.
+
+006.032F3 must distinguish **campaign coordination** from **publication execution**:
+
+- campaign-level cognition decides why a channel belongs in the plan, what audience/context matters, what adaptation is required, what result is predicted, and whether publishing now is justified;
+- each consequential channel act remains a separate 006.032F2 durable publication execution;
+- no campaign plan may silently convert one authorization into unlimited multi-platform fan-out;
+- channel-specific content may share the same underlying commercial thesis while adapting format, tone, evidence density, CTA, timing, and media requirements to channel context;
+- one channel failure must not fracture the campaign or Maddy identity;
+- duplicate/near-duplicate detection and cadence/frequency governance must prevent Maddy from behaving like a spam bot;
+- opt-out/suppression/policy state must be respected where applicable;
+- Maddy must be able to conclude that a channel should receive **no post** or that the campaign should **pause**;
+- publication receipts must return to the same campaign so later Monitoring/Learning can compare channel predictions with channel outcomes.
+
+Do not overreach into full 006.032G campaign operations, SEO, lead follow-up, or paid advertising. 006.032F3 is the smallest campaign-level orchestration layer required to prove intentional, non-spammy multi-channel publishing on top of the commissioned 032F1 capability contract and 032F2 durable execution spine.
+
+The Spooky target is not "post everywhere." It is that Maddy can reason across audience, channel, creative, evidence, timing, authority, duplication risk, trust, cost, and predicted consequence, then choose a coordinated set of actions — including choosing **inaction** — while preserving one commercial intention and learning lineage.
+
+Hard 006.032F3 question:
+
+**Can Maddy take one campaign and deliberately express it across multiple platforms as different governed acts, while knowing when repetition becomes noise, when another post would be unjustified, when a channel should be skipped, and how each channel-specific consequence tests the same underlying commercial hypothesis?**
+
+If the answer is merely "schedule the same post to several networks," it does not clear Spooky.
 
 Continue under:
 
