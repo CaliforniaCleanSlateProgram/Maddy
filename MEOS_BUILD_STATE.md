@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32196613/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200469/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
@@ -3100,6 +3100,26 @@ Do not drift into unrelated feature work merely because it is available. Complet
 
 **one fix → one commit → one test → commission.**
 
-Commission 006.032A is the Build State direction lock. After it is committed, the next implementation target is 006.032B Commercial Intelligence Data Contract, beginning with repository inspection to prove the correct existing organs/seams before code is written.
+## Commission status checkpoint — 2026-09-14
+
+### 006.032A — COMMISSIONED
+
+Commercial Intelligence & Self-Growth North Star is locked into canonical Build State. The Commercial Dominance Gate, Commercial Claim Standard, Commercial Completion Standard, Maddy Grows Maddy proving-ground direction, capital-efficient/free-first principle, Paid Growth Gate, Know-the-Numbers principle, human authority boundary, Shark Tank dashboard direction, and ordered 006.032A–H arc are governing build direction.
+
+### 006.032B — COMMISSIONED / LIVE-PROVEN 20/20
+
+Executive Learning was upgraded to v1.3.1, build `EL131-COMMERCIAL-INTELLIGENCE-DATA-CONTRACT-20260914-A`. The existing Executive Learning durable authority now owns the organization-bound commercial truth contract rather than introducing a disconnected Growth Engine truth store. It represents campaigns, audiences, offers, hypotheses, channels, creatives, SEO, leads, conversions, costs, revenue, attribution, economic metrics, predictions, outcomes, and commercial lessons. Measured, estimated, unknown, and not-applicable economic states remain distinct; unknown values are never silently converted to zero; unsupported CAC/LTV remain unknown; predictions remain separate from outcomes; evidence lineage and epistemic context are preserved; organization-private commercial truth remains isolated; and commercial truth grants no execution, spend, publication, outreach, or policy authority. Live acceptance passed 20/20.
+
+### 006.032C — COMMISSIONED / LIVE-PROVEN 20/20
+
+Executive Dashboard was upgraded to v4.13.3, build `OD4133-COMMERCIAL-COMMAND-DASHBOARD-20260914-A`. Commercial Command / “Shark Tank” is a first-class truth and decision surface inside the existing Executive Office dashboard, consuming Executive Learning's commissioned commercial truth contract rather than becoming a second persistence authority. The surface includes prominent Net Attributable Value, attributable revenue, commercial cost, paid spend, qualified pipeline, CAC, contribution margin, ROI, ROAS, payback, retention, LTV, churn, campaign conversion evidence, organic-versus-paid evidence, active experiments, prediction versus observed outcome, commercial lessons, and next recommendation where supportable. Incomplete economics remain unknown rather than fabricated; measured zero paid spend remains valid; zero-spend ROAS does not become fabricated infinity; organization isolation and human authority boundaries remain intact. Live acceptance passed 20/20.
+
+### NEXT — 006.032D — Growth Strategy & Sales Psychology
+
+Before coding 006.032D, read `PROJECT_MADDY_NORTH_STAR.md` in full and this canonical Build State in full, then inspect the latest live repository to prove the correct existing cognition/strategy seams. Connect market/buyer/product understanding, pain, positioning, offers, objections, trust/proof, sales psychology, channel fit, free-first distribution reasoning, economic constraints, and campaign hypotheses through existing Maddy organs. Do not create a disconnected strategy brain, duplicate commercial truth authority, or silently grant execution/spend/publication/outreach authority.
+
+Continue under:
+
+**one fix → one commit → one test → commission.**
 
 **Always Push Forward.**
