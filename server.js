@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.78
+ * Server Version: 2.10.79
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.78";
+const VERSION = "2.10.79";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -16332,6 +16332,360 @@ app.post(
 );
 
 
+/* ========================================================================== */
+/* Commission 006.031N — Durable Execution Spine Server Runner               */
+/*                                                                            */
+/* The prior commission established durable execution identity and leases.    */
+/* This commission gives that identity one bounded server-owned executor so   */
+/* governed public research no longer depends on a browser Promise remaining  */
+/* alive. The worker reuses the commissioned headless public-research stack,   */
+/* persists the returned evidence/result to the same execution identity, and  */
+/* resumes queued work after process restart. It grants no new authority.      */
+/* ========================================================================== */
+
+const DURABLE_EXECUTION_RUNNER_COMMISSION = "006.031N";
+const DURABLE_EXECUTION_RUNNER_VERSION = "1.1.0";
+const DURABLE_EXECUTION_RUNNER_BUILD_ID =
+  "DES110-DURABLE-SERVER-EXECUTION-RUNNER-20260913-A";
+const DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH =
+  "headless-public-research";
+const durableExecutionRunnerState = {
+  scheduled: new Set(),
+  resumedAfterStartup: 0,
+  executed: 0,
+  returned: 0,
+  failed: 0,
+  lastError: null
+};
+
+function normalizeDurableExecutionDispatch(input = {}) {
+  const executor = String(
+    input.executor || DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH
+  ).trim();
+  if (executor !== DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH) {
+    const error = new Error(
+      `Durable Execution executor "${executor}" is not commissioned.`
+    );
+    error.status = 400;
+    error.code = "DURABLE_EXECUTION_EXECUTOR_NOT_COMMISSIONED";
+    throw error;
+  }
+
+  const authority = input.authority || {};
+  if (
+    authority.humanDirected !== true ||
+    authority.publicReadResearchAuthorized !== true ||
+    authority.externalActionAuthorized === true ||
+    Number(authority.automaticSpendUsd || 0) > 0
+  ) {
+    const error = new Error(
+      "Durable public research requires explicit human direction, public-read authority, zero spend, and no external-action authority."
+    );
+    error.status = 403;
+    error.code = "DURABLE_EXECUTION_AUTHORITY_INSUFFICIENT";
+    throw error;
+  }
+
+  return {
+    executionId: durableExecutionRequiredId(input.executionId, "executionId"),
+    lineage: {
+      missionId: durableExecutionRequiredId(
+        input.lineage?.missionId,
+        "lineage.missionId"
+      ),
+      cognitionId: durableExecutionRequiredId(
+        input.lineage?.cognitionId,
+        "lineage.cognitionId"
+      ),
+      hallwayWorkId: durableExecutionRequiredId(
+        input.lineage?.hallwayWorkId,
+        "lineage.hallwayWorkId"
+      )
+    },
+    executor,
+    request: durableExecutionClone(input.request || {}),
+    authority: {
+      humanDirected: true,
+      publicReadResearchAuthorized: true,
+      paidSpendAuthorized: false,
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0
+    }
+  };
+}
+
+async function executeDurableExecutionPayload(record, options = {}) {
+  if (
+    record?.executor !== DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH
+  ) {
+    const error = new Error(
+      `Durable Execution executor "${record?.executor || "none"}" is not commissioned.`
+    );
+    error.code = "DURABLE_EXECUTION_EXECUTOR_NOT_COMMISSIONED";
+    throw error;
+  }
+
+  const researchExecutor =
+    options.researchExecutor || executeHeadlessResearch;
+  const result = await researchExecutor(record.request || {});
+  if (result?.success !== true) {
+    const error = new Error(
+      result?.error?.message ||
+        result?.error ||
+        "Durable public research failed."
+    );
+    error.code =
+      result?.error?.code || "DURABLE_EXECUTION_RESEARCH_FAILED";
+    error.result = result;
+    throw error;
+  }
+
+  return {
+    state: "returned",
+    lease: null,
+    checkpoint: {
+      schema: "meos.durable-execution.checkpoint.v1",
+      stage: "returned",
+      returnedAt: continuousOperationsNow(),
+      executor: record.executor
+    },
+    evidence: durableExecutionClone(result.evidence || []),
+    result: durableExecutionClone(result)
+  };
+}
+
+async function runDurableExecution(executionId, options = {}) {
+  const claimed = await claimDurableExecution(executionId);
+  if (!claimed) {
+    const records = await readDurableExecutionRecords();
+    return records.find(record => record?.executionId === executionId) || null;
+  }
+
+  durableExecutionRunnerState.executed += 1;
+  try {
+    const terminal = await executeDurableExecutionPayload(claimed, options);
+    const returned = await upsertDurableExecutionRecord({
+      executionId: claimed.executionId,
+      state: terminal.state,
+      lease: terminal.lease,
+      checkpoint: terminal.checkpoint,
+      evidence: terminal.evidence,
+      result: terminal.result
+    });
+    durableExecutionRunnerState.returned += 1;
+    durableExecutionRunnerState.lastError = null;
+    return returned;
+  } catch (error) {
+    durableExecutionRunnerState.failed += 1;
+    durableExecutionRunnerState.lastError = {
+      executionId: claimed.executionId,
+      code: error?.code || "DURABLE_EXECUTION_RUNNER_FAILED",
+      message: error?.message || String(error),
+      at: continuousOperationsNow()
+    };
+    return upsertDurableExecutionRecord({
+      executionId: claimed.executionId,
+      state: "failed",
+      lease: null,
+      checkpoint: {
+        schema: "meos.durable-execution.checkpoint.v1",
+        stage: "failed",
+        failedAt: continuousOperationsNow(),
+        executor: claimed.executor
+      },
+      result: durableExecutionClone(
+        error?.result || {
+          success: false,
+          error: durableExecutionRunnerState.lastError
+        }
+      )
+    });
+  } finally {
+    durableExecutionRunnerState.scheduled.delete(executionId);
+  }
+}
+
+function scheduleDurableExecution(executionId) {
+  if (durableExecutionRunnerState.scheduled.has(executionId)) {
+    return false;
+  }
+  durableExecutionRunnerState.scheduled.add(executionId);
+  const timer = setTimeout(() => {
+    void runDurableExecution(executionId).catch(error => {
+      durableExecutionRunnerState.scheduled.delete(executionId);
+      durableExecutionRunnerState.lastError = {
+        executionId,
+        code: error?.code || "DURABLE_EXECUTION_SCHEDULED_RUN_FAILED",
+        message: error?.message || String(error),
+        at: continuousOperationsNow()
+      };
+      console.error("[MEOS Durable Execution] Scheduled run failed:", error);
+    });
+  }, 0);
+  timer.unref?.();
+  return true;
+}
+
+async function dispatchDurableExecution(input = {}) {
+  const dispatch = normalizeDurableExecutionDispatch(input);
+  const record = await upsertDurableExecutionRecord({
+    executionId: dispatch.executionId,
+    lineage: dispatch.lineage,
+    state: "queued",
+    executor: dispatch.executor,
+    request: dispatch.request,
+    authorityBoundary: {
+      authoritySource: "human-directed-hallway-public-research",
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0
+    },
+    checkpoint: {
+      schema: "meos.durable-execution.checkpoint.v1",
+      stage: "queued",
+      queuedAt: continuousOperationsNow(),
+      executor: dispatch.executor,
+      authority: dispatch.authority
+    }
+  });
+  scheduleDurableExecution(record.executionId);
+  return record;
+}
+
+async function resumeQueuedDurableExecutions() {
+  await recoverExpiredDurableExecutionLeases();
+  const records = await readDurableExecutionRecords();
+  let resumed = 0;
+  for (const record of records) {
+    if (
+      record?.type === "durable-execution-record" &&
+      record.state === "queued" &&
+      record.executor === DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH &&
+      record.checkpoint?.authority?.humanDirected === true
+    ) {
+      if (scheduleDurableExecution(record.executionId)) resumed += 1;
+    }
+  }
+  durableExecutionRunnerState.resumedAfterStartup += resumed;
+  return resumed;
+}
+
+async function runDurableExecutionRunnerAcceptanceTest() {
+  const lineage = {
+    missionId: "mission-runner-acceptance-001",
+    cognitionId: "cognition-runner-acceptance-001",
+    hallwayWorkId: "hallway-runner-acceptance-001"
+  };
+  const dispatch = normalizeDurableExecutionDispatch({
+    executionId: "execution-runner-acceptance-001",
+    lineage,
+    executor: DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH,
+    request: { subject: "fixture octopus hearts" },
+    authority: {
+      humanDirected: true,
+      publicReadResearchAuthorized: true,
+      paidSpendAuthorized: false,
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0
+    }
+  });
+  const queued = normalizeDurableExecutionRecord({
+    executionId: dispatch.executionId,
+    lineage: dispatch.lineage,
+    state: "queued",
+    executor: dispatch.executor,
+    request: dispatch.request,
+    checkpoint: {
+      authority: dispatch.authority
+    }
+  });
+  const claim = claimDurableExecutionRecord(
+    queued,
+    Date.parse("2026-09-13T21:00:00.000Z")
+  );
+  const fakeResearch = async request => ({
+    success: true,
+    schema: "meos.headless-research-result.v1",
+    subject: request.subject,
+    evidence: [
+      {
+        source: "https://example.test/octopus",
+        claim: "fixture evidence",
+        retrievedAt: "2026-09-13T21:00:01.000Z"
+      }
+    ],
+    synthesis: { evidenceQuality: "fixture" }
+  });
+  const terminal = await executeDurableExecutionPayload(
+    claim.record,
+    { researchExecutor: fakeResearch }
+  );
+  const recovered = recoverDurableExecutionRecord(
+    claim.record,
+    Date.parse(claim.record.lease.expiresAt) + 1
+  );
+  const checks = [
+    {
+      name: "Human-directed Hallway lineage is accepted without minting authority",
+      passed:
+        dispatch.lineage.missionId === lineage.missionId &&
+        dispatch.authority.externalActionAuthorized === false &&
+        dispatch.authority.automaticSpendUsd === 0
+    },
+    {
+      name: "Only the commissioned server-owned headless public-research executor is accepted",
+      passed:
+        dispatch.executor === DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH
+    },
+    {
+      name: "Queued work receives the existing durable execution lease before execution",
+      passed:
+        claim.claimed === true &&
+        claim.record.state === "running" &&
+        Boolean(claim.record.lease?.id)
+    },
+    {
+      name: "The server runner returns through the same durable execution identity",
+      passed:
+        terminal.state === "returned" &&
+        queued.executionId === claim.record.executionId
+    },
+    {
+      name: "Returned evidence is persisted as evidence rather than naked fact",
+      passed:
+        terminal.evidence?.[0]?.source === "https://example.test/octopus" &&
+        terminal.result?.schema === "meos.headless-research-result.v1"
+    },
+    {
+      name: "The terminal return releases the execution lease",
+      passed: terminal.lease === null
+    },
+    {
+      name: "An interrupted running execution remains restart-recoverable under the same lineage",
+      passed:
+        recovered.recovered === true &&
+        recovered.record.state === "queued" &&
+        JSON.stringify(recovered.record.lineage) === JSON.stringify(lineage)
+    },
+    {
+      name: "The runner introduces no paid-spend or external-action authority",
+      passed:
+        dispatch.authority.paidSpendAuthorized === false &&
+        dispatch.authority.externalActionAuthorized === false &&
+        dispatch.authority.automaticSpendUsd === 0
+    }
+  ];
+  return {
+    success: checks.every(check => check.passed),
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    commission: DURABLE_EXECUTION_RUNNER_COMMISSION,
+    version: DURABLE_EXECUTION_RUNNER_VERSION,
+    buildId: DURABLE_EXECUTION_RUNNER_BUILD_ID,
+    checks
+  };
+}
+
+
 /** Durable Execution Spine API — identity/persistence only; no authority grant. */
 app.post(
   "/api/durable-execution",
@@ -16357,6 +16711,71 @@ app.post(
         code: error?.code || "DURABLE_EXECUTION_PERSIST_FAILED"
       });
     }
+  }
+);
+
+
+app.post(
+  "/api/durable-execution/dispatch",
+  express.json({ limit: "128kb", strict: true }),
+  async (request, response) => {
+    try {
+      const principal = await resolveAutonomyPrincipal(request);
+      if (!principal) {
+        response.status(401).json({
+          error: "Durable execution dispatch requires an authenticated or trusted same-origin executive principal.",
+          code: "DURABLE_EXECUTION_PRINCIPAL_REQUIRED"
+        });
+        return;
+      }
+      const record = await dispatchDurableExecution(request.body || {});
+      response.status(202).json({
+        schema: "meos.durable-execution.dispatch.v1",
+        accepted: true,
+        record
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error?.message || "Durable execution could not be dispatched.",
+        code: error?.code || "DURABLE_EXECUTION_DISPATCH_FAILED"
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/durable-execution/status/:executionId",
+  async (request, response) => {
+    try {
+      const records = await readDurableExecutionRecords();
+      const executionId = normalizeIdentifier(request.params.executionId || "");
+      const record = records.find(item => item?.executionId === executionId) || null;
+      if (!record) {
+        response.status(404).json({
+          error: "Durable execution was not found.",
+          code: "DURABLE_EXECUTION_NOT_FOUND"
+        });
+        return;
+      }
+      response.set("Cache-Control", "no-store");
+      response.status(200).json({
+        schema: "meos.durable-execution.status.v1",
+        record
+      });
+    } catch (error) {
+      response.status(500).json({
+        error: error?.message || "Durable execution status could not be read.",
+        code: error?.code || "DURABLE_EXECUTION_STATUS_FAILED"
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/durable-execution/runner-acceptance-test",
+  async (request, response) => {
+    const result = await runDurableExecutionRunnerAcceptanceTest();
+    response.status(result.success ? 200 : 500).json(result);
   }
 );
 
@@ -27600,6 +28019,23 @@ app.listen(PORT, () => {
           "Set MEOS_DATA_DIR to the mounted persistent-disk path before " +
           "treating institutional memory as production-durable."
       );
+    }
+
+
+    if (status.status === "ready") {
+      resumeQueuedDurableExecutions()
+        .then(resumed => {
+          console.log(
+            `[MEOS] Durable Execution Spine v${DURABLE_EXECUTION_RUNNER_VERSION} ready. ` +
+              `resumed=${resumed}, build=${DURABLE_EXECUTION_RUNNER_BUILD_ID}.`
+          );
+        })
+        .catch(error => {
+          console.error(
+            "[MEOS Durable Execution] Startup recovery failed visibly:",
+            error
+          );
+        });
     }
   });
 
