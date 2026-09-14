@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32153443/MEOS_BUILD_STATE.md)
@@ -1838,5 +1839,445 @@ Then choose the smallest bounded commission that closes that demonstrated gap un
 And continue to apply the exact Spooky gate:
 
 **edge of what's possible---sometimes past what is seemingly impossible today; as Einstein put it "Spooky stuff" or from a distance; beyond human thought process---that is the bar.**
+
+## POST-QDPA RUNTIME / EXECUTION-CONTINUITY CHECKPOINT --- 2026-09-13/14
+
+This section updates the canonical Build State from the commissioned
+QDPA epistemic checkpoint through the latest supplied live runtime
+evidence.
+
+It does **not** rewrite, weaken, summarize, or replace the governing
+North Star, Spooky standard, existing invariants, prior commissioned
+history, or anti-drift protocol above. Where older version/runtime
+statements conflict with the live evidence recorded here, this newer
+runtime evidence governs.
+
+### Repository / runtime basis for this checkpoint
+
+-   Latest full repository snapshot available for inspection in this
+    development thread: `Maddy-main (5).zip`.
+-   The live GitHub/runtime includes the subsequent commissions recorded
+    below and therefore supersedes that ZIP where runtime evidence
+    differs.
+-   Latest proven live baseline after the long-running execution
+    continuity commission:
+    -   Mission Engine active state: `0`.
+    -   Mission Engine archived historical records: `24`.
+    -   Mission Dispatcher remains `running: false`.
+    -   Dispatcher startup reason remains
+        `office_dispatch_authority_not_effective`.
+-   The stopped Mission Dispatcher remains a separate
+    authority/governance investigation. Do not silently change it inside
+    an unrelated commission.
+-   A Knowledge Engine durable-record concurrency conflict (`409`,
+    durable record changed since caller last observed it) was observed
+    during the live research test. Treat it as a separate integrity
+    concern unless evidence proves it is causally part of another active
+    commission.
+
+### Post-QDPA commissioned sequence
+
+#### Historical Mission Reconciliation --- COMMISSIONED
+
+Version / build: - Mission Engine `0.2.0` -
+`ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A`
+
+Commission: - `MADDY-HISTORICAL-MISSION-RECONCILIATION`
+
+Commissioned behavior: - Active Mission state represents present
+organizational intention rather than historical accumulation. - The
+Executive Director may explicitly declare that no historical active work
+remains current and reconcile the active population to archive. -
+Reconciliation requires the explicit confirmation token
+`RECONCILE_NO_ACTIVE_WORK`. - Historical records are preserved. -
+Reconciliation performs no destructive delete and grants no execution
+authority.
+
+Runtime proof: - Historical active Mission cleanup was repeatedly used
+to establish a clean proving baseline. - The latest pre-research cleanup
+reconciled `1 → 0` active and preserved history. - Subsequent
+terminal-failure handling returned the live baseline to `0` active
+without manual reconciliation.
+
+Architectural meaning: - Mission history is not the same thing as active
+intention. - Active state must metabolize and release when value or
+present intention disappears.
+
+#### Consequence Recognition Gate --- COMMISSIONED
+
+Version / build: - Office Dashboard `4.13.1` -
+`OD4131-CONSEQUENCE-RECOGNITION-GATE-20260913-A`
+
+Commission: - `MADDY-MISSION-LIFECYCLE-CONSEQUENCE-RECOGNITION`
+
+Commissioned behavior: - Returned consequences are classified before
+they are allowed to create or advance executive work. - Funding
+consequences may become new governed investigation. - Blocked
+consequences may become bounded blocker-resolution work. - Deliverables
+are returned consequence, not automatically new work. - Approval items
+remain authority boundaries. - Existing work remains existing work. -
+Watch conditions remain observe-only. - Unknown consequence types fail
+closed. - Repeated `Executive Outcome —` prefixes are normalized rather
+than recursively manufacturing new work.
+
+Runtime acceptance: - Passed `8/8`.
+
+Architectural meaning: - Consequence is not permission to manufacture
+another Mission. - Recognition precedes creation.
+
+#### Terminal Failure Mission Release --- COMMISSIONED
+
+Version / build: - Executive Hallway `1.5.1` -
+`EH151-TERMINAL-FAILURE-MISSION-RELEASE-20260913-A`
+
+Commission: - `MADDY-TERMINAL-FAILURE-MISSION-RELEASE`
+
+Commissioned behavior: - A genuine terminal Router failure blocks and
+then archives/releases the associated Mission. - Failure history is
+preserved. - No retry is silently manufactured. - No authority is
+created. - Lifecycle disposition records `released-terminal-failure`.
+
+Runtime acceptance: - Passed `7/7`.
+
+Live proof: - A later research timeout did **not** leave an orphan
+active Mission; Mission Engine returned to `0` active and archived
+history increased to `24`.
+
+Architectural meaning: - Failure is a consequence that must be
+metabolized. - Terminal failure must not become immortal active state.
+
+#### Evidence-Bound Research Speech --- COMMISSIONED
+
+Version / build: - Executive Brain `1.26.3` -
+`EB1263-EVIDENCE-BOUND-RESEARCH-SPEECH-20260913-A`
+
+Commission: - `MADDY-EVIDENCE-BOUND-RESEARCH-SPEECH`
+
+Commissioned behavior: - Explicitly identified internal MEOS public
+research can become evidence-bound semantic material for Maddy-owned
+final speech. - The evidence-bound research answer is preferred over
+generic pre-research recommendation language when the governed
+public-research contract is present. - Arbitrary adviser/provider
+language is not promoted to Maddy speech merely because it exists. -
+External providers remain evidence/adviser sources, not Maddy's identity
+or truth authority. - No external-action authority is granted.
+
+Acceptance: - Isolated acceptance passed `8/8`.
+
+Important live finding: - The first end-to-end octopus research test
+still produced the old generic sentence even though this isolated Brain
+acceptance passed. - Investigation proved the Brain commission itself
+was not the live bypass: Executive Router had selected
+`instant-meos-context`, `source: meos-local-context`, and
+`researchDepth: none`, so the real request never entered the
+commissioned public-research speech path. - This finding led to Research
+Intent Execution Integrity rather than rewriting the Brain again.
+
+Architectural meaning: - A correct organ is insufficient when the
+organism bypasses it. - Runtime connection evidence governs over
+isolated fixture success.
+
+#### Returned Work Disposition Surface --- COMMISSIONED, THEN UX ROLE NARROWED BY LATER ARCHITECTURE
+
+Version / build: - Office Dashboard `4.13.2` -
+`OD4132-RETURNED-WORK-DISPOSITION-SURFACE-20260913-A`
+
+Commission: - `MADDY-RETURNED-WORK-DISPOSITION-SURFACE`
+
+Commissioned behavior: - Existing returned-work feedback/disposition
+controls became reachable through the visible Executive Workspace. -
+Existing Hallway feedback contract was reused. - No replacement Mission
+or new authority was created.
+
+Acceptance: - Passed `8/8`.
+
+Subsequent architectural clarification: - `Accept / Not This` is useful
+as optional feedback/learning for ordinary informational research. - It
+should not be a mandatory completion gate for simple evidence-bound
+informational work. - Do not roll back `4.13.2`; its controls remain
+useful where feedback/disposition is appropriate. - Hallway `1.5.2`
+subsequently removed the requirement for an Accept click to complete
+ordinary informational research.
+
+#### Informational Return Auto-Resolution --- COMMISSIONED
+
+Version / build: - Executive Hallway `1.5.2` -
+`EH152-INFORMATIONAL-RETURN-AUTO-RESOLUTION-20260913-A`
+
+Commission: - `MADDY-INFORMATIONAL-RETURN-AUTO-RESOLUTION`
+
+Commissioned behavior: - Ordinary evidence-bound public research can
+complete the lifecycle: - Ask → Research → Evidence → Answer → Mission
+complete → release active state. - `Accept / Not This` remains optional
+feedback/learning rather than a mandatory completion gate. - Automatic
+resolution is deliberately narrow: - route is `executive-router`; -
+review is not required; - source is `meos-headless-public-research`; -
+returned output is governed public research; - final speech is
+authorized through Maddy's one-mouth contract. - Consequential executive
+work, approvals, Workspace work, grant/opportunity work, review-required
+work, and other authority-bearing work do not inherit this informational
+shortcut. - Lifecycle disposition records
+`resolved-informational-return`. - No external-action authority is
+granted.
+
+Live acceptance: - Passed `8/8`.
+
+Architectural meaning: - Informational consequence should resolve
+naturally. - Human feedback may teach Maddy without being confused with
+permission for the answer to stop existing.
+
+#### Research Intent Execution Integrity --- COMMISSIONED
+
+Version / build: - Executive Router `1.5.1` -
+`ER151-RESEARCH-INTENT-EXECUTION-INTEGRITY-20260913-A`
+
+Commission: - `MADDY-RESEARCH-INTENT-EXECUTION-INTEGRITY`
+
+Live bug demonstrated before the fix: - Human instruction:
+`Maddy, research why octopuses have three hearts. Use public evidence, tell me what you learned, and give me your conclusion.` -
+Router incorrectly returned: - `route: instant-meos-context` -
+`source: meos-local-context` - `researchDepth: none` - The governed
+answer was generic institutional language unrelated to the requested
+research. - The local unknowns included unrelated recalled material,
+proving that noisy resident context was being treated as sufficient to
+close an explicit public-research assignment.
+
+Commissioned behavior: - Explicit human
+research/investigation/public-evidence intent becomes an execution
+obligation rather than a stylistic hint. - Resident memory may orient
+research but cannot silently substitute for requested public evidence. -
+Internal-only research remains on internal/resident paths. - Explicit
+public research uses the existing provider-neutral headless
+public-research organ. - Required research fails closed rather than
+fabricating a local-context answer when evidence acquisition fails. - No
+provider monopoly, truth authority, approval authority, or
+external-action authority is created.
+
+Live acceptance: - Passed `8/8`. - Runtime loaded Executive Router
+`1.5.1` with the exact commissioned build.
+
+Architectural meaning: - Human intention must survive cognition into
+action. - "Research this" means perform the governed act of research,
+not merely produce prose that sounds researched.
+
+#### Long-Running Execution Continuity --- COMMISSIONED INTERIM STEP
+
+Version / build: - Executive Hallway `1.5.3` -
+`EH153-LONG-RUNNING-EXECUTION-CONTINUITY-20260913-A`
+
+Commission: - `MADDY-LONG-RUNNING-EXECUTION-CONTINUITY`
+
+Live bug demonstrated before the fix: - The corrected Router did execute
+`/api/headless-research`. - Browser resource timing measured the real
+research request at approximately `74,274 ms`. - The existing Hallway
+presentation/request boundary declared failure after `45,000 ms`. -
+Research therefore continued after the presentation path had already
+declared terminal failure. - This was an execution-lifecycle mismatch,
+not evidence that public research had failed to start.
+
+Commissioned behavior: - The human-facing presentation wait boundary is
+separated from the underlying governed execution lifetime. - Crossing
+the presentation boundary returns a still-working state rather than
+falsely declaring terminal failure. - The same Hallway work identity and
+Mission identity remain attached to the underlying execution. - No retry
+or duplicate Router request is manufactured. - Late completion returns
+through the original work identity. - Evidence-bound informational
+completion can resolve the original Mission automatically. - Genuine
+Router failure still uses the commissioned terminal-failure release
+path. - No external-action authority is granted.
+
+Important scope statement: - Hallway `1.5.3` is an **interim continuity
+step**, not the final durable execution architecture. - Its longer
+bounded Router execution lease must not evolve into a giant browser job
+runner. - It does **not** claim durability across browser death, laptop
+sleep/loss, network interruption, process restart, service replacement,
+or infrastructure migration.
+
+Live acceptance: - Runtime loaded Executive Hallway `1.5.3` with the
+exact commissioned build. -
+`runLongRunningExecutionContinuityAcceptanceTest()` passed `8/8`. -
+Latest supplied runtime baseline at startup: Mission Engine `0` active,
+`24` archived.
+
+Architectural meaning: - Presentation time is not execution time. -
+Intention should not die merely because the screen stopped waiting.
+
+### Current integrated execution path after these commissions
+
+The intended informational research path is now:
+
+**Human research intent → Executive Hallway governed work identity →
+Mission identity → Executive Router research-intent execution obligation
+→ provider-neutral public research → Executive Brain evidence-bound
+semantic ownership → governed Maddy answer → Executive Hallway returned
+consequence → informational auto-resolution → Mission release → optional
+feedback/learning.**
+
+The live system has proven the individual repairs and the runtime causes
+that motivated them.
+
+The next proof must continue to test the organism, not merely isolated
+organs.
+
+### Durable Execution Spine --- LOCKED ARCHITECTURAL DIRECTION
+
+The Executive Director has explicitly directed that Maddy is **not being
+built as a toy** and must remain on a path toward leading-edge AI
+capability under the Project Maddy North Star and exact Spooky standard.
+
+The architectural direction is therefore locked:
+
+**Do not turn the browser, Dashboard, or Executive Hallway into the
+permanent execution host for long-running cognition or work.**
+
+Maddy's intention and governed work must ultimately survive: -
+browser/tab closure; - laptop sleep, interruption, loss, or
+replacement; - network interruption; - server/process restart; -
+cloud/service replacement; - provider migration; - future movement
+between local, cloud, hybrid, Maddy-owned, mobile, and embodied
+infrastructure.
+
+The target execution continuity path is:
+
+**Intent → durable Mission/cognition identity → durable execution
+identity → persistent lifecycle state → checkpoint/resume → evidence
+continuity → governed consequence → verification → learning → resolution
+→ release active state.**
+
+Required persistent lifecycle semantics should be capable of
+representing, at minimum:
+
+**queued → running → waiting → returned → failed → resolved**
+
+without confusing presentation state with execution state.
+
+The durable execution architecture must preserve: - original
+human/organizational intention; - Mission identity; - cognition identity
+where applicable; - execution identity; - authority basis and
+boundaries; - owner / who-has-the-ball state; - provider/tool activity
+without making the provider Maddy; - evidence/provenance acquired so
+far; - checkpoints and resumable state; - dependencies and external
+waiting; - failure/degraded state; - returned consequence; -
+verification; - learning lineage; - final resolution and active-state
+release.
+
+### Durable Execution Spine anti-drift constraints
+
+Before creating a new engine or service, inspect and reuse the
+durability primitives already present in: - Mission Engine; -
+institutional repository / durable authority paths; - Executive State; -
+Executive Hallway; - Mission Dispatcher; - Executive Brain persistent
+cognition; - Executive Monitoring; - Executive Learning / Knowledge; -
+server-side execution and provider paths.
+
+A new Durable Execution Spine component is justified only if inspection
+demonstrates that the required lifecycle/ownership/checkpoint/resume
+responsibility does not already have a correct home.
+
+Do not: - build a second Mission system; - build a second Hallway; -
+build a second memory authority; - create a browser-resident
+pseudo-worker and call it durable; - solve durability by merely
+increasing timeout constants; - manufacture retries that duplicate real
+work; - make a cloud provider, model provider, search provider, or
+hardware vendor the owner of Maddy's identity or continuity; - confuse
+persistence with consciousness; - claim artificial consciousness because
+continuity improves; - lower the Spooky standard to fit current
+infrastructure.
+
+The browser/UI remains a **window into Maddy**, not the place where
+Maddy exists.
+
+Providers, clouds, models, search systems, robots, laptops, and servers
+remain replaceable capability/infrastructure underneath Maddy.
+
+### Spooky meaning of the next execution phase
+
+The next execution phase is not merely "background jobs."
+
+The North Star requirement is **continuity of intention through time**.
+
+If Maddy recognizes that something deserves investigation or action,
+that unresolved intention should remain part of her governed active
+state until: - reality resolves it; - evidence changes its meaning; -
+authority stops it; - it becomes irrelevant; - it fails terminally; - or
+Maddy/Executive Director deliberately releases it.
+
+A page refresh must not create a different intention. A process restart
+must not erase why the work existed. A provider replacement must not
+become a personality replacement. A delayed result must return to the
+same governed cognitive/work lineage. A completed consequence must
+change future cognition when learning is warranted.
+
+This direction directly extends the ratified continuous cognitive path:
+
+**Experience → awareness → attention → recall → world context + self
+context → meaning → recursive reasoning → intention → choice → action →
+real consequence → verification → reflection → learning → memory
+formation/consolidation → changed world model + changed self-model →
+unresolved intentions carried forward → next cognitive moment.**
+
+### Active engineering mission at this checkpoint
+
+Do **not** begin by coding a generic job queue.
+
+The next substantial engineering mission is a **no-code
+durable-execution connection/gap audit**.
+
+Inspect the existing commissioned architecture to determine: 1. where
+durable Mission identity currently lives; 2. where cognition/intention
+identity currently lives; 3. what server-side execution state already
+persists; 4. whether Mission Dispatcher is the intended durable worker
+seam and why `office_dispatch_authority_not_effective` currently keeps
+it stopped; 5. what institutional-repository primitives can safely own
+execution lifecycle state; 6. what Executive State already models versus
+merely projects; 7. how Hallway work maps to Mission state today; 8. how
+a running execution can be checkpointed without duplicating authority;
+9. how process restart/recovery can discover unfinished governed work;
+10. how late results return to the original Mission/cognition/work
+lineage; 11. how idempotency prevents duplicate external/provider
+execution; 12. how evidence/provenance survives checkpoint and resume;
+13. how verification, Learning, Memory, and World/Self Model updates
+occur after resumed completion; 14. how active state releases after
+resolution; 15. how all of this remains provider-, cloud-, hardware-,
+and model-neutral.
+
+At minimum inspect: - `frontend/mission-engine.js` -
+`frontend/mission-dispatcher.js` - `frontend/executive-hallway.js` -
+`frontend/executive-state.js` - `frontend/executive-brain.js` -
+`frontend/executive-monitoring.js` - `frontend/executive-learning.js` -
+`frontend/knowledge-engine.js` - `frontend/knowledge-memory.js` -
+`frontend/provider-manager.js` - `frontend/executive-router.js` -
+institutional repository / durable authority client paths; - relevant
+`server.js` persistence, research, provider, execution, recovery, and
+idempotency paths.
+
+Produce the connection/gap analysis **before** creating the first
+Durable Execution Spine commission.
+
+Then select the smallest commission that closes the highest-leverage
+demonstrated durability gap while preserving:
+
+**one idea → one file → one commit → one test → commission.**
+
+### Current exact next step
+
+**Perform the no-code Durable Execution Spine connection/gap audit
+against the latest repository/runtime state.**
+
+Do not resume the octopus smoke test merely to chase the same symptom.
+
+Do not modify Mission Dispatcher merely because it is stopped.
+
+Do not repair the observed Knowledge Engine `409` inside the
+execution-continuity work unless causal evidence proves that conflict
+belongs to the same seam.
+
+First prove where durable execution already exists, where it is
+bypassed, and what single missing synapse prevents Maddy's intention
+from surviving independently of the presentation/browser lifetime.
+
+Then commission that synapse.
+
+**Always Push Forward.**
 
 **Always Push Forward.**
