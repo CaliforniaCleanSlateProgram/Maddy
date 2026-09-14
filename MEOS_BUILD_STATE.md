@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32211841/MEOS_BUILD_STATE.md)
+[Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
@@ -3295,33 +3295,80 @@ Multi-channel campaign execution must preserve at minimum:
 
 **The objective is coordinated commercial intelligence, not volume.**
 
-### NEXT — 006.032F3 — Governed Multi-Channel Campaign Orchestration
+### 006.032F3 — COMMISSIONED / LIVE-PROVEN 20/20
 
-Before coding 006.032F3, read `PROJECT_MADDY_NORTH_STAR.md` and this canonical Build State in full, then inspect the latest repository and prove the smallest existing seam that should own campaign-level channel orchestration. Do not create a disconnected social scheduler or a second campaign brain.
+Echo / Office of Communications was strengthened as the campaign-level multi-channel orchestration seam in `frontend/executive-offices.js`, version **0.5.2**, build **`EO052-GOVERNED-MULTI-CHANNEL-CAMPAIGN-ORCHESTRATION-20260914-A`**.
 
-The dependency-correct objective is to let one commissioned campaign/hypothesis intentionally produce multiple channel-specific governed publication plans while preserving one Maddy, one campaign lineage, one commercial theory, exact authority, and independent execution identities per channel.
+The live deployed runtime returned **PASS 20/20** for commission **006.032F3**.
 
-006.032F3 must distinguish **campaign coordination** from **publication execution**:
+Commissioned behavior:
 
-- campaign-level cognition decides why a channel belongs in the plan, what audience/context matters, what adaptation is required, what result is predicted, and whether publishing now is justified;
-- each consequential channel act remains a separate 006.032F2 durable publication execution;
-- no campaign plan may silently convert one authorization into unlimited multi-platform fan-out;
-- channel-specific content may share the same underlying commercial thesis while adapting format, tone, evidence density, CTA, timing, and media requirements to channel context;
-- one channel failure must not fracture the campaign or Maddy identity;
-- duplicate/near-duplicate detection and cadence/frequency governance must prevent Maddy from behaving like a spam bot;
-- opt-out/suppression/policy state must be respected where applicable;
-- Maddy must be able to conclude that a channel should receive **no post** or that the campaign should **pause**;
-- publication receipts must return to the same campaign so later Monitoring/Learning can compare channel predictions with channel outcomes.
+- publishing channels are discovered dynamically through Provider Manager rather than hard-coded vendor names;
+- one campaign identity and one creative hypothesis remain intact across multiple proposed channel acts;
+- every proposed channel act receives its own publication-intent identity;
+- channel adaptation obeys declared provider/channel constraints while preserving one Maddy identity;
+- factual-claim restrictions and evidence lineage survive adaptation;
+- cadence governance may skip a channel rather than posting because a slot exists;
+- audience fatigue may suppress a channel;
+- near-duplicate detection may suppress repetition across time;
+- explicit suppression may cause deliberate inaction;
+- campaign orchestration grants no publication authority;
+- every consequential channel publication still requires separate authorization;
+- campaign orchestration grants no spend or outreach authority;
+- every consequential proposed act points to the commissioned 006.032F2 durable execution boundary;
+- uncertain provider calls remain non-retriable at the campaign-plan boundary;
+- publication receipts remain evidence rather than commercial outcomes;
+- the anti-spam objective is **coordinated commercial intelligence rather than volume**.
 
-Do not overreach into full 006.032G campaign operations, SEO, lead follow-up, or paid advertising. 006.032F3 is the smallest campaign-level orchestration layer required to prove intentional, non-spammy multi-channel publishing on top of the commissioned 032F1 capability contract and 032F2 durable execution spine.
+This formally proves that multi-channel capability does not mean a single authorization silently fans out across platforms. One campaign may intentionally express the same commercial thesis across multiple platforms, but each channel act is separately adapted, governed, authorized, executed, evidenced, and later evaluated.
 
-The Spooky target is not "post everywhere." It is that Maddy can reason across audience, channel, creative, evidence, timing, authority, duplication risk, trust, cost, and predicted consequence, then choose a coordinated set of actions — including choosing **inaction** — while preserving one commercial intention and learning lineage.
+Maddy's valid action set explicitly includes **skip this channel**, **do not repeat**, **do not publish yet**, and **pause the campaign**. Inaction is a governed commercial decision when further activity is unjustified.
 
-Hard 006.032F3 question:
+Status: **COMMISSIONED.**
 
-**Can Maddy take one campaign and deliberately express it across multiple platforms as different governed acts, while knowing when repetition becomes noise, when another post would be unjustified, when a channel should be skipped, and how each channel-specific consequence tests the same underlying commercial hypothesis?**
+### 006.032F remaining dependency — real replaceable channel connectivity
 
-If the answer is merely "schedule the same post to several networks," it does not clear Spooky.
+006.032F1 proved the universal governed publishing capability contract.
+
+006.032F2 proved durable, exactly-once-protected consequential publishing execution.
+
+006.032F3 proved intelligent campaign-level multi-channel orchestration and anti-spam restraint.
+
+The remaining gap before Governed Multi-Channel Publishing can be called materially operational is **real runtime channel connectivity**. The system must not claim a social/network publishing capability merely because the universal contracts exist. A channel becomes available only when a real server-side adapter proves connection state, permissions/capabilities, credential isolation, and normalized receipt behavior at runtime.
+
+No Facebook, Instagram, LinkedIn, X, TikTok, YouTube, email, or other external publishing channel is to be represented as connected unless runtime evidence proves that exact capability.
+
+### NEXT — 006.032F4 — Runtime Publishing Adapter Discovery & Credential Boundary
+
+Before coding, read `PROJECT_MADDY_NORTH_STAR.md` and this Build State in full and inspect the latest repository. Prove the smallest existing seam for discovering **real server-backed publishing adapters**. Reuse the commissioned Provider Manager publishing contract and the server-side credential-isolation pattern already demonstrated by the Google Workspace adapter. Do not hard-code social-network credentials into the browser, model context, campaign objects, or Maddy cognition.
+
+006.032F4 should establish the universal bridge by which a replaceable external publishing adapter can become a truthful runtime capability only when its server-side connection and granted permissions are actually verified.
+
+Required direction:
+
+- provider/channel adapters remain replaceable infrastructure underneath one Maddy;
+- credentials/tokens/secrets remain server-side and never become model-visible campaign truth;
+- connection state and granted scopes/capabilities are discovered at runtime;
+- no verified connection means no advertised publishing capability;
+- a connected provider exposes only the actions actually granted;
+- capability discovery grants no authority to execute;
+- execution still requires the exact upstream authorization and 006.032F2 durable execution identity;
+- provider substitution or failover cannot broaden authorized destination, audience, content, timing, spend, or action scope;
+- normalized receipts must return through the same campaign/Mission/Hallway lineage;
+- provider errors, permission loss, revoked credentials, rate limits, or ambiguous outcomes return as execution truth rather than being hidden;
+- an adapter may be added or removed without recoding Maddy Core;
+- no platform-specific Maddy identity fork;
+- no fake channel availability.
+
+The smallest correct commission may use a controlled/mock server-backed adapter to prove the universal discovery and credential boundary if no real external provider is presently connected. Do not fabricate credentials or claim production connectivity that does not exist.
+
+The next real platform adapter should be selected only after this universal seam is proven and after inspecting actual provider/API requirements, permissions, policies, cost, and usefulness.
+
+Hard 006.032F4 question:
+
+**Can a new external publishing channel be connected underneath Maddy as replaceable infrastructure, prove exactly what it is permitted to do without exposing credentials to Maddy or the browser, disappear truthfully when disconnected, and execute only an independently authorized durable act without changing who Maddy is or widening her authority?**
+
+If adding a new channel requires editing Maddy's core cognition or embedding provider secrets in frontend state, it does not clear the architecture.
 
 Continue under:
 
