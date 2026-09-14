@@ -20,11 +20,12 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.1";
+  const DASHBOARD_VERSION = "4.13.2";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
   const CONSEQUENCE_RECOGNITION_BUILD_ID = "OD4131-CONSEQUENCE-RECOGNITION-GATE-20260913-A";
+  const RETURNED_WORK_DISPOSITION_BUILD_ID = "OD4132-RETURNED-WORK-DISPOSITION-SURFACE-20260913-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -6508,7 +6509,7 @@ document
     }
 
     const actions = document.createElement("div"); actions.className = "meos-maddy-response-actions";
-    const evidence = document.createElement("button"); evidence.type = "button"; evidence.className = "meos-maddy-response-action"; evidence.textContent = "Evidence & Details"; evidence.addEventListener("click", () => { closeMaddyResponseModal(); renderMaddyExecutiveBrief(selected); document.getElementById("meosMaddyDeskBrief")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); }); actions.appendChild(evidence);
+    const evidence = document.createElement("button"); evidence.type = "button"; evidence.className = "meos-maddy-response-action"; evidence.textContent = "Evidence & Details"; evidence.addEventListener("click", () => { closeMaddyResponseModal(); openReturnedWorkPackage(selected); }); actions.appendChild(evidence);
     if (items.length > 1) {
       const nav = document.createElement("div"); nav.className = "meos-maddy-response-nav";
       const previous = document.createElement("button"); previous.type="button"; previous.className="meos-maddy-response-action"; previous.textContent="← Previous"; previous.disabled=index===0; previous.addEventListener("click",()=>openMaddyResponseForDeliverable(items[index-1], { navigation: true }));
@@ -7010,6 +7011,53 @@ document
     return result;
   }
 
+  function returnedWorkDispositionState(snapshot, packageState) {
+    const work = packageState?.work || null;
+    const feedback = work
+      ? (snapshot?.hallwayFeedback || []).find((item) => item.workId === work.id) || null
+      : null;
+    return {
+      work,
+      feedback,
+      eligible: work?.state === "done",
+      resolved: Boolean(feedback)
+    };
+  }
+
+  function submitReturnedWorkDisposition(work, selected, signal, source = "maddy-executive-workspace") {
+    const hallway = getExecutiveHallway();
+    if (!hallway?.submitFeedback || !work?.id) {
+      return { success: false, error: "Executive Hallway feedback is unavailable." };
+    }
+
+    let reason = null;
+    if (signal === "not-this") {
+      reason = window.prompt("What was wrong with this work package? A short reason helps Maddy learn.", "Wrong result");
+      if (reason === null) return { success: false, cancelled: true };
+    }
+
+    return hallway.submitFeedback(work.id, {
+      signal,
+      reason: reason || null,
+      source,
+      actor: "executive-director",
+      selectedDeliverableId: selected?.id || null
+    });
+  }
+
+  function openReturnedWorkPackage(deliverable = null) {
+    if (deliverable?.workId) {
+      state.hallway.currentWorkId = deliverable.workId;
+      state.hallway.workPackageId = deliverable.workId;
+    }
+    if (deliverable?.id) state.hallway.selectedDeliverableId = deliverable.id;
+
+    const snapshot = collectHeadquartersSnapshot();
+    const packageState = getMaddyWorkPackage(snapshot);
+    if (!packageState?.selected) return false;
+    return renderMaddyExecutiveWorkspace(snapshot, packageState);
+  }
+
   function closeMaddyExecutiveWorkspace() {
     const workspace = document.getElementById("meosExecutiveWorkspace");
     if (workspace) workspace.dataset.open = "false";
@@ -7126,6 +7174,37 @@ document
       const inspect = document.createElement("button"); inspect.type = "button"; inspect.className = "meos-workspace-action"; inspect.textContent = view.primaryAction; inspect.addEventListener("click", () => { closeMaddyExecutiveWorkspace(); renderMaddyExecutiveBrief(selected); document.getElementById("meosMaddyDeskBrief")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); }); actions.appendChild(inspect);
 
       const official = document.createElement("button"); official.type = "button"; official.className = "meos-workspace-action"; official.textContent = view.sourceAction; official.disabled = !view.sourceUrl; official.addEventListener("click", () => { if (view.sourceUrl) window.open(view.sourceUrl, "_blank", "noopener,noreferrer"); }); actions.appendChild(official);
+
+      const disposition = returnedWorkDispositionState(snapshot, packageState);
+      if (disposition.eligible && !disposition.feedback) {
+        const accept = document.createElement("button"); accept.type = "button"; accept.className = "meos-workspace-action primary"; accept.textContent = "Accept Returned Work";
+        accept.addEventListener("click", () => {
+          const result = submitReturnedWorkDisposition(disposition.work, selected, "accepted");
+          if (!result?.success) {
+            if (!result?.cancelled) state.hallway.lastError = result?.error || "Executive feedback was not recorded.";
+            return;
+          }
+          renderLiveHeadquarters();
+          const nextSnapshot = collectHeadquartersSnapshot();
+          renderMaddyExecutiveWorkspace(nextSnapshot, getMaddyWorkPackage(nextSnapshot));
+        });
+        actions.appendChild(accept);
+
+        const notThis = document.createElement("button"); notThis.type = "button"; notThis.className = "meos-workspace-action"; notThis.textContent = "Not This";
+        notThis.addEventListener("click", () => {
+          const result = submitReturnedWorkDisposition(disposition.work, selected, "not-this");
+          if (!result?.success) {
+            if (!result?.cancelled) state.hallway.lastError = result?.error || "Executive feedback was not recorded.";
+            return;
+          }
+          renderLiveHeadquarters();
+          const nextSnapshot = collectHeadquartersSnapshot();
+          renderMaddyExecutiveWorkspace(nextSnapshot, getMaddyWorkPackage(nextSnapshot));
+        });
+        actions.appendChild(notThis);
+      } else if (disposition.feedback) {
+        const feedbackState = document.createElement("div"); feedbackState.className = "meos-workspace-source-note"; feedbackState.textContent = disposition.feedback.signal === "accepted" ? "✓ Accepted — Mission disposition recorded" : "↻ Not This — correction recorded"; actions.appendChild(feedbackState);
+      }
 
       const take = document.createElement("button"); take.type = "button"; take.className = "meos-workspace-action primary"; take.textContent = "TAKE IT — Move This Forward";
       const activeWork = packageState.work;
@@ -7495,9 +7574,7 @@ document
       return;
     }
     if (outcome.kind === "deliverable") {
-      const packageState = getMaddyWorkPackage(snapshot);
-      if (packageState?.selected) renderMaddyExecutiveBrief(packageState.selected);
-      else openMaddyExecutiveWorkspace();
+      openReturnedWorkPackage(outcome.record || null);
       return;
     }
     if (outcome.kind === "blocked") {
@@ -9208,6 +9285,47 @@ document
     return result;
   }
 
+  function runReturnedWorkDispositionSurfaceAcceptanceTest() {
+    const fixtureWork = { id: "fixture-returned-work", state: "done" };
+    const fixtureDeliverable = { id: "fixture-deliverable", workId: fixtureWork.id };
+    const unresolved = returnedWorkDispositionState(
+      { hallwayFeedback: [] },
+      { work: fixtureWork, items: [fixtureDeliverable], selected: fixtureDeliverable }
+    );
+    const resolved = returnedWorkDispositionState(
+      { hallwayFeedback: [{ workId: fixtureWork.id, signal: "accepted" }] },
+      { work: fixtureWork, items: [fixtureDeliverable], selected: fixtureDeliverable }
+    );
+
+    const responseSource = openMaddyResponseForDeliverable.toString();
+    const outcomeSource = executeExecutiveOutcome.toString();
+    const workspaceSource = renderMaddyExecutiveWorkspace.toString();
+    const dispositionSource = submitReturnedWorkDisposition.toString();
+    const checks = [
+      { name: "Returned done work is eligible for explicit executive disposition", passed: unresolved.eligible === true && unresolved.resolved === false },
+      { name: "Existing Hallway feedback marks returned work as resolved", passed: resolved.resolved === true && resolved.feedback?.signal === "accepted" },
+      { name: "Evidence & Details opens the returned work package instead of a hidden desk brief", passed: /openReturnedWorkPackage\(selected\)/.test(responseSource) && !/renderMaddyExecutiveBrief\(selected\)/.test(responseSource) },
+      { name: "Executive Briefing Open Work Package routes to the visible returned-work workspace", passed: /outcome\.kind === [\"']deliverable[\"']/.test(outcomeSource) && /openReturnedWorkPackage\(outcome\.record/.test(outcomeSource) },
+      { name: "Returned-work workspace exposes Accept and Not This disposition controls", passed: /Accept Returned Work/.test(workspaceSource) && /Not This/.test(workspaceSource) },
+      { name: "Disposition is recorded through the existing Hallway feedback contract", passed: /hallway\.submitFeedback/.test(dispositionSource) },
+      { name: "Disposition does not create replacement work or grant new execution authority", passed: !/submitWork|takeIt|authorized\s*=/.test(dispositionSource) },
+      { name: "Successful return still requires a human disposition signal", passed: /addEventListener\(\"click\"/.test(workspaceSource) && /submitReturnedWorkDisposition\(disposition\.work, selected, \"accepted\"\)/.test(workspaceSource) }
+    ];
+    const result = {
+      success: checks.every((check) => check.passed),
+      commission: "MADDY-RETURNED-WORK-DISPOSITION-SURFACE",
+      schema: "meos.dashboard.returned-work-disposition-surface-acceptance.v1",
+      version: DASHBOARD_VERSION,
+      buildId: RETURNED_WORK_DISPOSITION_BUILD_ID,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks
+    };
+    console.table(checks);
+    console.log(`[MEOS ${DASHBOARD_VERSION}] Returned Work Disposition Surface: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
   function initialize() {
     createDashboardShell();
     bindRealtimeEvidenceTargets();
@@ -9229,19 +9347,20 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online.`
     );
   }
 
   window.MEOSOfficeDashboard = Object.freeze({
     version: DASHBOARD_VERSION,
-    buildId: CONSEQUENCE_RECOGNITION_BUILD_ID,
+    buildId: RETURNED_WORK_DISPOSITION_BUILD_ID,
     show: showOfficeDashboard,
     hide: hideOfficeDashboard,
     refresh: renderOfficeDashboard,
     buildShopTruthSurfaceModel,
     runShopTruthSurfaceAcceptanceTest,
-    runConsequenceRecognitionGateAcceptanceTest
+    runConsequenceRecognitionGateAcceptanceTest,
+    runReturnedWorkDispositionSurfaceAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
