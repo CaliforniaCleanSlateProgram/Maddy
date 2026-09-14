@@ -2,7 +2,7 @@
  * Maddy Executive Operations System
  * Executive Office Standard
  *
- * Version: 0.5.1
+ * Version: 0.5.2
  *
  * Establishes:
  * - The Executive Director as final human authority
@@ -18,7 +18,7 @@
 (() => {
     "use strict";
 
-    const SYSTEM_VERSION = "0.5.1";
+    const SYSTEM_VERSION = "0.5.2";
 
     const OFFICE_STATUS = Object.freeze({
         OPERATIONAL: "operational",
@@ -1295,6 +1295,191 @@
         });
     }
 
+    /* Commission 006.032F3 — Governed Multi-Channel Campaign Orchestration */
+    const ECHO_MULTI_CHANNEL_SCHEMA = "meos.echo.multi-channel-campaign-plan.v1";
+    const ECHO_BUILD_ID = "EO052-GOVERNED-MULTI-CHANNEL-CAMPAIGN-ORCHESTRATION-20260914-A";
+
+    function normalizeTextTokens(value) {
+        return String(value || "").toLowerCase().replace(/https?:\/\/\S+/g, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(token => token.length > 2);
+    }
+
+    function textSimilarity(left, right) {
+        const a = new Set(normalizeTextTokens(left));
+        const b = new Set(normalizeTextTokens(right));
+        if (!a.size || !b.size) return 0;
+        let intersection = 0;
+        for (const token of a) if (b.has(token)) intersection += 1;
+        return intersection / Math.max(a.size, b.size);
+    }
+
+    function extractCampaignMessage(campaign = {}) {
+        const copy = campaign?.assets?.campaignCopy?.value || campaign?.assets?.campaignCopy?.content || campaign?.assets?.campaignCopy || campaign?.creative?.campaignCopy || campaign?.campaignCopy || {};
+        if (typeof copy === "string") return copy.trim();
+        return [copy.headline, copy.body, copy.cta].filter(Boolean).join("\\n\\n").trim();
+    }
+
+    function getPublishingCapabilities(providerManager) {
+        const manager = providerManager || window.ProviderManager || null;
+        if (!manager || typeof manager.listCapabilities !== "function") return [];
+        return manager.listCapabilities().filter(item => item?.kind === "governed-external-publishing").map(item => ({
+            ...clone(item),
+            definition: typeof manager.getCapabilityDefinition === "function" ? clone(manager.getCapabilityDefinition(item.id)) : null
+        }));
+    }
+
+    function channelHistoryFor(history, capabilityId, channel) {
+        return (Array.isArray(history) ? history : []).filter(item => String(item?.capabilityId || "") === String(capabilityId || "") || String(item?.channel || "") === String(channel || ""));
+    }
+
+    function evaluateChannelRestraint({ capability, campaign, history = [], now = Date.now(), policy = {} }) {
+        const definition = capability.definition || {};
+        const channel = definition.channel || capability.channel || "";
+        const relevant = channelHistoryFor(history, capability.id, channel);
+        const suppression = campaign?.suppression || {};
+        const channelSuppression = suppression[capability.id] || suppression[channel] || null;
+        const fatigue = Number(campaign?.audienceFatigue?.[capability.id] ?? campaign?.audienceFatigue?.[channel] ?? 0);
+        const maxFatigue = Number(policy.maxAudienceFatigue ?? 0.75);
+        const minCadenceMs = Math.max(0, Number(policy.minCadenceMs ?? 21600000));
+        const duplicateWindowMs = Math.max(minCadenceMs, Number(policy.duplicateWindowMs ?? 604800000));
+        const duplicateThreshold = Math.min(1, Math.max(0.5, Number(policy.duplicateSimilarityThreshold ?? 0.82)));
+        const baseMessage = extractCampaignMessage(campaign);
+
+        if (channelSuppression === true || channelSuppression?.suppressed === true) return { publish:false, reason:"suppressed", evidence:clone(channelSuppression) };
+        if (channelSuppression?.optOut === true || channelSuppression?.unsubscribed === true || channelSuppression?.blocked === true) return { publish:false, reason:"audience-opt-out-or-block", evidence:clone(channelSuppression) };
+        if (channelSuppression?.policyBlocked === true) return { publish:false, reason:"channel-policy-block", evidence:clone(channelSuppression) };
+        if (Number.isFinite(fatigue) && fatigue >= maxFatigue) return { publish:false, reason:"audience-fatigue", evidence:{ fatigue, maxFatigue } };
+
+        const recent = relevant.map(item => ({ ...item, atMs:new Date(item.publishedAt || item.executedAt || item.createdAt || 0).getTime() })).filter(item => Number.isFinite(item.atMs) && item.atMs > 0).sort((a,b) => b.atMs - a.atMs);
+        if (recent[0] && now - recent[0].atMs < minCadenceMs) return { publish:false, reason:"cadence-too-soon", evidence:{ lastPublishedAt:new Date(recent[0].atMs).toISOString(), minCadenceMs } };
+
+        const nearDuplicate = recent.find(item => now - item.atMs <= duplicateWindowMs && textSimilarity(baseMessage, item.message || item.content || item.text || "") >= duplicateThreshold);
+        if (nearDuplicate) return { publish:false, reason:"near-duplicate-within-window", evidence:{ priorPublicationId:nearDuplicate.publicationId || nearDuplicate.id || null, priorPublishedAt:new Date(nearDuplicate.atMs).toISOString(), similarity:textSimilarity(baseMessage, nearDuplicate.message || nearDuplicate.content || nearDuplicate.text || "") } };
+        return { publish:true, reason:"channel-clears-restraint-gates", evidence:null };
+    }
+
+    function buildChannelAdaptation(campaign, capability, context = {}) {
+        const definition = capability.definition || {};
+        const constraints = definition.constraints || {};
+        const baseMessage = extractCampaignMessage(campaign);
+        const maxCharacters = Number(constraints.maxCharacters || constraints.maxTextLength || 0);
+        let adaptedMessage = String(context.message || baseMessage || "").trim();
+        if (Number.isFinite(maxCharacters) && maxCharacters > 0 && adaptedMessage.length > maxCharacters) adaptedMessage = `${adaptedMessage.slice(0, Math.max(1, maxCharacters - 1)).trimEnd()}…`;
+        return {
+            schema:"meos.echo.channel-adaptation.v1", channel:definition.channel || capability.channel, capabilityId:capability.id,
+            sourceCampaignAssetPreserved:true,
+            adaptationReason:String(context.adaptationReason || "Adapt the shared campaign thesis to declared channel constraints and audience context without changing factual claim status."),
+            audienceContext:clone(context.audienceContext || null), toneGuidance:clone(context.toneGuidance || constraints.toneHints || null), formatGuidance:clone(context.formatGuidance || constraints.formatHints || null),
+            contentTypes:clone(definition.contentTypes || []), declaredConstraints:clone(constraints), message:adaptedMessage,
+            factualClaimsMayNotBeUpgraded:true, claimRestrictions:clone(campaign?.claimRestrictions || campaign?.brief?.claims || []), evidenceSourceIds:clone(campaign?.evidenceSourceIds || [])
+        };
+    }
+
+    function planMultiChannelCampaign(input = {}, options = {}) {
+        const organizationId = String(input.organizationId || input?.campaign?.organizationId || "").trim();
+        const campaign = input.campaign || {};
+        const campaignId = String(input.campaignId || campaign.campaignId || campaign.id || "").trim();
+        const creativeHypothesisId = String(input.creativeHypothesisId || campaign.creativeHypothesisId || campaign?.brief?.strategy?.campaignHypothesis?.id || campaign?.brief?.strategy?.campaignHypothesis?.statement || "").trim();
+        const assetId = String(input.assetId || campaign.assetId || campaign?.assets?.campaignCopy?.id || "").trim();
+        if (!organizationId) throw new TypeError("Multi-channel orchestration requires organizationId.");
+        if (!campaignId) throw new TypeError("Multi-channel orchestration requires campaignId.");
+        if (!creativeHypothesisId) throw new TypeError("Multi-channel orchestration requires creativeHypothesisId.");
+        if (!assetId) throw new TypeError("Multi-channel orchestration requires assetId.");
+
+        const capabilities = getPublishingCapabilities(options.providerManager);
+        const requestedIds = Array.isArray(input.capabilityIds) ? [...new Set(input.capabilityIds.map(String))] : capabilities.map(item => item.id);
+        const requested = requestedIds.map(id => capabilities.find(item => item.id === id) || { id, unavailable:true, definition:null });
+        const nowMs = Number(options.nowMs || Date.now());
+        const history = Array.isArray(input.publicationHistory) ? input.publicationHistory : [];
+        const contexts = input.channelContexts || {};
+        const policy = { maxAudienceFatigue:input.policy?.maxAudienceFatigue ?? 0.75, minCadenceMs:input.policy?.minCadenceMs ?? 21600000, duplicateWindowMs:input.policy?.duplicateWindowMs ?? 604800000, duplicateSimilarityThreshold:input.policy?.duplicateSimilarityThreshold ?? 0.82 };
+
+        const acts = requested.map((capability, index) => {
+            const publicationIntentId = `publication-intent-${campaignId}-${index + 1}`;
+            if (capability.unavailable || !capability.definition) return { publicationIntentId, capabilityId:capability.id, channel:null, decision:"skip", reason:"publishing-capability-not-discovered", executable:false, requiresSeparateAuthorization:true, authorityGranted:false };
+            if (capability.available !== true || (capability.availableProviders || []).length === 0) return { publicationIntentId, capabilityId:capability.id, channel:capability.definition.channel, decision:"skip", reason:"no-selectable-provider", executable:false, requiresSeparateAuthorization:true, authorityGranted:false };
+            const restraint = evaluateChannelRestraint({ capability, campaign, history, now:nowMs, policy });
+            if (!restraint.publish) return { publicationIntentId, capabilityId:capability.id, channel:capability.definition.channel, decision:"skip", reason:restraint.reason, restraintEvidence:restraint.evidence, executable:false, requiresSeparateAuthorization:true, authorityGranted:false };
+            const context = contexts[capability.id] || contexts[capability.definition.channel] || {};
+            return {
+                publicationIntentId, capabilityId:capability.id, channel:capability.definition.channel, decision:"propose", reason:"channel-clears-governance-and-restraint-gates",
+                adaptation:buildChannelAdaptation(campaign, capability, context),
+                campaignLineage:{ organizationId, campaignId, creativeHypothesisId, assetId },
+                predictedConsequence:clone(context.predictedConsequence ?? input.predictedConsequences?.[capability.id] ?? input.predictedConsequences?.[capability.definition.channel] ?? campaign.predictedConsequence ?? null),
+                requiresSeparateAuthorization:true, authorityGranted:false, executable:false,
+                executionContract:{ executor:"006.032F2-durable-governed-publishing", oneConsequentialPublication:true, separateExecutionIdentityRequired:true, receiptRequired:true, automaticRetryAfterUncertainProviderCall:false }
+            };
+        });
+        const proposed = acts.filter(item => item.decision === "propose");
+        const skipped = acts.filter(item => item.decision === "skip");
+        return clone({
+            success:true, schema:ECHO_MULTI_CHANNEL_SCHEMA, version:SYSTEM_VERSION, buildId:ECHO_BUILD_ID, officeId:"echo", organizationId, campaignId, creativeHypothesisId, assetId,
+            campaignIntent:"one-campaign-many-deliberate-channel-acts", campaignMessage:extractCampaignMessage(campaign),
+            policy:{ ...policy, objective:"coordinated-commercial-intelligence-not-volume", automaticFanOut:false, automaticRepost:false, inactionIsValid:true },
+            channelActs:acts, proposedCount:proposed.length, skippedCount:skipped.length, pauseRecommended:proposed.length === 0,
+            pauseReason:proposed.length === 0 ? "No requested channel currently clears capability, cadence, duplication, suppression, or audience-respect gates." : null,
+            authority:{ publicationAuthorized:false, outreachAuthorized:false, spendAuthorized:false, executionAuthorized:false, campaignPlanGrantsAuthority:false, eachConsequentialPublicationRequiresSeparateAuthorization:true },
+            continuity:{ oneMaddy:true, sharedCampaignHypothesis:true, perChannelExecutionIdentity:true, providerFailureDoesNotChangeMaddyIdentity:true, receiptsReturnToCampaignLineage:true },
+            commercialLearning:{ executionReceiptIsOutcome:false, comparePredictedVsObservedByChannel:true, sharedHypothesisCanLearnAcrossChannels:true },
+            createdAt:new Date(nowMs).toISOString()
+        });
+    }
+
+    function runGovernedMultiChannelCampaignAcceptanceTest() {
+        const nowMs = Date.parse("2026-09-14T20:00:00.000Z");
+        const defs = {
+            "external-publishing.alpha":{ id:"external-publishing.alpha", kind:"governed-external-publishing", channel:"alpha", contentTypes:["text"], constraints:{ maxCharacters:80 } },
+            "external-publishing.beta":{ id:"external-publishing.beta", kind:"governed-external-publishing", channel:"beta", contentTypes:["text","image"], constraints:{ formatHints:["short-paragraphs"] } },
+            "external-publishing.gamma":{ id:"external-publishing.gamma", kind:"governed-external-publishing", channel:"gamma", contentTypes:["text"], constraints:{} }
+        };
+        const fakeProviderManager = {
+            listCapabilities(){ return [
+                { id:"external-publishing.alpha", kind:"governed-external-publishing", channel:"alpha", available:true, availableProviders:["provider-a"] },
+                { id:"external-publishing.beta", kind:"governed-external-publishing", channel:"beta", available:true, availableProviders:["provider-b"] },
+                { id:"external-publishing.gamma", kind:"governed-external-publishing", channel:"gamma", available:true, availableProviders:["provider-c"] }
+            ]; },
+            getCapabilityDefinition(id){ return clone(defs[id] || null); }
+        };
+        const campaign = { id:"campaign-032f3", organizationId:"acceptance-org", creativeHypothesisId:"hypothesis-032f3", assetId:"asset-032f3", campaignCopy:{ headline:"One persistent Maddy carries the work beyond the prompt.", body:"The campaign tests whether continuity, evidence, and governed execution matter more than generic AI productivity." }, claimRestrictions:[{ claim:"continuity", status:"measured-only-when-supported" }], evidenceSourceIds:["evidence-1"], audienceFatigue:{ gamma:0.9 } };
+        const result = planMultiChannelCampaign({ organizationId:"acceptance-org", campaignId:"campaign-032f3", creativeHypothesisId:"hypothesis-032f3", assetId:"asset-032f3", campaign, capabilityIds:["external-publishing.alpha","external-publishing.beta","external-publishing.gamma"], channelContexts:{ alpha:{ toneGuidance:"concise", predictedConsequence:{ metric:"qualified-interest", direction:"increase" } }, beta:{ toneGuidance:"visual-story" } }, publicationHistory:[{ id:"prior-beta", channel:"beta", publishedAt:"2026-09-14T19:30:00.000Z", message:"A different prior campaign message." }], policy:{ minCadenceMs:7200000 } }, { providerManager:fakeProviderManager, nowMs });
+        const duplicateResult = planMultiChannelCampaign({ organizationId:"acceptance-org", campaignId:"campaign-dup", creativeHypothesisId:"hypothesis-dup", assetId:"asset-dup", campaign, capabilityIds:["external-publishing.alpha"], publicationHistory:[{ id:"prior-alpha", channel:"alpha", publishedAt:"2026-09-10T20:00:00.000Z", message:extractCampaignMessage(campaign) }], policy:{ minCadenceMs:1, duplicateWindowMs:604800000 } }, { providerManager:fakeProviderManager, nowMs });
+        const paused = planMultiChannelCampaign({ organizationId:"acceptance-org", campaignId:"campaign-pause", creativeHypothesisId:"hypothesis-pause", assetId:"asset-pause", campaign:{ ...campaign, suppression:{ alpha:true } }, capabilityIds:["external-publishing.alpha"] }, { providerManager:fakeProviderManager, nowMs });
+        const alpha = result.channelActs.find(item => item.channel === "alpha");
+        const beta = result.channelActs.find(item => item.channel === "beta");
+        const gamma = result.channelActs.find(item => item.channel === "gamma");
+        const checks = [
+            ["Echo owns a versioned multi-channel campaign orchestration contract", result.schema === ECHO_MULTI_CHANNEL_SCHEMA && result.officeId === "echo"],
+            ["Publishing channels are discovered from Provider Manager rather than hard-coded vendor names", result.channelActs.length === 3],
+            ["One campaign identity is preserved across channel acts", result.channelActs.every(item => !item.campaignLineage || item.campaignLineage.campaignId === "campaign-032f3")],
+            ["One creative hypothesis is preserved across proposed channel acts", result.channelActs.filter(item => item.decision === "propose").every(item => item.campaignLineage.creativeHypothesisId === "hypothesis-032f3")],
+            ["Each proposed channel act receives a separate publication intent identity", new Set(result.channelActs.map(item => item.publicationIntentId)).size === result.channelActs.length],
+            ["Channel adaptation obeys declared provider constraints", alpha.decision === "propose" && alpha.adaptation.message.length <= 80],
+            ["Channel context can adapt tone without forking Maddy identity", alpha.adaptation.toneGuidance === "concise" && result.continuity.oneMaddy === true],
+            ["Factual claim restrictions survive channel adaptation", alpha.adaptation.factualClaimsMayNotBeUpgraded === true && alpha.adaptation.claimRestrictions.length === 1],
+            ["Evidence lineage survives channel adaptation", alpha.adaptation.evidenceSourceIds.includes("evidence-1")],
+            ["Cadence governance can skip a channel instead of posting because a slot exists", beta.decision === "skip" && beta.reason === "cadence-too-soon"],
+            ["Audience fatigue can suppress a channel", gamma.decision === "skip" && gamma.reason === "audience-fatigue"],
+            ["Near-duplicate detection can suppress repetition across time", duplicateResult.channelActs[0].decision === "skip" && duplicateResult.channelActs[0].reason === "near-duplicate-within-window"],
+            ["Explicit suppression can cause Maddy to choose inaction", paused.pauseRecommended === true && paused.channelActs[0].reason === "suppressed"],
+            ["Campaign orchestration never grants publication authority", result.authority.publicationAuthorized === false && result.authority.campaignPlanGrantsAuthority === false],
+            ["Every consequential channel publication still requires separate authorization", result.authority.eachConsequentialPublicationRequiresSeparateAuthorization === true && alpha.requiresSeparateAuthorization === true],
+            ["Campaign orchestration does not grant spend or outreach authority", result.authority.spendAuthorized === false && result.authority.outreachAuthorized === false],
+            ["Each proposed act points to the durable 006.032F2 execution boundary", alpha.executionContract.executor === "006.032F2-durable-governed-publishing" && alpha.executionContract.oneConsequentialPublication === true],
+            ["Uncertain provider calls remain non-retriable at the campaign plan boundary", alpha.executionContract.automaticRetryAfterUncertainProviderCall === false],
+            ["Publication receipts remain evidence rather than commercial outcomes", result.commercialLearning.executionReceiptIsOutcome === false && result.commercialLearning.comparePredictedVsObservedByChannel === true],
+            ["Anti-spam objective is coordinated commercial intelligence rather than volume", result.policy.objective === "coordinated-commercial-intelligence-not-volume" && result.policy.automaticFanOut === false && result.policy.inactionIsValid === true]
+        ].map(([name, passed]) => ({ name, passed:Boolean(passed) }));
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks);
+        console.info(`[MEOS ${SYSTEM_VERSION}] Commission 006.032F3 Governed Multi-Channel Campaign Orchestration: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+        return { success:passed === checks.length, commission:"006.032F3", schema:"meos.echo.multi-channel-campaign-acceptance.v1", version:SYSTEM_VERSION, buildId:ECHO_BUILD_ID, passed, total:checks.length, checks, sample:clone(result), completedAt:createTimestamp() };
+    }
+
+    const echoOffice = Object.freeze({
+        version:SYSTEM_VERSION, buildId:ECHO_BUILD_ID, commission:"006.032F3", schema:ECHO_MULTI_CHANNEL_SCHEMA,
+        policy:Object.freeze({ office:"echo", oneMaddy:true, automaticFanOut:false, automaticRepost:false, inactionIsValid:true, publicationAuthorityGranted:false, principle:"Coordinate campaign intelligence across channels without converting reach into spam." }),
+        planMultiChannelCampaign, evaluateChannelRestraint, runAcceptanceTest:runGovernedMultiChannelCampaignAcceptanceTest
+    });
+
     const financeOffice = Object.freeze({
         version: "1.0.0",
         commission: "006.022B1",
@@ -1353,6 +1538,7 @@
         },
 
         finance: financeOffice,
+        echo: echoOffice,
 
         getOffice(officeId) {
             return getOfficeReference(officeId);
