@@ -1,7 +1,7 @@
 /*
  * MEOS Institutional Reasoning Engine
- * Version: 1.3.0
- * Build: IR130-RECALLED-EXPERIENCE-FUTURE-COGNITION-20260913-A
+ * Version: 1.3.1
+ * Build: IR131-GROWTH-STRATEGY-SALES-PSYCHOLOGY-20260914-A
  *
  * Mission:
  * Turn supported institutional evidence into explainable executive analysis,
@@ -41,8 +41,8 @@
 
     const InstitutionalReasoning = {
         name: "MEOS Institutional Reasoning Engine",
-        version: "1.3.0",
-        buildId: "IR130-RECALLED-EXPERIENCE-FUTURE-COGNITION-20260913-A",
+        version: "1.3.1",
+        buildId: "IR131-GROWTH-STRATEGY-SALES-PSYCHOLOGY-20260914-A",
         status: "initializing",
         operatingMode: "evidence-grounded-reasoning",
 
@@ -3093,6 +3093,270 @@
             }
 
             this.persistIfEnabled();
+        },
+
+        /*
+         * Commission 006.032D — Growth Strategy & Sales Psychology
+         *
+         * Institutional Reasoning is the existing strategy/cognition seam. This
+         * bridge reads Executive Learning's commissioned commercial truth snapshot
+         * and turns market/product evidence into an explainable commercial
+         * hypothesis. It creates no second truth store and grants no execution,
+         * spend, publication, outreach, or policy authority.
+         */
+        analyzeCommercialStrategy(input = {}, options = {}) {
+            const organizationId = String(
+                input.organizationId || options.organizationId || ""
+            ).trim();
+            if (!organizationId) {
+                return { success: false, error: "organizationId is required." };
+            }
+
+            const learning = global.ExecutiveLearning;
+            const snapshot = learning?.getCommercialSnapshot?.(organizationId) || {
+                schema: "meos.maddy.commercial-truth-snapshot.v1",
+                organizationId,
+                records: [],
+                economics: {}
+            };
+            const records = Array.isArray(snapshot.records) ? snapshot.records : [];
+            const evidence = Array.isArray(input.evidence) ? input.evidence : [];
+            const text = value => String(value ?? "").trim();
+            const list = value => (Array.isArray(value) ? value : value ? [value] : [])
+                .map(item => typeof item === "string" ? item.trim() : item)
+                .filter(Boolean);
+            const evidenceIds = Array.from(new Set([
+                ...list(input.sourceIds),
+                ...evidence.map(item => item?.id || item?.sourceId).filter(Boolean),
+                ...records.flatMap(record => list(record?.epistemic?.sourceIds || record?.sourceIds))
+            ]));
+            const explicit = (value, unknownReason) => text(value)
+                ? { status: "supported-input", value: text(value), sourceIds: evidenceIds }
+                : { status: "unknown", value: null, sourceIds: [], unknownReason };
+            const recordOfType = type => records.find(record => record?.recordType === type) || null;
+            const campaign = recordOfType("campaign");
+            const audienceRecord = recordOfType("audience");
+            const offerRecord = recordOfType("offer");
+            const hypothesisRecord = recordOfType("hypothesis");
+
+            const market = explicit(input.market || input.marketContext,
+                "Market evidence has not been supplied yet.");
+            const product = explicit(input.product || input.productContext,
+                "Product/service evidence has not been supplied yet.");
+            const buyer = explicit(input.buyer || input.audience || audienceRecord?.title || audienceRecord?.name,
+                "Buyer/audience evidence has not been supplied yet.");
+            const pain = explicit(input.pain || input.problem,
+                "High-value buyer pain has not been evidenced yet.");
+            const desiredOutcome = explicit(input.desiredOutcome || input.outcome,
+                "The buyer's desired outcome has not been evidenced yet.");
+            const positioning = explicit(input.positioning || campaign?.positioning,
+                "Positioning remains a hypothesis until supported by market evidence.");
+            const offer = explicit(input.offer || offerRecord?.title || offerRecord?.name,
+                "No evidence-backed offer has been supplied yet.");
+            const objections = list(input.objections).map(value => ({
+                objection: typeof value === "string" ? value : value?.objection,
+                status: "hypothesis",
+                sourceIds: typeof value === "object" ? list(value.sourceIds) : evidenceIds
+            })).filter(item => item.objection);
+            const proof = list(input.proof || input.trustProof).map(value => ({
+                proof: typeof value === "string" ? value : value?.proof,
+                status: typeof value === "object" && value.status ? value.status : "claimed-input",
+                sourceIds: typeof value === "object" ? list(value.sourceIds) : evidenceIds
+            })).filter(item => item.proof);
+            const psychology = list(input.psychologyHypotheses || input.salesPsychology).map(value => ({
+                hypothesis: typeof value === "string" ? value : value?.hypothesis,
+                status: "hypothesis",
+                sourceIds: typeof value === "object" ? list(value.sourceIds) : evidenceIds,
+                ethicalBoundary: "No deception, coercion, fabricated scarcity, or exploitation of vulnerability."
+            })).filter(item => item.hypothesis);
+            const channels = list(input.channels).map(value => {
+                const channel = typeof value === "string" ? { name: value } : value;
+                return {
+                    name: text(channel?.name || channel?.channel),
+                    classification: text(channel?.classification || "unknown"),
+                    costStatus: text(channel?.costStatus || "unknown"),
+                    fit: text(channel?.fit || "hypothesis"),
+                    sourceIds: list(channel?.sourceIds)
+                };
+            }).filter(item => item.name);
+            const freeFirst = channels.filter(item =>
+                ["organic", "free", "owned", "earned", "low-cost"].includes(item.classification) ||
+                ["free", "low-cost"].includes(item.costStatus)
+            );
+            const paid = channels.filter(item => item.classification === "paid" || item.costStatus === "paid");
+            const economics = snapshot.economics || {};
+            const economicConstraints = {
+                cashConstraint: explicit(input.cashConstraint || input.authorizedBudget,
+                    "No commercial cash constraint or authorized budget was supplied."),
+                knownEconomics: this.clone(economics),
+                rule: "Unknown economics remain unknown; budget existence does not authorize spend."
+            };
+            const hypothesisText = text(
+                input.campaignHypothesis || hypothesisRecord?.hypothesis || hypothesisRecord?.title
+            );
+            const campaignHypothesis = hypothesisText ? {
+                status: "hypothesis",
+                statement: hypothesisText,
+                sourceIds: evidenceIds,
+                falsifiers: list(input.falsifiers),
+                successCriteria: list(input.successCriteria),
+                prediction: input.prediction ? this.clone(input.prediction) : null
+            } : {
+                status: "unknown",
+                statement: null,
+                sourceIds: [],
+                falsifiers: [],
+                successCriteria: [],
+                prediction: null,
+                unknownReason: "A falsifiable campaign hypothesis has not been formed yet."
+            };
+            const unknowns = [market, product, buyer, pain, desiredOutcome, positioning, offer]
+                .filter(item => item.status === "unknown")
+                .map(item => item.unknownReason);
+            if (channels.length === 0) unknowns.push("Channel fit has not been evidenced yet.");
+            if (proof.length === 0) unknowns.push("Trust/proof evidence has not been supplied yet.");
+            if (campaignHypothesis.status === "unknown") unknowns.push(campaignHypothesis.unknownReason);
+
+            const lowerCostValidationAvailable = freeFirst.length > 0;
+            const paidGrowthGate = {
+                lowerCostValidationAvailable,
+                paidAmplificationEligible: paid.length > 0 && input.evidenceBackedForPaid === true,
+                spendAuthorized: false,
+                rule: "Do not spend merely to discover whether an idea works when a reasonable lower-cost validation path exists."
+            };
+            const readinessChecks = {
+                marketKnown: market.status !== "unknown",
+                productKnown: product.status !== "unknown",
+                buyerKnown: buyer.status !== "unknown",
+                painKnown: pain.status !== "unknown",
+                offerKnown: offer.status !== "unknown",
+                channelFitKnown: channels.some(item => item.fit !== "unknown"),
+                hypothesisFalsifiable: campaignHypothesis.status === "hypothesis" &&
+                    (campaignHypothesis.falsifiers.length > 0 || campaignHypothesis.successCriteria.length > 0),
+                proofPresent: proof.length > 0
+            };
+            const readyToPropose = Object.values(readinessChecks).every(Boolean);
+
+            return {
+                success: true,
+                schema: "meos.institutional-reasoning.commercial-strategy.v1",
+                commission: "006.032D",
+                version: this.version,
+                buildId: this.buildId,
+                organizationId,
+                commercialTruthSchema: snapshot.schema || null,
+                evidence: { sourceIds: evidenceIds, recordCount: records.length },
+                understanding: { market, product, buyer, pain, desiredOutcome },
+                strategy: { positioning, offer, objections, proof, psychology, channels },
+                economics: economicConstraints,
+                capitalEfficiency: {
+                    freeFirstChannels: this.clone(freeFirst),
+                    paidChannels: this.clone(paid),
+                    preferredValidationPath: lowerCostValidationAvailable ? "free-or-low-cost-first" : "insufficient-evidence",
+                    paidGrowthGate
+                },
+                campaignHypothesis,
+                readiness: { readyToPropose, checks: readinessChecks, unknowns: Array.from(new Set(unknowns)) },
+                authority: {
+                    executionAuthorized: false,
+                    spendAuthorized: false,
+                    publicationAuthorized: false,
+                    outreachAuthorized: false,
+                    policyAuthorityChanged: false,
+                    rule: "Commercial strategy is decision support. Human authorization remains required for external action."
+                },
+                privacy: {
+                    organizationId,
+                    scope: "organization-isolated",
+                    transferableRule: "Only generalized evidence-grounded commercial learning may transfer; organization-private facts remain isolated."
+                },
+                nextRecommendation: readyToPropose
+                    ? "Prepare the evidence-backed campaign proposal for governed creative production and human review."
+                    : "Resolve the listed commercial unknowns with the lowest-cost discriminating evidence before campaign production or paid amplification.",
+                generatedAt: new Date().toISOString()
+            };
+        },
+
+        runGrowthStrategySalesPsychologyAcceptanceTest() {
+            const originalLearning = global.ExecutiveLearning;
+            global.ExecutiveLearning = {
+                getCommercialSnapshot: organizationId => ({
+                    schema: "meos.maddy.commercial-truth-snapshot.v1",
+                    organizationId,
+                    records: [{
+                        id: "audience-1", recordType: "audience", title: "Small nonprofit executive directors",
+                        epistemic: { sourceIds: ["source-audience-1"] }
+                    }],
+                    economics: { cac: [{ status: "unknown", value: null }] }
+                })
+            };
+            let result;
+            try {
+                result = this.analyzeCommercialStrategy({
+                    organizationId: "acceptance-org-a",
+                    market: "Small organizations lacking dedicated executive intelligence capacity",
+                    product: "Maddy governed opportunity intelligence",
+                    pain: "Important opportunities are missed because research and follow-through are fragmented",
+                    desiredOutcome: "Find and act on qualified opportunities with evidence and continuity",
+                    positioning: "Organization-aware opportunity operator candidate",
+                    offer: "Evidence-grounded opportunity intelligence pilot",
+                    objections: [{ objection: "Can we trust the output?", sourceIds: ["source-objection-1"] }],
+                    proof: [{ proof: "Durable research loop live-proven", status: "measured", sourceIds: ["source-proof-1"] }],
+                    psychologyHypotheses: ["Reducing uncertainty may increase willingness to engage"],
+                    channels: [
+                        { name: "Owned website", classification: "owned", costStatus: "free", fit: "supported-input" },
+                        { name: "Paid social", classification: "paid", costStatus: "paid", fit: "hypothesis" }
+                    ],
+                    cashConstraint: "$100 validation ceiling",
+                    campaignHypothesis: "If evidence-bound opportunity intelligence is demonstrated, qualified small-organization leaders will request a pilot.",
+                    falsifiers: ["No qualified pilot requests after the defined validation sample"],
+                    successCriteria: ["At least one qualified pilot request"],
+                    prediction: { metric: "qualified-pilot-request", expected: 1 },
+                    evidenceBackedForPaid: false,
+                    sourceIds: ["source-market-1"]
+                });
+            } finally {
+                global.ExecutiveLearning = originalLearning;
+            }
+            const unknownResult = this.analyzeCommercialStrategy({ organizationId: "acceptance-org-unknown" });
+            const checks = [
+                ["Commercial strategy schema is explicit and versioned", result.schema === "meos.institutional-reasoning.commercial-strategy.v1"],
+                ["Strategy is organization-bound", result.organizationId === "acceptance-org-a"],
+                ["Existing Executive Learning commercial truth is consumed", result.commercialTruthSchema === "meos.maddy.commercial-truth-snapshot.v1"],
+                ["Market understanding remains evidence-addressable", result.understanding.market.sourceIds.includes("source-market-1")],
+                ["Buyer model can come from commercial audience truth", result.understanding.buyer.value === "Small nonprofit executive directors"],
+                ["High-value pain is explicit", result.understanding.pain.status === "supported-input"],
+                ["Positioning remains explicit rather than silently becoming fact", result.strategy.positioning.status === "supported-input"],
+                ["Offer is explicit", result.strategy.offer.value === "Evidence-grounded opportunity intelligence pilot"],
+                ["Objections preserve evidence lineage", result.strategy.objections[0].sourceIds.includes("source-objection-1")],
+                ["Trust/proof preserves its supplied evidentiary status", result.strategy.proof[0].status === "measured"],
+                ["Sales psychology is labeled hypothesis with ethical boundary", result.strategy.psychology[0].status === "hypothesis" && /No deception/.test(result.strategy.psychology[0].ethicalBoundary)],
+                ["Channel fit is represented without fabricated certainty", result.strategy.channels.some(item => item.fit === "hypothesis")],
+                ["Free/low-cost validation is preferred when available", result.capitalEfficiency.preferredValidationPath === "free-or-low-cost-first"],
+                ["Paid Growth Gate blocks evidence-free amplification", result.capitalEfficiency.paidGrowthGate.paidAmplificationEligible === false],
+                ["Commercial strategy never grants spend authority", result.authority.spendAuthorized === false],
+                ["Commercial strategy never grants execution/publication/outreach authority", result.authority.executionAuthorized === false && result.authority.publicationAuthorized === false && result.authority.outreachAuthorized === false],
+                ["Campaign hypothesis is falsifiable", result.campaignHypothesis.falsifiers.length > 0 && result.campaignHypothesis.successCriteria.length > 0],
+                ["Unknown commercial inputs remain unknown rather than fabricated", unknownResult.understanding.market.status === "unknown" && unknownResult.readiness.unknowns.length > 0],
+                ["Organization-private strategy remains isolated", result.privacy.scope === "organization-isolated"],
+                ["Ready strategy advances to governed proposal, not autonomous execution", result.readiness.readyToPropose === true && /human review/.test(result.nextRecommendation)]
+            ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+            const passed = checks.filter(check => check.passed).length;
+            const acceptance = {
+                success: passed === checks.length,
+                commission: "006.032D",
+                schema: "meos.institutional-reasoning.growth-strategy-sales-psychology-acceptance.v1",
+                version: this.version,
+                buildId: this.buildId,
+                checks,
+                passed,
+                total: checks.length,
+                sample: this.clone(result),
+                completedAt: new Date().toISOString()
+            };
+            console.table(checks);
+            console.info(`[MEOS ${this.version}] Commission 006.032D Growth Strategy & Sales Psychology: ${acceptance.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+            return acceptance;
         },
 
         registerSystemKnowledge() {
