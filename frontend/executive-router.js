@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.5.1
- * Build: ER151-RESEARCH-INTENT-EXECUTION-INTEGRITY-20260913-A
+ * Version: 1.5.2
+ * Build: ER152-DURABLE-RESEARCH-RETURN-GOVERNANCE-20260914-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.5.1";
-  const BUILD_ID = "ER151-RESEARCH-INTENT-EXECUTION-INTEGRITY-20260913-A";
+  const VERSION = "1.5.2";
+  const BUILD_ID = "ER152-DURABLE-RESEARCH-RETURN-GOVERNANCE-20260914-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -960,6 +960,204 @@
       };
     },
 
+    /*
+     * Commission 006.031Q — Durable Research Return Governance Adapter
+     *
+     * Durable Execution owns long-running public research after Hallway handoff.
+     * When that exact execution later returns, Router must not execute the
+     * research again and Hallway must not present the server's raw synthesis as
+     * Maddy speech. This adapter converts only a validated, returned
+     * headless-public-research record into the same internal public-research
+     * envelope already consumed by collect() -> Executive Brain reconciliation
+     * -> one-mouth speech authorization.
+     *
+     * The durable lineage remains immutable execution provenance. Brain may run
+     * the governed return cognition needed to interpret the evidence, but that
+     * cognition is attached to—not substituted for—the original durable
+     * mission/cognition-intention/Hallway/execution lineage.
+     */
+    normalizeDurableResearchReturn(record = {}, expected = {}) {
+      const executionId = String(record?.executionId || "").trim();
+      const state = String(record?.state || "").trim().toLowerCase();
+      const executor = String(record?.executor || "").trim().toLowerCase();
+      const lineage = record?.lineage && typeof record.lineage === "object"
+        ? record.lineage
+        : {};
+      const research = record?.result;
+
+      const expectedExecutionId = String(expected?.executionId || "").trim();
+      const expectedMissionId = String(expected?.missionId || "").trim();
+      const expectedCognitionId = String(expected?.cognitionId || "").trim();
+      const expectedHallwayWorkId = String(expected?.hallwayWorkId || "").trim();
+
+      const mismatch = (expectedValue, actualValue) =>
+        Boolean(expectedValue) && expectedValue !== String(actualValue || "").trim();
+
+      if (!executionId || state !== "returned" || executor !== "headless-public-research") {
+        throw new ExecutiveRouterError(
+          "Durable research return is not an eligible returned headless-public-research execution.",
+          ERRORS.ROUTE_UNAVAILABLE,
+          { executionId: executionId || null, state, executor, durableReturnRejected: true }
+        );
+      }
+      if (
+        mismatch(expectedExecutionId, executionId) ||
+        mismatch(expectedMissionId, lineage.missionId) ||
+        mismatch(expectedCognitionId, lineage.cognitionId) ||
+        mismatch(expectedHallwayWorkId, lineage.hallwayWorkId)
+      ) {
+        throw new ExecutiveRouterError(
+          "Durable research return lineage does not match the requesting Hallway work.",
+          ERRORS.ROUTE_UNAVAILABLE,
+          {
+            executionId,
+            lineage: this.clone(lineage),
+            expected: this.clone(expected),
+            durableReturnRejected: true,
+            lineageMismatch: true
+          }
+        );
+      }
+      if (!research || research.success !== true || !research.synthesis) {
+        throw new ExecutiveRouterError(
+          "Durable research return contains no successful evidence synthesis.",
+          ERRORS.ROUTE_UNAVAILABLE,
+          { executionId, durableReturnRejected: true, researchSuccess: research?.success === true }
+        );
+      }
+
+      const answerFacts = Array.isArray(research.synthesis?.answerFacts)
+        ? research.synthesis.answerFacts
+        : Array.isArray(research.synthesis?.supportedFacts)
+          ? research.synthesis.supportedFacts
+          : [];
+      const answerParts = [...new Set(
+        answerFacts
+          .map(item => this.firstText(item?.claim, item?.fact, item?.summary, item))
+          .filter(Boolean)
+      )].slice(0, 4);
+      const sources = [...new Set([
+        ...(Array.isArray(research.synthesis?.supportingSources)
+          ? research.synthesis.supportingSources
+          : []),
+        ...answerFacts
+          .map(item => this.firstText(item?.source, item?.basis?.[0]?.source))
+          .filter(Boolean)
+      ].filter(value => typeof value === "string" && /^https?:\/\//i.test(value.trim()))
+        .map(value => value.trim()))].slice(0, 12);
+
+      if (!answerParts.length) {
+        throw new ExecutiveRouterError(
+          "Durable research return has no evidence-bound answer facts for Maddy to govern.",
+          ERRORS.ROUTE_UNAVAILABLE,
+          { executionId, durableReturnRejected: true, answerFactCount: 0 }
+        );
+      }
+
+      return Object.freeze({
+        source: "meos-headless-public-research",
+        provider: null,
+        output: {
+          type: "public-research-result",
+          answer: answerParts.join(" "),
+          confidence: Number(research.synthesis?.confidence || 0),
+          unknowns: this.clone(research.synthesis?.unknowns || []),
+          citations: sources,
+          research: this.clone(research),
+          paidProviderUsed: false,
+          durableExecutionId: executionId,
+          durableLineage: this.clone(lineage),
+          returnedAt: record?.checkpoint?.returnedAt || record?.updatedAt || null
+        }
+      });
+    },
+
+    async reintegrateDurableResearchResult(record = {}, options = {}) {
+      const expected = options?.lineage && typeof options.lineage === "object"
+        ? { ...options.lineage, executionId: options.executionId || record?.executionId || null }
+        : { executionId: options.executionId || record?.executionId || null };
+      const returned = this.normalizeDurableResearchReturn(record, expected);
+      const question = this.firstText(
+        options.question,
+        record?.request?.question,
+        record?.request?.subject
+      );
+      if (!question) {
+        throw new ExecutiveRouterError(
+          "Durable research return cannot be governed without its original question.",
+          ERRORS.INVALID_REQUEST,
+          { executionId: record?.executionId || null, durableReturnRejected: true }
+        );
+      }
+
+      const request = this.normalizeRequest(question, {
+        requestId: options.requestId || record?.lineage?.hallwayWorkId || record?.executionId,
+        source: options.source || "executive-hallway-durable-return",
+        timeoutMs: options.timeoutMs || this.configuration.defaultTimeoutMs
+      });
+      const brain = this.resolveBrain();
+      if (!brain || typeof brain.routeRequest !== "function") {
+        throw new ExecutiveRouterError(
+          "The commissioned MEOS Executive Brain is unavailable for durable return governance.",
+          ERRORS.BRAIN_UNAVAILABLE,
+          { executionId: record?.executionId || null }
+        );
+      }
+
+      const brainResult = brain.routeRequest(request.text, {
+        ...request.options,
+        requestId: request.id,
+        source: request.source,
+        humanDirected: true,
+        durableReturn: true,
+        durableLineage: this.clone(record.lineage || null)
+      });
+      if (!brainResult?.success || !brainResult?.package) {
+        throw new ExecutiveRouterError(
+          brainResult?.error || "The Executive Brain rejected durable research return governance.",
+          ERRORS.BRAIN_REJECTED_REQUEST,
+          { executionId: record?.executionId || null, brainResult: this.clone(brainResult) }
+        );
+      }
+
+      const context = {
+        request,
+        brainResult,
+        classification: {
+          type: brainResult.package.request.type,
+          confidence: brainResult.package.request.confidence,
+          requiresCurrentInternet: brainResult.package.request.requiresCurrentInternet,
+          requiresApproval: brainResult.package.request.requiresApproval
+        },
+        route: this.selectRoute(brainResult),
+        dispatchResult: returned,
+        startedAt: Date.now(),
+        status: REQUEST_STATUS.DISPATCHED,
+        terminalized: false,
+        terminalReason: null
+      };
+
+      // Deliberately do not call dispatch(): the durable server already executed
+      // the evidence acquisition. collect() is the commissioned Router -> Brain
+      // governance seam that can authorize Maddy's one-mouth answer.
+      const collected = this.collect(context);
+      const result = Object.freeze({
+        ...collected,
+        status: REQUEST_STATUS.COMPLETED,
+        durableExecution: {
+          schema: "meos.executive-router.durable-return-lineage.v1",
+          executionId: record.executionId,
+          lineage: this.clone(record.lineage || null),
+          serverExecutionState: record.state,
+          browserExecutedResearch: false,
+          rawServerOutputPresentationAuthorized: false
+        }
+      });
+      this.record(result);
+      this.emit("router:durable-research-return-governed", this.clone(result));
+      return result;
+    },
+
     async dispatchHeadlessPublicResearch(payload = {}, reason = "resident-evidence-insufficient") {
       const rawSubject = payload.request?.text || payload.package?.request?.text || "";
       const subject = this.canonicalIntentText(rawSubject);
@@ -1642,6 +1840,92 @@
       console.table(checks);
       console.info(
         `[MEOS ${VERSION}] Commission 006.027 Canonical Maddy Response Transport: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      return result;
+    },
+
+    runDurableResearchReturnGovernanceAcceptanceTest() {
+      const checks = [];
+      const push = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+      const lineage = {
+        missionId: "MIS-DURABLE-RETURN-FIXTURE",
+        cognitionId: "human-intent-durable-return-fixture",
+        hallwayWorkId: "hallway-work-durable-return-fixture"
+      };
+      const fixture = {
+        schema: "meos.durable-execution.record.v1",
+        executionId: "execution-hallway-work-durable-return-fixture",
+        state: "returned",
+        executor: "headless-public-research",
+        lineage,
+        checkpoint: { stage: "returned", returnedAt: "2026-09-14T05:06:55.355Z" },
+        result: {
+          success: true,
+          synthesis: {
+            confidence: 0.82,
+            answerFacts: [
+              { claim: "Two branchial hearts pump blood through the gills.", source: "https://science.example/octopus-gills" },
+              { claim: "One systemic heart pumps oxygenated blood through the body.", source: "https://science.example/octopus-body" }
+            ],
+            unknowns: []
+          }
+        }
+      };
+      const normalized = this.normalizeDurableResearchReturn(fixture, {
+        executionId: fixture.executionId,
+        ...lineage
+      });
+
+      push("Returned durable execution normalizes into the existing MEOS public-research envelope",
+        normalized?.source === "meos-headless-public-research" && normalized?.output?.type === "public-research-result");
+      push("Evidence-bound answer facts, not raw evidence excerpts, become the candidate research answer",
+        /Two branchial hearts/.test(normalized?.output?.answer || "") && /One systemic heart/.test(normalized?.output?.answer || ""));
+      push("Durable Mission/cognition-intention/Hallway lineage remains attached to the return",
+        normalized?.output?.durableLineage?.missionId === lineage.missionId &&
+        normalized?.output?.durableLineage?.cognitionId === lineage.cognitionId &&
+        normalized?.output?.durableLineage?.hallwayWorkId === lineage.hallwayWorkId);
+      push("Durable return carries no paid-provider execution",
+        normalized?.provider === null && normalized?.output?.paidProviderUsed === false);
+      push("Only evidence URLs are admitted as research citations",
+        normalized?.output?.citations?.length === 2 && normalized.output.citations.every(value => /^https?:\/\//i.test(value)));
+
+      let wrongLineageRejected = false;
+      try {
+        this.normalizeDurableResearchReturn(fixture, { ...lineage, missionId: "MIS-WRONG" });
+      } catch (error) {
+        wrongLineageRejected = error?.details?.lineageMismatch === true;
+      }
+      push("Mismatched durable lineage fails closed", wrongLineageRejected);
+
+      let nonReturnedRejected = false;
+      try {
+        this.normalizeDurableResearchReturn({ ...fixture, state: "running" }, lineage);
+      } catch (error) {
+        nonReturnedRejected = error?.details?.durableReturnRejected === true;
+      }
+      push("Running/queued executions cannot enter return governance", nonReturnedRejected);
+      push("Return reintegration uses collect() governance and never re-dispatches research",
+        /this\.collect\(context\)/.test(this.reintegrateDurableResearchResult.toString()) &&
+        !/this\.dispatch\(context\)/.test(this.reintegrateDurableResearchResult.toString()));
+      push("Raw durable server output is explicitly unauthorized for presentation",
+        /rawServerOutputPresentationAuthorized:\s*false/.test(this.reintegrateDurableResearchResult.toString()));
+      push("Return governance grants no new external-action or provider authority",
+        !/externalActionAuthorized:\s*true|paidProviderUsed:\s*true/.test(this.normalizeDurableResearchReturn.toString()));
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === checks.length,
+        commission: "006.031Q",
+        schema: "meos.executive-router.durable-research-return-governance-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        checks
+      });
+      console.table(checks);
+      console.info(
+        `[MEOS ${VERSION}] Commission 006.031Q Durable Research Return Governance Adapter: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
       );
       return result;
     },
