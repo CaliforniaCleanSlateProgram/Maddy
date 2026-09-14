@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.85
+ * Server Version: 2.10.86
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.85";
+const VERSION = "2.10.86";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -16975,7 +16975,7 @@ async function runRuntimePublishingAdapterDiscoveryAcceptanceTest() {
 const PUBLISHING_CREDENTIAL_VAULT_COMMISSION = "006.032F5";
 const PUBLISHING_CREDENTIAL_VAULT_VERSION = "1.0.0";
 const PUBLISHING_CREDENTIAL_VAULT_BUILD_ID =
-  "PCV100-ENCRYPTED-PUBLISHING-CREDENTIAL-VAULT-ORG-ISOLATION-20260914-A";
+  "PCV101-CREDENTIAL-VAULT-DURABLE-RECORD-ID-FIX-20260914-A";
 const PUBLISHING_CREDENTIAL_VAULT_SCHEMA =
   "meos.server.publishing-credential-vault.v1";
 const PUBLISHING_CREDENTIAL_VAULT_COLLECTION = "publishing-credential-vault";
@@ -17089,12 +17089,19 @@ function sealPublishingCredential(input = {}, options = {}) {
   const authTag = cipher.getAuthTag();
   const now = new Date().toISOString();
 
+  const credentialId = publishingCredentialId(identity);
+
   return {
     type: "publishing-credential-vault-record",
     schema: PUBLISHING_CREDENTIAL_VAULT_SCHEMA,
     version: PUBLISHING_CREDENTIAL_VAULT_VERSION,
     buildId: PUBLISHING_CREDENTIAL_VAULT_BUILD_ID,
-    credentialId: publishingCredentialId(identity),
+    // Executive Memory's durable manifest is keyed by record.id. Keep the
+    // vault's deterministic credential identity as both the repository record
+    // id and the public-safe credentialId so an encrypted credential remains
+    // visible across the write -> manifest -> read round-trip.
+    id: credentialId,
+    credentialId,
     ...identity,
     cipher: PUBLISHING_CREDENTIAL_VAULT_CIPHER,
     iv: iv.toString("base64"),
@@ -18341,8 +18348,24 @@ app.get(
 app.get(
   "/api/publishing/credential-vault/acceptance-test",
   async (_request, response) => {
-    const result = await runPublishingCredentialVaultAcceptanceTest();
-    response.status(result.success ? 200 : 500).json(result);
+    try {
+      const result = await runPublishingCredentialVaultAcceptanceTest();
+      response.status(result.success ? 200 : 500).json(result);
+    } catch (error) {
+      // Acceptance diagnostics must fail closed without terminating the
+      // server process. The underlying vault error remains explicit.
+      response.status(Number(error?.status) >= 400 ? Number(error.status) : 500).json({
+        success: false,
+        commission: PUBLISHING_CREDENTIAL_VAULT_COMMISSION,
+        schema: "meos.server.publishing-credential-vault.acceptance.v1",
+        version: PUBLISHING_CREDENTIAL_VAULT_VERSION,
+        buildId: PUBLISHING_CREDENTIAL_VAULT_BUILD_ID,
+        passed: 0,
+        total: 20,
+        code: error?.code || "PUBLISHING_CREDENTIAL_VAULT_ACCEPTANCE_FAILED",
+        error: error?.message || String(error)
+      });
+    }
   }
 );
 
