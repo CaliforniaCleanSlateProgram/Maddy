@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32179595/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32180452/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
@@ -2434,6 +2434,120 @@ After the Hallway handoff is commissioned and tested, perform a live end-to-end 
 The architectural objective remains larger than background work:
 
 **continuity of intention through time.**
+
+
+**Always Push Forward.**
+
+---
+
+## 2026-09-14 — Durable Execution Live Proof / Return Reintegration Boundary
+
+### Commission 006.031O — Hallway 1.5.4 Durable Execution Spine Handoff
+
+**Build:** `EH154-DURABLE-EXECUTION-SPINE-HANDOFF-20260913-A`
+
+**File:** `frontend/executive-hallway.js`
+
+Hallway 1.5.4 is live and has now been proven to hand eligible human-directed public research to the server-owned Durable Execution Spine without retaining browser execution ownership.
+
+Live octopus research proof preserved one lineage:
+
+- Hallway work: `hallway-work-cb14186e-6bb5-4beb-9721-5544813a6ddf`
+- Mission: `MIS-MU0S4U98-KL3DBI`
+- cognition: `human-intent-hallway-work-cb14186e-6bb5-4beb-9721-5544813a6ddf`
+- execution: `execution-hallway-work-cb14186e-6bb5-4beb-9721-5544813a6ddf`
+- executor: `headless-public-research`
+- execution owner: `meos-server-durable-execution-spine`
+- `browserExecutionOwner: false`
+- `serverOwned: true`
+- `retryCreated: false`
+- automatic spend: `$0`
+- external action authority: false
+
+Hallway history proved the live progression:
+
+**work.received → work.understanding → work.executing → work.durable-execution-handed-off**
+
+The Hallway remained nonterminal and correctly represented the disposition as `execution-owned-by-durable-server`.
+
+### Commission 006.031P — Server 2.10.80 Durable Execution Persistence Collection Contract
+
+**Build:** `DEPC100-DURABLE-EXECUTION-PERSISTENCE-COLLECTION-20260913-A`
+
+**File:** `server.js`
+
+The first live Hallway 1.5.4 smoke exposed a real server persistence-contract defect: `durable-execution-spine` was not admitted by the existing Executive Memory collection validator, so `/api/durable-execution/dispatch` failed closed with `Unsupported Executive Memory collection.`
+
+Server 2.10.80 corrected that narrow contract by explicitly admitting `durable-execution-spine` to the existing Executive Memory collection set. Validation was not loosened and no second persistence authority was created.
+
+**Live persistence acceptance:** PASS 5/5.
+
+### Live end-to-end durable execution proof
+
+After Server 2.10.80, the same human-directed octopus research assignment was accepted by the Durable Execution Spine and completed on the server.
+
+The exact durable status endpoint returned HTTP 200 for:
+
+`execution-hallway-work-cb14186e-6bb5-4beb-9721-5544813a6ddf`
+
+The persisted durable execution record proved:
+
+- state: `returned`;
+- checkpoint stage: `returned`;
+- returned at `2026-09-14T05:06:55.355Z`;
+- research result `success: true`;
+- 30 evidence records persisted on the durable record;
+- two research passes occurred;
+- durable learning persisted to `investigation-history`;
+- the original Mission / cognition / Hallway / execution lineage remained intact;
+- lease was released after return;
+- no new authority was granted;
+- automatic spend remained `$0`;
+- external action remained unauthorized;
+- the browser was not the execution owner.
+
+This is the first live proof that the commissioned path can cross the browser lifetime boundary as a server-owned execution and persist its returned result under the original durable lineage:
+
+**Human → Maddy → Mission → Hallway → Durable Execution Spine → server-owned public research → evidence / durable learning → persisted returned result**
+
+Do not overstate this proof. Maddy did **not** yet present a governed answer to the human. Hallway 1.5.4 intentionally stops at durable handoff and does not yet consume a later returned server record.
+
+### Epistemic observation from the live proof
+
+The returned research result judged its evidence quality `mixed`, reported no authoritative sources, and recommended continuation rather than falsely closing uncertainty. That fail-open-to-more-investigation behavior is directionally consistent with the epistemic architecture.
+
+The evidence set also included unrelated confirmation-bias material. Treat that as a separate future research-planning/search-quality tuning issue; do not mix it into the Durable Execution return commission unless causal inspection proves the seams are coupled.
+
+### Current exact missing synapse
+
+The next isolated commission is **Durable Execution Return Reintegration**.
+
+The required continuity path is now:
+
+**persisted durable `returned` result → same Hallway work → same cognition / Mission lineage → existing Router / Brain evidence governance → Maddy governed conclusion → informational auto-resolution → Mission release**
+
+The return seam must preserve these constraints:
+
+- do not display raw server research or `result.synthesis` directly as Maddy's answer;
+- returned evidence must re-enter the existing governed cognition / evidence-bound speech path;
+- preserve the same Mission, cognition, Hallway work, and execution identity;
+- do not create a second research request or duplicate execution;
+- do not make browser polling the execution authority;
+- browser/UI may observe and present durable state, but server execution/result durability must remain independent of browser lifetime;
+- preserve evidence/provenance and epistemic state;
+- preserve zero-spend / no-external-action authority boundaries unless separately authorized by existing governance;
+- informational research may auto-resolve only after Maddy's governed answer is actually produced;
+- genuine terminal failure must still release the Mission through the existing failure path;
+- no new queue, Hallway, Mission system, research engine, memory authority, or retry nervous system;
+- provider, cloud, model, and hardware neutrality remain governing constraints.
+
+Before coding, inspect the existing Hallway, Router, Brain, and durable status/result seams and choose the smallest real connection. Stage prerequisites separately if more than one file is genuinely required. Continue the established **one fix → one commit → one test** discipline.
+
+This checkpoint is the recovery point if conversation context is lost.
+
+The architectural objective remains:
+
+**continuity of intention through time — with returned evidence becoming Maddy's governed cognition rather than a detached worker result.**
 
 
 **Always Push Forward.**
