@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.1";
-  const BUILD_ID = "EH151-TERMINAL-FAILURE-MISSION-RELEASE-20260913-A";
+  const VERSION = "1.5.2";
+  const BUILD_ID = "EH152-INFORMATIONAL-RETURN-AUTO-RESOLUTION-20260913-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1199,6 +1199,108 @@
     }
   }
 
+  /*
+   * Informational Return Auto-Resolution
+   *
+   * A completed, evidence-bound public-research answer is already the
+   * consequence the Executive Director asked for. It must not remain active
+   * merely because no Accept button was clicked. Accept / Not This remains a
+   * feedback contract for learning; it is not a completion gate for ordinary
+   * informational research.
+   *
+   * This gate is intentionally narrow. Only the commissioned headless public
+   * research continuation qualifies. Opportunity work, Workspace work,
+   * approvals, preparations, and other consequential executive work continue
+   * through their existing disposition/authority paths.
+   */
+  function isAutoResolvableInformationalResearch(work, execution) {
+    if (!work || work.route !== "executive-router") return false;
+    if (work.authority?.reviewRequired === true) return false;
+
+    const root = execution?.result ?? execution ?? {};
+    const source = String(
+      root?.source || execution?.source || root?.result?.source || ""
+    ).trim().toLowerCase();
+    const outputType = String(
+      root?.output?.type || root?.result?.output?.type || root?.type || ""
+    ).trim().toLowerCase();
+    const governed = governedAnswerFromExecution(execution);
+
+    return (
+      source === "meos-headless-public-research" &&
+      (outputType === "public-research-result" || Boolean(governed?.answer)) &&
+      governed?.finalSpeechAuthorized === true &&
+      governed?.oneMouth === true &&
+      Boolean(String(governed?.answer || "").trim())
+    );
+  }
+
+  function resolveInformationalResearchMission(work, execution) {
+    if (!isAutoResolvableInformationalResearch(work, execution)) return null;
+
+    const engine = missionEngine();
+    const missionId = work?.mission?.id || null;
+    if (!engine || !missionId || typeof engine.completeMission !== "function") return null;
+
+    try {
+      const current = engine.getMission?.(missionId) || null;
+      if (!current) return null;
+
+      const alreadyReleased = ["completed", "archived", "cancelled"].includes(
+        String(current.status || "").toLowerCase()
+      );
+      const mission = alreadyReleased ? current : engine.completeMission(missionId, {
+        completedBy: "Maddy / Executive Hallway",
+        summary: "Evidence-bound informational research returned to the Executive Director.",
+        notes: "Automatically resolved after successful informational return; feedback remains optional and grants no authority."
+      });
+      const released = ["completed", "archived", "cancelled"].includes(
+        String(mission?.status || "").toLowerCase()
+      );
+      if (!released) return null;
+
+      work.mission = {
+        ...work.mission,
+        status: mission?.status || work.mission?.status || null
+      };
+      work.lifecycle = {
+        schema: "meos.executive-hallway.lifecycle.v1",
+        terminal: true,
+        disposition: "resolved-informational-return",
+        reason: "Successful evidence-bound informational research is complete on return; human feedback is optional learning input.",
+        missionId,
+        resolvedAt: now()
+      };
+      work.evidence.push({
+        type: "informational-return-mission-disposition",
+        source: "mission-engine",
+        missionId,
+        missionStatus: work.mission.status,
+        historicalRecordPreserved: true,
+        feedbackRequiredForCompletion: false,
+        externalActionAuthorized: false,
+        resolvedAt: work.lifecycle.resolvedAt,
+        at: now()
+      });
+      record("work.lifecycle-disposition", {
+        workId: work.id,
+        missionId,
+        signal: "informational-return",
+        lifecycleDisposition: work.lifecycle.disposition,
+        missionStatus: work.mission.status
+      });
+      return clone(work.lifecycle);
+    } catch (error) {
+      work.evidence.push({
+        type: "coordination-warning",
+        source: "mission-engine",
+        message: `Informational return Mission resolution failed: ${error?.message || String(error)}`,
+        at: now()
+      });
+      return null;
+    }
+  }
+
   function applyMissionDisposition(
     work,
     feedback
@@ -1719,9 +1821,15 @@
       transition(work, "verifying");
       normalizeExecutionDeliverables(work, result);
       work.options = work.deliverables.length ? ["open-deliverable", "use-in-task", "archive"] : ["review-result", "archive"];
-      return transition(work, "done", {
+      const returned = transition(work, "done", {
         outcome: { success: result?.success !== false, verified: result?.success !== false, result: clone(result) }
       });
+      if (result?.success !== false) {
+        resolveInformationalResearchMission(work, result);
+      }
+      return work.lifecycle?.disposition === "resolved-informational-return"
+        ? clone(work)
+        : returned;
     } catch (error) {
       work.options = ["retry", "reassign", "cancel"];
       const lifecycle = releaseMissionAfterTerminalFailure(work, {
@@ -3300,6 +3408,82 @@
     });
   }
 
+  function runInformationalReturnAutoResolutionAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed, detail = null) => checks.push({ name, passed: passed === true, detail: clone(detail) });
+    const previousMissionEngine = global.MEOSMissionEngine;
+    const missions = new Map();
+    const completed = [];
+
+    const mockEngine = {
+      getMission(missionId) { return clone(missions.get(missionId) || null); },
+      completeMission(missionId, detail = {}) {
+        const mission = missions.get(missionId);
+        if (!mission) return null;
+        mission.status = "completed";
+        mission.completion = clone(detail);
+        completed.push(missionId);
+        return clone(mission);
+      }
+    };
+
+    const makeWork = (idValue, reviewRequired = false) => ({
+      id: idValue, route: "executive-router", authority: { reviewRequired },
+      mission: { id: `${idValue}-mission`, status: "queued" }, evidence: [], lifecycle: null
+    });
+    const researchExecution = {
+      success: true,
+      source: "meos-headless-public-research",
+      output: { type: "public-research-result" },
+      governedAnswer: {
+        answer: "Octopuses have three hearts.",
+        citations: ["https://science.example/octopus"],
+        finalSpeechAuthorized: true,
+        oneMouth: true
+      }
+    };
+
+    try {
+      global.MEOSMissionEngine = mockEngine;
+      const researchWork = makeWork("informational-research");
+      missions.set(researchWork.mission.id, { id: researchWork.mission.id, status: "queued" });
+      const lifecycle = resolveInformationalResearchMission(researchWork, researchExecution);
+
+      check("Evidence-bound public research qualifies for automatic completion", isAutoResolvableInformationalResearch(researchWork, researchExecution) === true);
+      check("Informational research releases its Mission without an Accept click", completed.includes(researchWork.mission.id) && researchWork.mission.status === "completed");
+      check("Hallway records informational return as terminal resolved work", lifecycle?.terminal === true && lifecycle?.disposition === "resolved-informational-return");
+      check("Completion evidence explicitly preserves optional feedback semantics", researchWork.evidence.some(item => item.feedbackRequiredForCompletion === false));
+      check("Automatic informational resolution grants no external-action authority", researchWork.evidence.some(item => item.externalActionAuthorized === false));
+
+      const consequentialWork = makeWork("consequential-work");
+      missions.set(consequentialWork.mission.id, { id: consequentialWork.mission.id, status: "queued" });
+      const consequentialExecution = {
+        ...researchExecution,
+        source: "meos",
+        output: { type: "executive-plan" }
+      };
+      check("Non-research executive work does not auto-resolve", isAutoResolvableInformationalResearch(consequentialWork, consequentialExecution) === false);
+
+      const approvalWork = makeWork("approval-work", true);
+      missions.set(approvalWork.mission.id, { id: approvalWork.mission.id, status: "queued" });
+      check("Review-required work cannot use informational auto-resolution", isAutoResolvableInformationalResearch(approvalWork, researchExecution) === false);
+      check("Existing Accept / Not This feedback contract remains available for learning", typeof submitFeedback === "function");
+    } finally {
+      global.MEOSMissionEngine = previousMissionEngine;
+    }
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks.map(({ name, passed }) => ({ name, passed })));
+    const result = freeze({
+      success: passed === checks.length,
+      commission: "MADDY-INFORMATIONAL-RETURN-AUTO-RESOLUTION",
+      schema: `${SCHEMA}.informational-return-auto-resolution-acceptance.v1`,
+      version: VERSION, buildId: BUILD_ID, passed, total: checks.length, checks
+    });
+    console.log(`[MEOS ${VERSION}] Informational Return Auto-Resolution: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
   function runAnswerProvenanceIntegrityAcceptanceTest() {
     const fixture = {
       success: true,
@@ -3353,6 +3537,7 @@
     getStatus,
     runSelfTest,
     runTerminalFailureMissionReleaseAcceptanceTest,
+    runInformationalReturnAutoResolutionAcceptanceTest,
     runCognitiveMetabolismAcceptanceTest,
     runHumanDirectedTaskAuthorityAcceptanceTest,
     runResearchContinuationQualificationAcceptanceTest,
