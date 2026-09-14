@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.26.2
- * Build: EB1262-DOCUMENT-AUTONOMY-CONTEXT-BRIDGE-20260817-A
+ * Version: 1.26.3
+ * Build: EB1263-EVIDENCE-BOUND-RESEARCH-SPEECH-20260913-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.2";
-  const BUILD_ID = "EB1262-DOCUMENT-AUTONOMY-CONTEXT-BRIDGE-20260817-A";
+  const VERSION = "1.26.3";
+  const BUILD_ID = "EB1263-EVIDENCE-BOUND-RESEARCH-SPEECH-20260913-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -1494,6 +1494,35 @@
       const heldAdviserParts = adviserPartDecisions
         .filter(item => item.release !== true);
 
+      /*
+       * Commission MADDY-EVIDENCE-BOUND-RESEARCH-SPEECH
+       *
+       * The zero-cost public-research route is an internal MEOS evidence path,
+       * not an external adviser mouth. Its answer is assembled upstream from
+       * cited answerFacts, then handed here for semantic reconciliation. Before
+       * this seam existed, that evidence-bound research answer was retained only
+       * as candidate language while the pre-research executive recommendation
+       * became Maddy's final speech. A factual question could therefore return a
+       * generic governance rationale even after successful research.
+       *
+       * Admit only the explicitly identified MEOS headless-research result into
+       * Maddy-owned semantics. Arbitrary provider/adviser language remains
+       * non-belief and non-speech.
+       */
+      const researchSource = String(options.source || "").trim().toLowerCase();
+      const evidenceBoundResearchAnswer =
+        researchSource === "meos-headless-public-research" &&
+        firstAdviceObject?.type === "public-research-result" &&
+        firstAdviceObject?.research?.synthesis &&
+        providerCandidateLanguage
+          ? providerCandidateLanguage
+          : null;
+      const evidenceBoundResearchCitations = evidenceBoundResearchAnswer
+        ? [...new Set((Array.isArray(firstAdviceObject?.citations) ? firstAdviceObject.citations : [])
+            .filter(value => typeof value === "string" && /^https?:\/\//i.test(value.trim()))
+            .map(value => value.trim()))].slice(0, 12)
+        : [];
+
       const maddyRecommendation = this.buildObjectiveBoundResponseRecommendation(
         requestPackage,
         reasoning,
@@ -1529,6 +1558,15 @@
 
       pushMeaning("maddy-reasoning", maddyRecommendation, "recommendation");
       maddyFindings.slice(0, 5).forEach(value => pushMeaning("maddy-reasoning", value, "finding"));
+      if (evidenceBoundResearchAnswer) {
+        semanticParts.unshift({
+          source: "maddy-research",
+          text: evidenceBoundResearchAnswer,
+          representation: "research-answer",
+          evidenceBound: true,
+          citations: [...evidenceBoundResearchCitations]
+        });
+      }
       if (semanticParts.length === 0) {
         localEvidenceDigest.slice(0, 4).forEach(value => pushMeaning("maddy-evidence", value.summary || value.title, "evidence"));
       }
@@ -1563,6 +1601,12 @@
         risks: this.clone(maddyRisks),
         unknowns: this.clone(maddyUnknowns),
         evidence: localEvidenceDigest,
+        researchAnswer: evidenceBoundResearchAnswer ? {
+          answer: evidenceBoundResearchAnswer,
+          citations: [...evidenceBoundResearchCitations],
+          source: "meos-headless-public-research",
+          evidenceBound: true
+        } : null,
         capabilityAwareness: this.clone(requestPackage?.selfModel?.capabilityAwareness || null),
         acceptedAdviserParts: this.clone(acceptedAdviserParts),
         heldAdviserParts: this.clone(heldAdviserParts),
@@ -2059,12 +2103,20 @@
       const semanticParts = Array.isArray(maddyResponse?.semanticParts)
         ? maddyResponse.semanticParts
         : [];
+      const evidenceBoundResearchText = semanticParts
+        .filter(part =>
+          part?.source === "maddy-research" &&
+          part?.representation === "research-answer" &&
+          part?.evidenceBound === true
+        )
+        .map(part => this.textContent(part?.text || "").replace(/\s+/g, " ").trim())
+        .find(Boolean) || "";
       const ownedFallback = semanticParts
         .filter(part => part?.source === "maddy-reasoning" && part?.representation !== "evidence")
         .map(part => this.textContent(part?.text || "").replace(/\s+/g, " ").trim())
         .find(text => text && !/^[{[]/.test(text)) || "";
 
-      const finalText = recommendationText || ownedFallback;
+      const finalText = evidenceBoundResearchText || recommendationText || ownedFallback;
       const finalSpeechAuthorized = Boolean(finalText);
       const rendered = {
         ...this.clone(maddyResponse),
@@ -2091,6 +2143,91 @@
       this.emit("brain:speech-authorized", rendered);
       return this.clone(rendered);
     },
+
+    runEvidenceBoundResearchSpeechAcceptanceTest() {
+      const requestPackage = {
+        request: {
+          id: "research-speech-octopus",
+          text: "Maddy, research why octopuses have three hearts. Use public evidence, tell me what you learned, and give me your conclusion.",
+          type: "research"
+        },
+        cognition: {
+          cognitionId: "research-speech-octopus-cognition",
+          reasoning: {
+            recommendation: {
+              state: "proceed-with-conditions",
+              confidence: 0.77,
+              rationale: "The institutional record supports movement, but material conflicts or risks must be controlled first.",
+              conditions: ["Confirm critical dependencies."],
+              executiveApprovalRequired: false
+            },
+            findings: [], options: [], risks: [], conflicts: []
+          },
+          unknowns: [],
+          dispatchReadiness: { authorityRequired: false }
+        },
+        localContext: { evidence: [] },
+        selfModel: {}
+      };
+      const researchResult = {
+        type: "public-research-result",
+        answer: "Octopuses have three hearts because two branchial hearts pump blood through the gills while one systemic heart pumps oxygenated blood through the rest of the body.",
+        citations: [
+          "https://ocean.si.edu/ocean-life/invertebrates/octopuses",
+          "https://www.nhm.ac.uk/discover/octopuses-keep-surprising-us-here-are-eight-examples-how.html"
+        ],
+        research: {
+          synthesis: {
+            answerFacts: [{ claim: "Two branchial hearts serve the gills and one systemic heart serves the body." }]
+          }
+        }
+      };
+
+      const semantic = this.reconcileAdviserResult(
+        requestPackage,
+        researchResult,
+        { source: "meos-headless-public-research", acceptanceTest: true }
+      );
+      const rendered = this.renderOwnedSemanticResponse(semantic, { acceptanceTest: true });
+      const finalText = rendered?.speech?.finalText || "";
+      const researchPart = (semantic?.semanticParts || []).find(part =>
+        part?.source === "maddy-research" && part?.representation === "research-answer"
+      );
+
+      const externalSemantic = this.reconcileAdviserResult(
+        requestPackage,
+        { answer: "External adviser says octopuses have magical backup hearts." },
+        { source: "external-provider", acceptanceTest: true }
+      );
+      const externalRendered = this.renderOwnedSemanticResponse(externalSemantic, { acceptanceTest: true });
+      const externalText = externalRendered?.speech?.finalText || "";
+
+      const checks = [
+        { name: "Maddy remains semantic owner after public research", passed: semantic?.owner === "maddy-executive-brain" },
+        { name: "MEOS public-research synthesis enters semantics as evidence-bound research", passed: researchPart?.evidenceBound === true },
+        { name: "Evidence-bound research answer outranks the pre-research governance recommendation in speech", passed: /two branchial hearts/i.test(finalText) && /one systemic heart/i.test(finalText) },
+        { name: "Generic institutional rationale no longer replaces a factual research answer", passed: !/institutional record supports movement/i.test(finalText) },
+        { name: "Research citations remain attached to the reconciled semantic answer", passed: Array.isArray(researchPart?.citations) && researchPart.citations.length === 2 },
+        { name: "The original executive recommendation remains preserved as internal reasoning", passed: /institutional record supports movement/i.test(semantic?.recommendation?.internalRationale || semantic?.recommendation?.rationale || "") },
+        { name: "Arbitrary external adviser answer is not promoted into Maddy speech", passed: !/magical backup hearts/i.test(externalText) },
+        { name: "Research reconciliation grants no external-action authority", passed: semantic?.authority?.externalActionGrantedByResponse === false }
+      ];
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      console.info(`[MEOS ${this.version}] Evidence-Bound Research Speech: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+      return {
+        success: passed === checks.length,
+        commission: "MADDY-EVIDENCE-BOUND-RESEARCH-SPEECH",
+        schema: "meos.executive-brain.evidence-bound-research-speech-acceptance.v1",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        total: checks.length,
+        finalText,
+        checks
+      };
+    },
+
 
     runOwnedSpeechAuthorizationAcceptanceTest() {
       const prepared = {
