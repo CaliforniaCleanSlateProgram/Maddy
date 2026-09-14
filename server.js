@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.76
+ * Server Version: 2.10.78
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.77";
+const VERSION = "2.10.78";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -13795,6 +13795,399 @@ function runMaddyTimeAcceptanceTest() {
   };
 }
 
+
+/* ========================================================================== */
+/* Commission 006.031M — Durable Execution Spine Contract                    */
+/*                                                                            */
+/* Durable intention already exists in Mission Engine / Executive Brain and  */
+/* durable server execution already exists in Continuous Operations. This     */
+/* commission establishes the missing server-owned execution identity between */
+/* them. It does not grant authority and it does not create a second Mission  */
+/* system, Hallway, memory authority, or browser worker.                       */
+/* ========================================================================== */
+
+const DURABLE_EXECUTION_SPINE_COMMISSION = "006.031M";
+const DURABLE_EXECUTION_SPINE_VERSION = "1.0.0";
+const DURABLE_EXECUTION_SPINE_BUILD_ID =
+  "DES100-DURABLE-EXECUTION-LINEAGE-LEASE-CONTRACT-20260913-A";
+const DURABLE_EXECUTION_SPINE_COLLECTION = "durable-execution-spine";
+const DURABLE_EXECUTION_SPINE_LEASE_MS = Number(
+  process.env.MEOS_DURABLE_EXECUTION_LEASE_MS ||
+    CONTINUOUS_OPERATIONS_LEASE_MS
+);
+const DURABLE_EXECUTION_SPINE_STATES = Object.freeze([
+  "queued",
+  "running",
+  "waiting",
+  "returned",
+  "failed",
+  "resolved"
+]);
+
+function durableExecutionClone(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function durableExecutionRequiredId(value, field) {
+  const id = normalizeIdentifier(value || "");
+  if (!id) {
+    const error = new Error(`Durable Execution requires ${field}.`);
+    error.status = 400;
+    error.code = "DURABLE_EXECUTION_LINEAGE_REQUIRED";
+    error.details = { field };
+    throw error;
+  }
+  return id;
+}
+
+function durableExecutionAuthorityBoundary(input = {}) {
+  return {
+    authoritySource:
+      String(input.authoritySource || "existing-governed-authority").trim(),
+    // This contract records lineage; it cannot mint external-action authority.
+    externalActionAuthorized: false,
+    automaticSpendUsd: 0,
+    grantsNewAuthority: false
+  };
+}
+
+function normalizeDurableExecutionRecord(input = {}, existing = null) {
+  const now = continuousOperationsNow();
+  const lineage = {
+    missionId: durableExecutionRequiredId(
+      input.lineage?.missionId || existing?.lineage?.missionId,
+      "lineage.missionId"
+    ),
+    cognitionId: durableExecutionRequiredId(
+      input.lineage?.cognitionId || existing?.lineage?.cognitionId,
+      "lineage.cognitionId"
+    ),
+    hallwayWorkId: durableExecutionRequiredId(
+      input.lineage?.hallwayWorkId || existing?.lineage?.hallwayWorkId,
+      "lineage.hallwayWorkId"
+    )
+  };
+  const executionId = durableExecutionRequiredId(
+    input.executionId || existing?.executionId,
+    "executionId"
+  );
+  const state = String(input.state || existing?.state || "queued").trim();
+  if (!DURABLE_EXECUTION_SPINE_STATES.includes(state)) {
+    const error = new Error(`Durable Execution state "${state}" is invalid.`);
+    error.status = 400;
+    error.code = "DURABLE_EXECUTION_STATE_INVALID";
+    throw error;
+  }
+
+  if (existing) {
+    const immutable = [
+      ["executionId", existing.executionId, executionId],
+      ["missionId", existing.lineage?.missionId, lineage.missionId],
+      ["cognitionId", existing.lineage?.cognitionId, lineage.cognitionId],
+      ["hallwayWorkId", existing.lineage?.hallwayWorkId, lineage.hallwayWorkId]
+    ];
+    const changed = immutable.find(([, before, after]) => before !== after);
+    if (changed) {
+      const error = new Error(
+        `Durable Execution ${changed[0]} is immutable once commissioned.`
+      );
+      error.status = 409;
+      error.code = "DURABLE_EXECUTION_LINEAGE_CONFLICT";
+      throw error;
+    }
+  }
+
+  return {
+    ...(existing || {}),
+    ...durableExecutionClone(input),
+    id: `durable-execution:${executionId}`,
+    schema: "meos.durable-execution.record.v1",
+    type: "durable-execution-record",
+    commission: DURABLE_EXECUTION_SPINE_COMMISSION,
+    version: DURABLE_EXECUTION_SPINE_VERSION,
+    buildId: DURABLE_EXECUTION_SPINE_BUILD_ID,
+    executionId,
+    lineage,
+    state,
+    lease: input.lease === undefined ? existing?.lease || null : input.lease,
+    checkpoint:
+      input.checkpoint === undefined
+        ? existing?.checkpoint || null
+        : durableExecutionClone(input.checkpoint),
+    evidence:
+      input.evidence === undefined
+        ? existing?.evidence || []
+        : durableExecutionClone(input.evidence),
+    result:
+      input.result === undefined
+        ? existing?.result || null
+        : durableExecutionClone(input.result),
+    authorityBoundary: durableExecutionAuthorityBoundary(
+      input.authorityBoundary || existing?.authorityBoundary || {}
+    ),
+    createdAt: existing?.createdAt || input.createdAt || now,
+    updatedAt: now
+  };
+}
+
+async function readDurableExecutionRecords() {
+  return readExecutiveMemoryCollection(DURABLE_EXECUTION_SPINE_COLLECTION);
+}
+
+async function upsertDurableExecutionRecord(input) {
+  return withExecutiveMemoryWriteLock(
+    DURABLE_EXECUTION_SPINE_COLLECTION,
+    async () => {
+      const records = await readDurableExecutionRecords();
+      const executionId = durableExecutionRequiredId(
+        input.executionId,
+        "executionId"
+      );
+      const index = records.findIndex(
+        record =>
+          record?.type === "durable-execution-record" &&
+          record.executionId === executionId
+      );
+      const existing = index >= 0 ? records[index] : null;
+      const normalized = normalizeDurableExecutionRecord(input, existing);
+      if (index >= 0) records[index] = normalized;
+      else records.push(normalized);
+      await writeExecutiveMemoryCollection(
+        DURABLE_EXECUTION_SPINE_COLLECTION,
+        records
+      );
+      return normalized;
+    }
+  );
+}
+
+function claimDurableExecutionRecord(record, nowMs = Date.now()) {
+  if (!record || !["queued", "waiting", "running"].includes(record.state)) {
+    return { claimed: false, record };
+  }
+  const leaseExpires = Date.parse(record.lease?.expiresAt || 0);
+  if (
+    record.state === "running" &&
+    record.lease &&
+    Number.isFinite(leaseExpires) &&
+    leaseExpires > nowMs
+  ) {
+    return { claimed: false, record };
+  }
+  const claimedAt = new Date(nowMs).toISOString();
+  return {
+    claimed: true,
+    record: {
+      ...record,
+      state: "running",
+      lease: {
+        id: createRequestId("durable-execution-lease"),
+        claimedAt,
+        expiresAt: new Date(
+          nowMs + DURABLE_EXECUTION_SPINE_LEASE_MS
+        ).toISOString(),
+        processId: process.pid
+      },
+      updatedAt: claimedAt
+    }
+  };
+}
+
+function recoverDurableExecutionRecord(record, nowMs = Date.now()) {
+  if (record?.state !== "running" || !record.lease?.expiresAt) {
+    return { recovered: false, record };
+  }
+  const expiresAt = Date.parse(record.lease.expiresAt);
+  if (!Number.isFinite(expiresAt) || expiresAt > nowMs) {
+    return { recovered: false, record };
+  }
+  const recoveredAt = new Date(nowMs).toISOString();
+  return {
+    recovered: true,
+    record: {
+      ...record,
+      state: "queued",
+      lease: null,
+      updatedAt: recoveredAt,
+      recovery: {
+        reason: "expired-execution-lease",
+        recoveredAt,
+        preservesOriginalLineage: true
+      }
+    }
+  };
+}
+
+async function claimDurableExecution(executionId) {
+  return withExecutiveMemoryWriteLock(
+    DURABLE_EXECUTION_SPINE_COLLECTION,
+    async () => {
+      const records = await readDurableExecutionRecords();
+      const index = records.findIndex(
+        record =>
+          record?.type === "durable-execution-record" &&
+          record.executionId === executionId
+      );
+      if (index < 0) return null;
+      const claim = claimDurableExecutionRecord(records[index]);
+      if (!claim.claimed) return null;
+      records[index] = claim.record;
+      await writeExecutiveMemoryCollection(
+        DURABLE_EXECUTION_SPINE_COLLECTION,
+        records
+      );
+      return claim.record;
+    }
+  );
+}
+
+async function recoverExpiredDurableExecutionLeases() {
+  return withExecutiveMemoryWriteLock(
+    DURABLE_EXECUTION_SPINE_COLLECTION,
+    async () => {
+      const records = await readDurableExecutionRecords();
+      let recovered = 0;
+      const updated = records.map(record => {
+        const result = recoverDurableExecutionRecord(record);
+        if (result.recovered) recovered += 1;
+        return result.record;
+      });
+      if (recovered > 0) {
+        await writeExecutiveMemoryCollection(
+          DURABLE_EXECUTION_SPINE_COLLECTION,
+          updated
+        );
+      }
+      return recovered;
+    }
+  );
+}
+
+function runDurableExecutionSpineAcceptanceTest() {
+  const lineage = {
+    missionId: "mission-acceptance-001",
+    cognitionId: "cognition-acceptance-001",
+    hallwayWorkId: "hallway-work-acceptance-001"
+  };
+  const base = normalizeDurableExecutionRecord({
+    executionId: "execution-acceptance-001",
+    lineage,
+    state: "queued",
+    authorityBoundary: {
+      authoritySource: "acceptance-existing-authority",
+      externalActionAuthorized: false
+    }
+  });
+  const now = Date.parse("2026-09-13T20:00:00.000Z");
+  const firstClaim = claimDurableExecutionRecord(base, now);
+  const duplicateClaim = claimDurableExecutionRecord(
+    firstClaim.record,
+    now + 1000
+  );
+  const recovered = recoverDurableExecutionRecord(
+    firstClaim.record,
+    now + DURABLE_EXECUTION_SPINE_LEASE_MS + 1
+  );
+  const resumed = claimDurableExecutionRecord(
+    recovered.record,
+    now + DURABLE_EXECUTION_SPINE_LEASE_MS + 2
+  );
+  let lineageConflictRejected = false;
+  try {
+    normalizeDurableExecutionRecord(
+      {
+        executionId: base.executionId,
+        lineage: { ...lineage, missionId: "different-mission" }
+      },
+      base
+    );
+  } catch (error) {
+    lineageConflictRejected =
+      error?.code === "DURABLE_EXECUTION_LINEAGE_CONFLICT";
+  }
+  const checks = [
+    {
+      name: "Execution identity binds Mission, cognition, and Hallway work lineage",
+      passed:
+        base.lineage.missionId === lineage.missionId &&
+        base.lineage.cognitionId === lineage.cognitionId &&
+        base.lineage.hallwayWorkId === lineage.hallwayWorkId
+    },
+    {
+      name: "Durable execution lifecycle uses the commissioned six-state vocabulary",
+      passed:
+        DURABLE_EXECUTION_SPINE_STATES.join(",") ===
+        "queued,running,waiting,returned,failed,resolved"
+    },
+    {
+      name: "A queued execution can be claimed with a server execution lease",
+      passed:
+        firstClaim.claimed === true &&
+        firstClaim.record.state === "running" &&
+        Boolean(firstClaim.record.lease?.id)
+    },
+    {
+      name: "An unexpired lease prevents duplicate execution claims",
+      passed: duplicateClaim.claimed === false
+    },
+    {
+      name: "An expired lease recovers to queued instead of losing the work",
+      passed:
+        recovered.recovered === true &&
+        recovered.record.state === "queued" &&
+        recovered.record.lease === null
+    },
+    {
+      name: "Recovered execution preserves the original lineage",
+      passed:
+        JSON.stringify(recovered.record.lineage) === JSON.stringify(lineage)
+    },
+    {
+      name: "Recovered work can be reclaimed under a new lease without a new execution identity",
+      passed:
+        resumed.claimed === true &&
+        resumed.record.executionId === base.executionId &&
+        resumed.record.lease.id !== firstClaim.record.lease.id
+    },
+    {
+      name: "Commissioned lineage is immutable and conflicting Mission identity fails closed",
+      passed: lineageConflictRejected
+    },
+    {
+      name: "The execution contract grants no new authority",
+      passed:
+        base.authorityBoundary.grantsNewAuthority === false &&
+        base.authorityBoundary.automaticSpendUsd === 0 &&
+        base.authorityBoundary.externalActionAuthorized === false
+    },
+    {
+      name: "Durable execution is server-owned institutional state, not browser/localStorage state",
+      passed:
+        DURABLE_EXECUTION_SPINE_COLLECTION === "durable-execution-spine" &&
+        !/localStorage|sessionStorage/.test(
+          `${normalizeDurableExecutionRecord}${claimDurableExecutionRecord}${recoverDurableExecutionRecord}`
+        )
+    }
+  ];
+  return {
+    success: checks.every(check => check.passed),
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    commission: DURABLE_EXECUTION_SPINE_COMMISSION,
+    version: DURABLE_EXECUTION_SPINE_VERSION,
+    buildId: DURABLE_EXECUTION_SPINE_BUILD_ID,
+    checks,
+    sample: {
+      executionId: base.executionId,
+      lineage: base.lineage,
+      firstLeaseId: firstClaim.record.lease?.id || null,
+      resumedLeaseId: resumed.record.lease?.id || null
+    }
+  };
+}
+
+
 function continuousOperationsNow() {
   return new Date().toISOString();
 }
@@ -14771,6 +15164,7 @@ async function startContinuousOperationsRuntime() {
 
   await ensureContinuousOperationsStandingMissions();
   await recoverExpiredContinuousOperationsLeases();
+  await recoverExpiredDurableExecutionLeases();
   await continuousOperationsTick();
 
   const scheduled = await scheduleContinuousOperationsTimer({
@@ -15934,6 +16328,43 @@ app.post(
         code: error?.code || "MADDY_TIME_EVENT_ACK_FAILED"
       });
     }
+  }
+);
+
+
+/** Durable Execution Spine API — identity/persistence only; no authority grant. */
+app.post(
+  "/api/durable-execution",
+  express.json({ limit: "32kb", strict: true }),
+  async (request, response) => {
+    try {
+      const principal = await resolveAutonomyPrincipal(request);
+      if (!principal) {
+        response.status(401).json({
+          error: "Durable execution creation requires an authenticated or trusted same-origin executive principal.",
+          code: "DURABLE_EXECUTION_PRINCIPAL_REQUIRED"
+        });
+        return;
+      }
+      const record = await upsertDurableExecutionRecord(request.body || {});
+      response.status(200).json({
+        schema: "meos.durable-execution.response.v1",
+        record
+      });
+    } catch (error) {
+      response.status(error.status || 500).json({
+        error: error?.message || "Durable execution could not be persisted.",
+        code: error?.code || "DURABLE_EXECUTION_PERSIST_FAILED"
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/durable-execution/acceptance-test",
+  (request, response) => {
+    const result = runDurableExecutionSpineAcceptanceTest();
+    response.status(result.success ? 200 : 500).json(result);
   }
 );
 
