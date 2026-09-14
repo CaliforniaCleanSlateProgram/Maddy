@@ -3720,3 +3720,158 @@ Continue under:
 **one fix → one commit → one test → commission.**
 
 **Always Push Forward.**
+
+---
+
+## CHECKPOINT — 006.032F6 COMMISSIONED — LinkedIn Member OAuth Publishing Adapter
+
+**Checkpoint date:** 2026-09-14  
+**Commission:** 006.032F6  
+**Status:** **COMMISSIONED / LIVE-PROVEN 24/24**
+
+### Runtime artifact
+
+- Server runtime: **v2.10.87**.
+- Acceptance schema: `meos.server.linkedin-member-publishing.acceptance.v1`.
+- Acceptance contract version: `1.0.0`.
+- Build: `LPA100-LINKEDIN-MEMBER-OAUTH-PUBLISHING-ADAPTER-20260914-A`.
+- Live deployed acceptance: `success: true`, `passed: 24`, `total: 24`.
+
+### What 006.032F6 commissions
+
+006.032F6 establishes the first real provider-specific publishing adapter implementation beneath the commissioned provider-neutral F1-F5 substrate: a LinkedIn member OAuth publishing adapter. LinkedIn remains replaceable external infrastructure underneath one persistent Maddy; it does not become Maddy's identity, cognition, campaign authority, or universal publishing architecture.
+
+Live acceptance proved all 24 contract checks, including:
+
+- the LinkedIn adapter contract is versioned beneath Maddy;
+- adapter identity is deterministic per organization and principal;
+- provider capability remains `external-publishing` and replaceable;
+- runtime discovery advertises LinkedIn publishing only after the required publish permission is verified;
+- public adapter state exposes no credential material;
+- `w_member_social` is required before capability becomes usable;
+- organization isolation is enforced again at the provider execution boundary;
+- channel-adapted creative text is required;
+- provider execution uses the LinkedIn REST Posts API contract;
+- `LinkedIn-Version` is explicit and configuration-driven rather than silently frozen into Maddy identity;
+- Rest.li protocol version is explicit;
+- the OAuth bearer credential remains inside server transport headers;
+- the provider post author is the verified LinkedIn Person URN;
+- the provider post body carries exactly the governed channel-adapted commentary;
+- the modeled provider action is an organic public main-feed publication;
+- the LinkedIn provider receipt is normalized into the commissioned F2 receipt contract;
+- exact authorization identity survives provider execution;
+- execution evidence remains distinct from commercial outcome;
+- OAuth start uses authorization-code flow with bounded CSRF state;
+- OAuth start requests member publishing permission without granting MEOS action authority;
+- OAuth redirect is exact and the provider client secret is never returned to the browser/model publishing surface;
+- the adapter relies on F5 encrypted credential resolution rather than envelope credentials;
+- the adapter remains behind F2 durable consequential execution;
+- the adapter itself grants no publication authority.
+
+### Acceptance truth boundary — LOCKED
+
+The F6 live acceptance fixture explicitly reported:
+
+- `liveLinkedInRequestSent: false`;
+- simulated provider publication evidence `urn:li:share:acceptance-123`.
+
+Therefore F6 proves the implemented real-provider adapter contract, OAuth boundary, credential path, execution semantics, and normalized receipt behavior **without making a public LinkedIn post during acceptance**.
+
+F6 must not be misrepresented as proof that a production LinkedIn member account is currently connected. It also must not be represented as proof that Maddy has made a real public LinkedIn publication.
+
+Those claims require separate runtime evidence from a real provider-approved application/client, production credential-vault configuration, completed OAuth authorization, verified granted permission/capability, runtime adapter availability, and—if a publication is authorized—an actual F2-governed provider execution receipt.
+
+### Authority model after F6 — UNCHANGED / STRENGTHENED
+
+The existence of a real-provider adapter does not collapse the layered authority model.
+
+The chain remains:
+
+1. the external provider grants a connection/permission to an authenticated principal;
+2. F5 protects provider credential material inside encrypted server-side custody;
+3. F4 verifies runtime connection and granted operations before advertising capability truth;
+4. F1 carries the provider-neutral governed publishing capability/envelope contract;
+5. F3 may propose/adapt a campaign act while preserving campaign/hypothesis/evidence lineage and valid inaction;
+6. exact human authorization governs each consequential publication;
+7. F2 owns durable/idempotent consequential execution and uncertainty/retry discipline;
+8. F6 translates that already-authorized provider-neutral act into the LinkedIn-specific API request and normalizes the provider receipt;
+9. Monitoring/Learning/Attribution must later distinguish execution evidence from observed commercial consequence.
+
+Neither OAuth permission, credential possession, adapter registration, runtime availability, nor provider connectivity grants Maddy publication authority by itself.
+
+### Provider neutrality after first real adapter — LOCKED
+
+LinkedIn is the first real provider-specific publishing adapter implementation; it is not the universal publishing architecture.
+
+The commissioned architectural rule remains:
+
+> Providers are replaceable capability sources underneath Maddy.
+
+Accordingly:
+
+- Maddy Core must not require LinkedIn to preserve identity, memory, reasoning, campaign intention, authority, or continuity;
+- adding a later channel must not require a platform-specific Maddy identity fork;
+- removing or revoking LinkedIn must truthfully remove that capability without damaging Maddy's core commercial cognition;
+- provider-specific request/response semantics stay at the adapter boundary;
+- F1-F5 remain the common governed substrate;
+- provider substitution cannot widen destination, audience, content, timing, spend, outreach, or authorization scope;
+- no provider secret may migrate into browser/model/campaign truth merely because a real adapter now exists.
+
+### 006.032F dependency state after F6
+
+The Governed Multi-Channel Publishing arc now has six commissioned layers:
+
+- **006.032F1 — Governed Publishing Capability Contract:** commissioned / live-proven 20/20.
+- **006.032F2 — Durable Governed Publishing Execution Spine:** commissioned / live-proven 20/20.
+- **006.032F3 — Governed Multi-Channel Campaign Orchestration:** commissioned / live-proven 20/20.
+- **006.032F4 — Runtime Publishing Adapter Discovery & Credential Boundary:** commissioned / live-proven 20/20.
+- **006.032F5 — Publishing Credential Vault & Organization Isolation:** commissioned / live-proven 20/20.
+- **006.032F6 — LinkedIn Member OAuth Publishing Adapter:** commissioned / live-proven 24/24.
+
+F6 materially crosses the boundary from universal publishing infrastructure into a provider-specific real API implementation while preserving the architecture. It does **not** yet establish a live production LinkedIn connection, and one provider adapter alone does not complete the meaning of **multi-channel** publishing.
+
+### NEXT — production connection proof before widening channel count
+
+Before adding another provider merely to increase channel count, prove the first real provider path honestly in production runtime truth.
+
+The next bounded dependency is to configure and verify one real LinkedIn OAuth connection through the commissioned F5/F4/F6 path without bypassing the authority model.
+
+Required proof includes, as applicable to the provider-approved application and deployment:
+
+- production publishing credential-vault encryption key is configured correctly and remains server-side;
+- real LinkedIn application/client configuration exists and no client secret is exposed;
+- exact redirect configuration matches the deployed MEOS OAuth callback;
+- the user initiates and completes provider-approved OAuth authorization;
+- the returned credential is persisted through F5 encrypted custody;
+- the authenticated LinkedIn principal identity is verified;
+- required publishing permission is verified before F4 advertises availability;
+- disconnect/revocation removes capability truth;
+- no publication occurs merely because OAuth succeeded;
+- any first real public post requires a separately defined human authorization and F2 durable execution identity;
+- any real provider receipt is recorded as execution evidence, not commercial outcome.
+
+This production connection proof may be configuration/operational work rather than a new code commission if the commissioned F6 implementation already exposes the required flow. Inspect runtime/configuration truth first; do not create code merely to manufacture another commission number.
+
+Only after the first real provider connection is truthfully proven should the next channel adapter be selected from current commercial usefulness, provider requirements, permissions/policies, cost, and architectural leverage. Channel count is not the objective.
+
+### Commercial / Spooky meaning after F6
+
+The Growth Engine remains unsuccessful merely because Maddy can technically reach a provider API.
+
+The governing closed-loop target remains:
+
+**understand market → identify high-value pain → model buyer → form commercial hypothesis → choose capital-efficient path → create campaign → human authorization → governed execution → monitor → SEO/distribution/follow-up → measure → attribute → convert → revenue/economic value → compare prediction to reality → learn → adapt → retain transferable commercial intelligence → next campaign.**
+
+F6 supplies one real replaceable external hand beneath that loop. The Spooky differentiation must come from what one persistent Maddy understands, preserves, predicts, governs, observes, connects, and learns across market, audience, psychology, content, channels, time, cost, behavior, conversion, and economic consequence—not from the fact that a REST request can publish content.
+
+### Hard post-F6 question
+
+**Can Maddy take one persistent evidence-bound commercial intention from cognition through a real provider-approved connection and exact human authorization into durable external consequence, then preserve the provider receipt, observe what reality does afterward, distinguish execution from outcome, and use that consequence to improve the next decision—while LinkedIn remains only one replaceable hand underneath her?**
+
+If the next work only adds more posting endpoints without strengthening that closed loop, it does not clear the Spooky direction.
+
+Continue under:
+
+**one fix → one commit → one test → commission.**
+
+**Always Push Forward.**
