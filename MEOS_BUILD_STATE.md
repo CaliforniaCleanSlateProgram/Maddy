@@ -1,4 +1,4 @@
-[Uploading MEOS_BUILD_STATE.md…]()
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32214223/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
@@ -3369,6 +3369,148 @@ Hard 006.032F4 question:
 **Can a new external publishing channel be connected underneath Maddy as replaceable infrastructure, prove exactly what it is permitted to do without exposing credentials to Maddy or the browser, disappear truthfully when disconnected, and execute only an independently authorized durable act without changing who Maddy is or widening her authority?**
 
 If adding a new channel requires editing Maddy's core cognition or embedding provider secrets in frontend state, it does not clear the architecture.
+
+Continue under:
+
+**one fix → one commit → one test → commission.**
+
+**Always Push Forward.**
+
+---
+
+## CHECKPOINT — 006.032F4 COMMISSIONED — Runtime Publishing Adapter Discovery & Credential Boundary
+
+**Checkpoint date:** 2026-09-14  
+**Commission:** 006.032F4  
+**Status:** **COMMISSIONED / LIVE-PROVEN 20/20**
+
+### North Star continuity — UNCHANGED / GOVERNING
+
+Maddy remains governed by the immutable project North Star:
+
+> **edge of what's possible---sometimes past what is seemingly impossible today; as Einstein put it "Spooky stuff" or from a distance; beyond human thought process---that is the bar.**
+
+006.032F4 does not redefine that bar. Competitors establish a floor, never a capability ceiling. Maddy must continue strengthening as one persistent entity under the Spooky standard while preserving truth, privacy, provider neutrality, durable continuity, and exact consequential authority.
+
+### 006.032F4 — COMMISSIONED / LIVE-PROVEN 20/20
+
+The runtime publishing adapter discovery and credential-boundary seam is commissioned in server runtime **v2.10.84** under acceptance build **`RPA100-RUNTIME-PUBLISHING-ADAPTER-DISCOVERY-CREDENTIAL-BOUNDARY-20260914-A`**.
+
+Live deployed acceptance returned:
+
+- `success: true`;
+- `commission: "006.032F4"`;
+- `schema: "meos.server.runtime-publishing-adapter.acceptance.v1"`;
+- `version: "1.0.0"`;
+- `buildId: "RPA100-RUNTIME-PUBLISHING-ADAPTER-DISCOVERY-CREDENTIAL-BOUNDARY-20260914-A"`;
+- `passed: 20`;
+- `total: 20`.
+
+Status: **COMMISSIONED.**
+
+### Commissioned behavior
+
+006.032F4 proves the universal runtime seam by which replaceable external publishing infrastructure can become truthful Maddy capability without becoming Maddy's identity or widening her authority.
+
+Commissioned invariants:
+
+- the runtime publishing adapter contract is versioned and server-owned;
+- adapter metadata containing credential material is rejected;
+- connection-verifier output containing credential material fails closed;
+- credentials remain server-side and absent from public discovery state;
+- connection alone is insufficient: an explicitly granted `publish` operation is required before publishing availability is advertised;
+- verified connection plus an explicit publish grant may expose the adapter as available;
+- disconnected adapters truthfully disappear as executable publishing capability;
+- read-only adapters cannot become publishing executors;
+- verified publishing adapters dynamically bind to the commissioned durable execution boundary rather than bypassing it;
+- capability discovery grants no publication authority;
+- public adapter discovery exposes no token or password fields;
+- adapter identity remains separate from Maddy identity;
+- provider/channel infrastructure remains replaceable without changing Maddy Core;
+- revocation removes durable publishing execution availability;
+- disconnected state is represented explicitly rather than fabricated;
+- granted operations are explicit and least-capability by default;
+- verification records when capability truth was checked;
+- verification failure returns governed error truth rather than fake availability;
+- 006.032F2 remains the consequential publication execution boundary;
+- the acceptance fixture claims no real social platform is connected.
+
+### Credential-boundary correction — LOCKED
+
+The live commissioning path exposed and corrected an important distinction in the credential detector.
+
+CamelCase credential names such as `accessToken` and `refreshToken` must be detected as credential material just as snake_case and kebab-case equivalents are. At the same time, the legitimate public governance declaration `credentialBoundary` must **not** itself be mistaken for credential material. Its value remains independently constrained to the truthful declaration `server-side-only`.
+
+The final commissioned behavior therefore preserves both sides of the boundary:
+
+- actual credential material remains rejected and server-side;
+- the public governance declaration describing that boundary remains representable;
+- verifier credential leakage fails closed;
+- no credential-bearing object becomes browser/model publishing truth.
+
+This distinction is now part of the architecture and must not regress.
+
+### Runtime failure lesson — ACCEPTANCE MUST NOT DESTABILIZE MADDY
+
+During F4 commissioning, server v2.10.83 demonstrated that an acceptance invocation could trigger a credential-boundary exception and terminate the Node process when legitimate `credentialBoundary` metadata was falsely classified as credential material. Render then returned 502/503 responses while restarting the service.
+
+The final v2.10.84 correction removed that false positive and the deployed F4 acceptance returned 20/20.
+
+Governing lesson: acceptance and adversarial security fixtures are allowed to prove rejection paths, but test behavior must not be interpreted as product capability unless the live runtime completes the governed acceptance contract. Runtime evidence remains authoritative.
+
+### What F4 means — and what it does not mean
+
+F4 means Maddy now has a provider-neutral, server-owned way to discover whether a publishing adapter is genuinely connected and exactly what operation it is permitted to expose. That capability can appear or disappear at runtime without rewriting Maddy's core cognition.
+
+F4 does **not** mean Facebook, Instagram, LinkedIn, X, TikTok, YouTube, email, or any other real external channel is connected. No platform is to be represented as operational until its own real runtime adapter, permissions, policy requirements, credential state, execution behavior, and receipts are proven.
+
+F4 also does not grant Maddy authority to publish. The authority chain remains layered:
+
+1. provider permission / connection truth;
+2. MEOS capability truth;
+3. exact human authorization for the consequential act;
+4. durable execution through the commissioned 006.032F2 boundary;
+5. execution receipt returned as evidence, not as proof of commercial outcome.
+
+### 006.032F dependency state after F4
+
+The Governed Multi-Channel Publishing arc now has four commissioned layers:
+
+- **006.032F1 — Governed Publishing Capability Contract:** commissioned / live-proven 20/20.
+- **006.032F2 — Durable Governed Publishing Execution Spine:** commissioned / live-proven 20/20.
+- **006.032F3 — Governed Multi-Channel Campaign Orchestration:** commissioned / live-proven 20/20.
+- **006.032F4 — Runtime Publishing Adapter Discovery & Credential Boundary:** commissioned / live-proven 20/20.
+
+Together these prove the architecture from Maddy-owned commercial intention through dynamic channel capability truth and separately authorized durable publication execution, while preserving provider replaceability, credential isolation, anti-spam restraint, campaign lineage, and one persistent Maddy identity.
+
+The remaining material gap is **real external channel connectivity and the later operational/learning loop**. Universal infrastructure is not evidence that any specific third-party platform is presently connected.
+
+### Forward direction — preserve dependency order
+
+Do not collapse the remaining work into a generic social-media scheduler. The next implementation must be selected only after reading the North Star and this Build State in full and inspecting the current repository/runtime.
+
+The next dependency-correct work should determine the smallest commission that advances Maddy from proven universal publishing infrastructure toward materially useful real-world commercial operation while preserving all commissioned invariants. Candidate work may include a first real replaceable publishing adapter or the transition into the locked **006.032G — Campaign Operations, SEO & Sales Follow-Up** arc, but the exact seam must be proven from the repository and real provider requirements before coding.
+
+Any real channel integration must preserve:
+
+- OAuth/API or equivalent provider-approved authorization rather than customer password collection;
+- server-side credential isolation;
+- runtime permission truth and least capability;
+- no capability advertisement when disconnected or revoked;
+- separate human authority for each consequential act;
+- 006.032F2 durable/idempotent execution semantics;
+- F3 anti-spam, cadence, suppression, fatigue, and inaction semantics;
+- campaign/hypothesis/asset/organization lineage;
+- execution receipt as evidence, not outcome;
+- provider/channel replaceability beneath one Maddy;
+- no provider-specific identity fork;
+- no fixed capability ceiling.
+
+### Hard post-F4 question
+
+**Can Maddy now connect real replaceable channels beneath one persistent identity, use them only when runtime truth and exact authority permit, preserve commercial intention and evidence across every act, and learn from resulting reality in a way that is materially stronger than a contemporary scheduler or AI marketing agent?**
+
+If the answer is only "Maddy can post to another platform," the next work has not cleared Spooky.
 
 Continue under:
 
