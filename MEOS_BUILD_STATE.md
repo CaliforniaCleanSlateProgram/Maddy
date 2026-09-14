@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200469/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
@@ -3114,9 +3114,13 @@ Executive Learning was upgraded to v1.3.1, build `EL131-COMMERCIAL-INTELLIGENCE-
 
 Executive Dashboard was upgraded to v4.13.3, build `OD4133-COMMERCIAL-COMMAND-DASHBOARD-20260914-A`. Commercial Command / “Shark Tank” is a first-class truth and decision surface inside the existing Executive Office dashboard, consuming Executive Learning's commissioned commercial truth contract rather than becoming a second persistence authority. The surface includes prominent Net Attributable Value, attributable revenue, commercial cost, paid spend, qualified pipeline, CAC, contribution margin, ROI, ROAS, payback, retention, LTV, churn, campaign conversion evidence, organic-versus-paid evidence, active experiments, prediction versus observed outcome, commercial lessons, and next recommendation where supportable. Incomplete economics remain unknown rather than fabricated; measured zero paid spend remains valid; zero-spend ROAS does not become fabricated infinity; organization isolation and human authority boundaries remain intact. Live acceptance passed 20/20.
 
-### NEXT — 006.032D — Growth Strategy & Sales Psychology
+### 006.032D — COMMISSIONED / LIVE-PROVEN 20/20
 
-Before coding 006.032D, read `PROJECT_MADDY_NORTH_STAR.md` in full and this canonical Build State in full, then inspect the latest live repository to prove the correct existing cognition/strategy seams. Connect market/buyer/product understanding, pain, positioning, offers, objections, trust/proof, sales psychology, channel fit, free-first distribution reasoning, economic constraints, and campaign hypotheses through existing Maddy organs. Do not create a disconnected strategy brain, duplicate commercial truth authority, or silently grant execution/spend/publication/outreach authority.
+Institutional Reasoning was upgraded to v1.3.1, build `IR131-GROWTH-STRATEGY-SALES-PSYCHOLOGY-20260914-A`. The existing Institutional Reasoning organ now carries evidence-grounded commercial strategy rather than introducing a disconnected Growth Strategy brain or duplicate commercial truth authority. It consumes Executive Learning's commissioned organization-bound commercial truth and connects market understanding, buyer model, high-value pain, desired outcome, positioning, offer, objections, trust/proof, sales-psychology hypotheses, channel fit, commercial economics, free/low-cost-first validation, Paid Growth Gate reasoning, and falsifiable campaign hypotheses. Sales psychology remains explicitly hypothetical and bounded against deception, coercion, fabricated scarcity, and exploitation of vulnerability. Unknown commercial inputs remain unknown rather than fabricated; organization-private strategy remains isolated; and ready strategy advances only to governed campaign proposal/human review, granting no execution, spend, publication, outreach, or policy authority. Live acceptance passed 20/20.
+
+### NEXT — 006.032E — Creative Studio
+
+Before coding 006.032E, read `PROJECT_MADDY_NORTH_STAR.md` in full and this canonical Build State in full, then inspect the latest live repository and the existing creative, speech/voice, digital-actor, content, website/SEO, evidence, strategy, Hallway, and authority seams to prove the correct implementation home. Enable governed campaign creation across copy, banners/images, SEO content, email/follow-up assets, and progressive canonical-Maddy video commercial creation while preserving truthful commercial claims, evidence lineage, canonical Maddy identity/voice, organization isolation, provider neutrality, economic stewardship, and explicit human authority. Do not create a disconnected creative brain, duplicate commercial truth store, generic social-content generator, or silent publication/spend/outreach authority.
 
 Continue under:
 
