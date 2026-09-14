@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.82
+ * Server Version: 2.10.83
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.82";
+const VERSION = "2.10.83";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -16484,9 +16484,16 @@ function durablePublishingContainsCredentialMaterial(value, seen = new Set()) {
   if (!value || typeof value !== "object") return false;
   if (seen.has(value)) return false;
   seen.add(value);
+
   const forbidden = /(^|[-_])(token|secret|password|passphrase|api[-_]?key|oauth|credential|authorization[-_]?header|private[-_]?key)($|[-_])/i;
+  const normalizeCredentialKey = key =>
+    String(key || "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+      .replace(/\s+/g, "-")
+      .toLowerCase();
+
   return Object.entries(value).some(([key, child]) =>
-    forbidden.test(String(key)) ||
+    forbidden.test(normalizeCredentialKey(key)) ||
     durablePublishingContainsCredentialMaterial(child, seen)
   );
 }
