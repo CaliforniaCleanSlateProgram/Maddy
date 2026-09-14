@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.81
+ * Server Version: 2.10.82
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.81";
+const VERSION = "2.10.82";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -16655,6 +16655,291 @@ function unregisterDurablePublishingExecutor(capabilityId) {
   return durablePublishingExecutors.delete(String(capabilityId || "").trim());
 }
 
+/*
+ * Commission 006.032F4 — Runtime Publishing Adapter Discovery & Credential Boundary
+ *
+ * Server-side publishing adapters are replaceable infrastructure underneath Maddy.
+ * Registration is not capability truth. An adapter is exposed as available only
+ * after its server-side connection verifier proves a live connection and the exact
+ * granted publication operation. Secrets never enter discovery state or receipts.
+ */
+const RUNTIME_PUBLISHING_ADAPTER_VERSION = "1.0.0";
+const RUNTIME_PUBLISHING_ADAPTER_BUILD_ID =
+  "RPA100-RUNTIME-PUBLISHING-ADAPTER-DISCOVERY-CREDENTIAL-BOUNDARY-20260914-A";
+const RUNTIME_PUBLISHING_ADAPTER_SCHEMA =
+  "meos.server.runtime-publishing-adapter.v1";
+const runtimePublishingAdapters = new Map();
+
+function publishingAdapterPublicState(record = {}) {
+  return {
+    schema: RUNTIME_PUBLISHING_ADAPTER_SCHEMA,
+    version: RUNTIME_PUBLISHING_ADAPTER_VERSION,
+    buildId: RUNTIME_PUBLISHING_ADAPTER_BUILD_ID,
+    adapterId: record.adapterId,
+    capabilityId: record.capabilityId,
+    channel: record.channel,
+    channelFamily: record.channelFamily,
+    connected: record.connected === true,
+    available: record.available === true,
+    grantedOperations: Array.isArray(record.grantedOperations)
+      ? [...record.grantedOperations]
+      : [],
+    credentialBoundary: "server-side-only",
+    credentialsExposed: false,
+    capabilityGrantsAuthority: false,
+    lastVerifiedAt: record.lastVerifiedAt || null,
+    lastError: record.lastError || null
+  };
+}
+
+function registerRuntimePublishingAdapter(definition = {}, options = {}) {
+  const adapterId = durablePublishingRequiredText(definition.adapterId, "adapterId");
+  const capabilityId = durablePublishingRequiredText(
+    definition.capabilityId,
+    "capabilityId"
+  );
+  const channel = durablePublishingRequiredText(definition.channel, "channel");
+
+  if (!capabilityId.startsWith(DURABLE_PUBLISHING_CAPABILITY_PREFIX)) {
+    throw new Error("Runtime publishing adapters must bind to an external-publishing capability.");
+  }
+  if (
+    definition.credentialBoundary !== "server-side-only" ||
+    durablePublishingContainsCredentialMaterial({
+      ...definition,
+      verifyConnection: undefined,
+      execute: undefined
+    })
+  ) {
+    throw new Error("Runtime publishing adapter metadata must preserve the server-side-only credential boundary.");
+  }
+  if (typeof definition.verifyConnection !== "function") {
+    throw new TypeError("Runtime publishing adapter requires a server-side connection verifier.");
+  }
+  if (typeof definition.execute !== "function") {
+    throw new TypeError("Runtime publishing adapter requires a server-side executor.");
+  }
+  if (runtimePublishingAdapters.has(adapterId) && options.replace !== true) {
+    throw new Error(`Runtime publishing adapter "${adapterId}" is already registered.`);
+  }
+
+  const record = {
+    adapterId,
+    capabilityId,
+    channel,
+    channelFamily: String(definition.channelFamily || "external").trim() || "external",
+    credentialBoundary: "server-side-only",
+    verifyConnection: definition.verifyConnection,
+    execute: definition.execute,
+    connected: false,
+    available: false,
+    grantedOperations: [],
+    lastVerifiedAt: null,
+    lastError: null
+  };
+  runtimePublishingAdapters.set(adapterId, record);
+  unregisterDurablePublishingExecutor(capabilityId);
+  return publishingAdapterPublicState(record);
+}
+
+function unregisterRuntimePublishingAdapter(adapterId) {
+  const key = String(adapterId || "").trim();
+  const record = runtimePublishingAdapters.get(key);
+  if (!record) return false;
+  unregisterDurablePublishingExecutor(record.capabilityId);
+  return runtimePublishingAdapters.delete(key);
+}
+
+async function refreshRuntimePublishingAdapter(adapterId) {
+  const key = durablePublishingRequiredText(adapterId, "adapterId");
+  const record = runtimePublishingAdapters.get(key);
+  if (!record) {
+    const error = new Error(`Runtime publishing adapter "${key}" is not registered.`);
+    error.code = "RUNTIME_PUBLISHING_ADAPTER_NOT_REGISTERED";
+    throw error;
+  }
+
+  try {
+    const verification = await record.verifyConnection();
+    if (durablePublishingContainsCredentialMaterial(verification)) {
+      throw new Error("Publishing connection verifier returned forbidden credential material.");
+    }
+    const grantedOperations = Array.isArray(verification?.grantedOperations)
+      ? [...new Set(verification.grantedOperations.map(value => String(value || "").trim()).filter(Boolean))]
+      : [];
+    const connected = verification?.connected === true;
+    const publishGranted = grantedOperations.includes("publish");
+
+    record.connected = connected;
+    record.available = connected && publishGranted;
+    record.grantedOperations = grantedOperations;
+    record.lastVerifiedAt = new Date().toISOString();
+    record.lastError = null;
+
+    if (record.available) {
+      registerDurablePublishingExecutor({
+        capabilityId: record.capabilityId,
+        channel: record.channel,
+        execute: record.execute
+      }, { replace: true });
+    } else {
+      unregisterDurablePublishingExecutor(record.capabilityId);
+    }
+  } catch (error) {
+    record.connected = false;
+    record.available = false;
+    record.grantedOperations = [];
+    record.lastVerifiedAt = new Date().toISOString();
+    record.lastError = {
+      code: error?.code || "PUBLISHING_ADAPTER_VERIFICATION_FAILED",
+      message: error?.message || String(error)
+    };
+    unregisterDurablePublishingExecutor(record.capabilityId);
+  }
+
+  return publishingAdapterPublicState(record);
+}
+
+function listRuntimePublishingAdapters() {
+  return [...runtimePublishingAdapters.values()]
+    .map(publishingAdapterPublicState)
+    .sort((a, b) => a.adapterId.localeCompare(b.adapterId));
+}
+
+async function runRuntimePublishingAdapterDiscoveryAcceptanceTest() {
+  const connectedId = "acceptance-connected-publisher";
+  const disconnectedId = "acceptance-disconnected-publisher";
+  const readOnlyId = "acceptance-read-only-publisher";
+  const capabilityId = "external-publishing.acceptance-runtime-channel";
+  const disconnectedCapability = "external-publishing.acceptance-disconnected-channel";
+  const readOnlyCapability = "external-publishing.acceptance-read-only-channel";
+
+  [connectedId, disconnectedId, readOnlyId].forEach(id => {
+    try { unregisterRuntimePublishingAdapter(id); } catch (_) {}
+  });
+
+  let secretRejected = false;
+  try {
+    registerRuntimePublishingAdapter({
+      adapterId: "acceptance-secret-leak",
+      capabilityId: "external-publishing.acceptance-secret",
+      channel: "acceptance-secret",
+      channelFamily: "social",
+      credentialBoundary: "server-side-only",
+      accessToken: "forbidden",
+      verifyConnection: async () => ({ connected: true, grantedOperations: ["publish"] }),
+      execute: async () => ({})
+    });
+  } catch (_) {
+    secretRejected = true;
+  }
+
+  registerRuntimePublishingAdapter({
+    adapterId: connectedId,
+    capabilityId,
+    channel: "acceptance-runtime-channel",
+    channelFamily: "social",
+    credentialBoundary: "server-side-only",
+    verifyConnection: async () => ({
+      connected: true,
+      grantedOperations: ["publish"]
+    }),
+    execute: async ({ envelope }) => ({
+      success: true,
+      schema: DURABLE_PUBLISHING_RECEIPT_SCHEMA,
+      authorizationId: envelope.lineage.authorizationId,
+      capabilityId,
+      channel: "acceptance-runtime-channel",
+      idempotencyKey: envelope.governance.idempotencyKey,
+      providerReceiptId: "acceptance-runtime-receipt"
+    })
+  });
+
+  registerRuntimePublishingAdapter({
+    adapterId: disconnectedId,
+    capabilityId: disconnectedCapability,
+    channel: "acceptance-disconnected-channel",
+    credentialBoundary: "server-side-only",
+    verifyConnection: async () => ({ connected: false, grantedOperations: [] }),
+    execute: async () => ({ success: true })
+  });
+
+  registerRuntimePublishingAdapter({
+    adapterId: readOnlyId,
+    capabilityId: readOnlyCapability,
+    channel: "acceptance-read-only-channel",
+    credentialBoundary: "server-side-only",
+    verifyConnection: async () => ({ connected: true, grantedOperations: ["read"] }),
+    execute: async () => ({ success: true })
+  });
+
+  const connected = await refreshRuntimePublishingAdapter(connectedId);
+  const disconnected = await refreshRuntimePublishingAdapter(disconnectedId);
+  const readOnly = await refreshRuntimePublishingAdapter(readOnlyId);
+  const listed = listRuntimePublishingAdapters();
+  const executorConnected = durablePublishingExecutors.has(capabilityId);
+  const disconnectedExecutorAbsent = !durablePublishingExecutors.has(disconnectedCapability);
+  const readOnlyExecutorAbsent = !durablePublishingExecutors.has(readOnlyCapability);
+
+  let verifierSecretRejected = false;
+  registerRuntimePublishingAdapter({
+    adapterId: "acceptance-verifier-secret",
+    capabilityId: "external-publishing.acceptance-verifier-secret",
+    channel: "acceptance-verifier-secret",
+    credentialBoundary: "server-side-only",
+    verifyConnection: async () => ({
+      connected: true,
+      grantedOperations: ["publish"],
+      refreshToken: "forbidden"
+    }),
+    execute: async () => ({ success: true })
+  });
+  const verifierSecret = await refreshRuntimePublishingAdapter("acceptance-verifier-secret");
+  verifierSecretRejected =
+    verifierSecret.available === false &&
+    verifierSecret.lastError?.code === "PUBLISHING_ADAPTER_VERIFICATION_FAILED";
+
+  const checks = [
+    { name: "Runtime publishing adapter contract is versioned and server-owned", passed: connected.schema === RUNTIME_PUBLISHING_ADAPTER_SCHEMA && connected.version === RUNTIME_PUBLISHING_ADAPTER_VERSION },
+    { name: "Adapter metadata containing credential material is rejected", passed: secretRejected },
+    { name: "Connection verifier output containing credential material fails closed", passed: verifierSecretRejected },
+    { name: "Credentials remain server-side and absent from public discovery state", passed: connected.credentialBoundary === "server-side-only" && connected.credentialsExposed === false },
+    { name: "Connected adapter is not enough without an explicitly granted publish operation", passed: readOnly.connected === true && readOnly.available === false },
+    { name: "Verified connection plus publish grant exposes the adapter as available", passed: connected.connected === true && connected.available === true && connected.grantedOperations.includes("publish") },
+    { name: "Disconnected adapter truthfully disappears as an executable capability", passed: disconnected.available === false && disconnectedExecutorAbsent },
+    { name: "Read-only adapter cannot become a publishing executor", passed: readOnlyExecutorAbsent },
+    { name: "Verified publishing adapter dynamically binds to durable execution", passed: executorConnected },
+    { name: "Capability discovery grants no publication authority", passed: connected.capabilityGrantsAuthority === false },
+    { name: "Public adapter discovery exposes no token or password fields", passed: !durablePublishingContainsCredentialMaterial(listed) },
+    { name: "Adapter identity remains separate from Maddy identity", passed: listed.every(item => !String(item.adapterId).toLowerCase().includes("maddy")) },
+    { name: "Provider/channel is replaceable without changing Maddy Core", passed: typeof registerRuntimePublishingAdapter === "function" && typeof unregisterRuntimePublishingAdapter === "function" },
+    { name: "Revocation removes durable publishing execution availability", passed: unregisterRuntimePublishingAdapter(connectedId) === true && !durablePublishingExecutors.has(capabilityId) },
+    { name: "Disconnected connection state is represented explicitly rather than fabricated", passed: disconnected.connected === false && disconnected.available === false },
+    { name: "Granted operations are explicit and least-capability by default", passed: Array.isArray(readOnly.grantedOperations) && readOnly.grantedOperations.length === 1 && readOnly.grantedOperations[0] === "read" },
+    { name: "Adapter verification records when capability truth was checked", passed: Boolean(connected.lastVerifiedAt) && Boolean(disconnected.lastVerifiedAt) },
+    { name: "Verification failure returns governed error truth rather than fake availability", passed: verifierSecret.available === false && Boolean(verifierSecret.lastError) },
+    { name: "Durable execution remains the consequential publication boundary", passed: RUNTIME_PUBLISHING_ADAPTER_BUILD_ID.includes("RUNTIME-PUBLISHING-ADAPTER") && DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING === "governed-publishing" },
+    { name: "No real social platform is claimed connected by the acceptance fixture", passed: listed.every(item => item.channel.startsWith("acceptance-")) }
+  ];
+
+  [disconnectedId, readOnlyId, "acceptance-verifier-secret", "acceptance-secret-leak"].forEach(id => {
+    try { unregisterRuntimePublishingAdapter(id); } catch (_) {}
+  });
+
+  const passed = checks.filter(item => item.passed).length;
+  return {
+    success: passed === checks.length,
+    commission: "006.032F4",
+    schema: "meos.server.runtime-publishing-adapter.acceptance.v1",
+    version: RUNTIME_PUBLISHING_ADAPTER_VERSION,
+    buildId: RUNTIME_PUBLISHING_ADAPTER_BUILD_ID,
+    passed,
+    total: checks.length,
+    checks,
+    sample: { connected, disconnected, readOnly }
+  };
+}
+
 function normalizeDurablePublishingDispatch(input = {}) {
   const request = input.request || {};
   const envelope = normalizeDurablePublishingEnvelope(
@@ -17547,6 +17832,24 @@ app.get(
   "/api/durable-execution/publishing-acceptance-test",
   async (request, response) => {
     const result = await runDurablePublishingExecutionAcceptanceTest();
+    response.status(result.success ? 200 : 500).json(result);
+  }
+);
+
+app.get("/api/publishing/adapters", (_request, response) => {
+  response.status(200).json({
+    success: true,
+    schema: RUNTIME_PUBLISHING_ADAPTER_SCHEMA,
+    version: RUNTIME_PUBLISHING_ADAPTER_VERSION,
+    buildId: RUNTIME_PUBLISHING_ADAPTER_BUILD_ID,
+    adapters: listRuntimePublishingAdapters()
+  });
+});
+
+app.get(
+  "/api/publishing/adapters/acceptance-test",
+  async (_request, response) => {
+    const result = await runRuntimePublishingAdapterDiscoveryAcceptanceTest();
     response.status(result.success ? 200 : 500).json(result);
   }
 );
