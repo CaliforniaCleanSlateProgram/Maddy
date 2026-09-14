@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.2";
-  const BUILD_ID = "EH152-INFORMATIONAL-RETURN-AUTO-RESOLUTION-20260913-A";
+  const VERSION = "1.5.3";
+  const BUILD_ID = "EH153-LONG-RUNNING-EXECUTION-CONTINUITY-20260913-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1790,6 +1790,121 @@
     });
   }
 
+  /*
+   * Long-Running Execution Continuity
+   *
+   * The Hallway owns work continuity; the presentation surface does not own
+   * execution lifetime. A real research or provider operation may outlive the
+   * amount of time a human-facing surface should synchronously wait. Crossing
+   * that presentation boundary therefore means "still working", not terminal
+   * failure.
+   *
+   * Router execution remains bounded by its own execution timeout. While that
+   * governed operation is alive, the same Hallway work ID and Mission mirror
+   * remain alive. When the operation eventually returns, the result is verified,
+   * delivered, and dispositioned through the exact same work item. A genuine
+   * Router failure still follows the commissioned terminal-failure release path.
+   *
+   * This is intentionally not a claim of process durability across browser or
+   * machine death. It is continuity across the presentation wait boundary using
+   * the commissioned Mission/Hallway identity rather than manufacturing a retry.
+   */
+  const EXECUTIVE_PRESENTATION_WAIT_MS = 45000;
+  const EXECUTIVE_EXECUTION_TIMEOUT_MS = 300000;
+
+  function executivePresentationWaitMs(options = {}) {
+    const requested = Number(options.presentationWaitMs);
+    return Number.isFinite(requested) && requested >= 0
+      ? Math.floor(requested)
+      : EXECUTIVE_PRESENTATION_WAIT_MS;
+  }
+
+  function executiveRouterTimeoutMs(options = {}) {
+    const explicit = Number(options.executionTimeoutMs ?? options.routerOptions?.timeoutMs);
+    return Number.isFinite(explicit) && explicit > 0
+      ? Math.floor(explicit)
+      : EXECUTIVE_EXECUTION_TIMEOUT_MS;
+  }
+
+  function finishExecutiveRouterSuccess(work, result) {
+    work.execution = clone(result);
+    work.evidence.push({ type: "executive-router-result", verifiedAt: now(), result: clone(result) });
+    transition(work, "verifying");
+    normalizeExecutionDeliverables(work, result);
+    work.options = work.deliverables.length ? ["open-deliverable", "use-in-task", "archive"] : ["review-result", "archive"];
+    const returned = transition(work, "done", {
+      outcome: { success: result?.success !== false, verified: result?.success !== false, result: clone(result) }
+    });
+    if (result?.success !== false) {
+      resolveInformationalResearchMission(work, result);
+    }
+    return work.lifecycle?.disposition === "resolved-informational-return"
+      ? clone(work)
+      : returned;
+  }
+
+  function finishExecutiveRouterFailure(work, error) {
+    work.options = ["retry", "reassign", "cancel"];
+    const lifecycle = releaseMissionAfterTerminalFailure(work, {
+      message: error?.message || String(error),
+      code: error?.code || "executive-router-failed"
+    });
+    return transition(work, "failed", {
+      error: error?.message || String(error),
+      lifecycle: lifecycle || work.lifecycle || null,
+      outcome: { success: false, reason: error?.code || "executive-router-failed" }
+    });
+  }
+
+  function markExecutiveExecutionContinuing(work, detail = {}) {
+    const presentationWaitMs = Number(detail.presentationWaitMs || EXECUTIVE_PRESENTATION_WAIT_MS);
+    const executionTimeoutMs = Number(detail.executionTimeoutMs || EXECUTIVE_EXECUTION_TIMEOUT_MS);
+
+    work.execution = {
+      schema: "meos.executive-hallway.execution-continuity.v1",
+      status: "running",
+      workId: work.id,
+      missionId: work.mission?.id || null,
+      startedAt: detail.startedAt || now(),
+      presentationWaitExpiredAt: now(),
+      presentationWaitMs,
+      executionTimeoutMs,
+      sameWorkIdentityPreserved: true,
+      retryCreated: false,
+      terminal: false
+    };
+    work.options = ["view-status"];
+    work.lifecycle = {
+      schema: "meos.executive-hallway.lifecycle.v1",
+      terminal: false,
+      disposition: "execution-continues-background",
+      reason: "Presentation wait elapsed while the governed Router execution remains active.",
+      missionId: work.mission?.id || null,
+      continuedAt: now()
+    };
+    work.evidence.push({
+      type: "long-running-execution-continuity",
+      source: "executive-hallway",
+      workId: work.id,
+      missionId: work.mission?.id || null,
+      presentationWaitMs,
+      executionTimeoutMs,
+      sameWorkIdentityPreserved: true,
+      retryCreated: false,
+      externalActionAuthorized: false,
+      message: "Presentation wait elapsed; the same governed work continues instead of being misclassified as terminal failure.",
+      at: now()
+    });
+    record("work.execution-continues", {
+      workId: work.id,
+      missionId: work.mission?.id || null,
+      presentationWaitMs,
+      executionTimeoutMs
+    });
+    emit("work-updated", work);
+    return clone(work);
+  }
+
   async function routeExecutiveWork(work, options = {}) {
     const router = executiveRouter();
     if (!router?.handle) {
@@ -1810,38 +1925,57 @@
     transition(work, "understanding");
     transition(work, "executing");
 
-    try {
-      const result = await router.handle(work.instruction, {
-        source: work.source,
-        requestId: work.id,
-        ...options.routerOptions
-      });
-      work.execution = clone(result);
-      work.evidence.push({ type: "executive-router-result", verifiedAt: now(), result: clone(result) });
-      transition(work, "verifying");
-      normalizeExecutionDeliverables(work, result);
-      work.options = work.deliverables.length ? ["open-deliverable", "use-in-task", "archive"] : ["review-result", "archive"];
-      const returned = transition(work, "done", {
-        outcome: { success: result?.success !== false, verified: result?.success !== false, result: clone(result) }
-      });
-      if (result?.success !== false) {
-        resolveInformationalResearchMission(work, result);
-      }
-      return work.lifecycle?.disposition === "resolved-informational-return"
-        ? clone(work)
-        : returned;
-    } catch (error) {
-      work.options = ["retry", "reassign", "cancel"];
-      const lifecycle = releaseMissionAfterTerminalFailure(work, {
-        message: error?.message || String(error),
-        code: error?.code || "executive-router-failed"
-      });
-      return transition(work, "failed", {
-        error: error?.message || String(error),
-        lifecycle: lifecycle || work.lifecycle || null,
-        outcome: { success: false, reason: error?.code || "executive-router-failed" }
-      });
+    const startedAt = now();
+    const presentationWaitMs = executivePresentationWaitMs(options);
+    const executionTimeoutMs = executiveRouterTimeoutMs(options);
+    const routerOptions = {
+      ...(options.routerOptions || {}),
+      timeoutMs: executionTimeoutMs
+    };
+
+    const execution = router.handle(work.instruction, {
+      source: work.source,
+      requestId: work.id,
+      ...routerOptions
+    });
+
+    const settledExecution = Promise.resolve(execution).then(
+      result => ({ settled: true, ok: true, result }),
+      error => ({ settled: true, ok: false, error })
+    );
+
+    let waitTimer = null;
+    const presentationBoundary = new Promise(resolve => {
+      waitTimer = global.setTimeout(
+        () => resolve({ settled: false, presentationWaitExpired: true }),
+        presentationWaitMs
+      );
+    });
+
+    const first = await Promise.race([settledExecution, presentationBoundary]);
+    if (waitTimer) global.clearTimeout(waitTimer);
+
+    if (first?.settled === true) {
+      return first.ok
+        ? finishExecutiveRouterSuccess(work, first.result)
+        : finishExecutiveRouterFailure(work, first.error);
     }
+
+    markExecutiveExecutionContinuing(work, {
+      startedAt,
+      presentationWaitMs,
+      executionTimeoutMs
+    });
+
+    void settledExecution.then(settled => {
+      if (settled.ok) {
+        finishExecutiveRouterSuccess(work, settled.result);
+      } else {
+        finishExecutiveRouterFailure(work, settled.error);
+      }
+    });
+
+    return clone(work);
   }
 
   async function submitWork(input = {}, options = {}) {
@@ -3484,6 +3618,151 @@
     return result;
   }
 
+  async function runLongRunningExecutionContinuityAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed, detail = null) => checks.push({ name, passed: passed === true, detail: clone(detail) });
+    const previousMissionEngine = global.MEOSMissionEngine;
+    const previousRouter = global.ExecutiveRouter;
+    const active = [];
+    const completed = [];
+    let createCount = 0;
+    let routerCalls = 0;
+
+    const removeById = (items, missionId) => {
+      const index = items.findIndex(item => item.id === missionId);
+      return index >= 0 ? items.splice(index, 1)[0] : null;
+    };
+
+    const mockEngine = {
+      createMissionFromIntake(intake = {}) {
+        createCount += 1;
+        const mission = {
+          id: `LONG-RUNNING-${createCount}`,
+          title: intake.missionTitle,
+          sourceReference: intake.intakeId,
+          status: "queued",
+          approval: { required: false, status: "not-required" },
+          history: []
+        };
+        active.push(mission);
+        return clone(mission);
+      },
+      getActiveMissions: () => clone(active),
+      getCompletedMissions: () => clone(completed),
+      getArchivedMissions: () => [],
+      getMission(missionId) {
+        return clone([...active, ...completed].find(item => item.id === missionId) || null);
+      },
+      addDeliverable() { return null; },
+      completeMission(missionId, detail = {}) {
+        const mission = removeById(active, missionId);
+        if (!mission) return null;
+        mission.status = "completed";
+        mission.completion = clone(detail);
+        completed.unshift(mission);
+        return clone(mission);
+      },
+      blockMission() { return null; },
+      archiveMission() { return null; }
+    };
+
+    const governedAnswer = {
+      schema: "meos.governed-answer.v1",
+      answer: "Octopuses have three hearts because two branchial hearts serve the gills while one systemic heart serves the body.",
+      citations: ["https://science.example/octopus"],
+      finalSpeechAuthorized: true,
+      oneMouth: true
+    };
+    const delayedResult = {
+      success: true,
+      source: "meos-headless-public-research",
+      provider: null,
+      output: {
+        type: "public-research-result",
+        answer: governedAnswer.answer,
+        citations: governedAnswer.citations
+      },
+      governedAnswer
+    };
+
+    const mockRouter = {
+      async handle(_instruction, options = {}) {
+        routerCalls += 1;
+        check("Hallway gives long-running execution a separate Router execution lease",
+          Number(options.timeoutMs) === 1000,
+          { timeoutMs: options.timeoutMs });
+        await new Promise(resolve => global.setTimeout(resolve, 30));
+        return clone(delayedResult);
+      }
+    };
+
+    let work = null;
+    try {
+      global.MEOSMissionEngine = mockEngine;
+      global.ExecutiveRouter = mockRouter;
+      work = createWork({
+        id: "long-running-continuity-fixture",
+        instruction: "Maddy, research why octopuses have three hearts. Use public evidence.",
+        source: "maddy-executive-desk",
+        requestedBy: "executive-director",
+        reviewRequired: false,
+        authorized: true
+      });
+
+      const firstReturn = await routeExecutiveWork(work, {
+        presentationWaitMs: 5,
+        executionTimeoutMs: 1000
+      });
+
+      check("Presentation wait expiry returns a still-working Hallway state instead of terminal failure",
+        firstReturn?.state === "executing" && firstReturn?.lifecycle?.terminal === false &&
+        firstReturn?.lifecycle?.disposition === "execution-continues-background",
+        firstReturn);
+      check("The same Mission remains active while the underlying execution is still running",
+        active.length === 1 && active[0]?.id === work.mission?.id,
+        { active: clone(active), mission: clone(work.mission) });
+      check("Presentation expiry does not manufacture a retry or second Router request",
+        routerCalls === 1 && work.execution?.retryCreated === false,
+        { routerCalls, execution: clone(work.execution) });
+      check("Crossing the presentation boundary grants no external-action authority",
+        work.evidence.some(item => item.type === "long-running-execution-continuity" && item.externalActionAuthorized === false));
+
+      await new Promise(resolve => global.setTimeout(resolve, 45));
+      const settled = getWork(work.id);
+
+      check("Late completion returns through the original Hallway work identity",
+        settled?.id === work.id && settled?.state === "done" && settled?.deliverables?.length === 1,
+        settled);
+      check("Evidence-bound informational completion resolves the original Mission automatically",
+        active.length === 0 && completed.length === 1 && completed[0]?.id === work.mission?.id,
+        { active: clone(active), completed: clone(completed) });
+      check("Long-running completion still uses Maddy's governed evidence-bound answer",
+        listDeliverables({ includeTerminal: true }).some(item => item.workId === work.id && item.data?.governedAnswer?.answer === governedAnswer.answer));
+    } finally {
+      if (work?.id) state.work.delete(work.id);
+      if (work?.deliverables?.length) {
+        work.deliverables.forEach(deliverableId => state.deliverables.delete(deliverableId));
+      }
+      global.MEOSMissionEngine = previousMissionEngine;
+      global.ExecutiveRouter = previousRouter;
+    }
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks.map(({ name, passed }) => ({ name, passed })));
+    const result = freeze({
+      success: passed === checks.length,
+      commission: "MADDY-LONG-RUNNING-EXECUTION-CONTINUITY",
+      schema: `${SCHEMA}.long-running-execution-continuity-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
+    console.log(`[MEOS ${VERSION}] Long-Running Execution Continuity: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
   function runAnswerProvenanceIntegrityAcceptanceTest() {
     const fixture = {
       success: true,
@@ -3538,6 +3817,7 @@
     runSelfTest,
     runTerminalFailureMissionReleaseAcceptanceTest,
     runInformationalReturnAutoResolutionAcceptanceTest,
+    runLongRunningExecutionContinuityAcceptanceTest,
     runCognitiveMetabolismAcceptanceTest,
     runHumanDirectedTaskAuthorityAcceptanceTest,
     runResearchContinuationQualificationAcceptanceTest,
