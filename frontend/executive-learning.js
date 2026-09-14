@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Learning Engine
- * Version: 1.3.0
+ * Version: 1.3.1
  *
  * Mission:
  * Convert completed work, outcomes, feedback, decisions, alerts, and executive
@@ -18,9 +18,36 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.3.0";
-    const BUILD_ID = "EL130-CROSS-MADDY-EPISTEMIC-MEMORY-BRIDGE-20260913-A";
+    const VERSION = "1.3.1";
+    const BUILD_ID = "EL131-COMMERCIAL-INTELLIGENCE-DATA-CONTRACT-20260914-A";
     const CALIBRATION_SCHEMA = "meos.maddy.self-correction-calibration.v1";
+    const COMMERCIAL_TRUTH_SCHEMA = "meos.maddy.commercial-truth.v1";
+
+    const COMMERCIAL_VALUE_STATUSES = Object.freeze({
+        MEASURED: "measured",
+        ESTIMATED: "estimated",
+        UNKNOWN: "unknown",
+        NOT_APPLICABLE: "not-applicable"
+    });
+
+    const COMMERCIAL_RECORD_TYPES = Object.freeze({
+        CAMPAIGN: "campaign",
+        AUDIENCE: "audience",
+        OFFER: "offer",
+        HYPOTHESIS: "hypothesis",
+        CHANNEL: "channel",
+        CREATIVE: "creative",
+        SEO: "seo",
+        LEAD: "lead",
+        CONVERSION: "conversion",
+        COST: "cost",
+        REVENUE: "revenue",
+        ATTRIBUTION: "attribution",
+        ECONOMIC_METRIC: "economic-metric",
+        PREDICTION: "prediction",
+        OUTCOME: "outcome",
+        COMMERCIAL_LESSON: "commercial-lesson"
+    });
 
     const INDEXED_DB_NAME = "meos-local-executive-repository";
     const INDEXED_DB_VERSION = 1;
@@ -280,6 +307,7 @@
             maximumObservations: 10000,
             maximumFeedbackRecords: 5000,
             maximumCalibrationRecords: 5000,
+            maximumCommercialTruthRecords: 10000,
             maximumHistory: 5000,
             duplicateSimilarityThreshold: 0.88,
             defaultConfidence: 0.5,
@@ -294,6 +322,7 @@
         lessons: [],
         feedback: [],
         calibrations: [],
+        commercialTruth: [],
         history: [],
         eventListeners: {},
         scannerId: null,
@@ -307,6 +336,7 @@
             rejectedLessons: 0,
             totalFeedback: 0,
             totalCalibrations: 0,
+            totalCommercialTruthRecords: 0,
             lastCalibrationAt: null,
             lastScanAt: null,
             lastLessonAt: null
@@ -2458,6 +2488,370 @@
             });
         },
 
+        normalizeCommercialValue(input = {}, options = {}) {
+            const source = input && typeof input === "object"
+                ? input
+                : { value: input };
+            const explicitStatus = String(
+                source.status || options.status || ""
+            ).trim().toLowerCase();
+            const allowedStatuses = Object.values(COMMERCIAL_VALUE_STATUSES);
+            let status = allowedStatuses.includes(explicitStatus)
+                ? explicitStatus
+                : null;
+            const rawValue = source.value ?? source.amount ?? null;
+            const numericValue = rawValue === null || rawValue === ""
+                ? null
+                : Number(rawValue);
+            const hasNumericValue = Number.isFinite(numericValue);
+
+            if (!status) {
+                status = hasNumericValue
+                    ? COMMERCIAL_VALUE_STATUSES.ESTIMATED
+                    : COMMERCIAL_VALUE_STATUSES.UNKNOWN;
+            }
+
+            if (
+                status === COMMERCIAL_VALUE_STATUSES.MEASURED &&
+                !hasNumericValue
+            ) {
+                status = COMMERCIAL_VALUE_STATUSES.UNKNOWN;
+            }
+
+            const confidence = status === COMMERCIAL_VALUE_STATUSES.UNKNOWN
+                ? null
+                : this.normalizeConfidence(
+                    source.confidence ??
+                    options.confidence ??
+                    (status === COMMERCIAL_VALUE_STATUSES.MEASURED ? 1 : 0.5)
+                );
+
+            return {
+                value: hasNumericValue ? numericValue : null,
+                unit: String(source.unit || options.unit || "count").trim() || "count",
+                currency: String(source.currency || options.currency || "").trim().toUpperCase() || null,
+                status,
+                confidence,
+                measuredAt: source.measuredAt || options.measuredAt || null,
+                sourceIds: this.uniqueStrings(source.sourceIds || options.sourceIds),
+                methodology: String(source.methodology || options.methodology || "").trim() || null,
+                assumptions: this.uniqueStrings(source.assumptions || options.assumptions),
+                unknownReason: status === COMMERCIAL_VALUE_STATUSES.UNKNOWN
+                    ? String(source.unknownReason || options.unknownReason || "not-enough-data").trim()
+                    : null
+            };
+        },
+
+        normalizeCommercialTruth(input = {}, options = {}) {
+            const recordType = String(
+                input.recordType || input.type || ""
+            ).trim().toLowerCase();
+            if (!Object.values(COMMERCIAL_RECORD_TYPES).includes(recordType)) {
+                return {
+                    success: false,
+                    error: `Unsupported commercial truth record type: ${recordType || "missing"}.`
+                };
+            }
+
+            const organizationId = String(
+                input.organizationId || input.context?.organizationId || ""
+            ).trim();
+            if (!organizationId) {
+                return {
+                    success: false,
+                    error: "Commercial truth requires an organizationId so organizational knowledge cannot silently bleed across deployments."
+                };
+            }
+
+            const title = String(input.title || input.name || "").trim();
+            if (!title) {
+                return {
+                    success: false,
+                    error: "Commercial truth requires a title or name."
+                };
+            }
+
+            const timestamp = new Date().toISOString();
+            const economicInputs = input.economics && typeof input.economics === "object"
+                ? input.economics
+                : {};
+            const economics = {};
+            Object.entries(economicInputs).forEach(([key, value]) => {
+                economics[key] = this.normalizeCommercialValue(value, {
+                    currency: input.currency || options.currency || null
+                });
+            });
+
+            const claimStatus = String(
+                input.claimStatus || input.epistemicStatus || "unknown"
+            ).trim().toLowerCase();
+            const allowedClaimStatuses = [
+                "verified", "supported", "inferred", "disputed", "marketed", "unknown"
+            ];
+
+            return {
+                success: true,
+                record: {
+                    id: String(input.id || this.createId(`commercial-${recordType}`)),
+                    schema: COMMERCIAL_TRUTH_SCHEMA,
+                    recordType,
+                    organizationId,
+                    title,
+                    description: String(input.description || input.summary || "").trim(),
+                    campaignId: String(input.campaignId || "").trim() || null,
+                    audienceId: String(input.audienceId || "").trim() || null,
+                    offerId: String(input.offerId || "").trim() || null,
+                    channelId: String(input.channelId || "").trim() || null,
+                    creativeId: String(input.creativeId || "").trim() || null,
+                    leadId: String(input.leadId || "").trim() || null,
+                    conversionId: String(input.conversionId || "").trim() || null,
+                    parentIds: this.uniqueStrings(input.parentIds),
+                    tags: this.uniqueStrings(input.tags),
+                    hypothesis: input.hypothesis ? this.clone(input.hypothesis) : null,
+                    prediction: input.prediction ? this.clone(input.prediction) : null,
+                    outcome: input.outcome ? this.clone(input.outcome) : null,
+                    economics,
+                    attribution: input.attribution && typeof input.attribution === "object"
+                        ? {
+                            model: String(input.attribution.model || "unknown").trim() || "unknown",
+                            confidence: this.normalizeConfidence(input.attribution.confidence ?? 0),
+                            sourceIds: this.uniqueStrings(input.attribution.sourceIds),
+                            touchpoints: Array.isArray(input.attribution.touchpoints)
+                                ? this.clone(input.attribution.touchpoints)
+                                : [],
+                            limitations: this.uniqueStrings(input.attribution.limitations)
+                        }
+                        : null,
+                    epistemic: {
+                        status: allowedClaimStatuses.includes(claimStatus)
+                            ? claimStatus
+                            : "unknown",
+                        confidence: this.normalizeConfidence(input.confidence ?? 0),
+                        sourceIds: this.uniqueStrings(input.sourceIds || input.evidenceIds),
+                        assumptions: this.uniqueStrings(input.assumptions),
+                        contradictions: Array.isArray(input.contradictions)
+                            ? this.clone(input.contradictions)
+                            : [],
+                        falsifiers: this.uniqueStrings(input.falsifiers || input.whatWouldChangeMyMind),
+                        unknowns: this.uniqueStrings(input.unknowns)
+                    },
+                    privacy: {
+                        scope: "organization-isolated",
+                        organizationId,
+                        transferable: input.transferable === true,
+                        transferRule: input.transferable === true
+                            ? "Only generalized, evidence-grounded commercial reasoning may transfer; organization-specific facts, customer data, pricing, lists, strategy, and confidential information remain isolated."
+                            : "Organization-specific commercial truth remains isolated to this organization."
+                    },
+                    authority: {
+                        executionAuthorized: false,
+                        spendAuthorized: false,
+                        publicationAuthorized: false,
+                        rule: "A commercial truth record records reality; it does not grant execution, spend, publication, outreach, or policy authority."
+                    },
+                    createdAt: input.createdAt || timestamp,
+                    updatedAt: timestamp,
+                    createdBy: options.actor || input.createdBy || this.name,
+                    metadata: input.metadata && typeof input.metadata === "object"
+                        ? this.clone(input.metadata)
+                        : {}
+                }
+            };
+        },
+
+        recordCommercialTruth(input = {}, options = {}) {
+            const normalized = this.normalizeCommercialTruth(input, options);
+            if (!normalized.success) return normalized;
+            if (this.commercialTruth.length >= this.configuration.maximumCommercialTruthRecords) {
+                return {
+                    success: false,
+                    error: "The commercial truth record limit has been reached."
+                };
+            }
+
+            const record = normalized.record;
+            const existingIndex = this.commercialTruth.findIndex(
+                item => item.id === record.id
+            );
+            if (existingIndex >= 0) {
+                const existing = this.commercialTruth[existingIndex];
+                if (existing.organizationId !== record.organizationId) {
+                    return {
+                        success: false,
+                        error: "Commercial truth record IDs cannot cross organization boundaries."
+                    };
+                }
+                record.createdAt = existing.createdAt || record.createdAt;
+                this.commercialTruth[existingIndex] = record;
+            } else {
+                this.commercialTruth.push(record);
+            }
+
+            this.logHistory("commercial-truth.recorded", {
+                recordId: record.id,
+                recordType: record.recordType,
+                organizationId: record.organizationId
+            });
+            this.recalculateAnalytics();
+            this.persistIfEnabled();
+            this.emit("learning:commercial-truth-recorded", this.clone(record));
+            return { success: true, record: this.clone(record) };
+        },
+
+        getCommercialTruth(filters = {}) {
+            const organizationId = String(filters.organizationId || "").trim();
+            if (!organizationId) return [];
+            const recordType = String(filters.recordType || "").trim().toLowerCase();
+            const campaignId = String(filters.campaignId || "").trim();
+            return this.clone(this.commercialTruth.filter(record =>
+                record.organizationId === organizationId &&
+                (!recordType || record.recordType === recordType) &&
+                (!campaignId || record.campaignId === campaignId)
+            ));
+        },
+
+        getCommercialSnapshot(organizationId) {
+            const records = this.getCommercialTruth({ organizationId });
+            const economics = {};
+            records.forEach(record => {
+                Object.entries(record.economics || {}).forEach(([key, value]) => {
+                    if (!economics[key]) economics[key] = [];
+                    economics[key].push({
+                        recordId: record.id,
+                        recordType: record.recordType,
+                        ...this.clone(value)
+                    });
+                });
+            });
+            return {
+                schema: "meos.maddy.commercial-truth-snapshot.v1",
+                organizationId: String(organizationId || "").trim() || null,
+                recordCount: records.length,
+                records,
+                economics,
+                truthRule: "Measured, estimated, and unknown commercial values remain distinct. Unknown values are never silently converted into zero or fabricated certainty.",
+                authorityRule: "Commercial truth is evidence for decisions; it is not execution, spend, publication, outreach, or policy authority."
+            };
+        },
+
+        runCommercialDataContractAcceptanceTest() {
+            const saved = {
+                commercialTruth: this.clone(this.commercialTruth),
+                history: this.clone(this.history),
+                analytics: this.clone(this.analytics),
+                automaticPersistence: this.configuration.automaticPersistence
+            };
+            this.configuration.automaticPersistence = false;
+            const organizationId = "acceptance-org-a";
+            const otherOrganizationId = "acceptance-org-b";
+            const measured = this.recordCommercialTruth({
+                id: "commercial-acceptance-revenue",
+                recordType: "revenue",
+                organizationId,
+                title: "Measured customer revenue",
+                campaignId: "campaign-acceptance-1",
+                economics: {
+                    revenue: {
+                        value: 1200,
+                        unit: "currency",
+                        currency: "USD",
+                        status: "measured",
+                        sourceIds: ["payment-ledger-1"],
+                        measuredAt: "2026-09-14T00:00:00.000Z"
+                    },
+                    cac: {
+                        status: "unknown",
+                        unit: "currency",
+                        currency: "USD",
+                        unknownReason: "qualified acquisition denominator unavailable"
+                    }
+                },
+                claimStatus: "verified",
+                confidence: 1,
+                sourceIds: ["payment-ledger-1"],
+                falsifiers: ["payment reversal"]
+            });
+            const estimated = this.recordCommercialTruth({
+                id: "commercial-acceptance-campaign",
+                recordType: "campaign",
+                organizationId,
+                title: "Organic campaign hypothesis",
+                campaignId: "campaign-acceptance-1",
+                economics: {
+                    expectedValue: {
+                        value: 500,
+                        unit: "currency",
+                        currency: "USD",
+                        status: "estimated",
+                        confidence: 0.55,
+                        assumptions: ["historic conversion rate remains relevant"]
+                    },
+                    spend: {
+                        value: 0,
+                        unit: "currency",
+                        currency: "USD",
+                        status: "measured",
+                        sourceIds: ["campaign-ledger-1"]
+                    }
+                },
+                hypothesis: { statement: "Organic video can create qualified demand before paid amplification." },
+                prediction: { statement: "At least one qualified lead will arrive without media spend.", confidence: 0.55 },
+                transferable: true,
+                assumptions: ["distribution access remains available"]
+            });
+            const isolated = this.recordCommercialTruth({
+                id: "commercial-acceptance-other-org",
+                recordType: "offer",
+                organizationId: otherOrganizationId,
+                title: "Private other-organization offer",
+                description: "Must not appear in organization A snapshot."
+            });
+            const snapshot = this.getCommercialSnapshot(organizationId);
+            const revenue = measured.record?.economics?.revenue;
+            const cac = measured.record?.economics?.cac;
+            const expectedValue = estimated.record?.economics?.expectedValue;
+            const checks = [
+                { name: "Commercial truth schema is explicit and versioned", passed: measured.record?.schema === COMMERCIAL_TRUTH_SCHEMA },
+                { name: "Campaign, revenue, offer and other required commercial record types are machine-readable", passed: Object.keys(COMMERCIAL_RECORD_TYPES).length >= 15 && COMMERCIAL_RECORD_TYPES.CAMPAIGN === "campaign" && COMMERCIAL_RECORD_TYPES.REVENUE === "revenue" },
+                { name: "Measured economics remain measured", passed: revenue?.status === "measured" && revenue?.value === 1200 && revenue?.currency === "USD" },
+                { name: "Measured economics retain evidence lineage", passed: revenue?.sourceIds?.includes("payment-ledger-1") === true && revenue?.measuredAt === "2026-09-14T00:00:00.000Z" },
+                { name: "Unknown economics remain unknown instead of becoming zero", passed: cac?.status === "unknown" && cac?.value === null && Boolean(cac?.unknownReason) },
+                { name: "Estimated economics remain distinct from measured values", passed: expectedValue?.status === "estimated" && expectedValue?.confidence === 0.55 },
+                { name: "Commercial assumptions survive normalization", passed: expectedValue?.assumptions?.length === 1 && estimated.record?.epistemic?.assumptions?.length === 1 },
+                { name: "Predictions remain separate from observed outcomes", passed: Boolean(estimated.record?.prediction) && estimated.record?.outcome === null },
+                { name: "Commercial claims retain epistemic status, confidence and falsifiers", passed: measured.record?.epistemic?.status === "verified" && measured.record?.epistemic?.confidence === 1 && measured.record?.epistemic?.falsifiers?.length === 1 },
+                { name: "Every commercial record is organization-bound", passed: measured.record?.organizationId === organizationId && isolated.record?.organizationId === otherOrganizationId },
+                { name: "Organization snapshots do not leak another organization's records", passed: snapshot.records.length === 2 && snapshot.records.every(record => record.organizationId === organizationId) },
+                { name: "Transferable learning preserves the confidentiality boundary", passed: estimated.record?.privacy?.transferable === true && estimated.record?.privacy?.scope === "organization-isolated" && estimated.record?.privacy?.transferRule.includes("generalized") },
+                { name: "Commercial truth never grants spend authority", passed: snapshot.records.every(record => record.authority?.spendAuthorized === false) },
+                { name: "Commercial truth never grants publication or execution authority", passed: snapshot.records.every(record => record.authority?.publicationAuthorized === false && record.authority?.executionAuthorized === false) },
+                { name: "Commercial truth is included in the Executive Learning durable snapshot", passed: this.buildPersistenceSnapshot().commercialTruth?.some(record => record.id === measured.record?.id) === true },
+                { name: "Commercial truth is queryable by organization and campaign", passed: this.getCommercialTruth({ organizationId, campaignId: "campaign-acceptance-1" }).length === 2 },
+                { name: "The contract can represent zero spend as measured rather than unknown", passed: estimated.record?.economics?.spend?.value === 0 && estimated.record?.economics?.spend?.status === "measured" },
+                { name: "The contract does not calculate unsupported CAC or LTV", passed: cac?.value === null && snapshot.truthRule.includes("never silently converted") },
+                { name: "Commercial records enter normal Executive Learning analytics", passed: this.analytics.totalCommercialTruthRecords === saved.commercialTruth.length + 3 },
+                { name: "No commercial record changes policy or authority", passed: snapshot.authorityRule.includes("not execution") }
+            ];
+            const result = {
+                success: checks.every(item => item.passed),
+                commission: "006.032B",
+                schema: "meos.executive-learning.commercial-data-contract-acceptance.v1",
+                version: this.version,
+                buildId: this.buildId,
+                passed: checks.filter(item => item.passed).length,
+                total: checks.length,
+                checks,
+                sampleSnapshot: this.clone(snapshot),
+                completedAt: new Date().toISOString()
+            };
+            this.commercialTruth = saved.commercialTruth;
+            this.history = saved.history;
+            this.analytics = saved.analytics;
+            this.configuration.automaticPersistence = saved.automaticPersistence;
+            this.recalculateAnalytics();
+            return result;
+        },
+
         recalculateAnalytics() {
             this.analytics.totalObservations =
                 this.observations.length;
@@ -2487,6 +2881,8 @@
                 this.feedback.length;
             this.analytics.totalCalibrations =
                 this.calibrations.length;
+            this.analytics.totalCommercialTruthRecords =
+                this.commercialTruth.length;
 
             return this.analytics;
         },
@@ -2536,6 +2932,8 @@
                     this.feedback.length,
                 calibrationCount:
                     this.calibrations.length,
+                commercialTruthCount:
+                    this.commercialTruth.length,
                 analytics:
                     this.clone(this.analytics),
                 initializedAt:
@@ -2563,6 +2961,8 @@
                         this.feedback,
                     calibrations:
                         this.calibrations,
+                    commercialTruth:
+                        this.commercialTruth,
                     history:
                         options.includeHistory === false
                             ? []
@@ -2601,6 +3001,7 @@
                 this.lessons = [];
                 this.feedback = [];
                 this.calibrations = [];
+                this.commercialTruth = [];
                 this.history = [];
             }
 
@@ -2619,6 +3020,10 @@
             this.mergeById(
                 this.calibrations,
                 data.calibrations || []
+            );
+            this.mergeById(
+                this.commercialTruth,
+                data.commercialTruth || []
             );
             this.mergeById(
                 this.history,
@@ -3954,6 +4359,12 @@
         FEEDBACK_TYPES;
     ExecutiveLearning.CALIBRATION_SCHEMA =
         CALIBRATION_SCHEMA;
+    ExecutiveLearning.COMMERCIAL_TRUTH_SCHEMA =
+        COMMERCIAL_TRUTH_SCHEMA;
+    ExecutiveLearning.COMMERCIAL_VALUE_STATUSES =
+        COMMERCIAL_VALUE_STATUSES;
+    ExecutiveLearning.COMMERCIAL_RECORD_TYPES =
+        COMMERCIAL_RECORD_TYPES;
 
     global.ExecutiveLearning =
         ExecutiveLearning;
