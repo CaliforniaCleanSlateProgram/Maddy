@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32179595/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
@@ -2279,5 +2280,160 @@ from surviving independently of the presentation/browser lifetime.
 Then commission that synapse.
 
 **Always Push Forward.**
+## DURABLE EXECUTION SPINE — SERVER AUTHORITY CHECKPOINT — 2026-09-13/14
+
+### Repository / authority basis
+
+The Executive Director supplied `Maddy-main (6).zip` as the live-main repository basis for this phase. The no-code Durable Execution Spine connection/gap audit was performed against that snapshot before the commissions below. Live GitHub supersedes the supplied ZIP where the Executive Director has subsequently committed commissioned files.
+
+The North Star and Spooky standard remain governing authority without reduction, reinterpretation, exception, or substitution.
+
+### No-code Durable Execution Spine connection/gap audit — COMPLETE
+
+The audit proved that MEOS already contained substantial durable organs and did **not** require a second generic job/queue nervous system.
+
+Existing commissioned durability includes:
+
+- Mission Engine durable Mission identity, lifecycle, reconciliation/recovery, and durable authority;
+- Executive Brain durable cognition/intention, unresolved-intention recovery, temporal checkpoints, and resume semantics;
+- institutional persistence / Executive Memory authority;
+- server-side Continuous Operations persisted jobs, execution leases, expired-lease recovery, run history, retries, and authority checks;
+- server-side idempotency/concurrency machinery that can be reused rather than duplicated;
+- Hallway governed work identity and Mission lineage;
+- evidence, provenance, Monitoring, Learning, Knowledge, and Memory organs downstream of returned work.
+
+The demonstrated missing synapse was the **execution ownership boundary**:
+
+**durable cognition / Mission / Hallway lineage existed, and server-owned durable execution machinery existed, but ordinary Hallway → Router execution still depended on a live browser Promise.**
+
+Hallway 1.5.3 correctly separated the 45-second presentation wait from a longer Router execution lease while the browser process remained alive, but it did not make that execution process-durable. Browser/tab/machine death could still destroy the live execution even though the originating intention and Mission were durable.
+
+The audit also proved that Mission Dispatcher must not simply be switched on as a workaround. Its current browser scanning path is compatibility behavior, and `office_dispatch_authority_not_effective` is an authority/governance boundary that must remain fail-closed until the architecture proves the correct server-side authority bridge.
+
+The Knowledge Engine durable-record `409` remains a separate concurrency/integrity concern unless later causal evidence proves it belongs to the Durable Execution Spine.
+
+### Commission 006.031M — Durable Execution Spine 1.0.0 — COMMISSIONED
+
+**Server version:** `2.10.78`
+
+**Build:** `DES100-DURABLE-EXECUTION-LINEAGE-LEASE-CONTRACT-20260913-A`
+
+**File:** `server.js`
+
+**Purpose:** establish the first server-owned durable execution identity between Maddy's existing durable cognition/Mission authority and existing server execution infrastructure.
+
+Commissioned behavior:
+
+- binds execution identity to the originating Mission ID, cognition ID, and Hallway work ID;
+- establishes canonical execution lifecycle semantics:
+  **queued → running → waiting → returned → failed → resolved**;
+- persists execution state through existing institutional Executive Memory authority;
+- establishes server execution lease ownership;
+- prevents duplicate claims while an execution lease remains active;
+- recovers expired execution leases after interruption/restart;
+- preserves immutable Mission/cognition/Hallway lineage through recovery;
+- permits recovered work to resume under a new lease without manufacturing a new execution identity;
+- fails closed on conflicting immutable lineage;
+- grants no new external-action or spending authority;
+- reuses existing Continuous Operations lease/restart architecture rather than creating a second job system.
+
+**Acceptance:** PASS 10/10.
+
+**Syntax:** PASS (`node --check server.js`).
+
+**Committed by Executive Director:** yes.
+
+### Commission 006.031N — Durable Execution Spine 1.1.0 Server Runner — COMMISSIONED
+
+**Server version:** `2.10.79`
+
+**Build:** `DES110-DURABLE-SERVER-EXECUTION-RUNNER-20260913-A`
+
+**File:** `server.js`
+
+**Purpose:** place a real server-owned execution path behind the Durable Execution identity so the first bounded governed capability can execute independently of browser Promise lifetime.
+
+First commissioned executor: **MEOS headless public research**.
+
+Canonical path now established on the server side:
+
+**durable Mission / cognition / Hallway lineage → Durable Execution identity → queued → server lease → running → MEOS headless public research → evidence/result persisted → returned**
+
+Commissioned behavior:
+
+- reuses the 1.0.0 Durable Execution identity and lease contract;
+- binds server execution to the original Mission, cognition, and Hallway work lineage;
+- admits the bounded existing MEOS headless public-research executor rather than creating another research engine;
+- persists queued, running, returned, and failed execution state;
+- persists returned research evidence/result against the original execution identity;
+- prevents duplicate execution through existing lease semantics;
+- recovers expired execution leases after interruption/restart;
+- sweeps queued/recovered human-directed research after server startup so commissioned server work is not conceptually dependent on a browser remaining alive;
+- requires explicit human direction and public-read authority for this first executor;
+- grants no paid-spend or external-action authority.
+
+Interrupted execution retains the same execution lineage:
+
+**running + expired lease → server restart/recovery → same execution queued → new lease → resume same lineage**
+
+No new Mission, second Hallway, second research engine, second memory authority, or browser pseudo-worker was created.
+
+**Acceptance:** PASS 8/8.
+
+**Syntax:** PASS (`node --check server.js`).
+
+**Committed by Executive Director:** yes.
+
+### Architectural state after 006.031N
+
+The server side now owns the first commissioned durable execution contract **and** a bounded server-owned runner. This is a major but incomplete connection of the Durable Execution Spine.
+
+What is now proven:
+
+**Intention/Mission lineage can have a durable execution identity, that identity can be leased by the server, interrupted leases can recover, and bounded public research can execute under the original lineage without creating a duplicate identity.**
+
+What is **not yet proven end-to-end**:
+
+- ordinary governed Hallway work is not yet commissioned to hand eligible long-running execution into this server-owned Durable Execution contract;
+- the live octopus research path has not yet been rerun as an end-to-end proof after the Hallway-to-server connection because that connection is not commissioned yet;
+- browser/tab/machine independence must not be claimed for the complete Hallway path until that handoff and return path are commissioned and proven live;
+- downstream returned consequence → Brain judgment → verification → Learning/Memory → Mission resolution must preserve the original durable lineage after a server-owned resumed execution.
+
+### Current exact next step
+
+The next commission is the **Hallway → Durable Execution Spine connection**.
+
+Before coding it, inspect the live Hallway 1.5.3 and server 2.10.79 contracts together and select the smallest one-file seam that lets eligible governed long-running public-research work hand execution ownership to the commissioned server Durable Execution runner rather than retaining the actual execution lifetime in a browser Promise.
+
+The connection must preserve:
+
+- the same Hallway work ID;
+- the same Mission ID;
+- cognition/intention lineage when present;
+- one durable execution identity;
+- no duplicate Router/research request;
+- no new authority;
+- evidence/provenance continuity;
+- late/recovered result return to the original governed lineage;
+- informational auto-resolution only after the governed evidence-bound return is actually complete;
+- terminal failure release when genuine terminal failure occurs;
+- provider/cloud/hardware/model neutrality.
+
+Do **not** call a browser Promise durable.
+
+Do **not** increase timeout constants as the architectural solution.
+
+Do **not** create a second queue, Mission system, Hallway, research engine, memory authority, or retry nervous system.
+
+Do **not** modify Mission Dispatcher authority merely because it is currently stopped.
+
+Do **not** mix the separate Knowledge Engine `409` into this commission without causal proof.
+
+After the Hallway handoff is commissioned and tested, perform a live end-to-end proof that a human-directed public-research intention enters the Durable Execution Spine, preserves its original lineage, returns governed evidence, resolves correctly, and can recover from an interrupted server lease without browser lifetime being the execution authority.
+
+The architectural objective remains larger than background work:
+
+**continuity of intention through time.**
+
 
 **Always Push Forward.**
