@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.83
+ * Server Version: 2.10.84
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.83";
+const VERSION = "2.10.84";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -16492,10 +16492,21 @@ function durablePublishingContainsCredentialMaterial(value, seen = new Set()) {
       .replace(/\s+/g, "-")
       .toLowerCase();
 
-  return Object.entries(value).some(([key, child]) =>
-    forbidden.test(normalizeCredentialKey(key)) ||
-    durablePublishingContainsCredentialMaterial(child, seen)
-  );
+  return Object.entries(value).some(([key, child]) => {
+    const normalizedKey = normalizeCredentialKey(key);
+
+    // `credentialBoundary` is a public governance declaration, not credential
+    // material. Its value is independently required to be exactly
+    // `server-side-only` by the runtime publishing adapter contract.
+    if (normalizedKey === "credential-boundary") {
+      return false;
+    }
+
+    return (
+      forbidden.test(normalizedKey) ||
+      durablePublishingContainsCredentialMaterial(child, seen)
+    );
+  });
 }
 
 function durablePublishingRequiredText(value, field) {
