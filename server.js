@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.84
+ * Server Version: 2.10.85
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.84";
+const VERSION = "2.10.85";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -1299,7 +1299,8 @@ const EXECUTIVE_MEMORY_COLLECTIONS = new Set([
   "opportunity-state",
   "grant-recommendations",
   "investigation-history",
-  "durable-execution-spine"
+  "durable-execution-spine",
+  "publishing-credential-vault"
 ]);
 
 const EXECUTIVE_MEMORY_MAX_RECORDS = Number(
@@ -16958,6 +16959,454 @@ async function runRuntimePublishingAdapterDiscoveryAcceptanceTest() {
   };
 }
 
+
+/*
+ * Commission 006.032F5 — Publishing Credential Vault & Organization Isolation
+ *
+ * F4 proved that publishing credentials must stay behind a server-only boundary.
+ * F5 gives that boundary a durable, encrypted, organization-scoped home so a
+ * future real OAuth adapter does not need to leak tokens into browser state,
+ * model context, campaign objects, logs, or provider-specific cognition.
+ *
+ * Ciphertext may travel through commissioned durable institutional storage;
+ * plaintext credential material may not. Decryption occurs only inside this
+ * server process at the exact adapter boundary that needs it.
+ */
+const PUBLISHING_CREDENTIAL_VAULT_COMMISSION = "006.032F5";
+const PUBLISHING_CREDENTIAL_VAULT_VERSION = "1.0.0";
+const PUBLISHING_CREDENTIAL_VAULT_BUILD_ID =
+  "PCV100-ENCRYPTED-PUBLISHING-CREDENTIAL-VAULT-ORG-ISOLATION-20260914-A";
+const PUBLISHING_CREDENTIAL_VAULT_SCHEMA =
+  "meos.server.publishing-credential-vault.v1";
+const PUBLISHING_CREDENTIAL_VAULT_COLLECTION = "publishing-credential-vault";
+const PUBLISHING_CREDENTIAL_VAULT_CIPHER = "aes-256-gcm";
+
+function publishingCredentialRequiredText(value, field) {
+  const text = String(value || "").trim();
+  if (!text) {
+    const error = new Error(`Publishing credential vault requires ${field}.`);
+    error.status = 400;
+    error.code = "PUBLISHING_CREDENTIAL_VAULT_FIELD_REQUIRED";
+    error.details = { field };
+    throw error;
+  }
+  return text;
+}
+
+function publishingCredentialEncryptionKey(raw = process.env.MEOS_PUBLISHING_CREDENTIAL_KEY) {
+  const source = String(raw || "").trim();
+  if (!source) {
+    const error = new Error(
+      "Publishing credential vault encryption key is not configured."
+    );
+    error.status = 503;
+    error.code = "PUBLISHING_CREDENTIAL_VAULT_KEY_UNAVAILABLE";
+    throw error;
+  }
+
+  let key = null;
+  if (/^[a-f0-9]{64}$/i.test(source)) {
+    key = Buffer.from(source, "hex");
+  } else {
+    try {
+      const decoded = Buffer.from(source, "base64");
+      if (decoded.length === 32 && decoded.toString("base64").replace(/=+$/g, "") === source.replace(/=+$/g, "")) {
+        key = decoded;
+      }
+    } catch (_) {}
+  }
+
+  if (!key || key.length !== 32) {
+    const error = new Error(
+      "Publishing credential vault key must be exactly 32 bytes encoded as 64 hex characters or base64."
+    );
+    error.status = 503;
+    error.code = "PUBLISHING_CREDENTIAL_VAULT_KEY_INVALID";
+    throw error;
+  }
+  return key;
+}
+
+function normalizePublishingCredentialIdentity(input = {}) {
+  return {
+    organizationId: publishingCredentialRequiredText(
+      input.organizationId,
+      "organizationId"
+    ),
+    adapterId: publishingCredentialRequiredText(input.adapterId, "adapterId"),
+    principalId: publishingCredentialRequiredText(
+      input.principalId || "default",
+      "principalId"
+    ),
+    slot: publishingCredentialRequiredText(input.slot || "oauth", "slot")
+  };
+}
+
+function publishingCredentialId(identity = {}) {
+  const normalized = normalizePublishingCredentialIdentity(identity);
+  return crypto
+    .createHash("sha256")
+    .update([
+      normalized.organizationId,
+      normalized.adapterId,
+      normalized.principalId,
+      normalized.slot
+    ].join("|"))
+    .digest("hex");
+}
+
+function publishingCredentialAad(identity = {}) {
+  const normalized = normalizePublishingCredentialIdentity(identity);
+  return Buffer.from(
+    JSON.stringify({
+      schema: PUBLISHING_CREDENTIAL_VAULT_SCHEMA,
+      organizationId: normalized.organizationId,
+      adapterId: normalized.adapterId,
+      principalId: normalized.principalId,
+      slot: normalized.slot
+    }),
+    "utf8"
+  );
+}
+
+function sealPublishingCredential(input = {}, options = {}) {
+  const identity = normalizePublishingCredentialIdentity(input);
+  const secret = publishingCredentialRequiredText(input.secret, "secret");
+  const key = options.key || publishingCredentialEncryptionKey();
+  if (!Buffer.isBuffer(key) || key.length !== 32) {
+    const error = new Error("Publishing credential vault encryption key is invalid.");
+    error.code = "PUBLISHING_CREDENTIAL_VAULT_KEY_INVALID";
+    throw error;
+  }
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(PUBLISHING_CREDENTIAL_VAULT_CIPHER, key, iv);
+  cipher.setAAD(publishingCredentialAad(identity));
+  const ciphertext = Buffer.concat([
+    cipher.update(Buffer.from(secret, "utf8")),
+    cipher.final()
+  ]);
+  const authTag = cipher.getAuthTag();
+  const now = new Date().toISOString();
+
+  return {
+    type: "publishing-credential-vault-record",
+    schema: PUBLISHING_CREDENTIAL_VAULT_SCHEMA,
+    version: PUBLISHING_CREDENTIAL_VAULT_VERSION,
+    buildId: PUBLISHING_CREDENTIAL_VAULT_BUILD_ID,
+    credentialId: publishingCredentialId(identity),
+    ...identity,
+    cipher: PUBLISHING_CREDENTIAL_VAULT_CIPHER,
+    iv: iv.toString("base64"),
+    authTag: authTag.toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+    credentialBoundary: "server-side-only",
+    plaintextPersisted: false,
+    browserVisible: false,
+    modelVisible: false,
+    createdAt: String(input.createdAt || now),
+    updatedAt: now
+  };
+}
+
+function openPublishingCredential(record = {}, options = {}) {
+  if (
+    record?.schema !== PUBLISHING_CREDENTIAL_VAULT_SCHEMA ||
+    record?.cipher !== PUBLISHING_CREDENTIAL_VAULT_CIPHER
+  ) {
+    const error = new Error("Publishing credential vault record is not commissioned.");
+    error.code = "PUBLISHING_CREDENTIAL_VAULT_RECORD_INVALID";
+    throw error;
+  }
+
+  const expectedIdentity = normalizePublishingCredentialIdentity(
+    options.identity || record
+  );
+  const recordIdentity = normalizePublishingCredentialIdentity(record);
+  for (const field of ["organizationId", "adapterId", "principalId", "slot"]) {
+    if (expectedIdentity[field] !== recordIdentity[field]) {
+      const error = new Error("Publishing credential vault identity boundary mismatch.");
+      error.code = "PUBLISHING_CREDENTIAL_VAULT_IDENTITY_MISMATCH";
+      throw error;
+    }
+  }
+
+  const key = options.key || publishingCredentialEncryptionKey();
+  try {
+    const decipher = crypto.createDecipheriv(
+      PUBLISHING_CREDENTIAL_VAULT_CIPHER,
+      key,
+      Buffer.from(String(record.iv || ""), "base64")
+    );
+    decipher.setAAD(publishingCredentialAad(recordIdentity));
+    decipher.setAuthTag(Buffer.from(String(record.authTag || ""), "base64"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(String(record.ciphertext || ""), "base64")),
+      decipher.final()
+    ]).toString("utf8");
+  } catch (cause) {
+    const error = new Error(
+      "Publishing credential vault record could not be authenticated or decrypted."
+    );
+    error.code = "PUBLISHING_CREDENTIAL_VAULT_DECRYPTION_FAILED";
+    error.cause = cause;
+    throw error;
+  }
+}
+
+function publishingCredentialPublicRecord(record = {}) {
+  return {
+    schema: PUBLISHING_CREDENTIAL_VAULT_SCHEMA,
+    version: PUBLISHING_CREDENTIAL_VAULT_VERSION,
+    buildId: PUBLISHING_CREDENTIAL_VAULT_BUILD_ID,
+    credentialId: record.credentialId || null,
+    organizationId: record.organizationId || null,
+    adapterId: record.adapterId || null,
+    principalId: record.principalId || null,
+    slot: record.slot || null,
+    credentialBoundary: "server-side-only",
+    configured: Boolean(record.ciphertext && record.authTag && record.iv),
+    plaintextPersisted: false,
+    browserVisible: false,
+    modelVisible: false,
+    updatedAt: record.updatedAt || null
+  };
+}
+
+async function upsertPublishingCredential(input = {}, options = {}) {
+  const sealed = sealPublishingCredential(input, options);
+  return withExecutiveMemoryWriteLock(
+    PUBLISHING_CREDENTIAL_VAULT_COLLECTION,
+    async () => {
+      const records = await readExecutiveMemoryCollection(
+        PUBLISHING_CREDENTIAL_VAULT_COLLECTION
+      );
+      const next = records.filter(
+        record => record?.credentialId !== sealed.credentialId
+      );
+      next.push(sealed);
+      await writeExecutiveMemoryCollection(
+        PUBLISHING_CREDENTIAL_VAULT_COLLECTION,
+        next
+      );
+      return publishingCredentialPublicRecord(sealed);
+    }
+  );
+}
+
+async function resolvePublishingCredential(identity = {}, options = {}) {
+  const credentialId = publishingCredentialId(identity);
+  const records = await readExecutiveMemoryCollection(
+    PUBLISHING_CREDENTIAL_VAULT_COLLECTION
+  );
+  const record = records.find(item => item?.credentialId === credentialId);
+  if (!record) {
+    const error = new Error("Publishing credential is not configured.");
+    error.status = 404;
+    error.code = "PUBLISHING_CREDENTIAL_NOT_CONFIGURED";
+    throw error;
+  }
+  return openPublishingCredential(record, {
+    ...options,
+    identity
+  });
+}
+
+async function revokePublishingCredential(identity = {}) {
+  const credentialId = publishingCredentialId(identity);
+  return withExecutiveMemoryWriteLock(
+    PUBLISHING_CREDENTIAL_VAULT_COLLECTION,
+    async () => {
+      const records = await readExecutiveMemoryCollection(
+        PUBLISHING_CREDENTIAL_VAULT_COLLECTION
+      );
+      const next = records.filter(
+        record => record?.credentialId !== credentialId
+      );
+      const revoked = next.length !== records.length;
+      if (revoked) {
+        await writeExecutiveMemoryCollection(
+          PUBLISHING_CREDENTIAL_VAULT_COLLECTION,
+          next
+        );
+      }
+      return { credentialId, revoked };
+    }
+  );
+}
+
+async function getPublishingCredentialVaultStatus() {
+  const records = await readExecutiveMemoryCollection(
+    PUBLISHING_CREDENTIAL_VAULT_COLLECTION
+  );
+  let keyConfigured = false;
+  try {
+    publishingCredentialEncryptionKey();
+    keyConfigured = true;
+  } catch (_) {}
+  return {
+    success: true,
+    commission: PUBLISHING_CREDENTIAL_VAULT_COMMISSION,
+    schema: PUBLISHING_CREDENTIAL_VAULT_SCHEMA,
+    version: PUBLISHING_CREDENTIAL_VAULT_VERSION,
+    buildId: PUBLISHING_CREDENTIAL_VAULT_BUILD_ID,
+    cipher: PUBLISHING_CREDENTIAL_VAULT_CIPHER,
+    credentialBoundary: "server-side-only",
+    keyConfigured,
+    configuredCredentialCount: records.filter(
+      record => record?.type === "publishing-credential-vault-record"
+    ).length,
+    plaintextPersisted: false,
+    browserCanReadSecrets: false,
+    modelCanReadSecrets: false,
+    records: records
+      .filter(record => record?.type === "publishing-credential-vault-record")
+      .map(publishingCredentialPublicRecord)
+  };
+}
+
+async function runPublishingCredentialVaultAcceptanceTest() {
+  const testKey = crypto
+    .createHash("sha256")
+    .update("006.032F5-acceptance-key-not-a-production-secret")
+    .digest();
+  const identity = {
+    organizationId: "org-acceptance-a",
+    adapterId: "linkedin-acceptance",
+    principalId: "principal-acceptance",
+    slot: "oauth"
+  };
+  const secret = "acceptance-token-value-never-persist-plaintext";
+  const sealed = sealPublishingCredential(
+    { ...identity, secret },
+    { key: testKey }
+  );
+  const opened = openPublishingCredential(sealed, {
+    key: testKey,
+    identity
+  });
+  const secondSeal = sealPublishingCredential(
+    { ...identity, secret },
+    { key: testKey }
+  );
+
+  let crossOrgRejected = false;
+  try {
+    openPublishingCredential(sealed, {
+      key: testKey,
+      identity: { ...identity, organizationId: "org-acceptance-b" }
+    });
+  } catch (error) {
+    crossOrgRejected = error?.code === "PUBLISHING_CREDENTIAL_VAULT_IDENTITY_MISMATCH";
+  }
+
+  let crossAdapterRejected = false;
+  try {
+    openPublishingCredential(sealed, {
+      key: testKey,
+      identity: { ...identity, adapterId: "other-adapter" }
+    });
+  } catch (error) {
+    crossAdapterRejected = error?.code === "PUBLISHING_CREDENTIAL_VAULT_IDENTITY_MISMATCH";
+  }
+
+  let tamperRejected = false;
+  try {
+    const tampered = {
+      ...sealed,
+      ciphertext: Buffer.from("tampered", "utf8").toString("base64")
+    };
+    openPublishingCredential(tampered, { key: testKey, identity });
+  } catch (error) {
+    tamperRejected = error?.code === "PUBLISHING_CREDENTIAL_VAULT_DECRYPTION_FAILED";
+  }
+
+  let badKeyRejected = false;
+  try {
+    openPublishingCredential(sealed, {
+      key: crypto.randomBytes(32),
+      identity
+    });
+  } catch (error) {
+    badKeyRejected = error?.code === "PUBLISHING_CREDENTIAL_VAULT_DECRYPTION_FAILED";
+  }
+
+  let missingKeyFailsClosed = false;
+  try {
+    publishingCredentialEncryptionKey("");
+  } catch (error) {
+    missingKeyFailsClosed = error?.code === "PUBLISHING_CREDENTIAL_VAULT_KEY_UNAVAILABLE";
+  }
+
+  let malformedKeyRejected = false;
+  try {
+    publishingCredentialEncryptionKey("too-short");
+  } catch (error) {
+    malformedKeyRejected = error?.code === "PUBLISHING_CREDENTIAL_VAULT_KEY_INVALID";
+  }
+
+  let repositoryRoundTrip = false;
+  let revocationProven = false;
+  try {
+    await upsertPublishingCredential(
+      { ...identity, secret },
+      { key: testKey }
+    );
+    const resolved = await resolvePublishingCredential(identity, {
+      key: testKey
+    });
+    repositoryRoundTrip = resolved === secret;
+    const revoked = await revokePublishingCredential(identity);
+    try {
+      await resolvePublishingCredential(identity, { key: testKey });
+    } catch (error) {
+      revocationProven =
+        revoked.revoked === true &&
+        error?.code === "PUBLISHING_CREDENTIAL_NOT_CONFIGURED";
+    }
+  } finally {
+    try { await revokePublishingCredential(identity); } catch (_) {}
+  }
+
+  const publicRecord = publishingCredentialPublicRecord(sealed);
+  const serializedSealed = JSON.stringify(sealed);
+  const serializedPublic = JSON.stringify(publicRecord);
+  const checks = [
+    { name: "Publishing credential vault contract is versioned and server-owned", passed: sealed.schema === PUBLISHING_CREDENTIAL_VAULT_SCHEMA && sealed.version === PUBLISHING_CREDENTIAL_VAULT_VERSION },
+    { name: "Credential plaintext round-trips only through server-side authenticated decryption", passed: opened === secret },
+    { name: "Encrypted credential survives the commissioned durable repository round-trip", passed: repositoryRoundTrip },
+    { name: "Credential plaintext is not persisted in the sealed durable record", passed: !serializedSealed.includes(secret) && sealed.plaintextPersisted === false },
+    { name: "AES-256-GCM authenticated encryption is the commissioned cipher", passed: sealed.cipher === "aes-256-gcm" && Buffer.from(sealed.iv, "base64").length === 12 && Buffer.from(sealed.authTag, "base64").length === 16 },
+    { name: "Same credential produces different ciphertext because IVs are random", passed: sealed.ciphertext !== secondSeal.ciphertext && sealed.iv !== secondSeal.iv },
+    { name: "Credential identity is deterministic without using the secret", passed: sealed.credentialId === secondSeal.credentialId && /^[a-f0-9]{64}$/.test(sealed.credentialId) },
+    { name: "Organization boundary is cryptographically bound and cross-org reads fail closed", passed: crossOrgRejected },
+    { name: "Adapter boundary is cryptographically bound and cross-adapter reads fail closed", passed: crossAdapterRejected },
+    { name: "Ciphertext tampering fails authenticated decryption", passed: tamperRejected },
+    { name: "Wrong encryption key fails authenticated decryption", passed: badKeyRejected },
+    { name: "Missing production vault key fails closed", passed: missingKeyFailsClosed },
+    { name: "Malformed production vault key is rejected", passed: malformedKeyRejected },
+    { name: "Public credential state never includes ciphertext, IV, or authentication tag", passed: !Object.hasOwn(publicRecord, "ciphertext") && !Object.hasOwn(publicRecord, "iv") && !Object.hasOwn(publicRecord, "authTag") },
+    { name: "Public credential state never exposes credential plaintext", passed: !serializedPublic.includes(secret) && publicRecord.browserVisible === false && publicRecord.modelVisible === false },
+    { name: "Public state declares the server-side-only credential boundary", passed: publicRecord.credentialBoundary === "server-side-only" },
+    { name: "Credential records are explicitly organization and adapter scoped", passed: sealed.organizationId === identity.organizationId && sealed.adapterId === identity.adapterId },
+    { name: "Credential records are explicitly principal and slot scoped", passed: sealed.principalId === identity.principalId && sealed.slot === identity.slot },
+    { name: "Revocation removes the durable credential and future resolution fails closed", passed: revocationProven },
+    { name: "Vault state grants no publication authority", passed: !serializedPublic.includes("publicationAuthorized") && !serializedSealed.includes("publicationAuthorized") }
+  ];
+  const passed = checks.filter(check => check.passed).length;
+  return {
+    success: passed === checks.length,
+    commission: PUBLISHING_CREDENTIAL_VAULT_COMMISSION,
+    schema: "meos.server.publishing-credential-vault.acceptance.v1",
+    version: PUBLISHING_CREDENTIAL_VAULT_VERSION,
+    buildId: PUBLISHING_CREDENTIAL_VAULT_BUILD_ID,
+    passed,
+    total: checks.length,
+    checks,
+    sample: publicRecord
+  };
+}
+
 function normalizeDurablePublishingDispatch(input = {}) {
   const request = input.request || {};
   const envelope = normalizeDurablePublishingEnvelope(
@@ -17868,6 +18317,31 @@ app.get(
   "/api/publishing/adapters/acceptance-test",
   async (_request, response) => {
     const result = await runRuntimePublishingAdapterDiscoveryAcceptanceTest();
+    response.status(result.success ? 200 : 500).json(result);
+  }
+);
+
+
+app.get(
+  "/api/publishing/credential-vault",
+  async (_request, response) => {
+    try {
+      response.status(200).json(await getPublishingCredentialVaultStatus());
+    } catch (error) {
+      response.status(500).json({
+        success: false,
+        commission: PUBLISHING_CREDENTIAL_VAULT_COMMISSION,
+        code: error?.code || "PUBLISHING_CREDENTIAL_VAULT_STATUS_FAILED",
+        error: error?.message || String(error)
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/publishing/credential-vault/acceptance-test",
+  async (_request, response) => {
+    const result = await runPublishingCredentialVaultAcceptanceTest();
     response.status(result.success ? 200 : 500).json(result);
   }
 );
