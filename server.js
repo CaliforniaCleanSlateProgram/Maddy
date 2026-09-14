@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.80
+ * Server Version: 2.10.81
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.80";
+const VERSION = "2.10.81";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -13856,11 +13856,20 @@ function durableExecutionRequiredId(value, field) {
 }
 
 function durableExecutionAuthorityBoundary(input = {}) {
+  const source = String(
+    input.authoritySource || "existing-governed-authority"
+  ).trim();
+  const publishingAuthority =
+    source === "human-directed-governed-publishing" &&
+    input.externalActionAuthorized === true &&
+    Boolean(String(input.authorizationId || "").trim());
   return {
-    authoritySource:
-      String(input.authoritySource || "existing-governed-authority").trim(),
-    // This contract records lineage; it cannot mint external-action authority.
-    externalActionAuthorized: false,
+    authoritySource: source,
+    // The spine may preserve explicit upstream publishing authority but never mint it.
+    externalActionAuthorized: publishingAuthority,
+    authorizationId: publishingAuthority
+      ? String(input.authorizationId || "").trim()
+      : null,
     automaticSpendUsd: 0,
     grantsNewAuthority: false
   };
@@ -14017,17 +14026,24 @@ function recoverDurableExecutionRecord(record, nowMs = Date.now()) {
     return { recovered: false, record };
   }
   const recoveredAt = new Date(nowMs).toISOString();
+  const uncertainConsequentialPublication =
+    record.executor === DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING &&
+    record.checkpoint?.stage === "provider-call-started";
   return {
     recovered: true,
     record: {
       ...record,
-      state: "queued",
+      state: uncertainConsequentialPublication ? "waiting" : "queued",
       lease: null,
       updatedAt: recoveredAt,
       recovery: {
-        reason: "expired-execution-lease",
+        reason: uncertainConsequentialPublication
+          ? "publication-outcome-uncertain-manual-reconciliation-required"
+          : "expired-execution-lease",
         recoveredAt,
-        preservesOriginalLineage: true
+        preservesOriginalLineage: true,
+        automaticRetryBlocked: uncertainConsequentialPublication,
+        spamProtection: uncertainConsequentialPublication
       }
     }
   };
@@ -16434,6 +16450,27 @@ const DURABLE_EXECUTION_RUNNER_BUILD_ID =
   "DES110-DURABLE-SERVER-EXECUTION-RUNNER-20260913-A";
 const DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH =
   "headless-public-research";
+
+/* Commission 006.032F2 — Durable Governed Publishing Execution Spine
+ *
+ * Publishing is a consequential external action. It therefore reuses the
+ * commissioned Durable Execution Spine but receives stronger one-shot,
+ * idempotency, anti-spam, credential, and uncertain-outcome protections than
+ * read-only research. A channel adapter is a replaceable server-side hand; it
+ * never becomes Maddy's identity or authority source.
+ */
+const DURABLE_PUBLISHING_EXECUTION_COMMISSION = "006.032F2";
+const DURABLE_PUBLISHING_EXECUTION_VERSION = "1.0.0";
+const DURABLE_PUBLISHING_EXECUTION_BUILD_ID =
+  "DPE100-DURABLE-GOVERNED-PUBLISHING-EXECUTION-SPINE-20260914-A";
+const DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING = "governed-publishing";
+const DURABLE_PUBLISHING_ENVELOPE_SCHEMA =
+  "meos.provider-manager.governed-publishing-envelope.v1";
+const DURABLE_PUBLISHING_RECEIPT_SCHEMA =
+  "meos.provider-manager.publishing-receipt.v1";
+const DURABLE_PUBLISHING_CAPABILITY_PREFIX = "external-publishing.";
+const durablePublishingExecutors = new Map();
+
 const durableExecutionRunnerState = {
   scheduled: new Set(),
   resumedAfterStartup: 0,
@@ -16443,10 +16480,240 @@ const durableExecutionRunnerState = {
   lastError: null
 };
 
+function durablePublishingContainsCredentialMaterial(value, seen = new Set()) {
+  if (!value || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  const forbidden = /(^|[-_])(token|secret|password|passphrase|api[-_]?key|oauth|credential|authorization[-_]?header|private[-_]?key)($|[-_])/i;
+  return Object.entries(value).some(([key, child]) =>
+    forbidden.test(String(key)) ||
+    durablePublishingContainsCredentialMaterial(child, seen)
+  );
+}
+
+function durablePublishingRequiredText(value, field) {
+  const text = String(value || "").trim();
+  if (!text) {
+    const error = new Error(`Governed publishing requires ${field}.`);
+    error.status = 400;
+    error.code = "DURABLE_PUBLISHING_FIELD_REQUIRED";
+    error.details = { field };
+    throw error;
+  }
+  return text;
+}
+
+function durablePublishingIdempotencyKey(envelope = {}) {
+  const lineage = envelope.lineage || {};
+  const material = [
+    lineage.organizationId,
+    lineage.campaignId,
+    lineage.creativeHypothesisId,
+    lineage.assetId,
+    lineage.authorizationId,
+    envelope.capabilityId,
+    envelope.channel
+  ].map(value => String(value || "").trim()).join("|");
+  return crypto
+    .createHash("sha256")
+    .update(material)
+    .digest("hex");
+}
+
+function normalizeDurablePublishingEnvelope(input = {}) {
+  const envelope = durableExecutionClone(input || {});
+  if (!envelope || typeof envelope !== "object") {
+    const error = new Error("Governed publishing requires a publishing envelope.");
+    error.status = 400;
+    error.code = "DURABLE_PUBLISHING_ENVELOPE_REQUIRED";
+    throw error;
+  }
+  if (durablePublishingContainsCredentialMaterial(envelope)) {
+    const error = new Error(
+      "Publishing envelopes must not contain credential material; credentials remain behind the server-side adapter boundary."
+    );
+    error.status = 400;
+    error.code = "DURABLE_PUBLISHING_CREDENTIAL_MATERIAL_REJECTED";
+    throw error;
+  }
+  if (envelope.schema !== DURABLE_PUBLISHING_ENVELOPE_SCHEMA) {
+    const error = new Error("Governed publishing envelope schema is not commissioned.");
+    error.status = 400;
+    error.code = "DURABLE_PUBLISHING_SCHEMA_INVALID";
+    throw error;
+  }
+  const capabilityId = durablePublishingRequiredText(
+    envelope.capabilityId,
+    "publishingEnvelope.capabilityId"
+  );
+  if (!capabilityId.startsWith(DURABLE_PUBLISHING_CAPABILITY_PREFIX)) {
+    const error = new Error("Governed publishing requires an external-publishing capability.");
+    error.status = 400;
+    error.code = "DURABLE_PUBLISHING_CAPABILITY_INVALID";
+    throw error;
+  }
+  const channel = durablePublishingRequiredText(
+    envelope.channel,
+    "publishingEnvelope.channel"
+  );
+  const lineage = {};
+  for (const field of [
+    "organizationId",
+    "campaignId",
+    "creativeHypothesisId",
+    "assetId",
+    "authorizationId"
+  ]) {
+    lineage[field] = durablePublishingRequiredText(
+      envelope.lineage?.[field],
+      `publishingEnvelope.lineage.${field}`
+    );
+  }
+  if (
+    envelope.authority?.authorized !== true ||
+    envelope.authority?.capabilityCanExpandScope !== false ||
+    String(envelope.authority?.authorizationId || "").trim() !== lineage.authorizationId
+  ) {
+    const error = new Error(
+      "Governed publishing requires exact explicit authorization and forbids capability scope expansion."
+    );
+    error.status = 403;
+    error.code = "DURABLE_PUBLISHING_AUTHORITY_INVALID";
+    throw error;
+  }
+  const maxPublications = Number(envelope.authority?.scope?.maxPublications);
+  if (!Number.isInteger(maxPublications) || maxPublications !== 1) {
+    const error = new Error(
+      "006.032F2 requires one explicitly authorized publication per durable execution; batch or repeated publication is not authorized."
+    );
+    error.status = 403;
+    error.code = "DURABLE_PUBLISHING_ANTI_SPAM_SCOPE_REQUIRED";
+    throw error;
+  }
+  if (
+    envelope.credentials?.boundary !== "server-side-only" ||
+    envelope.credentials?.included !== false ||
+    envelope.credentials?.modelVisible !== false ||
+    envelope.credentials?.browserPersisted !== false
+  ) {
+    const error = new Error("Governed publishing credential boundary is invalid.");
+    error.status = 400;
+    error.code = "DURABLE_PUBLISHING_CREDENTIAL_BOUNDARY_INVALID";
+    throw error;
+  }
+  if (
+    envelope.receiptRequired !== true ||
+    envelope.receiptSchema !== DURABLE_PUBLISHING_RECEIPT_SCHEMA ||
+    envelope.executionIsOutcome !== false
+  ) {
+    const error = new Error("Governed publishing requires a normalized execution receipt and execution/outcome separation.");
+    error.status = 400;
+    error.code = "DURABLE_PUBLISHING_RECEIPT_CONTRACT_INVALID";
+    throw error;
+  }
+  return {
+    ...envelope,
+    capabilityId,
+    channel,
+    lineage,
+    governance: {
+      idempotencyKey: durablePublishingIdempotencyKey(envelope),
+      singleAuthorizedPublication: true,
+      duplicateSuppression: true,
+      automaticRetryAfterProviderCall: false,
+      spamGuard: "one-authorized-publication-per-execution"
+    }
+  };
+}
+
+function registerDurablePublishingExecutor(definition = {}, options = {}) {
+  const capabilityId = durablePublishingRequiredText(
+    definition.capabilityId,
+    "capabilityId"
+  );
+  if (!capabilityId.startsWith(DURABLE_PUBLISHING_CAPABILITY_PREFIX)) {
+    throw new Error("Durable publishing executors must bind to external-publishing capabilities.");
+  }
+  if (durablePublishingContainsCredentialMaterial(definition)) {
+    throw new Error("Publishing executor registration must not expose credential material.");
+  }
+  if (typeof definition.execute !== "function") {
+    throw new TypeError("Durable publishing executor requires an execute function.");
+  }
+  if (durablePublishingExecutors.has(capabilityId) && options.replace !== true) {
+    throw new Error(`Durable publishing executor "${capabilityId}" is already registered.`);
+  }
+  durablePublishingExecutors.set(capabilityId, {
+    capabilityId,
+    channel: String(definition.channel || "").trim(),
+    execute: definition.execute
+  });
+  return { capabilityId, registered: true };
+}
+
+function unregisterDurablePublishingExecutor(capabilityId) {
+  return durablePublishingExecutors.delete(String(capabilityId || "").trim());
+}
+
+function normalizeDurablePublishingDispatch(input = {}) {
+  const request = input.request || {};
+  const envelope = normalizeDurablePublishingEnvelope(
+    request.publishingEnvelope || request.envelope
+  );
+  const authority = input.authority || {};
+  if (
+    authority.humanDirected !== true ||
+    authority.publicationAuthorized !== true ||
+    authority.externalActionAuthorized !== true ||
+    authority.paidSpendAuthorized === true ||
+    Number(authority.automaticSpendUsd || 0) !== 0 ||
+    String(authority.authorizationId || "").trim() !== envelope.lineage.authorizationId
+  ) {
+    const error = new Error(
+      "Durable publishing requires exact human publication authority, zero automatic spend, and the same authorization identity as the publishing envelope."
+    );
+    error.status = 403;
+    error.code = "DURABLE_PUBLISHING_AUTHORITY_INSUFFICIENT";
+    throw error;
+  }
+  if (durablePublishingContainsCredentialMaterial(request)) {
+    const error = new Error("Durable publishing request contains forbidden credential material.");
+    error.status = 400;
+    error.code = "DURABLE_PUBLISHING_CREDENTIAL_MATERIAL_REJECTED";
+    throw error;
+  }
+  return {
+    executionId: durableExecutionRequiredId(input.executionId, "executionId"),
+    lineage: {
+      missionId: durableExecutionRequiredId(input.lineage?.missionId, "lineage.missionId"),
+      cognitionId: durableExecutionRequiredId(input.lineage?.cognitionId, "lineage.cognitionId"),
+      hallwayWorkId: durableExecutionRequiredId(input.lineage?.hallwayWorkId, "lineage.hallwayWorkId")
+    },
+    executor: DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING,
+    request: {
+      ...durableExecutionClone(request),
+      publishingEnvelope: envelope,
+      governance: durableExecutionClone(envelope.governance)
+    },
+    authority: {
+      humanDirected: true,
+      publicationAuthorized: true,
+      externalActionAuthorized: true,
+      paidSpendAuthorized: false,
+      automaticSpendUsd: 0,
+      authorizationId: envelope.lineage.authorizationId,
+      capabilityCanExpandScope: false
+    }
+  };
+}
+
 function normalizeDurableExecutionDispatch(input = {}) {
   const executor = String(
     input.executor || DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH
   ).trim();
+  if (executor === DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING) {
+    return normalizeDurablePublishingDispatch(input);
+  }
   if (executor !== DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH) {
     const error = new Error(
       `Durable Execution executor "${executor}" is not commissioned.`
@@ -16500,6 +16767,78 @@ function normalizeDurableExecutionDispatch(input = {}) {
 }
 
 async function executeDurableExecutionPayload(record, options = {}) {
+  if (record?.executor === DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING) {
+    const envelope = normalizeDurablePublishingEnvelope(
+      record.request?.publishingEnvelope
+    );
+    const registered = durablePublishingExecutors.get(envelope.capabilityId);
+    const publishingExecutor = options.publishingExecutor || registered?.execute;
+    if (typeof publishingExecutor !== "function") {
+      const error = new Error(
+        `No server-side publishing executor is registered for "${envelope.capabilityId}".`
+      );
+      error.code = "DURABLE_PUBLISHING_EXECUTOR_UNAVAILABLE";
+      throw error;
+    }
+    if (registered?.channel && registered.channel !== envelope.channel) {
+      const error = new Error("Registered publishing executor channel does not match the authorized envelope.");
+      error.code = "DURABLE_PUBLISHING_CHANNEL_MISMATCH";
+      throw error;
+    }
+    const result = await publishingExecutor({
+      publishingEnvelope: durableExecutionClone(envelope),
+      idempotencyKey: envelope.governance.idempotencyKey,
+      executionId: record.executionId,
+      lineage: durableExecutionClone(record.lineage)
+    });
+    if (result?.success !== true || result?.receipt?.schema !== DURABLE_PUBLISHING_RECEIPT_SCHEMA) {
+      const error = new Error(
+        result?.error?.message || result?.error || "Governed publishing did not return the required normalized execution receipt."
+      );
+      error.code = result?.error?.code || "DURABLE_PUBLISHING_RECEIPT_REQUIRED";
+      error.result = result;
+      throw error;
+    }
+    const receipt = durableExecutionClone(result.receipt);
+    if (
+      String(receipt.authorizationId || "").trim() !== envelope.lineage.authorizationId ||
+      String(receipt.capabilityId || "").trim() !== envelope.capabilityId ||
+      String(receipt.channel || "").trim() !== envelope.channel ||
+      String(receipt.idempotencyKey || "").trim() !== envelope.governance.idempotencyKey
+    ) {
+      const error = new Error("Publishing receipt does not prove the exact authorized execution identity.");
+      error.code = "DURABLE_PUBLISHING_RECEIPT_LINEAGE_MISMATCH";
+      error.result = result;
+      throw error;
+    }
+    return {
+      state: "returned",
+      lease: null,
+      checkpoint: {
+        schema: "meos.durable-execution.checkpoint.v1",
+        stage: "publication-receipt-returned",
+        returnedAt: continuousOperationsNow(),
+        executor: record.executor,
+        capabilityId: envelope.capabilityId,
+        idempotencyKey: envelope.governance.idempotencyKey,
+        commercialOutcomeStillUnknown: true
+      },
+      evidence: [receipt],
+      result: {
+        success: true,
+        schema: "meos.durable-publishing.execution-result.v1",
+        commission: DURABLE_PUBLISHING_EXECUTION_COMMISSION,
+        version: DURABLE_PUBLISHING_EXECUTION_VERSION,
+        buildId: DURABLE_PUBLISHING_EXECUTION_BUILD_ID,
+        receipt,
+        executionIsCommercialOutcome: false,
+        predictedConsequence: durableExecutionClone(
+          envelope.expectation?.predictedConsequence ?? null
+        )
+      }
+    };
+  }
+
   if (
     record?.executor !== DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH
   ) {
@@ -16548,7 +16887,29 @@ async function runDurableExecution(executionId, options = {}) {
 
   durableExecutionRunnerState.executed += 1;
   try {
-    const terminal = await executeDurableExecutionPayload(claimed, options);
+    let executable = claimed;
+    if (claimed.executor === DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING) {
+      const envelope = normalizeDurablePublishingEnvelope(
+        claimed.request?.publishingEnvelope
+      );
+      executable = await upsertDurableExecutionRecord({
+        executionId: claimed.executionId,
+        state: "running",
+        lease: claimed.lease,
+        checkpoint: {
+          schema: "meos.durable-execution.checkpoint.v1",
+          stage: "provider-call-started",
+          startedAt: continuousOperationsNow(),
+          executor: claimed.executor,
+          capabilityId: envelope.capabilityId,
+          authorizationId: envelope.lineage.authorizationId,
+          idempotencyKey: envelope.governance.idempotencyKey,
+          automaticRetryAllowed: false,
+          spamGuard: envelope.governance.spamGuard
+        }
+      });
+    }
+    const terminal = await executeDurableExecutionPayload(executable, options);
     const returned = await upsertDurableExecutionRecord({
       executionId: claimed.executionId,
       state: terminal.state,
@@ -16611,8 +16972,91 @@ function scheduleDurableExecution(executionId) {
   return true;
 }
 
+function durablePublishingDispatchDisposition(records = [], dispatch = {}) {
+  const idempotencyKey = dispatch.request?.governance?.idempotencyKey;
+  const envelope = dispatch.request?.publishingEnvelope || {};
+  const authorizationId = envelope.lineage?.authorizationId;
+  const organizationId = envelope.lineage?.organizationId;
+  const publishingRecords = records.filter(record =>
+    record?.type === "durable-execution-record" &&
+    record.executor === DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING
+  );
+  const exact = publishingRecords.find(record =>
+    record.request?.governance?.idempotencyKey === idempotencyKey
+  );
+  if (exact) {
+    return { kind: "duplicate", record: exact };
+  }
+  const authorizationUsed = publishingRecords.find(record =>
+    record.request?.publishingEnvelope?.lineage?.organizationId === organizationId &&
+    record.request?.publishingEnvelope?.lineage?.authorizationId === authorizationId
+  );
+  if (authorizationUsed) {
+    return { kind: "authorization-consumed", record: authorizationUsed };
+  }
+  return { kind: "new", record: null };
+}
+
+async function persistDurablePublishingDispatch(dispatch) {
+  return withExecutiveMemoryWriteLock(
+    DURABLE_EXECUTION_SPINE_COLLECTION,
+    async () => {
+      const records = await readDurableExecutionRecords();
+      const disposition = durablePublishingDispatchDisposition(records, dispatch);
+      if (disposition.kind === "duplicate") {
+        return {
+          ...disposition.record,
+          dispatchDeduplicated: true,
+          duplicateSuppressed: true
+        };
+      }
+      if (disposition.kind === "authorization-consumed") {
+        const error = new Error(
+          "This publication authorization has already been consumed; a new consequential publication requires new explicit authority."
+        );
+        error.status = 409;
+        error.code = "DURABLE_PUBLISHING_AUTHORIZATION_ALREADY_USED";
+        throw error;
+      }
+      const normalized = normalizeDurableExecutionRecord({
+        executionId: dispatch.executionId,
+        lineage: dispatch.lineage,
+        state: "queued",
+        executor: dispatch.executor,
+        request: dispatch.request,
+        authorityBoundary: {
+          authoritySource: "human-directed-governed-publishing",
+          externalActionAuthorized: true,
+          automaticSpendUsd: 0,
+          authorizationId: dispatch.authority.authorizationId
+        },
+        checkpoint: {
+          schema: "meos.durable-execution.checkpoint.v1",
+          stage: "queued",
+          queuedAt: continuousOperationsNow(),
+          executor: dispatch.executor,
+          authority: dispatch.authority
+        }
+      });
+      records.push(normalized);
+      await writeExecutiveMemoryCollection(
+        DURABLE_EXECUTION_SPINE_COLLECTION,
+        records
+      );
+      return normalized;
+    }
+  );
+}
+
 async function dispatchDurableExecution(input = {}) {
   const dispatch = normalizeDurableExecutionDispatch(input);
+  if (dispatch.executor === DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING) {
+    const record = await persistDurablePublishingDispatch(dispatch);
+    if (record.dispatchDeduplicated !== true) {
+      scheduleDurableExecution(record.executionId);
+    }
+    return record;
+  }
   const record = await upsertDurableExecutionRecord({
     executionId: dispatch.executionId,
     lineage: dispatch.lineage,
@@ -16641,12 +17085,18 @@ async function resumeQueuedDurableExecutions() {
   const records = await readDurableExecutionRecords();
   let resumed = 0;
   for (const record of records) {
-    if (
+    const safeResearchResume =
       record?.type === "durable-execution-record" &&
       record.state === "queued" &&
       record.executor === DURABLE_EXECUTION_EXECUTOR_HEADLESS_RESEARCH &&
-      record.checkpoint?.authority?.humanDirected === true
-    ) {
+      record.checkpoint?.authority?.humanDirected === true;
+    const safePublishingResume =
+      record?.type === "durable-execution-record" &&
+      record.state === "queued" &&
+      record.executor === DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING &&
+      record.checkpoint?.authority?.humanDirected === true &&
+      record.checkpoint?.authority?.publicationAuthorized === true;
+    if (safeResearchResume || safePublishingResume) {
       if (scheduleDurableExecution(record.executionId)) resumed += 1;
     }
   }
@@ -16771,6 +17221,227 @@ async function runDurableExecutionRunnerAcceptanceTest() {
 }
 
 
+async function runDurablePublishingExecutionAcceptanceTest() {
+  const capabilityId = "external-publishing.acceptance-channel.publish";
+  const envelope = {
+    schema: DURABLE_PUBLISHING_ENVELOPE_SCHEMA,
+    capabilityId,
+    channel: "acceptance-channel",
+    lineage: {
+      organizationId: "org-acceptance",
+      campaignId: "campaign-acceptance",
+      creativeHypothesisId: "hypothesis-acceptance",
+      assetId: "asset-acceptance",
+      authorizationId: "authorization-acceptance"
+    },
+    authority: {
+      authorized: true,
+      authorizationId: "authorization-acceptance",
+      scope: { channel: "acceptance-channel", maxPublications: 1 },
+      capabilityCanExpandScope: false
+    },
+    creative: {
+      assetId: "asset-acceptance",
+      claimRestrictions: ["do-not-overstate"],
+      evidenceSourceIds: ["evidence-acceptance"],
+      channelAdaptation: { format: "fixture" }
+    },
+    expectation: {
+      predictedConsequence: { metric: "qualified-interest", direction: "increase" },
+      campaignHypothesisId: "hypothesis-acceptance"
+    },
+    credentials: {
+      boundary: "server-side-only",
+      included: false,
+      modelVisible: false,
+      browserPersisted: false
+    },
+    receiptRequired: true,
+    receiptSchema: DURABLE_PUBLISHING_RECEIPT_SCHEMA,
+    outcomeStatus: "unknown-until-observed",
+    executionIsOutcome: false
+  };
+  const normalized = normalizeDurablePublishingDispatch({
+    executionId: "execution-publishing-acceptance-001",
+    lineage: {
+      missionId: "mission-publishing-acceptance-001",
+      cognitionId: "cognition-publishing-acceptance-001",
+      hallwayWorkId: "hallway-publishing-acceptance-001"
+    },
+    executor: DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING,
+    request: { publishingEnvelope: envelope },
+    authority: {
+      humanDirected: true,
+      publicationAuthorized: true,
+      externalActionAuthorized: true,
+      paidSpendAuthorized: false,
+      automaticSpendUsd: 0,
+      authorizationId: "authorization-acceptance"
+    }
+  });
+  let adapterCalls = 0;
+  registerDurablePublishingExecutor({
+    capabilityId,
+    channel: "acceptance-channel",
+    execute: async context => {
+      adapterCalls += 1;
+      return {
+        success: true,
+        receipt: {
+          schema: DURABLE_PUBLISHING_RECEIPT_SCHEMA,
+          receiptId: "receipt-acceptance-001",
+          authorizationId: envelope.lineage.authorizationId,
+          capabilityId,
+          channel: envelope.channel,
+          idempotencyKey: context.idempotencyKey,
+          providerPublicationId: "provider-post-acceptance-001",
+          executedAt: "2026-09-14T18:00:00.000Z"
+        }
+      };
+    }
+  }, { replace: true });
+  let terminal;
+  try {
+    terminal = await executeDurableExecutionPayload({
+      executionId: normalized.executionId,
+      lineage: normalized.lineage,
+      executor: normalized.executor,
+      request: normalized.request
+    });
+  } finally {
+    unregisterDurablePublishingExecutor(capabilityId);
+  }
+  const running = normalizeDurableExecutionRecord({
+    executionId: normalized.executionId,
+    lineage: normalized.lineage,
+    state: "running",
+    executor: normalized.executor,
+    request: normalized.request,
+    lease: {
+      id: "lease-acceptance",
+      claimedAt: "2026-09-14T18:00:00.000Z",
+      expiresAt: "2026-09-14T18:00:01.000Z"
+    },
+    checkpoint: {
+      stage: "provider-call-started",
+      idempotencyKey: normalized.request.governance.idempotencyKey
+    },
+    authorityBoundary: {
+      authoritySource: "human-directed-governed-publishing",
+      externalActionAuthorized: true,
+      authorizationId: envelope.lineage.authorizationId,
+      automaticSpendUsd: 0
+    }
+  });
+  const recovered = recoverDurableExecutionRecord(
+    running,
+    Date.parse("2026-09-14T18:00:02.000Z")
+  );
+  let credentialRejected = false;
+  try {
+    normalizeDurablePublishingEnvelope({ ...envelope, apiKey: "forbidden" });
+  } catch (error) {
+    credentialRejected = error?.code === "DURABLE_PUBLISHING_CREDENTIAL_MATERIAL_REJECTED";
+  }
+  let batchRejected = false;
+  try {
+    normalizeDurablePublishingEnvelope({
+      ...envelope,
+      authority: { ...envelope.authority, scope: { ...envelope.authority.scope, maxPublications: 2 } }
+    });
+  } catch (error) {
+    batchRejected = error?.code === "DURABLE_PUBLISHING_ANTI_SPAM_SCOPE_REQUIRED";
+  }
+  let unauthorizedRejected = false;
+  try {
+    normalizeDurablePublishingDispatch({
+      executionId: "execution-publishing-acceptance-bad",
+      lineage: normalized.lineage,
+      executor: DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING,
+      request: { publishingEnvelope: envelope },
+      authority: {
+        humanDirected: true,
+        publicationAuthorized: false,
+        externalActionAuthorized: true,
+        authorizationId: envelope.lineage.authorizationId
+      }
+    });
+  } catch (error) {
+    unauthorizedRejected = error?.code === "DURABLE_PUBLISHING_AUTHORITY_INSUFFICIENT";
+  }
+  const fixtureRecord = {
+    type: "durable-execution-record",
+    executor: DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING,
+    request: normalized.request
+  };
+  const duplicateDisposition = durablePublishingDispatchDisposition(
+    [fixtureRecord],
+    normalized
+  );
+  const differentAuthorizedAsset = normalizeDurablePublishingDispatch({
+    executionId: "execution-publishing-acceptance-002",
+    lineage: normalized.lineage,
+    executor: DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING,
+    request: {
+      publishingEnvelope: {
+        ...envelope,
+        lineage: { ...envelope.lineage, assetId: "asset-acceptance-002" },
+        creative: { ...envelope.creative, assetId: "asset-acceptance-002" }
+      }
+    },
+    authority: {
+      humanDirected: true,
+      publicationAuthorized: true,
+      externalActionAuthorized: true,
+      paidSpendAuthorized: false,
+      automaticSpendUsd: 0,
+      authorizationId: envelope.lineage.authorizationId
+    }
+  });
+  const consumedAuthorizationDisposition = durablePublishingDispatchDisposition(
+    [fixtureRecord],
+    differentAuthorizedAsset
+  );
+  const checks = [
+    { name: "Governed publishing is a commissioned Durable Execution executor", passed: normalized.executor === DURABLE_EXECUTION_EXECUTOR_GOVERNED_PUBLISHING },
+    { name: "Publishing preserves Mission, cognition, and Hallway lineage", passed: normalized.lineage.missionId === "mission-publishing-acceptance-001" && normalized.lineage.cognitionId === "cognition-publishing-acceptance-001" && normalized.lineage.hallwayWorkId === "hallway-publishing-acceptance-001" },
+    { name: "Organization and campaign lineage remain attached to the publishing envelope", passed: normalized.request.publishingEnvelope.lineage.organizationId === "org-acceptance" && normalized.request.publishingEnvelope.lineage.campaignId === "campaign-acceptance" },
+    { name: "Creative hypothesis and asset lineage remain attached", passed: normalized.request.publishingEnvelope.lineage.creativeHypothesisId === "hypothesis-acceptance" && normalized.request.publishingEnvelope.lineage.assetId === "asset-acceptance" },
+    { name: "Claim restrictions and evidence lineage survive the durable handoff", passed: normalized.request.publishingEnvelope.creative.claimRestrictions[0] === "do-not-overstate" && normalized.request.publishingEnvelope.creative.evidenceSourceIds[0] === "evidence-acceptance" },
+    { name: "Exact human publication authority is required", passed: normalized.authority.publicationAuthorized === true && unauthorizedRejected },
+    { name: "Capability cannot expand authorized scope", passed: normalized.authority.capabilityCanExpandScope === false && normalized.request.publishingEnvelope.authority.capabilityCanExpandScope === false },
+    { name: "Automatic spend remains zero", passed: normalized.authority.automaticSpendUsd === 0 && normalized.authority.paidSpendAuthorized === false },
+    { name: "Credential material is rejected before durable persistence", passed: credentialRejected },
+    { name: "Credentials remain server-side and absent from the publishing envelope", passed: normalized.request.publishingEnvelope.credentials.boundary === "server-side-only" && normalized.request.publishingEnvelope.credentials.included === false },
+    { name: "One durable execution authorizes one publication rather than an unbounded batch", passed: normalized.request.publishingEnvelope.authority.scope.maxPublications === 1 && batchRejected },
+    { name: "Deterministic publication idempotency is attached to the authorized act", passed: /^[a-f0-9]{64}$/.test(normalized.request.governance.idempotencyKey) },
+    { name: "Duplicate suppression is atomic by publication identity and one authorization cannot silently fan out", passed: normalized.request.governance.duplicateSuppression === true && normalized.request.governance.automaticRetryAfterProviderCall === false && duplicateDisposition.kind === "duplicate" && consumedAuthorizationDisposition.kind === "authorization-consumed" },
+    { name: "Server-side capability execution returns exactly one normalized receipt", passed: adapterCalls === 1 && terminal.result?.receipt?.schema === DURABLE_PUBLISHING_RECEIPT_SCHEMA },
+    { name: "Receipt proves the exact authorization, capability, channel, and idempotency identity", passed: terminal.result?.receipt?.authorizationId === envelope.lineage.authorizationId && terminal.result?.receipt?.capabilityId === capabilityId && terminal.result?.receipt?.channel === envelope.channel && terminal.result?.receipt?.idempotencyKey === normalized.request.governance.idempotencyKey },
+    { name: "Publishing execution receipt is evidence rather than commercial outcome", passed: terminal.state === "returned" && terminal.result?.executionIsCommercialOutcome === false && terminal.checkpoint?.commercialOutcomeStillUnknown === true },
+    { name: "Predicted consequence survives for later campaign reality testing", passed: terminal.result?.predictedConsequence?.metric === "qualified-interest" },
+    { name: "Expired lease after provider call becomes waiting instead of automatic retry", passed: recovered.recovered === true && recovered.record.state === "waiting" && recovered.record.recovery?.automaticRetryBlocked === true },
+    { name: "Uncertain publication outcome explicitly activates spam protection", passed: recovered.record.recovery?.spamProtection === true && recovered.record.recovery?.reason === "publication-outcome-uncertain-manual-reconciliation-required" },
+    { name: "Publishing authority is preserved as upstream authority but the spine grants no new authority", passed: running.authorityBoundary.externalActionAuthorized === true && running.authorityBoundary.authorizationId === envelope.lineage.authorizationId && running.authorityBoundary.grantsNewAuthority === false }
+  ];
+  return {
+    success: checks.every(check => check.passed),
+    commission: DURABLE_PUBLISHING_EXECUTION_COMMISSION,
+    version: DURABLE_PUBLISHING_EXECUTION_VERSION,
+    buildId: DURABLE_PUBLISHING_EXECUTION_BUILD_ID,
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    sample: {
+      idempotencyKey: normalized.request.governance.idempotencyKey,
+      terminalState: terminal.state,
+      recoveredState: recovered.record.state,
+      spamGuard: normalized.request.governance.spamGuard
+    }
+  };
+}
+
+
 /** Durable Execution Spine API — identity/persistence only; no authority grant. */
 app.post(
   "/api/durable-execution",
@@ -16868,6 +17539,14 @@ app.get(
   "/api/durable-execution/runner-acceptance-test",
   async (request, response) => {
     const result = await runDurableExecutionRunnerAcceptanceTest();
+    response.status(result.success ? 200 : 500).json(result);
+  }
+);
+
+app.get(
+  "/api/durable-execution/publishing-acceptance-test",
+  async (request, response) => {
+    const result = await runDurablePublishingExecutionAcceptanceTest();
     response.status(result.success ? 200 : 500).json(result);
   }
 );
