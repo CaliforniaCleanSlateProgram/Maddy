@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32214223/MEOS_BUILD_STATE.md)
+[Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
@@ -3511,6 +3511,209 @@ Any real channel integration must preserve:
 **Can Maddy now connect real replaceable channels beneath one persistent identity, use them only when runtime truth and exact authority permit, preserve commercial intention and evidence across every act, and learn from resulting reality in a way that is materially stronger than a contemporary scheduler or AI marketing agent?**
 
 If the answer is only "Maddy can post to another platform," the next work has not cleared Spooky.
+
+Continue under:
+
+**one fix → one commit → one test → commission.**
+
+**Always Push Forward.**
+
+---
+
+## CHECKPOINT — 006.032F5 PUBLISHING CREDENTIAL VAULT & ORGANIZATION ISOLATION — COMMISSIONED
+
+Date: 2026-09-14
+
+Commission: **006.032F5 — Publishing Credential Vault & Organization Isolation**
+
+Commissioned server artifact: **v2.10.86**
+
+Acceptance schema: `meos.server.publishing-credential-vault.acceptance.v1`
+
+Contract version: `1.0.0`
+
+Commissioned build: `PCV101-CREDENTIAL-VAULT-DURABLE-RECORD-ID-FIX-20260914-A`
+
+Live acceptance result:
+
+- `success: true`;
+- `commission: "006.032F5"`;
+- `schema: "meos.server.publishing-credential-vault.acceptance.v1"`;
+- `version: "1.0.0"`;
+- `buildId: "PCV101-CREDENTIAL-VAULT-DURABLE-RECORD-ID-FIX-20260914-A"`;
+- `passed: 20`;
+- `total: 20`.
+
+Status: **COMMISSIONED.**
+
+### Why F5 exists
+
+F4 proved that replaceable runtime publishing adapters can be discovered truthfully while keeping credentials outside browser/model-visible capability state. F5 closes the next dependency: a real external OAuth/API adapter needs a durable, server-owned place for credentials that does not collapse into environment-variable prototypes, provider-specific storage, browser storage, or model-visible secrets.
+
+F5 therefore establishes the governed credential substrate beneath future real channel adapters while granting no publication authority itself.
+
+### Commissioned behavior
+
+006.032F5 proves the encrypted durable credential boundary required before a real publishing adapter can truthfully become operational.
+
+Commissioned invariants:
+
+- the publishing credential vault contract is versioned and server-owned;
+- credential plaintext round-trips only through server-side authenticated decryption;
+- encrypted credentials survive the commissioned durable repository round-trip;
+- credential plaintext is not persisted in the sealed durable record;
+- AES-256-GCM authenticated encryption is the commissioned cipher;
+- repeated sealing of the same credential produces different ciphertext because IVs are random;
+- credential identity is deterministic without deriving identity from the secret itself;
+- organization scope is cryptographically bound and cross-organization reads fail closed;
+- adapter scope is cryptographically bound and cross-adapter reads fail closed;
+- ciphertext tampering fails authenticated decryption;
+- use of the wrong encryption key fails authenticated decryption;
+- a missing production vault key fails closed;
+- a malformed production vault key is rejected;
+- public credential state never exposes ciphertext, IV, or authentication tag;
+- public credential state never exposes credential plaintext;
+- public state truthfully declares the `server-side-only` credential boundary;
+- durable credential records are explicitly organization- and adapter-scoped;
+- durable credential records are explicitly principal- and slot-scoped;
+- revocation removes the durable credential and future resolution fails closed;
+- vault state grants no publication authority.
+
+### Durable-record identity correction — LOCKED
+
+The initial F5 candidate deployed successfully as server v2.10.85, but its acceptance run failed deterministically with `PUBLISHING_CREDENTIAL_NOT_CONFIGURED` immediately after the test attempted to persist and then resolve its encrypted fixture credential.
+
+The root cause was a contract mismatch between the new vault record and the commissioned durable Executive Memory repository: the repository manifests durable records by `record.id`, while the initial credential vault record supplied `credentialId` without also supplying the canonical durable `id` field. Encryption itself was not the failure. The record lacked the durable identity required for the repository round-trip, so subsequent resolution could not find it.
+
+The commissioned correction makes the deterministic credential identity serve both roles:
+
+- `id` — durable repository identity;
+- `credentialId` — vault-domain credential identity.
+
+This relationship is now part of the architecture and must not regress.
+
+### Acceptance containment lesson — LOCKED
+
+The initial F5 acceptance failure escaped the HTTP handler and terminated the Node process. F5A therefore also hardened the acceptance endpoint so failed acceptance behavior returns governed failure truth rather than destabilizing the entire Maddy runtime.
+
+This does not weaken fail-closed security. Security failures must still fail closed; the correction separates **rejecting an invalid/absent credential state** from **crashing the server process used to report that rejection**.
+
+Governing rule:
+
+> Acceptance may prove hostile, missing, malformed, revoked, tampered, or unauthorized credential paths, but an expected acceptance failure must not become uncontrolled runtime termination.
+
+### Credential authority model after F5
+
+The credential vault is infrastructure, not action authority.
+
+The layered authority chain remains:
+
+1. provider-approved OAuth/API or equivalent connection establishes external permission material;
+2. F5 stores that material inside the encrypted server-side credential boundary;
+3. F4 verifies runtime connection and granted operations and advertises only truthful capability;
+4. F1 represents the governed publishing capability contract without exposing credentials;
+5. F3 plans/adapts campaign acts under shared campaign and hypothesis lineage;
+6. exact human authorization governs each consequential publication act;
+7. F2 performs the durable/idempotent consequential execution;
+8. the external provider returns execution evidence/receipt;
+9. later Monitoring/Learning/Attribution must distinguish execution evidence from observed commercial outcome.
+
+Possession of a credential does **not** imply:
+
+- publishing authority;
+- outreach authority;
+- spend authority;
+- DM/comment/email authority;
+- automatic retry authority;
+- campaign approval;
+- outcome truth.
+
+### Organization isolation — commercial architecture requirement
+
+Organization isolation is not merely a security test fixture. Maddy is intended to serve multiple lawful organizations while preserving one Maddy architecture rather than forking the core per customer.
+
+F5 therefore makes credential scope explicit across:
+
+- `organizationId`;
+- adapter identity;
+- principal identity;
+- credential slot.
+
+A credential belonging to one organization or adapter must never become resolvable merely because another organization uses the same Maddy deployment or the same external provider family.
+
+This is a prerequisite for ethical multi-tenant commercialization and for preserving institutional privacy while allowing provider-neutral infrastructure underneath one Maddy.
+
+### What F5 means — and what it does not mean
+
+F5 means Maddy now has a live-proven encrypted durable home for future provider credentials underneath the already-commissioned publishing adapter boundary.
+
+F5 does **not** mean any real social, advertising, email, commerce, or other external channel is connected.
+
+No specific external platform may be represented as operational until all of the following are independently proven in runtime truth:
+
+- the real provider application/client exists where required;
+- the real authorization flow is completed;
+- the exact granted provider scopes/operations are verified;
+- the credential is stored through the commissioned F5 vault;
+- the runtime adapter is discovered through F4;
+- capability truth is exposed through the commissioned F1 contract;
+- each consequential act enters F2 only after exact authority;
+- provider execution returns evidence/receipt;
+- revocation/disconnection removes capability truth;
+- policy/rate-limit/transport failures fail closed without fabricating success;
+- no provider-specific implementation becomes Maddy's identity.
+
+### 006.032F dependency state after F5
+
+The Governed Multi-Channel Publishing arc now has five commissioned layers:
+
+- **006.032F1 — Governed Publishing Capability Contract:** commissioned / live-proven 20/20.
+- **006.032F2 — Durable Governed Publishing Execution Spine:** commissioned / live-proven 20/20.
+- **006.032F3 — Governed Multi-Channel Campaign Orchestration:** commissioned / live-proven 20/20.
+- **006.032F4 — Runtime Publishing Adapter Discovery & Credential Boundary:** commissioned / live-proven 20/20.
+- **006.032F5 — Publishing Credential Vault & Organization Isolation:** commissioned / live-proven 20/20.
+
+This establishes the provider-neutral publishing substrate from Maddy-owned campaign intention through dynamic capability truth, encrypted credential custody, exact human authority, durable consequential execution, and receipt evidence.
+
+The material gap is now narrower and more concrete: **a real provider-approved external channel connection has not yet been proven**, and the later campaign operations / follow-up / attribution / learning loop remains incomplete.
+
+### Forward direction — first real external capability must preserve the architecture
+
+The next commission must again begin by reading the immutable North Star and this full Build State and then inspecting the current repository/runtime plus the chosen provider's current requirements.
+
+The architecture is now sufficiently mature that a first real replaceable publishing adapter may be dependency-correct, but that must be proven rather than assumed.
+
+Any first real channel adapter must preserve all commissioned F1-F5 invariants and must not reduce Maddy to a provider-specific scheduler. In particular:
+
+- use provider-approved authorization rather than customer password collection;
+- place credential material only through the F5 encrypted server-side vault;
+- verify actual provider permission/scopes before F4 advertises availability;
+- expose only least-capability operation truth;
+- preserve dynamic registration/revocation;
+- keep provider identity beneath Maddy identity;
+- preserve organization/principal/slot isolation;
+- require separate exact human authority for every consequential act;
+- route execution through F2 rather than calling the provider directly from cognition/UI;
+- preserve F3 anti-spam, cadence, suppression, fatigue, opt-out, duplicate-awareness, and valid-inaction semantics;
+- keep campaign, hypothesis, creative asset, evidence, claim-boundary, organization, and authorization lineage attached to each act;
+- treat execution receipt as evidence, not business outcome;
+- preserve uncertainty when provider/network outcome is uncertain;
+- never auto-retry an uncertain consequential publication merely because transport failed;
+- maintain replaceability so the chosen first provider becomes one adapter, not the architecture.
+
+### Commercial and Spooky requirement after F5
+
+The objective is not "connect a social API."
+
+The objective remains a persistent Maddy who can understand the commercial objective, choose or reject channels, preserve truth and intention across providers, execute only authorized acts, observe resulting reality, revise her model, and compound learning across organizations without leaking one organization's private state into another.
+
+The first real adapter therefore clears only a plumbing dependency. It does not by itself satisfy the Maddy Growth Engine or Spooky differentiation requirement.
+
+### Hard post-F5 question
+
+**Can Maddy now cross the boundary from universal provider-neutral publishing infrastructure into one real external channel without surrendering identity, credential privacy, organization isolation, campaign lineage, exact human authority, durable consequence control, uncertainty discipline, or later learning—and can that channel remain replaceable the moment a better one exists?**
+
+If the next implementation is merely "store a token and call a post endpoint," it does not clear the architecture or the Spooky standard.
 
 Continue under:
 
