@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.5.0
- * Build: ER150-CANONICAL-MADDY-RESPONSE-TRANSPORT-20260816-A
+ * Version: 1.5.1
+ * Build: ER151-RESEARCH-INTENT-EXECUTION-INTEGRITY-20260913-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.5.0";
-  const BUILD_ID = "ER150-CANONICAL-MADDY-RESPONSE-TRANSPORT-20260816-A";
+  const VERSION = "1.5.1";
+  const BUILD_ID = "ER151-RESEARCH-INTENT-EXECUTION-INTEGRITY-20260913-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -428,6 +428,31 @@
         );
       }
 
+      const researchContract = this.researchIntentExecutionContract(payload);
+      if (researchContract.required === true) {
+        const researched = await this.dispatchHeadlessPublicResearch(
+          payload,
+          researchContract.reason
+        );
+        if (researched) {
+          return {
+            ...researched,
+            executionContract: this.clone(researchContract)
+          };
+        }
+
+        throw new ExecutiveRouterError(
+          "The assignment requires public research, but no evidence-bound public research result was available.",
+          ERRORS.ROUTE_UNAVAILABLE,
+          {
+            requestId: context.request?.id || null,
+            selectedRoute: context.route?.name || null,
+            researchContract: this.clone(researchContract),
+            localContextMayNotSubstitute: true
+          }
+        );
+      }
+
       return context.route.handler(payload, this);
     },
 
@@ -766,6 +791,59 @@
         .replace(/[?!.]+\s*$/g, "")
         .replace(/\s+/g, " ")
         .trim();
+    },
+
+    /*
+     * Commission MADDY-RESEARCH-INTENT-EXECUTION-INTEGRITY
+     *
+     * A human-directed request to acquire public evidence is an execution
+     * requirement, not a stylistic hint. Resident memory may orient research,
+     * but it cannot silently satisfy an instruction to research, investigate,
+     * verify, or use public/web evidence. This preserves one continuous Maddy:
+     * cognition may choose how to reason, while Router must faithfully execute
+     * the evidence-acquisition consequence the human actually requested.
+     *
+     * Internal-only research remains eligible for resident/internal routes.
+     * Public research uses the existing provider-neutral headless research path,
+     * which in turn consults Maddy-owned Internet memory before replaceable
+     * external discovery. No provider, truth, or external-action authority is
+     * created here.
+     */
+    researchIntentExecutionContract(payload = {}) {
+      const pkg = payload.package || {};
+      const rawText = this.firstText(
+        payload.request?.text,
+        pkg.request?.text,
+        payload.request?.instruction,
+        pkg.request?.instruction
+      );
+      const text = this.canonicalIntentText(rawText).toLowerCase();
+      if (!text) {
+        return { required: false, scope: "none", reason: "no-request-text" };
+      }
+
+      const explicitPublicEvidence = /\b(?:public\s+(?:evidence|sources?|records?|information)|web\s+(?:evidence|sources?|research)|internet\s+(?:evidence|sources?|research)|online\s+(?:evidence|sources?|research)|use\s+(?:the\s+)?(?:public|web|internet|online)\b|search\s+(?:the\s+)?(?:web|internet|public))\b/i.test(text);
+      const researchAction = /\b(?:research|investigate|look\s+up|find\s+out|fact[- ]?check|verify)\b/i.test(text);
+      const internalOnly = /\b(?:internal(?:ly)?|our\s+(?:records?|files?|documents?|memory|knowledge|history)|meos\s+(?:records?|memory|knowledge)|organization(?:al)?\s+(?:records?|files?|documents?|memory|knowledge))\b/i.test(text) &&
+        !explicitPublicEvidence;
+
+      const required = explicitPublicEvidence || (researchAction && !internalOnly);
+      return {
+        required,
+        scope: required ? "public-evidence" : internalOnly ? "internal-only" : "none",
+        reason: explicitPublicEvidence
+          ? "human-directed-public-evidence"
+          : required
+            ? "human-directed-research"
+            : internalOnly
+              ? "human-directed-internal-research"
+              : "no-public-research-obligation",
+        explicitPublicEvidence,
+        researchAction,
+        internalOnly,
+        authority: "human-directed-assignment",
+        externalActionAuthorityGranted: false
+      };
     },
 
     meaningfulTerms(value) {
@@ -1564,6 +1642,133 @@
       console.table(checks);
       console.info(
         `[MEOS ${VERSION}] Commission 006.027 Canonical Maddy Response Transport: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      return result;
+    },
+
+    async runResearchIntentExecutionIntegrityAcceptanceTest() {
+      const checks = [];
+      const push = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+
+      const explicit = this.researchIntentExecutionContract({
+        request: { text: "Maddy, research why octopuses have three hearts. Use public evidence, tell me what you learned." },
+        package: { request: { type: "general" } }
+      });
+      const generic = this.researchIntentExecutionContract({
+        request: { text: "Maddy, investigate why octopuses have three hearts." },
+        package: { request: { type: "general" } }
+      });
+      const internal = this.researchIntentExecutionContract({
+        request: { text: "Research our internal records for the latest board decision." },
+        package: { request: { type: "general" } }
+      });
+      const ordinary = this.researchIntentExecutionContract({
+        request: { text: "Summarize our current work." },
+        package: { request: { type: "current-work" } }
+      });
+
+      push("Explicit public-evidence language creates a public research execution obligation",
+        explicit.required === true && explicit.scope === "public-evidence" && explicit.explicitPublicEvidence === true);
+      push("Human-directed external research cannot be silently closed by resident memory",
+        generic.required === true && generic.researchAction === true);
+      push("Internal-only research does not force public-web acquisition",
+        internal.required === false && internal.scope === "internal-only");
+      push("Ordinary resident-context work remains on its existing route",
+        ordinary.required === false && ordinary.scope === "none");
+
+      const originalResearch = this.dispatchHeadlessPublicResearch;
+      const originalHandler = async () => ({ source: "meos-local-context", output: { type: "local-evidence-package" } });
+      let researchCalls = 0;
+      let localCalls = 0;
+      try {
+        this.dispatchHeadlessPublicResearch = async (_payload, reason) => {
+          researchCalls += 1;
+          return {
+            source: "meos-headless-public-research",
+            provider: null,
+            output: {
+              type: "public-research-result",
+              answer: "Octopuses use two branchial hearts for the gills and one systemic heart for the body.",
+              citations: ["fixture-public-source"],
+              paidProviderUsed: false,
+              continuationReason: reason
+            }
+          };
+        };
+
+        const result = await this.dispatch({
+          request: {
+            id: "research-intent-fixture",
+            text: "Maddy, research why octopuses have three hearts. Use public evidence.",
+            options: {}
+          },
+          route: {
+            name: ROUTES.INSTANT_MEOS_CONTEXT,
+            supportingRoutes: [],
+            researchDepth: "none",
+            approvalRequired: false,
+            handler: async (...args) => {
+              localCalls += 1;
+              return originalHandler(...args);
+            }
+          },
+          brainResult: {
+            package: {
+              request: { type: "general", text: "Maddy, research why octopuses have three hearts. Use public evidence." }
+            }
+          }
+        });
+
+        push("Research obligation executes public research even when Brain selected instant context",
+          researchCalls === 1 && localCalls === 0);
+        push("Research execution returns the evidence-bound public-research source",
+          result?.source === "meos-headless-public-research" && result?.output?.type === "public-research-result");
+        push("Research execution contract grants no external-action authority",
+          result?.executionContract?.externalActionAuthorityGranted === false && result?.provider === null);
+      } finally {
+        this.dispatchHeadlessPublicResearch = originalResearch;
+      }
+
+      let failedClosed = false;
+      try {
+        this.dispatchHeadlessPublicResearch = async () => null;
+        await this.dispatch({
+          request: {
+            id: "research-intent-fail-closed-fixture",
+            text: "Research this with public evidence.",
+            options: {}
+          },
+          route: {
+            name: ROUTES.INSTANT_MEOS_CONTEXT,
+            supportingRoutes: [],
+            researchDepth: "none",
+            approvalRequired: false,
+            handler: async () => ({ source: "meos-local-context", output: { answer: "generic fallback" } })
+          },
+          brainResult: { package: { request: { type: "general", text: "Research this with public evidence." } } }
+        });
+      } catch (error) {
+        failedClosed = error?.code === ERRORS.ROUTE_UNAVAILABLE &&
+          error?.details?.localContextMayNotSubstitute === true;
+      } finally {
+        this.dispatchHeadlessPublicResearch = originalResearch;
+      }
+      push("Required public research fails closed instead of fabricating a local-context answer", failedClosed);
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === checks.length,
+        commission: "MADDY-RESEARCH-INTENT-EXECUTION-INTEGRITY",
+        schema: "meos.executive-router.research-intent-execution-integrity-acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        checks
+      });
+      console.table(checks);
+      console.info(
+        `[MEOS ${VERSION}] Research Intent Execution Integrity: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
       );
       return result;
     },
