@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.13.1
+ * Version: 4.13.3
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,12 +20,13 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.2";
+  const DASHBOARD_VERSION = "4.13.3";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
   const CONSEQUENCE_RECOGNITION_BUILD_ID = "OD4131-CONSEQUENCE-RECOGNITION-GATE-20260913-A";
   const RETURNED_WORK_DISPOSITION_BUILD_ID = "OD4132-RETURNED-WORK-DISPOSITION-SURFACE-20260913-A";
+  const COMMERCIAL_COMMAND_BUILD_ID = "OD4133-COMMERCIAL-COMMAND-DASHBOARD-20260914-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -3406,6 +3407,489 @@ document
   }
 
 
+  /* Commission 006.032C — Commercial Command Dashboard ("Shark Tank")
+   *
+   * This surface reads the commissioned Executive Learning commercial-truth
+   * contract. It does not create a second commercial store, infer missing money,
+   * or grant execution/spend/publication authority. Unknown is a first-class
+   * answer whenever the durable commercial evidence is incomplete.
+   */
+  const COMMERCIAL_COMMAND_SCHEMA = "meos.dashboard.commercial-command.v1";
+
+  function getActiveOrganizationIdentity() {
+    const profile =
+      window.MEOSOrganizationalProfile?.profile ||
+      window.MEOSOrganizationalProfile ||
+      window.OrganizationalProfile?.profile ||
+      window.OrganizationalProfile ||
+      window.CCSPOrganizationalProfile?.profile ||
+      window.CCSPOrganizationalProfile ||
+      null;
+    const organization = profile?.organization && typeof profile.organization === "object"
+      ? profile.organization
+      : profile;
+    const id = String(
+      organization?.id ||
+      organization?.organizationId ||
+      profile?.id ||
+      profile?.organizationId ||
+      ""
+    ).trim();
+    const name = String(
+      organization?.name ||
+      organization?.organizationName ||
+      organization?.legalName ||
+      profile?.name ||
+      profile?.organizationName ||
+      id ||
+      "Organization"
+    ).trim();
+    return { id: id || null, name };
+  }
+
+  function commercialUnknown(label, reason = "not-enough-data") {
+    return {
+      label,
+      value: null,
+      unit: null,
+      currency: null,
+      status: "unknown",
+      confidence: null,
+      sourceIds: [],
+      reason
+    };
+  }
+
+  function aggregateCommercialMetric(snapshot, label, keys = []) {
+    const economics = snapshot?.economics && typeof snapshot.economics === "object"
+      ? snapshot.economics
+      : {};
+    const selectedKey = keys.find((key) => Array.isArray(economics[key]) && economics[key].length > 0);
+    if (!selectedKey) return commercialUnknown(label);
+
+    const items = economics[selectedKey];
+    const applicable = items.filter((item) => item?.status !== "not-applicable");
+    if (!applicable.length) {
+      return {
+        ...commercialUnknown(label, "not-applicable"),
+        status: "not-applicable",
+        key: selectedKey
+      };
+    }
+
+    const incomplete = applicable.some((item) =>
+      !["measured", "estimated"].includes(String(item?.status || "")) ||
+      !Number.isFinite(Number(item?.value))
+    );
+    if (incomplete) {
+      return { ...commercialUnknown(label, "incomplete-economic-evidence"), key: selectedKey };
+    }
+
+    const currencies = [...new Set(applicable.map((item) => String(item?.currency || "").trim().toUpperCase()).filter(Boolean))];
+    if (currencies.length > 1) {
+      return { ...commercialUnknown(label, "mixed-currency-evidence"), key: selectedKey };
+    }
+
+    const units = [...new Set(applicable.map((item) => String(item?.unit || "").trim()).filter(Boolean))];
+    if (units.length > 1) {
+      return { ...commercialUnknown(label, "mixed-unit-evidence"), key: selectedKey };
+    }
+
+    const status = applicable.every((item) => item.status === "measured") ? "measured" : "estimated";
+    const confidences = applicable.map((item) => Number(item?.confidence)).filter(Number.isFinite);
+    return {
+      label,
+      key: selectedKey,
+      value: applicable.reduce((sum, item) => sum + Number(item.value), 0),
+      unit: units[0] || "count",
+      currency: currencies[0] || null,
+      status,
+      confidence: confidences.length ? Math.min(...confidences) : null,
+      sourceIds: [...new Set(applicable.flatMap((item) => Array.isArray(item?.sourceIds) ? item.sourceIds : []).filter(Boolean))],
+      reason: null
+    };
+  }
+
+  function deriveCommercialDifference(label, valueMetric, costMetric) {
+    if (!["measured", "estimated"].includes(valueMetric?.status) || !["measured", "estimated"].includes(costMetric?.status)) {
+      return commercialUnknown(label, "value-and-cost-evidence-required");
+    }
+    if (valueMetric.currency && costMetric.currency && valueMetric.currency !== costMetric.currency) {
+      return commercialUnknown(label, "mixed-currency-evidence");
+    }
+    const status = valueMetric.status === "measured" && costMetric.status === "measured" ? "measured" : "estimated";
+    const confidences = [valueMetric.confidence, costMetric.confidence].map(Number).filter(Number.isFinite);
+    return {
+      label,
+      value: Number(valueMetric.value) - Number(costMetric.value),
+      unit: valueMetric.unit || costMetric.unit || "currency",
+      currency: valueMetric.currency || costMetric.currency || null,
+      status,
+      confidence: confidences.length ? Math.min(...confidences) : null,
+      sourceIds: [...new Set([...(valueMetric.sourceIds || []), ...(costMetric.sourceIds || [])])],
+      reason: null,
+      formula: "attributable economic value - commercial cost"
+    };
+  }
+
+  function deriveCommercialRatio(label, numerator, denominator, options = {}) {
+    if (!["measured", "estimated"].includes(numerator?.status) || !["measured", "estimated"].includes(denominator?.status)) {
+      return commercialUnknown(label, "supporting-evidence-required");
+    }
+    if (Number(denominator.value) === 0) {
+      return {
+        ...commercialUnknown(label, options.zeroReason || "zero-denominator"),
+        status: "not-applicable"
+      };
+    }
+    const status = numerator.status === "measured" && denominator.status === "measured" ? "measured" : "estimated";
+    const confidences = [numerator.confidence, denominator.confidence].map(Number).filter(Number.isFinite);
+    return {
+      label,
+      value: Number(numerator.value) / Number(denominator.value),
+      unit: options.unit || "ratio",
+      currency: null,
+      status,
+      confidence: confidences.length ? Math.min(...confidences) : null,
+      sourceIds: [...new Set([...(numerator.sourceIds || []), ...(denominator.sourceIds || [])])],
+      reason: null
+    };
+  }
+
+  function explicitQualificationState(record = {}) {
+    const candidates = [
+      record?.metadata?.qualified,
+      record?.metadata?.isQualified,
+      record?.metadata?.qualificationStatus,
+      record?.metadata?.leadStatus,
+      record?.outcome?.qualified
+    ];
+    for (const value of candidates) {
+      if (value === true) return true;
+      if (value === false) return false;
+      const normalized = String(value || "").trim().toLowerCase();
+      if (["qualified", "sales-qualified", "sql", "accepted"].includes(normalized)) return true;
+      if (["unqualified", "disqualified", "rejected"].includes(normalized)) return false;
+    }
+    return null;
+  }
+
+  function buildExplicitCountMetric(label, records = [], predicate = () => null) {
+    if (!records.length) return commercialUnknown(label);
+    const classifications = records.map(predicate);
+    if (classifications.some((value) => value === null)) {
+      return commercialUnknown(label, "records-exist-but-classification-is-incomplete");
+    }
+    return {
+      label,
+      value: classifications.filter(Boolean).length,
+      unit: "count",
+      currency: null,
+      status: "measured",
+      confidence: 1,
+      sourceIds: records.map((record) => record.id).filter(Boolean),
+      reason: null
+    };
+  }
+
+  function explicitChannelMode(record = {}) {
+    const candidates = [
+      record?.metadata?.channelMode,
+      record?.metadata?.acquisitionMode,
+      record?.metadata?.trafficType,
+      record?.metadata?.distributionMode,
+      ...(Array.isArray(record?.tags) ? record.tags : [])
+    ].map((value) => String(value || "").trim().toLowerCase());
+    if (candidates.includes("paid")) return "paid";
+    if (candidates.includes("organic")) return "organic";
+    return null;
+  }
+
+  function groupCommercialConversions(records = [], field) {
+    const conversions = records.filter((record) => record?.recordType === "conversion" && record?.[field]);
+    const counts = new Map();
+    conversions.forEach((record) => {
+      const key = String(record[field]);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .map(([id, count]) => ({ id, conversions: count }))
+      .sort((a, b) => b.conversions - a.conversions || a.id.localeCompare(b.id));
+  }
+
+  function buildCommercialCommandModel(organizationId = null, snapshotOverride = null) {
+    const identity = getActiveOrganizationIdentity();
+    const resolvedOrganizationId = String(organizationId || snapshotOverride?.organizationId || identity.id || "").trim() || null;
+    const learning = window.ExecutiveLearning;
+    const snapshot = snapshotOverride || (
+      resolvedOrganizationId && typeof learning?.getCommercialSnapshot === "function"
+        ? learning.getCommercialSnapshot(resolvedOrganizationId)
+        : null
+    );
+    const safeSnapshot = snapshot && typeof snapshot === "object"
+      ? snapshot
+      : {
+          schema: "meos.maddy.commercial-truth-snapshot.v1",
+          organizationId: resolvedOrganizationId,
+          recordCount: 0,
+          records: [],
+          economics: {},
+          truthRule: "Measured, estimated, and unknown commercial values remain distinct.",
+          authorityRule: "Commercial truth is evidence for decisions; it is not execution, spend, publication, outreach, or policy authority."
+        };
+    const records = Array.isArray(safeSnapshot.records) ? safeSnapshot.records : [];
+    const scopedRecords = resolvedOrganizationId
+      ? records.filter((record) => record?.organizationId === resolvedOrganizationId)
+      : [];
+
+    const attributableRevenue = aggregateCommercialMetric(safeSnapshot, "Attributable Revenue", ["attributableRevenue", "revenue"]);
+    const attributableValue = aggregateCommercialMetric(safeSnapshot, "Attributable Economic Value", ["attributableValue", "economicValue", "attributableRevenue", "revenue"]);
+    const commercialCost = aggregateCommercialMetric(safeSnapshot, "Commercial Cost", ["cost", "spend"]);
+    const paidSpend = aggregateCommercialMetric(safeSnapshot, "Paid Spend", ["spend"]);
+    const netAttributableValue = deriveCommercialDifference("Net Attributable Value", attributableValue, commercialCost);
+    const roiBase = deriveCommercialDifference("ROI Numerator", attributableValue, commercialCost);
+    const roi = deriveCommercialRatio("ROI", roiBase, commercialCost, { unit: "ratio", zeroReason: "zero-commercial-cost" });
+    const roas = deriveCommercialRatio("ROAS", attributableRevenue, paidSpend, { unit: "ratio", zeroReason: "zero-paid-spend" });
+
+    const directMetrics = {
+      cac: aggregateCommercialMetric(safeSnapshot, "CAC", ["cac"]),
+      contributionMargin: aggregateCommercialMetric(safeSnapshot, "Contribution Margin", ["contributionMargin", "margin"]),
+      ltv: aggregateCommercialMetric(safeSnapshot, "LTV", ["ltv"]),
+      payback: aggregateCommercialMetric(safeSnapshot, "Payback", ["payback", "paybackPeriod"]),
+      retention: aggregateCommercialMetric(safeSnapshot, "Retention", ["retention"]),
+      churn: aggregateCommercialMetric(safeSnapshot, "Churn", ["churn"])
+    };
+
+    const leadRecords = scopedRecords.filter((record) => record?.recordType === "lead");
+    const qualifiedPipeline = buildExplicitCountMetric("Qualified Pipeline", leadRecords, explicitQualificationState);
+    const predictions = scopedRecords.filter((record) => record?.prediction).map((record) => ({
+      recordId: record.id,
+      campaignId: record.campaignId || null,
+      title: record.title,
+      prediction: record.prediction,
+      outcome: record.outcome || null,
+      status: record.outcome ? "outcome-recorded" : "awaiting-outcome"
+    }));
+    const activeExperiments = scopedRecords.filter((record) => {
+      if (!["campaign", "hypothesis", "prediction"].includes(record?.recordType)) return false;
+      const state = String(record?.metadata?.status || record?.metadata?.experimentStatus || "").trim().toLowerCase();
+      return ["active", "running", "testing", "experiment"].includes(state) || (record?.prediction && !record?.outcome);
+    }).map((record) => ({ id: record.id, title: record.title, campaignId: record.campaignId || null, prediction: record.prediction || null }));
+    const lessons = scopedRecords.filter((record) => record?.recordType === "commercial-lesson").map((record) => ({
+      id: record.id,
+      title: record.title,
+      lesson: record.description || record.outcome?.lesson || record.metadata?.lesson || "",
+      recommendation: record.metadata?.recommendation || record.outcome?.recommendation || null,
+      confidence: record.epistemic?.confidence ?? null,
+      status: record.epistemic?.status || "unknown"
+    }));
+
+    const economicValues = Object.values(safeSnapshot.economics || {}).flatMap((items) => Array.isArray(items) ? items : []);
+    const truthCounts = {
+      measured: economicValues.filter((item) => item?.status === "measured").length,
+      estimated: economicValues.filter((item) => item?.status === "estimated").length,
+      unknown: economicValues.filter((item) => item?.status === "unknown").length,
+      notApplicable: economicValues.filter((item) => item?.status === "not-applicable").length
+    };
+    const channelModes = scopedRecords.map(explicitChannelMode).filter(Boolean);
+    const channelMix = channelModes.length
+      ? {
+          status: "measured",
+          organic: channelModes.filter((mode) => mode === "organic").length,
+          paid: channelModes.filter((mode) => mode === "paid").length,
+          unknown: scopedRecords.length - channelModes.length
+        }
+      : { status: "unknown", organic: null, paid: null, unknown: scopedRecords.length };
+
+    const model = {
+      schema: COMMERCIAL_COMMAND_SCHEMA,
+      commission: "006.032C",
+      buildId: COMMERCIAL_COMMAND_BUILD_ID,
+      organizationId: resolvedOrganizationId,
+      organizationName: identity.name,
+      available: Boolean(resolvedOrganizationId && snapshot),
+      recordCount: scopedRecords.length,
+      metrics: {
+        netAttributableValue,
+        attributableRevenue,
+        attributableValue,
+        commercialCost,
+        paidSpend,
+        qualifiedPipeline,
+        roi,
+        roas,
+        ...directMetrics
+      },
+      truthCounts,
+      channelMix,
+      conversions: {
+        campaigns: groupCommercialConversions(scopedRecords, "campaignId"),
+        channels: groupCommercialConversions(scopedRecords, "channelId"),
+        offers: groupCommercialConversions(scopedRecords, "offerId")
+      },
+      activeExperiments,
+      predictions,
+      lessons,
+      recommendation: lessons.find((lesson) => lesson.recommendation)?.recommendation || null,
+      truthRule: safeSnapshot.truthRule || "Measured, estimated, and unknown commercial values remain distinct.",
+      authority: {
+        executionAuthorized: false,
+        spendAuthorized: false,
+        publicationAuthorized: false,
+        rule: safeSnapshot.authorityRule || "Commercial truth is evidence for decisions; it is not execution, spend, publication, outreach, or policy authority."
+      },
+      generatedAt: new Date().toISOString()
+    };
+    return model;
+  }
+
+  function commercialMetricText(metric = {}) {
+    if (metric.status === "unknown") return "Unknown";
+    if (metric.status === "not-applicable") return "N/A";
+    if (!Number.isFinite(Number(metric.value))) return "Unknown";
+    const value = Number(metric.value);
+    if (metric.currency) {
+      try {
+        return new Intl.NumberFormat(undefined, { style: "currency", currency: metric.currency, maximumFractionDigits: 2 }).format(value);
+      } catch (_) {}
+    }
+    if (metric.unit === "ratio") return `${value.toFixed(2)}×`;
+    if (metric.unit === "percent" || metric.unit === "percentage") return `${value.toFixed(1)}%`;
+    if (metric.unit === "count") return value.toLocaleString();
+    return `${value.toLocaleString()}${metric.unit ? ` ${metric.unit}` : ""}`;
+  }
+
+  function renderCommercialCommandSurface(container, organizationId = null) {
+    if (!container) return null;
+    const model = buildCommercialCommandModel(organizationId);
+    const metricCard = (metric, emphasis = false) => `
+      <article class="meos-commercial-metric${emphasis ? " primary" : ""}" data-status="${escapeHtml(metric?.status || "unknown")}">
+        <span>${escapeHtml(metric?.label || "Metric")}</span>
+        <strong>${escapeHtml(commercialMetricText(metric))}</strong>
+        <small>${escapeHtml(metric?.status === "unknown" ? (metric?.reason || "not-enough-data") : metric?.status || "unknown")}</small>
+      </article>`;
+    const topConversions = model.conversions.campaigns.slice(0, 5);
+    const predictionRows = model.predictions.slice(0, 5);
+    const experimentRows = model.activeExperiments.slice(0, 5);
+    const latestLessons = model.lessons.slice(-5).reverse();
+
+    container.innerHTML = `
+      <section class="meos-commercial-command" data-schema="${COMMERCIAL_COMMAND_SCHEMA}">
+        <header class="meos-commercial-command-head">
+          <div><span>Commercial Command · Shark Tank</span><h3>${escapeHtml(model.organizationName || model.organizationId || "Organization")}</h3></div>
+          <button type="button" class="meos-commercial-refresh">Refresh Truth</button>
+        </header>
+        <div class="meos-commercial-rule"><strong>Decision rule:</strong> ${escapeHtml(model.truthRule)} <em>No commercial record grants spend, publication, outreach, execution, or policy authority.</em></div>
+        <div class="meos-commercial-hero-metrics">
+          ${metricCard(model.metrics.netAttributableValue, true)}
+          ${metricCard(model.metrics.attributableRevenue)}
+          ${metricCard(model.metrics.commercialCost)}
+          ${metricCard(model.metrics.qualifiedPipeline)}
+        </div>
+        <div class="meos-commercial-metric-grid">
+          ${metricCard(model.metrics.cac)}
+          ${metricCard(model.metrics.contributionMargin)}
+          ${metricCard(model.metrics.roi)}
+          ${metricCard(model.metrics.roas)}
+          ${metricCard(model.metrics.payback)}
+          ${metricCard(model.metrics.retention)}
+          ${metricCard(model.metrics.ltv)}
+          ${metricCard(model.metrics.churn)}
+        </div>
+        <div class="meos-commercial-truth-strip">
+          <span><strong>${model.truthCounts.measured}</strong> measured</span>
+          <span><strong>${model.truthCounts.estimated}</strong> estimated</span>
+          <span><strong>${model.truthCounts.unknown}</strong> unknown</span>
+          <span><strong>${model.recordCount}</strong> commercial truth records</span>
+        </div>
+        <div class="meos-commercial-columns">
+          <section><h4>What is converting?</h4>${topConversions.length ? topConversions.map((item) => `<div class="meos-commercial-row"><strong>${escapeHtml(item.id)}</strong><span>${item.conversions} conversion${item.conversions === 1 ? "" : "s"}</span></div>`).join("") : `<p>Unknown — no campaign-bound conversion evidence yet.</p>`}</section>
+          <section><h4>Organic vs paid</h4>${model.channelMix.status === "measured" ? `<div class="meos-commercial-row"><strong>Organic</strong><span>${model.channelMix.organic}</span></div><div class="meos-commercial-row"><strong>Paid</strong><span>${model.channelMix.paid}</span></div><p>${model.channelMix.unknown} records are not explicitly classified.</p>` : `<p>Unknown — channel mode has not been explicitly evidenced.</p>`}</section>
+          <section><h4>Experiments running</h4>${experimentRows.length ? experimentRows.map((item) => `<div class="meos-commercial-row"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.campaignId || "unbound")}</span></div>`).join("") : `<p>No active experiment is evidenced.</p>`}</section>
+          <section><h4>Prediction → reality</h4>${predictionRows.length ? predictionRows.map((item) => `<div class="meos-commercial-row"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.status)}</span></div>`).join("") : `<p>No prediction/outcome pair has been recorded.</p>`}</section>
+          <section><h4>What did Maddy learn?</h4>${latestLessons.length ? latestLessons.map((item) => `<div class="meos-commercial-row"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.status)}</span><p>${escapeHtml(item.lesson || "Lesson recorded without narrative.")}</p></div>`).join("") : `<p>No commercial lesson has been recorded yet.</p>`}</section>
+          <section><h4>What should we do next?</h4><p>${escapeHtml(model.recommendation || "Unknown — Maddy has not recorded an evidence-grounded commercial recommendation yet.")}</p></section>
+        </div>
+        <footer class="meos-commercial-foot">Net Attributable Value is calculated only when attributable-value and cost evidence are both supportable. Missing or incomplete evidence remains Unknown rather than becoming zero.</footer>
+      </section>`;
+    container.querySelector('.meos-commercial-refresh')?.addEventListener('click', () => renderCommercialCommandSurface(container, organizationId));
+    return model;
+  }
+
+  function runCommercialCommandDashboardAcceptanceTest() {
+    const org = "commercial-command-acceptance-org";
+    const fixture = {
+      schema: "meos.maddy.commercial-truth-snapshot.v1",
+      organizationId: org,
+      records: [
+        { id:"campaign-1", schema:"meos.maddy.commercial-truth.v1", recordType:"campaign", organizationId:org, title:"Organic proof campaign", campaignId:"campaign-1", prediction:{ statement:"Create qualified demand without paid media." }, outcome:null, tags:["organic"], metadata:{ status:"running", channelMode:"organic" }, epistemic:{ status:"supported", confidence:.7 }, authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false } },
+        { id:"revenue-1", schema:"meos.maddy.commercial-truth.v1", recordType:"revenue", organizationId:org, title:"Closed revenue", campaignId:"campaign-1", economics:{ revenue:{ value:1200, unit:"currency", currency:"USD", status:"measured", confidence:1, sourceIds:["ledger-r1"] } }, metadata:{ channelMode:"organic" }, authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false } },
+        { id:"cost-1", schema:"meos.maddy.commercial-truth.v1", recordType:"cost", organizationId:org, title:"Campaign cost", campaignId:"campaign-1", economics:{ cost:{ value:200, unit:"currency", currency:"USD", status:"measured", confidence:1, sourceIds:["ledger-c1"] }, spend:{ value:0, unit:"currency", currency:"USD", status:"measured", confidence:1, sourceIds:["ledger-s1"] }, cac:{ value:null, unit:"currency", currency:"USD", status:"unknown", confidence:null, sourceIds:[], unknownReason:"customer denominator unavailable" }, ltv:{ value:null, unit:"currency", currency:"USD", status:"unknown", confidence:null, sourceIds:[], unknownReason:"retention history unavailable" } }, metadata:{ channelMode:"organic" }, authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false } },
+        { id:"lead-1", schema:"meos.maddy.commercial-truth.v1", recordType:"lead", organizationId:org, title:"Qualified lead", campaignId:"campaign-1", metadata:{ qualified:true }, authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false } },
+        { id:"conversion-1", schema:"meos.maddy.commercial-truth.v1", recordType:"conversion", organizationId:org, title:"Customer conversion", campaignId:"campaign-1", offerId:"offer-1", channelId:"organic-video", metadata:{ channelMode:"organic" }, authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false } },
+        { id:"lesson-1", schema:"meos.maddy.commercial-truth.v1", recordType:"commercial-lesson", organizationId:org, title:"Organic proof before spend", description:"The zero-paid-spend campaign produced a qualified lead and conversion.", metadata:{ recommendation:"Repeat the organic proof pattern before paid amplification." }, epistemic:{ status:"supported", confidence:.8 }, authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false } }
+      ],
+      economics: {
+        revenue:[{ recordId:"revenue-1", recordType:"revenue", value:1200, unit:"currency", currency:"USD", status:"measured", confidence:1, sourceIds:["ledger-r1"] }],
+        cost:[{ recordId:"cost-1", recordType:"cost", value:200, unit:"currency", currency:"USD", status:"measured", confidence:1, sourceIds:["ledger-c1"] }],
+        spend:[{ recordId:"cost-1", recordType:"cost", value:0, unit:"currency", currency:"USD", status:"measured", confidence:1, sourceIds:["ledger-s1"] }],
+        cac:[{ recordId:"cost-1", recordType:"cost", value:null, unit:"currency", currency:"USD", status:"unknown", confidence:null, sourceIds:[], unknownReason:"customer denominator unavailable" }],
+        ltv:[{ recordId:"cost-1", recordType:"cost", value:null, unit:"currency", currency:"USD", status:"unknown", confidence:null, sourceIds:[], unknownReason:"retention history unavailable" }]
+      },
+      truthRule:"Measured, estimated, and unknown commercial values remain distinct. Unknown values are never silently converted into zero or fabricated certainty.",
+      authorityRule:"Commercial truth is evidence for decisions; it is not execution, spend, publication, outreach, or policy authority."
+    };
+    const model = buildCommercialCommandModel(org, fixture);
+    const estimatedFixture = JSON.parse(JSON.stringify(fixture));
+    estimatedFixture.economics.revenue[0].status = "estimated";
+    estimatedFixture.economics.revenue[0].confidence = .55;
+    const estimatedModel = buildCommercialCommandModel(org, estimatedFixture);
+    const unknownFixture = JSON.parse(JSON.stringify(fixture));
+    unknownFixture.economics.cost[0] = { ...unknownFixture.economics.cost[0], value:null, status:"unknown" };
+    const unknownModel = buildCommercialCommandModel(org, unknownFixture);
+    const foreignFixture = JSON.parse(JSON.stringify(fixture));
+    foreignFixture.records.push({ id:"foreign", recordType:"conversion", organizationId:"other-org", title:"Must stay isolated", campaignId:"foreign-campaign" });
+    const isolatedModel = buildCommercialCommandModel(org, foreignFixture);
+    const checks = [
+      { name:"Commercial Command schema is explicit and versioned", passed:model.schema === COMMERCIAL_COMMAND_SCHEMA && model.commission === "006.032C" },
+      { name:"Dashboard reads an organization-bound commercial snapshot", passed:model.organizationId === org && model.recordCount === fixture.records.length },
+      { name:"Measured attributable revenue remains measured", passed:model.metrics.attributableRevenue.value === 1200 && model.metrics.attributableRevenue.status === "measured" },
+      { name:"Measured commercial cost remains measured", passed:model.metrics.commercialCost.value === 200 && model.metrics.commercialCost.status === "measured" },
+      { name:"Net Attributable Value is prominent and supportably calculated", passed:model.metrics.netAttributableValue.value === 1000 && model.metrics.netAttributableValue.status === "measured" },
+      { name:"Estimated source economics propagate estimated status", passed:estimatedModel.metrics.attributableRevenue.status === "estimated" && estimatedModel.metrics.netAttributableValue.status === "estimated" },
+      { name:"Incomplete cost evidence makes Net Attributable Value unknown instead of zero", passed:unknownModel.metrics.netAttributableValue.status === "unknown" && unknownModel.metrics.netAttributableValue.value === null },
+      { name:"Unsupported CAC remains unknown", passed:model.metrics.cac.status === "unknown" && model.metrics.cac.value === null },
+      { name:"Unsupported LTV remains unknown", passed:model.metrics.ltv.status === "unknown" && model.metrics.ltv.value === null },
+      { name:"Zero paid spend is preserved as measured zero", passed:model.metrics.paidSpend.status === "measured" && model.metrics.paidSpend.value === 0 },
+      { name:"ROAS does not fabricate infinity when paid spend is zero", passed:model.metrics.roas.status === "not-applicable" && model.metrics.roas.value === null },
+      { name:"Qualified pipeline requires explicit qualification evidence", passed:model.metrics.qualifiedPipeline.status === "measured" && model.metrics.qualifiedPipeline.value === 1 },
+      { name:"Campaign conversion evidence is grouped without inventing conversion rates", passed:model.conversions.campaigns[0]?.id === "campaign-1" && model.conversions.campaigns[0]?.conversions === 1 },
+      { name:"Prediction remains separate from observed outcome", passed:model.predictions[0]?.status === "awaiting-outcome" && model.predictions[0]?.outcome === null },
+      { name:"Running prediction-backed work appears as an experiment", passed:model.activeExperiments.some((item) => item.id === "campaign-1") },
+      { name:"Organic versus paid is based only on explicit channel classification", passed:model.channelMix.status === "measured" && model.channelMix.organic > 0 && model.channelMix.paid === 0 },
+      { name:"Commercial lessons can carry the next evidence-grounded recommendation", passed:model.recommendation === "Repeat the organic proof pattern before paid amplification." },
+      { name:"Other organizations cannot leak into conversion rankings", passed:isolatedModel.conversions.campaigns.every((item) => item.id !== "foreign-campaign") },
+      { name:"Dashboard creates no execution, spend, or publication authority", passed:model.authority.executionAuthorized === false && model.authority.spendAuthorized === false && model.authority.publicationAuthorized === false },
+      { name:"Commercial Command renderer exists without becoming persistence authority", passed:typeof renderCommercialCommandSurface === "function" && typeof buildCommercialCommandModel === "function" }
+    ];
+    const result = {
+      success: checks.every((check) => check.passed),
+      commission: "006.032C",
+      schema: "meos.dashboard.commercial-command-acceptance.v1",
+      version: DASHBOARD_VERSION,
+      buildId: COMMERCIAL_COMMAND_BUILD_ID,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks,
+      sample: model,
+      completedAt: new Date().toISOString()
+    };
+    console.table(checks);
+    console.log(`[MEOS ${DASHBOARD_VERSION}] Commission 006.032C Commercial Command Dashboard: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
+
   /* Commission 006.020D — Image-backed Panoramic Executive Office
    *
    * Authority: the proven v4.10.5 functional dashboard.
@@ -3553,6 +4037,13 @@ document
       .meos-system-card strong{display:block;color:#ece9e1;font-size:.70rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .meos-system-card span{display:block;margin-top:5px;font-size:.62rem;color:#79d7a4;text-transform:uppercase}
       .meos-system-card[data-status="offline"] span,.meos-system-card[data-status="error"] span{color:#f09b83}
+      .meos-commercial-command{display:grid;gap:12px;color:#eef7f5;min-height:100%}
+      .meos-commercial-command-head{display:flex;align-items:end;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(226,183,108,.24);padding-bottom:10px}.meos-commercial-command-head span{display:block;color:#e6bd7b;font:800 .56rem/1 system-ui;letter-spacing:.13em;text-transform:uppercase}.meos-commercial-command-head h3{margin:5px 0 0;color:#f7f2e7;font:800 1rem/1.1 system-ui}.meos-commercial-refresh{border:1px solid rgba(226,183,108,.38);border-radius:8px;background:rgba(69,50,28,.52);color:#f1d39e;padding:7px 10px;cursor:pointer;font:700 .61rem/1 system-ui}
+      .meos-commercial-rule{padding:9px 11px;border-left:3px solid rgba(226,183,108,.68);background:rgba(38,30,19,.38);font:600 .62rem/1.45 system-ui;color:#cbd9d5}.meos-commercial-rule em{display:block;margin-top:4px;color:#e7c98f;font-style:normal}
+      .meos-commercial-hero-metrics,.meos-commercial-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.meos-commercial-metric-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.meos-commercial-metric{padding:10px;border:1px solid rgba(125,190,202,.16);border-radius:10px;background:rgba(4,13,15,.42);min-width:0}.meos-commercial-metric.primary{grid-column:span 1;border-color:rgba(226,183,108,.55);background:linear-gradient(145deg,rgba(72,50,24,.58),rgba(5,16,18,.56));box-shadow:inset 0 0 18px rgba(226,183,108,.04)}.meos-commercial-metric span{display:block;color:#8fa9aa;font:800 .52rem/1 system-ui;letter-spacing:.08em;text-transform:uppercase}.meos-commercial-metric strong{display:block;margin-top:7px;color:#f6f1e6;font:800 1.05rem/1 system-ui;overflow:hidden;text-overflow:ellipsis}.meos-commercial-metric small{display:block;margin-top:5px;color:#7ed7a7;font:700 .52rem/1 system-ui;text-transform:uppercase}.meos-commercial-metric[data-status="estimated"] small{color:#e6bd7b}.meos-commercial-metric[data-status="unknown"] small{color:#ef9d86}.meos-commercial-metric[data-status="not-applicable"] small{color:#92a7aa}
+      .meos-commercial-truth-strip{display:flex;flex-wrap:wrap;gap:8px}.meos-commercial-truth-strip span{padding:6px 9px;border:1px solid rgba(125,190,202,.13);border-radius:999px;background:rgba(4,13,15,.34);color:#9db0b0;font:700 .56rem/1 system-ui}.meos-commercial-truth-strip strong{color:#eef7f5}
+      .meos-commercial-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.meos-commercial-columns>section{padding:11px;border:1px solid rgba(125,190,202,.13);border-radius:10px;background:rgba(4,13,15,.34)}.meos-commercial-columns h4{margin:0 0 8px;color:#e6bd7b;font:800 .58rem/1 system-ui;letter-spacing:.09em;text-transform:uppercase}.meos-commercial-columns p{margin:6px 0 0;color:#9fb0b0;font:600 .6rem/1.35 system-ui}.meos-commercial-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:7px 0;border-top:1px solid rgba(125,190,202,.09);font:600 .61rem/1.2 system-ui}.meos-commercial-row:first-of-type{border-top:0}.meos-commercial-row strong{color:#e7efec;overflow:hidden;text-overflow:ellipsis}.meos-commercial-row span{color:#84c9b0}.meos-commercial-row p{grid-column:1/-1}.meos-commercial-foot{padding-top:8px;border-top:1px solid rgba(125,190,202,.12);color:#819595;font:600 .56rem/1.35 system-ui}
+      @media(max-width:980px){.meos-commercial-hero-metrics,.meos-commercial-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.meos-commercial-columns{grid-template-columns:1fr}}
       @media(max-width:900px){.meos-system-grid{grid-template-columns:1fr 1fr}}
       .meos-office-look{position:absolute;z-index:125;top:50%;transform:translateY(-50%);width:38px;height:68px;border:1px solid rgba(213,162,83,.20);border-radius:10px;background:rgba(4,10,12,.42);color:#e8c07d;font-size:1.8rem;cursor:pointer;backdrop-filter:blur(6px)}
       .meos-office-look.left{left:52px}.meos-office-look.right{right:52px}
@@ -4145,6 +4636,17 @@ document
         refresh();
       });
     };
+
+    const openCommercialCommandSurface = () => {
+      openUtilitySurface('Commercial Command · Shark Tank', body => {
+        renderCommercialCommandSurface(body);
+      });
+    };
+
+    addTopNavButton('Commercial Command', () => {
+      closeTopMenus();
+      openCommercialCommandSurface();
+    }, { id:'meosCommercialCommandButton' });
 
     const addWayfinding = (container, ids) => {
       ids.forEach(id => {
@@ -9347,20 +9849,23 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online.`
     );
   }
 
   window.MEOSOfficeDashboard = Object.freeze({
     version: DASHBOARD_VERSION,
-    buildId: RETURNED_WORK_DISPOSITION_BUILD_ID,
+    buildId: COMMERCIAL_COMMAND_BUILD_ID,
     show: showOfficeDashboard,
     hide: hideOfficeDashboard,
     refresh: renderOfficeDashboard,
     buildShopTruthSurfaceModel,
     runShopTruthSurfaceAcceptanceTest,
     runConsequenceRecognitionGateAcceptanceTest,
-    runReturnedWorkDispositionSurfaceAcceptanceTest
+    runReturnedWorkDispositionSurfaceAcceptanceTest,
+    buildCommercialCommandModel,
+    renderCommercialCommandSurface,
+    runCommercialCommandDashboardAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
@@ -9388,6 +9893,12 @@ document
       runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
+    }),
+    commercial: Object.freeze({
+      getModel: buildCommercialCommandModel,
+      render: renderCommercialCommandSurface,
+      open: () => document.getElementById("meosCommercialCommandButton")?.click() || false,
+      runAcceptanceTest: runCommercialCommandDashboardAcceptanceTest
     }),
     presence: Object.freeze({
       connect: connectPresenceEngine,
