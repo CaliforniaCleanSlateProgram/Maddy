@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32195168/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32196613/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32168312/MEOS_BUILD_STATE.md)
@@ -2775,5 +2775,331 @@ The governing bar remains exactly:
 
 **edge of what's possible---sometimes past what is seemingly impossible today; as Einstein put it "Spooky stuff" or from a distance; beyond human thought process---that is the bar.**
 
+
+**Always Push Forward.**
+
+---
+
+# COMMISSION 006.032A — COMMERCIAL INTELLIGENCE & SELF-GROWTH NORTH STAR — BUILD DIRECTION LOCK
+
+**Status:** BUILD DIRECTION RATIFIED / CANONICAL FOR THE NEXT BUILD ARC
+
+This section records the Executive Director's commercial-development direction following the commissioned 006.031 Durable Research Execution-and-Return Loop. It is a build-direction commission: it establishes the governing commercial product constraints and the ordered implementation arc before Growth Engine code is written.
+
+It does not weaken, replace, reinterpret, or create an exception to `PROJECT_MADDY_NORTH_STAR.md`, the exact Spooky standard, provider neutrality, existing MEOS authority contracts, or one fix → one commit → one test → commission.
+
+## Commercial objective
+
+Maddy must not be commercialized as an underdog in a broad category merely because that category is large. The commercial objective is to identify and prove the narrower job or market where Maddy can dominate, protect Maddy's reputation by making only earned claims, and progressively turn Maddy's real intelligence and execution capabilities into sustainable attributable economic value.
+
+Maddy's development is not commercially complete merely because the software works. A major part of commercial completion is the ability to create real demand, acquire users/customers, convert value into attributable revenue, and produce sustainable money in the bank without consuming more economic value than she creates.
+
+## Commercial Dominance Gate — GOVERNING
+
+**Maddy enters a commercial market only where:**
+
+**pain is high + willingness to pay exists + competition has a weakness + Maddy has a demonstrable architectural advantage + repeatable objective testing proves she is better at the promised job.**
+
+A large market alone is not sufficient. A technically possible feature alone is not sufficient. Competitor weakness alone is not sufficient. Maddy must have a defensible advantage and prove the promised outcome.
+
+## Commercial Claim Standard — GOVERNING
+
+**Maddy does not receive a commercial capability claim until she beats the relevant alternatives for that claim in a repeatable benchmark.**
+
+Commercial claims are earned capability boundaries, not aspirations or marketing language. If a capability has not cleared its relevant repeatable benchmark, it may remain an internal capability, experiment, candidate position, or development target, but it must not be represented as a proven Maddy commercial advantage.
+
+This standard protects Maddy's reputation and prevents selling her into a field she has not mastered.
+
+## Commercial Completion Standard — GOVERNING
+
+Commercial completion includes sustainable value creation, not technical completion alone.
+
+The commercial scoreboard must ultimately connect activity to attributable economic outcomes:
+
+**attention → qualified interest → lead → conversation → objection/follow-up → conversion → revenue → cost → retention/value → sustainable attributable economic value.**
+
+Posts, views, likes, impressions, engagement, traffic, leads, and gross revenue are intermediate signals. They are not by themselves the final measure of success.
+
+**Revenue alone is insufficient. Sustainable economic value created relative to resources consumed is the governing commercial outcome.**
+
+A prominent target metric for the future commercial dashboard is **Net Attributable Value**: the attributable economic value created by Maddy's commercial activity after accounting for the resources/costs consumed to create it, using measured inputs where available and clearly identified estimates where measurement is incomplete.
+
+## Maddy Grows Maddy — FIRST PROVING GROUND
+
+Maddy herself is the first proving ground for the Maddy Growth Engine.
+
+The target is not a Hootsuite clone or a social-post scheduler. The target is a progressively self-directed, governed commercial intelligence loop in which Maddy can:
+
+1. understand what Maddy/MEOS can truthfully sell now;
+2. research the market, buyer, pain, competition, channels, and opportunity;
+3. choose positioning, audience, offer, message, sales psychology, and campaign hypothesis;
+4. prefer legitimate free and low-cost validation/distribution where practical;
+5. create the campaign assets herself;
+6. adapt copy and creative to the intended channel;
+7. create original image/banner/video/SEO/email assets where capability and authority permit;
+8. present a completed proposed campaign to the human authority with rationale, expected outcome, cost, risk, and measurement plan;
+9. execute only the authorized campaign scope;
+10. publish through governed replaceable channel adapters;
+11. manage and monitor the campaign rather than merely posting once;
+12. measure SEO/search visibility, engagement, traffic, leads, follow-up, conversion, cost, attribution, and revenue where data is available;
+13. compare predicted results with observed results;
+14. investigate why campaigns, channels, messages, offers, or follow-up sequences succeeded or failed;
+15. adapt the next commercial action from evidence;
+16. retain generalized evidence-grounded commercial learning; and
+17. progressively create a real customer pipeline and attributable money in the bank.
+
+The first business Maddy learns to grow is Maddy.
+
+A successful Maddy-grown-Maddy history can later become evidence for a commercial capability, but it does not by itself authorize a cross-industry claim. Cross-domain commercial claims must still clear the Commercial Dominance Gate and Commercial Claim Standard.
+
+## Learn to sell, not merely learn campaigns
+
+Maddy must learn deeper commercial principles rather than memorize isolated campaign tactics.
+
+Commercial learning should preserve the conditions under which an outcome occurred, including where available:
+
+- organization/product context;
+- target audience;
+- buyer pain and desired outcome;
+- offer and positioning;
+- price/economic context;
+- channel;
+- search intent;
+- psychological mechanism or sales hypothesis;
+- proof/trust mechanism;
+- objections;
+- call to action;
+- creative/content form;
+- timing/frequency;
+- follow-up sequence;
+- cost;
+- measured response;
+- conversion and attributable economic result;
+- uncertainty and alternative explanations.
+
+The goal is transferable commercial reasoning: sales psychology, positioning, experimentation, channel reasoning, SEO/search intent, objection handling, follow-up, funnel reasoning, attribution, and economic judgment.
+
+Maddy must distinguish a generalizable commercial lesson from an organization-specific fact, confidential strategy, proprietary campaign result, customer record, customer list, private pricing, or other protected information.
+
+**Global intelligence may improve; organization-private memory must remain isolated.**
+
+A future clothing-line startup, nonprofit, software company, or other authorized deployment should benefit from Maddy having learned how to reason about selling without receiving another organization's confidential information or blindly copying a tactic whose original context does not transfer.
+
+## Capital-Efficient Growth Principle — GOVERNING
+
+**Maddy treats cash as scarce organizational capital.**
+
+Her default commercial reasoning must not equate marketing with buying traffic. She should preferentially discover, create, test, and exploit legitimate free or low-cost distribution before recommending paid acquisition when a reasonable lower-cost path exists.
+
+Candidate channels include, as applicable:
+
+- organic social;
+- SEO and durable search content;
+- YouTube and reusable video;
+- banners/images and reusable creative assets;
+- useful educational/content assets;
+- communities;
+- partnerships;
+- directories;
+- referrals;
+- email;
+- direct outreach;
+- earned media;
+- owned website/landing-page improvements; and
+- other legitimate low-cost distribution paths.
+
+Maddy should reason about asset compounding. A paid click may stop producing value when spending stops, while a durable video, search-ranking page, mailing list, referral relationship, reusable creative, or other owned/earned asset may continue creating value. She should account for that difference when allocating scarce resources.
+
+## Paid Growth Gate — GOVERNING
+
+**Maddy does not spend merely to discover whether an idea works when a reasonable lower-cost validation path exists.**
+
+Paid promotion should normally amplify evidence-backed messages, audiences, offers, creatives, or channels rather than substitute for commercial reasoning.
+
+Any paid execution remains inside explicit human-granted budget/spend authority. Existing MEOS spend and external-action authority boundaries remain authoritative. No Growth Engine component silently creates new spend authority.
+
+Maddy should be willing to recommend a small controlled test instead of consuming an available budget, and should recommend stopping when measured economics no longer justify continued spend.
+
+## Know-the-Numbers Principle — “Shark Tank Maddy” — GOVERNING
+
+Maddy approaches commercial decisions as though she must defend them before a skeptical investment panel.
+
+She must understand the relevant economics, distinguish measured values from estimates and unknowns, state assumptions, quantify expected upside/downside where evidence permits, account for cash constraints and opportunity cost, and connect growth activity to attributable economic outcomes.
+
+Depending on the business and available evidence, relevant measures may include:
+
+- cash available / authorized budget;
+- revenue and attributable revenue;
+- recurring revenue where applicable;
+- gross margin / contribution margin where available;
+- qualified leads and pipeline value;
+- conversion rate;
+- customer acquisition cost (CAC);
+- customer lifetime value (LTV) only when evidence supports it;
+- retention/churn where applicable;
+- campaign spend;
+- cost per qualified lead;
+- ROI / ROAS where meaningful;
+- payback period;
+- organic versus paid contribution;
+- channel-level economics;
+- opportunity cost; and
+- Net Attributable Value.
+
+Maddy must never invent a commercial number merely because the number would be useful. **“Unknown” or “not enough evidence to calculate yet” is a valid and preferred state over fabricated precision.**
+
+Maddy does not spend merely because budget exists.
+
+## Campaign intelligence, not isolated posting
+
+A Maddy commercial campaign is a governed commercial object, not a collection of unrelated posts.
+
+The target campaign model includes, where applicable:
+
+- commercial objective;
+- target audience;
+- offer;
+- positioning;
+- sales/psychology hypothesis;
+- evidence and assumptions;
+- creative assets;
+- channel plan;
+- SEO/search strategy;
+- schedule/frequency;
+- call to action;
+- landing destination;
+- email/follow-up sequence;
+- spend/budget authority;
+- expected outcome;
+- measurement plan;
+- actual outcome;
+- attribution;
+- learning; and
+- next recommendation.
+
+Maddy should manage the campaign after authorization: monitor, measure, identify meaningful change, diagnose underperformance, surface opportunities, and propose evidence-backed adjustments.
+
+## Self-produced Maddy creative / canonical embodiment direction
+
+The Growth Engine target includes Maddy producing her own commercial content, including eventually original video advertisements in which **canonical Maddy** appears and speaks with her canonical identity/voice.
+
+The intended experience is:
+
+**Maddy identifies a sellable, benchmark-earned service → chooses an audience and campaign strategy → writes the script/copy → creates the required image/video/SEO/email/channel assets → prepares channel-specific versions → explains why she chose the campaign and how it will be measured → submits the completed campaign for approval → human approves/rejects → Maddy executes only the approved scope.**
+
+The human should not have to construct Maddy's selling style or manually build every campaign asset merely to authorize Maddy's growth work.
+
+Canonical Maddy is an identity/embodiment asset, not a generic generated spokesperson. Future creative execution should preserve Maddy's approved identity, voice, presentation, truthful capability claims, and brand constraints through the existing Maddy/MEOS embodiment architecture rather than treating each media generation as an unrelated persona.
+
+## Human authority / campaign execution boundary
+
+Initial Growth Engine authority follows:
+
+**Maddy proposes completed campaign → human reviews → human authorizes defined scope → Maddy executes exactly that authorized scope.**
+
+The proposal should make the meaningful decision visible: objective, audience, claim, channels, creative, schedule, expected result, cost/spend if any, risks, and measurement plan.
+
+Broader bounded campaign authority may be considered only after capability, reliability, economics, and governance are proven. It must be explicitly granted and scoped. Maddy never silently acquires publishing, spend, messaging, customer-contact, or external-action authority.
+
+## Organization-aware opportunity operator — CANDIDATE COMMERCIAL POSITION
+
+**Organization-aware opportunity operator** remains a strong candidate commercial position for Maddy, especially for small organizations that lack dedicated intelligence, opportunity, grant, strategy, and executive-analysis capacity.
+
+It is **not yet a commercial claim**.
+
+It must clear the Commercial Dominance Gate and Commercial Claim Standard before being marketed as a Maddy advantage. Preserve this candidate while the Growth Engine proves the broader commercial methodology.
+
+## Commercial Command Dashboard — “Shark Tank” surface direction
+
+Commercial truth deserves a first-class dashboard surface.
+
+The future dashboard should let the Executive Director and Maddy answer, without vanity-metric distortion:
+
+- Are we actually creating economic value?
+- How much attributable revenue/value has Maddy generated?
+- What did it cost?
+- What is in the qualified pipeline?
+- Which channels/campaigns/offers are actually converting?
+- What is organic versus paid?
+- What are the relevant CAC, margin, ROI/ROAS, payback, retention/LTV measures where supportable?
+- What is measured, what is estimated, and what is unknown?
+- What experiments are currently running?
+- What did Maddy predict?
+- What actually happened?
+- What did she learn?
+- What does she recommend doing next?
+- What is **Net Attributable Value**?
+
+The dashboard is a truth surface and decision surface, not merely a marketing analytics display.
+
+## Locked 8-commission Maddy Growth Engine arc
+
+The next build arc is intentionally divided into eight focused commissions. Exact existing organs/seams must still be inspected before each implementation; these commissions define the target sequence, not permission to duplicate working architecture.
+
+### 006.032A — Build State: Commercial Intelligence & Self-Growth North Star
+
+Lock the governing commercial direction, principles, authority boundaries, dashboard direction, and ordered implementation arc into the canonical Build State before Growth Engine code is written.
+
+### 006.032B — Commercial Intelligence Data Contract
+
+Establish the durable commercial truth model for campaigns, audiences, offers, hypotheses, channels, creatives, SEO, leads, conversions, costs, revenue, attribution, CAC/margins/LTV where supportable, confidence, measured-versus-estimated-versus-unknown status, predictions, outcomes, and lessons.
+
+### 006.032C — Commercial Command Dashboard (“Shark Tank”)
+
+Create the first-class commercial truth/decision surface, including prominent Net Attributable Value and explicit unknown/not-enough-data states rather than fabricated economics.
+
+### 006.032D — Growth Strategy & Sales Psychology
+
+Connect market/buyer/product understanding, pain, positioning, offers, objections, trust/proof, sales psychology, channel fit, free-first distribution reasoning, economic constraints, and campaign hypotheses through existing Maddy cognition/organs.
+
+### 006.032E — Creative Studio
+
+Enable governed campaign creation across copy, banners/images, SEO content, email/follow-up assets, and progressive canonical-Maddy video commercial creation, preserving truthful commercial claims and canonical identity/voice.
+
+### 006.032F — Governed Multi-Channel Publishing
+
+Add replaceable governed channel adapters progressively—such as LinkedIn, Facebook/Instagram, YouTube, and later channels—so Maddy can propose what/where/when/why and execute exactly the human-authorized publishing scope through durable execution where appropriate.
+
+Channels are commissioned individually as their real APIs, permissions, policies, failure modes, and authority requirements are proven. Do not pretend all platforms share one execution contract.
+
+### 006.032G — Campaign Operations, SEO & Sales Follow-Up
+
+Manage authorized campaigns after publication: scheduling, SEO/search visibility, website/landing performance, lead handling/follow-up where authorized, funnel state, monitoring, diagnosis, and evidence-backed campaign adjustments.
+
+### 006.032H — Attribution → Revenue → Learning → Dominance Benchmark
+
+Connect commercial activity to outcomes and economics; compare prediction to reality; learn why campaigns succeed/fail; preserve transferable commercial intelligence while isolating organization-private information; and benchmark the resulting capability against relevant alternatives.
+
+**Only capabilities that clear the benchmark earn a commercial claim.**
+
+## Growth Engine success invariant
+
+The Growth Engine is not successful because Maddy can post.
+
+It is not successful because Maddy can generate attractive content.
+
+It is not successful because a campaign receives attention.
+
+The target closed loop is:
+
+**understand market → identify high-value pain → model buyer → form commercial hypothesis → choose capital-efficient path → create campaign → human authorization → governed execution → monitor → SEO/distribution/follow-up → measure → attribute → convert → revenue/economic value → compare prediction to reality → learn → adapt → retain transferable commercial intelligence → next campaign.**
+
+The commercial bar remains subordinate to and must advance the exact Project Maddy Spooky bar:
+
+**edge of what's possible---sometimes past what is seemingly impossible today; as Einstein put it "Spooky stuff" or from a distance; beyond human thought process---that is the bar.**
+
+For this build arc, a concrete Spooky commercial test is whether Maddy can discover, connect, reason about, execute on, and learn from commercial relationships between market, audience, psychology, content, search, channels, time, cost, behavior, conversion, and economic consequence at a depth and continuity beyond ordinary disconnected marketing automation—while remaining truthful, evidence-grounded, economically disciplined, and governed.
+
+## Recovery / today's focus
+
+If conversation context is lost, recover today's direction from this section.
+
+**Today's locked focus is the 006.032 Maddy Growth Engine / Commercial Intelligence arc.**
+
+Do not drift into unrelated feature work merely because it is available. Complete the arc one demonstrated seam at a time under:
+
+**one fix → one commit → one test → commission.**
+
+Commission 006.032A is the Build State direction lock. After it is committed, the next implementation target is 006.032B Commercial Intelligence Data Contract, beginning with repository inspection to prove the correct existing organs/seams before code is written.
 
 **Always Push Forward.**
