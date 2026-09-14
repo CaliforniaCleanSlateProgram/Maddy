@@ -1,7 +1,7 @@
 /**
  * MEOS Provider Manager
- * Version: 1.2.0
- * Build: PM120-ADVISER-INTELLIGENCE-BRIDGE-20260816-A
+ * Version: 1.2.1
+ * Build: PM121-GOVERNED-PUBLISHING-CAPABILITY-CONTRACT-20260914-A
  * Status: Commissioned Candidate
  *
  * Purpose:
@@ -25,8 +25,8 @@
   "use strict";
 
   const NAME = "MEOS Provider Manager";
-  const VERSION = "1.2.0";
-  const BUILD_ID = "PM120-ADVISER-INTELLIGENCE-BRIDGE-20260816-A";
+  const VERSION = "1.2.1";
+  const BUILD_ID = "PM121-GOVERNED-PUBLISHING-CAPABILITY-CONTRACT-20260914-A";
   const SCHEMA = "meos.provider-manager.v1";
   const STORAGE_KEY = "meos.provider-manager.history.v1";
   const MAX_HISTORY_ITEMS = 250;
@@ -122,6 +122,26 @@
    * documents the permanent MEOS provider topology without pretending that an
    * adapter, account, credential, or live connection exists.
    */
+  /*
+   * Commission 006.032F1 — Governed Publishing Capability Contract
+   *
+   * Publishing capabilities are runtime-discoverable hands underneath one
+   * Maddy. This contract describes what a channel adapter can do without
+   * granting publication authority, exposing credentials, or hard-coding a
+   * vendor into Maddy Core.
+   */
+  const PUBLISHING_CAPABILITY_SCHEMA = "meos.provider-manager.publishing-capability.v1";
+  const PUBLISHING_RECEIPT_SCHEMA = "meos.provider-manager.publishing-receipt.v1";
+  const PUBLISHING_CAPABILITY_PREFIX = "external-publishing.";
+  const PUBLISHING_CREDENTIAL_BOUNDARY = "server-side-only";
+  const REQUIRED_PUBLISHING_LINEAGE = Object.freeze([
+    "organizationId",
+    "campaignId",
+    "creativeHypothesisId",
+    "assetId",
+    "authorizationId"
+  ]);
+
   const ARCHITECTURE_TARGETS = Object.freeze([
     Object.freeze({ id: "openai", label: "OpenAI", type: "language-model" }),
     Object.freeze({ id: "claude", label: "Claude", type: "language-model" }),
@@ -153,6 +173,7 @@
   const state = {
     initializedAt: new Date().toISOString(),
     providers: new Map(),
+    capabilityDefinitions: new Map(),
     history: [],
     activeExecutions: new Map(),
     policy: clone(DEFAULT_POLICY),
@@ -834,6 +855,15 @@
       );
     }
 
+    if (capabilities.some(capability => capability.startsWith(PUBLISHING_CAPABILITY_PREFIX))) {
+      if (definition?.metadata?.credentialBoundary !== PUBLISHING_CREDENTIAL_BOUNDARY) {
+        throw new Error("Publishing providers must declare the server-side-only credential boundary.");
+      }
+      if (containsCredentialMaterial(definition.metadata)) {
+        throw new Error("Publishing provider metadata must not contain credential material.");
+      }
+    }
+
     return {
       id,
       name: String(definition.name || id).trim(),
@@ -1011,20 +1041,192 @@
     return providers.map(publicProvider);
   }
 
+  function containsCredentialMaterial(value, seen = new Set()) {
+    if (!value || typeof value !== "object") return false;
+    if (seen.has(value)) return false;
+    seen.add(value);
+    const forbidden = /(^|[-_])(token|secret|password|passphrase|api[-_]?key|oauth|credential|authorization[-_]?header|private[-_]?key)($|[-_])/i;
+    return Object.entries(value).some(([key, child]) =>
+      forbidden.test(String(key)) || containsCredentialMaterial(child, seen)
+    );
+  }
+
+  function normalizePublishingCapabilityDefinition(definition = {}) {
+    if (!definition || typeof definition !== "object") {
+      throw new TypeError("Publishing capability definition must be an object.");
+    }
+
+    if (containsCredentialMaterial(definition)) {
+      throw new Error("Publishing capability definitions must not contain credential material; credentials stay behind the server-side adapter boundary.");
+    }
+
+    const id = normalizeCapability(definition.id);
+    if (!id || !id.startsWith(PUBLISHING_CAPABILITY_PREFIX)) {
+      throw new RangeError(`Publishing capability id must begin with "${PUBLISHING_CAPABILITY_PREFIX}".`);
+    }
+
+    const channel = normalizeId(definition.channel);
+    if (!channel) {
+      throw new TypeError("Publishing capability requires a channel identifier.");
+    }
+
+    const contentTypes = unique(
+      (Array.isArray(definition.contentTypes) ? definition.contentTypes : [])
+        .map(item => normalizeId(item))
+        .filter(Boolean)
+    );
+    if (contentTypes.length === 0) {
+      throw new TypeError("Publishing capability requires at least one content type.");
+    }
+
+    return deepFreeze({
+      schema: PUBLISHING_CAPABILITY_SCHEMA,
+      id,
+      kind: "governed-external-publishing",
+      channel,
+      channelFamily: normalizeId(definition.channelFamily || channel),
+      description: String(definition.description || "").trim(),
+      contentTypes,
+      constraints: clone(definition.constraints || {}),
+      credentialBoundary: PUBLISHING_CREDENTIAL_BOUNDARY,
+      credentialsModelVisible: false,
+      credentialsBrowserPersisted: false,
+      requiresExplicitAuthorization: true,
+      authorityGrantedByCapability: false,
+      requiresCampaignLineage: true,
+      requiredLineage: [...REQUIRED_PUBLISHING_LINEAGE],
+      requiresExecutionReceipt: true,
+      receiptSchema: PUBLISHING_RECEIPT_SCHEMA,
+      executionSemantics: "authorized-scope-only",
+      consequenceSemantics: "execution-is-not-outcome",
+      providerNeutral: true,
+      maddyIdentityOwnedByProvider: false
+    });
+  }
+
+  function registerPublishingCapability(definition, options = {}) {
+    const capability = normalizePublishingCapabilityDefinition(definition);
+    const existing = state.capabilityDefinitions.get(capability.id);
+    if (existing && options.replace !== true) {
+      throw new Error(`Capability "${capability.id}" is already registered. Use replace: true to replace it.`);
+    }
+    state.capabilityDefinitions.set(capability.id, capability);
+    record(existing ? "capability.replaced" : "capability.registered", {
+      capabilityId: capability.id,
+      kind: capability.kind,
+      channel: capability.channel,
+      credentialBoundary: capability.credentialBoundary
+    });
+    emit("capability-registered", capability);
+    return capability;
+  }
+
+  function unregisterPublishingCapability(capabilityId) {
+    const id = normalizeCapability(capabilityId);
+    const existing = state.capabilityDefinitions.get(id);
+    if (!existing) return { success: false, capabilityId: id, error: "Capability is not registered." };
+    state.capabilityDefinitions.delete(id);
+    record("capability.unregistered", { capabilityId: id });
+    emit("capability-unregistered", { capabilityId: id });
+    return { success: true, capability: existing };
+  }
+
+  function getCapabilityDefinition(capabilityId) {
+    const id = normalizeCapability(capabilityId);
+    const dynamic = state.capabilityDefinitions.get(id);
+    if (dynamic) return clone(dynamic);
+    if (CAPABILITY_CATALOG[id]) {
+      return deepFreeze({
+        schema: "meos.provider-manager.capability.v1",
+        id,
+        kind: "intelligence-or-tool",
+        description: CAPABILITY_CATALOG[id],
+        providerNeutral: true
+      });
+    }
+    return null;
+  }
+
   function listCapabilities() {
     const providers = [...state.providers.values()];
+    const staticDefinitions = Object.entries(CAPABILITY_CATALOG).map(([id, description]) => ({
+      id,
+      description,
+      kind: "intelligence-or-tool"
+    }));
+    const dynamicDefinitions = [...state.capabilityDefinitions.values()].map(item => ({
+      id: item.id,
+      description: item.description,
+      kind: item.kind,
+      channel: item.channel,
+      credentialBoundary: item.credentialBoundary,
+      requiresExplicitAuthorization: item.requiresExplicitAuthorization,
+      requiresExecutionReceipt: item.requiresExecutionReceipt
+    }));
 
-    return Object.entries(CAPABILITY_CATALOG).map(([id, description]) => {
-      const matching = providers.filter(provider => provider.capabilities.includes(id));
+    return [...staticDefinitions, ...dynamicDefinitions].map(definition => {
+      const matching = providers.filter(provider => provider.capabilities.includes(definition.id));
       const available = matching.filter(isProviderSelectable);
-
       return {
-        id,
-        description,
+        ...clone(definition),
         registeredProviders: matching.map(provider => provider.id),
         availableProviders: available.map(provider => provider.id),
         available: available.length > 0
       };
+    });
+  }
+
+  function createGovernedPublishingEnvelope(input = {}) {
+    if (containsCredentialMaterial(input)) {
+      throw new Error("Governed publishing envelopes must not contain credential material; credentials are resolved only behind the server-side adapter boundary.");
+    }
+    const capabilityId = normalizeCapability(input.capabilityId);
+    const capability = state.capabilityDefinitions.get(capabilityId);
+    if (!capability || capability.kind !== "governed-external-publishing") {
+      throw new Error(`Publishing capability "${capabilityId}" is not registered.`);
+    }
+
+    const lineage = {};
+    for (const field of REQUIRED_PUBLISHING_LINEAGE) {
+      const value = String(input[field] || "").trim();
+      if (!value) throw new TypeError(`Governed publishing requires ${field}.`);
+      lineage[field] = value;
+    }
+    if (input.authorized !== true) {
+      throw new Error("Governed publishing requires explicit authorization before an execution envelope can be formed.");
+    }
+
+    return deepFreeze({
+      schema: "meos.provider-manager.governed-publishing-envelope.v1",
+      capabilityId,
+      channel: capability.channel,
+      lineage,
+      authority: {
+        authorized: true,
+        authorizationId: lineage.authorizationId,
+        scope: clone(input.authorizationScope || {}),
+        capabilityCanExpandScope: false
+      },
+      creative: {
+        assetId: lineage.assetId,
+        claimRestrictions: clone(input.claimRestrictions || []),
+        evidenceSourceIds: clone(input.evidenceSourceIds || []),
+        channelAdaptation: clone(input.channelAdaptation || {})
+      },
+      expectation: {
+        predictedConsequence: input.predictedConsequence == null ? null : clone(input.predictedConsequence),
+        campaignHypothesisId: lineage.creativeHypothesisId
+      },
+      credentials: {
+        boundary: PUBLISHING_CREDENTIAL_BOUNDARY,
+        included: false,
+        modelVisible: false,
+        browserPersisted: false
+      },
+      receiptRequired: true,
+      receiptSchema: PUBLISHING_RECEIPT_SCHEMA,
+      outcomeStatus: "unknown-until-observed",
+      executionIsOutcome: false
     });
   }
 
@@ -2196,6 +2398,101 @@
     }, { replace: true });
   }
 
+  function runGovernedPublishingCapabilityContractAcceptanceTest() {
+    const capabilityId = "external-publishing.acceptance-channel";
+    const providerId = "acceptance-publishing-adapter";
+    try { unregisterProvider(providerId); } catch (_) {}
+    try { unregisterPublishingCapability(capabilityId); } catch (_) {}
+
+    const capability = registerPublishingCapability({
+      id: capabilityId,
+      channel: "acceptance-channel",
+      channelFamily: "social",
+      description: "Acceptance-only governed publishing capability",
+      contentTypes: ["text", "image"]
+    });
+    const provider = registerProvider({
+      id: providerId,
+      name: "Acceptance Publishing Adapter",
+      type: "tool",
+      status: "online",
+      capabilities: [capabilityId],
+      providerGroup: "acceptance-publishing",
+      metadata: { credentialBoundary: "server-side-only", providerIsMaddy: false },
+      execute: async () => ({ success: true })
+    });
+
+    const listed = listCapabilities().find(item => item.id === capabilityId);
+    const selection = selectProviders({ capabilities: [capabilityId], requireAllCapabilities: true });
+    let unauthorizedRejected = false;
+    let incompleteLineageRejected = false;
+    let credentialLeakRejected = false;
+    try { createGovernedPublishingEnvelope({ capabilityId, authorized: false }); } catch (_) { unauthorizedRejected = true; }
+    try {
+      createGovernedPublishingEnvelope({
+        capabilityId, authorized: true, organizationId: "org-a", campaignId: "campaign-a"
+      });
+    } catch (_) { incompleteLineageRejected = true; }
+    try {
+      createGovernedPublishingEnvelope({ capabilityId, api_key: "must-never-enter-envelope" });
+    } catch (_) { credentialLeakRejected = true; }
+
+    const envelope = createGovernedPublishingEnvelope({
+      capabilityId,
+      authorized: true,
+      organizationId: "org-a",
+      campaignId: "campaign-a",
+      creativeHypothesisId: "hypothesis-a",
+      assetId: "asset-a",
+      authorizationId: "authority-a",
+      authorizationScope: { channel: "acceptance-channel", maxPublications: 1 },
+      claimRestrictions: [{ claimId: "claim-a", status: "evidence-bound" }],
+      evidenceSourceIds: ["source-a"],
+      channelAdaptation: { format: "short-post" },
+      predictedConsequence: { metric: "qualified-interest", direction: "increase" }
+    });
+
+    const checks = [
+      { name: "Publishing capability schema is explicit and versioned", passed: capability.schema === PUBLISHING_CAPABILITY_SCHEMA },
+      { name: "Publishing capability is runtime registered rather than hard-coded vendor logic", passed: getCapabilityDefinition(capabilityId)?.id === capabilityId },
+      { name: "Capability is provider neutral", passed: capability.providerNeutral === true && capability.maddyIdentityOwnedByProvider === false },
+      { name: "Channel identity is capability metadata rather than Maddy identity", passed: capability.channel === "acceptance-channel" && capability.channelFamily === "social" },
+      { name: "Server-side credential boundary is mandatory", passed: capability.credentialBoundary === "server-side-only" },
+      { name: "Credential material is rejected from publishing envelopes", passed: credentialLeakRejected && capability.credentialsModelVisible === false },
+      { name: "Credentials are not browser-persisted", passed: capability.credentialsBrowserPersisted === false },
+      { name: "Capability cannot grant publication authority", passed: capability.authorityGrantedByCapability === false },
+      { name: "Explicit authorization is required", passed: capability.requiresExplicitAuthorization === true && unauthorizedRejected },
+      { name: "Campaign lineage is mandatory", passed: capability.requiresCampaignLineage === true && incompleteLineageRejected },
+      { name: "Dynamic capability participates in Provider Manager discovery", passed: listed?.registeredProviders?.includes(providerId) === true },
+      { name: "Dynamic capability participates in provider selection", passed: selection.success === true && selection.providers?.[0]?.id === providerId },
+      { name: "Execution receipt is mandatory", passed: capability.requiresExecutionReceipt === true && envelope.receiptRequired === true },
+      { name: "Execution receipt schema is explicit", passed: envelope.receiptSchema === PUBLISHING_RECEIPT_SCHEMA },
+      { name: "Organization and campaign lineage survive into execution envelope", passed: envelope.lineage.organizationId === "org-a" && envelope.lineage.campaignId === "campaign-a" },
+      { name: "Creative hypothesis and asset lineage survive into execution envelope", passed: envelope.lineage.creativeHypothesisId === "hypothesis-a" && envelope.lineage.assetId === "asset-a" },
+      { name: "Claim restrictions and evidence lineage survive channel adaptation", passed: envelope.creative.claimRestrictions?.[0]?.claimId === "claim-a" && envelope.creative.evidenceSourceIds?.[0] === "source-a" },
+      { name: "Authorization scope cannot be expanded by capability", passed: envelope.authority.capabilityCanExpandScope === false && envelope.authority.authorizationId === "authority-a" },
+      { name: "Predicted consequence remains attached to the campaign experiment", passed: envelope.expectation.predictedConsequence?.metric === "qualified-interest" },
+      { name: "Publishing execution is not mislabeled as commercial outcome", passed: envelope.executionIsOutcome === false && envelope.outcomeStatus === "unknown-until-observed" }
+    ];
+
+    unregisterProvider(providerId);
+    unregisterPublishingCapability(capabilityId);
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks);
+    console.log(`[MEOS ${VERSION}] Commission 006.032F1 Governed Publishing Capability Contract: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return deepFreeze({
+      success: passed === checks.length,
+      commission: "006.032F1",
+      schema: "meos.provider-manager.governed-publishing-capability-contract.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks,
+      sample: { capability, provider, envelope }
+    });
+  }
+
   function runAdviserIntelligenceBridgeAcceptanceTest() {
     const provider = getProvider(SERVER_ADVISER_PROVIDER_ID);
     const goodPayload = {
@@ -2276,8 +2573,14 @@
     providerTypes: PROVIDER_TYPES,
     providerStatuses: PROVIDER_STATUSES,
     capabilityCatalog: CAPABILITY_CATALOG,
+    publishingCapabilitySchema: PUBLISHING_CAPABILITY_SCHEMA,
+    publishingReceiptSchema: PUBLISHING_RECEIPT_SCHEMA,
     architectureTargets: ARCHITECTURE_TARGETS,
 
+    registerPublishingCapability,
+    unregisterPublishingCapability,
+    getCapabilityDefinition,
+    createGovernedPublishingEnvelope,
     registerProvider,
     unregisterProvider,
     updateProvider,
@@ -2300,6 +2603,7 @@
     whenHydrated: () => hydrationPromise,
     retryDurablePersistence,
     runDurableAuthorityAcceptanceTest,
+    runGovernedPublishingCapabilityContractAcceptanceTest,
     runAdviserIntelligenceBridgeAcceptanceTest,
     runSelfTest,
     addEventListener,
@@ -2310,7 +2614,7 @@
   global.MEOSProviderManager = global.ProviderManager;
 
   console.log(
-    `[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. Replaceable same-origin adviser bridge registered when fetch is available; external vendors remain advisory and replaceable.`
+    `[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. Runtime-discoverable governed publishing contracts are available; credentials remain outside model/browser publishing contracts; external vendors remain replaceable.`
   );
 
   emit("online", getStatus());
