@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.4";
-  const BUILD_ID = "EH154-DURABLE-EXECUTION-SPINE-HANDOFF-20260913-A";
+  const VERSION = "1.5.5";
+  const BUILD_ID = "EH155-DURABLE-RETURN-REINTEGRATION-20260914-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -2058,6 +2058,205 @@
     });
   }
 
+  /*
+   * Commission 006.031R — Durable Execution Return Reintegration
+   *
+   * The server-owned Durable Execution Spine remains the execution authority.
+   * Hallway is only the continuity/presentation observer on return: it reads the
+   * persisted status of the exact deterministic execution, verifies that the
+   * returned Mission/Hallway lineage is the same work, and hands that record to
+   * Executive Router 1.5.2's commissioned durable-return governance adapter.
+   *
+   * Raw server synthesis is never presented here. Router -> Brain must authorize
+   * the governed answer first; only then does the existing Hallway success path
+   * normalize the deliverable and apply informational auto-resolution. A page
+   * reload may reconstruct the Hallway projection from the durable active Mission
+   * without creating a new Mission, cognition, research execution, or retry.
+   */
+  const DURABLE_RETURN_REINTEGRATION_COMMISSION = "006.031R";
+  const DURABLE_RETURN_REINTEGRATION_SCHEMA =
+    "meos.executive-hallway.durable-return-reintegration.v1";
+
+  async function readDurableExecutionStatus(executionId, fetchImpl = global.fetch?.bind(global)) {
+    if (!executionId || typeof fetchImpl !== "function") {
+      throw new Error("Durable return reintegration requires an execution ID and same-origin server access.");
+    }
+    const response = await fetchImpl(`/api/durable-execution/status/${encodeURIComponent(executionId)}`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+      cache: "no-store"
+    });
+    const payload = await response.json().catch(() => null);
+    if (response.status === 404) return null;
+    if (!response.ok || !payload?.record) {
+      throw new Error(payload?.error || `Durable execution status failed with HTTP ${response.status}.`);
+    }
+    return payload.record;
+  }
+
+  function recoverHallwayProjectionFromMission(mission) {
+    const sourceReference = String(mission?.sourceReference || "").trim();
+    if (!sourceReference.startsWith("hallway-work:")) return null;
+    const hallwayWorkId = sourceReference.slice("hallway-work:".length).trim();
+    if (!hallwayWorkId) return null;
+    const existing = state.work.get(hallwayWorkId);
+    if (existing) return existing;
+
+    const instruction = String(
+      mission?.objective || mission?.description || mission?.missionTitle || mission?.title || ""
+    ).trim();
+    if (!instruction) return null;
+
+    const work = createWork({
+      id: hallwayWorkId,
+      instruction,
+      title: mission?.missionTitle || mission?.title || instruction,
+      source: "maddy-durable-mission-recovery",
+      requestedBy: "executive-director",
+      reviewRequired: mission?.approvalRequired === true,
+      authorized: mission?.approvalRequired !== true,
+      authorizationSignal: mission?.approvalRequired === true ? null : "durable-human-directed-recovery",
+      context: {
+        taskAuthority: "human-directed",
+        authorityScope: "assigned-internal-work",
+        durableMissionRecovery: true
+      }
+    });
+    work.owner = "maddy";
+    work.route = "executive-router";
+    work.state = "executing";
+    work.mission = {
+      engine: "mission-engine",
+      id: mission.id,
+      status: mission.status,
+      sourceReference
+    };
+    work.execution = {
+      schema: DURABLE_EXECUTION_HANDOFF_SCHEMA,
+      commission: DURABLE_EXECUTION_HANDOFF_COMMISSION,
+      executionId: `execution-${hallwayWorkId}`,
+      state: "unknown",
+      owner: "meos-server-durable-execution-spine",
+      executor: "headless-public-research",
+      serverOwned: true,
+      browserExecutionOwner: false,
+      retryCreated: false,
+      recoveredProjection: true
+    };
+    record("work.durable-return-projection-recovered", {
+      workId: work.id,
+      missionId: mission.id,
+      executionId: work.execution.executionId
+    });
+    emit("work-updated", work);
+    return work;
+  }
+
+  function verifyDurableReturnLineage(work, record) {
+    const missionId = String(work?.mission?.id || "").trim();
+    const hallwayWorkId = String(work?.id || "").trim();
+    const executionId = String(work?.execution?.executionId || durableExecutionId(work)).trim();
+    const lineage = record?.lineage || {};
+    return Boolean(
+      missionId && hallwayWorkId && executionId &&
+      String(record?.executionId || "").trim() === executionId &&
+      String(lineage?.missionId || "").trim() === missionId &&
+      String(lineage?.hallwayWorkId || "").trim() === hallwayWorkId &&
+      String(lineage?.cognitionId || "").trim()
+    );
+  }
+
+  async function reintegrateDurableExecutionReturn(workOrId, options = {}) {
+    const work = typeof workOrId === "string" ? state.work.get(workOrId) : workOrId;
+    if (!work) throw new Error("Durable return reintegration requires the original Hallway work.");
+    const executionId = String(work?.execution?.executionId || durableExecutionId(work)).trim();
+    const recordValue = options.record || await readDurableExecutionStatus(executionId, options.fetch);
+    if (!recordValue) return clone(work);
+
+    const serverState = String(recordValue.state || "").trim().toLowerCase();
+    if (["queued", "running", "waiting"].includes(serverState)) {
+      work.execution = { ...(work.execution || {}), state: serverState, checkpoint: clone(recordValue.checkpoint || null) };
+      emit("work-updated", work);
+      return clone(work);
+    }
+    if (serverState !== "returned") return clone(work);
+    if (!verifyDurableReturnLineage(work, recordValue)) {
+      const error = new Error("Durable returned execution lineage does not match the original Hallway/Mission work.");
+      error.code = "DURABLE_RETURN_LINEAGE_MISMATCH";
+      throw error;
+    }
+
+    const router = executiveRouter();
+    if (typeof router?.reintegrateDurableResearchResult !== "function") {
+      throw new Error("Executive Router durable return governance adapter is unavailable.");
+    }
+
+    const lineage = clone(recordValue.lineage);
+    const governed = await router.reintegrateDurableResearchResult(recordValue, {
+      executionId,
+      lineage,
+      question: work.instruction,
+      requestId: work.id,
+      source: "executive-hallway-durable-return"
+    });
+
+    work.evidence.push({
+      type: "durable-return-reintegrated",
+      source: "executive-hallway",
+      commission: DURABLE_RETURN_REINTEGRATION_COMMISSION,
+      executionId,
+      lineage,
+      serverOwned: true,
+      browserExecutionOwner: false,
+      rawServerOutputPresentationAuthorized: false,
+      governedAnswerRequired: true,
+      at: now()
+    });
+    record("work.durable-return-reintegrated", {
+      workId: work.id,
+      missionId: work.mission?.id || null,
+      executionId,
+      governed: true
+    });
+    return finishExecutiveRouterSuccess(work, governed);
+  }
+
+  async function reconcileDurableExecutionReturns(options = {}) {
+    const candidates = new Map();
+    for (const work of state.work.values()) {
+      if (work?.execution?.serverOwned === true && work?.execution?.executionId) {
+        candidates.set(work.id, work);
+      }
+    }
+
+    const engine = missionEngine();
+    const active = engine?.getActiveMissions?.();
+    if (Array.isArray(active)) {
+      for (const mission of active) {
+        const recovered = recoverHallwayProjectionFromMission(mission);
+        if (recovered) candidates.set(recovered.id, recovered);
+      }
+    }
+
+    const results = [];
+    for (const work of candidates.values()) {
+      try {
+        results.push(await reintegrateDurableExecutionReturn(work, options));
+      } catch (error) {
+        work.evidence.push({
+          type: "durable-return-reintegration-warning",
+          source: "executive-hallway",
+          message: error?.message || String(error),
+          code: error?.code || null,
+          at: now()
+        });
+        emit("work-updated", work);
+      }
+    }
+    return freeze(results);
+  }
+
   async function routeExecutiveWork(work, options = {}) {
     const router = executiveRouter();
     if (!router?.handle) {
@@ -4055,6 +4254,125 @@
     return result;
   }
 
+  async function runDurableReturnReintegrationAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed, details = null) => checks.push({ name, passed: Boolean(passed), details });
+    const previousRouter = global.ExecutiveRouter;
+    const previousMissionEngine = global.MEOSMissionEngine;
+    const previousFetch = global.fetch;
+    const workId = "hallway-work-durable-return-reintegration-fixture";
+    const missionId = "mission-durable-return-reintegration-fixture";
+    const executionId = `execution-${workId}`;
+    const cognitionId = `human-intent-${workId}`;
+    let governanceCalls = 0;
+    let completeCalls = 0;
+    let dispatchedResearch = 0;
+
+    const mission = {
+      id: missionId,
+      status: "in-progress",
+      sourceReference: `hallway-work:${workId}`,
+      objective: "Why do octopuses have three hearts?",
+      approvalRequired: false
+    };
+    const returnedRecord = {
+      executionId,
+      state: "returned",
+      executor: "headless-public-research",
+      lineage: { missionId, cognitionId, hallwayWorkId: workId },
+      result: { success: true, synthesis: { answerFacts: [{ claim: "Evidence-bound fixture fact." }] } }
+    };
+
+    try {
+      state.work.delete(workId);
+      global.MEOSMissionEngine = {
+        getActiveMissions: () => [clone(mission)],
+        getCompletedMissions: () => [],
+        getArchivedMissions: () => [],
+        getMission: idValue => idValue === missionId ? clone(mission) : null,
+        completeMission: idValue => {
+          completeCalls += 1;
+          return { ...clone(mission), id: idValue, status: "completed" };
+        }
+      };
+      global.ExecutiveRouter = {
+        handle() { dispatchedResearch += 1; throw new Error("Research must not be redispatched."); },
+        async reintegrateDurableResearchResult(recordValue, optionsValue) {
+          governanceCalls += 1;
+          return {
+            success: true,
+            source: "meos-headless-public-research",
+            answer: "Octopus circulation uses two branchial hearts and one systemic heart.",
+            output: { type: "public-research-result" },
+            governedAnswer: {
+              answer: "Octopus circulation uses two branchial hearts and one systemic heart.",
+              citations: ["https://science.example/octopus"],
+              finalSpeechAuthorized: true,
+              oneMouth: true
+            },
+            durableExecution: {
+              executionId: recordValue.executionId,
+              lineage: clone(optionsValue.lineage),
+              browserExecutedResearch: false,
+              rawServerOutputPresentationAuthorized: false
+            }
+          };
+        }
+      };
+      global.fetch = async url => {
+        check("Reintegration reads the exact deterministic durable execution status URL",
+          String(url) === `/api/durable-execution/status/${executionId}`, { url });
+        return { ok: true, status: 200, json: async () => ({ record: clone(returnedRecord) }) };
+      };
+
+      const results = await reconcileDurableExecutionReturns();
+      const work = state.work.get(workId);
+      check("Active durable Mission reconstructs the same Hallway work identity after browser reload",
+        work?.id === workId && work?.mission?.id === missionId &&
+        work?.evidence?.some(item => item.type === "durable-return-reintegrated" && item.executionId === executionId) === true);
+      check("Returned durable execution re-enters Router governance exactly once", governanceCalls === 1, { governanceCalls });
+      check("Durable return never redispatches public research", dispatchedResearch === 0, { dispatchedResearch });
+      check("Original Mission/cognition/Hallway/execution lineage is preserved",
+        work?.outcome?.result?.durableExecution?.lineage?.missionId === missionId &&
+        work?.outcome?.result?.durableExecution?.lineage?.cognitionId === cognitionId &&
+        work?.outcome?.result?.durableExecution?.lineage?.hallwayWorkId === workId &&
+        work?.outcome?.result?.durableExecution?.executionId === executionId);
+      check("Only the governed Maddy answer becomes the informational deliverable",
+        work?.deliverables?.some(idValue => state.deliverables.get(idValue)?.summary?.includes("Octopus circulation")) === true);
+      check("Raw durable server synthesis is not authorized for presentation",
+        work?.evidence?.some(item => item.type === "durable-return-reintegrated" && item.rawServerOutputPresentationAuthorized === false) === true);
+      check("Evidence-bound informational return automatically resolves the Mission",
+        completeCalls === 1 && work?.lifecycle?.disposition === "resolved-informational-return", { completeCalls, lifecycle: clone(work?.lifecycle) });
+      check("Resolved return is terminal Hallway work without creating a retry",
+        work?.state === "done" && work?.execution?.durableExecution?.browserExecutedResearch === false);
+      check("Reconciliation returns the same recovered work rather than a replacement execution",
+        results.length === 1 && results[0]?.id === workId);
+    } finally {
+      state.work.delete(workId);
+      for (const [deliverableId, deliverable] of state.deliverables.entries()) {
+        if (deliverable?.workId === workId) state.deliverables.delete(deliverableId);
+      }
+      global.ExecutiveRouter = previousRouter;
+      global.MEOSMissionEngine = previousMissionEngine;
+      global.fetch = previousFetch;
+    }
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks);
+    const result = freeze({
+      success: passed === checks.length,
+      commission: DURABLE_RETURN_REINTEGRATION_COMMISSION,
+      schema: `${SCHEMA}.durable-return-reintegration-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
+    console.log(`[MEOS ${VERSION}] Commission ${DURABLE_RETURN_REINTEGRATION_COMMISSION} Durable Return Reintegration: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
   function runAnswerProvenanceIntegrityAcceptanceTest() {
     const fixture = {
       success: true,
@@ -4111,6 +4429,9 @@
     runInformationalReturnAutoResolutionAcceptanceTest,
     runLongRunningExecutionContinuityAcceptanceTest,
     runDurableExecutionSpineHandoffAcceptanceTest,
+    runDurableReturnReintegrationAcceptanceTest,
+    reintegrateDurableExecutionReturn,
+    reconcileDurableExecutionReturns,
     runCognitiveMetabolismAcceptanceTest,
     runHumanDirectedTaskAuthorityAcceptanceTest,
     runResearchContinuationQualificationAcceptanceTest,
@@ -4122,6 +4443,14 @@
   global.MEOSExecutiveHallway = api;
   global.addEventListener?.("meos:maddy-request", handleMaddyRequest);
   registerExecutiveStateSource();
+
+  // One-shot return observation only. This does not execute or own research;
+  // the durable server remains execution authority and persists completion.
+  global.setTimeout?.(() => {
+    void reconcileDurableExecutionReturns().catch(error => {
+      console.warn(`[MEOS ${VERSION}] Durable return reconciliation deferred:`, error?.message || String(error));
+    });
+  }, 2000);
 
   console.info(`[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. Maddy, offices, engines, providers, work state, and deliverables share one corridor.`);
   emit("online", getStatus());
