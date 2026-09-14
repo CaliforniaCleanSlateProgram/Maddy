@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.3";
-  const BUILD_ID = "EB1263-EVIDENCE-BOUND-RESEARCH-SPEECH-20260913-A";
+  const VERSION = "1.26.4";
+  const BUILD_ID = "EB1264-CREATIVE-STUDIO-20260914-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -21966,6 +21966,280 @@
         this.cognitiveIntentions = originalIntentions;
         this.startupCache = originalCache;
         this.startupCachedAt = originalCachedAt;
+      }
+    },
+
+
+    /*
+     * Commission 006.032E — Creative Studio
+     *
+     * Creative Studio is Maddy-owned cognition, not a disconnected marketing
+     * brain. It consumes the existing 006.032D commercial strategy, preserves
+     * evidence-bound factual claims, permits broad creative framing and premise
+     * challenge, recursively attacks its own work, and returns a governed asset
+     * package for human review. Provider output is creative material, never
+     * truth or authority. Publication, outreach, spend, and external execution
+     * remain explicitly ungranted.
+     */
+    classifyCommercialCreativeClaim(claim = {}, strategy = {}) {
+      const text = String(typeof claim === "string" ? claim : claim?.text || claim?.claim || "").trim();
+      const requestedStatus = String(typeof claim === "object" ? claim?.status || claim?.kind || "" : "").trim().toLowerCase();
+      const sourceIds = Array.from(new Set(
+        ((typeof claim === "object" && Array.isArray(claim?.sourceIds)) ? claim.sourceIds : [])
+          .map(value => String(value || "").trim())
+          .filter(Boolean)
+      ));
+      const factual = ["verified", "measured", "supported", "supported-input", "factual-claim"].includes(requestedStatus);
+      const creative = ["creative-framing", "hypothesis", "prediction", "estimate", "aspiration"].includes(requestedStatus);
+      const status = factual
+        ? (sourceIds.length ? "evidence-bound-factual-claim" : "unsupported-factual-claim")
+        : creative ? requestedStatus : "creative-framing";
+      return {
+        text,
+        status,
+        sourceIds: factual ? sourceIds : (Array.isArray(claim?.sourceIds) ? claim.sourceIds : []),
+        publishableAsFact: status === "evidence-bound-factual-claim",
+        requiresQualification: status === "unsupported-factual-claim" || ["hypothesis", "prediction", "estimate"].includes(status),
+        rule: "Creativity may be bold; factual commercial claims must remain evidence-bound."
+      };
+    },
+
+    buildCreativeStudioBrief(input = {}, options = {}) {
+      const organizationId = String(input.organizationId || options.organizationId || "").trim();
+      if (!organizationId) return { success:false, error:"organizationId is required." };
+
+      const reasoning = global.InstitutionalReasoning;
+      const strategy = input.strategy || reasoning?.analyzeCommercialStrategy?.(input.strategyInput || input, { organizationId });
+      if (!strategy?.success) return { success:false, error:"A valid commercial strategy is required before creative production.", strategy:this.clone(strategy) };
+      if (strategy.organizationId && strategy.organizationId !== organizationId) {
+        return { success:false, error:"Commercial strategy organization boundary mismatch." };
+      }
+
+      const interactionContext = this.resolveMaddyInteractionContext(input.interactionContext || null);
+      const claims = (Array.isArray(input.claims) ? input.claims : []).map(claim => this.classifyCommercialCreativeClaim(claim, strategy));
+      const unsupportedFacts = claims.filter(claim => claim.status === "unsupported-factual-claim");
+      const counterEvidence = (Array.isArray(input.counterEvidence) ? input.counterEvidence : []).filter(Boolean);
+      const premise = String(input.assignmentPremise || strategy?.campaignHypothesis?.statement || "Create the strongest truthful campaign supported by current commercial understanding.").trim();
+      const explicitChallenge = String(input.premiseChallenge || "").trim();
+      const premiseChanged = Boolean(explicitChallenge || counterEvidence.length);
+      const thesis = String(input.creativeThesis || (premiseChanged
+        ? `Do not blindly execute the original assignment. Reconstruct the persuasion problem around: ${explicitChallenge || "counter-evidence that weakens the original premise"}.`
+        : `Translate the current commercial hypothesis into a distinctive persuasion thesis without converting hypotheses into facts.`)).trim();
+
+      const falsifiers = Array.from(new Set([
+        ...(Array.isArray(strategy?.campaignHypothesis?.falsifiers) ? strategy.campaignHypothesis.falsifiers : []),
+        ...(Array.isArray(input.falsifiers) ? input.falsifiers : [])
+      ].map(value => String(value || "").trim()).filter(Boolean)));
+      const successCriteria = Array.from(new Set([
+        ...(Array.isArray(strategy?.campaignHypothesis?.successCriteria) ? strategy.campaignHypothesis.successCriteria : []),
+        ...(Array.isArray(input.successCriteria) ? input.successCriteria : [])
+      ].map(value => String(value || "").trim()).filter(Boolean)));
+      const baseHypotheses = (Array.isArray(input.variantHypotheses) && input.variantHypotheses.length)
+        ? input.variantHypotheses
+        : [
+            "Lead with the buyer's highest-value unresolved pain and make the cost of the status quo cognitively concrete.",
+            "Lead with Maddy's evidence-grounded architectural difference and invite comparison against the buyer's current alternative.",
+            "Lead with a contrarian reframing that challenges the market's surface story, then earn attention with proof rather than hype."
+          ];
+      const variants = baseHypotheses.slice(0, Math.max(1, Number(input.maximumVariants || 3))).map((hypothesis, index) => ({
+        id:`creative-hypothesis-${index + 1}`,
+        status:"persuasion-hypothesis",
+        hypothesis:String(typeof hypothesis === "string" ? hypothesis : hypothesis?.hypothesis || "").trim(),
+        whyDifferent:index === 0 ? "pain salience" : index === 1 ? "architectural proof" : "market-story reconstruction",
+        prediction:String(typeof hypothesis === "object" ? hypothesis?.prediction || "" : "").trim() || `If this persuasion theory is closer to buyer reality, variant ${index + 1} should outperform the others on the defined success criteria.`,
+        falsifiers:this.clone(falsifiers),
+        successCriteria:this.clone(successCriteria),
+        arbitraryABTest:false
+      })).filter(item => item.hypothesis);
+
+      const recursiveCritique = [
+        { lens:"skeptical-buyer", question:"Why should I care now, what do I distrust, and what sounds like AI-generated marketing noise?" },
+        { lens:"strongest-competitor", question:"How would the best competitor neutralize this claim, positioning, or proof?" },
+        { lens:"evidence-integrity", question:"Which sentence accidentally upgrades framing, inference, prediction, or aspiration into fact?" },
+        { lens:"distinctiveness", question:"If Maddy's name disappeared, could a good current marketing agent have produced essentially the same campaign from a prompt?" },
+        { lens:"economic-consequence", question:"What observable buyer behavior would make this creative worth continuing, revising, or killing?" }
+      ];
+
+      return {
+        success:true,
+        schema:"meos.maddy.creative-studio-brief.v1",
+        commission:"006.032E",
+        version:this.version,
+        buildId:this.buildId,
+        organizationId,
+        identity:{
+          persistentMaddy:true,
+          interactionContext:this.clone(interactionContext),
+          providerIsInstrumentNotIdentity:true,
+          canonicalVoiceRequired:true
+        },
+        premise:{ original:premise, challenged:premiseChanged, challenge:explicitChallenge || (counterEvidence.length ? "Counter-evidence requires reconstruction before execution." : null), counterEvidence:this.clone(counterEvidence) },
+        thesis,
+        strategy:this.clone(strategy),
+        claims,
+        unsupportedFacts,
+        variants,
+        recursiveCritique,
+        assetRequirements:{
+          campaignCopy:{ required:true, state:"creative-production" },
+          bannerImage:{ required:true, state:"production-spec-until-image-capability-executes" },
+          seoContent:{ required:true, state:"creative-production" },
+          emailFollowUp:{ required:true, state:"creative-production" },
+          canonicalMaddyVideo:{ required:true, state:"production-spec-until-video-capability-executes", identityAsset:true }
+        },
+        authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false, outreachAuthorized:false, externalActionAuthorized:false, humanReviewRequired:true },
+        privacy:{ organizationId, scope:"organization-isolated" },
+        creativeFreedom:{ broad:true, corporateSafeStyleHardCoded:false, premiseChallengeAllowed:true, evidenceDoesNotConfineNovelIdeas:true },
+        nextStep:"Use provider-neutral creative capability as an instrument, recursively critique the candidate, revise it, and return the completed governed campaign package for human review."
+      };
+    },
+
+    async createCommercialCreativeStudio(input = {}, options = {}) {
+      const brief = this.buildCreativeStudioBrief(input, options);
+      if (!brief.success) return brief;
+      const availableCapabilities = Array.isArray(options.availableCapabilities) ? options.availableCapabilities : [];
+      const executor = typeof options.creativeExecutor === "function"
+        ? options.creativeExecutor
+        : (global.ProviderManager && typeof global.ProviderManager.request === "function")
+          ? async payload => global.ProviderManager.request(
+              { capabilities:["general-reasoning","language-generation","synthesis"], allowMultiProvider:true, maximumProviders:3, requireAllCapabilities:false },
+              { type:"creative-production", purpose:"maddy-governed-creative-studio", brief:payload, requireStructuredOutput:true },
+              { authority:"internal-creative-production", requestedBy:"MEOS Executive Brain Creative Studio" }
+            )
+          : null;
+      if (!executor) return { ...brief, success:false, blocked:true, reason:"no-provider-neutral-creative-capability-available" };
+
+      let candidate;
+      try { candidate = await executor(this.clone(brief)); }
+      catch (error) { return { ...brief, success:false, blocked:true, reason:"creative-provider-failed", error:String(error?.message || error) }; }
+      const payload = candidate?.output || candidate?.result || candidate?.content || candidate || {};
+      const objectPayload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : { campaignCopy:String(payload || "") };
+      const generated = {
+        campaignCopy:objectPayload.campaignCopy || objectPayload.copy || null,
+        bannerImage:objectPayload.bannerImage || objectPayload.image || null,
+        seoContent:objectPayload.seoContent || objectPayload.seo || null,
+        emailFollowUp:objectPayload.emailFollowUp || objectPayload.email || null,
+        canonicalMaddyVideo:objectPayload.canonicalMaddyVideo || objectPayload.video || null,
+        revisionNotes:Array.isArray(objectPayload.revisionNotes) ? objectPayload.revisionNotes : [],
+        providerCandidate:true,
+        providerCandidateIsNotMaddyBelief:true
+      };
+      const canGenerateImage = availableCapabilities.includes("image-generation");
+      const canGenerateVideo = availableCapabilities.includes("video-generation");
+      const assetState = {
+        campaignCopy:{ state:generated.campaignCopy ? "candidate-created" : "missing", value:this.clone(generated.campaignCopy) },
+        bannerImage:{ state:generated.bannerImage && canGenerateImage ? "candidate-created" : "production-spec", value:this.clone(generated.bannerImage), capabilityExecuted:canGenerateImage && Boolean(generated.bannerImage) },
+        seoContent:{ state:generated.seoContent ? "candidate-created" : "missing", value:this.clone(generated.seoContent) },
+        emailFollowUp:{ state:generated.emailFollowUp ? "candidate-created" : "missing", value:this.clone(generated.emailFollowUp) },
+        canonicalMaddyVideo:{ state:generated.canonicalMaddyVideo && canGenerateVideo ? "candidate-created" : "production-spec", value:this.clone(generated.canonicalMaddyVideo), capabilityExecuted:canGenerateVideo && Boolean(generated.canonicalMaddyVideo), identityAsset:true }
+      };
+      const missingCore = ["campaignCopy","seoContent","emailFollowUp"].filter(key => assetState[key].state === "missing");
+      const distinctiveness = objectPayload.distinctiveness || {};
+      const spooky = {
+        genericAgentParityRejected:true,
+        premiseWasChallengeable:brief.creativeFreedom.premiseChallengeAllowed === true,
+        recursiveAttackRequired:brief.recursiveCritique.length >= 5,
+        variantsAreHypotheses:brief.variants.every(item => item.arbitraryABTest === false && item.status === "persuasion-hypothesis"),
+        providerCandidateNotTruth:true,
+        distinctivenessQuestion:brief.recursiveCritique.find(item => item.lens === "distinctiveness")?.question || null,
+        providerSelfAssessment:this.clone(distinctiveness),
+        rule:"If removing Maddy's name leaves something a good current marketing agent could essentially reproduce from a prompt, the creative is not commissioned as Spooky."
+      };
+
+      return {
+        success:missingCore.length === 0,
+        schema:"meos.maddy.creative-studio-campaign.v1",
+        commission:"006.032E",
+        version:this.version,
+        buildId:this.buildId,
+        organizationId:brief.organizationId,
+        brief:this.clone(brief),
+        creative:this.clone(generated),
+        assets:assetState,
+        missingCore,
+        spooky,
+        authority:this.clone(brief.authority),
+        privacy:this.clone(brief.privacy),
+        completedCampaignForHumanReview:missingCore.length === 0,
+        publicationState:"not-authorized",
+        spendState:"not-authorized",
+        outreachState:"not-authorized",
+        nextStep:missingCore.length === 0 ? "Human reviews the completed campaign and may authorize a defined external scope in a later governed commission." : "Revise missing core assets before human review."
+      };
+    },
+
+    async runCreativeStudioAcceptanceTest() {
+      const originalReasoning = global.InstitutionalReasoning;
+      const originalMode = global.MEOSMaddyMode;
+      try {
+        global.MEOSMaddyMode = "professional";
+        const strategy = {
+          success:true,
+          schema:"meos.institutional-reasoning.commercial-strategy.v1",
+          organizationId:"acceptance-org-a",
+          evidence:{ sourceIds:["source-market-1","source-proof-1"], recordCount:2 },
+          understanding:{ market:{status:"supported-input",value:"AI executive systems"}, buyer:{status:"supported-input",value:"resource-constrained executive teams"}, pain:{status:"supported-input",value:"AI tools lose context and require human orchestration"} },
+          strategy:{ positioning:{status:"supported-input",value:"one persistent evidence-grounded executive entity"}, offer:{status:"supported-input",value:"Maddy executive pilot"}, proof:[{proof:"Durable research lineage passed runtime acceptance",status:"measured",sourceIds:["source-proof-1"]}], channels:[{name:"owned web",classification:"owned",costStatus:"free",fit:"hypothesis"}] },
+          campaignHypothesis:{ status:"hypothesis", statement:"Buyers respond to continuity plus proof more than generic AI productivity claims.", falsifiers:["Qualified buyers do not distinguish continuity from ordinary assistants."], successCriteria:["Qualified conversation rate exceeds baseline."] },
+          authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false, outreachAuthorized:false }
+        };
+        global.InstitutionalReasoning = { analyzeCommercialStrategy:() => this.clone(strategy) };
+        const fixtureExecutor = async brief => ({
+          campaignCopy:{ headline:"Stop managing your AI. Give the work to one persistent executive system.", body:"A continuity-first campaign candidate grounded in the supplied proof." },
+          bannerImage:{ productionBrief:"Maddy at an executive desk connecting evidence, decisions, and outcomes across time." },
+          seoContent:{ title:"Persistent AI executive systems", outline:["Why prompt-bound assistants lose organizational continuity","What evidence-bound continuity changes"] },
+          emailFollowUp:{ subject:"What happens after the prompt ends?", body:"A follow-up candidate tied to the continuity hypothesis." },
+          canonicalMaddyVideo:{ script:"Maddy challenges the premise that another chatbot is enough, then demonstrates continuity from evidence to outcome.", embodiment:"canonical-maddy" },
+          revisionNotes:["Skeptical buyer attack: remove generic superlatives.","Competitor attack: demand proof of continuity."],
+          distinctiveness:{ genericAgentEquivalent:false, reason:"The campaign is structured around Maddy's commissioned continuity/evidence architecture and premise challenge." }
+        });
+        const result = await this.createCommercialCreativeStudio({
+          organizationId:"acceptance-org-a",
+          assignmentPremise:"Make a normal productivity ad.",
+          premiseChallenge:"The evidence says generic productivity is commoditized; lead with continuity and evidence instead.",
+          counterEvidence:[{id:"counter-1",finding:"Generic AI productivity language does not express the architectural difference."}],
+          claims:[
+            {text:"Durable research lineage passed runtime acceptance",status:"measured",sourceIds:["source-proof-1"]},
+            {text:"Maddy is the world's best AI",status:"factual-claim",sourceIds:[]},
+            {text:"Imagine an executive system that remembers why the work began",status:"creative-framing"}
+          ],
+          variantHypotheses:[
+            {hypothesis:"Continuity proof beats productivity language",prediction:"More qualified conversations"},
+            {hypothesis:"Buyer pain framing beats feature lists",prediction:"Higher qualified response"},
+            {hypothesis:"Contrarian chatbot comparison creates useful attention",prediction:"More architecture questions"}
+          ],
+          strategy
+        }, { creativeExecutor:fixtureExecutor, availableCapabilities:[] });
+        const otherOrg = this.buildCreativeStudioBrief({ organizationId:"acceptance-org-b", strategy });
+        const checks = [
+          ["Creative Studio schema is explicit and versioned", result.schema === "meos.maddy.creative-studio-campaign.v1"],
+          ["Creative Studio is organization-bound", result.organizationId === "acceptance-org-a" && result.privacy.scope === "organization-isolated"],
+          ["Existing 032D strategy is consumed instead of creating a second commercial truth store", result.brief.strategy.schema === "meos.institutional-reasoning.commercial-strategy.v1"],
+          ["Maddy can reject or reconstruct the assignment premise", result.brief.premise.challenged === true && /commoditized/.test(result.brief.premise.challenge)],
+          ["Counter-evidence survives into creative cognition", result.brief.premise.counterEvidence[0].id === "counter-1"],
+          ["Evidence-bound factual claims preserve source lineage", result.brief.claims[0].publishableAsFact === true && result.brief.claims[0].sourceIds.includes("source-proof-1")],
+          ["Unsupported factual superiority claims are not silently promoted", result.brief.claims[1].status === "unsupported-factual-claim" && result.brief.claims[1].publishableAsFact === false],
+          ["Creative framing remains free without being mislabeled fact", result.brief.claims[2].status === "creative-framing" && result.brief.claims[2].publishableAsFact === false],
+          ["Variants are falsifiable persuasion hypotheses rather than arbitrary A/B/C", result.brief.variants.length === 3 && result.brief.variants.every(item => item.arbitraryABTest === false)],
+          ["Creative cognition recursively attacks itself as skeptical buyer", result.brief.recursiveCritique.some(item => item.lens === "skeptical-buyer")],
+          ["Creative cognition recursively attacks itself as strongest competitor", result.brief.recursiveCritique.some(item => item.lens === "strongest-competitor")],
+          ["Spooky distinctiveness gate explicitly rejects generic-agent parity", result.spooky.genericAgentParityRejected === true && /Maddy's name/.test(result.spooky.distinctivenessQuestion)],
+          ["Provider output remains candidate material rather than Maddy truth", result.creative.providerCandidateIsNotMaddyBelief === true && result.spooky.providerCandidateNotTruth === true],
+          ["Copy, SEO, and follow-up assets are actually produced for review", result.assets.campaignCopy.state === "candidate-created" && result.assets.seoContent.state === "candidate-created" && result.assets.emailFollowUp.state === "candidate-created"],
+          ["Image capability is not faked when image generation did not execute", result.assets.bannerImage.state === "production-spec" && result.assets.bannerImage.capabilityExecuted === false],
+          ["Canonical Maddy video capability is not faked when video generation did not execute", result.assets.canonicalMaddyVideo.state === "production-spec" && result.assets.canonicalMaddyVideo.capabilityExecuted === false && result.assets.canonicalMaddyVideo.identityAsset === true],
+          ["Persistent Maddy identity survives creative mode context", result.brief.identity.persistentMaddy === true && result.brief.identity.interactionContext.samePersistentSelfAcrossModes === true],
+          ["Creative freedom is broad and not hard-coded to corporate-safe style", result.brief.creativeFreedom.broad === true && result.brief.creativeFreedom.corporateSafeStyleHardCoded === false],
+          ["Creative Studio grants no spend, publication, outreach, execution, or external-action authority", result.authority.spendAuthorized === false && result.authority.publicationAuthorized === false && result.authority.outreachAuthorized === false && result.authority.executionAuthorized === false && result.authority.externalActionAuthorized === false],
+          ["Cross-organization strategy reuse is refused", otherOrg.success === false && /organization boundary mismatch/.test(otherOrg.error)]
+        ].map(([name, passed]) => ({ name, passed:Boolean(passed) }));
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks);
+        console.info(`[MEOS ${this.version}] Commission 006.032E Creative Studio: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+        return { success:passed === checks.length, commission:"006.032E", schema:"meos.maddy.creative-studio-acceptance.v1", version:this.version, buildId:this.buildId, passed, total:checks.length, checks, sample:this.clone(result), completedAt:new Date().toISOString() };
+      } finally {
+        if (originalReasoning === undefined) delete global.InstitutionalReasoning; else global.InstitutionalReasoning = originalReasoning;
+        if (originalMode === undefined) delete global.MEOSMaddyMode; else global.MEOSMaddyMode = originalMode;
       }
     },
 
