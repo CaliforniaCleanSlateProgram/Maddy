@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32223518/MEOS_BUILD_STATE.md)
+[Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
@@ -4118,6 +4118,121 @@ Before another runtime file:
 **Can Maddy now operate a campaign after publication as one continuous commercial intention—acquire the evidence needed to see search, website, funnel, and follow-up reality; preserve exact authority and suppression boundaries; diagnose both success and failure; determine what likely caused each result without manufacturing causality; and turn that experience into a measurably wiser next commercial decision—before attribution, revenue, and dominance benchmarking close the final H loop?**
 
 If the remaining G work is only a missing live provider/data connection, do not disguise configuration as new intelligence. If a missing architectural synapse prevents that loop, prove it before coding it.
+
+Continue under:
+
+**one fix → one commit → one test → commission.**
+
+**Always Push Forward.**
+
+---
+
+## Commission 006.032G3 — Governed Campaign Operations Capability Contract — COMMISSIONED / LIVE-PROVEN
+
+**Checkpoint date:** 2026-09-15  
+**Runtime organ:** `frontend/provider-manager.js`  
+**Version:** 1.2.2  
+**Build:** `PM122-GOVERNED-CAMPAIGN-OPERATIONS-CAPABILITY-CONTRACT-20260915-A`  
+**Acceptance:** PASS — 20/20  
+**Status:** COMMISSIONED / LIVE-PROVEN
+
+### Why G3 existed
+
+Post-G2 inspection found one genuine remaining architectural seam in 006.032G. G1 could observe post-publication campaign reality and G2 could assimilate that reality into durable commercial learning, including symmetrical learning from success and failure, but MEOS did not yet expose one explicit provider-neutral governed capability contract for the post-publication operations that produce and act on that reality.
+
+G3 closes that seam without creating another Growth Engine. Provider Manager remains the capability boundary beneath one Maddy.
+
+### What G3 commissions
+
+Provider Manager now exposes explicit governed campaign-operations capabilities for:
+
+- campaign scheduling;
+- SEO/search measurement;
+- website/landing-page performance measurement;
+- lead follow-up.
+
+Every operation remains provider-neutral and bound to organization and campaign lineage. Credential material remains server-side and is rejected from browser/model operation envelopes. Measurement may be observed without fabricating execution authority. Consequential scheduling and lead follow-up require exact human authorization. Suppressed and opted-out contacts fail closed. An operation cannot expand the authorization scope supplied to it. Execution remains distinct from commercial outcome. Campaign-operations results are required to return into Monitoring and Learning.
+
+### Live acceptance evidence
+
+The deployed runtime reported:
+
+- MEOS Provider Manager v1.2.2 online;
+- build `PM122-GOVERNED-CAMPAIGN-OPERATIONS-CAPABILITY-CONTRACT-20260915-A`;
+- commission `006.032G3`;
+- acceptance schema `meos.provider-manager.campaign-operations-capability-contract.acceptance.v1`;
+- `success: true`;
+- `passed: 20`;
+- `total: 20`.
+
+The 20 live checks prove the explicit/versioned operations contract; first-class scheduling, SEO/search measurement, landing performance, and lead follow-up; provider neutrality; server-side credential isolation; mandatory organization/campaign lineage; exact human authorization for scheduling and follow-up; suppression and opt-out fail-closed behavior; measurement without invented execution authority; measured epistemic state for landing evidence; preservation of exact authorization ID and bounded contact scope; prevention of authority expansion; execution/outcome separation; and return into Monitoring and Learning.
+
+### 006.032G whole-stage closure determination
+
+With G1, G2, and G3 live-proven, the **architectural requirements of 006.032G — Campaign Operations, SEO & Sales Follow-Up — are CLOSED**.
+
+The commissioned G loop is now:
+
+**governed provider-neutral operation → observed campaign reality (G1) → consequence assimilation and symmetric learning (G2) → evidence-backed governed next-operation capability (G3) → Monitoring/Learning → next decision.**
+
+This is an architectural closure, not a fabricated claim of production-market success. No additional G commission should be created unless future runtime evidence proves a genuine missing architectural synapse.
+
+### Operational proof obligations that remain honestly open
+
+Closing G architecture does **not** prove that:
+
+- a real production LinkedIn account has completed provider-approved connection and publication;
+- a real production campaign has been scheduled through a live scheduling provider;
+- live SEO/search-console evidence has been acquired;
+- live website/landing analytics have been acquired;
+- a real lead has entered a live sales pipeline;
+- a real authorized follow-up has been sent;
+- a real conversion/payment has occurred;
+- campaign revenue has been causally attributed to Maddy;
+- Net Attributable Value has been measured;
+- a successful mechanism has been causally established in production.
+
+Those are operational/data/economic proof obligations. They must not be disguised as missing intelligence architecture or used to manufacture G4.
+
+### Growth Engine major-arc state after G3
+
+- **006.032A — Commercial Intelligence & Self-Growth North Star:** commissioned.
+- **006.032B — Commercial Intelligence Data Contract:** commissioned / live-proven.
+- **006.032C — Commercial Command Dashboard:** commissioned / live-proven.
+- **006.032D — Growth Strategy & Sales Psychology:** commissioned / live-proven 20/20.
+- **006.032E — Creative Studio:** commissioned / live-proven 20/20.
+- **006.032F — Governed Multi-Channel Publishing architecture:** F1-F6 commissioned; real production provider connection/publication remains separately labeled operational proof.
+- **006.032G — Campaign Operations, SEO & Sales Follow-Up:** **ARCHITECTURALLY CLOSED / commissioned through G1 20/20 + G2 24/24 + G3 20/20.**
+- **006.032H — Attribution → Revenue → Learning → Dominance Benchmark:** NEXT; eighth and final major Growth Engine stage.
+
+### G3 Spooky / North Star meaning
+
+G3 is not another analytics screen and not another vendor-specific integration. It gives one Maddy a replaceable governed hand for the post-publication work that her monitoring and learning organs reason about. The same commercial intention can now remain bounded by identity, campaign lineage, exact authority, credential isolation, suppression state, evidence state, and provider neutrality as it moves from action into observation and learning.
+
+The Spooky direction remains deeper than automation: **Maddy should be able to act within exact authority, observe consequence, learn from both success and failure, preserve uncertainty about why, and make the next commercial judgment better without confusing a provider action with a business result.**
+
+### Exact next step after this Build State checkpoint is committed
+
+Stop for the night after this checkpoint.
+
+At the next coding session:
+
+1. read `PROJECT_MADDY_NORTH_STAR.md` and this Build State first;
+2. do not reopen G without new evidence of a missing architectural dependency;
+3. enter **006.032H — Attribution → Revenue → Learning → Dominance Benchmark** as the eighth and final major Growth Engine stage;
+4. inspect existing Commercial Truth, Executive Learning, Monitoring, Dashboard, evidence integrity, campaign lineage, prediction/outcome, cost, attribution, conversion, revenue, and Net Attributable Value seams before coding;
+5. identify the smallest missing synapse that closes the economic consequence loop rather than creating a disconnected attribution engine;
+6. preserve measured/estimated/unknown epistemic state and alternative explanations;
+7. require evidence before attributing conversion, revenue, or causal commercial value to Maddy;
+8. compare prediction with reality and feed attributable economic consequence back into future judgment;
+9. benchmark only claims that have repeatable objective proof under the Commercial Claim Standard;
+10. preserve organization isolation, provider neutrality, exact human authority, and the rule that revenue alone is insufficient—the prominent economic metric remains Net Attributable Value.
+
+### Hard post-G question entering H
+
+**Can Maddy take the commercial intention and evidence lineage now preserved through strategy, creation, governed execution, campaign operations, observation, and symmetric learning, connect it to real conversion and economic consequence without manufacturing attribution, calculate what value was actually attributable after cost, compare prediction with reality, and use that evidence to prove whether she is becoming commercially better than her prior self and relevant alternatives?**
+
+H must close that loop with evidence, not marketing language.
 
 Continue under:
 
