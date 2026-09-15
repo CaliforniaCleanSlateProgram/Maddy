@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.6";
-  const BUILD_ID = "EB1266-CAUSAL-EXPERIENCE-POLARITY-20260915-A";
+  const VERSION = "1.26.7";
+  const BUILD_ID = "EB1267-ORGANIZATION-KNOWLEDGE-BOUNDARY-20260915-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -2568,6 +2568,23 @@
         ? work.outcome.citations
         : (Array.isArray(work?.citations) ? work.citations : []);
 
+      // 006.033E1 — preserve explicit organization/privacy provenance as part
+      // of learned experience. Classification does not grant authority.
+      const organizationId = String(
+        work?.context?.organizationId || intention?.organizationId || ""
+      ).trim() || null;
+      const organizationType = String(
+        work?.context?.organizationType || intention?.organizationType || ""
+      ).trim() || null;
+      const knowledgeClass = String(
+        work?.context?.knowledgeClass || intention?.knowledgeClass || ""
+      ).trim() || null;
+      const privacyScope = String(
+        work?.context?.privacyScope ||
+        (knowledgeClass === "organization-private" ? "organization-only" :
+          knowledgeClass === "general-transferable" ? "general-transferable" : "")
+      ).trim() || null;
+
       // Economic learning gate: equivalent verified consequences should reinforce
       // one governed learning record rather than multiply hot records merely
       // because another work ID reached the same material result. This is a
@@ -2578,7 +2595,9 @@
         this.normalize(subject),
         this.normalize(expectedResult),
         this.normalize(actualResult),
-        this.normalize(action)
+        this.normalize(action),
+        this.normalize(knowledgeClass || "unclassified"),
+        this.normalize(knowledgeClass === "organization-private" ? (organizationId || "missing-organization") : "cross-organization")
       ].join("|");
       let informationGainHash = 2166136261;
       for (let index = 0; index < informationGainBasis.length; index += 1) {
@@ -2639,7 +2658,11 @@
           providerCallRequired: false,
           externalAuthorityAdded: false,
           informationGainFingerprint,
-          economicLearningPolicy: "equivalent-consequence-consolidation"
+          economicLearningPolicy: "equivalent-consequence-consolidation",
+          organizationId,
+          organizationType,
+          knowledgeClass,
+          privacyScope
         }
       }, { actor: "MEOS Executive Brain" });
 
@@ -2669,7 +2692,11 @@
         intention: {
           intentionId: intention?.intentionId || null,
           objective: intention?.objective || subject,
-          lineageId: work?.context?.cognitiveReentryLineageId || null
+          lineageId: work?.context?.cognitiveReentryLineageId || null,
+          organizationId,
+          organizationType,
+          knowledgeClass,
+          privacyScope
         },
         action: {
           type: action,
@@ -2683,7 +2710,11 @@
         learning: {
           executiveLearningObservationId: observationResult.observation?.id || null,
           lessonIds,
-          duplicate: observationResult.duplicate === true
+          duplicate: observationResult.duplicate === true,
+          organizationId,
+          organizationType,
+          knowledgeClass,
+          privacyScope
         }
       }, { persist: options.persist !== false });
 
@@ -17277,7 +17308,20 @@
       ].join(" ")));
       if (!demandTokens.size || !lessons.length) return [];
 
-      return lessons.map(lesson => {
+      const demandOrganizationId = String(demand?.organizationId || "").trim();
+      const boundaryEligibleLessons = lessons.filter(lesson => {
+        const knowledgeClass = String(lesson?.metadata?.knowledgeClass || "").trim();
+        if (knowledgeClass !== "organization-private") return true;
+
+        const lessonOrganizationId = String(lesson?.metadata?.organizationId || "").trim();
+        return Boolean(
+          demandOrganizationId &&
+          lessonOrganizationId &&
+          demandOrganizationId === lessonOrganizationId
+        );
+      });
+
+      return boundaryEligibleLessons.map(lesson => {
         const lessonText = [
           lesson.title, lesson.statement, lesson.lessonType,
           ...(Array.isArray(lesson.applicability) ? lesson.applicability : []),
@@ -17342,7 +17386,11 @@
           direction,
           directionBasis,
           sourceObservationIds: this.clone(sourceObservationIds),
-          status: lesson.status || "unknown"
+          status: lesson.status || "unknown",
+          organizationId: lesson?.metadata?.organizationId || null,
+          organizationType: lesson?.metadata?.organizationType || null,
+          knowledgeClass: lesson?.metadata?.knowledgeClass || null,
+          privacyScope: lesson?.metadata?.privacyScope || null
         };
       }).filter(item => item.relevance >= 0.18)
         .sort((a,b) => (b.relevance*b.confidence) - (a.relevance*a.confidence))
