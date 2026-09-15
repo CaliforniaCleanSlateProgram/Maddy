@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.13.4
+ * Version: 4.13.5
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,14 +20,14 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.4";
+  const DASHBOARD_VERSION = "4.13.5";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
   const CONSEQUENCE_RECOGNITION_BUILD_ID = "OD4131-CONSEQUENCE-RECOGNITION-GATE-20260913-A";
   const RETURNED_WORK_DISPOSITION_BUILD_ID = "OD4132-RETURNED-WORK-DISPOSITION-SURFACE-20260913-A";
   const COMMERCIAL_COMMAND_BUILD_ID = "OD4133-COMMERCIAL-COMMAND-DASHBOARD-20260914-A";
-  const MADDY_ACTIVITY_SURFACE_BUILD_ID = "OD4134-TRUTHFUL-LIVE-MADDY-ACTIVITY-SURFACE-20260915-A";
+  const MADDY_ACTIVITY_SURFACE_BUILD_ID = "OD4135-CONVERSATIONAL-LIVE-MADDY-WORKSTREAM-20260915-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -6090,13 +6090,13 @@ document
     };
   }
 
-  /* Commission 006.033A — Truthful Live Maddy Activity Surface
+  /* Commission 006.033B — Conversational Live Maddy Workstream
    *
-   * Spooky underneath. Effortless on top.
-   * This is a projection of existing MEOS/Hallway truth, not a second work engine.
-   * It never manufactures progress, authority, completion, certainty, or paid work.
+   * One Maddy. One conversation. One place to ask, watch truthful work, authorize,
+   * and receive the answer. This remains a projection of canonical Hallway truth;
+   * it creates no second work/cognition engine and performs no paid display calls.
    */
-  const MADDY_ACTIVITY_SCHEMA = "meos.dashboard.maddy-activity.v1";
+  const MADDY_ACTIVITY_SCHEMA = "meos.dashboard.maddy-conversational-workstream.v1";
   const MADDY_ACTIVITY_STYLE_ID = "meosMaddyActivitySurfaceStyles";
 
   function injectMaddyActivityStyles() {
@@ -6104,36 +6104,45 @@ document
     const style = document.createElement("style");
     style.id = MADDY_ACTIVITY_STYLE_ID;
     style.textContent = `
-      .meos-live-activity{position:fixed;right:22px;bottom:22px;z-index:10040;width:min(430px,calc(100vw - 28px));border:1px solid rgba(105,239,255,.22);border-radius:18px;background:linear-gradient(145deg,rgba(4,15,27,.96),rgba(9,27,42,.94));box-shadow:0 22px 70px rgba(0,0,0,.44),0 0 34px rgba(105,239,255,.08);backdrop-filter:blur(18px);color:#eafaff;overflow:hidden;transform:translateY(16px);opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease}
-      .meos-live-activity[data-visible="true"]{opacity:1;transform:none;pointer-events:auto}
-      .meos-live-activity-main{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:14px 15px}
-      .meos-live-activity-orb{width:34px;height:34px;border-radius:50%;border:1px solid rgba(105,239,255,.42);background:radial-gradient(circle at 35% 30%,#eaffff 0 5%,#69efff 7%,#3269b5 27%,#071321 65%);box-shadow:0 0 20px rgba(105,239,255,.28);position:relative}
-      .meos-live-activity[data-active="true"] .meos-live-activity-orb::after{content:"";position:absolute;inset:-5px;border:1px solid rgba(105,239,255,.32);border-radius:50%;animation:meosActivityPulse 1.45s ease-out infinite}
+      .meos-live-activity{position:relative;z-index:2;width:100%;margin:0 0 9px;border:1px solid rgba(105,239,255,.18);border-radius:14px;background:linear-gradient(145deg,rgba(4,15,27,.82),rgba(9,27,42,.72));box-shadow:0 12px 34px rgba(0,0,0,.18),0 0 22px rgba(105,239,255,.045);color:#eafaff;overflow:hidden;display:none}
+      .meos-live-activity[data-visible="true"]{display:block}
+      .meos-live-activity-main{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 11px}
+      .meos-live-activity-orb{width:26px;height:26px;border-radius:50%;border:1px solid rgba(105,239,255,.38);background:radial-gradient(circle at 35% 30%,#eaffff 0 5%,#69efff 7%,#3269b5 27%,#071321 65%);box-shadow:0 0 14px rgba(105,239,255,.2);position:relative}
+      .meos-live-activity[data-active="true"] .meos-live-activity-orb::after{content:"";position:absolute;inset:-4px;border:1px solid rgba(105,239,255,.28);border-radius:50%;animation:meosActivityPulse 1.45s ease-out infinite}
       @keyframes meosActivityPulse{0%{transform:scale(.84);opacity:.9}100%{transform:scale(1.38);opacity:0}}
-      .meos-live-activity-copy{min-width:0}.meos-live-activity-copy strong{display:block;font-size:.86rem;letter-spacing:.01em}.meos-live-activity-copy span{display:block;margin-top:3px;color:rgba(205,236,246,.7);font-size:.72rem;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .meos-live-activity-toggle{border:0;background:transparent;color:rgba(210,244,252,.72);font-size:.68rem;cursor:pointer;padding:8px;border-radius:9px}.meos-live-activity-toggle:hover{background:rgba(105,239,255,.08);color:#fff}
-      .meos-live-activity-detail{display:none;padding:0 15px 14px;border-top:1px solid rgba(105,239,255,.1)}.meos-live-activity[data-expanded="true"] .meos-live-activity-detail{display:block}
-      .meos-live-activity-steps{display:flex;gap:5px;flex-wrap:wrap;padding-top:12px}.meos-live-activity-step{padding:5px 8px;border-radius:999px;border:1px solid rgba(160,194,210,.13);font-size:.58rem;color:rgba(201,225,235,.58)}.meos-live-activity-step[data-current="true"]{border-color:rgba(105,239,255,.38);color:#c9f9ff;background:rgba(105,239,255,.08)}.meos-live-activity-step[data-done="true"]{color:#91e9bd;border-color:rgba(92,224,164,.22)}
-      .meos-live-activity-truth{margin-top:10px;font-size:.67rem;line-height:1.5;color:rgba(205,232,242,.72)}.meos-live-activity-truth b{color:#effcff}.meos-live-activity-branches{margin-top:8px;color:rgba(169,210,225,.68);font-size:.64rem}
-      @media(max-width:600px){.meos-live-activity{right:14px;bottom:14px}}
-      @media(prefers-reduced-motion:reduce){.meos-live-activity,.meos-live-activity-orb::after{transition:none!important;animation:none!important}}
+      .meos-live-activity-copy{min-width:0}.meos-live-activity-copy strong{display:block;font-size:.78rem;letter-spacing:.01em}.meos-live-activity-copy span{display:block;margin-top:2px;color:rgba(205,236,246,.7);font-size:.66rem;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .meos-live-activity-toggle{border:0;background:transparent;color:rgba(210,244,252,.72);font-size:.62rem;cursor:pointer;padding:7px;border-radius:8px}.meos-live-activity-toggle:hover{background:rgba(105,239,255,.08);color:#fff}
+      .meos-live-activity-detail{display:none;padding:0 11px 11px;border-top:1px solid rgba(105,239,255,.08)}.meos-live-activity[data-expanded="true"] .meos-live-activity-detail{display:block}
+      .meos-live-activity-steps{display:flex;gap:4px;flex-wrap:wrap;padding-top:9px}.meos-live-activity-step{padding:4px 7px;border-radius:999px;border:1px solid rgba(160,194,210,.12);font-size:.54rem;color:rgba(201,225,235,.55)}.meos-live-activity-step[data-current="true"]{border-color:rgba(105,239,255,.34);color:#c9f9ff;background:rgba(105,239,255,.07)}.meos-live-activity-step[data-done="true"]{color:#91e9bd;border-color:rgba(92,224,164,.2)}
+      .meos-live-activity-truth{margin-top:8px;font-size:.62rem;line-height:1.45;color:rgba(205,232,242,.7)}.meos-live-activity-truth b{color:#effcff}.meos-live-activity-branches{margin-top:6px;color:rgba(169,210,225,.65);font-size:.59rem}
+      .meos-live-workstream-events{display:grid;gap:5px;margin-top:8px}.meos-live-workstream-event{display:flex;gap:7px;align-items:flex-start;font-size:.6rem;line-height:1.4;color:rgba(203,229,239,.72)}.meos-live-workstream-event::before{content:"·";color:#69efff}
+      .meos-live-workstream-answer{margin-top:9px;padding:9px 10px;border-radius:10px;background:rgba(232,250,255,.055);border:1px solid rgba(105,239,255,.12);font-size:.68rem;line-height:1.5;color:#edfaff;white-space:pre-wrap}
+      .meos-live-workstream-sources{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.meos-live-workstream-source{font-size:.56rem;color:#9eeeff;text-decoration:none;border:1px solid rgba(105,239,255,.18);border-radius:999px;padding:4px 6px}.meos-live-workstream-source:hover{text-decoration:underline}
+      .meos-live-workstream-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.meos-live-workstream-action{border:1px solid rgba(105,239,255,.2);background:rgba(105,239,255,.07);color:#dffaff;border-radius:8px;padding:6px 8px;font-size:.6rem;cursor:pointer}.meos-live-workstream-action[data-primary="true"]{border-color:rgba(105,239,255,.42);background:rgba(105,239,255,.13)}
+      @media(max-width:600px){.meos-live-activity-main{grid-template-columns:auto 1fr auto}.meos-live-activity-copy span{white-space:normal}}
+      @media(prefers-reduced-motion:reduce){.meos-live-activity-orb::after{animation:none!important}}
     `;
     document.head.appendChild(style);
   }
 
   function ensureMaddyActivitySurface() {
     let panel = document.getElementById("meosMaddyActivitySurface");
-    if (panel) return panel;
+    const desk = document.querySelector(".meos-maddy-desk");
+    const command = desk?.querySelector(".meos-maddy-desk-command");
+    if (panel) {
+      if (desk && command && panel.parentElement !== desk) desk.insertBefore(panel, command);
+      return panel;
+    }
     injectMaddyActivityStyles();
-    panel = document.createElement("aside");
+    panel = document.createElement("section");
     panel.id = "meosMaddyActivitySurface";
     panel.className = "meos-live-activity";
     panel.dataset.visible = "false";
     panel.dataset.expanded = "false";
     panel.setAttribute("aria-live", "polite");
-    panel.setAttribute("aria-label", "What Maddy is doing");
-    panel.innerHTML = `<div class="meos-live-activity-main"><div class="meos-live-activity-orb" aria-hidden="true"></div><div class="meos-live-activity-copy"><strong id="meosMaddyActivityLabel">Maddy is ready</strong><span id="meosMaddyActivityDetail">Nothing needs your attention.</span></div><button id="meosMaddyActivityToggle" class="meos-live-activity-toggle" type="button" aria-expanded="false">Details</button></div><div class="meos-live-activity-detail"><div id="meosMaddyActivitySteps" class="meos-live-activity-steps"></div><div id="meosMaddyActivityTruth" class="meos-live-activity-truth"></div><div id="meosMaddyActivityBranches" class="meos-live-activity-branches"></div></div>`;
-    document.body.appendChild(panel);
+    panel.setAttribute("aria-label", "Maddy conversational workstream");
+    panel.innerHTML = `<div class="meos-live-activity-main"><div class="meos-live-activity-orb" aria-hidden="true"></div><div class="meos-live-activity-copy"><strong id="meosMaddyActivityLabel">Maddy is ready</strong><span id="meosMaddyActivityDetail">Ask Maddy anything.</span></div><button id="meosMaddyActivityToggle" class="meos-live-activity-toggle" type="button" aria-expanded="false">Details</button></div><div class="meos-live-activity-detail"><div id="meosMaddyActivitySteps" class="meos-live-activity-steps"></div><div id="meosMaddyActivityTruth" class="meos-live-activity-truth"></div><div id="meosMaddyActivityBranches" class="meos-live-activity-branches"></div><div id="meosMaddyWorkstreamEvents" class="meos-live-workstream-events"></div><div id="meosMaddyWorkstreamAnswer"></div><div id="meosMaddyWorkstreamActions" class="meos-live-workstream-actions"></div></div>`;
+    if (desk && command) desk.insertBefore(panel, command); else document.body.appendChild(panel);
     panel.querySelector("#meosMaddyActivityToggle")?.addEventListener("click", () => {
       state.maddyActivity.expanded = !state.maddyActivity.expanded;
       panel.dataset.expanded = String(state.maddyActivity.expanded);
@@ -6145,98 +6154,109 @@ document
   function getMaddyActivityModel(snapshot = null) {
     const hallway = snapshot?.hallway || getHallwaySnapshot();
     const work = Array.isArray(hallway?.work) ? hallway.work : [];
+    const deliverables = Array.isArray(hallway?.deliverables) ? hallway.deliverables : [];
+    const history = Array.isArray(hallway?.history) ? hallway.history : [];
     const active = work.filter((item) => !["done","cancelled","failed"].includes(String(item?.state || "")));
     const primary = active[0] || work[0] || null;
     const rawState = String(primary?.state || "idle");
     const presentation = getMaddyDispatchPresentation(primary);
     const mapping = {
-      idle:["Ready","Maddy is ready when you are."], received:["Got it","Maddy has your request."], understanding:["Understanding","Making sure I understand what you need."], planning:["Building the plan","Choosing the best path before acting."], "awaiting-review":["Needs your approval","Maddy reached a real authority boundary."], authorized:["Approved","Your authorization is bound to this work."], executing:["Taking care of it","Maddy is carrying out the authorized work."], verifying:["Checking the result","Verifying what happened before calling it done."], done:["Done","The work completed and a result is ready."], blocked:["Needs something","Maddy cannot truthfully continue yet."], failed:["Something stopped","The work did not complete successfully."], cancelled:["Stopped","This work was cancelled."]
+      idle:["Ready","Maddy is ready when you are."], received:["Got it","I have your request."], understanding:["Understanding","Making sure I understand what you need."], planning:["Preparing","Choosing the best path before acting."], "awaiting-review":["I need your approval","I reached a real authority boundary."], authorized:["Approved","Your authorization is bound to this work."], executing:["Working","Carrying out the authorized work."], verifying:["Checking","Verifying what happened before calling it done."], done:["Done","I finished this work and the answer is ready."], blocked:["I need something","I cannot truthfully continue yet."], failed:["Something stopped","This work did not complete successfully."], cancelled:["Stopped","This work was cancelled."]
     };
     const [label, fallback] = mapping[rawState] || [presentation.label || formatHallwayState(rawState), presentation.detail];
     const title = String(primary?.title || primary?.instruction || "").trim();
     const needsApproval = rawState === "awaiting-review";
     const isTerminal = ["done","failed","cancelled"].includes(rawState);
     const isActive = Boolean(primary) && !["awaiting-review","done","blocked","failed","cancelled"].includes(rawState);
-    const visible = Boolean(primary) && (active.length > 0 || isTerminal);
+    const visible = Boolean(primary);
     const detail = title ? `${fallback} ${title}`.trim() : fallback;
     const stages = ["understanding","planning","awaiting-review","executing","verifying","done"];
     const normalizedStage = rawState === "received" ? "understanding" : rawState === "authorized" ? "executing" : rawState;
     const currentIndex = stages.indexOf(normalizedStage);
+    const relatedDeliverables = primary?.id ? deliverables.filter((item)=>item?.workId===primary.id) : [];
+    const answerDeliverable = relatedDeliverables[0] || null;
+    const answer = answerDeliverable ? (maddyDeliverableAnswerText(answerDeliverable) || decodeMaddyText(getMaddyDeliverablePresentation(answerDeliverable,0,relatedDeliverables.length).summary || "").trim()) : "";
+    const sources = answerDeliverable ? strictGovernedSourceUrls(answerDeliverable).slice(0,8) : [];
+    const milestones = primary?.id ? history.filter((item)=>item?.workId===primary.id).slice(0,6).map((item)=>({at:item.createdAt||item.updatedAt||null,message:String(item.message||item.type||item.state||"Recorded MEOS work milestone")})) : [];
+    const updatedAt = primary?.updatedAt || primary?.createdAt || null;
+    const ageMs = updatedAt ? Math.max(0, Date.now()-new Date(updatedAt).getTime()) : null;
+    const stale = isActive && Number.isFinite(ageMs) && ageMs > 30000;
     return {
-      schema: MADDY_ACTIVITY_SCHEMA, buildId: MADDY_ACTIVITY_SURFACE_BUILD_ID,
+      schema:MADDY_ACTIVITY_SCHEMA, buildId:MADDY_ACTIVITY_SURFACE_BUILD_ID,
       visible, active:isActive, state:rawState, label, detail, title,
-      needsApproval, authority: primary?.authority || null,
-      workId: primary?.id || null, owner: primary?.owner || null,
-      parallelCount: active.length,
-      stages: stages.map((stage,index)=>({stage,label:{understanding:"Understanding",planning:"Preparing","awaiting-review":"Approval",executing:"Acting",verifying:"Checking",done:"Done"}[stage],current:index===currentIndex,done:currentIndex>index || rawState==="done"})),
-      truth: needsApproval ? "Waiting for you — Maddy will not cross this boundary on her own." : rawState === "blocked" ? "Blocked truthfully — no fake progress is being shown." : rawState === "failed" ? "Failed is shown as failed; Maddy will not manufacture completion." : isActive ? "Live MEOS work — this status comes from the actual Hallway work state." : "This status is derived from recorded MEOS state.",
-      paidDisplayRequests: 0, providerDisplayRequests: 0
+      needsApproval, authority:primary?.authority||null, options:Array.isArray(primary?.options)?[...primary.options]:[],
+      workId:primary?.id||null, owner:primary?.owner||null, parallelCount:active.length,
+      stages:stages.map((stage,index)=>({stage,label:{understanding:"Understanding",planning:"Preparing","awaiting-review":"Approval",executing:"Acting",verifying:"Checking",done:"Done"}[stage],current:index===currentIndex,done:currentIndex>index||rawState==="done"})),
+      milestones, answer, answerDeliverable, sources, stale,
+      truth: needsApproval ? "Waiting for you — I will not cross this boundary on my own." : rawState==="blocked" ? "Blocked truthfully — no fake progress is being shown." : rawState==="failed" ? "Failed is shown as failed; I will not manufacture completion." : stale ? "No newer recorded MEOS milestone yet. I am not inventing a heartbeat or progress." : isActive ? "Live work — this comes from the actual Hallway work state." : rawState==="done" ? "Completed state and answer come from recorded Hallway work and its returned deliverable." : "This status is derived from recorded MEOS state.",
+      paidDisplayRequests:0, providerDisplayRequests:0
     };
   }
 
   function renderMaddyActivitySurface(snapshot = null) {
     const panel = ensureMaddyActivitySurface();
     const model = getMaddyActivityModel(snapshot);
-    state.maddyActivity.lastState = model.state;
-    state.maddyActivity.lastRenderedAt = new Date().toISOString();
-    if (model.visible && !state.maddyActivity.firstVisibleAt) state.maddyActivity.firstVisibleAt = state.maddyActivity.lastRenderedAt;
-    state.maddyActivity.visible = model.visible;
-    panel.dataset.visible = String(model.visible);
-    panel.dataset.active = String(model.active);
-    panel.dataset.expanded = String(state.maddyActivity.expanded);
-    panel.querySelector("#meosMaddyActivityLabel").textContent = model.label;
-    panel.querySelector("#meosMaddyActivityDetail").textContent = model.detail;
-    panel.querySelector("#meosMaddyActivitySteps").innerHTML = model.stages.map((item)=>`<span class="meos-live-activity-step" data-current="${item.current}" data-done="${item.done}">${escapeHtml(item.label)}</span>`).join("");
-    panel.querySelector("#meosMaddyActivityTruth").innerHTML = `<b>${escapeHtml(model.label)}</b> · ${escapeHtml(model.truth)}`;
-    panel.querySelector("#meosMaddyActivityBranches").textContent = model.parallelCount > 1 ? `Working on ${model.parallelCount} live threads without turning your screen into a cockpit.` : model.owner ? `Handled by Maddy through ${model.owner}.` : "Maddy keeps the machinery underneath the experience.";
+    state.maddyActivity.lastState=model.state; state.maddyActivity.lastRenderedAt=new Date().toISOString();
+    if(model.visible&&!state.maddyActivity.firstVisibleAt) state.maddyActivity.firstVisibleAt=state.maddyActivity.lastRenderedAt;
+    state.maddyActivity.visible=model.visible;
+    panel.dataset.visible=String(model.visible); panel.dataset.active=String(model.active); panel.dataset.expanded=String(state.maddyActivity.expanded || model.needsApproval || Boolean(model.answer));
+    panel.querySelector("#meosMaddyActivityLabel").textContent=model.label;
+    panel.querySelector("#meosMaddyActivityDetail").textContent=model.detail;
+    panel.querySelector("#meosMaddyActivitySteps").innerHTML=model.stages.map((item)=>`<span class="meos-live-activity-step" data-current="${item.current}" data-done="${item.done}">${escapeHtml(item.label)}</span>`).join("");
+    panel.querySelector("#meosMaddyActivityTruth").innerHTML=`<b>${escapeHtml(model.label)}</b> · ${escapeHtml(model.truth)}`;
+    panel.querySelector("#meosMaddyActivityBranches").textContent=model.parallelCount>1?`I have ${model.parallelCount} live threads; this view stays focused on the current conversation.`:model.owner?`Working through ${model.owner}.`:"The machinery stays underneath the conversation.";
+    const events=panel.querySelector("#meosMaddyWorkstreamEvents");
+    events.innerHTML=model.milestones.map((item)=>`<div class="meos-live-workstream-event">${escapeHtml(item.message)}</div>`).join("");
+    const answerNode=panel.querySelector("#meosMaddyWorkstreamAnswer"); answerNode.innerHTML="";
+    if(model.answer){ const a=document.createElement("div"); a.className="meos-live-workstream-answer"; a.textContent=model.answer; answerNode.appendChild(a); if(model.sources.length){ const sw=document.createElement("div"); sw.className="meos-live-workstream-sources"; model.sources.forEach((url,i)=>{const link=document.createElement("a");link.className="meos-live-workstream-source";link.href=url;link.target="_blank";link.rel="noopener noreferrer";link.textContent=sourceLabelFromUrl(url)||`Source ${i+1}`;sw.appendChild(link)});answerNode.appendChild(sw); } }
+    const actions=panel.querySelector("#meosMaddyWorkstreamActions"); actions.innerHTML="";
+    if(model.needsApproval && model.options.includes("take-it")){ const take=document.createElement("button");take.type="button";take.className="meos-live-workstream-action";take.dataset.primary="true";take.textContent="Take It — Authorize";take.addEventListener("click",async()=>{const hallway=getExecutiveHallway();if(!hallway?.takeIt||!model.workId)return;take.disabled=true;take.textContent="Authorized · Maddy working…";try{await hallway.takeIt(model.workId,{signal:"Take It!",source:"maddy-conversational-workstream"})}catch(error){state.hallway.lastError=error?.message||String(error);renderMaddyActivitySurface()}});actions.appendChild(take); }
+    if(model.answerDeliverable){ const evidence=document.createElement("button");evidence.type="button";evidence.className="meos-live-workstream-action";evidence.textContent="Evidence & Details";evidence.addEventListener("click",()=>openReturnedWorkPackage(model.answerDeliverable));actions.appendChild(evidence); }
     return model;
   }
 
   function runMaddyActivitySurfaceAcceptanceTest() {
-    const panel = ensureMaddyActivitySurface();
-    const fixture = (stateValue, extra={}) => ({work:[{id:"activity-test",state:stateValue,title:"Find the best path",owner:"Maddy",...extra}],deliverables:[],history:[]});
-    const thinking = getMaddyActivityModel({hallway:fixture("understanding")});
-    const approval = getMaddyActivityModel({hallway:fixture("awaiting-review")});
-    const executing = getMaddyActivityModel({hallway:fixture("executing")});
-    const done = getMaddyActivityModel({hallway:fixture("done")});
-    const blocked = getMaddyActivityModel({hallway:fixture("blocked")});
-    const parallel = getMaddyActivityModel({hallway:{work:[fixture("executing").work[0],{id:"two",state:"planning",title:"Second real thread"}],deliverables:[],history:[]}});
-    const checks = [
-      ["Activity contract is explicit and versioned",thinking.schema===MADDY_ACTIVITY_SCHEMA],
-      ["Surface has a dedicated commissioned build identity",thinking.buildId===MADDY_ACTIVITY_SURFACE_BUILD_ID],
-      ["Surface exists in the real dashboard DOM",Boolean(panel)],
-      ["Surface is polite live-region feedback",panel.getAttribute("aria-live")==="polite"],
-      ["Understanding maps to plain human language",thinking.label==="Understanding"],
-      ["Planning language is available without organ jargon",getMaddyActivityModel({hallway:fixture("planning")}).label==="Building the plan"],
-      ["Approval boundary is unmistakable",approval.label==="Needs your approval" && approval.needsApproval===true],
-      ["Approval does not masquerade as active execution",approval.active===false],
-      ["Execution maps to plain-language action",executing.label==="Taking care of it"],
-      ["Verification has a distinct truthful state",getMaddyActivityModel({hallway:fixture("verifying")}).label==="Checking the result"],
-      ["Completion comes only from done state",done.label==="Done" && done.state==="done"],
-      ["Blocked work is not shown as progress",blocked.label==="Needs something" && blocked.active===false],
-      ["Failure has an explicit non-success state",getMaddyActivityModel({hallway:fixture("failed")}).label==="Something stopped"],
-      ["Cancellation has an explicit stopped state",getMaddyActivityModel({hallway:fixture("cancelled")}).label==="Stopped"],
-      ["Real work identity remains addressable",thinking.workId==="activity-test"],
-      ["Real owner remains addressable without dominating UX",executing.owner==="Maddy"],
-      ["Parallel live work is represented",parallel.parallelCount===2],
-      ["Parallel work stays summarized rather than becoming UI noise",parallel.parallelCount===2 && /2 live threads/.test((()=>{const m=parallel;return m.parallelCount>1?`Working on ${m.parallelCount} live threads`:""})())],
-      ["Stage path is human-readable",thinking.stages.every(item=>Boolean(item.label))],
-      ["Stage path does not claim fake percentages",!JSON.stringify(thinking).includes("percent")],
-      ["Activity rendering requires zero paid cognition requests",thinking.paidDisplayRequests===0],
-      ["Activity rendering requires zero provider requests",thinking.providerDisplayRequests===0],
-      ["Surface derives from Hallway snapshot rather than a second work store",/getHallwaySnapshot/.test(String(getMaddyActivityModel))],
-      ["Surface reuses existing Maddy dispatch truth",/getMaddyDispatchPresentation/.test(String(getMaddyActivityModel))],
-      ["Authority evidence remains available",Object.prototype.hasOwnProperty.call(approval,"authority")],
-      ["Expandable detail exists",Boolean(panel.querySelector("#meosMaddyActivityToggle"))],
-      ["Truth explanation exists",Boolean(panel.querySelector("#meosMaddyActivityTruth"))],
-      ["Reduced-motion support is present",document.getElementById(MADDY_ACTIVITY_STYLE_ID)?.textContent.includes("prefers-reduced-motion")===true],
-      ["Mobile presentation is explicitly supported",document.getElementById(MADDY_ACTIVITY_STYLE_ID)?.textContent.includes("max-width:600px")===true],
-      ["Spooky UX stays simple while MEOS remains underneath",thinking.detail.includes("Find the best path") && !thinking.label.includes("Executive Hallway")]
+    const panel=ensureMaddyActivitySurface();
+    const fixture=(stateValue,extra={})=>({work:[{id:"workstream-test",state:stateValue,title:"Find the best path",owner:"Maddy",updatedAt:new Date().toISOString(),...extra}],deliverables:[],history:[]});
+    const thinking=getMaddyActivityModel({hallway:fixture("understanding")});
+    const approval=getMaddyActivityModel({hallway:fixture("awaiting-review",{options:["take-it"]})});
+    const doneFixture=fixture("done"); doneFixture.deliverables=[{id:"answer-test",workId:"workstream-test",kind:"research-status",title:"Answer",data:{answer:"The governed answer is here."}}];
+    const done=getMaddyActivityModel({hallway:doneFixture});
+    const staleFixture=fixture("executing",{updatedAt:new Date(Date.now()-60000).toISOString()});
+    const stale=getMaddyActivityModel({hallway:staleFixture});
+    const checks=[
+      ["Conversational workstream contract is explicit and versioned",thinking.schema===MADDY_ACTIVITY_SCHEMA],
+      ["006.033B has a dedicated build identity",thinking.buildId===MADDY_ACTIVITY_SURFACE_BUILD_ID],
+      ["Workstream is mounted inside Maddy Executive Desk",panel.parentElement?.classList?.contains("meos-maddy-desk")===true],
+      ["Workstream sits directly above the Ask Maddy command row",panel.nextElementSibling?.classList?.contains("meos-maddy-desk-command")===true],
+      ["Surface remains polite live-region feedback",panel.getAttribute("aria-live")==="polite"],
+      ["Ordinary understanding is human-readable",thinking.label==="Understanding"],
+      ["Approval boundary is explicit",approval.needsApproval===true && approval.label==="I need your approval"],
+      ["Approval is not presented as execution",approval.active===false],
+      ["Authorization option remains bound to real Hallway work",approval.options.includes("take-it") && approval.workId==="workstream-test"],
+      ["Done state can carry the returned Maddy answer",done.state==="done" && done.answer==="The governed answer is here."],
+      ["Answer remains bound to the same work lineage",done.answerDeliverable?.workId===done.workId],
+      ["Evidence/details remains separate from answer text",typeof openReturnedWorkPackage==="function"],
+      ["Recorded milestones come from Hallway history",/hallway\.history/.test(String(getMaddyActivityModel))],
+      ["Staleness is detected from recorded timestamps",stale.stale===true],
+      ["Staleness refuses fake heartbeat/progress",stale.truth.includes("not inventing a heartbeat")],
+      ["No fake percentage exists in workstream model",!JSON.stringify(thinking).includes("percent")],
+      ["Rendering requires zero paid cognition calls",thinking.paidDisplayRequests===0],
+      ["Rendering requires zero provider calls",thinking.providerDisplayRequests===0],
+      ["Canonical Hallway snapshot remains source of work truth",/getHallwaySnapshot/.test(String(getMaddyActivityModel))],
+      ["Existing Maddy dispatch presentation remains reused",/getMaddyDispatchPresentation/.test(String(getMaddyActivityModel))],
+      ["No second work store is introduced",!String(getMaddyActivityModel).includes("localStorage")],
+      ["Answer uses existing governed deliverable answer path",/maddyDeliverableAnswerText/.test(String(getMaddyActivityModel))],
+      ["Sources use existing strict governed source path",/strictGovernedSourceUrls/.test(String(getMaddyActivityModel))],
+      ["Surface can expand upward without replacing digital-human stage",panel.tagName==="SECTION" && Boolean(document.querySelector(".meos-maddy-field"))],
+      ["Reduced-motion support remains present",document.getElementById(MADDY_ACTIVITY_STYLE_ID)?.textContent.includes("prefers-reduced-motion")===true],
+      ["Mobile presentation remains explicit",document.getElementById(MADDY_ACTIVITY_STYLE_ID)?.textContent.includes("max-width:600px")===true],
+      ["One conversational surface owns work and returned answer",Boolean(panel.querySelector("#meosMaddyWorkstreamAnswer")&&panel.querySelector("#meosMaddyWorkstreamActions"))],
+      ["Spooky UX stays simple while MEOS remains underneath",thinking.detail.includes("Find the best path")&&!thinking.label.includes("Executive Hallway")]
     ].map(([name,passed])=>({name,passed:Boolean(passed)}));
-    const result={success:checks.every(c=>c.passed),commission:"006.033A",schema:"meos.dashboard.maddy-activity-acceptance.v1",version:DASHBOARD_VERSION,buildId:MADDY_ACTIVITY_SURFACE_BUILD_ID,passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
-    console.table(checks); console.log(`[MEOS ${DASHBOARD_VERSION}] Commission 006.033A Truthful Live Maddy Activity Surface: ${result.success?"PASS":"FAIL"} (${result.passed}/${result.total}).`); return result;
+    const result={success:checks.every(c=>c.passed),commission:"006.033B",schema:"meos.dashboard.maddy-conversational-workstream-acceptance.v1",version:DASHBOARD_VERSION,buildId:MADDY_ACTIVITY_SURFACE_BUILD_ID,passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
+    console.table(checks);console.log(`[MEOS ${DASHBOARD_VERSION}] Commission 006.033B Conversational Live Maddy Workstream: ${result.success?"PASS":"FAIL"} (${result.passed}/${result.total}).`);return result;
   }
-
   function formatHallwayState(value) {
     return String(value || "idle")
       .replace(/-/g, " ")
@@ -6325,17 +6345,9 @@ document
     renderLiveHeadquarters();
     renderMaddyActivitySurface();
 
-    // Human-facing response hierarchy: a question awaiting authority is not an answer.
-    // Surface the gate directly, then replace it with the real returned answer when
-    // the Hallway produces a deliverable.
-    if (!event?.initial && ["awaiting-review", "blocked", "failed"].includes(String(work.state || ""))) {
-      openMaddyResponseForWork(work);
-    } else if (!event?.initial) {
-      const overlay = document.getElementById("meosMaddyResponseModal");
-      if (overlay?.dataset?.open === "true" && overlay.dataset.workId === String(work.id || "") && ["authorized", "executing", "verifying"].includes(String(work.state || ""))) {
-        openMaddyResponseForWork(work);
-      }
-    }
+    // 006.033B: authority, live work, blockers, and completion remain in the same
+    // conversational workstream above the Ask Maddy input. The legacy modal remains
+    // available through its public helpers, but Hallway events no longer force it open.
   }
 
   function handleHallwayDeliverableReady(event) {
@@ -6355,7 +6367,7 @@ document
     renderHallwayMini();
     renderLiveHeadquarters();
     renderMaddyActivitySurface();
-    if (!event?.initial) openMaddyResponseForDeliverable(deliverable);
+    // 006.033B: the returned answer is rendered inline by renderMaddyActivitySurface().
   }
 
   function handleHallwayFeedbackRecorded() {
@@ -10008,7 +10020,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Truthful Live Maddy Activity Surface ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online.`
     );
   }
 
