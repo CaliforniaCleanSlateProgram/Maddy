@@ -18,8 +18,8 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.3.5";
-    const BUILD_ID = "EL135-BOUNDED-LESSON-CONFIDENCE-ADJUSTMENT-20260915-A";
+    const VERSION = "1.3.6";
+    const BUILD_ID = "EL136-ORGANIZATION-KNOWLEDGE-LINEAGE-20260915-A";
     const CALIBRATION_SCHEMA = "meos.maddy.self-correction-calibration.v1";
     const COMMERCIAL_TRUTH_SCHEMA = "meos.maddy.commercial-truth.v1";
 
@@ -970,7 +970,18 @@
                                 this.clone(observation.epistemicContinuity),
                             metadata: {
                                 epistemicContinuity:
-                                    this.clone(observation.epistemicContinuity)
+                                    this.clone(observation.epistemicContinuity),
+                                // 006.033E1 — organization knowledge lineage must survive
+                                // consequence -> observation -> lesson -> persistence.
+                                // This is classification/provenance only; it grants no authority.
+                                organizationId:
+                                    observation.metadata?.organizationId || null,
+                                organizationType:
+                                    observation.metadata?.organizationType || null,
+                                knowledgeClass:
+                                    observation.metadata?.knowledgeClass || null,
+                                privacyScope:
+                                    observation.metadata?.privacyScope || null
                             },
                             tags: [
                                 "institutional-learning",
