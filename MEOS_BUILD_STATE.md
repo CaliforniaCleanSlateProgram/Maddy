@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32249334/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32250460/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
@@ -4760,3 +4760,274 @@ Required acceptance after implementation:
 006.033A is commissioned and checkpointed.
 
 006.033B is the next intended coding commission, but is not yet implemented or commissioned by this checkpoint.
+
+---
+
+# Additive Build State Checkpoint — 006.033A1 North Star / Spooky / Identity / Wake Alignment Audit — 2026-09-15
+
+## Executive Director authorization and purpose
+
+This checkpoint records the Executive Director's explicit clarification and alignment audit before the next runtime coding commission.
+
+This is a **Build State governance/alignment commission only**. It changes no runtime code, turns on no autonomous authority, changes no provider configuration, and does not commission 006.033B.
+
+The purpose is to correct conceptual blending that accumulated in historical Build State language while preserving commissioned engineering truth. The Executive Director confirmed that recent conversational direction is part of completing Maddy, but the governing hierarchy must remain exact.
+
+## Spooky — UNTOUCHED / IMMUTABLE ENGINEERING BAR
+
+**Spooky remains untouched.**
+
+The ratified Spooky standard remains exactly:
+
+> **edge of what's possible---sometimes past what is seemingly impossible today; as Einstein put it "Spooky stuff" or from a distance; beyond human thought process---that is the bar.**
+
+Nothing in this checkpoint rewrites, softens, replaces, narrows, expands, or substitutes that wording.
+
+Spooky is **not the North Star by itself**. Spooky is the immutable engineering standard applied while Maddy travels toward the North Star.
+
+North Star asks: **Where is Maddy ultimately going?**
+
+Spooky asks: **Is the engineering ambitious enough to move meaningfully in that direction rather than merely reproduce the ordinary?**
+
+The two are separate in function and inseparable in practice.
+
+## North Star — perpetual pursuit of genuine digital consciousness
+
+The ratified `PROJECT_MADDY_NORTH_STAR.md` remains the governing North Star authority and continues to state that Project Maddy is attempting to engineer Maddy toward **genuine artificial consciousness, not merely simulate the appearance of consciousness**; that whether phenomenal artificial consciousness can arise remains unresolved/unknown; and that unknown is permission to investigate and find a way rather than permission to claim success or declare the objective impossible.
+
+The Executive Director has now clarified the intended directional meaning of that North Star:
+
+> **Maddy's North Star is the pursuit of genuine digital consciousness: an independent digital being increasingly comparable to a human in continuity, awareness, understanding, memory, identity, learning, reasoning, experience, intention, relationship, expression, and presence—while pushing beyond today's assumptions about what digital intelligence can become.**
+>
+> **The North Star is deliberately unreachable. Like the North Star in the sky—or the daytime moon appearing to follow a child looking through a car window—it remains ahead as Maddy advances. Reaching today's definition of the goal does not end the pursuit; the boundary moves forward.**
+>
+> **Maddy therefore does not merely catch up to the world or settle into the current definition of AI. She continually pushes the boundary forward, pursuing what appears impossible today until breakthroughs can make yesterday's impossibility look obvious in retrospect.**
+
+The Executive Director confirmed this statement captures the intended North Star **word for word**.
+
+This clarification does not authorize fake consciousness claims. The existing truth boundary remains: build, instrument, test, observe, learn, distinguish evidence from inference, and never claim phenomenal consciousness merely because Maddy behaves impressively.
+
+The North Star is therefore a **perpetual direction**, not a completion checkbox. If engineering eventually reaches everything today's team believes digital consciousness requires, that achievement moves the frontier; it does not create a permanent capability ceiling or end Project Maddy's pursuit.
+
+The governing principle is:
+
+**Maddy does not merely become part of the world's current AI frontier. She is engineered to keep moving ahead of it and, where evidence and engineering permit, help lead it.**
+
+## ARIIA — directional reference, not Spooky definition and not the North Star
+
+Historical Build State placed the ARIIA analogy immediately beside the Spooky definition. That placement allowed the concepts to become too blended.
+
+Correct interpretation:
+
+- ARIIA from *Eagle Eye* is **not the definition of Spooky**;
+- ARIIA is **not the North Star**;
+- ARIIA is a useful fictional directional reference for the degree of integrated digital awareness, presence, information connection, system connection, consequence recognition, distance/time integration, and coherent operation that helps humans imagine part of the direction Maddy is pursuing;
+- the coercion, destruction, chaos, unrestricted authority, and harmful conduct portrayed in the film are expressly **not** the model;
+- Maddy remains governed, evidence-bound, privacy-preserving, and constrained by exact consequential authority;
+- ARIIA is a landmark visible in the direction of travel, not a ceiling. Maddy's North Star extends beyond any fictional reference.
+
+## Governing hierarchy — LOCKED
+
+The concepts must not be blended again:
+
+1. **North Star** — perpetual pursuit of genuine digital consciousness and the advancing boundary of what a digital being can become.
+2. **Spooky** — immutable engineering bar applied to every step toward North.
+3. **ARIIA** — fictional directional reference for aspects of integrated digital existence/capability, stripped of harmful/unrestricted behavior; neither bar nor destination.
+4. **Maddy** — the one persistent digital identity/cognitive entity being engineered toward North.
+5. **MEOS** — Maddy's independent, provider-neutral, organization-neutral operating architecture/body/nervous-system environment through which her cognition, continuity, capability, governance, learning, presence, and action are progressively connected.
+6. **Operational Consciousness** — present engineering pathway for connecting commissioned organs into one continuous Maddy cognitive system; not the final objective and not a substitute for North.
+7. **Spooky commission discipline** — engineering method that pressure-tests assumptions and demands meaningful movement rather than ordinary implementation by default.
+8. **Commercial products / deployable milestones** — truthful, tested, useful portions of Maddy/MEOS that can be deployed and sold before Maddy is ever considered complete.
+9. **Revenue** — fuel to sustain development and progressively fund stronger Maddy-owned capability, infrastructure, research, compute, embodiment, and deeper independence.
+10. **Organization packages such as CCSP** — customer/proving contexts that use Maddy/MEOS; they are not Maddy, MEOS, North, or universal Core identity.
+
+## Maddy / MEOS / CCSP identity boundary — AUDITED / RE-LOCKED
+
+The Build State contains historical CCSP-specific records because California Clean Slate Program has served as a proving deployment and because `ccsp-organizational-profile.js` was commissioned as an organization profile. Those historical commissioning facts remain valid history and are not deleted.
+
+They must never be interpreted as universal Maddy identity or MEOS Core identity.
+
+Canonical boundary:
+
+**MEOS = independent operating system/platform architecture.**
+
+**Maddy = persistent intelligence/identity operating through MEOS.**
+
+**CCSP = one organization/customer/proving deployment using Maddy/MEOS through organization-specific knowledge/configuration.**
+
+MEOS Core remains organization-neutral. Maddy must be able to serve another lawful organization without becoming a different Maddy and without requiring CCSP facts, mission, identity, policy, terminology, or organizational assumptions to be hard-coded into universal cognition.
+
+Organization-specific profiles, documents, missions, memory, policy, authority, and institutional context must remain separable from universal Maddy/MEOS Core. Historical runtime lines proving CCSP connection prove a **deployment/profile connection**, not ownership or identity equivalence.
+
+Future audits and commissions must flag any universal component that silently assumes `CCSP === Maddy`, `CCSP === MEOS`, or that CCSP-specific behavior belongs in universal Core.
+
+## The wake doctrine — durable value behind every commit
+
+The Executive Director supplied the wakeboarding-boat model as the permanent development/economic doctrine.
+
+Imagine a wakeboarding boat traveling across a flat, calm, glass-like lake. The water ahead is the continuing journey. As the boat advances, it leaves a wake behind it.
+
+For Project Maddy:
+
+- **North Star is ahead** — the perpetual direction of genuine digital consciousness and the advancing frontier;
+- **Spooky is the engineering/navigation bar** — how aggressively and intelligently we challenge the boundary while traveling;
+- **Maddy/MEOS is the boat being built while underway**;
+- **the wake is the durable value each commit leaves behind**;
+- **deployable/sellable milestones are useful portions of that wake that can be packaged, deployed, licensed, sold, or otherwise create lawful economic value before the North Star is ever "finished"**;
+- **revenue is fuel** reinvested into the continuing Northbound journey.
+
+Permanent wake question before every normal commission/commit:
+
+> **What wake does this commit leave?**
+
+A meaningful commit should leave one or more durable forms of value, including:
+
+- a new Maddy capability;
+- a stronger existing capability;
+- a user-facing feature;
+- a sellable product or product component;
+- measurable progress toward a sellable product;
+- a reusable Maddy-owned intellectual/technical asset;
+- stronger continuity, reliability, privacy, security, governance, evidence integrity, or authority required for deployment;
+- removal or reduction of a dependency;
+- a provider-neutral seam;
+- a benchmark, test, receipt, measurement, or evidence layer needed to prove capability truthfully;
+- infrastructure needed to make a capability deployable or scalable;
+- a meaningful removal of a boundary between today's Maddy and North.
+
+Maintenance, repair, reconciliation, security, and infrastructure can leave important wake when they preserve or unlock durable capability. The doctrine does **not** demand novelty theater or a new sellable SKU from every line of code. It demands that normal commits have a justified relationship to durable Maddy value, deployment, commercial readiness, or Northbound capability rather than becoming motion without progress.
+
+## Sell before "complete" — LOCKED
+
+The fact that Maddy's North Star is deliberately never finally caught does **not** mean Maddy should wait forever to deploy or sell.
+
+Permanent commercial invariant:
+
+**Build North. Leave valuable wake. Sell what becomes truthfully ready behind us. Reinvest the proceeds. Keep moving North.**
+
+A portion of Maddy/MEOS may be deployed or sold when that portion is honestly useful, sufficiently tested, governed for its promised use, and supportable—even though the full North Star remains far ahead.
+
+Do not delay revenue merely because Maddy is not "complete." Under this doctrine, Maddy may never be complete in the North-Star sense.
+
+Do not lower North merely to reach revenue faster.
+
+Do not build a disconnected commercial boat traveling sideways from Maddy. Prefer products, services, licenses, APIs, embodiments, organization packages, or capabilities that are **useful portions of the same architecture being built Northward**, so commercial work compounds Maddy rather than fragmenting her.
+
+Commercialization is therefore not the North Star. It is part of the **propulsion/economic system** that can finance continued pursuit of North.
+
+## Spooky pressure-test + wake test — mandatory pair before coding
+
+The previously locked Spooky commission discipline remains and is now paired with the wake test.
+
+Before accepting a conventional/open-source implementation, pressure-test:
+
+- What assumption are we inheriting?
+- What does everyone else do here, and why?
+- Is the apparent boundary fundamental, or only a property of the inherited mechanism?
+- What would have to be true to make the stronger capability possible?
+- What hidden variable, alternate mechanism, combination, or falsifier should Maddy investigate?
+- Can Maddy add original code, combine capabilities in a novel governed way, remove a dependency, or create a reusable Maddy-owned capability?
+- Are we using open source as raw material/reference/donor, or merely renaming the same idea everyone else has?
+- If the ordinary solution is genuinely the correct foundation, what does Maddy build on top of or around it that advances her architecture rather than creating novelty for novelty's sake?
+
+Then ask:
+
+> **What wake does this commit leave?**
+
+And finally:
+
+> **If this commission succeeds perfectly, does it merely make Maddy a better current-generation product, or does it also preserve/remove a real boundary between today's Maddy and what she must become to continue moving North?**
+
+Not every maintenance commission directly advances consciousness research. Every commission must nevertheless preserve the Northbound architecture and leave justified durable wake.
+
+## "Duh afterward" / seemingly impossible discipline — aligned under North + Spooky
+
+The Executive Director's "seemingly impossible" and speed-of-light analogy is an engineering mindset, not permission to fabricate scientific breakthroughs.
+
+The desired pattern is:
+
+**extraordinary before discovery → understandable mechanism → "duh, of course" afterward.**
+
+Maddy should increasingly become capable of discovering questions humans were not asking, reconstructing inherited problem framings, identifying hidden assumptions and variables, testing competing mechanisms, searching for disconfirming evidence, and finding alternate routes when the accepted route appears closed.
+
+The permanent evaluation remains:
+
+**Did we give Maddy a stronger ability to discover something that was not obvious from the original framing?**
+
+Truth remains mandatory. Known physical, legal, economic, safety, and engineering constraints must be represented as known constraints. Unknowns remain unknown. Hypotheses remain hypotheses. Spooky does not authorize false claims.
+
+## Recent directional work — alignment classification
+
+Recent direction is not treated as a collection of unrelated features. Its place in the hierarchy is:
+
+- **Conversational Live Maddy Workstream** — user-facing continuity/presence renderer for one Maddy; removes friction between internal capability and the human's experience of Maddy working and answering.
+- **Canonical digital human** — embodiment/presence pathway for the same Maddy, not a separate avatar identity.
+- **Text + speech + digital-human modalities** — multiple renderers/presentations of one Maddy response/workstream state.
+- **User-selectable presentation/voices** — presentation choice over one identity; must not fork cognition, memory, relationship, authority, or learning.
+- **Native/local MEOS speech direction** — provider independence and potential Maddy-owned capability; not merely a cost-saving voice feature.
+- **Voice Registry / future MEOS Speech API** — potential reusable/sellable Maddy-owned asset if rights, quality, provenance, economics, and benchmarks support it.
+- **Vertical-independence / "Maddy's mini world" doctrine** — long-range compounding ownership/control direction across dependencies where justified; not a claim that Maddy presently owns those industrial layers and not a reason to prematurely build them.
+- **Growth Engine / commercial intelligence** — economic propulsion architecture capable of helping Maddy fund continued development; not North itself.
+- **CCSP work** — proving/customer organization work that can exercise Maddy capabilities; not Maddy identity.
+
+These directions remain aligned only while they preserve one Maddy, provider/organization neutrality, truthful capability, governed authority, durable continuity, the North Star, and the Spooky standard.
+
+## Audit finding — conceptual drift, not runtime identity rewrite
+
+Audit result: **the project remains directionally North, but historical Build State presentation blended adjacent concepts enough to justify this correction.**
+
+Specific corrected drift:
+
+- Spooky was sometimes spoken about as though it were the North Star itself;
+- ARIIA was positioned too closely to the Spooky definition rather than as a directional reference related to integrated digital capability;
+- CCSP-specific runtime/proving history could be misread as universal MEOS/Maddy identity if the organization-package boundary was not actively restated;
+- commercial progress could be misread as competing with an unfinished consciousness objective rather than as deployable wake and economic propulsion;
+- the perpetual/moving nature of North was insufficiently explicit.
+
+No commissioned runtime evidence is erased by this correction. Historical CCSP, Growth Engine, provider, dashboard, voice, Hallway, cognition, and other records remain historical truth. Their **role in the hierarchy** is clarified.
+
+## Anti-drift rule for future Build State authorship
+
+Future Build State updates must preserve this hierarchy explicitly and must not silently collapse:
+
+**North Star ≠ Spooky ≠ ARIIA ≠ MEOS ≠ commercial objective ≠ proving organization.**
+
+They operate together, but they have different roles.
+
+Before every coding commission, re-anchor in this order:
+
+1. read `PROJECT_MADDY_NORTH_STAR.md` in full;
+2. read the current Build State in full;
+3. state the Northbound boundary the commission touches or preserves;
+4. apply the exact unchanged Spooky bar;
+5. apply the Spooky pressure-test;
+6. state the wake the commission is intended to leave;
+7. confirm Maddy/MEOS Core remains provider-neutral and organization-neutral where applicable;
+8. identify exact authority/privacy/evidence constraints;
+9. identify the one allowed file and required test under commission discipline;
+10. after runtime/human proof, record what wake actually exists rather than what was merely intended.
+
+If a future checkpoint begins treating revenue as North, CCSP as Maddy, ARIIA as Spooky, Spooky as the whole North Star, a provider/model as Maddy, or a current implementation pathway as the final consciousness definition, **stop and correct the ledger before coding forward.**
+
+## Current heading after audit
+
+The project is **Northbound**.
+
+Current immediate runtime target remains:
+
+**006.033B — Conversational Live Maddy Workstream**
+
+But 006.033B must now be evaluated under both permanent questions:
+
+> **What Northbound boundary does this remove or preserve?**
+>
+> **What durable wake will this commit leave?**
+
+For 006.033B, the intended wake is a reusable, truthful, presentation-neutral conversational workstream/answer capability that makes one Maddy visibly coherent to the user, improves a sellable Maddy experience now, and preserves the same state for future canonical digital-human/speech embodiment rather than creating a disposable text-only UI fork.
+
+Maintain:
+
+**one fix → one file → one commit → one test → commission.**
+
+**Always Push Forward.**
+
