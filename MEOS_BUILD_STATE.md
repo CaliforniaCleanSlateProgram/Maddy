@@ -1,4 +1,4 @@
-[Uploading MEOS_BUILD_STATE.md…]()
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32220905/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
@@ -3869,6 +3869,122 @@ F6 supplies one real replaceable external hand beneath that loop. The Spooky dif
 **Can Maddy take one persistent evidence-bound commercial intention from cognition through a real provider-approved connection and exact human authorization into durable external consequence, then preserve the provider receipt, observe what reality does afterward, distinguish execution from outcome, and use that consequence to improve the next decision—while LinkedIn remains only one replaceable hand underneath her?**
 
 If the next work only adds more posting endpoints without strengthening that closed loop, it does not clear the Spooky direction.
+
+Continue under:
+
+**one fix → one commit → one test → commission.**
+
+**Always Push Forward.**
+
+## COMMISSIONED CHECKPOINT — 006.032G1 — Campaign Operations Consequence Monitoring — 2026-09-15
+
+Status: **COMMISSIONED — LIVE-PROVEN 20/20.**
+
+This checkpoint is additive. It does not rewrite, shorten, weaken, reinterpret, or replace the Project Maddy North Star, exact Spooky standard, Commercial Intelligence / Growth Engine doctrine, QDPA epistemic architecture, durable execution architecture, provider-neutrality, privacy, economic stewardship, human-authority boundaries, or any prior commissioned checkpoint.
+
+### Runtime authority
+
+Latest supplied live browser/runtime evidence proves:
+
+- Executive Monitoring: `1.2.1`;
+- build: `EM121-CAMPAIGN-OPERATIONS-CONSEQUENCE-MONITORING-20260914-A`;
+- commission: `006.032G1`;
+- acceptance schema: `meos.executive-monitoring.campaign-operations-monitoring-acceptance.v1`;
+- acceptance result: `success: true`;
+- passed: `20`;
+- total: `20`.
+
+The same runtime baseline reported Mission Engine durable authority hydration `READY`, `totalActive: 0`, and Mission Dispatcher still stopped with `office_dispatch_authority_not_effective`. The stopped dispatcher remains separate authority evidence and is not repaired or reinterpreted by G1.
+
+### What G1 commissions
+
+006.032G1 begins the 006.032G Campaign Operations, SEO & Sales Follow-Up major stage inside the existing Executive Monitoring organ rather than creating a disconnected campaign-operations brain.
+
+Commissioned behavior proven live includes:
+
+- campaign-operations observation is explicit, versioned, and organization-bound;
+- campaign identity survives into monitoring;
+- verified publication receipt remains preserved as **execution evidence**;
+- execution evidence does not silently become commercial outcome;
+- absent post-publication measurement remains explicitly unknown;
+- execution without measured consequence creates an observation recommendation rather than a fabricated result;
+- SEO/search visibility remains unknown without evidence;
+- supplied SEO evidence can become evidence-present without being promoted into a business-outcome claim;
+- qualified funnel state is counted from supplied evidence;
+- overdue follow-up can be detected;
+- suppression and opt-out state survive monitoring;
+- follow-up may be recommended without granting outreach authority;
+- uncertain consequential provider outcome remains explicit;
+- uncertain provider outcome produces reconciliation rather than automatic retry;
+- Monitoring gains no publication authority;
+- Monitoring gains no spend authority;
+- Monitoring gains no execution or policy authority;
+- execution and outcome remain explicitly separate;
+- the closed commercial loop is strengthened without creating a new campaign brain.
+
+### Commercial truth boundary after G1
+
+G1 does **not** claim that a real LinkedIn post has occurred, that a real production LinkedIn account is connected, that SEO visibility has improved, that leads have been generated, that follow-up has been sent, that a conversion occurred, or that revenue/economic value has been created.
+
+Those remain claims requiring their own real evidence.
+
+The commissioned distinction is:
+
+**authorized execution → provider receipt / execution evidence → observation → measured or unknown consequence → funnel/follow-up state → later attribution/learning.**
+
+A successful provider request is not a successful campaign. A publication receipt is not a lead. A lead is not a conversion. Revenue is not automatically attributable value. Unknown remains unknown until evidence changes it.
+
+### 006.032F closure / operational provider proof boundary
+
+The architectural publishing substrate F1-F6 remains commissioned. F6 is still the first real provider-specific adapter beneath Maddy, and its acceptance deliberately did not send a live LinkedIn request.
+
+The remaining real LinkedIn OAuth connection / first authorized provider execution proof is an operational production proof obligation unless repository/runtime evidence demonstrates a missing architectural seam. Do not manufacture an F7 merely to create another commit. Provider connection proof may proceed as deployment/provider configuration and governed runtime verification through the already commissioned F4/F5/F6 contracts.
+
+Accordingly, Growth Engine development may continue into G while real-provider operational proof remains honestly labeled unproven. Do not represent F6 acceptance as a production LinkedIn connection or public publication.
+
+### Growth Engine major-arc state after G1
+
+- **006.032A — Commercial Intelligence & Self-Growth North Star:** commissioned.
+- **006.032B — Commercial Intelligence Data Contract:** commissioned / live-proven.
+- **006.032C — Commercial Command Dashboard:** commissioned / live-proven.
+- **006.032D — Growth Strategy & Sales Psychology:** commissioned / live-proven 20/20.
+- **006.032E — Creative Studio:** commissioned / live-proven 20/20.
+- **006.032F — Governed Multi-Channel Publishing architecture:** F1-F6 commissioned; first real production provider connection/publication remains a separately labeled operational proof obligation.
+- **006.032G — Campaign Operations, SEO & Sales Follow-Up:** ACTIVE; G1 commissioned / live-proven 20/20.
+- **006.032H — Attribution → Revenue → Learning → Dominance Benchmark:** remains ahead after the necessary G path is proven.
+
+Do not expand G mechanically into arbitrary numbered features. The next G commission must be selected from demonstrated repository/runtime gaps, not checklist momentum.
+
+### G1 Spooky / North Star meaning
+
+G1 is not valuable because ordinary analytics software can count events. Its architectural value is that one persistent Maddy can preserve the meaning and lineage of an authorized commercial intention after external execution, refuse to confuse action with success, maintain uncertainty when reality has not yet answered, recognize follow-up obligations and suppression constraints, and create the evidence-bearing consequence state required for later learning and changed future judgment.
+
+The governing loop remains:
+
+**understand market → identify high-value pain → model buyer → form commercial hypothesis → choose capital-efficient path → create campaign → human authorization → governed execution → monitor → SEO/distribution/follow-up → measure → attribute → convert → revenue/economic value → compare prediction to reality → learn → adapt → retain transferable commercial intelligence → next campaign.**
+
+G1 strengthens the **monitor → observe → preserve consequence truth** segment. It does not claim the entire loop is complete.
+
+### Exact next step after this Build State checkpoint is committed
+
+Before another runtime commission:
+
+1. re-anchor to `PROJECT_MADDY_NORTH_STAR.md` and this Build State;
+2. inspect the latest repository/runtime organs relevant to the remaining 006.032G behavior;
+3. trace the actual path from G1 observation into SEO/distribution state, qualified lead/funnel state, governed follow-up proposal/execution boundaries, and existing Learning/commercial-truth persistence;
+4. identify the single highest-leverage demonstrated missing connection;
+5. prefer strengthening an existing organ over creating a new engine;
+6. do not add another social/provider adapter merely to increase channel count;
+7. do not grant outreach authority merely because follow-up is due;
+8. do not fabricate SEO, lead, conversion, revenue, attribution, or outcome evidence;
+9. preserve provider neutrality, organization isolation, exact human consequential authority, suppression/opt-out, idempotency, uncertainty, and economic stewardship;
+10. only then scope the smallest next commission under **one idea → one file → one commit → one test → commission**.
+
+### Hard post-G1 question
+
+**Can Maddy preserve one commercial hypothesis from strategy and creative intent through authorized execution into observed market reality, recognize what has and has not actually happened across SEO, attention, leads, follow-up, conversion, cost, and economic consequence, decide the next governed move without spamming or manufacturing certainty, and feed the resulting experience back into future commercial judgment so the next campaign is measurably wiser than the last?**
+
+If the next work merely automates follow-up or adds analytics fields without closing that cognitive/economic loop, it does not clear the Spooky direction.
 
 Continue under:
 
