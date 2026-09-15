@@ -11,8 +11,8 @@
 (function initializeMEOSOrganismRegression(global) {
   "use strict";
 
-  const VERSION = "0.1.0";
-  const BUILD_ID = "ORH010-EXTERNAL-ORGANISM-BEHAVIORAL-CONTINUITY-PROOF-20260915-A";
+  const VERSION = "0.1.1";
+  const BUILD_ID = "ORH011-EXTERNAL-CAUSAL-INFLUENCE-DIAGNOSTIC-20260915-A";
   const SCHEMA = "meos.organism-regression.behavioral-continuity.v1";
 
   const Harness = {
@@ -196,6 +196,49 @@
         const restoredObservation = (learning.observations || [])
           .find(item => item?.id === learnedObservationId);
 
+        // 006.033D1.1 — capture the production influence inputs while the
+        // isolated fixture still exists, before finally restores original state.
+        const relevantExperience =
+          brain.clone(after?.homeostasis?.relevantExperience || []);
+        const causalInfluenceDiagnostic = relevantExperience.map(experience => {
+          const relevance = Number(experience?.relevance || 0);
+          const confidence = Number(experience?.confidence || 0);
+          const evidenceCount = Number(experience?.evidenceCount || 0);
+          const evidenceWeight = Math.min(1, evidenceCount / 3);
+          const direction = Number(experience?.direction || 0);
+          const rawInfluence =
+            direction * relevance * confidence * evidenceWeight;
+          const sourceObservationIds =
+            Array.isArray(experience?.sourceObservationIds)
+              ? experience.sourceObservationIds.filter(Boolean)
+              : [];
+          const sourceObservations = (learning.observations || [])
+            .filter(observation =>
+              sourceObservationIds.includes(observation?.id))
+            .map(observation => ({
+              id: observation?.id || null,
+              sourceType: observation?.sourceType || null,
+              outcomeType: observation?.outcomeType || null,
+              verified: observation?.metadata?.verified === true
+            }));
+
+          return {
+            experienceId: experience?.id || null,
+            title: experience?.title || null,
+            relevance,
+            confidence,
+            evidenceCount,
+            evidenceWeight: Number(evidenceWeight.toFixed(6)),
+            direction,
+            directionBasis: experience?.directionBasis || null,
+            sourceObservationIds,
+            sourceObservations,
+            rawInfluence: Number(rawInfluence.toFixed(6)),
+            expectedBoundedInfluenceAtCurrentCoefficient:
+              Number((rawInfluence * 0.12).toFixed(6))
+          };
+        });
+
         const checks = [
           {
             name: "Unverified consequence is refused as learning",
@@ -305,6 +348,8 @@
             relevantExperience:
               brain.clone(after?.homeostasis?.relevantExperience || [])
           },
+          causalInfluenceDiagnostic:
+            brain.clone(causalInfluenceDiagnostic),
           diagnostic: {
             behavioralChangeObserved:
               checks[8]?.passed === true,
