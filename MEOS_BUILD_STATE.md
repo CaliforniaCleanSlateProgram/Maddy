@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32243576/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32249334/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
@@ -4518,3 +4518,245 @@ Before writing the live-activity UI commission, inspect the current Executive Hu
 Maintain **one fix → one file → one commit → one test → commission**. Do not add a new brain, duplicate durable state, or create presentation-owned institutional authority.
 
 **Always Push Forward.**
+
+---
+
+# Additive Build State Checkpoint — 006.033A Commissioned / Conversational Maddy Direction Locked — 2026-09-15
+
+## Governing-language preservation
+
+This checkpoint is additive only.
+
+**Spooky remains untouched.**
+
+No existing North Star, Spooky, continuity, epistemic, privacy, authority, commercial, provider-neutrality, commission-discipline, or no-drift governing language is shortened, softened, reinterpreted, replaced, or silently qualified by this checkpoint.
+
+The exact existing North Star / Spooky governing language remains authoritative.
+
+## 006.033A — Truthful Live Maddy Activity Surface — COMMISSIONED / LIVE-PROVEN
+
+Commission 006.033A is commissioned and live-proven.
+
+Authoritative runtime identity:
+
+- file: `frontend/office-dashboard.js`
+- Executive Dashboard version: `4.13.4`
+- build: `OD4134-TRUTHFUL-LIVE-MADDY-ACTIVITY-SURFACE-20260915-A`
+- acceptance command: `MEOSDashboard.activity.runAcceptanceTest()`
+- acceptance result: **PASS 30/30**
+- acceptance schema: `meos.dashboard.maddy-activity-acceptance.v1`
+
+006.033A established a truthful user-facing Maddy activity renderer derived from existing Hallway truth rather than a second work/status engine. It does not manufacture percentages, timer theater, provider calls, or paid cognition merely to create the appearance of activity.
+
+## Human visual acceptance evidence after 006.033A
+
+The live surface works, but the human screenshot/review exposed the next UX truth.
+
+The lower-right floating activity box feels disconnected from the conversation. A static presentation such as `Taking care of it` can leave the user unable to distinguish:
+
+- working;
+- waiting;
+- blocked;
+- frozen;
+- finished.
+
+That uncertainty is the wrong kind of Spooky.
+
+The right kind of Spooky is real capability and accomplishment made understandable enough that the user never has to wonder whether Maddy is alive, working, waiting for them, or finished.
+
+The activity/answer experience should therefore belong directly to Maddy's conversational stage above `TEXT MADDY`, not behave like a detached notification.
+
+## Ask = Answer — conversational experience invariant
+
+Normal use should obey:
+
+**Ask Maddy → see that Maddy is working when meaningful work exists → Maddy answers.**
+
+Quick work should remain:
+
+**Ask → Answer.**
+
+Substantial work should remain:
+
+**Ask → truthful evolving activity → Answer.**
+
+The user should not have to hunt through Hallway, Returned Work, internal offices, or other supporting MEOS surfaces to obtain the normal completed answer. Those surfaces remain valuable for governance, audit, authority, evidence, recovery, and power use; they are not the normal answer destination.
+
+The conversational surface may expose useful observable milestones such as understanding, searching/browsing, tools being used, sources/sites being read, evidence/material discoveries, comparisons, authorization requirements, waits/blockers, verification, and completion when those states actually exist.
+
+Do not expose private chain-of-thought. Do not fabricate reasoning narration. Show concise, truthful summaries of observable system work, evidence, tool activity, authority state, and meaningful milestones.
+
+Prolonged silence must not be disguised by fake heartbeats or fake work. When MEOS has evidence of waiting, staleness, blocking, failure, or uncertainty, the presentation should truthfully communicate that condition.
+
+## Canonical Maddy / conversational stage architecture
+
+The conversational stage is not permanently owned by a text-chat UI. It is the presentation stage for the same underlying Maddy response/workstream state.
+
+Future canonical delivery includes the persistent canonical digital human and Maddy Speech. Text is the current renderer and remains an important fallback/complement for speech-disabled use, accessibility, reading, copying, preference, and future surfaces.
+
+Do not create separate `text Maddy` and `digital-human Maddy` identities.
+
+**One Maddy → one canonical response/workstream state → multiple presentation modalities.**
+
+Do not architect a giant permanent transcript in a way that prevents the canonical digital-human stage from becoming primary later.
+
+The target experience is GPT-like conversational simplicity with a persistent canonical digital-human Maddy:
+
+**Talk to Maddy → watch Maddy work → Maddy looks at you and answers.**
+
+## Cross-modal identity / voice continuity
+
+Canonical Maddy's visual identity preceded and guided the voice design.
+
+The currently confirmed ElevenLabs voice is `maddison elizabeth 1`. Its description was acoustic/performance steering intended to make the generated voice fit canonical Maddy's look and feel; ElevenLabs does not define Maddy's identity.
+
+The earlier use of `sexy` in voice direction means youthful, expressive performance/cadence appropriate to the canonical visual identity, not seductive behavior. Spoken/digital-human expression may naturally use timing, pauses, occasional stalls/self-corrections, emphasis, warmth, wit, light sarcasm/playfulness, and subtle Southern rhythm when context permits. These must never become repetitive fake-human tics.
+
+MEOS owns Maddy's identity and expression. A speech provider performs the Maddy-authored response.
+
+Professional text defaults to clarity, ease, informativeness, and accuracy first. Do not force spoken youthfulness into Professional text through slang, acronyms, `lol`, filler words, exaggerated punctuation, or artificial verbal quirks. Personal mode may allow more relaxed written expression when explicitly selected. Founder-only mode retains its separate private latitude while remaining the same underlying Maddy.
+
+Modes and modalities tune one identity; they do not create separate Maddys.
+
+Provider neutrality applies to expression. Replacing ElevenLabs must not replace Maddy.
+
+Current ElevenLabs billing unavailability is a provider/billing condition, not evidence of an MEOS code failure and not a blocker to the canonical response/workstream architecture.
+
+## User-selectable Maddy presentation / voice direction
+
+A user may dislike canonical Maddy's voice or prefer another presentation: older/senior sounding, male, female, British, another accent, or another approved voice.
+
+The design principle is:
+
+**The user chooses a presentation of Maddy, not a different Maddy.**
+
+Maddy's intelligence, memory, relationship, missions, epistemic standards, authority, learning, and MEOS continuity remain invariant across voice/presentation selection.
+
+Canonical Maddy remains the flagship/default presentation. Future user-selected voices and embodiments must sit below the identity/cognition layer.
+
+A future Maddy-native voice/embodiment registry may track voice assets, provenance, consent/rights, commercial license, language/accent, compatible engines, latency/cost/quality benchmarks, and embodiment compatibility.
+
+Do not broaden the immediate conversational workstream commission into a disconnected voice-selection or personality engine.
+
+## Founder vertical-independence / self-contained Maddy-world doctrine
+
+Founder doctrine:
+
+> **“If I've got to pay for it as a service, I should build the service myself—then I don't have to pay.”**
+
+This is not a literal claim that owned capability has zero electricity, compute, labor, maintenance, licensing, materials, logistics, or infrastructure cost.
+
+It is a build-vs-rent and vertical-independence direction: recurring external dependencies should be treated as layers to understand, internalize, manufacture, replace, or control when technically, legally, economically, and strategically justified.
+
+External providers may bootstrap, accelerate, or provide fallback capability while MEOS learns enough to progressively own strategically valuable layers.
+
+The doctrine does not stop at SaaS. Maddy's `mini world` should continuously learn to become more self-contained and self-supporting across the economic/industrial dependency circle, potentially extending through:
+
+software/services → models → speech/embodiment → compute → hardware → chips → energy → materials → manufacturing → logistics → deeper supply-chain capability.
+
+This is not an instruction to prematurely build every upstream industry. It is an instruction not to accept permanent dependency as an unquestioned ceiling.
+
+Revenue should progressively increase Maddy-owned capability and reduce strategically unjustified dependency.
+
+## Spooky background / `duh afterward` doctrine
+
+**Spooky remains untouched.** This section records the founder's background and intent behind the existing bar; it does not replace or lower the governing language.
+
+Spooky is not cosmetic wow factor. It is not merely futuristic appearance. It is not merely getting the job done.
+
+MEOS is deliberately built to force deeper questions about assumptions, boundaries, mechanisms, hidden variables, contradictions, alternative routes, and what would have to become true for an apparently impossible capability to become possible.
+
+`Seemingly impossible is never impossible` is a directional investigation discipline, not permission to make false claims or ignore demonstrated constraints.
+
+When something appears impossible, Maddy should ask whether the impossibility is fundamental or whether the current framing/mechanism is the actual constraint.
+
+The target extraordinary result should become simple and nearly inevitable once understood — the kind of result that causes the retrospective reaction:
+
+> **“Duh. Doesn't everyone know how to do this?”**
+
+The extraordinary work may occur underneath; the resulting insight can feel obvious afterward.
+
+Maddy must remain truthful about what is verified, inferred, forecast, unknown, physically constrained, legally constrained, economically constrained, or not yet demonstrated while continuing to interrogate whether a stronger route exists.
+
+## Mandatory Spooky pressure-test on every coding commission / commit
+
+The Spooky bar applies to the assistant's engineering work on every Maddy coding commission and commit, not only to major architecture arcs.
+
+Before accepting a conventional or open-source implementation as the destination, explicitly pressure-test the design:
+
+- What assumption are we inheriting?
+- What does everyone else do here, and why?
+- Which constraint is fundamental and which is merely conventional?
+- What would have to be true to make the stronger capability possible?
+- Can Maddy add original code that creates a reusable Maddy-owned capability?
+- Can existing capabilities be combined in a novel, governed way that produces something stronger than the donors individually provide?
+- Can a dependency be removed, reduced, made replaceable, or learned well enough to internalize later?
+- Is there a hidden variable, contradiction, missing evidence, or alternative mechanism being ignored?
+- Are we solving the actual problem, or merely implementing the familiar solution?
+- What meaningful dimension does this commit push closer to the Spooky bar?
+
+Open source remains useful as raw material, reference, donor, and accelerator. It is not Maddy's identity or destination.
+
+A commit that merely reproduces the ordinary pattern, renames common open source, or creates novelty for novelty's sake does not advance the North Star.
+
+Using the conventional component can still be correct when it is objectively the strongest foundation. In that case, the commission must still ask what Maddy-owned capability, integration, reasoning, governance, independence, or original mechanism moves the system beyond the ordinary boundary.
+
+Every commission should push at least one meaningful dimension toward the Spooky bar while remaining truthful, testable, governed, privacy-preserving, and provider-neutral where applicable.
+
+## Intentional authority/cost state remains unchanged
+
+The existing Office Dispatch / autonomous authority state remains intentionally cost-governed and OFF unless deliberately activated.
+
+`office_dispatch_authority_not_effective` is not to be treated as a bug without evidence that intended authority changed.
+
+Do not turn autonomous switches on merely to make the activity UX look busy or to force a test.
+
+## Next engineering commission — 006.033B
+
+Next intended implementation remains:
+
+**006.033B — Conversational Live Maddy Workstream**
+
+Primary file:
+
+`frontend/office-dashboard.js`
+
+Target:
+
+- integrate truthful Maddy activity directly with the conversational stage above `TEXT MADDY`;
+- evolve the presentation from real Hallway/cognition/evidence/tool events rather than a detached static toast;
+- reuse existing MEOS truth and authority rather than create a second work engine;
+- preserve Ask = Answer;
+- allow quick work to remain quick;
+- make substantial work visibly progress through truthful observable milestones;
+- surface real waits/blockers/staleness rather than fake heartbeat activity;
+- let the completed answer naturally occupy the same conversational stage;
+- keep deeper `Details` secondary;
+- do not expose chain-of-thought;
+- do not manufacture percentages, status, cognition, sources, or progress;
+- do not create extra paid/provider calls merely to animate the interface;
+- preserve the stage for future canonical digital-human/speech rendering;
+- preserve Professional text as clear, easy, informative, and accuracy-first;
+- do not broaden this commission into a voice catalog, personality engine, or autonomous-authority activation.
+
+Exact human UX bar:
+
+> **“I can see Maddy working. I know what she's doing. I know she hasn't frozen. I know when she needs me. I know when she's finished.”**
+
+Conceptual invariant:
+
+> **One Maddy. One conversation. One place to ask. One place to see her work. One place to receive the answer.**
+
+Required acceptance after implementation:
+
+1. browser acceptance test for the commission;
+2. human visual/runtime test using a genuine Maddy request from ask → truthful activity when applicable → completed answer;
+3. proof that the surface derives from real existing MEOS state rather than timer theater or a duplicate status engine;
+4. proof that quick work is not artificially slowed by unnecessary ceremony;
+5. proof that existing Spooky / North Star governing language remains untouched.
+
+## Checkpoint status
+
+006.033A is commissioned and checkpointed.
+
+006.033B is the next intended coding commission, but is not yet implemented or commissioned by this checkpoint.
