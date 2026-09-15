@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32242601/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32243576/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
@@ -4406,5 +4406,115 @@ Continue under:
 And now also:
 
 **fast enough to feel natural → economical enough to scale → intelligent enough to deserve trust.**
+
+**Always Push Forward.**
+
+---
+
+## CHECKPOINT — 2026-09-15 — 006.032 GROWTH ENGINE ARCHITECTURE COMPLETE / H2 LIVE-PROVEN / SPOOKY USER EXPERIENCE LOCKED
+
+### Commission status
+
+Commission `006.032H2` — Repeatable Commercial Dominance Benchmark — is **COMMISSIONED / LIVE-PROVEN 30/30** in Executive Learning v1.3.4, build `EL134-REPEATABLE-COMMERCIAL-DOMINANCE-BENCHMARK-20260915-A`.
+
+Live acceptance proved the Commercial Claim Standard can require repeatable objective evidence across independent eligible trials, compare Maddy against prior-self and a defined relevant alternative using evidence-grounded Net Attributable Value, preserve evidence lineage and alternatives, reject insufficient/contradictory/unknown evidence, and feed both wins and failures into future judgment. Claim eligibility remains separate from publication, outreach, spend, and execution authority.
+
+### 006.032 — Maddy Growth Engine — ARCHITECTURALLY COMPLETE
+
+The eight-major-commission Growth Engine architecture is now complete:
+
+1. `006.032A` — Commercial Intelligence & Self-Growth North Star — commissioned.
+2. `006.032B` — Commercial Intelligence Data Contract — commissioned.
+3. `006.032C` — Commercial Command Dashboard — commissioned.
+4. `006.032D` — Growth Strategy & Sales Psychology — commissioned / live-proven.
+5. `006.032E` — Creative Studio — commissioned / live-proven.
+6. `006.032F` — Governed Multi-Channel Publishing — architectural arc implemented and internally accepted; real production-provider proof remains distinct and must not be fabricated.
+7. `006.032G` — Campaign Operations, SEO & Sales Follow-Up — architecturally closed and end-to-end integration proven through G4 30/30.
+8. `006.032H` — Attribution → Revenue → Learning → Dominance Benchmark — H1 24/24 and H2 30/30 live-proven; architecturally complete.
+
+Architectural completion is **not** a claim that Maddy has already achieved market dominance, generated attributable production revenue, connected every production channel, or beaten alternatives in real-world trials. Those are empirical obligations that must be earned with evidence.
+
+### Growth Engine closed-loop invariant
+
+The commissioned architecture now supports the governed commercial sequence:
+
+**understand market → identify high-value pain → model buyer → form commercial hypothesis → choose capital-efficient path → create campaign → human authorization → governed execution → monitor → SEO/distribution/follow-up → measure → attribute → convert → revenue/economic value → compare prediction to reality → learn → adapt → retain transferable commercial intelligence → benchmark repeatably → next campaign.**
+
+The end-to-end commercial consequence loop preserves organization, campaign, hypothesis, evidence, authority, and economic lineage. Execution evidence does not become outcome; revenue does not automatically become attributable value; correlation does not become causation; unknown does not become zero; one successful campaign does not become dominance.
+
+### Speed-without-waste — LOCKED
+
+Responsiveness is a first-class engineering requirement and part of the Spooky standard.
+
+Maddy must optimize both:
+
+- **time-to-first-useful-response** — how quickly the human can tell Maddy understood and useful work has begun; and
+- **time-to-completed-result** — how quickly the requested governed work is actually complete.
+
+Engineering implications:
+
+- inspect critical-path latency during every relevant commission;
+- avoid unnecessary serial organ/provider round trips;
+- stream, pipeline, parallelize, cache, reuse, or execute locally when that is safe, truthful, and economically justified;
+- do not multiply paid model/TTS/provider requests merely to appear faster;
+- keep long-running work durable rather than blocking the conversational surface;
+- preserve epistemic integrity, privacy, evidence quality, exact human authority, and safety even when optimizing latency.
+
+Speech is a canonical case: Maddy should move toward incremental understanding/cognition and streamed output/TTS rather than waiting for every serial stage to finish before the human receives useful feedback. Streaming is not permission to create one paid request per sentence.
+
+### Spooky user experience — LOCKED
+
+**Spooky is the user experience, not user-interface complexity.**
+
+The user-facing standard is:
+
+> **Spooky underneath. Effortless on top.**
+
+The more sophisticated Maddy becomes internally, the simpler and more natural she should feel externally. The user should experience a system that appears to understand, coordinate, remember, act, recover, measure, and learn without being forced to understand MEOS organ names, developer logs, schemas, or internal plumbing.
+
+Seemingly-impossible capability should emerge from behavior, continuity, intelligence, speed, and consequence awareness — not from a crowded cockpit of controls.
+
+### Truthful live Maddy activity surface — NEXT UX COMMISSION
+
+Long-running cognition/execution must become visibly understandable to the user. Maddy must not appear frozen while real work is occurring.
+
+The next UX commission will establish a **truthful live Maddy activity surface** in the Executive Hub/dashboard. This is not decorative progress theater and not a temporary fake spinner. Displayed activity must be derived from actual MEOS state/events.
+
+Default human-facing states should use plain language rather than internal organ names, with concepts such as:
+
+**Thinking → Checking what I know → Researching → Building the plan → Needs your approval → Taking action → Watching results → Learning → Done**
+
+Only states that actually occur may be shown. No fake percentages, fake thinking, fake research, or manufactured progress.
+
+The surface should be capable of representing parallel durable work without overwhelming the user, summarize what Maddy is doing and why, expose genuine approval/authority boundaries, and make durable/background work understandable after navigation or return. Deeper technical truth may be expandable for users who want it, but the default experience remains calm and human.
+
+The permanent architecture is **activity state separate from presentation**. The current dashboard renderer may later be visually redesigned without discarding the underlying Maddy activity-state contract. If the first renderer clears the Spooky bar, it may remain.
+
+### UX acceptance direction
+
+The activity surface must eventually prove at minimum:
+
+- immediate truthful acknowledgment when substantial work begins;
+- state derived from real Maddy/MEOS work rather than timers or canned animation;
+- plain-language mapping from internal state to human meaning;
+- truthful representation of waiting-for-human-approval boundaries;
+- support for durable/background work and returned work;
+- support for parallel activity without UI noise;
+- completed/failed/unknown/blocked states that do not fabricate success;
+- expandable detail without forcing technical complexity into the default view;
+- no new execution authority from presentation;
+- no additional paid cognition/provider call merely to render status;
+- latency-conscious rendering and negligible critical-path overhead;
+- one persistent Maddy identity across the surface.
+
+### Existing separate runtime condition
+
+The Mission Dispatcher condition remains unresolved and separate from Growth Engine architectural completion: durable authority hydration has been observed READY while office dispatch remains ineffective (`office_dispatch_authority_not_effective`). Do not silently conflate this with the Growth Engine or activity-surface work.
+
+### Next engineering move
+
+Before writing the live-activity UI commission, inspect the current Executive Hub/dashboard and existing durable Mission/Hallway/returned-work/activity-relevant state surfaces. Identify the smallest authoritative seam that can expose real Maddy activity without creating a disconnected status engine.
+
+Maintain **one fix → one file → one commit → one test → commission**. Do not add a new brain, duplicate durable state, or create presentation-owned institutional authority.
 
 **Always Push Forward.**
