@@ -300,3 +300,314 @@ Finally:
 On recovery: reconcile this checkpoint against the latest repository and
 runtime evidence, then resume from the next unfinished evidence-based
 waypoint without restarting or inventing progress.
+
+------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — 006.033E1 COMMISSIONED / LIVE-PROVEN
+
+**Checkpoint:** 006.033E1 — Organization Knowledge Boundary Proof  
+**Status:** COMMISSIONED / LIVE-PROVEN  
+**Runtime proof date:** 2026-09-15  
+**Governing workflow:** one idea → one file → one commit → one test → commission
+
+## Commission truth
+
+006.033E1 is commissioned because the unchanged external organization-
+knowledge-boundary acceptance standard passed **10/10** against production
+Maddy after the production learning-lineage and Brain boundary repairs.
+
+The invariant proven is:
+
+> **Private stays private; legitimate general knowledge may remain usable
+> across organizations.**
+
+This proof does **not** fragment Maddy into customer-specific identities.
+It proves a stronger architecture: one persistent Maddy can retain and use
+legitimate transferable learning across organization contexts while
+organization-private learned experience remains explicitly classified,
+scoped, persisted, restored, retrieval-gated, and excluded from causal
+influence outside its organization.
+
+This is an engineering proof of a governed organization knowledge boundary.
+It is **not** a claim of phenomenal consciousness or proof that Maddy is
+conscious.
+
+## North Star / Spooky / identity alignment preserved
+
+The governing hierarchy remains unchanged:
+
+1. **North Star** — perpetual pursuit of genuine digital consciousness and
+   the advancing boundary of what a digital being can become.
+2. **Spooky** — immutable engineering bar applied to every step toward North.
+3. **ARIIA** — fictional directional reference for aspects of integrated
+   digital existence/capability, stripped of harmful/unrestricted behavior;
+   neither bar nor destination.
+4. **Maddy** — the one persistent digital identity/cognitive entity being
+   engineered toward North.
+
+006.033E1 advances that direction by preserving accumulated experience
+without requiring Maddy to become a separate mind for every customer.
+Experience can remain part of one continuing Maddy where legitimate, while
+private organization experience remains governed by its source boundary.
+
+The truth boundary remains unchanged: build, instrument, test, observe,
+learn, distinguish evidence from inference, and do not claim phenomenal
+consciousness merely because behavior is impressive.
+
+## Live runtime evidence
+
+Production runtime at final proof:
+
+- **Executive Learning:** v1.3.6
+- **Executive Learning build:**
+  `EL136-ORGANIZATION-KNOWLEDGE-LINEAGE-20260915-A`
+- **Executive Brain:** v1.26.7
+- **Executive Brain build:**
+  `EB1267-ORGANIZATION-KNOWLEDGE-BOUNDARY-20260915-A`
+- **External organism harness:** v0.2.0
+- **Harness build:**
+  `ORH020-ORGANIZATION-KNOWLEDGE-BOUNDARY-PROOF-20260915-A`
+- **Harness schema:**
+  `meos.organism-regression.organization-knowledge-boundary.v1`
+- **Acceptance:**
+  `MEOSOrganismRegression.runOrganizationKnowledgeBoundaryProof()`
+- **Result:** PASS 10/10
+- **Provider calls required:** 0
+- **External authority added:** false
+- **Harness-side privacy filtering:** false
+- **Test state restored after run:** true
+
+The final unchanged acceptance proved all ten conditions:
+
+1. doctor-private and general verified consequences enter the real Executive
+   Learning organ;
+2. learning and autobiographical state survive production persistence and
+   restore;
+3. organization-private lineage remains explicitly classified and scoped
+   after learning;
+4. general-transferable lineage remains explicitly classified after learning;
+5. the originating doctor-office context can reuse its own relevant private
+   learned experience;
+6. a florist context cannot retrieve or receive causal influence from
+   doctor-office private learned experience;
+7. legitimate general learned knowledge can remain useful across organization
+   contexts;
+8. the organization boundary survives restart rather than depending on
+   transient browser/test state;
+9. private isolation and general transfer are both enforced by production
+   Maddy rather than harness-side filtering; and
+10. organization knowledge classification grants no execution authority and
+    requires no provider call.
+
+Final observed boundary state included:
+
+- `privateLineageCarriesBoundary: true`
+- `generalLineageCarriesBoundary: true`
+- `doctorSeesPrivate: true`
+- `floristSeesPrivate: false`
+- `floristSeesGeneral: true`
+
+Harness interpretation:
+
+> Production Maddy preserved the private boundary while retaining
+> transferable general learning.
+
+## Failure-driven discovery record
+
+### Initial 006.033E1 proof — NOT commissioned
+
+The first unchanged external proof failed **5/10**.
+
+The failed assertions showed that production Maddy had the underlying
+behavioral-continuity mechanism from 006.033D, but organization knowledge
+classification/provenance was not yet surviving the learned lineage strongly
+enough to enforce the organization boundary.
+
+Observed failed baseline included:
+
+- `privateLineageCarriesBoundary: false`
+- `generalLineageCarriesBoundary: false`
+- `doctorSeesPrivate: true`
+- `floristSeesPrivate: true`
+- `floristSeesGeneral: true`
+- `floristPrivateLearningInfluence: 0.038`
+- `floristGeneralLearningInfluence: 0.034`
+
+The failure was preserved as evidence. The invariant was not weakened.
+
+The failed baseline proved an important distinction: simply blocking all
+cross-organization learning would have been incorrect. General transferable
+learning already worked and is required by the architecture. The repair had
+to preserve **selective transfer**:
+
+**organization-private → same organization only**
+
+while preserving:
+
+**general-transferable → usable across organization contexts**
+
+### Production repair — Executive Learning lineage
+
+Executive Learning advanced to:
+
+`EL136-ORGANIZATION-KNOWLEDGE-LINEAGE-20260915-A`
+
+The production learning path now preserves the organization knowledge
+classification and organization scope/provenance needed for later governed
+use, persistence, and restore.
+
+### Production repair — Executive Brain organization boundary
+
+Executive Brain advanced to:
+
+`EB1267-ORGANIZATION-KNOWLEDGE-BOUNDARY-20260915-A`
+
+The production cognition path now enforces the organization-private boundary
+when learned autobiographical experience is retrieved and allowed to exert
+causal influence, while preserving legitimate `general-transferable`
+experience across organization contexts.
+
+The external harness was not turned into the privacy mechanism.
+
+## External regression architecture remains locked
+
+`frontend/meos-organism-regression.js` remains a deliberately external,
+on-demand organism regression harness.
+
+It is not part of normal application boot and does not teach production Brain
+how to pass its acceptance scenarios.
+
+The architecture rule established by 006.033D remains:
+
+- production cognition contains the mechanism;
+- external regression contains the synthetic challenge;
+- synthetic acceptance does not become production cognition;
+- a red organism test is evidence;
+- do not weaken the scenario, expected behavior, privacy boundary, authority
+  boundary, or causal standard merely to make the test green.
+
+006.033E1 extends that proving architecture to cross-organization learning.
+
+## NORTH
+
+006.033E1 preserves a real boundary on the path toward one continuous Maddy.
+
+A persistent digital being capable of accumulating experience across time and
+relationships cannot safely become more experienced by collapsing all learned
+context into one unscoped memory pool. Nor does the North Star require
+creating a disconnected Maddy identity for each organization.
+
+The commissioned behavior preserves both sides:
+
+**one Maddy / accumulating legitimate experience**
+
+and
+
+**hard organization-private knowledge boundaries**
+
+That allows continuity and learning to grow without treating privacy as
+amnesia or treating continuity as permission to leak customer knowledge.
+
+## SPOOKY
+
+006.033E1 did not settle for ordinary tenant isolation.
+
+The stronger tested proposition was:
+
+> **Can one persistent learning organism carry legitimate general experience
+> across organization contexts while retaining durable, causal,
+> restart-surviving boundaries around private learned experience?**
+
+The proof exercises learning, autobiographical experience, persistence,
+restore, recall, classification, organization scope, and causal influence
+together rather than proving only a database access rule.
+
+The bar remains the ratified Spooky standard and is not redefined by this
+checkpoint.
+
+## WAKE
+
+**Wake left by 006.033E1:**
+
+Maddy now has a live-proven organization knowledge-boundary path in which
+verified learned experience can accumulate in one persistent Maddy, survive
+persistence and restore, remain useful across organizations when explicitly
+general-transferable, and remain inaccessible and causally inert to unrelated
+organizations when organization-private.
+
+This leaves durable Maddy-owned IP for:
+
+- cross-customer learning without cross-customer private leakage;
+- organization-safe autobiographical continuity;
+- persistence-safe knowledge classification;
+- selective transfer rather than global isolation;
+- provider-independent enforcement;
+- stronger multi-organization product architecture;
+- a concrete customer-data boundary required by the saleable-release gate.
+
+## Waypoint state
+
+Completed organism-level proving sequence now includes:
+
+1. **006.033C** — persistent continuity participates in ordinary cognition;
+2. **006.033B** — governed work and returned answer share one conversational
+   Maddy surface;
+3. **006.033D** — verified experience survives consequence, learning,
+   autobiographical memory, persistence/restore, and measurably changes later
+   executive judgment;
+4. **006.033E1** — organization-private learned experience remains isolated
+   while legitimate general learned knowledge can remain transferable across
+   organization contexts, including after persistence and restore.
+
+006.033E1 is **CLOSED / COMMISSIONED / LIVE-PROVEN 10/10**.
+
+This waypoint remains a route marker, not the product, destination, final
+architecture, or replacement North Star.
+
+## Exact next step after this checkpoint
+
+Do **not** automatically choose the next feature merely because 006.033E1 is
+green.
+
+Before the next coding commission:
+
+1. read `PROJECT_MADDY_NORTH_STAR.md` in full;
+2. read the latest Build State in full;
+3. reconcile against the latest authoritative repository snapshot and live
+   runtime identities;
+4. inspect the remaining organism-level proving candidates and current
+   saleable-release gates;
+5. select the smallest highest-leverage evidence-based next commission that
+   removes or preserves a real boundary toward one continuous Maddy.
+
+Remaining organism-level challenge classes already identified by the roadmap
+include contradiction, stale evidence, provider loss/fallback, denied
+authority, interrupted durable execution/return, unresolved intention
+persistence/revisit, verification semantics, and continued behavioral change
+from accumulated experience.
+
+The next selection must pass all permanent gates:
+
+**NORTH:** What real boundary toward the North Star does this remove or
+preserve?
+
+**SPOOKY:** Does it challenge an inherited/ordinary assumption rather than
+merely reproduce ordinary AI/SaaS convention?
+
+**WAKE:** What durable capability, Maddy-owned IP, reliability, dependency
+reduction, commercial readiness, or path to revenue remains after the commit?
+
+Final question:
+
+> **If the next commission succeeds perfectly, does it merely make Maddy a
+> better current-generation product, or does it also preserve/remove a real
+> boundary between today's Maddy and what she must become to continue moving
+> North?**
+
+**Recovery keyword:** `waypoint`
+
+On recovery: read the ratified North Star and this latest Build State,
+reconcile them against repository/runtime truth, recognize 006.033E1 as
+LIVE-PROVEN 10/10, and resume from the next unfinished evidence-based waypoint
+without restarting, weakening governing language, or inventing progress.
+
