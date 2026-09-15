@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.5";
-  const BUILD_ID = "EB1265-CONTINUITY-CONDITIONED-COGNITION-20260915-A";
+  const VERSION = "1.26.6";
+  const BUILD_ID = "EB1266-CAUSAL-EXPERIENCE-POLARITY-20260915-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -17289,9 +17289,50 @@
         const confidence = Math.max(0, Math.min(1, Number(lesson.confidence ?? 0.5)));
         const evidenceCount = Math.max(1, Number(lesson.evidenceCount || lesson.sourceObservationIds?.length || 1));
         const type = String(lesson.lessonType || "").toLowerCase();
-        const negative = /failure|risk|avoid|prevent|block|unmet/.test(type + " " + lessonText.toLowerCase());
-        const positive = /success|effective|valuable|practice|opportunity/.test(type + " " + lessonText.toLowerCase());
-        const direction = negative && !positive ? -1 : positive && !negative ? 1 : 0;
+
+        /*
+         * Commission 006.033D2 — Causal Experience Polarity
+         *
+         * Future judgment must not decide whether lived experience was helpful
+         * or harmful by scanning lesson prose for words such as "success" or
+         * "failure" when the originating Executive Learning observation already
+         * carries the governed outcome. Prefer that causal lineage. Lexical
+         * classification remains only a compatibility fallback for historical
+         * lessons whose source observation is unavailable.
+         */
+        const sourceObservationIds = Array.isArray(lesson.sourceObservationIds)
+          ? lesson.sourceObservationIds.filter(Boolean)
+          : [];
+        const sourceObservations = Array.isArray(learning?.observations)
+          ? learning.observations.filter(observation =>
+              sourceObservationIds.includes(observation?.id)
+            )
+          : [];
+        const verifiedConsequenceObservations = sourceObservations.filter(observation =>
+          observation?.sourceType === "executive-hallway-verified-consequence" &&
+          observation?.metadata?.verified === true
+        );
+        const outcomeTypes = verifiedConsequenceObservations
+          .map(observation => String(observation?.outcomeType || "").toLowerCase())
+          .filter(Boolean);
+
+        let direction = 0;
+        let directionBasis = "neutral";
+        if (outcomeTypes.length) {
+          const successful = outcomeTypes.some(value => value === "success");
+          const adverse = outcomeTypes.some(value =>
+            value === "failure" || value === "partial-success"
+          );
+          direction = successful && !adverse ? 1 : adverse && !successful ? -1 : 0;
+          directionBasis = "verified-consequence-outcome";
+        } else {
+          const lexicalBasis = type + " " + lessonText.toLowerCase();
+          const negative = /failure|risk|avoid|prevent|block|unmet/.test(lexicalBasis);
+          const positive = /success|effective|valuable|practice|opportunity/.test(lexicalBasis);
+          direction = negative && !positive ? -1 : positive && !negative ? 1 : 0;
+          directionBasis = "legacy-lesson-lexical-fallback";
+        }
+
         return {
           id: lesson.id || null,
           title: lesson.title || "Institutional lesson",
@@ -17299,6 +17340,8 @@
           confidence,
           evidenceCount,
           direction,
+          directionBasis,
+          sourceObservationIds: this.clone(sourceObservationIds),
           status: lesson.status || "unknown"
         };
       }).filter(item => item.relevance >= 0.18)
