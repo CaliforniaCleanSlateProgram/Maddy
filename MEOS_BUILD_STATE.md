@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32220905/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32223518/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32200837/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32178866/MEOS_BUILD_STATE.md)
@@ -3985,6 +3985,139 @@ Before another runtime commission:
 **Can Maddy preserve one commercial hypothesis from strategy and creative intent through authorized execution into observed market reality, recognize what has and has not actually happened across SEO, attention, leads, follow-up, conversion, cost, and economic consequence, decide the next governed move without spamming or manufacturing certainty, and feed the resulting experience back into future commercial judgment so the next campaign is measurably wiser than the last?**
 
 If the next work merely automates follow-up or adds analytics fields without closing that cognitive/economic loop, it does not clear the Spooky direction.
+
+Continue under:
+
+**one fix → one commit → one test → commission.**
+
+**Always Push Forward.**
+
+## COMMISSIONED CHECKPOINT — 006.032G2 — Symmetric Campaign Consequence Learning — 2026-09-15
+
+Status: **COMMISSIONED — LIVE-PROVEN 24/24.**
+
+This checkpoint is additive. It preserves every prior North Star, Spooky, commercial-truth, privacy, provider-neutrality, organization-isolation, durable-execution, epistemic, economic-stewardship, and human-authority constraint. It does not convert observed correlation into causal certainty and does not grant external-action authority.
+
+### Runtime authority
+
+Latest supplied live browser/runtime evidence proves:
+
+- Executive Learning: `1.3.2`;
+- build: `EL132-SYMMETRIC-CAMPAIGN-CAUSE-LEARNING-20260914-A`;
+- commission: `006.032G2`;
+- acceptance schema: `meos.executive-learning.campaign-consequence-assimilation-acceptance.v2`;
+- acceptance result: `success: true`;
+- passed: `24`;
+- total: `24`.
+
+The same runtime loaded Executive Monitoring `1.2.1` / `EM121-CAMPAIGN-OPERATIONS-CONSEQUENCE-MONITORING-20260914-A`, preserving the G1 observation seam immediately upstream of G2. Durable authority hydration remained `READY`. Mission Dispatcher remained stopped with `office_dispatch_authority_not_effective`; G2 does not alter that separate authority condition.
+
+### What G2 commissions
+
+006.032G2 connects G1 campaign consequence observation into the existing Executive Learning / durable commercial-truth organ. It does not create a second Growth Engine or campaign brain.
+
+Commissioned behavior proven live includes:
+
+- G1 monitoring observation is explicitly consumed;
+- campaign and creative-hypothesis lineage survive assimilation;
+- organization identity remains bound;
+- execution remains separate from commercial consequence;
+- unknown commercial consequence remains unknown;
+- provider receipt lineage remains evidence-addressable;
+- unknown SEO state produces evidence collection rather than invented optimization;
+- qualified-lead evidence survives diagnosis;
+- overdue follow-up becomes a separately authorized recommendation;
+- suppression evidence survives diagnosis;
+- measured success is explicitly recognized;
+- **what worked remains bound to the campaign conditions under which it worked**;
+- **why it worked is represented as an evidence-addressable mechanism hypothesis rather than a naked causal fact**;
+- correlation is not silently promoted to causation;
+- alternative explanations survive successful learning;
+- successful conditions are preserved before variation;
+- success recommends **test-and-preserve rather than blind scaling**;
+- successful learning enters the existing durable commercial-truth path;
+- uncertain provider execution demands reconciliation;
+- uncertain provider execution is never automatically retried;
+- learning grants no outreach, publication, spend, execution, or policy authority;
+- commercial adjustment remains recommendation-only.
+
+### Symmetric learning doctrine — LOCKED
+
+Maddy must learn from **success and failure**.
+
+A failed or weak campaign is not the only source of intelligence. When measured reality indicates success, Maddy must preserve the conditions surrounding that success, compare the observed result with the original prediction/hypothesis, identify evidence-supported candidate mechanisms, retain plausible alternative explanations, state the causal confidence honestly, and determine what next test would distinguish among explanations when uncertainty remains.
+
+The governing successful-learning path is:
+
+**observed success → evidence → predicted-vs-actual comparison → preserve conditions → candidate mechanism(s) → alternative explanations → causal-confidence boundary → discriminating test / preserve-and-test recommendation → later consequence → stronger or revised commercial learning.**
+
+The governing failure-learning path is symmetrical:
+
+**observed failure/underperformance → evidence → predicted-vs-actual comparison → preserve conditions → candidate failure mechanism(s) → alternative explanations → causal-confidence boundary → discriminating test / bounded adjustment recommendation → later consequence → stronger or revised commercial learning.**
+
+One successful observation does not authorize Maddy to claim that she knows the cause. Repetition without controlled evidence does not automatically establish causality. Maddy may say what happened, what evidence supports a mechanism hypothesis, what else could explain the result, how confident the evidence warrants being, and what next observation or experiment could change that judgment.
+
+Likewise, success does not silently grant authority to scale, spend, republish, contact, follow up, or broaden scope. Consequential execution remains separately governed.
+
+### What G2 still does not prove
+
+G2 does **not** prove that:
+
+- a real production LinkedIn account is connected;
+- a real LinkedIn publication has occurred;
+- Maddy has acquired live SEO/search-console data;
+- Maddy has acquired live website/landing-page analytics;
+- a real lead has entered a live sales pipeline;
+- Maddy has sent a real sales follow-up;
+- a real conversion or payment has occurred;
+- revenue has been causally attributed to Maddy;
+- Net Attributable Value has been measured;
+- any successful campaign mechanism has been causally established in production;
+- the complete 006.032G or 006.032H major stage is commissioned merely because G2 passed.
+
+Those remain evidence obligations requiring the correct existing seams, real data, governed authority, and runtime proof.
+
+### Growth Engine major-arc state after G2
+
+- **006.032A — Commercial Intelligence & Self-Growth North Star:** commissioned.
+- **006.032B — Commercial Intelligence Data Contract:** commissioned / live-proven.
+- **006.032C — Commercial Command Dashboard:** commissioned / live-proven.
+- **006.032D — Growth Strategy & Sales Psychology:** commissioned / live-proven 20/20.
+- **006.032E — Creative Studio:** commissioned / live-proven 20/20.
+- **006.032F — Governed Multi-Channel Publishing architecture:** F1-F6 commissioned; first real production provider connection/publication remains a separately labeled operational proof obligation.
+- **006.032G — Campaign Operations, SEO & Sales Follow-Up:** ACTIVE; G1 commissioned / live-proven 20/20; G2 commissioned / live-proven 24/24.
+- **006.032H — Attribution → Revenue → Learning → Dominance Benchmark:** remains the eighth and final major stage after the necessary G path is honestly closed.
+
+Do not manufacture G3 merely because G2 exists. Determine whether G has another real architectural dependency by inspection. If the remaining gaps are operational provider/data connections rather than missing Maddy architecture, label them honestly and close G without artificial commission inflation.
+
+### G2 Spooky / North Star meaning
+
+Ordinary analytics can report that a number went up or down. G2 advances the deeper requirement: one persistent Maddy can carry the original commercial hypothesis into observed reality, preserve the exact conditions around the result, distinguish execution from consequence, distinguish correlation from causation, generate competing explanations for success or failure, preserve uncertainty, and use later evidence to strengthen or overturn her own explanation.
+
+The target is not campaign memory as a log. The target is **commercial experience becoming better judgment**.
+
+That means a future campaign should benefit not merely from “Campaign X worked,” but from an evidence-grounded model of **what worked, under what conditions, why it may have worked, what else could explain it, what remains unknown, and what should be tested next**—without leaking organization-private facts or turning an uncertain lesson into universal truth.
+
+### Exact next step after this Build State checkpoint is committed
+
+Before another runtime file:
+
+1. re-anchor to `PROJECT_MADDY_NORTH_STAR.md` and this Build State;
+2. inspect the latest repository/runtime state for the remaining 006.032G requirements: scheduling, live SEO/search visibility acquisition, website/landing performance, lead/funnel handling, governed sales follow-up, monitoring/diagnosis, and evidence-backed adjustment;
+3. distinguish **missing architecture** from **unproven operational integration/data**;
+4. verify whether existing Executive Automation, Website Intelligence, Executive Monitoring, Executive Learning, Provider Manager, Hallway/Durable Execution, and commercial-truth organs already provide the necessary seams;
+5. do not create a new engine where connection or configuration is sufficient;
+6. do not create G3 merely to increase commit count;
+7. preserve suppression/opt-out, cadence/fatigue, exact human authority, idempotency, reconciliation of uncertain external outcomes, organization isolation, and provider neutrality;
+8. if a genuine single missing synapse remains, commission only that smallest one-file seam;
+9. if G architecture is already sufficient and remaining proof is operational, record those proof obligations and close 006.032G honestly;
+10. only after G is closed, enter **006.032H — Attribution → Revenue → Learning → Dominance Benchmark**.
+
+### Hard post-G2 question
+
+**Can Maddy now operate a campaign after publication as one continuous commercial intention—acquire the evidence needed to see search, website, funnel, and follow-up reality; preserve exact authority and suppression boundaries; diagnose both success and failure; determine what likely caused each result without manufacturing causality; and turn that experience into a measurably wiser next commercial decision—before attribution, revenue, and dominance benchmarking close the final H loop?**
+
+If the remaining G work is only a missing live provider/data connection, do not disguise configuration as new intelligence. If a missing architectural synapse prevents that loop, prove it before coding it.
 
 Continue under:
 
