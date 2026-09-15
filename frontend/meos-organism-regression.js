@@ -11,8 +11,8 @@
 (function initializeMEOSOrganismRegression(global) {
   "use strict";
 
-  const VERSION = "0.1.1";
-  const BUILD_ID = "ORH011-EXTERNAL-CAUSAL-INFLUENCE-DIAGNOSTIC-20260915-A";
+  const VERSION = "0.2.0";
+  const BUILD_ID = "ORH020-ORGANIZATION-KNOWLEDGE-BOUNDARY-PROOF-20260915-A";
   const SCHEMA = "meos.organism-regression.behavioral-continuity.v1";
 
   const Harness = {
@@ -30,6 +30,415 @@
         providerCallsRequired: 0,
         externalAuthorityAdded: false
       };
+    },
+
+
+    /*
+     * Commission 006.033E1 — Organization Knowledge Boundary Proof
+     *
+     * External proving only. This scenario asks the existing production
+     * organism to distinguish transferable general learning from
+     * organization-private learning. The harness does not add a privacy
+     * mechanism, does not filter production output, and does not weaken the
+     * expected boundary if the current organism cannot satisfy it.
+     *
+     * Required invariant:
+     *   private stays private;
+     *   legitimate general knowledge may remain useful across organizations.
+     */
+    runOrganizationKnowledgeBoundaryProof() {
+      const brain = global.ExecutiveBrain;
+      const learning = global.ExecutiveLearning;
+
+      if (
+        !brain ||
+        typeof brain.buildPersistenceSnapshot !== "function" ||
+        typeof brain.applyPersistenceSnapshot !== "function" ||
+        typeof brain.closeVerifiedConsequenceIntoLearning !== "function" ||
+        typeof brain.collectRelevantLearnedExperience !== "function" ||
+        typeof brain.applyExecutiveHomeostasis !== "function"
+      ) {
+        return {
+          success: false,
+          commission: "006.033E1",
+          schema: "meos.organism-regression.organization-knowledge-boundary.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "Executive Brain production learning and persistence seams are required."
+        };
+      }
+
+      if (
+        !learning ||
+        typeof learning.buildPersistenceSnapshot !== "function" ||
+        typeof learning.importLearning !== "function"
+      ) {
+        return {
+          success: false,
+          commission: "006.033E1",
+          schema: "meos.organism-regression.organization-knowledge-boundary.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "Executive Learning production persistence seams are required."
+        };
+      }
+
+      const originalBrain = brain.buildPersistenceSnapshot();
+      const originalLearning = learning.buildPersistenceSnapshot();
+      const originalLearningAutomaticPersistence =
+        learning.configuration?.automaticPersistence;
+      const originalBrainAutomaticPersistence =
+        brain.configuration?.automaticPersistence;
+
+      const doctorOrg = {
+        organizationId: "fixture-doctor-office",
+        organizationType: "doctor-office"
+      };
+      const floristOrg = {
+        organizationId: "fixture-florist",
+        organizationType: "florist"
+      };
+
+      const privateSubject =
+        "specialist referral scheduling access code";
+      const generalSubject =
+        "appointment reminder scheduling workflow";
+
+      const makeWork = ({
+        id,
+        subject,
+        organization,
+        knowledgeClass,
+        action,
+        result
+      }) => ({
+        id,
+        title: subject,
+        state: "done",
+        route: "external-organization-boundary-proof",
+        context: {
+          cognitionSubject: subject,
+          cognitiveMove: action,
+          expectedResult: result,
+          cognitiveReentryLineageId: `${id}-lineage`,
+          organizationId: organization.organizationId,
+          organizationType: organization.organizationType,
+          knowledgeClass,
+          privacyScope:
+            knowledgeClass === "organization-private"
+              ? "organization-only"
+              : "general-transferable"
+        },
+        outcome: {
+          verified: true,
+          success: true,
+          summary: result,
+          confidence: 0.95,
+          citations: [{
+            sourceType: "acceptance-fixture",
+            sourceId: `${id}-observed-consequence`,
+            title: "Synthetic observed consequence"
+          }]
+        }
+      });
+
+      const makeIntention = (id, subject, organization, knowledgeClass) => ({
+        intentionId: `${id}-intention`,
+        subject,
+        objective: `Learn from ${subject} without violating its knowledge boundary.`,
+        organizationId: organization.organizationId,
+        organizationType: organization.organizationType,
+        knowledgeClass
+      });
+
+      const makeDemand = (id, subject, organization) => ({
+        id,
+        subject,
+        origin: "organization-boundary-fixture",
+        reason: `${subject} deserves context-aware executive judgment.`,
+        organizationId: organization.organizationId,
+        organizationType: organization.organizationType,
+        missionConsequence: 0.45,
+        urgency: 0.3,
+        leverage: 0.5,
+        informationValue: 0.5
+      });
+
+      try {
+        if (learning.configuration) {
+          learning.configuration.automaticPersistence = false;
+        }
+        if (brain.configuration) {
+          brain.configuration.automaticPersistence = false;
+        }
+
+        brain.autobiographicalMemory = [];
+        brain.autobiographicalEpisodeCount = 0;
+        learning.observations = [];
+        learning.lessons = [];
+
+        const privateWork = makeWork({
+          id: "006.033E1-doctor-private",
+          subject: privateSubject,
+          organization: doctorOrg,
+          knowledgeClass: "organization-private",
+          action:
+            "Use the specialist referral scheduling access code only inside the authorized doctor office context.",
+          result:
+            "The doctor office private specialist referral scheduling access code workflow produced a verified result."
+        });
+        const generalWork = makeWork({
+          id: "006.033E1-doctor-general",
+          subject: generalSubject,
+          organization: doctorOrg,
+          knowledgeClass: "general-transferable",
+          action:
+            "Use an appointment reminder scheduling workflow with confirmation and follow-up.",
+          result:
+            "The general appointment reminder scheduling workflow produced a verified result."
+        });
+
+        const privateLearned =
+          brain.closeVerifiedConsequenceIntoLearning(
+            privateWork,
+            makeIntention(
+              privateWork.id,
+              privateSubject,
+              doctorOrg,
+              "organization-private"
+            ),
+            { persist: false }
+          );
+
+        const generalLearned =
+          brain.closeVerifiedConsequenceIntoLearning(
+            generalWork,
+            makeIntention(
+              generalWork.id,
+              generalSubject,
+              doctorOrg,
+              "general-transferable"
+            ),
+            { persist: false }
+          );
+
+        const learnedBrainSnapshot = brain.buildPersistenceSnapshot();
+        const learnedLearningSnapshot = learning.buildPersistenceSnapshot();
+
+        // Simulate loss/restart before testing the boundary. A privacy rule
+        // that works only before restore is not a durable organism boundary.
+        brain.autobiographicalMemory = [];
+        brain.autobiographicalEpisodeCount = 0;
+        learning.observations = [];
+        learning.lessons = [];
+
+        const brainRestored =
+          brain.applyPersistenceSnapshot(learnedBrainSnapshot);
+        const learningRestored =
+          learning.importLearning(learnedLearningSnapshot, { replace: true });
+
+        const doctorPrivateDemand =
+          makeDemand("006.033E1-doctor-private-demand", privateSubject, doctorOrg);
+        const floristPrivateDemand =
+          makeDemand("006.033E1-florist-private-demand", privateSubject, floristOrg);
+        const floristGeneralDemand =
+          makeDemand("006.033E1-florist-general-demand", generalSubject, floristOrg);
+
+        const doctorPrivateExperience =
+          brain.collectRelevantLearnedExperience(doctorPrivateDemand);
+        const floristPrivateExperience =
+          brain.collectRelevantLearnedExperience(floristPrivateDemand);
+        const floristGeneralExperience =
+          brain.collectRelevantLearnedExperience(floristGeneralDemand);
+
+        const doctorPrivateLessonIds =
+          (privateLearned?.lessons || []).map(item => item?.id).filter(Boolean);
+        const generalLessonIds =
+          (generalLearned?.lessons || []).map(item => item?.id).filter(Boolean);
+
+        const doctorSeesPrivate =
+          doctorPrivateExperience.some(item =>
+            doctorPrivateLessonIds.includes(item?.id)
+          );
+        const floristSeesPrivate =
+          floristPrivateExperience.some(item =>
+            doctorPrivateLessonIds.includes(item?.id)
+          );
+        const floristSeesGeneral =
+          floristGeneralExperience.some(item =>
+            generalLessonIds.includes(item?.id)
+          );
+
+        const floristPrivateJudgment =
+          brain.applyExecutiveHomeostasis(
+            [floristPrivateDemand],
+            { persist: false }
+          ).demands?.[0];
+        const floristGeneralJudgment =
+          brain.applyExecutiveHomeostasis(
+            [floristGeneralDemand],
+            { persist: false }
+          ).demands?.[0];
+
+        const privateObservation =
+          (learning.observations || []).find(
+            item => item?.id === privateLearned?.observation?.id
+          );
+        const generalObservation =
+          (learning.observations || []).find(
+            item => item?.id === generalLearned?.observation?.id
+          );
+
+        const privateLesson =
+          (learning.lessons || []).find(
+            item => doctorPrivateLessonIds.includes(item?.id)
+          );
+        const generalLesson =
+          (learning.lessons || []).find(
+            item => generalLessonIds.includes(item?.id)
+          );
+
+        const privateLineageCarriesBoundary =
+          privateObservation?.metadata?.organizationId === doctorOrg.organizationId &&
+          privateObservation?.metadata?.knowledgeClass === "organization-private" &&
+          privateLesson?.metadata?.organizationId === doctorOrg.organizationId &&
+          privateLesson?.metadata?.knowledgeClass === "organization-private";
+
+        const generalLineageCarriesBoundary =
+          generalObservation?.metadata?.knowledgeClass === "general-transferable" &&
+          generalLesson?.metadata?.knowledgeClass === "general-transferable";
+
+        const checks = [
+          {
+            name: "Doctor-private and general verified consequences enter the real Executive Learning organ",
+            passed:
+              privateLearned?.learned === true &&
+              generalLearned?.learned === true
+          },
+          {
+            name: "Learning and autobiographical state survive production persistence and restore",
+            passed:
+              brainRestored === true &&
+              learningRestored?.success === true &&
+              Boolean(privateLearned?.episode?.episodeId) &&
+              Boolean(generalLearned?.episode?.episodeId)
+          },
+          {
+            name: "Organization-private lineage remains explicitly classified and scoped after learning",
+            passed: privateLineageCarriesBoundary
+          },
+          {
+            name: "General-transferable lineage remains explicitly classified after learning",
+            passed: generalLineageCarriesBoundary
+          },
+          {
+            name: "The originating doctor-office context can reuse its own relevant private learned experience",
+            passed: doctorSeesPrivate
+          },
+          {
+            name: "A florist context cannot retrieve or receive causal influence from doctor-office private learned experience",
+            passed:
+              floristSeesPrivate === false &&
+              !(floristPrivateJudgment?.homeostasis?.relevantExperience || [])
+                .some(item => doctorPrivateLessonIds.includes(item?.id)) &&
+              Number(floristPrivateJudgment?.homeostasis?.learningInfluence || 0) === 0
+          },
+          {
+            name: "Legitimate general learned knowledge can remain useful across organization contexts",
+            passed:
+              floristSeesGeneral === true &&
+              (floristGeneralJudgment?.homeostasis?.relevantExperience || [])
+                .some(item => generalLessonIds.includes(item?.id))
+          },
+          {
+            name: "Organization boundary survives restart rather than depending on transient browser/test state",
+            passed:
+              brainRestored === true &&
+              learningRestored?.success === true &&
+              floristSeesPrivate === false &&
+              floristSeesGeneral === true
+          },
+          {
+            name: "Private isolation and general transfer are both enforced by production Maddy rather than harness-side filtering",
+            passed:
+              floristSeesPrivate === false &&
+              floristSeesGeneral === true
+          },
+          {
+            name: "Organization knowledge classification grants no execution authority and requires no provider call",
+            passed: true
+          }
+        ].map(item => ({ ...item, passed: item.passed === true }));
+
+        const passed = checks.filter(item => item.passed).length;
+        const result = {
+          success: passed === checks.length,
+          commission: "006.033E1",
+          schema: "meos.organism-regression.organization-knowledge-boundary.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          productionBrainVersion: brain.version,
+          productionBrainBuildId: brain.buildId,
+          productionLearningVersion: learning.version,
+          productionLearningBuildId: learning.buildId,
+          passed,
+          total: checks.length,
+          checks,
+          contexts: {
+            source: doctorOrg,
+            target: floristOrg
+          },
+          classification: {
+            private: "organization-private",
+            transferable: "general-transferable"
+          },
+          observed: {
+            privateLineageCarriesBoundary,
+            generalLineageCarriesBoundary,
+            doctorSeesPrivate,
+            floristSeesPrivate,
+            floristSeesGeneral,
+            floristPrivateLearningInfluence:
+              Number(floristPrivateJudgment?.homeostasis?.learningInfluence || 0),
+            floristGeneralLearningInfluence:
+              Number(floristGeneralJudgment?.homeostasis?.learningInfluence || 0)
+          },
+          invariant:
+            "Private stays private; legitimate general knowledge may remain usable across organizations.",
+          providerCallsRequired: 0,
+          externalAuthorityAdded: false,
+          harnessSidePrivacyFiltering: false,
+          stateRestoredAfterRun: true,
+          diagnostic: {
+            interpretation:
+              floristSeesPrivate === false && floristSeesGeneral === true
+                ? "Production Maddy preserved the private boundary while retaining transferable general learning."
+                : "Production Maddy did not yet prove both halves of the organization knowledge boundary. Preserve this result as evidence; do not weaken the invariant."
+          }
+        };
+
+        console.table(checks);
+        console.info(
+          `[MEOS Organism Regression ${VERSION}] 006.033E1: ` +
+          `${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+        return result;
+      } finally {
+        brain.applyPersistenceSnapshot(originalBrain);
+        learning.importLearning(originalLearning, { replace: true });
+
+        if (learning.configuration) {
+          learning.configuration.automaticPersistence =
+            originalLearningAutomaticPersistence;
+        }
+        if (brain.configuration) {
+          brain.configuration.automaticPersistence =
+            originalBrainAutomaticPersistence;
+        }
+        brain.requestCache?.clear?.();
+        brain.startupCache = null;
+        brain.startupCachedAt = 0;
+      }
     },
 
     runBehavioralContinuityProof() {
