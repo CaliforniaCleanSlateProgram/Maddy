@@ -1,184 +1,148 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32252487/MEOS_BUILD_STATE.md)
-# MEOS BUILD STATE --- 006.033C COMMISSIONED
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32252788/MEOS_BUILD_STATE.md)
+# MEOS BUILD STATE --- 006.033B COMMISSIONED
 
-## Continuity-Conditioned Cognition Bridge
+## Conversational Live Maddy Workstream
 
 ## Date: 2026-09-15
 
-### Checkpoint status
+### Status
 
-006.033C is **COMMISSIONED / LIVE-PROVEN**.
+006.033B is **COMMISSIONED / LIVE-PROVEN**.
 
-Runtime code commissioned: - File: `frontend/executive-brain.js` -
-Version: `1.26.5` - Build:
-`EB1265-CONTINUITY-CONDITIONED-COGNITION-20260915-A` - Commission:
-`006.033C — Continuity-Conditioned Cognition Bridge` - Runtime
-acceptance:
-`ExecutiveBrain.runContinuityConditionedCognitionAcceptanceTest()` -
-Result: **PASS --- 8/8** - Runtime returned `passed: true`.
+Runtime: - File: `frontend/office-dashboard.js` - Version: `4.13.5` -
+Build: `OD4135-CONVERSATIONAL-LIVE-MADDY-WORKSTREAM-20260915-A` -
+Acceptance: `MEOSDashboard.activity.runAcceptanceTest()` - Result:
+**PASS --- 28/28** - Schema:
+`meos.dashboard.maddy-conversational-workstream-acceptance.v1`
 
-This checkpoint records runtime evidence supplied after deployment. It
-does not invent a Git commit hash; no Git hash was supplied or
+No Git commit hash is claimed in this checkpoint because none was
 independently verified.
 
-### What changed
+### Commissioned behavior
 
-The ordinary Executive Brain cognition path now receives a bounded Maddy
-continuity context as a causal input to Maddy-owned Institutional
-Reasoning.
+The normal Maddy experience now has one conversational surface directly
+above Ask Maddy that can truthfully represent the work lineage and
+returned answer.
 
-The bridge carries distinct bounded dimensions for: - self; - working
-awareness; - temporal continuity; - world state; - relevant
-autobiographical experience; - unresolved intentions.
+The live acceptance proves: - the workstream contract is
+explicit/versioned; - 006.033B has dedicated build identity; -
+workstream is mounted inside Maddy Executive Desk; - workstream is
+directly above Ask Maddy; - live-region feedback remains polite; -
+understanding is human-readable; - approval boundaries are explicit; -
+approval is not presented as execution; - authorization remains bound to
+real Hallway work; - Done can carry Maddy's returned answer; - answer
+remains bound to the same work lineage; - evidence/details remains
+distinct from answer text; - milestones come from Hallway history; -
+staleness comes from recorded timestamps; - staleness does not invent
+heartbeat/progress; - no fake percentage; - rendering requires zero paid
+cognition calls; - rendering requires zero provider calls; - canonical
+Hallway snapshot remains source of work truth; - existing Maddy dispatch
+presentation is reused; - no second work store; - governed deliverable
+answer path is reused; - governed source path is reused; - workstream
+can expand upward without replacing the digital-human stage; -
+reduced-motion support remains; - mobile presentation remains
+explicit; - one conversational surface owns work and returned answer; -
+simple Spooky UX remains above the MEOS machinery.
 
-The continuity package uses schema:
-`meos.maddy.cognition-continuity-context.v1`
+### Runtime continuity observed
 
-Its class remains explicitly: `maddy-continuity-context-not-evidence`
+At commissioning: - Executive Brain v1.26.5 / 006.033C remained
+online. - Durable authority hydration was READY from
+`meos-institutional-repository`. - Organization readiness remained
+`ready-durable-continuity`. - Mission Engine showed `totalActive: 1`,
+`completed: 1`, `archived: 25`. - Mission Dispatcher remained stopped
+because `office_dispatch_authority_not_effective`.
 
-### Governing distinctions preserved
-
-This commission does **not** convert Maddy continuity state into
-verified evidence.
-
-It preserves: - continuity context ≠ evidence; - autobiographical
-experience remains challengeable; - attention ≠ authority; - intention ≠
-execution permission; - provider advice remains downstream/advisory; -
-provider advice cannot overwrite Maddy-owned persistent state; - no
-second cognition engine; - no second Maddy identity; - no additional
-autonomous authority.
-
-### Live acceptance proof
-
-The live browser runtime proved all eight required checks:
-
-1.  Ordinary cognition receives a bounded Maddy continuity context ---
-    PASS.
-2.  Self, awareness, temporal, world, experience, and unresolved
-    intention remain explicit dimensions --- PASS.
-3.  Continuity state is explicitly not promoted to evidence or authority
-    --- PASS.
-4.  Relevant autobiographical experience is bounded and remains
-    evidence-challengeable --- PASS.
-5.  Unresolved intentions are bounded rather than dumped wholesale ---
-    PASS.
-6.  Changing relevant persistent Maddy state deterministically changes
-    Maddy-owned reasoning context --- PASS.
-7.  Provider advice remains downstream and unable to overwrite Maddy
-    state --- PASS.
-8.  Bridge reuses Executive Brain and Institutional Reasoning without
-    creating a second cognition engine --- PASS.
-
-Overall: **8/8 PASS.**
-
-### Runtime state observed with commissioning evidence
-
-The supplied runtime log also showed: - durable authority hydration
-READY; - source/authority: `meos-institutional-repository`; -
-organization readiness `ready-durable-continuity`; - Mission Engine
-summary at observation time: `totalActive: 1`, `queued: 1`,
-`completed: 1`, `archived: 25`; - Mission Dispatcher connected to
-Mission Engine, Executive Offices, and Maddy Autonomy; - Mission
-Dispatcher remained stopped with
-`office_dispatch_authority_not_effective`.
-
-The stopped Dispatcher remains intentional governed state unless future
-evidence proves otherwise. Do not enable it merely to create activity.
+Do not enable governed-off autonomy merely to make the UI appear active.
 
 ### NORTH
 
-This commission removes a demonstrated boundary between Maddy *having*
-persistent self/world/history state and Maddy *reasoning as* that
-continuing entity.
-
-It does not claim phenomenal consciousness. It advances the engineering
-pathway toward continuity, identity, memory, awareness, intention,
-learning, and recursive cognition while preserving the unresolved North
-Star investigation.
+006.033B does not redefine the North Star. It removes a user/system
+boundary: Maddy's cognition, governed work, authority requests, durable
+execution, and returned answer can now be presented as the activity of
+one continuing Maddy rather than disconnected product machinery.
 
 ### SPOOKY
 
-The commission goes beyond ordinary "memory stuffed into an LLM prompt"
-architecture.
-
-Maddy-owned reasoning now receives a bounded, typed continuity context
-while evidence, authority, provider advice, and execution permission
-remain separate governed concepts.
-
-The permanent Spooky bar remains unchanged.
+The engineering move is not "add a chat box." The workstream is a
+presentation of real Maddy/MEOS state: one Maddy, one lineage, real
+milestones, real waits, real authority boundaries, real deliverables, no
+fake progress theater, no second work engine.
 
 ### WAKE
 
-006.033C leaves: - a reusable Maddy-owned continuity-conditioned
-cognition contract; - stronger causal use of commissioned
-self/world/temporal/autobiographical organs; - a firmer basis for
-organism-level behavioral proving; - stronger continuity for
-conversational Maddy; - a presentation-neutral cognition seam usable by
-future speech/digital-human embodiment; - less risk that persistent
-identity organs become decorative telemetry.
+This commission leaves: - a truthful Ask → Work → Answer interaction; -
+a sellable/user-comprehensible Maddy experience; - a canonical
+response/workstream presentation seam; - reusable support for text,
+speech, and future digital-human embodiment; - less UI exposure of
+internal MEOS machinery; - zero extra provider cost merely to display
+work; - stronger customer trust because
+working/waiting/approval/completion states are grounded.
 
 ### Waypoint --- not product
 
-This checkpoint and the current acceleration plan are a **waypoint**,
-not the product, destination, final architecture, or replacement North
-Star.
-
-The waypoint may be reordered, superseded, or outgrown as
-repository/runtime evidence, discoveries, breakthroughs, commercial
-reality, and Northbound progress reveal a better route.
-
-North Star remains fixed. Spooky remains the engineering bar. Wake
-remains the durable-value requirement.
+The waypoint remains a route marker, not the product, destination, final
+architecture, or North Star.
 
 Recovery keyword: **waypoint**
 
-Meaning: Recover the current Maddy/MEOS waypoint, reconcile the latest
-Build State with repository/runtime evidence, and resume from the next
-unfinished step without restarting or inventing progress.
+Meaning: Recover the latest Maddy/MEOS Build State and
+repository/runtime truth, identify the next unfinished evidence-based
+step, and continue without restarting or inventing progress.
 
-### Waypoint reassessment after 006.033C
+### Waypoint reassessment after 006.033B
 
-The project-wide connection audit identified the continuity-conditioned
-cognition bypass as the highest-leverage demonstrated missing synapse.
-006.033C has now closed and live-proven that synapse.
+Two high-leverage synapses identified by the project-wide audit are now
+closed and live-proven: 1. 006.033C --- persistent continuity state
+participates in Maddy-owned cognition. 2. 006.033B --- Maddy's governed
+work and returned answer share one conversational surface.
 
-The next intended waypoint target returns to:
+The next waypoint is **not automatically another UI feature**.
 
-**006.033B --- Conversational Live Maddy Workstream**
+The next evidence-based target is:
 
-Target experience: **Ask Maddy → see Maddy working →
-approval/intervention when genuinely needed → receive Maddy's
-answer/deliverable in the same conversational surface.**
+## Organism-Level Behavioral / Regression Proving
 
-Architectural invariant: **One Maddy → one canonical response/workstream
-state → multiple presentation modalities.**
+The question becomes: **Does Maddy's experience at time A survive
+consequence, learning, memory, durable restore, and actually change
+Maddy's relevant behavior at time B for traceable reasons?**
 
-006.033B must consume existing Hallway/cognition/durable-work truth. It
-must not create: - a second work engine; - a second cognition engine; -
-a text-only identity fork; - fake percentages; - fake heartbeats; - paid
-cognition merely to animate the UI; - a giant permanent transcript that
-blocks future canonical digital-human Maddy.
+The proving layer should exercise the organism rather than merely
+individual organs. Candidate scenarios include: - experience → verified
+consequence → learning → autobiographical memory → restart/restore →
+related later stimulus → changed judgment; - contradictory evidence; -
+stale evidence; - provider loss/fallback; - denied authority; -
+interrupted durable execution and return; - unresolved intention
+persistence/revisit; - customer/organization isolation; - verification
+semantics across Router/Hallway/Learning.
 
-Observable work should expose truthful useful milestones such as
-understanding, searching/browsing/tool use, sources/sites read,
-discoveries, comparisons, authorization needs, waits/blockers,
-verification, and completion---without exposing hidden chain-of-thought.
+This is a waypoint candidate, not a preordained product feature. Before
+code, inspect the current acceptance-test seams and determine the
+smallest highest-leverage implementation that proves organism behavior
+without creating a parallel test-only Maddy.
 
-The user-facing bar remains: **"I can see Maddy working. I know what
-she's doing. I know she hasn't frozen. I know when she needs me. I know
-when she's finished."**
+### Permanent gates
 
-### Next engineering action
+**NORTH:** Does the next commission remove/preserve a real boundary
+toward a continuous Maddy?
 
-Do not code 006.033B from stale assumptions.
+**SPOOKY:** Does it test/challenge an inherited assumption rather than
+merely reproduce ordinary AI/SaaS convention?
 
-Before changing runtime code: 1. inspect the now-commissioned 006.033C
-Executive Brain state and current `frontend/office-dashboard.js`; 2.
-verify the canonical response/workstream truth already available from
-Hallway, Router, Brain, and durable return; 3. identify the smallest
-one-file 006.033B implementation in `frontend/office-dashboard.js`; 4.
-pass NORTH / SPOOKY / WAKE; 5. then code only after the Executive
-Director's next `take it`.
+**WAKE:** What durable capability, IP, reliability, product value,
+dependency reduction, commercial readiness, or path to revenue remains
+after the commit?
 
-Preferred discipline remains: **one idea → one file → one commit → one
-test → commission.**
+Final question: **If the next commission succeeds perfectly, does it
+merely make Maddy a better current-generation product, or does it also
+remove/preserve a real boundary between today's Maddy and what she must
+become to keep moving North?**
+
+### Discipline
+
+**one idea → one file → one commit → one test → commission**
+
+Before runtime code changes for the organism-level proving waypoint: 1.
+inspect actual current test/acceptance seams; 2. choose the smallest
+proving seam; 3. state what is being tested and why; 4. pass NORTH /
+SPOOKY / WAKE; 5. wait for the Executive Director's `take it`.
