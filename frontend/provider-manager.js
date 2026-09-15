@@ -1,7 +1,7 @@
 /**
  * MEOS Provider Manager
- * Version: 1.2.1
- * Build: PM121-GOVERNED-PUBLISHING-CAPABILITY-CONTRACT-20260914-A
+ * Version: 1.2.2
+ * Build: PM122-GOVERNED-CAMPAIGN-OPERATIONS-CAPABILITY-CONTRACT-20260915-A
  * Status: Commissioned Candidate
  *
  * Purpose:
@@ -25,8 +25,8 @@
   "use strict";
 
   const NAME = "MEOS Provider Manager";
-  const VERSION = "1.2.1";
-  const BUILD_ID = "PM121-GOVERNED-PUBLISHING-CAPABILITY-CONTRACT-20260914-A";
+  const VERSION = "1.2.2";
+  const BUILD_ID = "PM122-GOVERNED-CAMPAIGN-OPERATIONS-CAPABILITY-CONTRACT-20260915-A";
   const SCHEMA = "meos.provider-manager.v1";
   const STORAGE_KEY = "meos.provider-manager.history.v1";
   const MAX_HISTORY_ITEMS = 250;
@@ -141,6 +141,13 @@
     "assetId",
     "authorizationId"
   ]);
+
+  /* Commission 006.032G3 — Governed Campaign Operations Capability Contract */
+  const CAMPAIGN_OPERATIONS_SCHEMA = "meos.provider-manager.campaign-operations-capability.v1";
+  const CAMPAIGN_OPERATIONS_ENVELOPE_SCHEMA = "meos.provider-manager.campaign-operations-envelope.v1";
+  const CAMPAIGN_OPERATIONS_PREFIX = "external-campaign-operations.";
+  const CAMPAIGN_OPERATION_TYPES = Object.freeze(["schedule", "search-measurement", "landing-performance", "lead-follow-up"]);
+  const CONSEQUENTIAL_CAMPAIGN_OPERATIONS = Object.freeze(["schedule", "lead-follow-up"]);
 
   const ARCHITECTURE_TARGETS = Object.freeze([
     Object.freeze({ id: "openai", label: "OpenAI", type: "language-model" }),
@@ -2398,6 +2405,112 @@
     }, { replace: true });
   }
 
+  function registerCampaignOperationsCapability(definition = {}) {
+    const id = String(definition.id || "").trim();
+    const operationType = String(definition.operationType || "").trim();
+    if (!id.startsWith(CAMPAIGN_OPERATIONS_PREFIX)) throw new RangeError(`Campaign operations capability id must begin with "${CAMPAIGN_OPERATIONS_PREFIX}".`);
+    if (!CAMPAIGN_OPERATION_TYPES.includes(operationType)) throw new RangeError(`Unsupported campaign operation type: ${operationType || "missing"}.`);
+    return deepFreeze({
+      schema: CAMPAIGN_OPERATIONS_SCHEMA,
+      id,
+      operationType,
+      description: String(definition.description || "").trim() || null,
+      providerNeutral: true,
+      maddyIdentityOwnedByProvider: false,
+      credentialBoundary: "server-side-only",
+      credentialsModelVisible: false,
+      credentialsBrowserPersisted: false,
+      requiresOrganizationIsolation: true,
+      requiresCampaignLineage: true,
+      consequential: CONSEQUENTIAL_CAMPAIGN_OPERATIONS.includes(operationType),
+      requiresExplicitAuthorization: CONSEQUENTIAL_CAMPAIGN_OPERATIONS.includes(operationType),
+      authorityGrantedByCapability: false,
+      requiresExecutionReceipt: CONSEQUENTIAL_CAMPAIGN_OPERATIONS.includes(operationType),
+      executionIsOutcome: false,
+      outcomeStatus: "unknown-until-observed"
+    });
+  }
+
+  function createGovernedCampaignOperationEnvelope(input = {}) {
+    const capability = registerCampaignOperationsCapability({
+      id: input.capabilityId,
+      operationType: input.operationType,
+      description: input.description
+    });
+    const organizationId = String(input.organizationId || "").trim();
+    const campaignId = String(input.campaignId || "").trim();
+    if (!organizationId || !campaignId) throw new Error("Campaign operations require organizationId and campaignId lineage.");
+    const forbidden = ["apiKey","api_key","accessToken","access_token","clientSecret","client_secret","password","credential","credentials"];
+    if (forbidden.some(key => input[key] != null)) throw new Error("Credential material cannot enter campaign operations envelopes.");
+    const consequential = capability.consequential;
+    const authorizationId = String(input.authorizationId || "").trim() || null;
+    if (consequential && (input.authorized !== true || !authorizationId)) throw new Error("Consequential campaign operations require exact explicit human authorization.");
+    if (input.operationType === "lead-follow-up" && input.contact?.suppressed === true) throw new Error("Suppressed contacts cannot enter authorized follow-up execution.");
+    if (input.operationType === "lead-follow-up" && input.contact?.optOut === true) throw new Error("Opted-out contacts cannot enter authorized follow-up execution.");
+    return deepFreeze({
+      schema: CAMPAIGN_OPERATIONS_ENVELOPE_SCHEMA,
+      capabilityId: capability.id,
+      operationType: capability.operationType,
+      lineage: { organizationId, campaignId, creativeHypothesisId: String(input.creativeHypothesisId || "").trim() || null },
+      authority: {
+        authorized: consequential ? true : false,
+        authorizationId: consequential ? authorizationId : null,
+        authorizationScope: consequential ? clone(input.authorizationScope || {}) : null,
+        capabilityCanExpandScope: false
+      },
+      operation: clone(input.operation || {}),
+      contact: input.operationType === "lead-follow-up" ? clone(input.contact || {}) : null,
+      measurement: clone(input.measurement || {}),
+      boundary: { credentialBoundary:"server-side-only", organizationIsolationRequired:true },
+      receiptRequired: capability.requiresExecutionReceipt,
+      executionIsOutcome: false,
+      outcomeStatus: "unknown-until-observed",
+      monitoringReturnRequired: true,
+      learningReturnRequired: true
+    });
+  }
+
+  function runGovernedCampaignOperationsCapabilityContractAcceptanceTest() {
+    const definitions = CAMPAIGN_OPERATION_TYPES.map(operationType => registerCampaignOperationsCapability({
+      id:`${CAMPAIGN_OPERATIONS_PREFIX}${operationType}`, operationType
+    }));
+    let unauthorizedScheduleRejected=false, unauthorizedFollowUpRejected=false, suppressedRejected=false, optOutRejected=false, credentialRejected=false, lineageRejected=false;
+    try { createGovernedCampaignOperationEnvelope({ capabilityId:`${CAMPAIGN_OPERATIONS_PREFIX}schedule`, operationType:"schedule", organizationId:"org-a", campaignId:"campaign-a" }); } catch (_) { unauthorizedScheduleRejected=true; }
+    try { createGovernedCampaignOperationEnvelope({ capabilityId:`${CAMPAIGN_OPERATIONS_PREFIX}lead-follow-up`, operationType:"lead-follow-up", organizationId:"org-a", campaignId:"campaign-a" }); } catch (_) { unauthorizedFollowUpRejected=true; }
+    try { createGovernedCampaignOperationEnvelope({ capabilityId:`${CAMPAIGN_OPERATIONS_PREFIX}lead-follow-up`, operationType:"lead-follow-up", organizationId:"org-a", campaignId:"campaign-a", authorized:true, authorizationId:"auth-a", contact:{suppressed:true} }); } catch (_) { suppressedRejected=true; }
+    try { createGovernedCampaignOperationEnvelope({ capabilityId:`${CAMPAIGN_OPERATIONS_PREFIX}lead-follow-up`, operationType:"lead-follow-up", organizationId:"org-a", campaignId:"campaign-a", authorized:true, authorizationId:"auth-a", contact:{optOut:true} }); } catch (_) { optOutRejected=true; }
+    try { createGovernedCampaignOperationEnvelope({ capabilityId:`${CAMPAIGN_OPERATIONS_PREFIX}search-measurement`, operationType:"search-measurement", organizationId:"org-a", campaignId:"campaign-a", apiKey:"nope" }); } catch (_) { credentialRejected=true; }
+    try { createGovernedCampaignOperationEnvelope({ capabilityId:`${CAMPAIGN_OPERATIONS_PREFIX}landing-performance`, operationType:"landing-performance" }); } catch (_) { lineageRejected=true; }
+    const measurement = createGovernedCampaignOperationEnvelope({ capabilityId:`${CAMPAIGN_OPERATIONS_PREFIX}landing-performance`, operationType:"landing-performance", organizationId:"org-a", campaignId:"campaign-a", measurement:{metric:"conversion-rate", epistemicStatus:"measured"} });
+    const followUp = createGovernedCampaignOperationEnvelope({ capabilityId:`${CAMPAIGN_OPERATIONS_PREFIX}lead-follow-up`, operationType:"lead-follow-up", organizationId:"org-a", campaignId:"campaign-a", creativeHypothesisId:"hyp-a", authorized:true, authorizationId:"auth-follow", authorizationScope:{contactId:"lead-a", maxMessages:1}, contact:{id:"lead-a", suppressed:false, optOut:false}, operation:{messageAssetId:"followup-a"} });
+    const checks = [
+      ["Campaign operations contract is explicit and versioned", definitions.every(x=>x.schema===CAMPAIGN_OPERATIONS_SCHEMA)],
+      ["Scheduling is a first-class post-publication capability", definitions.some(x=>x.operationType==="schedule")],
+      ["SEO/search measurement is a first-class capability", definitions.some(x=>x.operationType==="search-measurement")],
+      ["Website/landing performance is a first-class capability", definitions.some(x=>x.operationType==="landing-performance")],
+      ["Lead follow-up is a first-class capability", definitions.some(x=>x.operationType==="lead-follow-up")],
+      ["All campaign operations remain provider neutral", definitions.every(x=>x.providerNeutral && !x.maddyIdentityOwnedByProvider)],
+      ["Credentials remain server-side only", definitions.every(x=>x.credentialBoundary==="server-side-only" && !x.credentialsModelVisible && !x.credentialsBrowserPersisted)],
+      ["Credential material is rejected from operation envelopes", credentialRejected],
+      ["Organization and campaign lineage are mandatory", lineageRejected],
+      ["Scheduling requires exact human authorization", unauthorizedScheduleRejected],
+      ["Lead follow-up requires exact human authorization", unauthorizedFollowUpRejected],
+      ["Suppressed contacts fail closed", suppressedRejected],
+      ["Opted-out contacts fail closed", optOutRejected],
+      ["Measurement may be observed without fabricating execution authority", measurement.authority.authorized===false],
+      ["Landing measurement preserves measured epistemic state", measurement.measurement.epistemicStatus==="measured"],
+      ["Authorized follow-up preserves exact authorization id", followUp.authority.authorizationId==="auth-follow"],
+      ["Authorized follow-up preserves bounded contact scope", followUp.authority.authorizationScope.contactId==="lead-a" && followUp.authority.authorizationScope.maxMessages===1],
+      ["Capability cannot expand authorization scope", followUp.authority.capabilityCanExpandScope===false],
+      ["Execution remains distinct from commercial outcome", followUp.executionIsOutcome===false && followUp.outcomeStatus==="unknown-until-observed"],
+      ["Operations return to Monitoring and Learning", followUp.monitoringReturnRequired===true && followUp.learningReturnRequired===true]
+    ].map(([name,passed])=>({name,passed:Boolean(passed)}));
+    const passed=checks.filter(x=>x.passed).length;
+    console.table(checks);
+    console.log(`[MEOS ${VERSION}] Commission 006.032G3 Governed Campaign Operations Capability Contract: ${passed===checks.length?"PASS":"FAIL"} (${passed}/${checks.length}).`);
+    return deepFreeze({ success:passed===checks.length, commission:"006.032G3", schema:"meos.provider-manager.campaign-operations-capability-contract.acceptance.v1", version:VERSION, buildId:BUILD_ID, passed, total:checks.length, checks, samples:{definitions,measurement,followUp} });
+  }
+
   function runGovernedPublishingCapabilityContractAcceptanceTest() {
     const capabilityId = "external-publishing.acceptance-channel";
     const providerId = "acceptance-publishing-adapter";
@@ -2575,12 +2688,16 @@
     capabilityCatalog: CAPABILITY_CATALOG,
     publishingCapabilitySchema: PUBLISHING_CAPABILITY_SCHEMA,
     publishingReceiptSchema: PUBLISHING_RECEIPT_SCHEMA,
+    campaignOperationsSchema: CAMPAIGN_OPERATIONS_SCHEMA,
+    campaignOperationsEnvelopeSchema: CAMPAIGN_OPERATIONS_ENVELOPE_SCHEMA,
     architectureTargets: ARCHITECTURE_TARGETS,
 
     registerPublishingCapability,
     unregisterPublishingCapability,
     getCapabilityDefinition,
     createGovernedPublishingEnvelope,
+    registerCampaignOperationsCapability,
+    createGovernedCampaignOperationEnvelope,
     registerProvider,
     unregisterProvider,
     updateProvider,
@@ -2604,6 +2721,7 @@
     retryDurablePersistence,
     runDurableAuthorityAcceptanceTest,
     runGovernedPublishingCapabilityContractAcceptanceTest,
+    runGovernedCampaignOperationsCapabilityContractAcceptanceTest,
     runAdviserIntelligenceBridgeAcceptanceTest,
     runSelfTest,
     addEventListener,
@@ -2614,7 +2732,7 @@
   global.MEOSProviderManager = global.ProviderManager;
 
   console.log(
-    `[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. Runtime-discoverable governed publishing contracts are available; credentials remain outside model/browser publishing contracts; external vendors remain replaceable.`
+    `[MEOS] ${NAME} v${VERSION} online. Build ${BUILD_ID}. Runtime-discoverable governed publishing and campaign-operations contracts are available; credentials remain outside model/browser contracts; external vendors remain replaceable.`
   );
 
   emit("online", getStatus());
