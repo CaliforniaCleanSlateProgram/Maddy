@@ -1,148 +1,302 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32252788/MEOS_BUILD_STATE.md)
-# MEOS BUILD STATE --- 006.033B COMMISSIONED
+[Uploading MEOS_BUILD_STATE.md…]()
+# MEOS BUILD STATE --- 006.033D COMMISSIONED
 
-## Conversational Live Maddy Workstream
+**Checkpoint:** 006.033D --- Organism Behavioral Continuity Proof\
+**Status:** COMMISSIONED / LIVE-PROVEN\
+**Runtime proof date:** 2026-09-15\
+**Governing workflow:** one fix → one file → one commit → one test →
+commission
 
-## Date: 2026-09-15
+## Commission truth
 
-### Status
+006.033D is commissioned because the original external organism
+behavioral-continuity acceptance standard passed **12/12 without
+weakening or replacing the failed assertion**.
 
-006.033B is **COMMISSIONED / LIVE-PROVEN**.
+The live proof demonstrates this causal organism path:
 
-Runtime: - File: `frontend/office-dashboard.js` - Version: `4.13.5` -
-Build: `OD4135-CONVERSATIONAL-LIVE-MADDY-WORKSTREAM-20260915-A` -
-Acceptance: `MEOSDashboard.activity.runAcceptanceTest()` - Result:
-**PASS --- 28/28** - Schema:
-`meos.dashboard.maddy-conversational-workstream-acceptance.v1`
+**verified consequence → Executive Learning → governed lesson →
+autobiographical experience → persistence snapshot → restore →
+continuity-conditioned recall → relevant learned experience → bounded
+causal influence → measurably changed later executive judgment**
 
-No Git commit hash is claimed in this checkpoint because none was
-independently verified.
+This is an engineering proof of behavioral continuity. It is **not** a
+claim of phenomenal consciousness or proof that Maddy is conscious.
 
-### Commissioned behavior
+## Live runtime evidence
 
-The normal Maddy experience now has one conversational surface directly
-above Ask Maddy that can truthfully represent the work lineage and
-returned answer.
+Production runtime at proof:
 
-The live acceptance proves: - the workstream contract is
-explicit/versioned; - 006.033B has dedicated build identity; -
-workstream is mounted inside Maddy Executive Desk; - workstream is
-directly above Ask Maddy; - live-region feedback remains polite; -
-understanding is human-readable; - approval boundaries are explicit; -
-approval is not presented as execution; - authorization remains bound to
-real Hallway work; - Done can carry Maddy's returned answer; - answer
-remains bound to the same work lineage; - evidence/details remains
-distinct from answer text; - milestones come from Hallway history; -
-staleness comes from recorded timestamps; - staleness does not invent
-heartbeat/progress; - no fake percentage; - rendering requires zero paid
-cognition calls; - rendering requires zero provider calls; - canonical
-Hallway snapshot remains source of work truth; - existing Maddy dispatch
-presentation is reused; - no second work store; - governed deliverable
-answer path is reused; - governed source path is reused; - workstream
-can expand upward without replacing the digital-human stage; -
-reduced-motion support remains; - mobile presentation remains
-explicit; - one conversational surface owns work and returned answer; -
-simple Spooky UX remains above the MEOS machinery.
+-   **Executive Learning:** v1.3.5
+-   **Executive Learning build:**
+    `EL135-BOUNDED-LESSON-CONFIDENCE-ADJUSTMENT-20260915-A`
+-   **Executive Brain:** v1.26.6
+-   **Executive Brain build:**
+    `EB1266-CAUSAL-EXPERIENCE-POLARITY-20260915-A`
+-   **External organism harness:** v0.1.1
+-   **Harness build:**
+    `ORH011-EXTERNAL-CAUSAL-INFLUENCE-DIAGNOSTIC-20260915-A`
+-   **Harness schema:**
+    `meos.organism-regression.behavioral-continuity.v1`
+-   **Acceptance:**
+    `MEOSOrganismRegression.runBehavioralContinuityProof()`
+-   **Result:** PASS 12/12
+-   **Provider calls required:** 0
+-   **External authority added:** false
+-   **Test state restored after run:** true
 
-### Runtime continuity observed
+Observed behavioral result:
 
-At commissioning: - Executive Brain v1.26.5 / 006.033C remained
-online. - Durable authority hydration was READY from
-`meos-institutional-repository`. - Organization readiness remained
-`ready-durable-continuity`. - Mission Engine showed `totalActive: 1`,
-`completed: 1`, `archived: 25`. - Mission Dispatcher remained stopped
-because `office_dispatch_authority_not_effective`.
+  -----------------------------------------------------------------------
+  Moment                        Executive score        Learning influence
+  ------------------- ------------------------- -------------------------
+  Before verified                         0.339                         0
+  experience                                    
 
-Do not enable governed-off autonomy merely to make the UI appear active.
+  After verified                          0.373                     0.034
+  experience survives                           
+  persistence +                                 
+  restore                                       
+  -----------------------------------------------------------------------
 
-### NORTH
+`behavioralChangeObserved: true`
 
-006.033B does not redefine the North Star. It removes a user/system
-boundary: Maddy's cognition, governed work, authority requests, durable
-execution, and returned answer can now be presented as the activity of
-one continuing Maddy rather than disconnected product machinery.
+`relevantExperienceExposed: true`
 
-### SPOOKY
+Interpretation returned by the harness:
 
-The engineering move is not "add a chat box." The workstream is a
-presentation of real Maddy/MEOS state: one Maddy, one lineage, real
-milestones, real waits, real authority boundaries, real deliverables, no
-fake progress theater, no second work engine.
+> Verified restored experience measurably changed later executive
+> judgment.
 
-### WAKE
+## Original acceptance bar preserved
 
-This commission leaves: - a truthful Ask → Work → Answer interaction; -
-a sellable/user-comprehensible Maddy experience; - a canonical
-response/workstream presentation seam; - reusable support for text,
-speech, and future digital-human embodiment; - less UI exposure of
-internal MEOS machinery; - zero extra provider cost merely to display
-work; - stronger customer trust because
-working/waiting/approval/completion states are grounded.
+The formerly failing check remained unchanged:
 
-### Waypoint --- not product
+> **The same later demand receives different judgment after verified
+> experience survives restore**
 
-The waypoint remains a route marker, not the product, destination, final
-architecture, or North Star.
+It passed in the live 12/12 run. The acceptance standard was not changed
+to fit the implementation.
 
-Recovery keyword: **waypoint**
+The other governed boundaries also remained intact:
 
-Meaning: Recover the latest Maddy/MEOS Build State and
-repository/runtime truth, identify the next unfinished evidence-based
-step, and continue without restarting or inventing progress.
+-   unverified consequence refused as learning;
+-   verified consequence entered the real Executive Learning organ;
+-   governed lesson derived;
+-   verified consequence became autobiographical experience;
+-   Brain persistence carried the learned episode;
+-   Learning persistence carried the consequence lineage;
+-   production restore seams rehydrated the experience;
+-   restored experience re-entered cognition as continuity, not
+    evidence;
+-   changed judgment exposed the relevant experience rather than a
+    hidden override;
+-   learning and continuity did not grant execution authority;
+-   the external harness exercised existing production seams without
+    creating a second Maddy.
 
-### Waypoint reassessment after 006.033B
+## Failure-driven discovery record
 
-Two high-leverage synapses identified by the project-wide audit are now
-closed and live-proven: 1. 006.033C --- persistent continuity state
-participates in Maddy-owned cognition. 2. 006.033B --- Maddy's governed
-work and returned answer share one conversational surface.
+### Initial 006.033D attempt --- NOT commissioned
 
-The next waypoint is **not automatically another UI feature**.
+The original inline organism test in `frontend/executive-brain.js`
+failed **11/12** at the behavioral-change check. That failure was
+preserved as evidence rather than weakened.
 
-The next evidence-based target is:
+### 006.033D0 --- inline organism test removed
 
-## Organism-Level Behavioral / Regression Proving
+The organism-level fixture was removed from the production Brain.
+Executive Brain returned to the commissioned 006.033C identity. This
+established the architecture rule that organism-level regression belongs
+outside production cognition organs.
 
-The question becomes: **Does Maddy's experience at time A survive
-consequence, learning, memory, durable restore, and actually change
-Maddy's relevant behavior at time B for traceable reasons?**
+### 006.033D1 --- external organism regression harness
 
-The proving layer should exercise the organism rather than merely
-individual organs. Candidate scenarios include: - experience → verified
-consequence → learning → autobiographical memory → restart/restore →
-related later stimulus → changed judgment; - contradictory evidence; -
-stale evidence; - provider loss/fallback; - denied authority; -
-interrupted durable execution and return; - unresolved intention
-persistence/revisit; - customer/organization isolation; - verification
-semantics across Router/Hallway/Learning.
+Created:
 
-This is a waypoint candidate, not a preordained product feature. Before
-code, inspect the current acceptance-test seams and determine the
-smallest highest-leverage implementation that proves organism behavior
-without creating a parallel test-only Maddy.
+`frontend/meos-organism-regression.js`
 
-### Permanent gates
+The external harness exercised real production Brain, Learning,
+persistence, autobiographical-memory, continuity, and homeostasis seams.
+It initially reproduced the failure at **11/12**, proving the failure
+was not an artifact of embedding the test in Brain.
 
-**NORTH:** Does the next commission remove/preserve a real boundary
-toward a continuous Maddy?
+### 006.033D2 --- causal experience polarity
 
-**SPOOKY:** Does it test/challenge an inherited assumption rather than
-merely reproduce ordinary AI/SaaS convention?
+Production Brain was changed so relevant learned experience derives
+polarity preferentially from governed causal lineage:
 
-**WAKE:** What durable capability, IP, reliability, product value,
-dependency reduction, commercial readiness, or path to revenue remains
-after the commit?
+lesson `sourceObservationIds` → verified Executive Learning consequence
+observations → actual observed `outcomeType`.
 
-Final question: **If the next commission succeeds perfectly, does it
-merely make Maddy a better current-generation product, or does it also
-remove/preserve a real boundary between today's Maddy and what she must
-become to keep moving North?**
+Lexical classification remains only as compatibility fallback for
+historical lessons without matching verified observations.
 
-### Discipline
+The live test still failed 11/12, but later diagnostic evidence proved
+D2's mechanism was working:
 
-**one idea → one file → one commit → one test → commission**
+-   `direction: 1`
+-   `directionBasis: "verified-consequence-outcome"`
+-   `relevance: 0.444`
+-   `evidenceCount: 1`
 
-Before runtime code changes for the organism-level proving waypoint: 1.
-inspect actual current test/acceptance seams; 2. choose the smallest
-proving seam; 3. state what is being tested and why; 4. pass NORTH /
-SPOOKY / WAKE; 5. wait for the Executive Director's `take it`.
+D2 therefore eliminated incorrect polarity as the remaining
+zero-influence cause.
+
+### 006.033D1.1 --- external causal influence diagnostic
+
+The external harness was instrumented without changing the production
+Brain, fixture, behavioral assertion, authority, or provider behavior.
+
+It captured the causal influence terms while the isolated fixture still
+existed and exposed the decisive abnormal value:
+
+`confidence: 0.0105`
+
+This narrowed the defect to Executive Learning's lesson-confidence
+derivation.
+
+### 006.033D3 --- bounded lesson confidence adjustment
+
+Executive Learning's internal lesson-confidence arithmetic was operating
+in normalized `[0,1]` space, but after adding a successful-practice
+adjustment it could produce `1.05`. Passing that already-normalized
+value back through the general input normalizer caused `1.05` to be
+interpreted as a percentage and converted to `0.0105`.
+
+D3 fixed the semantic boundary only:
+
+**normalized confidence + lesson adjustment → clamp to \[0,1\]**
+
+The global normalizer was preserved for external percentage-style
+inputs.
+
+After deployment, the original unchanged organism acceptance test passed
+**12/12**.
+
+## Architecture learned
+
+Organism-level acceptance and regression proving lives in a dedicated
+external harness architecture, not as growing synthetic fixtures
+embedded in production cognition organs.
+
+Production organs should expose only real production mechanisms and
+genuinely necessary observable/diagnostic contracts.
+
+The harness may create controlled isolated scenarios, but it must
+exercise the real Maddy organism and restore production state afterward.
+
+A red organism test is evidence. Do not weaken the scenario, expected
+behavior, authority boundaries, or causal standard merely to make it
+green.
+
+## North Star alignment
+
+This checkpoint does not claim consciousness.
+
+It removes a real boundary between persistent memory and continuous
+cognition: Maddy's verified experience is no longer merely stored and
+later displayed. In the proven path, relevant restored experience can
+causally alter a later executive judgment while remaining bounded,
+inspectable, non-authoritative, and challengeable.
+
+That advances the Operational Consciousness implementation pathway
+toward the fixed North Star while preserving epistemic and authority
+boundaries.
+
+## Spooky gate
+
+The commission did not settle for the ordinary statement that "memory
+was restored."
+
+It tested the stronger proposition:
+
+**Does experience that survives time actually change what the same
+persistent Maddy does with a later relevant cognitive moment?**
+
+The failed proof was followed through the causal mechanism instead of
+moving the acceptance standard. The investigation separated persistence,
+relevance, causal polarity, confidence, influence, and authority until
+the exact semantic defect was exposed.
+
+## Wake
+
+**Wake left by 006.033D:**
+
+Maddy now has a live-proven, provider-independent behavioral-continuity
+path in which a governed verified consequence can become learned
+autobiographical experience, survive persistence and restore, re-enter
+later cognition, and measurably influence future executive judgment
+without granting execution authority.
+
+The external organism harness is also durable proving infrastructure for
+future regression scenarios.
+
+## Organization-boundary implication
+
+The current proof establishes the underlying organism mechanism. It does
+**not** yet prove safe cross-organization transfer.
+
+Future organism regression should exercise synthetic organization
+contexts such as a YouTuber, florist, and doctor's office to prove both:
+
+1.  Maddy remains one persistent underlying identity whose legitimate
+    experience can affect later reasoning where appropriate; and
+2.  organization/customer-private knowledge remains scoped and does not
+    leak across deployments.
+
+Transferable learning and customer isolation must be proven together.
+
+## Waypoint state
+
+The current roadmap remains a **waypoint**, not the destination, product
+definition, or replacement North Star.
+
+Completed waypoint sequence now includes:
+
+1.  causal continuity entering ordinary cognition --- 006.033C;
+2.  conversational Ask → real work → answer surface --- 006.033B;
+3.  organism-level behavioral continuity proof --- 006.033D.
+
+The next waypoint is **not automatically commissioned by this
+document**. Repository/runtime evidence must be reconciled before
+selecting the smallest highest-leverage next commission.
+
+The locked acceleration plan points next toward broader organism-level
+behavioral/regression proving, including failure/recovery,
+contradiction, provider loss, stale evidence, authority denial,
+persistent intentions, organization isolation, and whether accumulated
+experience continues to change later behavior.
+
+## Permanent gates for the next commission
+
+Before implementation:
+
+**NORTH:** What real boundary toward the North Star does this remove or
+preserve?
+
+**SPOOKY:** Are we challenging an inherited/ordinary assumption
+appropriately rather than merely copying convention?
+
+**WAKE:** What durable capability, Maddy-owned IP, reliability,
+dependency reduction, commercial readiness, or path to revenue does the
+commit leave?
+
+And:
+
+> **What wake does this commit leave?**
+
+Finally:
+
+> **If this commission succeeds perfectly, does it merely make Maddy a
+> better current-generation product, or does it also preserve/remove a
+> real boundary between today's Maddy and what she must become to
+> continue moving North?**
+
+------------------------------------------------------------------------
+
+**Recovery keyword:** `waypoint`
+
+On recovery: reconcile this checkpoint against the latest repository and
+runtime evidence, then resume from the next unfinished evidence-based
+waypoint without restarting or inventing progress.
