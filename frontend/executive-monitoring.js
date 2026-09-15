@@ -1,8 +1,8 @@
 /*
  * MEOS Executive Monitoring Engine
- * Commission Candidate: 006.031H — Governed Monitoring & Follow-up Autonomy
- * Version: 1.2.0
- * Build: EM120-EPISTEMIC-CONTINUITY-MONITORING-BRIDGE-20260913-A
+ * Commission: 006.032G1 — Evidence-Bound Campaign Operations Monitoring
+ * Version: 1.2.1
+ * Build: EM121-CAMPAIGN-OPERATIONS-CONSEQUENCE-MONITORING-20260914-A
  *
  * Mission:
  * Continuously observe MEOS operational state, detect risks, deadline pressure,
@@ -26,7 +26,7 @@
     const STORAGE_KEY = "meos.executive-monitoring.v1";
     const SCHEMA = "meos.executive-monitoring.package.v1";
     const STATE_SCHEMA = "meos.executive-monitoring.persistence-snapshot.v1";
-    const COMMISSION = "006.031H";
+    const COMMISSION = "006.032G1";
     const AUTONOMY_CAPABILITY = "monitoring";
 
     const ALERT_STATUSES = {
@@ -47,8 +47,8 @@
 
     const ExecutiveMonitoring = {
         name: "MEOS Executive Monitoring Engine",
-        version: "1.2.0",
-        buildId: "EM120-EPISTEMIC-CONTINUITY-MONITORING-BRIDGE-20260913-A",
+        version: "1.2.1",
+        buildId: "EM121-CAMPAIGN-OPERATIONS-CONSEQUENCE-MONITORING-20260914-A",
         commission: COMMISSION,
         status: "initializing",
         operatingMode: "continuous-executive-oversight",
@@ -3322,6 +3322,115 @@
                 total: checks.length,
                 checks
             };
+        },
+
+        buildCampaignOperationsObservation(input = {}, options = {}) {
+            const organizationId = String(input.organizationId || "").trim();
+            const campaignId = String(input.campaignId || input.campaign?.campaignId || input.campaign?.id || "").trim();
+            if (!organizationId) throw new TypeError("Campaign operations monitoring requires organizationId.");
+            if (!campaignId) throw new TypeError("Campaign operations monitoring requires campaignId.");
+
+            const now = options.now ? new Date(options.now) : new Date();
+            const nowIso = Number.isFinite(now.getTime()) ? now.toISOString() : new Date().toISOString();
+            const receipts = Array.isArray(input.publicationReceipts) ? this.clone(input.publicationReceipts) : [];
+            const observations = Array.isArray(input.observations) ? this.clone(input.observations) : [];
+            const seoSignals = Array.isArray(input.seoSignals) ? this.clone(input.seoSignals) : [];
+            const leads = Array.isArray(input.leads) ? this.clone(input.leads) : [];
+            const followUps = Array.isArray(input.followUps) ? this.clone(input.followUps) : [];
+
+            const verifiedReceipts = receipts.filter((item) => item && item.success === true && (item.providerPublicationId || item.receiptId || item.id));
+            const uncertainReceipts = receipts.filter((item) => item && (item.uncertain === true || item.status === "uncertain"));
+            const measuredObservations = observations.filter((item) => item?.epistemicStatus === "measured" || item?.status === "measured");
+            const qualifiedLeads = leads.filter((item) => item?.qualified === true || item?.stage === "qualified");
+            const overdueFollowUps = followUps.filter((item) => {
+                if (!item || ["completed", "cancelled", "suppressed", "opted-out"].includes(item.status)) return false;
+                const due = Date.parse(item.dueAt || "");
+                return Number.isFinite(due) && due < now.getTime();
+            });
+            const suppressedFollowUps = followUps.filter((item) => item?.status === "suppressed" || item?.optOut === true);
+
+            const executionState = uncertainReceipts.length
+                ? "uncertain-provider-outcome"
+                : verifiedReceipts.length
+                    ? "verified-execution-evidence-present"
+                    : receipts.length
+                        ? "execution-not-verified"
+                        : "unknown";
+            const outcomeState = measuredObservations.length ? "observed" : "unknown";
+
+            const nextActions = [];
+            if (uncertainReceipts.length) nextActions.push({ type:"reconcile-provider-outcome", priority:"high", automaticExecution:false, reason:"A consequential provider outcome is uncertain; do not auto-retry." });
+            if (!measuredObservations.length && verifiedReceipts.length) nextActions.push({ type:"observe-post-publication-consequence", priority:"moderate", automaticExecution:false, reason:"Execution evidence exists but commercial consequence is not yet measured." });
+            if (overdueFollowUps.length) nextActions.push({ type:"review-overdue-follow-up", priority:"moderate", automaticExecution:false, count:overdueFollowUps.length, reason:"Follow-up is due, but monitoring grants no outreach authority." });
+            if (seoSignals.length === 0) nextActions.push({ type:"measure-search-visibility", priority:"low", automaticExecution:false, reason:"SEO/search visibility remains unknown until evidence is collected." });
+
+            return {
+                success: true,
+                schema: "meos.executive-monitoring.campaign-operations-observation.v1",
+                commission: "006.032G1",
+                version: this.version,
+                buildId: this.buildId,
+                organizationId,
+                campaignId,
+                observedAt: nowIso,
+                campaignLineage: this.clone(input.campaignLineage || input.campaign?.campaignLineage || { organizationId, campaignId }),
+                execution: { state:executionState, verifiedReceiptCount:verifiedReceipts.length, uncertainReceiptCount:uncertainReceipts.length, receipts },
+                consequence: { state:outcomeState, measuredObservationCount:measuredObservations.length, observations, rule:"Execution evidence is not commercial outcome evidence." },
+                seo: { state:seoSignals.length ? "evidence-present" : "unknown", signals:seoSignals },
+                funnel: { leadCount:leads.length, qualifiedLeadCount:qualifiedLeads.length, leads },
+                followUp: { itemCount:followUps.length, overdueCount:overdueFollowUps.length, suppressedCount:suppressedFollowUps.length, items:followUps, rule:"Monitoring may recommend follow-up but grants no outreach authority." },
+                nextActions,
+                authority: { publicationAuthorized:false, outreachAuthorized:false, spendAuthorized:false, executionAuthorized:false, policyAuthorized:false, monitoringGrantsAuthority:false },
+                epistemic: { executionAndOutcomeSeparated:true, unknownPreserved:true, predictionsAreNotOutcomes:true },
+                operatingPrinciple:"Observe campaign reality across execution, consequence, search visibility, funnel state, and follow-up without converting observation into authority."
+            };
+        },
+
+        runCampaignOperationsMonitoringAcceptanceTest() {
+            const observation = this.buildCampaignOperationsObservation({
+                organizationId:"acceptance-org",
+                campaignId:"campaign-032g1",
+                campaignLineage:{ organizationId:"acceptance-org", campaignId:"campaign-032g1", creativeHypothesisId:"hypothesis-032g1" },
+                publicationReceipts:[{ success:true, receiptId:"receipt-1", providerPublicationId:"urn:provider:post:1", channel:"linkedin" }],
+                observations:[],
+                seoSignals:[],
+                leads:[{ id:"lead-1", stage:"qualified", qualified:true }],
+                followUps:[{ id:"follow-1", dueAt:"2026-09-14T18:00:00.000Z", status:"pending" }, { id:"follow-2", status:"suppressed", optOut:true }]
+            }, { now:"2026-09-14T20:00:00.000Z" });
+            const uncertain = this.buildCampaignOperationsObservation({
+                organizationId:"acceptance-org",
+                campaignId:"campaign-uncertain",
+                publicationReceipts:[{ success:false, status:"uncertain", uncertain:true }],
+                observations:[{ metric:"qualified-interest", value:3, epistemicStatus:"measured" }],
+                seoSignals:[{ metric:"indexed-pages", value:1, epistemicStatus:"measured" }]
+            }, { now:"2026-09-14T20:00:00.000Z" });
+            const checks = [
+                ["Campaign operations observation contract is versioned beneath Maddy", observation.schema === "meos.executive-monitoring.campaign-operations-observation.v1" && observation.commission === "006.032G1"],
+                ["Campaign operations truth is organization-bound", observation.organizationId === "acceptance-org"],
+                ["Campaign identity survives monitoring", observation.campaignId === "campaign-032g1" && observation.campaignLineage.creativeHypothesisId === "hypothesis-032g1"],
+                ["Verified publication receipt is preserved as execution evidence", observation.execution.verifiedReceiptCount === 1 && observation.execution.receipts[0].providerPublicationId === "urn:provider:post:1"],
+                ["Execution evidence does not become commercial outcome", observation.execution.state === "verified-execution-evidence-present" && observation.consequence.state === "unknown"],
+                ["Unknown post-publication consequence remains unknown", observation.consequence.state === "unknown" && observation.epistemic.unknownPreserved === true],
+                ["Monitoring recommends observation when execution exists without measured consequence", observation.nextActions.some(item => item.type === "observe-post-publication-consequence")],
+                ["SEO visibility remains unknown without evidence", observation.seo.state === "unknown"],
+                ["SEO evidence can become evidence-present without claiming business outcome", uncertain.seo.state === "evidence-present" && uncertain.consequence.state === "observed"],
+                ["Qualified funnel state is counted from supplied evidence", observation.funnel.qualifiedLeadCount === 1],
+                ["Overdue follow-up is detected", observation.followUp.overdueCount === 1],
+                ["Suppression and opt-out state survives monitoring", observation.followUp.suppressedCount === 1],
+                ["Follow-up recommendation does not grant outreach authority", observation.authority.outreachAuthorized === false && observation.followUp.rule.includes("no outreach authority")],
+                ["Uncertain consequential provider outcome is explicit", uncertain.execution.state === "uncertain-provider-outcome"],
+                ["Uncertain provider outcome produces reconciliation rather than automatic retry", uncertain.nextActions.some(item => item.type === "reconcile-provider-outcome" && item.automaticExecution === false)],
+                ["Campaign monitoring grants no publication authority", observation.authority.publicationAuthorized === false],
+                ["Campaign monitoring grants no spend authority", observation.authority.spendAuthorized === false],
+                ["Campaign monitoring grants no execution or policy authority", observation.authority.executionAuthorized === false && observation.authority.policyAuthorized === false],
+                ["Monitoring explicitly separates execution from outcome", observation.epistemic.executionAndOutcomeSeparated === true],
+                ["The commission strengthens the closed loop without creating a new campaign brain", observation.operatingPrinciple.includes("Observe campaign reality") && this.name === "MEOS Executive Monitoring Engine"]
+            ].map(([name, passed]) => ({ name, passed:passed === true }));
+            const passed = checks.filter(item => item.passed).length;
+            const success = passed === checks.length;
+            console.table(checks);
+            console.info(`[MEOS ${this.version}] Commission 006.032G1 Campaign Operations Consequence Monitoring: ${success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+            return { success, commission:"006.032G1", schema:"meos.executive-monitoring.campaign-operations-monitoring-acceptance.v1", version:this.version, buildId:this.buildId, passed, total:checks.length, checks, sample:this.clone(observation) };
         },
 
         createId(prefix = "item") {
