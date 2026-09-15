@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Learning Engine
- * Version: 1.3.3
+ * Version: 1.3.4
  *
  * Mission:
  * Convert completed work, outcomes, feedback, decisions, alerts, and executive
@@ -18,8 +18,8 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.3.3";
-    const BUILD_ID = "EL133-EVIDENCE-GROUNDED-ECONOMIC-CONSEQUENCE-ATTRIBUTION-20260915-A";
+    const VERSION = "1.3.4";
+    const BUILD_ID = "EL134-REPEATABLE-COMMERCIAL-DOMINANCE-BENCHMARK-20260915-A";
     const CALIBRATION_SCHEMA = "meos.maddy.self-correction-calibration.v1";
     const COMMERCIAL_TRUTH_SCHEMA = "meos.maddy.commercial-truth.v1";
 
@@ -46,7 +46,8 @@
         ECONOMIC_METRIC: "economic-metric",
         PREDICTION: "prediction",
         OUTCOME: "outcome",
-        COMMERCIAL_LESSON: "commercial-lesson"
+        COMMERCIAL_LESSON: "commercial-lesson",
+        BENCHMARK: "benchmark"
     });
 
     const INDEXED_DB_NAME = "meos-local-executive-repository";
@@ -3127,6 +3128,194 @@
                 console.table(checks);
                 console.log(`[MEOS ${this.version}] Commission 006.032H1 Evidence-Grounded Economic Consequence Attribution: ${passed===checks.length?"PASS":"FAIL"} (${passed}/${checks.length}).`);
                 return { success:passed===checks.length, commission:"006.032H1", schema:"meos.executive-learning.campaign-economic-consequence-attribution-acceptance.v1", version:this.version, buildId:this.buildId, passed, total:checks.length, checks, samples:{supported,unresolved} };
+            } finally {
+                this.commercialTruth=savedTruth; this.history=savedHistory; this.analytics=savedAnalytics; this.configuration.automaticPersistence=savedPersistence;
+            }
+        },
+
+        buildCommercialDominanceBenchmark(input = {}) {
+            const organizationId = String(input.organizationId || "").trim();
+            const benchmarkId = String(input.benchmarkId || "").trim();
+            if (!organizationId) return { success:false, error:"Commercial dominance benchmark requires organizationId." };
+            if (!benchmarkId) return { success:false, error:"Commercial dominance benchmark requires benchmarkId." };
+
+            const protocol = input.protocol && typeof input.protocol === "object" ? input.protocol : {};
+            const metric = String(protocol.metric || "netAttributableValue").trim();
+            const currency = String(protocol.currency || "USD").trim().toUpperCase() || "USD";
+            const requestedMinimum = Number(protocol.minimumIndependentTrialsPerArm);
+            const minimumIndependentTrialsPerArm = Number.isInteger(requestedMinimum) && requestedMinimum >= 2 ? requestedMinimum : 2;
+            const relevantAlternative = String(protocol.relevantAlternative || input.relevantAlternative || "").trim();
+            const comparisonContext = String(protocol.comparisonContext || "").trim();
+            const falsifiers = this.uniqueStrings(protocol.falsifiers || input.falsifiers);
+            const limitations = this.uniqueStrings(protocol.limitations || input.limitations);
+            const alternativeExplanations = this.uniqueStrings(protocol.alternativeExplanations || input.alternativeExplanations);
+
+            const normalizeTrial = (trial = {}, arm = "unknown") => {
+                const organization = String(trial.organizationId || organizationId).trim();
+                const trialId = String(trial.trialId || trial.campaignId || "").trim();
+                const independenceId = String(trial.independenceId || trial.cohortId || trial.campaignId || "").trim();
+                const sourceIds = this.uniqueStrings(trial.sourceIds || trial.evidenceIds);
+                const attributionStatus = String(trial.attributionStatus || trial.attribution?.status || "unknown").trim().toLowerCase();
+                const nav = this.normalizeCommercialValue(trial.netAttributableValue || trial.economics?.netAttributableValue || { status:"unknown", unknownReason:"benchmark NAV unavailable" }, { currency });
+                const sameOrganization = organization === organizationId;
+                const measured = nav.status === COMMERCIAL_VALUE_STATUSES.MEASURED && Number.isFinite(nav.value);
+                const sameCurrency = String(nav.currency || currency).toUpperCase() === currency;
+                const evidenceSupported = ["supported","verified"].includes(attributionStatus) && sourceIds.length > 0;
+                const independent = Boolean(independenceId);
+                const eligible = Boolean(trialId && sameOrganization && measured && sameCurrency && evidenceSupported && independent);
+                return {
+                    arm, trialId, campaignId:String(trial.campaignId || trialId).trim(), organizationId:organization,
+                    independenceId, netAttributableValue:nav, attributionStatus, sourceIds,
+                    comparableConditions:this.clone(trial.comparableConditions || {}), eligible,
+                    exclusionReasons:[
+                        !trialId ? "trial identity missing" : null,
+                        !sameOrganization ? "organization mismatch" : null,
+                        !measured ? "measured NAV unavailable" : null,
+                        !sameCurrency ? "currency mismatch" : null,
+                        !evidenceSupported ? "attribution is not evidence-supported" : null,
+                        !independent ? "independence identity missing" : null
+                    ].filter(Boolean)
+                };
+            };
+
+            const armsInput = input.arms && typeof input.arms === "object" ? input.arms : {};
+            const arms = {
+                maddy: Array.isArray(armsInput.maddy) ? armsInput.maddy.map(t => normalizeTrial(t, "maddy")) : [],
+                priorSelf: Array.isArray(armsInput.priorSelf) ? armsInput.priorSelf.map(t => normalizeTrial(t, "prior-self")) : [],
+                relevantAlternative: Array.isArray(armsInput.relevantAlternative) ? armsInput.relevantAlternative.map(t => normalizeTrial(t, "relevant-alternative")) : []
+            };
+            const summarize = trials => {
+                const eligible = trials.filter(t => t.eligible);
+                const independentIds = new Set(eligible.map(t => t.independenceId));
+                const values = eligible.map(t => t.netAttributableValue.value);
+                const mean = values.length ? Number((values.reduce((a,b)=>a+b,0)/values.length).toFixed(6)) : null;
+                return { totalTrials:trials.length, eligibleTrials:eligible.length, independentTrials:independentIds.size, meanNetAttributableValue:mean, eligibleTrialIds:eligible.map(t=>t.trialId) };
+            };
+            const summaries = { maddy:summarize(arms.maddy), priorSelf:summarize(arms.priorSelf), relevantAlternative:summarize(arms.relevantAlternative) };
+            const protocolComplete = metric === "netAttributableValue" && Boolean(relevantAlternative) && Boolean(comparisonContext) && falsifiers.length > 0;
+            const repeatable = Object.values(summaries).every(summary => summary.independentTrials >= minimumIndependentTrialsPerArm);
+            const evidenceComplete = Object.values(arms).every(trials => trials.length > 0 && trials.every(t => t.eligible));
+            const comparable = protocolComplete && repeatable && evidenceComplete;
+            const maddyVsPrior = comparable ? Number((summaries.maddy.meanNetAttributableValue - summaries.priorSelf.meanNetAttributableValue).toFixed(6)) : null;
+            const maddyVsAlternative = comparable ? Number((summaries.maddy.meanNetAttributableValue - summaries.relevantAlternative.meanNetAttributableValue).toFixed(6)) : null;
+            const betterThanPriorSelf = comparable && maddyVsPrior > 0;
+            const betterThanRelevantAlternative = comparable && maddyVsAlternative > 0;
+            const contradictoryTrial = comparable && arms.maddy.some(t => t.eligible && (
+                arms.priorSelf.some(p => p.eligible && p.independenceId === t.independenceId && t.netAttributableValue.value <= p.netAttributableValue.value) ||
+                arms.relevantAlternative.some(a => a.eligible && a.independenceId === t.independenceId && t.netAttributableValue.value <= a.netAttributableValue.value)
+            ));
+            const dominanceSupported = comparable && betterThanPriorSelf && betterThanRelevantAlternative && !contradictoryTrial;
+            const status = !comparable ? "insufficient-evidence" : dominanceSupported ? "benchmark-supported" : "benchmark-not-supported";
+            const sourceIds = this.uniqueStrings(Object.values(arms).flat().flatMap(t => t.sourceIds));
+
+            return {
+                success:true,
+                schema:"meos.executive-learning.commercial-dominance-benchmark.v1",
+                commission:"006.032H2",
+                version:this.version,
+                buildId:this.buildId,
+                organizationId,
+                benchmarkId,
+                protocol:{ metric, currency, minimumIndependentTrialsPerArm, relevantAlternative, comparisonContext, falsifiers, limitations, alternativeExplanations },
+                arms,
+                summaries,
+                comparison:{ comparable, maddyVsPriorSelf:maddyVsPrior, maddyVsRelevantAlternative:maddyVsAlternative, betterThanPriorSelf, betterThanRelevantAlternative, contradictoryTrial },
+                epistemic:{ status, sourceIds, unknowns:comparable ? [] : ["repeatable objective comparison is incomplete"], alternativeExplanations, limitations, falsifiers },
+                commercialClaim:{ eligible:dominanceSupported, status, statement:dominanceSupported ? `Maddy outperformed her prior-self baseline and ${relevantAlternative} on measured evidence-grounded Net Attributable Value under the defined repeatable benchmark.` : null, automaticMarketingAuthorized:false, rule:"A commercial dominance claim is eligible only after repeatable objective evidence clears the defined protocol. Benchmark support does not authorize publication or erase limitations." },
+                learningSignal:{ priorSelfComparisonKnown:comparable, alternativeComparisonKnown:comparable, direction:!comparable ? "unknown" : dominanceSupported ? "stronger-under-benchmark" : "benchmark-did-not-establish-dominance", rule:"Use both wins and failures to improve future judgment; never discard contradictory evidence." },
+                authority:{ claimAuthorized:false, publicationAuthorized:false, outreachAuthorized:false, spendAuthorized:false, executionAuthorized:false }
+            };
+        },
+
+        assimilateCommercialDominanceBenchmark(input = {}, options = {}) {
+            const benchmark = this.buildCommercialDominanceBenchmark(input);
+            if (!benchmark.success) return benchmark;
+            const result = this.recordCommercialTruth({
+                id:`commercial-benchmark-${benchmark.organizationId}-${benchmark.benchmarkId}`,
+                recordType:COMMERCIAL_RECORD_TYPES.BENCHMARK,
+                organizationId:benchmark.organizationId,
+                title:`Commercial dominance benchmark — ${benchmark.benchmarkId}`,
+                description:"Repeatable objective comparison of evidence-grounded Net Attributable Value against Maddy's prior self and a defined relevant alternative.",
+                outcome:{ type:"commercial-dominance-benchmark", status:benchmark.epistemic.status, comparison:benchmark.comparison },
+                economics:{ netAttributableValue:{ status:"not-applicable", value:null, unit:"currency", currency:benchmark.protocol.currency, unknownReason:"benchmark compares trial-level NAV rather than manufacturing a new economic value" } },
+                claimStatus:benchmark.commercialClaim.status,
+                confidence:benchmark.commercialClaim.eligible ? 1 : 0,
+                sourceIds:benchmark.epistemic.sourceIds,
+                falsifiers:benchmark.epistemic.falsifiers,
+                unknowns:benchmark.epistemic.unknowns,
+                metadata:{ commission:"006.032H2", protocol:benchmark.protocol, summaries:benchmark.summaries, comparison:benchmark.comparison, commercialClaim:benchmark.commercialClaim, learningSignal:benchmark.learningSignal, benchmarkEvidenceProminent:true, automaticMarketingAuthorized:false }
+            }, options);
+            if (!result.success) return result;
+            return { success:true, schema:"meos.executive-learning.commercial-dominance-benchmark-assimilation.v1", commission:"006.032H2", version:this.version, buildId:this.buildId, benchmark, record:result.record, authority:this.clone(benchmark.authority) };
+        },
+
+        runCommercialDominanceBenchmarkAcceptanceTest() {
+            const savedTruth=this.clone(this.commercialTruth), savedHistory=this.clone(this.history), savedAnalytics=this.clone(this.analytics), savedPersistence=this.configuration.automaticPersistence;
+            this.configuration.automaticPersistence=false;
+            const trial=(id,nav,arm,org="h2-org",status="measured",attributionStatus="supported",sources=[`evidence-${id}`])=>({ organizationId:org, trialId:id, campaignId:id, independenceId:id.replace(/-(m|p|a)$/,""), netAttributableValue:{value:nav,status,unit:"currency",currency:"USD",sourceIds:sources}, attributionStatus, sourceIds:sources, comparableConditions:{market:"same-market",offer:"same-offer",window:"same-window"}, arm });
+            try {
+                const supported=this.assimilateCommercialDominanceBenchmark({
+                    organizationId:"h2-org", benchmarkId:"benchmark-supported",
+                    protocol:{ metric:"netAttributableValue", currency:"USD", minimumIndependentTrialsPerArm:3, relevantAlternative:"relevant-market-alternative", comparisonContext:"same market, offer class, measurement window and evidence standard", falsifiers:["Maddy fails to outperform either arm in an independent repeat"], limitations:["benchmark applies only to defined comparison context"], alternativeExplanations:["market timing may still contribute"] },
+                    arms:{
+                        maddy:[trial("r1-m",700),trial("r2-m",760),trial("r3-m",740)],
+                        priorSelf:[trial("r1-p",400),trial("r2-p",420),trial("r3-p",410)],
+                        relevantAlternative:[trial("r1-a",500),trial("r2-a",520),trial("r3-a",510)]
+                    }
+                });
+                const insufficient=this.buildCommercialDominanceBenchmark({
+                    organizationId:"h2-org", benchmarkId:"benchmark-insufficient",
+                    protocol:{ metric:"netAttributableValue", currency:"USD", minimumIndependentTrialsPerArm:3, relevantAlternative:"relevant-market-alternative", comparisonContext:"same market", falsifiers:["future contradictory evidence"] },
+                    arms:{ maddy:[trial("x1-m",900)], priorSelf:[trial("x1-p",300)], relevantAlternative:[trial("x1-a",400)] }
+                });
+                const contradicted=this.buildCommercialDominanceBenchmark({
+                    organizationId:"h2-org", benchmarkId:"benchmark-contradicted",
+                    protocol:{ metric:"netAttributableValue", currency:"USD", minimumIndependentTrialsPerArm:2, relevantAlternative:"relevant-market-alternative", comparisonContext:"same market", falsifiers:["Maddy loses an independent repeat"] },
+                    arms:{ maddy:[trial("c1-m",800),trial("c2-m",200)], priorSelf:[trial("c1-p",400),trial("c2-p",300)], relevantAlternative:[trial("c1-a",500),trial("c2-a",250)] }
+                });
+                const unknown=this.buildCommercialDominanceBenchmark({
+                    organizationId:"h2-org", benchmarkId:"benchmark-unknown",
+                    protocol:{ metric:"netAttributableValue", currency:"USD", minimumIndependentTrialsPerArm:2, relevantAlternative:"relevant-market-alternative", comparisonContext:"same market", falsifiers:["missing evidence"] },
+                    arms:{ maddy:[trial("u1-m",900),trial("u2-m",950,null,"h2-org","unknown")], priorSelf:[trial("u1-p",300),trial("u2-p",320)], relevantAlternative:[trial("u1-a",400),trial("u2-a",420)] }
+                });
+                const other=this.assimilateCommercialDominanceBenchmark({ organizationId:"other-org", benchmarkId:"other", protocol:{relevantAlternative:"other",comparisonContext:"other",falsifiers:["x"]}, arms:{maddy:[trial("o1-m",3,null,"other-org"),trial("o2-m",4,null,"other-org")],priorSelf:[trial("o1-p",1,null,"other-org"),trial("o2-p",1,null,"other-org")],relevantAlternative:[trial("o1-a",2,null,"other-org"),trial("o2-a",2,null,"other-org")]}});
+                const b=supported.benchmark;
+                const checks=[
+                    ["Dominance benchmark contract is explicit and versioned", b?.schema === "meos.executive-learning.commercial-dominance-benchmark.v1"],
+                    ["H2 remains inside Executive Learning and Commercial Truth", supported?.record?.schema === COMMERCIAL_TRUTH_SCHEMA && supported?.record?.recordType === "benchmark"],
+                    ["Organization identity remains bound", b?.organizationId === "h2-org"],
+                    ["Benchmark identity remains bound", b?.benchmarkId === "benchmark-supported"],
+                    ["Net Attributable Value is the benchmark metric", b?.protocol?.metric === "netAttributableValue"],
+                    ["Relevant alternative is explicitly defined", b?.protocol?.relevantAlternative === "relevant-market-alternative"],
+                    ["Comparison context is explicit", Boolean(b?.protocol?.comparisonContext)],
+                    ["Falsifiers are required and preserved", b?.protocol?.falsifiers?.length === 1],
+                    ["Repeatability threshold is explicit", b?.protocol?.minimumIndependentTrialsPerArm === 3],
+                    ["Maddy arm has three independent eligible trials", b?.summaries?.maddy?.independentTrials === 3],
+                    ["Prior-self arm has three independent eligible trials", b?.summaries?.priorSelf?.independentTrials === 3],
+                    ["Relevant-alternative arm has three independent eligible trials", b?.summaries?.relevantAlternative?.independentTrials === 3],
+                    ["Measured evidence-grounded NAV is required", b?.arms?.maddy?.every(t=>t.eligible && t.netAttributableValue.status === "measured") === true],
+                    ["Maddy is objectively compared with prior self", b?.comparison?.maddyVsPriorSelf === 323.333333 && b?.comparison?.betterThanPriorSelf === true],
+                    ["Maddy is objectively compared with relevant alternative", b?.comparison?.maddyVsRelevantAlternative === 223.333333 && b?.comparison?.betterThanRelevantAlternative === true],
+                    ["Repeatable supported benchmark can become claim-eligible", b?.commercialClaim?.eligible === true && b?.epistemic?.status === "benchmark-supported"],
+                    ["Claim eligibility does not become automatic marketing authority", b?.commercialClaim?.automaticMarketingAuthorized === false && b?.authority?.claimAuthorized === false],
+                    ["Publication outreach spend and execution authority remain false", [b?.authority?.publicationAuthorized,b?.authority?.outreachAuthorized,b?.authority?.spendAuthorized,b?.authority?.executionAuthorized].every(v=>v===false)],
+                    ["Limitations survive a successful benchmark", b?.epistemic?.limitations?.includes("benchmark applies only to defined comparison context") === true],
+                    ["Alternative explanations survive a successful benchmark", b?.epistemic?.alternativeExplanations?.includes("market timing may still contribute") === true],
+                    ["Insufficient repeats cannot establish dominance", insufficient?.commercialClaim?.eligible === false && insufficient?.epistemic?.status === "insufficient-evidence"],
+                    ["One strong campaign cannot establish dominance", insufficient?.summaries?.maddy?.independentTrials === 1],
+                    ["Contradictory independent evidence blocks dominance", contradicted?.comparison?.contradictoryTrial === true && contradicted?.commercialClaim?.eligible === false],
+                    ["Unknown NAV evidence blocks benchmark comparability", unknown?.comparison?.comparable === false && unknown?.commercialClaim?.eligible === false],
+                    ["Benchmark persists in durable Commercial Truth", this.buildPersistenceSnapshot().commercialTruth?.some(r=>r.id===supported.record?.id) === true],
+                    ["Organization isolation survives benchmark assimilation", this.getCommercialTruth({organizationId:"h2-org"}).every(r=>r.organizationId==="h2-org") && !this.getCommercialTruth({organizationId:"h2-org"}).some(r=>r.id===other.record?.id)],
+                    ["Evidence lineage remains addressable", b?.epistemic?.sourceIds?.includes("evidence-r1-m") && b?.epistemic?.sourceIds?.includes("evidence-r1-a")],
+                    ["Both wins and failures feed future judgment", contradicted?.learningSignal?.direction === "benchmark-did-not-establish-dominance"],
+                    ["Benchmark never manufactures a new economic value", supported?.record?.economics?.netAttributableValue?.status === "not-applicable"],
+                    ["Commercial Claim Standard requires repeatable objective evidence", b?.commercialClaim?.rule?.includes("repeatable objective evidence") === true]
+                ].map(([name,passed])=>({name,passed:Boolean(passed)}));
+                const passed=checks.filter(c=>c.passed).length;
+                console.table(checks);
+                console.log(`[MEOS ${this.version}] Commission 006.032H2 Repeatable Commercial Dominance Benchmark: ${passed===checks.length?"PASS":"FAIL"} (${passed}/${checks.length}).`);
+                return { success:passed===checks.length, commission:"006.032H2", schema:"meos.executive-learning.commercial-dominance-benchmark-acceptance.v1", version:this.version, buildId:this.buildId, passed, total:checks.length, checks, samples:{supported,insufficient,contradicted,unknown} };
             } finally {
                 this.commercialTruth=savedTruth; this.history=savedHistory; this.analytics=savedAnalytics; this.configuration.automaticPersistence=savedPersistence;
             }
