@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Learning Engine
- * Version: 1.3.2
+ * Version: 1.3.3
  *
  * Mission:
  * Convert completed work, outcomes, feedback, decisions, alerts, and executive
@@ -18,8 +18,8 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.3.2";
-    const BUILD_ID = "EL132-SYMMETRIC-CAMPAIGN-CAUSE-LEARNING-20260914-A";
+    const VERSION = "1.3.3";
+    const BUILD_ID = "EL133-EVIDENCE-GROUNDED-ECONOMIC-CONSEQUENCE-ATTRIBUTION-20260915-A";
     const CALIBRATION_SCHEMA = "meos.maddy.self-correction-calibration.v1";
     const COMMERCIAL_TRUTH_SCHEMA = "meos.maddy.commercial-truth.v1";
 
@@ -2933,6 +2933,202 @@
                 this.history = savedHistory;
                 this.analytics = savedAnalytics;
                 this.configuration.automaticPersistence = savedPersistence;
+            }
+        },
+
+        buildCampaignEconomicConsequenceAssessment(input = {}, options = {}) {
+            const organizationId = String(input.organizationId || "").trim();
+            const campaignId = String(input.campaignId || "").trim();
+            if (!organizationId) return { success:false, error:"Economic consequence assessment requires organizationId." };
+            if (!campaignId) return { success:false, error:"Economic consequence assessment requires campaignId." };
+
+            const revenue = this.normalizeCommercialValue(input.economics?.revenue || { status:"unknown", unknownReason:"measured revenue unavailable" }, { currency:input.currency || "USD" });
+            const attributableRevenue = this.normalizeCommercialValue(input.economics?.attributableRevenue || { status:"unknown", unknownReason:"attributable revenue has not been established" }, { currency:input.currency || revenue.currency || "USD" });
+            const totalCost = this.normalizeCommercialValue(input.economics?.totalCost || input.economics?.cost || { status:"unknown", unknownReason:"complete attributable cost unavailable" }, { currency:input.currency || revenue.currency || "USD" });
+            const attribution = input.attribution && typeof input.attribution === "object" ? input.attribution : {};
+            const attributionStatus = String(attribution.status || input.attributionStatus || "unknown").trim().toLowerCase();
+            const allowedAttributionStatuses = ["verified","supported","inferred","disputed","unknown"];
+            const normalizedAttributionStatus = allowedAttributionStatuses.includes(attributionStatus) ? attributionStatus : "unknown";
+            const attributionEvidenceIds = this.uniqueStrings(attribution.sourceIds || attribution.evidenceIds);
+            const alternativeExplanations = this.uniqueStrings(attribution.alternativeExplanations || input.alternativeExplanations);
+            const limitations = this.uniqueStrings(attribution.limitations);
+            const falsifiers = this.uniqueStrings(attribution.falsifiers || input.falsifiers);
+
+            const attributableRevenueUsable = Number.isFinite(attributableRevenue.value) && attributableRevenue.status !== COMMERCIAL_VALUE_STATUSES.UNKNOWN;
+            const costUsable = Number.isFinite(totalCost.value) && totalCost.status !== COMMERCIAL_VALUE_STATUSES.UNKNOWN;
+            const attributionEvidenceSufficient = ["verified","supported"].includes(normalizedAttributionStatus) && attributionEvidenceIds.length > 0;
+            const navStatus = attributableRevenueUsable && costUsable && attributionEvidenceSufficient
+                ? (attributableRevenue.status === COMMERCIAL_VALUE_STATUSES.MEASURED && totalCost.status === COMMERCIAL_VALUE_STATUSES.MEASURED
+                    ? COMMERCIAL_VALUE_STATUSES.MEASURED
+                    : COMMERCIAL_VALUE_STATUSES.ESTIMATED)
+                : COMMERCIAL_VALUE_STATUSES.UNKNOWN;
+            const netAttributableValue = navStatus === COMMERCIAL_VALUE_STATUSES.UNKNOWN
+                ? this.normalizeCommercialValue({ status:"unknown", unit:"currency", currency:attributableRevenue.currency || totalCost.currency || revenue.currency || "USD", unknownReason: !attributionEvidenceSufficient ? "attribution is not evidence-supported" : (!attributableRevenueUsable ? "attributable revenue unavailable" : "complete attributable cost unavailable") })
+                : this.normalizeCommercialValue({
+                    value:Number((attributableRevenue.value - totalCost.value).toFixed(6)),
+                    status:navStatus,
+                    unit:"currency",
+                    currency:attributableRevenue.currency || totalCost.currency || revenue.currency || "USD",
+                    confidence:Math.min(attributableRevenue.confidence ?? 1, totalCost.confidence ?? 1, this.normalizeConfidence(attribution.confidence ?? 0)),
+                    sourceIds:this.uniqueStrings([...(attributableRevenue.sourceIds || []), ...(totalCost.sourceIds || []), ...attributionEvidenceIds]),
+                    methodology:"Net Attributable Value = evidence-attributable revenue minus complete attributable cost. Revenue alone is insufficient."
+                });
+
+            const prediction = input.prediction && typeof input.prediction === "object" ? this.clone(input.prediction) : null;
+            const actualEconomicValue = netAttributableValue.status !== COMMERCIAL_VALUE_STATUSES.UNKNOWN ? netAttributableValue.value : null;
+            let predictionComparison = { state:"unknown", delta:null, direction:"unknown", rule:"Prediction and reality remain separate until comparable evidence exists." };
+            if (prediction && Number.isFinite(Number(prediction.netAttributableValue)) && actualEconomicValue !== null) {
+                const predicted = Number(prediction.netAttributableValue);
+                const delta = Number((actualEconomicValue - predicted).toFixed(6));
+                predictionComparison = { state:"compared", predictedNetAttributableValue:predicted, actualNetAttributableValue:actualEconomicValue, delta, direction:delta === 0 ? "matched" : (delta > 0 ? "outperformed-prediction" : "underperformed-prediction"), rule:"A prediction error updates future judgment; it does not retroactively manufacture causal attribution." };
+            }
+
+            const attributionConclusion = !attributionEvidenceSufficient
+                ? "attribution-unresolved"
+                : (normalizedAttributionStatus === "verified" ? "attribution-verified-with-stated-limits" : "attribution-supported-not-proven-causal");
+            return {
+                success:true,
+                schema:"meos.executive-learning.campaign-economic-consequence-assessment.v1",
+                commission:"006.032H1",
+                version:this.version,
+                buildId:this.buildId,
+                organizationId,
+                campaignId,
+                economics:{ revenue, attributableRevenue, totalCost, netAttributableValue },
+                attribution:{
+                    status:normalizedAttributionStatus,
+                    conclusion:attributionConclusion,
+                    confidence:this.normalizeConfidence(attribution.confidence ?? 0),
+                    model:String(attribution.model || "unknown").trim() || "unknown",
+                    sourceIds:attributionEvidenceIds,
+                    touchpoints:Array.isArray(attribution.touchpoints) ? this.clone(attribution.touchpoints) : [],
+                    alternativeExplanations,
+                    limitations,
+                    falsifiers,
+                    causalClaimAuthorized:normalizedAttributionStatus === "verified" && attributionEvidenceSufficient && alternativeExplanations.length === 0
+                },
+                prediction,
+                predictionComparison,
+                learningSignal:{
+                    economicRealityKnown:netAttributableValue.status !== COMMERCIAL_VALUE_STATUSES.UNKNOWN,
+                    predictionErrorKnown:predictionComparison.state === "compared",
+                    nextJudgmentRule:"Use attributable economic consequence and prediction error to recalibrate future commercial judgment while preserving causal uncertainty and counter-explanations."
+                },
+                benchmarkEligibility:{
+                    eligible:false,
+                    reason:"One campaign consequence cannot establish commercial dominance. Benchmark eligibility requires repeatable objective comparison against a defined relevant alternative under the Commercial Claim Standard."
+                },
+                authority:{ executionAuthorized:false, spendAuthorized:false, publicationAuthorized:false, outreachAuthorized:false, claimAuthorized:false }
+            };
+        },
+
+        assimilateCampaignEconomicConsequence(input = {}, options = {}) {
+            const assessment = this.buildCampaignEconomicConsequenceAssessment(input, options);
+            if (!assessment.success) return assessment;
+            const evidenceIds = this.uniqueStrings([
+                ...(assessment.economics.revenue.sourceIds || []),
+                ...(assessment.economics.attributableRevenue.sourceIds || []),
+                ...(assessment.economics.totalCost.sourceIds || []),
+                ...(assessment.attribution.sourceIds || [])
+            ]);
+            const result = this.recordCommercialTruth({
+                id:`campaign-economic-consequence-${assessment.organizationId}-${assessment.campaignId}`,
+                recordType:COMMERCIAL_RECORD_TYPES.ECONOMIC_METRIC,
+                organizationId:assessment.organizationId,
+                campaignId:assessment.campaignId,
+                title:`Campaign economic consequence — ${assessment.campaignId}`,
+                description:"Evidence-grounded campaign economic consequence with attribution uncertainty, Net Attributable Value, and prediction-versus-reality preserved together without manufacturing causation or dominance.",
+                prediction:assessment.prediction,
+                outcome:{
+                    type:"economic-consequence",
+                    netAttributableValue:assessment.economics.netAttributableValue,
+                    predictionComparison:assessment.predictionComparison
+                },
+                economics:assessment.economics,
+                attribution:{
+                    model:assessment.attribution.model,
+                    confidence:assessment.attribution.confidence,
+                    sourceIds:assessment.attribution.sourceIds,
+                    touchpoints:assessment.attribution.touchpoints,
+                    limitations:[...assessment.attribution.limitations, ...assessment.attribution.alternativeExplanations]
+                },
+                claimStatus:assessment.attribution.status,
+                confidence:assessment.attribution.confidence,
+                sourceIds:evidenceIds,
+                falsifiers:assessment.attribution.falsifiers,
+                unknowns:assessment.economics.netAttributableValue.status === COMMERCIAL_VALUE_STATUSES.UNKNOWN ? [assessment.economics.netAttributableValue.unknownReason] : [],
+                metadata:{
+                    commission:"006.032H1",
+                    attributionConclusion:assessment.attribution.conclusion,
+                    alternativeExplanations:assessment.attribution.alternativeExplanations,
+                    predictionComparison:assessment.predictionComparison,
+                    learningSignal:assessment.learningSignal,
+                    benchmarkEligibility:assessment.benchmarkEligibility,
+                    netAttributableValueProminent:true,
+                    revenueAloneInsufficient:true
+                }
+            }, options);
+            if (!result.success) return result;
+            return { success:true, schema:"meos.executive-learning.campaign-economic-consequence-assimilation.v1", commission:"006.032H1", version:this.version, buildId:this.buildId, assessment, record:result.record, authority:this.clone(assessment.authority) };
+        },
+
+        runCampaignEconomicConsequenceAttributionAcceptanceTest() {
+            const savedTruth=this.clone(this.commercialTruth), savedHistory=this.clone(this.history), savedAnalytics=this.clone(this.analytics), savedPersistence=this.configuration.automaticPersistence;
+            this.configuration.automaticPersistence=false;
+            try {
+                const supported=this.assimilateCampaignEconomicConsequence({
+                    organizationId:"h1-org-a", campaignId:"h1-campaign-1",
+                    economics:{
+                        revenue:{ value:1200, status:"measured", unit:"currency", currency:"USD", sourceIds:["payment-1"] },
+                        attributableRevenue:{ value:900, status:"measured", unit:"currency", currency:"USD", sourceIds:["attributed-payment-1"] },
+                        totalCost:{ value:250, status:"measured", unit:"currency", currency:"USD", sourceIds:["cost-ledger-1"] }
+                    },
+                    attribution:{ status:"supported", confidence:0.78, model:"evidence-chain", sourceIds:["conversion-1","touchpoint-1"], touchpoints:[{id:"touchpoint-1",type:"campaign"}], alternativeExplanations:["organic word of mouth may have contributed"], limitations:["single observed campaign"] },
+                    prediction:{ netAttributableValue:500, confidence:0.6 }
+                });
+                const unresolved=this.assimilateCampaignEconomicConsequence({
+                    organizationId:"h1-org-a", campaignId:"h1-campaign-2",
+                    economics:{ revenue:{ value:5000, status:"measured", unit:"currency", currency:"USD", sourceIds:["payment-2"] }, totalCost:{ value:100, status:"measured", unit:"currency", currency:"USD", sourceIds:["cost-2"] } },
+                    attribution:{ status:"unknown", confidence:0, sourceIds:[], alternativeExplanations:["direct referral","prior relationship"] }
+                });
+                const other=this.assimilateCampaignEconomicConsequence({
+                    organizationId:"h1-org-b", campaignId:"h1-campaign-1",
+                    economics:{ attributableRevenue:{ value:100, status:"measured", unit:"currency", currency:"USD", sourceIds:["other-revenue"] }, totalCost:{ value:10, status:"measured", unit:"currency", currency:"USD", sourceIds:["other-cost"] } },
+                    attribution:{ status:"supported", confidence:0.7, sourceIds:["other-attribution"] }
+                });
+                const a=supported.assessment, u=unresolved.assessment;
+                const checks=[
+                    ["Economic consequence assessment is explicit and versioned", a?.schema === "meos.executive-learning.campaign-economic-consequence-assessment.v1"],
+                    ["H1 remains inside Executive Learning rather than a disconnected attribution engine", supported?.record?.schema === COMMERCIAL_TRUTH_SCHEMA],
+                    ["Organization and campaign lineage remain bound", supported?.record?.organizationId === "h1-org-a" && supported?.record?.campaignId === "h1-campaign-1"],
+                    ["Measured revenue remains measured", a?.economics?.revenue?.status === "measured" && a?.economics?.revenue?.value === 1200],
+                    ["Attributable revenue remains distinct from gross revenue", a?.economics?.attributableRevenue?.value === 900 && a?.economics?.revenue?.value === 1200],
+                    ["Complete measured cost remains evidence-addressable", a?.economics?.totalCost?.value === 250 && a?.economics?.totalCost?.sourceIds?.includes("cost-ledger-1")],
+                    ["Net Attributable Value is calculated from attributable revenue minus cost", a?.economics?.netAttributableValue?.value === 650],
+                    ["Measured NAV remains measured only when its inputs are measured and attribution is supported", a?.economics?.netAttributableValue?.status === "measured"],
+                    ["NAV retains combined evidence lineage", a?.economics?.netAttributableValue?.sourceIds?.includes("attributed-payment-1") && a?.economics?.netAttributableValue?.sourceIds?.includes("cost-ledger-1") && a?.economics?.netAttributableValue?.sourceIds?.includes("conversion-1")],
+                    ["Revenue alone is insufficient for attributable economic value", u?.economics?.revenue?.value === 5000 && u?.economics?.netAttributableValue?.status === "unknown"],
+                    ["Unknown attribution remains unknown rather than becoming campaign credit", u?.attribution?.conclusion === "attribution-unresolved"],
+                    ["Alternative explanations survive attribution", a?.attribution?.alternativeExplanations?.includes("organic word of mouth may have contributed")],
+                    ["Supported attribution is not silently promoted to proven causation", a?.attribution?.conclusion === "attribution-supported-not-proven-causal" && a?.attribution?.causalClaimAuthorized === false],
+                    ["Prediction remains separate from observed economic reality", a?.prediction?.netAttributableValue === 500 && a?.economics?.netAttributableValue?.value === 650],
+                    ["Prediction error is explicitly calculated", a?.predictionComparison?.state === "compared" && a?.predictionComparison?.delta === 150],
+                    ["Prediction comparison feeds a future-judgment learning signal", a?.learningSignal?.predictionErrorKnown === true],
+                    ["One successful campaign is ineligible for dominance claim", a?.benchmarkEligibility?.eligible === false],
+                    ["Commercial claim authority remains false", a?.authority?.claimAuthorized === false],
+                    ["No spend publication outreach or execution authority is granted", [a?.authority?.spendAuthorized,a?.authority?.publicationAuthorized,a?.authority?.outreachAuthorized,a?.authority?.executionAuthorized].every(v=>v===false)],
+                    ["Economic consequence persists in durable commercial truth", this.buildPersistenceSnapshot().commercialTruth?.some(r=>r.id===supported.record?.id) === true],
+                    ["Organization isolation survives economic assimilation", this.getCommercialTruth({organizationId:"h1-org-a"}).every(r=>r.organizationId==="h1-org-a") && !this.getCommercialTruth({organizationId:"h1-org-a"}).some(r=>r.id===other.record?.id)],
+                    ["Net Attributable Value is marked prominent", supported?.record?.metadata?.netAttributableValueProminent === true],
+                    ["The record explicitly states revenue alone is insufficient", supported?.record?.metadata?.revenueAloneInsufficient === true],
+                    ["Benchmark proof is deferred to repeatable objective comparison", a?.benchmarkEligibility?.reason?.includes("repeatable objective comparison") === true]
+                ].map(([name,passed])=>({name,passed:Boolean(passed)}));
+                const passed=checks.filter(c=>c.passed).length;
+                console.table(checks);
+                console.log(`[MEOS ${this.version}] Commission 006.032H1 Evidence-Grounded Economic Consequence Attribution: ${passed===checks.length?"PASS":"FAIL"} (${passed}/${checks.length}).`);
+                return { success:passed===checks.length, commission:"006.032H1", schema:"meos.executive-learning.campaign-economic-consequence-attribution-acceptance.v1", version:this.version, buildId:this.buildId, passed, total:checks.length, checks, samples:{supported,unresolved} };
+            } finally {
+                this.commercialTruth=savedTruth; this.history=savedHistory; this.analytics=savedAnalytics; this.configuration.automaticPersistence=savedPersistence;
             }
         },
 
