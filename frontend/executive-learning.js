@@ -1,6 +1,6 @@
 /*
  * MEOS Executive Learning Engine
- * Version: 1.3.1
+ * Version: 1.3.2
  *
  * Mission:
  * Convert completed work, outcomes, feedback, decisions, alerts, and executive
@@ -18,8 +18,8 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.3.1";
-    const BUILD_ID = "EL131-COMMERCIAL-INTELLIGENCE-DATA-CONTRACT-20260914-A";
+    const VERSION = "1.3.2";
+    const BUILD_ID = "EL132-SYMMETRIC-CAMPAIGN-CAUSE-LEARNING-20260914-A";
     const CALIBRATION_SCHEMA = "meos.maddy.self-correction-calibration.v1";
     const COMMERCIAL_TRUTH_SCHEMA = "meos.maddy.commercial-truth.v1";
 
@@ -2696,6 +2696,244 @@
             this.persistIfEnabled();
             this.emit("learning:commercial-truth-recorded", this.clone(record));
             return { success: true, record: this.clone(record) };
+        },
+
+        buildCampaignConsequenceDiagnosis(observation = {}, options = {}) {
+            const organizationId = String(observation.organizationId || "").trim();
+            const campaignId = String(observation.campaignId || "").trim();
+            if (!organizationId) return { success:false, error:"Campaign consequence diagnosis requires organizationId." };
+            if (!campaignId) return { success:false, error:"Campaign consequence diagnosis requires campaignId." };
+
+            const executionState = String(observation.execution?.state || "unknown");
+            const consequenceState = String(observation.consequence?.state || "unknown");
+            const seoState = String(observation.seo?.state || "unknown");
+            const qualifiedLeadCount = Number(observation.funnel?.qualifiedLeadCount || 0);
+            const overdueFollowUpCount = Number(observation.followUp?.overdueCount || 0);
+            const suppressedFollowUpCount = Number(observation.followUp?.suppressedCount || 0);
+            const uncertainExecution = executionState === "uncertain-provider-outcome";
+            const measuredObservations = (Array.isArray(observation.consequence?.observations) ? observation.consequence.observations : [])
+                .filter(item => String(item?.epistemicStatus || item?.status || "").toLowerCase() === "measured");
+            const measuredConsequence = consequenceState === "observed" && measuredObservations.length > 0;
+            const evidenceIds = this.uniqueStrings([
+                ...(observation.execution?.receipts || []).map(item => item?.receiptId || item?.providerPublicationId || item?.id),
+                ...measuredObservations.flatMap(item => [item?.evidenceId, item?.sourceId, item?.id, ...(Array.isArray(item?.evidenceIds) ? item.evidenceIds : [])]),
+                ...(observation.seo?.signals || []).map(item => item?.evidenceId || item?.sourceId || item?.id)
+            ]);
+
+            const positiveSignals = measuredObservations.filter(item => {
+                const direction = String(item?.outcomeDirection || item?.direction || item?.result || "").toLowerCase();
+                const delta = Number(item?.delta ?? item?.change ?? NaN);
+                return ["positive","improved","increase","increased","success","successful","won","converted"].includes(direction) || (Number.isFinite(delta) && delta > 0);
+            });
+            const negativeSignals = measuredObservations.filter(item => {
+                const direction = String(item?.outcomeDirection || item?.direction || item?.result || "").toLowerCase();
+                const delta = Number(item?.delta ?? item?.change ?? NaN);
+                return ["negative","declined","decrease","decreased","failure","failed","lost"].includes(direction) || (Number.isFinite(delta) && delta < 0);
+            });
+            const mechanismCandidates = positiveSignals.map(item => ({
+                mechanism: String(item?.mechanismHypothesis || item?.mechanism || item?.whyItWorked || "").trim() || null,
+                metric: String(item?.metric || item?.name || "").trim() || null,
+                value: item?.value ?? null,
+                baseline: item?.baseline ?? null,
+                evidenceIds: this.uniqueStrings([item?.evidenceId, item?.sourceId, item?.id, ...(Array.isArray(item?.evidenceIds) ? item.evidenceIds : [])]),
+                alternativeExplanations: this.uniqueStrings(item?.alternativeExplanations || item?.alternatives),
+                confidence: this.normalizeConfidence(item?.mechanismConfidence ?? item?.confidence ?? 0.5),
+                conditions: item?.conditions && typeof item.conditions === "object" ? this.clone(item.conditions) : {},
+                causalStatus: "hypothesis-not-proven-cause"
+            }));
+            const supportedMechanisms = mechanismCandidates.filter(item => item.mechanism && item.evidenceIds.length > 0);
+            const successLearningState = positiveSignals.length === 0
+                ? "no-measured-positive-signal"
+                : supportedMechanisms.length === 0
+                    ? "success-observed-cause-unknown"
+                    : "success-observed-mechanism-hypothesized";
+
+            const findings = [];
+            if (uncertainExecution) findings.push({ type:"execution-uncertainty", status:"unresolved", evidenceBound:true, implication:"Reconcile provider outcome before any retry or performance conclusion." });
+            if (!measuredConsequence && !uncertainExecution) findings.push({ type:"commercial-consequence", status:"unknown", evidenceBound:true, implication:"Do not infer campaign success or failure before measured consequence exists." });
+            if (positiveSignals.length > 0) findings.push({ type:"positive-commercial-signal", status:"observed", evidenceBound:true, count:positiveSignals.length, implication:"Preserve what worked and investigate why before generalizing or scaling." });
+            if (negativeSignals.length > 0) findings.push({ type:"negative-commercial-signal", status:"observed", evidenceBound:true, count:negativeSignals.length, implication:"Investigate failure conditions and discriminating evidence before changing the campaign." });
+            if (seoState === "unknown") findings.push({ type:"search-visibility", status:"unknown", evidenceBound:true, implication:"Collect search visibility evidence before SEO adjustment." });
+            if (qualifiedLeadCount > 0) findings.push({ type:"qualified-interest", status:"observed", evidenceBound:true, count:qualifiedLeadCount, implication:"Qualified interest exists; preserve campaign lineage through later conversion evidence." });
+            if (overdueFollowUpCount > 0) findings.push({ type:"follow-up", status:"due-for-review", evidenceBound:true, count:overdueFollowUpCount, implication:"Follow-up may be proposed for separately authorized outreach." });
+            if (suppressedFollowUpCount > 0) findings.push({ type:"suppression", status:"protected", evidenceBound:true, count:suppressedFollowUpCount, implication:"Suppressed or opted-out contacts remain excluded from outreach." });
+
+            const adjustments = [];
+            if (uncertainExecution) {
+                adjustments.push({ type:"reconcile-before-adjusting", priority:"high", rationale:"Provider execution is uncertain.", requiresHumanAuthorization:false, externalAction:false });
+            } else if (!measuredConsequence) {
+                adjustments.push({ type:"measure-before-optimizing", priority:"moderate", rationale:"Execution is not evidence of commercial success.", requiresHumanAuthorization:false, externalAction:false });
+            }
+            if (positiveSignals.length > 0) {
+                adjustments.push({
+                    type:supportedMechanisms.length > 0 ? "test-and-preserve-success-mechanism" : "investigate-success-cause",
+                    priority:"high",
+                    rationale:supportedMechanisms.length > 0
+                        ? "Measured positive consequence exists with an evidence-linked mechanism hypothesis; preserve its conditions and test whether the mechanism survives variation."
+                        : "Measured positive consequence exists, but its cause is not evidenced; preserve the successful conditions and design a discriminating test before claiming why it worked.",
+                    requiresHumanAuthorization:false,
+                    externalAction:false,
+                    scalingAuthorized:false
+                });
+            }
+            if (negativeSignals.length > 0) adjustments.push({ type:"investigate-failure-mechanism", priority:"high", rationale:"Measured negative consequence exists; diagnose conditions and alternative explanations before changing the campaign.", requiresHumanAuthorization:false, externalAction:false });
+            if (seoState === "unknown") adjustments.push({ type:"collect-seo-evidence", priority:"low", rationale:"Search visibility is unknown.", requiresHumanAuthorization:false, externalAction:false });
+            if (overdueFollowUpCount > 0) adjustments.push({ type:"propose-follow-up", priority:"moderate", rationale:"A due follow-up exists, but learning cannot contact the lead.", requiresHumanAuthorization:true, externalAction:true, authorized:false });
+
+            return {
+                success:true,
+                schema:"meos.executive-learning.campaign-consequence-diagnosis.v2",
+                commission:"006.032G2",
+                version:this.version,
+                buildId:this.buildId,
+                organizationId,
+                campaignId,
+                campaignLineage:this.clone(observation.campaignLineage || { organizationId, campaignId }),
+                diagnosedAt:options.now || new Date().toISOString(),
+                sourceObservation:{ schema:observation.schema || null, commission:observation.commission || null, observedAt:observation.observedAt || null },
+                state:{ execution:executionState, consequence:consequenceState, seo:seoState, qualifiedLeadCount, overdueFollowUpCount, suppressedFollowUpCount },
+                findings,
+                adjustments,
+                successLearning:{
+                    state:successLearningState,
+                    positiveSignalCount:positiveSignals.length,
+                    mechanisms:supportedMechanisms,
+                    conditionsPreserved:supportedMechanisms.map(item => this.clone(item.conditions)),
+                    alternativeExplanations:this.uniqueStrings(supportedMechanisms.flatMap(item => item.alternativeExplanations)),
+                    causalClaimAuthorized:false,
+                    scalingAuthorized:false,
+                    rule:"Observed success may justify learning that something worked. Why it worked remains a hypothesis until evidence discriminates the proposed mechanism from alternative explanations. Preserve successful conditions before varying them."
+                },
+                evidence:{ sourceIds:evidenceIds, measuredConsequence, unknownPreserved:!measuredConsequence, predictionOutcomeSeparated:true },
+                authority:{ outreachAuthorized:false, publicationAuthorized:false, spendAuthorized:false, executionAuthorized:false, policyAuthorized:false, adjustmentIsRecommendationOnly:true },
+                rule:"Learning diagnoses both success and failure from observed campaign evidence; it cannot convert correlation into causation, a recommendation into external action, or a successful observation into permission to scale."
+            };
+        },
+
+        assimilateCampaignOperationsObservation(observation = {}, options = {}) {
+            const diagnosis = this.buildCampaignConsequenceDiagnosis(observation, options);
+            if (!diagnosis.success) return diagnosis;
+            const id = `campaign-operations-${diagnosis.organizationId}-${diagnosis.campaignId}`;
+            const outcome = this.recordCommercialTruth({
+                id,
+                recordType:COMMERCIAL_RECORD_TYPES.OUTCOME,
+                organizationId:diagnosis.organizationId,
+                campaignId:diagnosis.campaignId,
+                title:`Campaign operations consequence: ${diagnosis.campaignId}`,
+                description:"Evidence-bound campaign operations state assimilated from Executive Monitoring, including symmetric success/failure learning.",
+                outcome:{
+                    executionState:diagnosis.state.execution,
+                    consequenceState:diagnosis.state.consequence,
+                    seoState:diagnosis.state.seo,
+                    qualifiedLeadCount:diagnosis.state.qualifiedLeadCount,
+                    overdueFollowUpCount:diagnosis.state.overdueFollowUpCount,
+                    successLearningState:diagnosis.successLearning.state
+                },
+                claimStatus:diagnosis.evidence.measuredConsequence ? "supported" : "unknown",
+                confidence:diagnosis.evidence.measuredConsequence ? 0.7 : 0,
+                sourceIds:diagnosis.evidence.sourceIds,
+                unknowns:diagnosis.evidence.measuredConsequence ? [] : ["commercial consequence not yet measured"],
+                parentIds:this.uniqueStrings([diagnosis.sourceObservation?.commission, diagnosis.campaignLineage?.creativeHypothesisId]),
+                metadata:{
+                    sourceSchema:diagnosis.sourceObservation.schema,
+                    sourceCommission:diagnosis.sourceObservation.commission,
+                    diagnosisSchema:diagnosis.schema,
+                    findings:this.clone(diagnosis.findings),
+                    recommendedAdjustments:this.clone(diagnosis.adjustments),
+                    successLearning:this.clone(diagnosis.successLearning),
+                    recommendationOnly:true
+                }
+            }, { actor:options.actor || this.name });
+            if (!outcome.success) return outcome;
+            return { success:true, schema:"meos.executive-learning.campaign-operations-assimilation.v2", commission:"006.032G2", version:this.version, buildId:this.buildId, diagnosis, record:outcome.record, authority:this.clone(diagnosis.authority) };
+        },
+
+        runCampaignConsequenceAssimilationAcceptanceTest() {
+            const savedTruth = this.clone(this.commercialTruth);
+            const savedHistory = this.clone(this.history);
+            const savedAnalytics = this.clone(this.analytics);
+            const savedPersistence = this.configuration.automaticPersistence;
+            this.configuration.automaticPersistence = false;
+            let unknownResult;
+            let successResult;
+            let uncertain;
+            let isolated;
+            try {
+                unknownResult = this.assimilateCampaignOperationsObservation({
+                    schema:"meos.executive-monitoring.campaign-operations-observation.v1",
+                    commission:"006.032G1",
+                    organizationId:"acceptance-org",
+                    campaignId:"campaign-g2-unknown",
+                    observedAt:"2026-09-14T21:00:00.000Z",
+                    campaignLineage:{ organizationId:"acceptance-org", campaignId:"campaign-g2-unknown", creativeHypothesisId:"hypothesis-g2" },
+                    execution:{ state:"verified-execution-evidence-present", receipts:[{ receiptId:"receipt-g2", providerPublicationId:"urn:provider:post:g2" }] },
+                    consequence:{ state:"unknown", observations:[] },
+                    seo:{ state:"unknown", signals:[] },
+                    funnel:{ qualifiedLeadCount:1, leads:[{ id:"lead-g2", qualified:true }] },
+                    followUp:{ overdueCount:1, suppressedCount:1, items:[{ id:"follow-g2", status:"pending" }, { id:"suppressed-g2", optOut:true }] }
+                }, { now:"2026-09-14T21:05:00.000Z", actor:"acceptance" });
+                successResult = this.assimilateCampaignOperationsObservation({
+                    schema:"meos.executive-monitoring.campaign-operations-observation.v1",
+                    commission:"006.032G1",
+                    organizationId:"acceptance-org",
+                    campaignId:"campaign-g2-success",
+                    observedAt:"2026-09-14T21:10:00.000Z",
+                    campaignLineage:{ organizationId:"acceptance-org", campaignId:"campaign-g2-success", creativeHypothesisId:"hypothesis-success", channelId:"linkedin", creativeId:"creative-proof-led" },
+                    execution:{ state:"verified-execution-evidence-present", receipts:[{ receiptId:"receipt-success" }] },
+                    consequence:{ state:"observed", observations:[{
+                        id:"qualified-lead-lift-1", epistemicStatus:"measured", outcomeDirection:"positive", metric:"qualifiedLeadRate", value:0.12, baseline:0.04,
+                        evidenceIds:["crm-cohort-17"], mechanismHypothesis:"Proof-led message reduced buyer uncertainty", mechanismConfidence:0.62,
+                        alternativeExplanations:["audience mix changed","timing effect"],
+                        conditions:{ audience:"founder-led small organizations", offer:"evidence-bound operator", channel:"linkedin", creative:"proof-led", timing:"weekday-morning" }
+                    }] },
+                    seo:{ state:"evidence-present", signals:[{ id:"seo-success", epistemicStatus:"measured" }] },
+                    funnel:{ qualifiedLeadCount:3 },
+                    followUp:{ overdueCount:0, suppressedCount:0 }
+                }, { now:"2026-09-14T21:15:00.000Z", actor:"acceptance" });
+                uncertain = this.buildCampaignConsequenceDiagnosis({
+                    organizationId:"acceptance-org", campaignId:"campaign-uncertain-g2",
+                    execution:{ state:"uncertain-provider-outcome", receipts:[] },
+                    consequence:{ state:"observed", observations:[{ id:"obs-g2", epistemicStatus:"measured", outcomeDirection:"positive" }] },
+                    seo:{ state:"evidence-present", signals:[{ id:"seo-g2", epistemicStatus:"measured" }] }, funnel:{}, followUp:{}
+                });
+                isolated = this.buildCampaignConsequenceDiagnosis({ organizationId:"other-org", campaignId:"campaign-g2", execution:{state:"unknown"}, consequence:{state:"unknown"}, seo:{state:"unknown"}, funnel:{}, followUp:{} });
+                const checks = [
+                    ["Campaign consequence diagnosis is versioned beneath Maddy", unknownResult?.diagnosis?.schema === "meos.executive-learning.campaign-consequence-diagnosis.v2" && unknownResult?.commission === "006.032G2"],
+                    ["G1 monitoring observation is explicitly consumed", unknownResult?.diagnosis?.sourceObservation?.commission === "006.032G1"],
+                    ["Campaign and creative-hypothesis lineage survive assimilation", unknownResult?.diagnosis?.campaignLineage?.creativeHypothesisId === "hypothesis-g2"],
+                    ["Organization identity remains bound", unknownResult?.record?.organizationId === "acceptance-org" && isolated?.organizationId === "other-org"],
+                    ["Execution remains separate from commercial consequence", unknownResult?.diagnosis?.state?.execution === "verified-execution-evidence-present" && unknownResult?.diagnosis?.state?.consequence === "unknown"],
+                    ["Unknown commercial consequence remains unknown", unknownResult?.record?.epistemic?.status === "unknown"],
+                    ["Provider receipt lineage remains evidence-addressable", unknownResult?.record?.epistemic?.sourceIds?.includes("receipt-g2") === true],
+                    ["SEO unknown produces evidence collection rather than invented optimization", unknownResult?.diagnosis?.adjustments?.some(item => item.type === "collect-seo-evidence") === true],
+                    ["Qualified lead evidence survives diagnosis", unknownResult?.diagnosis?.state?.qualifiedLeadCount === 1],
+                    ["Overdue follow-up becomes separately authorized recommendation", unknownResult?.diagnosis?.adjustments?.find(item => item.type === "propose-follow-up")?.requiresHumanAuthorization === true],
+                    ["Suppression evidence survives diagnosis", unknownResult?.diagnosis?.state?.suppressedFollowUpCount === 1],
+                    ["Measured success is explicitly recognized", successResult?.diagnosis?.successLearning?.positiveSignalCount === 1 && successResult?.diagnosis?.findings?.some(item => item.type === "positive-commercial-signal")],
+                    ["What worked remains bound to campaign conditions", successResult?.diagnosis?.successLearning?.mechanisms?.[0]?.conditions?.creative === "proof-led" && successResult?.diagnosis?.campaignLineage?.channelId === "linkedin"],
+                    ["Why it worked is represented as a mechanism hypothesis", successResult?.diagnosis?.successLearning?.mechanisms?.[0]?.mechanism === "Proof-led message reduced buyer uncertainty"],
+                    ["Mechanism hypothesis is evidence-addressable", successResult?.diagnosis?.successLearning?.mechanisms?.[0]?.evidenceIds?.includes("crm-cohort-17") === true],
+                    ["Correlation is not silently promoted to causation", successResult?.diagnosis?.successLearning?.mechanisms?.[0]?.causalStatus === "hypothesis-not-proven-cause" && successResult?.diagnosis?.successLearning?.causalClaimAuthorized === false],
+                    ["Alternative explanations survive successful learning", successResult?.diagnosis?.successLearning?.alternativeExplanations?.includes("audience mix changed") === true],
+                    ["Successful conditions are preserved before variation", successResult?.diagnosis?.successLearning?.conditionsPreserved?.[0]?.timing === "weekday-morning"],
+                    ["Success recommends test-and-preserve rather than blind scaling", successResult?.diagnosis?.adjustments?.some(item => item.type === "test-and-preserve-success-mechanism" && item.scalingAuthorized === false) === true],
+                    ["Success learning enters existing durable commercial truth", successResult?.record?.schema === COMMERCIAL_TRUTH_SCHEMA && successResult?.record?.metadata?.successLearning?.state === "success-observed-mechanism-hypothesized"],
+                    ["Uncertain provider execution demands reconciliation", uncertain?.adjustments?.[0]?.type === "reconcile-before-adjusting"],
+                    ["Uncertain provider execution is never auto-retried", uncertain?.adjustments?.every(item => item.type !== "retry-publication") === true],
+                    ["Learning grants no outreach publication spend execution or policy authority", successResult?.authority?.outreachAuthorized === false && successResult?.authority?.publicationAuthorized === false && successResult?.authority?.spendAuthorized === false && successResult?.authority?.executionAuthorized === false && successResult?.authority?.policyAuthorized === false],
+                    ["Commercial adjustment remains recommendation-only", successResult?.authority?.adjustmentIsRecommendationOnly === true && successResult?.record?.metadata?.recommendationOnly === true]
+                ].map(([name, passed]) => ({ name, passed:Boolean(passed) }));
+                const passed = checks.filter(item => item.passed).length;
+                const success = passed === checks.length;
+                console.table(checks);
+                console.info(`[MEOS ${this.version}] Commission 006.032G2 Symmetric Campaign Consequence Learning: ${success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+                return { success, commission:"006.032G2", schema:"meos.executive-learning.campaign-consequence-assimilation-acceptance.v2", version:this.version, buildId:this.buildId, passed, total:checks.length, checks, samples:{ unknown:unknownResult, success:successResult, uncertain } };
+            } finally {
+                this.commercialTruth = savedTruth;
+                this.history = savedHistory;
+                this.analytics = savedAnalytics;
+                this.configuration.automaticPersistence = savedPersistence;
+            }
         },
 
         getCommercialTruth(filters = {}) {
