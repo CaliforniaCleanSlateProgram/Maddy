@@ -2,7 +2,7 @@
  * Maddy Executive Operations System
  * Executive Office Standard
  *
- * Version: 0.5.2
+ * Version: 0.5.3
  *
  * Establishes:
  * - The Executive Director as final human authority
@@ -18,7 +18,7 @@
 (() => {
     "use strict";
 
-    const SYSTEM_VERSION = "0.5.2";
+    const SYSTEM_VERSION = "0.5.3";
 
     const OFFICE_STATUS = Object.freeze({
         OPERATIONAL: "operational",
@@ -1474,10 +1474,148 @@
         return { success:passed === checks.length, commission:"006.032F3", schema:"meos.echo.multi-channel-campaign-acceptance.v1", version:SYSTEM_VERSION, buildId:ECHO_BUILD_ID, passed, total:checks.length, checks, sample:clone(result), completedAt:createTimestamp() };
     }
 
+    /* Commission 006.032G4 — End-to-End Commercial Consequence Loop Integration */
+    const COMMERCIAL_LOOP_SCHEMA = "meos.echo.commercial-consequence-loop.v1";
+    const COMMERCIAL_LOOP_BUILD_ID = "EO053-END-TO-END-COMMERCIAL-CONSEQUENCE-LOOP-20260915-A";
+
+    function getCommercialLoopDependencies(overrides = {}) {
+        return {
+            monitoring: overrides.monitoring || window.ExecutiveMonitoring || null,
+            learning: overrides.learning || window.ExecutiveLearning || null,
+            providers: overrides.providers || window.ProviderManager || null
+        };
+    }
+
+    function runCommercialConsequenceLoop(input = {}, options = {}) {
+        const startedAt = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
+        const organizationId = String(input.organizationId || "").trim();
+        const campaignId = String(input.campaignId || "").trim();
+        if (!organizationId) throw new TypeError("Commercial consequence loop requires organizationId.");
+        if (!campaignId) throw new TypeError("Commercial consequence loop requires campaignId.");
+
+        const deps = getCommercialLoopDependencies(options.dependencies || {});
+        if (!deps.monitoring || typeof deps.monitoring.buildCampaignOperationsObservation !== "function") throw new Error("Executive Monitoring G1 capability is unavailable.");
+        if (!deps.learning || typeof deps.learning.assimilateCampaignOperationsObservation !== "function" || typeof deps.learning.assimilateCampaignEconomicConsequence !== "function") throw new Error("Executive Learning G2/H1 capabilities are unavailable.");
+        if (!deps.providers || typeof deps.providers.createGovernedCampaignOperationEnvelope !== "function") throw new Error("Provider Manager G3 capability is unavailable.");
+
+        const lineage = clone(input.campaignLineage || { organizationId, campaignId });
+        lineage.organizationId = organizationId;
+        lineage.campaignId = campaignId;
+
+        const observation = deps.monitoring.buildCampaignOperationsObservation({
+            organizationId, campaignId, campaignLineage:lineage,
+            publicationReceipts:clone(input.publicationReceipts || []), observations:clone(input.observations || []),
+            seoSignals:clone(input.seoSignals || []), leads:clone(input.leads || []), followUps:clone(input.followUps || [])
+        }, { now:options.now });
+
+        const learning = deps.learning.assimilateCampaignOperationsObservation(observation, { now:options.now, actor:"MEOS Echo commercial consequence loop" });
+        if (!learning?.success) return { success:false, stage:"learning", observation, learning };
+
+        const operationCandidates = [];
+        for (const adjustment of learning.diagnosis?.adjustments || []) {
+            let operationType = null;
+            if (adjustment.type === "collect-seo-evidence") operationType = "search-measurement";
+            if (adjustment.type === "propose-follow-up") operationType = "lead-follow-up";
+            if (!operationType) continue;
+            const consequential = operationType === "lead-follow-up";
+            const authorization = input.operationAuthorizations?.[operationType] || null;
+            if (consequential && (!authorization || authorization.authorized !== true || !authorization.authorizationId)) {
+                operationCandidates.push({ operationType, state:"awaiting-human-authorization", executed:false, authorityExpanded:false, sourceAdjustment:clone(adjustment) });
+                continue;
+            }
+            try {
+                const envelope = deps.providers.createGovernedCampaignOperationEnvelope({
+                    capabilityId:`external-campaign-operations.${operationType}`, operationType, organizationId, campaignId,
+                    creativeHypothesisId:lineage.creativeHypothesisId || null,
+                    authorized:consequential ? true : undefined,
+                    authorizationId:consequential ? authorization.authorizationId : undefined,
+                    authorizationScope:consequential ? clone(authorization.authorizationScope || {}) : undefined,
+                    contact:consequential ? clone(authorization.contact || {}) : undefined,
+                    operation:clone(authorization?.operation || {}), measurement:clone(input.measurementRequests?.[operationType] || {})
+                });
+                operationCandidates.push({ operationType, state:"governed-envelope-ready", executed:false, authorityExpanded:false, envelope });
+            } catch (error) {
+                operationCandidates.push({ operationType, state:"blocked-by-governance", executed:false, authorityExpanded:false, error:String(error?.message || error) });
+            }
+        }
+
+        const economic = deps.learning.assimilateCampaignEconomicConsequence({
+            organizationId, campaignId,
+            economics:clone(input.economics || {}), attribution:clone(input.attribution || {}),
+            prediction:clone(input.prediction || null), alternativeExplanations:clone(input.alternativeExplanations || []),
+            falsifiers:clone(input.falsifiers || []), currency:input.currency || "USD"
+        }, { actor:"MEOS Echo commercial consequence loop" });
+        if (!economic?.success) return { success:false, stage:"economic-consequence", observation, learning, operationCandidates, economic };
+
+        const finishedAt = (typeof performance !== "undefined" && typeof performance.now === "function") ? performance.now() : Date.now();
+        const elapsedMs = Math.max(0, Number((finishedAt - startedAt).toFixed(3)));
+        return {
+            success:true, schema:COMMERCIAL_LOOP_SCHEMA, commission:"006.032G4", version:SYSTEM_VERSION, buildId:COMMERCIAL_LOOP_BUILD_ID,
+            organizationId, campaignId, campaignLineage:lineage,
+            stages:{ observation, learning, governedOperations:operationCandidates, economicConsequence:economic },
+            futureJudgment:{ learningSignal:clone(economic.assessment?.learningSignal || null), predictionComparison:clone(economic.assessment?.predictionComparison || null), benchmarkEligibility:clone(economic.assessment?.benchmarkEligibility || null) },
+            authority:{ expanded:false, automaticExternalExecution:false, automaticSpend:false, automaticPublication:false, automaticOutreach:false },
+            latency:{ orchestrationMs:elapsedMs, providerRoundTripsInitiated:0, paidCognitionRequestsInitiated:0, principle:"Connect existing local contracts synchronously; do not add provider round trips merely to move truth between Maddy organs." },
+            rule:"One campaign lineage moves from observed execution/consequence through symmetric learning, governed next-operation preparation, and evidence-grounded economic consequence without manufacturing authority, causation, outcome, or dominance."
+        };
+    }
+
+    function runCommercialConsequenceLoopAcceptanceTest() {
+        const result = runCommercialConsequenceLoop({
+            organizationId:"acceptance-org", campaignId:"campaign-loop-1",
+            campaignLineage:{ organizationId:"acceptance-org", campaignId:"campaign-loop-1", creativeHypothesisId:"hyp-loop-1" },
+            publicationReceipts:[{ success:true, receiptId:"receipt-loop-1", providerPublicationId:"urn:provider:post:loop-1" }],
+            observations:[{ id:"conversion-loop-1", epistemicStatus:"measured", outcomeDirection:"positive", metric:"qualifiedLeadRate", value:0.15, baseline:0.05, evidenceIds:["crm-loop-1"], mechanismHypothesis:"Proof-led message reduced uncertainty", mechanismConfidence:0.6, alternativeExplanations:["timing effect"], conditions:{ channel:"linkedin" } }],
+            seoSignals:[], leads:[{ id:"lead-loop-1", qualified:true }],
+            followUps:[{ id:"follow-loop-1", dueAt:"2026-09-15T10:00:00.000Z", status:"pending" }],
+            economics:{ revenue:{value:1200,status:"measured",currency:"USD",sourceIds:["payment-loop-1"]}, attributableRevenue:{value:900,status:"measured",currency:"USD",sourceIds:["attributed-loop-1"]}, totalCost:{value:250,status:"measured",currency:"USD",sourceIds:["cost-loop-1"]} },
+            attribution:{ status:"supported", confidence:0.78, sourceIds:["conversion-loop-1","touch-loop-1"], alternativeExplanations:["organic word of mouth may have contributed"] },
+            prediction:{ netAttributableValue:500 }
+        }, { now:"2026-09-15T20:00:00.000Z" });
+        const stages=result.stages || {}, ops=stages.governedOperations || [], economic=stages.economicConsequence?.assessment;
+        const checks=[
+            ["Whole-loop integration contract is explicit and versioned", result.schema===COMMERCIAL_LOOP_SCHEMA && result.commission==="006.032G4"],
+            ["G1 observation is actually invoked", stages.observation?.commission==="006.032G1"],
+            ["G2 assimilation actually consumes the G1 observation", stages.learning?.commission==="006.032G2" && stages.learning?.diagnosis?.sourceObservation?.commission==="006.032G1"],
+            ["G3 governed operation seam is actually reached", ops.some(x=>x.operationType==="search-measurement") || ops.some(x=>x.operationType==="lead-follow-up")],
+            ["H1 economic consequence is actually invoked", stages.economicConsequence?.commission==="006.032H1"],
+            ["Organization identity survives every major stage", stages.observation?.organizationId==="acceptance-org" && stages.learning?.diagnosis?.organizationId==="acceptance-org" && economic?.organizationId==="acceptance-org"],
+            ["Campaign identity survives every major stage", stages.observation?.campaignId==="campaign-loop-1" && stages.learning?.diagnosis?.campaignId==="campaign-loop-1" && economic?.campaignId==="campaign-loop-1"],
+            ["Creative hypothesis survives observation into learning", stages.learning?.diagnosis?.campaignLineage?.creativeHypothesisId==="hyp-loop-1"],
+            ["Execution receipt remains execution evidence", stages.observation?.execution?.verifiedReceiptCount===1],
+            ["Measured consequence remains measured evidence", stages.observation?.consequence?.state==="observed"],
+            ["Symmetric learning recognizes positive evidence", stages.learning?.diagnosis?.successLearning?.positiveSignalCount===1],
+            ["Mechanism remains hypothesis rather than proven cause", stages.learning?.diagnosis?.successLearning?.causalClaimAuthorized===false],
+            ["Alternative explanations survive learning", stages.learning?.diagnosis?.successLearning?.alternativeExplanations?.includes("timing effect")],
+            ["Overdue follow-up becomes a recommendation", stages.learning?.diagnosis?.adjustments?.some(x=>x.type==="propose-follow-up")],
+            ["Follow-up does not execute without exact authorization", ops.some(x=>x.operationType==="lead-follow-up" && x.state==="awaiting-human-authorization" && x.executed===false)],
+            ["SEO evidence collection can reach provider-neutral G3 envelope", ops.some(x=>x.operationType==="search-measurement" && x.state==="governed-envelope-ready")],
+            ["G3 envelope preserves organization/campaign lineage", ops.some(x=>x.envelope?.lineage?.organizationId==="acceptance-org" && x.envelope?.lineage?.campaignId==="campaign-loop-1")],
+            ["Economic consequence preserves gross revenue separately", economic?.economics?.revenue?.value===1200],
+            ["Attributable revenue remains distinct", economic?.economics?.attributableRevenue?.value===900],
+            ["NAV is evidence-grounded after complete cost", economic?.economics?.netAttributableValue?.value===650 && economic?.economics?.netAttributableValue?.status==="measured"],
+            ["Prediction is compared to actual NAV", economic?.predictionComparison?.state==="compared" && economic?.predictionComparison?.delta===150],
+            ["Economic reality feeds future judgment", result.futureJudgment?.learningSignal?.predictionErrorKnown===true],
+            ["One campaign still cannot establish dominance", result.futureJudgment?.benchmarkEligibility?.eligible===false],
+            ["Loop grants no external authority", result.authority?.expanded===false && result.authority?.automaticExternalExecution===false && result.authority?.automaticOutreach===false],
+            ["Integration itself initiates no provider round trips", result.latency?.providerRoundTripsInitiated===0],
+            ["Integration itself initiates no paid cognition requests", result.latency?.paidCognitionRequestsInitiated===0],
+            ["Latency is explicitly measured", Number.isFinite(result.latency?.orchestrationMs)],
+            ["Speed doctrine is architectural rather than brute-force spending", result.latency?.principle?.includes("do not add provider round trips")],
+            ["One persistent loop reaches observation, learning, governed operations, economics and future judgment", Boolean(stages.observation && stages.learning && stages.governedOperations && stages.economicConsequence && result.futureJudgment)],
+            ["Unknown authority is never manufactured by integration", ops.every(x=>x.authorityExpanded===false) && economic?.authority?.claimAuthorized===false]
+        ].map(([name,passed])=>({name,passed:passed===true}));
+        const passed=checks.filter(x=>x.passed).length;
+        console.table(checks);
+        console.info(`[MEOS ${SYSTEM_VERSION}] Commission 006.032G4 End-to-End Commercial Consequence Loop Integration: ${passed===checks.length?"PASS":"FAIL"} (${passed}/${checks.length}).`);
+        return { success:passed===checks.length, commission:"006.032G4", schema:"meos.echo.commercial-consequence-loop-acceptance.v1", version:SYSTEM_VERSION, buildId:COMMERCIAL_LOOP_BUILD_ID, passed, total:checks.length, checks, sample:clone(result) };
+    }
+
     const echoOffice = Object.freeze({
         version:SYSTEM_VERSION, buildId:ECHO_BUILD_ID, commission:"006.032F3", schema:ECHO_MULTI_CHANNEL_SCHEMA,
         policy:Object.freeze({ office:"echo", oneMaddy:true, automaticFanOut:false, automaticRepost:false, inactionIsValid:true, publicationAuthorityGranted:false, principle:"Coordinate campaign intelligence across channels without converting reach into spam." }),
-        planMultiChannelCampaign, evaluateChannelRestraint, runAcceptanceTest:runGovernedMultiChannelCampaignAcceptanceTest
+        planMultiChannelCampaign, evaluateChannelRestraint, runAcceptanceTest:runGovernedMultiChannelCampaignAcceptanceTest,
+        runCommercialConsequenceLoop, runCommercialConsequenceLoopAcceptanceTest
     });
 
     const financeOffice = Object.freeze({
