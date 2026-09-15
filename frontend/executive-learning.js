@@ -18,8 +18,8 @@
 
     const STORAGE_KEY = "meos.executive-learning.v1";
     const SCHEMA = "meos.executive-learning.package.v1";
-    const VERSION = "1.3.4";
-    const BUILD_ID = "EL134-REPEATABLE-COMMERCIAL-DOMINANCE-BENCHMARK-20260915-A";
+    const VERSION = "1.3.5";
+    const BUILD_ID = "EL135-BOUNDED-LESSON-CONFIDENCE-ADJUSTMENT-20260915-A";
     const CALIBRATION_SCHEMA = "meos.maddy.self-correction-calibration.v1";
     const COMMERCIAL_TRUTH_SCHEMA = "meos.maddy.commercial-truth.v1";
 
@@ -857,9 +857,13 @@
                     statement,
                     lessonType,
                     confidence:
-                        this.normalizeConfidence(
-                            observation.confidence +
-                            confidenceAdjustment
+                        Math.max(
+                            0,
+                            Math.min(
+                                1,
+                                observation.confidence +
+                                confidenceAdjustment
+                            )
                         )
                 });
             };
