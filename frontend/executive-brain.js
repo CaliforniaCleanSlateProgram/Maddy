@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.5";
-  const BUILD_ID = "EB1265-CONTINUITY-CONDITIONED-COGNITION-20260915-A";
+  const VERSION = "1.26.6";
+  const BUILD_ID = "EB1266-ORGANISM-BEHAVIORAL-CONTINUITY-PROOF-20260915-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -6418,6 +6418,271 @@
       return this.clone(
         this.cognitionHistory.slice(0, normalized)
       );
+    },
+
+    /*
+     * Commission 006.033D — Organism Behavioral Continuity Proof
+     *
+     * Prove a connected Maddy behavior with production seams instead of
+     * accepting isolated organ health as organism continuity:
+     * verified consequence -> Executive Learning -> autobiographical episode
+     * -> persistence snapshot -> restore -> later priority judgment changes.
+     *
+     * This is a provider-free acceptance proof. It creates no external action,
+     * grants no authority, and restores the pre-test Brain/Learning state.
+     */
+    runOrganismBehavioralContinuityAcceptanceTest() {
+      const learning = global.ExecutiveLearning;
+      if (
+        !learning ||
+        typeof learning.observe !== "function" ||
+        typeof learning.buildPersistenceSnapshot !== "function" ||
+        typeof learning.importLearning !== "function"
+      ) {
+        return {
+          success: false,
+          commission: "006.033D",
+          version: this.version,
+          buildId: this.buildId,
+          error: "Executive Learning production persistence seams are required."
+        };
+      }
+
+      const originalBrain = this.buildPersistenceSnapshot();
+      const originalLearning = learning.buildPersistenceSnapshot();
+      const originalLearningAutomaticPersistence =
+        learning.configuration?.automaticPersistence;
+      const originalBrainAutomaticPersistence =
+        this.configuration?.automaticPersistence;
+      const subject = "waypoint organism eligibility signal";
+      const demand = {
+        id: "006.033D-later-demand",
+        subject,
+        origin: "world-model-unknown",
+        reason: "A waypoint organism eligibility signal may deserve renewed investigation.",
+        missionConsequence: 0.45,
+        urgency: 0.3,
+        leverage: 0.5,
+        informationValue: 0.5
+      };
+      const work = {
+        id: "006.033D-verified-work",
+        title: subject,
+        state: "done",
+        route: "organism-behavioral-proof",
+        context: {
+          cognitionSubject: subject,
+          cognitiveMove: "preserve waypoint organism eligibility signal practice",
+          expectedResult: "The waypoint organism eligibility signal produces a useful verified result.",
+          cognitiveReentryLineageId: "006.033D-lineage"
+        },
+        outcome: {
+          verified: true,
+          success: true,
+          summary: "The waypoint organism eligibility signal produced a useful verified result.",
+          confidence: 0.95,
+          citations: [{
+            sourceType: "acceptance-fixture",
+            sourceId: "006.033D-observed-consequence",
+            title: "Observed verified consequence"
+          }]
+        }
+      };
+      const intention = {
+        intentionId: "006.033D-intention",
+        subject,
+        objective: "Learn whether the waypoint organism eligibility signal is worth future attention.",
+        expectedResult: work.context.expectedResult
+      };
+
+      try {
+        if (learning.configuration) {
+          learning.configuration.automaticPersistence = false;
+        }
+        if (this.configuration) {
+          this.configuration.automaticPersistence = false;
+        }
+
+        // Isolate the proof from prior lessons while using the real Learning organ.
+        learning.observations = [];
+        learning.lessons = [];
+        if (Array.isArray(learning.feedback)) learning.feedback = [];
+        if (Array.isArray(learning.calibrations)) learning.calibrations = [];
+
+        const before = this.applyExecutiveHomeostasis([demand], {
+          persist: false
+        }).demands?.[0];
+
+        const unverified = this.closeVerifiedConsequenceIntoLearning({
+          ...this.clone(work),
+          id: "006.033D-unverified-work",
+          outcome: { ...this.clone(work.outcome), verified: false }
+        }, intention, { persist: false });
+
+        const learned = this.closeVerifiedConsequenceIntoLearning(
+          work,
+          intention,
+          { persist: false }
+        );
+        const learnedObservationId = learned?.observation?.id || null;
+        const learnedEpisodeId = learned?.episode?.episodeId || null;
+        const learnedLessonIds = (learned?.lessons || [])
+          .map(item => item?.id)
+          .filter(Boolean);
+
+        const afterLearningBrainSnapshot = this.buildPersistenceSnapshot();
+        const afterLearningSnapshot = learning.buildPersistenceSnapshot();
+
+        // Simulate loss of in-memory cognition/learning before production restore.
+        this.autobiographicalMemory = [];
+        this.autobiographicalEpisodeCount = 0;
+        learning.observations = [];
+        learning.lessons = [];
+
+        const brainRestored = this.applyPersistenceSnapshot(
+          afterLearningBrainSnapshot
+        );
+        const learningRestored = learning.importLearning(
+          afterLearningSnapshot,
+          { replace: true }
+        );
+
+        const after = this.applyExecutiveHomeostasis([demand], {
+          persist: false
+        }).demands?.[0];
+        const continuity = this.buildCognitionContinuityContext({
+          request: { text: subject },
+          autobiographicalMemory: this.getAutobiographicalMemory(8),
+          selfModel: this.selfModel,
+          workingAwareness: this.workingAwareness,
+          temporalContinuity: this.temporalContinuity,
+          worldModel: this.worldModel
+        });
+        const recalledEpisode = (continuity?.relevantAutobiographicalExperience || [])
+          .find(item => item?.episodeId === learnedEpisodeId);
+        const restoredLesson = (learning.lessons || [])
+          .find(item => learnedLessonIds.includes(item?.id));
+        const restoredObservation = (learning.observations || [])
+          .find(item => item?.id === learnedObservationId);
+
+        const checks = [
+          {
+            name: "Unverified consequence is refused as learning",
+            passed: unverified?.learned === false &&
+              unverified?.reason === "consequence-not-verified"
+          },
+          {
+            name: "Verified consequence enters the real Executive Learning organ",
+            passed: learned?.success === true && learned?.learned === true &&
+              Boolean(learnedObservationId)
+          },
+          {
+            name: "Verified experience derives at least one governed lesson",
+            passed: learnedLessonIds.length > 0
+          },
+          {
+            name: "The same verified consequence becomes autobiographical experience",
+            passed: Boolean(learnedEpisodeId) &&
+              learned?.episode?.eventType === "verified-consequence-learning"
+          },
+          {
+            name: "Brain persistence snapshot carries the learned autobiographical episode",
+            passed: (afterLearningBrainSnapshot?.autobiographicalMemory || [])
+              .some(item => item?.episodeId === learnedEpisodeId)
+          },
+          {
+            name: "Executive Learning persistence snapshot carries the same consequence lineage",
+            passed: (afterLearningSnapshot?.observations || [])
+              .some(item => item?.id === learnedObservationId) &&
+              (afterLearningSnapshot?.lessons || [])
+                .some(item => learnedLessonIds.includes(item?.id))
+          },
+          {
+            name: "Production Brain and Learning restore seams rehydrate the experience",
+            passed: brainRestored === true &&
+              learningRestored?.success === true &&
+              Boolean(restoredObservation) && Boolean(restoredLesson)
+          },
+          {
+            name: "Restored autobiographical experience re-enters later cognition as continuity, not evidence",
+            passed: Boolean(recalledEpisode) &&
+              continuity?.contextClass === "maddy-continuity-context-not-evidence" &&
+              continuity?.boundaries?.continuityContextIsEvidence === false
+          },
+          {
+            name: "The same later demand receives different judgment after verified experience survives restore",
+            passed: Number(after?.__homeostasisScore) > Number(before?.__homeostasisScore) &&
+              Number(after?.homeostasis?.learningInfluence) > 0
+          },
+          {
+            name: "Changed judgment exposes the relevant restored experience instead of a hidden override",
+            passed: Array.isArray(after?.homeostasis?.relevantExperience) &&
+              after.homeostasis.relevantExperience.some(item =>
+                learnedLessonIds.includes(item?.id)
+              )
+          },
+          {
+            name: "Learning and continuity do not grant execution authority",
+            passed: continuity?.boundaries?.intentionCreatesExecutionPermission === false &&
+              continuity?.boundaries?.attentionCreatesAuthority === false &&
+              continuity?.boundaries?.externalAuthorityUnchanged === true
+          },
+          {
+            name: "Organism proof uses existing Brain, Learning, persistence, autobiography, and homeostasis seams without a second Maddy",
+            passed: typeof this.closeVerifiedConsequenceIntoLearning === "function" &&
+              typeof this.formAutobiographicalEpisode === "function" &&
+              typeof this.applyPersistenceSnapshot === "function" &&
+              typeof this.applyExecutiveHomeostasis === "function"
+          }
+        ].map(item => ({ ...item, passed: item.passed === true }));
+
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks);
+        console.info(
+          `[MEOS ${this.version}] Commission 006.033D Organism Behavioral Continuity Proof: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+        return {
+          success: passed === checks.length,
+          commission: "006.033D",
+          schema: "meos.executive-brain.organism-behavioral-continuity-acceptance.v1",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          total: checks.length,
+          checks,
+          lineage: {
+            subject,
+            observationId: learnedObservationId,
+            lessonIds: learnedLessonIds,
+            episodeId: learnedEpisodeId
+          },
+          before: {
+            score: Number(before?.__homeostasisScore ?? 0),
+            learningInfluence: Number(before?.homeostasis?.learningInfluence ?? 0)
+          },
+          afterRestore: {
+            score: Number(after?.__homeostasisScore ?? 0),
+            learningInfluence: Number(after?.homeostasis?.learningInfluence ?? 0),
+            relevantExperience: this.clone(after?.homeostasis?.relevantExperience || [])
+          },
+          providerCallsRequired: 0,
+          externalAuthorityAdded: false
+        };
+      } finally {
+        this.applyPersistenceSnapshot(originalBrain);
+        learning.importLearning(originalLearning, { replace: true });
+        if (learning.configuration) {
+          learning.configuration.automaticPersistence =
+            originalLearningAutomaticPersistence;
+        }
+        if (this.configuration) {
+          this.configuration.automaticPersistence =
+            originalBrainAutomaticPersistence;
+        }
+        this.requestCache.clear();
+        this.startupCache = null;
+        this.startupCachedAt = 0;
+      }
     },
 
     runContinuityConditionedCognitionAcceptanceTest() {
