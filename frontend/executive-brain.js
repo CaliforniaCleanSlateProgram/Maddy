@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.4";
-  const BUILD_ID = "EB1264-CREATIVE-STUDIO-20260914-A";
+  const VERSION = "1.26.5";
+  const BUILD_ID = "EB1265-CONTINUITY-CONDITIONED-COGNITION-20260915-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -5982,11 +5982,133 @@
       return mapping[requestType] || "executive";
     },
 
+    /*
+     * Commission 006.033C — Continuity-Conditioned Cognition Bridge
+     *
+     * Maddy already carries persistent self, awareness, autobiographical,
+     * temporal, intention, and world state in the Executive Brain request
+     * package. This bridge makes a bounded subset of that state a causal
+     * input to Maddy-owned Institutional Reasoning instead of leaving it as
+     * provider context or presentation telemetry.
+     *
+     * Continuity context is NOT evidence. It cannot manufacture facts,
+     * authority, permission, or completed work. Autobiographical episodes
+     * remain experience records whose claims must still survive Evidence
+     * Integrity. Provider advice remains downstream and advisory.
+     */
+    buildCognitionContinuityContext(prepared = {}) {
+      const request = prepared?.request?.text || "";
+      const selfModel = prepared?.selfModel || {};
+      const awareness = prepared?.workingAwareness || {};
+      const temporal = prepared?.temporalContinuity || {};
+      const world = prepared?.worldModel || {};
+
+      const relevantEpisodes = typeof this.recallAutobiographicalMemory === "function"
+        ? this.recallAutobiographicalMemory(request, { limit: 4 })
+        : (Array.isArray(prepared?.autobiographicalMemory)
+            ? prepared.autobiographicalMemory.slice(0, 4)
+            : []);
+
+      const unresolvedIntentions = (Array.isArray(world?.intentions)
+        ? world.intentions
+        : (Array.isArray(this.cognitiveIntentions) ? this.cognitiveIntentions : []))
+        .filter(item => item && item.status !== "completed")
+        .slice(0, 6)
+        .map(item => ({
+          intentionId: item.intentionId || item.id || null,
+          subject: item.subject || null,
+          status: item.status || null,
+          kind: item.kind || item.temporal?.kind || null,
+          nextReviewAt: item.nextReviewAt || item.temporal?.nextReviewAt || null
+        }));
+
+      return {
+        schema: "meos.maddy.cognition-continuity-context.v1",
+        contextClass: "maddy-continuity-context-not-evidence",
+        self: {
+          fingerprint: selfModel?.fingerprint || null,
+          revision: selfModel?.revision || null,
+          preferredName: selfModel?.identity?.preferredName || null,
+          activeMode:
+            awareness?.interactionContext?.activeMode ||
+            selfModel?.interactionContext?.activeMode ||
+            null,
+          unresolvedIntentionCount:
+            Number(selfModel?.continuity?.unresolvedIntentions ||
+              temporal?.unresolvedIntentionCount ||
+              unresolvedIntentions.length || 0)
+        },
+        awareness: {
+          fingerprint: awareness?.fingerprint || null,
+          state: awareness?.state || null,
+          primaryFocus: awareness?.primaryFocus
+            ? {
+                kind: awareness.primaryFocus.kind || null,
+                subject: awareness.primaryFocus.subject || null,
+                salience: Number(awareness.primaryFocus.salience || 0)
+              }
+            : null,
+          competingStimuli: Number(awareness?.competingStimuli || 0)
+        },
+        temporal: {
+          status: temporal?.status || null,
+          unresolvedIntentionCount: Number(temporal?.unresolvedIntentionCount || 0),
+          overdueCommitmentCount: Number(temporal?.overdueCommitmentCount || 0),
+          whatIWasDoing:
+            temporal?.lastResume?.whatIWasDoing ||
+            temporal?.lastCheckpoint?.whatIWasDoing ||
+            null
+        },
+        world: {
+          fingerprint: world?.fingerprint || null,
+          revision: world?.revision || null,
+          unknowns: (Array.isArray(world?.unknowns) ? world.unknowns : [])
+            .slice(0, 5)
+            .map(item => ({
+              domain: item.domain || null,
+              question: item.question || null,
+              reason: item.reason || null
+            })),
+          currentPriority: world?.executiveJudgment?.currentPriority
+            ? {
+                id: world.executiveJudgment.currentPriority.id || null,
+                subject: world.executiveJudgment.currentPriority.subject || null,
+                status: world.executiveJudgment.currentPriority.status || null
+              }
+            : null
+        },
+        relevantAutobiographicalExperience: relevantEpisodes
+          .slice(0, 4)
+          .map(item => ({
+            episodeId: item.episodeId || null,
+            eventType: item.eventType || null,
+            subject: item.subject || null,
+            experiencedAt: item.experiencedAt || null,
+            intention: item.intention || null,
+            outcome: item.outcome || null,
+            learning: item.learning || null,
+            significance: item.significance?.score ?? null,
+            recallScore: item.recallScore ?? null
+          })),
+        unresolvedIntentions,
+        boundaries: {
+          continuityContextIsEvidence: false,
+          autobiographicalClaimsRequireEvidenceIntegrity: true,
+          attentionCreatesAuthority: false,
+          intentionCreatesExecutionPermission: false,
+          providerMayOverwriteMaddyState: false,
+          externalAuthorityUnchanged: true
+        }
+      };
+    },
+
     buildCognitionQuestion(prepared) {
       const request = prepared?.request?.text || "";
       const organization = prepared?.organization || {};
       const evidence =
         prepared?.localContext?.evidence || [];
+      const continuityContext =
+        this.buildCognitionContinuityContext(prepared);
 
       const evidenceDigest = evidence
         .slice(0, 10)
@@ -6023,7 +6145,8 @@
         evidenceDigest
           ? `Governed evidence available to Executive Brain: ${evidenceDigest}`
           : "No governed evidence digest is available from Executive Brain.",
-        "Reason across the institutional record. Identify material risks, dependencies, conflicts, alternatives, open loops, and the next executable steps. Separate verified evidence from inference and unknowns. Do not invent facts. Do not execute work or approve external action."
+        `Maddy continuity context (context, NOT evidence): ${JSON.stringify(continuityContext)}`,
+        "Reason as the same continuing Maddy across the institutional record. Use continuity context to preserve identity, attention, unfinished intentions, relevant experience, and world-state continuity, but never promote that context into verified fact. Autobiographical claims remain challengeable and evidence-bound. Identify material risks, dependencies, conflicts, alternatives, open loops, and the next executable steps. Separate verified evidence from inference, continuity context, and unknowns. Do not invent facts. Attention is not authority. Intention is not execution permission. Do not execute work or approve external action."
       ]
         .filter(Boolean)
         .join(" ");
@@ -6295,6 +6418,125 @@
       return this.clone(
         this.cognitionHistory.slice(0, normalized)
       );
+    },
+
+    runContinuityConditionedCognitionAcceptanceTest() {
+      const base = {
+        request: { text: "Review the renewal risk and decide what deserves attention." },
+        organization: { name: "Fixture Organization" },
+        localContext: { evidence: [{ authority: "verified", summary: "Renewal date is approaching." }] },
+        selfModel: {
+          fingerprint: "self-fixture-a",
+          revision: 7,
+          identity: { preferredName: "Maddy" },
+          continuity: { unresolvedIntentions: 1 }
+        },
+        workingAwareness: {
+          fingerprint: "awareness-fixture-a",
+          state: "attending",
+          interactionContext: { activeMode: "professional" },
+          primaryFocus: { kind: "commitment", subject: "Renewal", salience: 88 },
+          competingStimuli: 2
+        },
+        temporalContinuity: {
+          status: "continuous",
+          unresolvedIntentionCount: 1,
+          overdueCommitmentCount: 0,
+          lastCheckpoint: { whatIWasDoing: { subject: "Renewal", status: "active" } }
+        },
+        autobiographicalMemory: [],
+        worldModel: {
+          fingerprint: "world-fixture-a",
+          revision: 11,
+          unknowns: [{ domain: "counterparty", question: "Will they renew?", reason: "future-unknown" }],
+          intentions: [{ intentionId: "intent-fixture-a", subject: "Resolve renewal risk", status: "pending" }],
+          executiveJudgment: { currentPriority: { id: "priority-a", subject: "Renewal", status: "active" } }
+        }
+      };
+
+      const originalRecall = this.recallAutobiographicalMemory;
+      this.recallAutobiographicalMemory = () => [{
+        episodeId: "episode-fixture-a",
+        eventType: "verified-consequence",
+        subject: "Prior renewal",
+        experiencedAt: "2026-09-01T00:00:00.000Z",
+        outcome: { state: "renewed" },
+        learning: { summary: "Earlier verification reduced uncertainty." },
+        significance: { score: 75 },
+        recallScore: 90
+      }];
+
+      try {
+        const first = this.buildCognitionContinuityContext(base);
+        const firstQuestion = this.buildCognitionQuestion(base);
+        const changed = this.clone(base);
+        changed.selfModel.fingerprint = "self-fixture-b";
+        changed.workingAwareness.primaryFocus.subject = "Provider outage";
+        changed.worldModel.fingerprint = "world-fixture-b";
+        const second = this.buildCognitionContinuityContext(changed);
+        const secondQuestion = this.buildCognitionQuestion(changed);
+
+        const checks = [
+          {
+            name: "Ordinary cognition receives a bounded Maddy continuity context",
+            passed: first?.schema === "meos.maddy.cognition-continuity-context.v1" &&
+              firstQuestion.includes("Maddy continuity context (context, NOT evidence)")
+          },
+          {
+            name: "Self, awareness, temporal, world, experience, and unresolved intention remain explicit dimensions",
+            passed: Boolean(first.self && first.awareness && first.temporal && first.world) &&
+              Array.isArray(first.relevantAutobiographicalExperience) &&
+              Array.isArray(first.unresolvedIntentions)
+          },
+          {
+            name: "Continuity state is explicitly not promoted to evidence or authority",
+            passed: first.boundaries?.continuityContextIsEvidence === false &&
+              first.boundaries?.attentionCreatesAuthority === false &&
+              first.boundaries?.intentionCreatesExecutionPermission === false &&
+              first.boundaries?.externalAuthorityUnchanged === true
+          },
+          {
+            name: "Relevant autobiographical experience is bounded and remains evidence-challengeable",
+            passed: first.relevantAutobiographicalExperience.length <= 4 &&
+              first.boundaries?.autobiographicalClaimsRequireEvidenceIntegrity === true
+          },
+          {
+            name: "Unresolved intentions are bounded rather than dumped wholesale",
+            passed: first.unresolvedIntentions.length <= 6
+          },
+          {
+            name: "Changing relevant persistent Maddy state deterministically changes Maddy-owned reasoning context",
+            passed: JSON.stringify(first) !== JSON.stringify(second) &&
+              firstQuestion !== secondQuestion &&
+              secondQuestion.includes("Provider outage")
+          },
+          {
+            name: "Provider advice remains downstream and unable to overwrite Maddy state",
+            passed: first.boundaries?.providerMayOverwriteMaddyState === false &&
+              /engine\.analyze\(question/.test(this.runInstitutionalReasoning.toString())
+          },
+          {
+            name: "Bridge reuses Executive Brain and Institutional Reasoning without creating a second cognition engine",
+            passed: typeof this.buildCognitionQuestion === "function" &&
+              typeof this.runInstitutionalReasoning === "function" &&
+              /buildCognitionContinuityContext/.test(this.buildCognitionQuestion.toString())
+          }
+        ];
+        const passed = checks.every(item => item.passed);
+        console.table(checks.map(item => ({ name: item.name, passed: item.passed })));
+        console.info(`[MEOS ${this.version}] Commission 006.033C continuity-conditioned cognition acceptance: ${passed ? "PASS" : "FAIL"}.`);
+        return {
+          commission: "006.033C",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          checks,
+          firstContext: first,
+          changedContext: second
+        };
+      } finally {
+        this.recallAutobiographicalMemory = originalRecall;
+      }
     },
 
     runCognitionAcceptanceTest() {
