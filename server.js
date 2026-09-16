@@ -7694,6 +7694,82 @@ app.use(
  * yet. Route enforcement follows only after the founder has proven the login
  * flow and organization onboarding is ready.
  */
+/**
+ * Commission 006.033N — Customer Commercial Entitlement Authority
+ *
+ * Commercial ownership is deliberately separate from identity, organization,
+ * executive authority, and provider billing authority. A payment processor may
+ * eventually attest that money moved, but MEOS owns the durable customer
+ * entitlement contract. Processor-specific checkout/webhook integration is a
+ * replaceable adapter boundary and is NOT invented by this commission.
+ */
+const MEOS_COMMERCIAL_ENTITLEMENT_COMMISSION = "006.033N";
+const MEOS_COMMERCIAL_ENTITLEMENT_VERSION = "1.0.0";
+const MEOS_COMMERCIAL_ENTITLEMENT_BUILD_ID =
+  "CEA100-CUSTOMER-COMMERCIAL-ENTITLEMENT-AUTHORITY-20260917-A";
+const MEOS_COMMERCIAL_ENTITLEMENT_SCHEMA =
+  "meos.customer-commercial-entitlement.v1";
+const MEOS_COMMERCIAL_ENTITLEMENT_STATES = Object.freeze({
+  PENDING: "pending",
+  ACTIVE: "active",
+  SUSPENDED: "suspended",
+  REVOKED: "revoked",
+  EXPIRED: "expired"
+});
+
+function normalizeCommercialEntitlement(record = {}) {
+  const state = String(record.state || "").trim().toLowerCase();
+  const normalizedState = Object.values(MEOS_COMMERCIAL_ENTITLEMENT_STATES).includes(state)
+    ? state
+    : MEOS_COMMERCIAL_ENTITLEMENT_STATES.PENDING;
+  return {
+    schema: MEOS_COMMERCIAL_ENTITLEMENT_SCHEMA,
+    id: String(record.id || "").trim(),
+    accountId: String(record.accountId || "").trim() || null,
+    productId: String(record.productId || "").trim(),
+    state: normalizedState,
+    source: {
+      providerId: String(record.source?.providerId || "").trim() || null,
+      providerReference: String(record.source?.providerReference || "").trim() || null,
+      verifiedAt: record.source?.verifiedAt || null
+    },
+    startsAt: record.startsAt || null,
+    expiresAt: record.expiresAt || null,
+    createdAt: record.createdAt || null,
+    updatedAt: record.updatedAt || null
+  };
+}
+
+function commercialEntitlementGrantsAccess(record, { accountId = null, now = Date.now() } = {}) {
+  const entitlement = normalizeCommercialEntitlement(record);
+  if (!entitlement.id || !entitlement.productId) return false;
+  if (entitlement.state !== MEOS_COMMERCIAL_ENTITLEMENT_STATES.ACTIVE) return false;
+  if (accountId && entitlement.accountId !== String(accountId)) return false;
+  const startsAt = entitlement.startsAt ? Date.parse(entitlement.startsAt) : null;
+  const expiresAt = entitlement.expiresAt ? Date.parse(entitlement.expiresAt) : null;
+  if (Number.isFinite(startsAt) && now < startsAt) return false;
+  if (Number.isFinite(expiresAt) && now >= expiresAt) return false;
+  return true;
+}
+
+function commercialEntitlementStatus(record, options = {}) {
+  const entitlement = normalizeCommercialEntitlement(record);
+  return {
+    commission: MEOS_COMMERCIAL_ENTITLEMENT_COMMISSION,
+    version: MEOS_COMMERCIAL_ENTITLEMENT_VERSION,
+    buildId: MEOS_COMMERCIAL_ENTITLEMENT_BUILD_ID,
+    entitlement,
+    accessGranted: commercialEntitlementGrantsAccess(entitlement, options),
+    authorityBoundary: {
+      identityAuthority: false,
+      organizationAuthority: false,
+      executiveActionAuthority: false,
+      providerBillingAuthority: false,
+      processorSpecific: false
+    }
+  };
+}
+
 const MEOS_AUTH_COMMISSION = "006.019B";
 const MEOS_AUTH_VERSION = "1.0.0";
 const MEOS_AUTH_BUILD_ID =
@@ -7918,6 +7994,70 @@ app.get("/api/auth/me", async (request, response, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.get("/api/commercial-entitlement/contract", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    success: true,
+    commission: MEOS_COMMERCIAL_ENTITLEMENT_COMMISSION,
+    version: MEOS_COMMERCIAL_ENTITLEMENT_VERSION,
+    buildId: MEOS_COMMERCIAL_ENTITLEMENT_BUILD_ID,
+    schema: MEOS_COMMERCIAL_ENTITLEMENT_SCHEMA,
+    states: Object.values(MEOS_COMMERCIAL_ENTITLEMENT_STATES),
+    processorSpecific: false,
+    paymentProcessorConfigured: false,
+    entitlementEnforcementEnabled: false,
+    note: "Commercial entitlement authority is commissioned as a processor-neutral MEOS contract. Automated payment verification and customer entitlement persistence are not claimed by this build."
+  });
+});
+
+app.get("/api/commercial-entitlement/acceptance-test", (request, response) => {
+  const now = Date.parse("2026-09-17T12:00:00.000Z");
+  const active = {
+    id: "ent_acceptance_active",
+    accountId: "acct_acceptance",
+    productId: "maddy-professional",
+    state: "active",
+    source: {
+      providerId: "replaceable-payment-provider",
+      providerReference: "provider-reference-not-authority",
+      verifiedAt: "2026-09-17T11:59:00.000Z"
+    },
+    startsAt: "2026-09-17T11:00:00.000Z",
+    expiresAt: "2026-10-17T12:00:00.000Z"
+  };
+  const suspended = { ...active, id: "ent_acceptance_suspended", state: "suspended" };
+  const expired = { ...active, id: "ent_acceptance_expired", expiresAt: "2026-09-17T11:59:59.000Z" };
+  const activeStatus = commercialEntitlementStatus(active, { accountId: "acct_acceptance", now });
+  const checks = [
+    ["Commercial entitlement has an explicit MEOS-owned schema", activeStatus.entitlement.schema === MEOS_COMMERCIAL_ENTITLEMENT_SCHEMA],
+    ["Active in-window entitlement grants the bound account access", activeStatus.accessGranted === true],
+    ["Entitlement does not grant a different account access", commercialEntitlementGrantsAccess(active, { accountId: "acct_other", now }) === false],
+    ["Suspended entitlement does not grant access", commercialEntitlementGrantsAccess(suspended, { accountId: "acct_acceptance", now }) === false],
+    ["Expired entitlement does not grant access", commercialEntitlementGrantsAccess(expired, { accountId: "acct_acceptance", now }) === false],
+    ["Unknown entitlement state fails closed to pending", normalizeCommercialEntitlement({ ...active, state: "magic" }).state === "pending"],
+    ["Payment provider identity is evidence, not entitlement authority", activeStatus.entitlement.source.providerId === "replaceable-payment-provider" && activeStatus.authorityBoundary.processorSpecific === false],
+    ["Commercial entitlement grants no identity authority", activeStatus.authorityBoundary.identityAuthority === false],
+    ["Commercial entitlement grants no organization or executive action authority", activeStatus.authorityBoundary.organizationAuthority === false && activeStatus.authorityBoundary.executiveActionAuthority === false],
+    ["Commercial entitlement grants no provider billing authority", activeStatus.authorityBoundary.providerBillingAuthority === false]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+  response.json({
+    success: checks.every(check => check.passed),
+    commission: MEOS_COMMERCIAL_ENTITLEMENT_COMMISSION,
+    version: MEOS_COMMERCIAL_ENTITLEMENT_VERSION,
+    buildId: MEOS_COMMERCIAL_ENTITLEMENT_BUILD_ID,
+    schema: "meos.customer-commercial-entitlement.acceptance.v1",
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    limitations: [
+      "No payment processor is configured by this commission.",
+      "No customer payment is accepted or simulated by this acceptance test.",
+      "No account registration is blocked by entitlement yet.",
+      "No durable customer entitlement persistence is claimed yet."
+    ]
+  });
 });
 
 app.get("/api/auth/acceptance-test", async (request, response) => {
