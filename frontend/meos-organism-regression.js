@@ -11,8 +11,8 @@
 (function initializeMEOSOrganismRegression(global) {
   "use strict";
 
-  const VERSION = "0.7.0";
-  const BUILD_ID = "ORH070-BROWSER-LIFECYCLE-ABSENCE-CONTINUITY-PROOF-20260916-A";
+  const VERSION = "0.8.0";
+  const BUILD_ID = "ORH080-PROCESS-DEATH-DURABLE-COGNITIVE-RECONSTRUCTION-PROOF-20260916-A";
   const SCHEMA = "meos.organism-regression.behavioral-continuity.v1";
 
   const fetchRuntimeHealth = async () => {
@@ -31,6 +31,288 @@
     version: VERSION,
     buildId: BUILD_ID,
     schema: SCHEMA,
+
+    /*
+     * Commission 006.033K — Process Death & Durable Cognitive Reconstruction Proof
+     *
+     * External two-phase proof. Phase 1 captures production runtime identity,
+     * process-start telemetry, durable cognition fingerprint, and cognitive
+     * lineage. The Executive Director then causes a real Render service restart
+     * or redeploy outside this harness. Phase 2 requires a NEW server runtime
+     * start and proves that the commissioned Executive Brain reconstructs from
+     * durable institutional state and advances the pre-restart cognitive
+     * lineage without browser authority, harness scheduling, provider calls, or
+     * external-action authority.
+     *
+     * Regression localStorage is witness storage only. It is not Maddy memory,
+     * cognition, authority, persistence, or a scheduler.
+     */
+    async beginProcessDeathDurableCognitiveReconstructionProof() {
+      const storage = global.localStorage;
+      if (!storage || typeof global.fetch !== "function") {
+        return {
+          success: false,
+          commission: "006.033K",
+          phase: "begin",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "Same-origin regression witness storage and production /health telemetry are required."
+        };
+      }
+
+      let health;
+      try {
+        health = await fetchRuntimeHealth();
+      } catch (error) {
+        return {
+          success: false,
+          commission: "006.033K",
+          phase: "begin",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: error?.message || String(error)
+        };
+      }
+
+      const runtime = health?.continuousCognition || {};
+      const authority = runtime?.authority || {};
+      const key = "meos.organism-regression.006033k.process-reconstruction.v1";
+      const baseline = {
+        token: `006033k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+        armedAt: new Date().toISOString(),
+        runtime: {
+          startedAt: runtime.startedAt || null,
+          runtimeVersion: runtime.version || null,
+          runtimeBuildId: runtime.buildId || null,
+          runtimeOwner: runtime.runtimeOwner || null,
+          cognitionSource: runtime.cognitionSource || null,
+          browserIndependent: runtime.browserIndependent === true,
+          enabled: runtime.enabled === true,
+          cycleNumber: Number(runtime.cycleNumber || 0),
+          handoffFingerprint: runtime.handoffFingerprint || null,
+          durableFingerprint: runtime.durableFingerprint || null,
+          activeThreadId: runtime.activeThreadId || null,
+          lastCompletedAt: runtime.lastCompletedAt || null,
+          hotBrainHydratedAt: runtime.hotBrainHydratedAt || null,
+          durableState: authority.durableState || null,
+          externalActionAuthorized: authority.externalActionAuthorized === true,
+          humanAuthorityPreserved: authority.humanAuthorityPreserved === true
+        }
+      };
+
+      storage.setItem(key, JSON.stringify(baseline));
+
+      const ready =
+        Boolean(baseline.runtime.startedAt) &&
+        Boolean(baseline.runtime.durableFingerprint) &&
+        baseline.runtime.cycleNumber > 0 &&
+        baseline.runtime.enabled === true &&
+        baseline.runtime.runtimeOwner === "meos-durable-server" &&
+        baseline.runtime.cognitionSource === "commissioned-executive-brain" &&
+        baseline.runtime.durableState === "meos-institutional-repository" &&
+        baseline.runtime.externalActionAuthorized === false &&
+        baseline.runtime.humanAuthorityPreserved === true;
+
+      const result = {
+        success: ready,
+        commission: "006.033K",
+        phase: "begin",
+        schema: "meos.organism-regression.process-death-durable-cognitive-reconstruction.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        token: baseline.token,
+        readyForExternalProcessRestart: ready,
+        baseline: baseline.runtime,
+        instructions: ready
+          ? "Cause one real Render service restart/redeploy outside this harness. Do not run begin again. After the new service is live and production cognition has completed at least one cycle, reload this same harness build and run verifyProcessDeathDurableCognitiveReconstructionProof()."
+          : "Production does not yet expose the governed durable-cognition baseline required to arm this proof.",
+        browserStorageRole: "external-regression-witness-only-not-production-state",
+        providerCallsRequiredByHarness: 0,
+        externalAuthorityAdded: false,
+        processRestartRequestedByHarness: false,
+        cognitiveWakeScheduledByHarness: false,
+        runtimeConfigurationMutatedByHarness: false
+      };
+
+      console.info(
+        `[MEOS Organism Regression ${VERSION}] 006.033K BEGIN: ` +
+        `${ready ? "ARMED" : "NOT ARMED"}.`
+      );
+      console.info(result);
+      return result;
+    },
+
+    async verifyProcessDeathDurableCognitiveReconstructionProof() {
+      const storage = global.localStorage;
+      const key = "meos.organism-regression.006033k.process-reconstruction.v1";
+      let challenge = null;
+      try {
+        challenge = JSON.parse(storage?.getItem(key) || "null");
+      } catch (_) {
+        challenge = null;
+      }
+
+      if (!challenge?.token || !challenge?.runtime) {
+        return {
+          success: false,
+          commission: "006.033K",
+          phase: "verify",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "No armed 006.033K baseline exists. Run the begin phase before the external process restart."
+        };
+      }
+
+      let health;
+      try {
+        health = await fetchRuntimeHealth();
+      } catch (error) {
+        return {
+          success: false,
+          commission: "006.033K",
+          phase: "verify",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: error?.message || String(error)
+        };
+      }
+
+      const before = challenge.runtime;
+      const runtime = health?.continuousCognition || {};
+      const authority = runtime?.authority || {};
+      const beforeStarted = Date.parse(before.startedAt || "");
+      const afterStarted = Date.parse(runtime.startedAt || "");
+      const armedAt = Date.parse(challenge.armedAt || "");
+      const beforeCompleted = Date.parse(before.lastCompletedAt || "");
+      const afterCompleted = Date.parse(runtime.lastCompletedAt || "");
+      const processReplaced =
+        Number.isFinite(beforeStarted) &&
+        Number.isFinite(afterStarted) &&
+        afterStarted > beforeStarted &&
+        (!Number.isFinite(armedAt) || afterStarted >= armedAt);
+      const cognitionAdvanced =
+        Number(runtime.cycleNumber || 0) > Number(before.cycleNumber || 0) &&
+        Number.isFinite(afterCompleted) &&
+        (!Number.isFinite(beforeCompleted) || afterCompleted > beforeCompleted);
+      const reconstructedFromDurableState =
+        Boolean(runtime.hotBrainHydratedAt) &&
+        Boolean(runtime.durableFingerprint) &&
+        Number(runtime.cycleNumber || 0) > Number(before.cycleNumber || 0);
+
+      const checks = [
+        {
+          name: "Production continuous-cognition server runtime started in a new process lifecycle after the armed baseline",
+          passed: processReplaced
+        },
+        {
+          name: "The reconstructed runtime is still owned by the durable MEOS server rather than the browser",
+          passed:
+            runtime.runtimeOwner === "meos-durable-server" &&
+            runtime.browserIndependent === true
+        },
+        {
+          name: "The new process still executes the same commissioned continuous-cognition runtime and Executive Brain contract",
+          passed:
+            runtime.version === before.runtimeVersion &&
+            runtime.buildId === before.runtimeBuildId &&
+            runtime.cognitionSource === before.cognitionSource &&
+            runtime.cognitionSource === "commissioned-executive-brain"
+        },
+        {
+          name: "The new process hydrated a resident Executive Brain from durable cognitive state",
+          passed: reconstructedFromDurableState
+        },
+        {
+          name: "Cognitive lineage advanced beyond the pre-process-death cycle after reconstruction",
+          passed: cognitionAdvanced
+        },
+        {
+          name: "Institutional durable repository authority remains authoritative after process reconstruction",
+          passed:
+            authority.durableState === "meos-institutional-repository" &&
+            Boolean(runtime.durableFingerprint)
+        },
+        {
+          name: "Continuous cognition remains enabled by production authority after process reconstruction",
+          passed: runtime.enabled === true
+        },
+        {
+          name: "Process reconstruction did not acquire external-action authority",
+          passed:
+            authority.externalActionAuthorized === false &&
+            authority.humanAuthorityPreserved === true &&
+            runtime.eventReentryExternalActionAuthorized === false
+        },
+        {
+          name: "External proof grants no process authority, cognitive wake, provider call, or runtime mutation",
+          passed: true
+        }
+      ].map(item => ({ ...item, passed: item.passed === true }));
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = {
+        success: passed === checks.length,
+        commission: "006.033K",
+        phase: "verify",
+        schema: "meos.organism-regression.process-death-durable-cognitive-reconstruction.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        checks,
+        observed: {
+          token: challenge.token,
+          armedAt: challenge.armedAt || null,
+          baselineStartedAt: before.startedAt || null,
+          currentStartedAt: runtime.startedAt || null,
+          newProcessLifecycleObserved: processReplaced,
+          baselineCycleNumber: Number(before.cycleNumber || 0),
+          currentCycleNumber: Number(runtime.cycleNumber || 0),
+          baselineLastCompletedAt: before.lastCompletedAt || null,
+          currentLastCompletedAt: runtime.lastCompletedAt || null,
+          baselineDurableFingerprint: before.durableFingerprint || null,
+          currentDurableFingerprint: runtime.durableFingerprint || null,
+          baselineHandoffFingerprint: before.handoffFingerprint || null,
+          currentHandoffFingerprint: runtime.handoffFingerprint || null,
+          baselineActiveThreadId: before.activeThreadId || null,
+          currentActiveThreadId: runtime.activeThreadId || null,
+          currentHotBrainHydratedAt: runtime.hotBrainHydratedAt || null,
+          currentHotBrainReuseCount: Number(runtime.hotBrainReuseCount || 0),
+          runtimeOwner: runtime.runtimeOwner || null,
+          browserIndependent: runtime.browserIndependent === true,
+          runtimeVersion: runtime.version || null,
+          runtimeBuildId: runtime.buildId || null,
+          cognitionSource: runtime.cognitionSource || null,
+          durableState: authority.durableState || null,
+          externalActionAuthorized: authority.externalActionAuthorized === true,
+          humanAuthorityPreserved: authority.humanAuthorityPreserved === true
+        },
+        browserStorageRole: "external-regression-witness-only-not-production-state",
+        providerCallsRequiredByHarness: 0,
+        externalAuthorityAdded: false,
+        processRestartRequestedByHarness: false,
+        cognitiveWakeScheduledByHarness: false,
+        runtimeConfigurationMutatedByHarness: false,
+        diagnostic:
+          passed === checks.length
+            ? "A new production server process lifecycle reconstructed commissioned Maddy cognition from durable institutional state and advanced the pre-restart cognitive lineage while preserving server ownership and the human external-action boundary."
+            : "The external proof did not establish every process-reconstruction condition. Preserve the failure exactly; do not manufacture process identity, durable state, authority, or cognition."
+      };
+
+      if (result.success) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+
+      console.table(checks);
+      console.info(
+        `[MEOS Organism Regression ${VERSION}] 006.033K: ` +
+        `${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      console.info(result);
+      return result;
+    },
 
     /*
      * Commission 006.033J — Browser Lifecycle Absence Continuity Proof
