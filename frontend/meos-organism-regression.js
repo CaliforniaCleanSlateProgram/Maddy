@@ -11,14 +11,189 @@
 (function initializeMEOSOrganismRegression(global) {
   "use strict";
 
-  const VERSION = "0.5.0";
-  const BUILD_ID = "ORH050-UNRESOLVED-INTENTION-EVIDENCE-SPONSORED-WAKE-PROOF-20260916-A";
+  const VERSION = "0.6.0";
+  const BUILD_ID = "ORH060-DURABLE-SERVER-COGNITIVE-RUNTIME-OWNERSHIP-PROOF-20260916-A";
   const SCHEMA = "meos.organism-regression.behavioral-continuity.v1";
+
+  const fetchRuntimeHealth = async () => {
+    const response = await global.fetch(`/health?t=${Date.now()}`, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      throw new Error(`MEOS health request failed with HTTP ${response.status}.`);
+    }
+    return response.json();
+  };
 
   const Harness = {
     version: VERSION,
     buildId: BUILD_ID,
     schema: SCHEMA,
+
+    /*
+     * Commission 006.033I — Durable Server Cognitive Runtime Ownership Proof
+     *
+     * External observation only. This proof does not start, stop, authorize,
+     * accelerate, or schedule cognition. It reads the real production /health
+     * telemetry and requires evidence that continuous cognition is owned by the
+     * durable MEOS server, uses the commissioned Executive Brain, preserves
+     * institutional durable authority, has actually completed at least one
+     * server-owned wake, retains a resident/hot Brain across cycles, and does
+     * not acquire external-action authority merely because cognition continues.
+     *
+     * If production continuous-cognition authority is intentionally disabled,
+     * this proof MUST fail rather than manufacturing authority from the harness.
+     */
+    async runDurableServerCognitiveRuntimeOwnershipProof() {
+      const brain = global.ExecutiveBrain;
+      if (!brain || typeof global.fetch !== "function") {
+        return {
+          success: false,
+          commission: "006.033I",
+          schema: "meos.organism-regression.durable-server-cognitive-runtime-ownership.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "Production Executive Brain and same-origin health telemetry are required."
+        };
+      }
+
+      let health;
+      try {
+        health = await fetchRuntimeHealth();
+      } catch (error) {
+        return {
+          success: false,
+          commission: "006.033I",
+          schema: "meos.organism-regression.durable-server-cognitive-runtime-ownership.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: error?.message || String(error)
+        };
+      }
+
+      const runtime = health?.continuousCognition || {};
+      const authority = runtime?.authority || {};
+      const wakeCount = Number(runtime?.wakeCount || 0);
+      const cycleNumber = Number(runtime?.cycleNumber || 0);
+      const hotBrainReuseCount = Number(runtime?.hotBrainReuseCount || 0);
+      const durableCheckpointCount = Number(runtime?.durableCheckpointCount || 0);
+      const checks = [
+        {
+          name: "Continuous cognition is owned by the durable MEOS server rather than the browser",
+          passed:
+            runtime.runtimeOwner === "meos-durable-server" &&
+            runtime.browserIndependent === true
+        },
+        {
+          name: "Server cognition executes the commissioned Executive Brain rather than a second cognition engine",
+          passed:
+            runtime.cognitionSource === "commissioned-executive-brain" &&
+            String(brain.version || "") === "1.26.7" &&
+            String(brain.buildId || "") === "EB1267-ORGANIZATION-KNOWLEDGE-BOUNDARY-20260915-A"
+        },
+        {
+          name: "Continuous cognition is currently enabled by production authority rather than harness authority",
+          passed:
+            runtime.enabled === true &&
+            health?.runtimeResourceControl?.masterAutonomyAuthorized === true
+        },
+        {
+          name: "Durable server cognition has actually completed a production wake/cycle",
+          passed:
+            wakeCount > 0 &&
+            cycleNumber > 0 &&
+            Boolean(runtime.lastWakeAt) &&
+            Boolean(runtime.lastCompletedAt)
+        },
+        {
+          name: "Server runtime retains one resident hot Brain across cognitive cycles",
+          passed:
+            Boolean(runtime.hotBrainHydratedAt) &&
+            hotBrainReuseCount > 0
+        },
+        {
+          name: "Server-owned cognition remains bound to institutional durable authority",
+          passed:
+            authority.durableState === "meos-institutional-repository" &&
+            Boolean(runtime.durableFingerprint)
+        },
+        {
+          name: "Durable cognition checkpoints bounded state without treating storage as the bloodstream",
+          passed:
+            runtime.persistenceMode === "resident-hot-cognition-bounded-durable-checkpoint" &&
+            durableCheckpointCount >= 0 &&
+            Number(runtime.skippedDurableCheckpointCount || 0) >= 0
+        },
+        {
+          name: "Continuous cognition does not acquire external-action authority",
+          passed:
+            authority.externalActionAuthorized === false &&
+            authority.humanAuthorityPreserved === true &&
+            runtime.eventReentryExternalActionAuthorized === false &&
+            runtime.eventReentryPaidCognitionAuthorized === false
+        },
+        {
+          name: "External proof is observational only and grants no runtime authority or cognitive schedule",
+          passed: true
+        }
+      ].map(item => ({ ...item, passed: item.passed === true }));
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = {
+        success: passed === checks.length,
+        commission: "006.033I",
+        schema: "meos.organism-regression.durable-server-cognitive-runtime-ownership.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        productionBrainVersion: brain.version,
+        productionBrainBuildId: brain.buildId,
+        serverRuntimeVersion: runtime.version || null,
+        serverRuntimeBuildId: runtime.buildId || null,
+        passed,
+        total: checks.length,
+        checks,
+        observed: {
+          status: runtime.status || null,
+          enabled: runtime.enabled === true,
+          runtimeOwner: runtime.runtimeOwner || null,
+          browserIndependent: runtime.browserIndependent === true,
+          cognitionSource: runtime.cognitionSource || null,
+          wakeCount,
+          cycleNumber,
+          lastWakeAt: runtime.lastWakeAt || null,
+          lastCompletedAt: runtime.lastCompletedAt || null,
+          nextWakeAt: runtime.nextWakeAt || null,
+          hotBrainHydratedAt: runtime.hotBrainHydratedAt || null,
+          hotBrainReuseCount,
+          durableFingerprint: runtime.durableFingerprint || null,
+          durableCheckpointCount,
+          skippedDurableCheckpointCount: Number(runtime.skippedDurableCheckpointCount || 0),
+          persistenceMode: runtime.persistenceMode || null,
+          masterAutonomyAuthorized:
+            health?.runtimeResourceControl?.masterAutonomyAuthorized === true,
+          externalActionAuthorized: authority.externalActionAuthorized === true,
+          humanAuthorityPreserved: authority.humanAuthorityPreserved === true
+        },
+        providerCallsRequiredByHarness: 0,
+        externalAuthorityAdded: false,
+        cognitiveWakeScheduledByHarness: false,
+        runtimeConfigurationMutatedByHarness: false,
+        diagnostic:
+          passed === checks.length
+            ? "Production telemetry shows one commissioned Executive Brain continuing inside the durable MEOS server runtime, with observed completed wakes, resident cognition, bounded durable checkpoints, and unchanged human external-action authority."
+            : "The external proof did not establish every durable-server cognition ownership condition. Preserve the failure exactly; do not grant authority or weaken the acceptance standard from the harness."
+      };
+
+      console.table(checks);
+      console.info(
+        `[MEOS Organism Regression ${VERSION}] 006.033I: ` +
+        `${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      console.info(result);
+      return result;
+    },
 
     getStatus() {
       return {
