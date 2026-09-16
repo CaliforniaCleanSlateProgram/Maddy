@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32297297/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32294872/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32274191/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32272869/MEOS_BUILD_STATE.md)
@@ -2109,3 +2110,123 @@ Candidate boundaries remain candidates, not marching orders. They include crash-
 **Recovery keyword:** `waypoint`
 
 On recovery: read the ratified North Star and this latest Build State, recognize 006.033L as CLOSED / COMMISSIONED / LIVE-PROVEN 9/9, preserve ORH090 and the exact 70,774 ms parked observation, preserve the distinction between master Maddy Autonomy ON and Continuous Cognition/provider/action authority revoked, preserve the zero automatic-spend-authority result, preserve the external harness non-mutation boundary, preserve the concurrent 429 durable-authority degradation as unresolved rather than erasing it, and resume from fresh source/runtime reconciliation without inventing progress or automatically following alphabetical sequence.
+
+---
+
+# 006.033M — Durable Provider Pressure Circuit Breaker — COMMISSIONED
+
+**Status:** CLOSED / COMMISSIONED / DEPLOYED-RUNTIME-IDENTITY-PROVEN / PRODUCTION-MODULE-ACCEPTANCE-PROVEN 16/16  
+**Commission:** `006.033M`  
+**Repository Authority:** `v1.1.2`  
+**Build:** `IRA112-DURABLE-PROVIDER-PRESSURE-CIRCUIT-BREAKER-20260916-A`
+
+## Commission purpose
+
+006.033M strengthens Maddy's provider-neutral durable institutional authority against provider pressure. A durable provider that returns a qualifying pressure/failure condition is placed behind a shared bounded circuit so independent MEOS organs do not repeatedly hammer the same pressured provider. While that circuit is open, normal Repository Authority provider selection excludes the pressured provider. If another compatible healthy durable provider is registered, the same provider-neutral selection path can select it. If no compatible durable provider is available, durable institutional authority fails visibly rather than promoting browser/local continuity into institutional truth.
+
+This capability exists in the production `institutional-repository-authority.js` module and is reached through normal Repository Authority `read`, `write`, and `delete` operations; it is not a test-only customer path.
+
+## Production-module acceptance evidence
+
+The unchanged production Repository Authority module from the authoritative repository snapshot was executed externally through its exported `runAcceptanceTest()` contract. Result: **PASS 16/16**.
+
+The complete acceptance suite retained all prior Repository Authority invariants and added three 006.033M-specific checks:
+
+1. Provider pressure opens a bounded shared circuit after one real provider failure — PASS.
+2. Open pressure circuit prevents repeated calls to the throttled provider — PASS.
+3. Repository Authority selects a healthy secondary durable provider while the pressured provider cools down — PASS.
+
+The acceptance result identified:
+
+- commission: `006.033M`
+- version: `1.1.2`
+- build: `IRA112-DURABLE-PROVIDER-PRESSURE-CIRCUIT-BREAKER-20260916-A`
+- schema: `meos.institutional-repository-authority.acceptance.v1`
+- overall: `passed=true`
+- pressure cooldown: `60000 ms`
+
+The acceptance providers are isolated acceptance fixtures inside the module's existing acceptance contract. This proof does not claim that a second production provider is presently registered or that a live Google outage was manufactured.
+
+## Live deployed runtime identity evidence
+
+The real customer-facing server status route, `GET /api/meos/institutional-repository/status`, returned HTTP 200 JSON from the running Render process and identified the loaded Repository Authority as:
+
+- name: `MEOS Institutional Repository Authority`
+- version: `1.1.2`
+- commission: `006.033M`
+- build: `IRA112-DURABLE-PROVIDER-PRESSURE-CIRCUIT-BREAKER-20260916-A`
+- architecture: `provider-neutral-memory-fabric`
+- durable state authority: `meos-institutional-repository`
+- provider count: `1`
+- durable provider count: `1`
+- pressure cooldown: `60000 ms`
+- provider pressure circuits at observation time: `[]`
+- last error: `null`
+
+At the same live observation, the Repository Authority reported recent durable reads and writes and the single configured production durable provider remained healthy. An empty pressure-circuit list is therefore the expected healthy-state observation and is not treated as evidence of a failure test.
+
+## Commissioned bounded claim
+
+006.033M proves:
+
+> **Maddy's production Institutional Repository Authority contains and is running a provider-neutral bounded pressure circuit: qualifying provider pressure opens a shared cooldown circuit, subsequent Repository Authority selection suppresses repeated use of that pressured provider during the cooldown, and the same provider-neutral selection contract can select another compatible healthy durable provider when one is registered, while preserving fail-closed institutional authority semantics.**
+
+This claim combines external functional acceptance of the unchanged production Repository Authority module with direct live identity/status evidence from the deployed Render process.
+
+## Explicit non-claims / remaining provider-loss boundary
+
+006.033M does **not** prove:
+
+- that a second live production durable provider is currently registered;
+- live failover from Google Workspace to another production provider;
+- that OneDrive or any other second substrate is configured;
+- a deliberately induced live Google 429/outage after this commission;
+- arbitrary cloud/provider migration preserving every durable state class;
+- independently provisioned machine-loss reconstruction from a second provider;
+- exactly-once reconciliation of every in-flight durable mutation during provider failure;
+- that the historical Google 429 degradation never recurs;
+- that a provider pressure circuit by itself provides durable authority when no healthy durable provider exists.
+
+The live runtime reported exactly one durable provider. Therefore the next provider-neutral continuity boundary, if selected after fresh reconciliation, is to add a genuinely independent second durable substrate through the existing Repository Authority contract and prove real cross-provider continuity/failover without changing Maddy's identity or promoting non-authoritative cache state.
+
+## NORTH / SPOOKY / WAKE reconciliation
+
+**NORTH:** Maddy's durable identity is less coupled to the health of one storage vendor. Provider pressure changes which substrate is eligible for institutional authority; it does not redefine Maddy or make a browser cache authoritative.
+
+**SPOOKY:** The architecture treats vendor pressure as a governed substrate condition shared across the organism rather than allowing independent organs to retry-storm the same failing provider. The mechanism is provider-neutral and can redirect normal authority selection to another compatible durable substrate when one exists.
+
+**WAKE:** The commission leaves durable product value: reduced retry-storm risk, bounded provider-pressure behavior, clearer degraded-state semantics, a real provider-neutral failover seam, and a concrete foundation for adding an independent second durable provider without rewriting Maddy around that vendor.
+
+## Organism / continuity proof sequence through 006.033M
+
+The commissioned sequence now includes:
+
+- 006.033D — consequence-conditioned learning and later judgment change — LIVE-PROVEN 12/12
+- 006.033E1 — organization knowledge/privacy boundary across persistence/restore — LIVE-PROVEN 10/10
+- 006.033F — verification semantics reconciliation — LIVE-PROVEN 8/8
+- 006.033G — substrate interruption and identity continuity — LIVE-PROVEN 8/8
+- 006.033H — unresolved intention continuity and evidence-sponsored wake judgment — LIVE-PROVEN 9/9
+- 006.033I — durable server cognitive runtime ownership — LIVE-PROVEN 9/9
+- 006.033J — actual browser lifecycle absence continuity — LIVE-PROVEN 9/9
+- 006.033K — deliberate server-process death and durable cognitive reconstruction — LIVE-PROVEN 9/9
+- 006.033L — governed quiescence and zero-spend authority revocation — LIVE-PROVEN 9/9
+- 006.033M — durable provider pressure circuit breaker — DEPLOYED-RUNTIME-IDENTITY-PROVEN + PRODUCTION-MODULE-ACCEPTANCE-PROVEN 16/16
+
+## Next-step anti-drift instruction
+
+Do **not** automatically configure OneDrive or another provider merely because 006.033M is complete.
+
+Before the next coding commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this latest `MEOS_BUILD_STATE.md` in full.
+3. Inspect the latest authoritative repository and live runtime.
+4. Preserve the proof doctrine: prove what was built for the customer; do not alter production merely to make a test pass.
+5. Preserve the external-acceptance boundary; production cognition must not contain hard-coded expected answers or test-only behavior.
+6. Preserve fail-closed institutional authority: local/browser continuity must never silently become durable institutional truth.
+7. Treat the historical Google 429 incident as real evidence while distinguishing it from current healthy runtime status.
+8. Treat second-provider integration as a candidate boundary, not a marching order; select it only after North / Spooky / WAKE and first-paid-release reconciliation.
+
+**Recovery keyword:** `waypoint`
+
+On recovery: read the ratified North Star and this latest Build State; recognize 006.033M as CLOSED / COMMISSIONED with deployed runtime identity proven and unchanged production-module acceptance proven 16/16; preserve the 60-second provider-pressure cooldown, fail-closed institutional authority semantics, and provider-neutral selection behavior; preserve that only one production durable provider was registered at commissioning and that no live second-provider failover was claimed; preserve the doctrine that tests prove customer work rather than production being changed to prove the test; then resume from fresh source/runtime reconciliation without inventing progress.
