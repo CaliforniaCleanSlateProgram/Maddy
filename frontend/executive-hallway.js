@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.6";
-  const BUILD_ID = "EH156-DURABLE-RETURN-RECONCILIATION-API-20260914-A";
+  const VERSION = "1.5.7";
+  const BUILD_ID = "EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1826,6 +1826,23 @@
       : EXECUTIVE_EXECUTION_TIMEOUT_MS;
   }
 
+  /*
+   * Commission 006.033F — Verification Semantics Reconciliation
+   *
+   * Router success means the governed route/transport completed. It is not
+   * evidence that a claim, execution, or real-world consequence was verified.
+   * Hallway therefore preserves success independently and may mark the outcome
+   * verified only when the Router result carries an explicit authoritative
+   * outcome-verification signal. Missing verification fails closed.
+   */
+  function executiveRouterOutcomeVerified(result) {
+    return (
+      result?.outcomeVerified === true ||
+      result?.verification?.outcomeVerified === true ||
+      result?.transportReceipt?.outcomeVerified === true
+    );
+  }
+
   function finishExecutiveRouterSuccess(work, result) {
     work.execution = clone(result);
     work.evidence.push({ type: "executive-router-result", verifiedAt: now(), result: clone(result) });
@@ -1833,7 +1850,11 @@
     normalizeExecutionDeliverables(work, result);
     work.options = work.deliverables.length ? ["open-deliverable", "use-in-task", "archive"] : ["review-result", "archive"];
     const returned = transition(work, "done", {
-      outcome: { success: result?.success !== false, verified: result?.success !== false, result: clone(result) }
+      outcome: {
+        success: result?.success !== false,
+        verified: executiveRouterOutcomeVerified(result),
+        result: clone(result)
+      }
     });
     if (result?.success !== false) {
       resolveInformationalResearchMission(work, result);
