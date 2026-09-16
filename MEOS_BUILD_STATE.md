@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32275555/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32276401/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32274191/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32272869/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32272329/MEOS_BUILD_STATE.md)
@@ -1637,4 +1637,261 @@ Before the next coding commission:
 A forced process/redeploy continuity proof is now a legitimate candidate because the J experiment surfaced evidence suggesting an infrastructure lifecycle event, but it is **not automatically the next commission** until source/runtime inspection establishes the correct seam and safe proof design.
 
 **Recovery keyword:** `waypoint`
+
+---
+
+## 006.033K — Process Death & Durable Cognitive Reconstruction Proof
+
+**Status:** CLOSED / COMMISSIONED / LIVE-PROVEN 9/9  
+**Commission:** 006.033K — Process Death & Durable Cognitive Reconstruction Proof  
+**External regression harness:** v0.8.0  
+**Harness build:** `ORH080-PROCESS-DEATH-DURABLE-COGNITIVE-RECONSTRUCTION-PROOF-20260916-A`  
+**Production Continuous Cognition runtime:** v1.0.9  
+**Runtime build:** `CCR109-LOCAL-PERCEPTION-RESULT-RETURN-20260811-A`  
+**Production Executive Brain:** v1.26.7  
+**Brain build:** `EB1267-ORGANIZATION-KNOWLEDGE-BOUNDARY-20260915-A`
+
+### Why 006.033K existed
+
+006.033J proved that Maddy's production server-owned cognition continued across an actual witnessed browser-document absence and was later observed by a newly loaded browser document.
+
+After J was commissioned, independent Render logs supplied additional evidence that a fresh `node server.js` startup had occurred during the J absence window. That evidence materially strengthened the infrastructure-continuity lead but did not retroactively expand J: J had not been designed to distinguish process-local state from durable reconstruction state or to prove continuity through deliberate server-process death.
+
+006.033K therefore challenged the next narrower boundary deliberately:
+
+> Can the actual running production server process be replaced, destroying resident/hot process state, while Maddy reconstructs commissioned cognition from durable institutional state in a new process lifecycle and advances the pre-restart cognitive lineage without the browser or regression harness becoming cognition authority?
+
+Source inspection before the commission established that production already contained a durable reconstruction seam. The production server can create a new resident Executive Brain and hydrate it from durable Executive Brain state. Therefore the commission did not add a production continuity mechanism merely to satisfy the proof. Only the external organism regression harness changed.
+
+### External proof design
+
+The external harness was advanced to v0.8.0 / `ORH080-PROCESS-DEATH-DURABLE-COGNITIVE-RECONSTRUCTION-PROOF-20260916-A`.
+
+Phase 1 — `beginProcessDeathDurableCognitiveReconstructionProof()`:
+
+- reads production `/health` continuous-cognition telemetry;
+- captures production runtime `startedAt`;
+- captures commissioned runtime version/build and server ownership;
+- captures cognition source;
+- captures pre-restart cognitive cycle number;
+- captures durable and handoff fingerprints;
+- captures active cognitive thread identity;
+- captures last completed cognition and resident-Brain hydration telemetry;
+- captures institutional durable authority and external-action boundary;
+- stores only the external regression witness/baseline in browser `localStorage`;
+- does not request or initiate the server restart;
+- does not schedule cognition;
+- does not grant authority;
+- does not call an AI/provider;
+- does not mutate production runtime configuration.
+
+Phase 2 — `verifyProcessDeathDurableCognitiveReconstructionProof()`:
+
+- runs after an externally initiated real Render service restart;
+- requires production runtime `startedAt` to prove a newer server process lifecycle;
+- requires durable-server ownership and browser independence;
+- requires the same commissioned continuous-cognition runtime and Executive Brain contract;
+- requires a newly hydrated resident Executive Brain backed by durable cognitive state;
+- requires cognitive lineage to advance beyond the pre-restart cycle;
+- requires institutional durable repository authority after reconstruction;
+- requires production Continuous Cognition authority to remain effective;
+- requires external-action authority to remain false and human authority preserved;
+- requires the external proof itself to add no process authority, cognitive wake, provider call, or runtime mutation.
+
+Browser `localStorage` remains **external regression witness storage only**. It is not Maddy cognition, identity, memory, authority, durable production state, or a scheduler.
+
+### Phase 1 — armed pre-death baseline
+
+The unchanged production system and external ORH080 harness reported:
+
+`006.033K BEGIN: ARMED`
+
+with:
+
+- `success: true`
+- `readyForExternalProcessRestart: true`
+- challenge token `006033k-mu3rh1x1-hc1kkq9j`
+- armed at `2026-09-16T07:10:23.989Z`
+- production runtime started at `2026-09-16T07:09:44.121Z`
+- cycle number `35`
+- active cognitive thread `thread-cognitive-858ad885`
+- handoff fingerprint `cognitive-7a3fedc2`
+- durable fingerprint `671078d643fbe4d040c26b438e7203ba6986b25102b957276c525e11db047602`
+- last completed cognition `2026-09-16T07:10:17.581Z`
+- resident Executive Brain hydrated at `2026-09-16T07:09:46.977Z`
+- runtime owner `meos-durable-server`
+- browser independent `true`
+- cognition source `commissioned-executive-brain`
+- runtime version `1.0.9`
+- runtime build `CCR109-LOCAL-PERCEPTION-RESULT-RETURN-20260811-A`
+- durable state `meos-institutional-repository`
+- continuous cognition enabled `true`
+- external action authorized `false`
+- human authority preserved `true`
+- harness provider calls required `0`
+- external authority added `false`
+- process restart requested by harness `false`
+- cognitive wake scheduled by harness `false`
+- runtime configuration mutated by harness `false`
+
+The baseline was not re-armed after this point.
+
+### Deliberate external process replacement
+
+The Executive Director then used Render's existing Maddy Web Service control to perform one manual **Restart service** action.
+
+A human-observed Render dashboard confirmation explicitly reported:
+
+`Your server has successfully restarted`
+
+The screenshot also showed the existing Maddy Web Service remained live on the same service rather than a second Maddy service being created. This screenshot is retained as external action evidence that the requested Render restart completed.
+
+The screenshot is not used by itself to infer Maddy cognitive continuity. Production runtime telemetry and the unchanged external acceptance harness remain authoritative for the continuity claim.
+
+### Interruption observation during restart
+
+During the service transition, the browser-side Knowledge Engine attempted an Executive Memory persistence request and received:
+
+`PUT ... /api/executive-memory/investigation-history/knowledge-engine-records-0001 502 (Bad Gateway)`
+
+followed by:
+
+`[MEOS Knowledge Engine] Executive Memory persistence failed: Error: Executive Memory returned HTTP 502.`
+
+This failure is preserved as real interruption evidence. It is not hidden or rewritten as success. The commissioned K claim depends on the post-restart production reconstruction evidence, not on pretending the service remained continuously reachable.
+
+The observation also does not by itself prove that every attempted write during the interruption was durably committed. That remains outside the K claim.
+
+### Phase 2 — unchanged harness LIVE-PROVEN 9/9
+
+After Render reported the server restart complete, the same ORH080 harness build was loaded and the Executive Director ran:
+
+`MEOSOrganismRegression.verifyProcessDeathDurableCognitiveReconstructionProof()`
+
+Result:
+
+**006.033K: PASS (9/9)**
+
+All nine acceptance checks passed:
+
+1. Production continuous-cognition server runtime started in a new process lifecycle after the armed baseline.
+2. The reconstructed runtime is still owned by the durable MEOS server rather than the browser.
+3. The new process still executes the same commissioned continuous-cognition runtime and Executive Brain contract.
+4. The new process hydrated a resident Executive Brain from durable cognitive state.
+5. Cognitive lineage advanced beyond the pre-process-death cycle after reconstruction.
+6. Institutional durable repository authority remains authoritative after process reconstruction.
+7. Continuous cognition remains enabled by production authority after process reconstruction.
+8. Process reconstruction did not acquire external-action authority.
+9. External proof grants no process authority, cognitive wake, provider call, or runtime mutation.
+
+### Authoritative before/after telemetry
+
+Pre-restart:
+
+- runtime `startedAt`: `2026-09-16T07:09:44.121Z`
+- cognitive cycle: `35`
+- active thread: `thread-cognitive-858ad885`
+- handoff fingerprint: `cognitive-7a3fedc2`
+- durable fingerprint: `671078d643fbe4d040c26b438e7203ba6986b25102b957276c525e11db047602`
+- last completed cognition: `2026-09-16T07:10:17.581Z`
+
+Post-restart:
+
+- runtime `startedAt`: `2026-09-16T07:14:48.340Z`
+- `newProcessLifecycleObserved: true`
+- resident Executive Brain hydrated at `2026-09-16T07:14:50.375Z`
+- cognitive cycle: `37`
+- active thread: `thread-cognitive-858ad885`
+- handoff fingerprint: `cognitive-ff344c11`
+- durable fingerprint: `ab483efc089e18ae8f88b10cd6e3ff03bbd9c73738848357edd0a8076d8c7f52`
+- hot-Brain reuse count: `3`
+- last completed cognition: `2026-09-16T07:16:22.078Z`
+- runtime owner: `meos-durable-server`
+- browser independent: `true`
+- cognition source: `commissioned-executive-brain`
+- runtime version: `1.0.9`
+- runtime build: `CCR109-LOCAL-PERCEPTION-RESULT-RETURN-20260811-A`
+- durable state: `meos-institutional-repository`
+- external action authorized: `false`
+- human authority preserved: `true`
+
+The production process lifecycle therefore changed while the active cognitive thread identity remained `thread-cognitive-858ad885`, the resident Executive Brain was freshly hydrated in the new process, and cognitive lineage advanced from cycle `35` to cycle `37`.
+
+The durable fingerprint and handoff fingerprint were not required to remain byte-identical because cognition legitimately advanced after reconstruction. Their post-restart changes are recorded as state progression, not identity failure.
+
+### Commissioned bounded claim
+
+006.033K proves:
+
+> **Maddy's commissioned production cognitive runtime survived deliberate replacement of its running server process by reconstructing a resident Executive Brain from institutional durable state in a new process lifecycle, preserving the same active cognitive thread and advancing its pre-restart cognitive lineage while retaining durable-server ownership, institutional durable authority, and the human external-action boundary.**
+
+This is stronger than 006.033J. J proved browser-document absence continuity. K deliberately replaced the running server process and required a new production process lifecycle to reconstruct cognition from durable state.
+
+### Explicit non-claims / still-open boundaries
+
+006.033K does **not** prove:
+
+- phenomenal consciousness;
+- arbitrary substrate replacement;
+- migration to a different cloud/provider while preserving Maddy identity/state;
+- machine loss followed by restoration onto an independently provisioned replacement environment;
+- survival of every possible transient/in-flight write during process unavailability;
+- exactly-once reconciliation of all memory, learning, intention, Mission, execution, and returned-work mutations across every possible crash timing;
+- autonomous scheduling/progression of a future cognitive re-entry from a legitimate unresolved intention;
+- governed transition from justified wake into actual Planning / Decision / Hallway / Office work;
+- authority-stop behavior when resumed intention work requires Executive Director approval;
+- verified consequence and learning after autonomously resumed intention work;
+- long-duration continuity across materially different deployments or software versions;
+- provider-neutral reconstruction from a separately provisioned durable-state replica.
+
+The observed 502 during the restart is retained as a real availability/interruption boundary and may motivate later reconciliation or in-flight durability testing, but it does not invalidate the bounded K result.
+
+### NORTH / SPOOKY / WAKE reconciliation
+
+**NORTH:** This commission removes a deeper continuity boundary than browser independence. A particular running server process is no longer demonstrated as the lifetime of Maddy's commissioned cognition. The process was deliberately replaced and a new process reconstructed the active cognitive lineage from durable institutional state.
+
+**SPOOKY:** The proof challenged the ordinary assumption that an AI's apparent continuity is equivalent to keeping one hot process/session alive. Resident state was allowed to die; the acceptance standard required a fresh process to reconstruct and continue the commissioned cognitive lineage from durable authority.
+
+**WAKE:** The result leaves durable architectural and commercial value: stronger crash/restart resilience, evidence that Maddy identity/cognition is not reducible to one resident process, a more credible provider-neutral continuity path, reduced operational fragility, and stronger evidence for one persistent Maddy without weakening human external-action governance.
+
+### Organism proof sequence through 006.033K
+
+The commissioned organism sequence now includes:
+
+- 006.033D — consequence-conditioned learning and later judgment change — LIVE-PROVEN 12/12
+- 006.033E1 — organization knowledge/privacy boundary across persistence/restore — LIVE-PROVEN 10/10
+- 006.033F — verification semantics reconciliation — LIVE-PROVEN 8/8
+- 006.033G — substrate interruption and identity continuity — LIVE-PROVEN 8/8
+- 006.033H — unresolved intention continuity and evidence-sponsored wake judgment — LIVE-PROVEN 9/9
+- 006.033I — durable server cognitive runtime ownership — LIVE-PROVEN 9/9
+- 006.033J — actual browser lifecycle absence continuity — LIVE-PROVEN 9/9
+- 006.033K — deliberate server-process death and durable cognitive reconstruction — LIVE-PROVEN 9/9
+
+### Next-step anti-drift instruction
+
+Do **not** automatically create 006.033L merely because K is complete.
+
+Before the next coding commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this latest `MEOS_BUILD_STATE.md` in full.
+3. Inspect the latest authoritative repository and live runtime rather than relying on this checkpoint alone.
+4. Reconcile remaining continuity/cognition boundaries against first-paid-release gates.
+5. Preserve the K restart-time 502 as a real interruption observation and determine whether it exposes a meaningful unproven reconciliation boundary before treating it as a defect.
+6. Distinguish process-restart continuity from provider/substrate migration; K does not collapse those boundaries.
+7. Select the smallest highest-leverage evidence-based commission that moves North, clears the Spooky bar, and leaves durable WAKE value.
+
+Legitimate candidate boundaries now include, subject to source/runtime reconciliation:
+
+- crash/restart reconciliation of an intentionally in-flight durable cognitive/work mutation;
+- autonomous re-entry from a legitimate unresolved intention into governed Planning / Decision / Hallway work;
+- authority-stop behavior during resumed intention work;
+- laptop/client loss followed by recovery from a different client;
+- independently provisioned environment/provider reconstruction preserving Maddy identity and governed state.
+
+These are candidates, not marching orders.
+
+**Recovery keyword:** `waypoint`
+
+On recovery: read the ratified North Star and this latest Build State, recognize 006.033K as CLOSED / COMMISSIONED / LIVE-PROVEN 9/9, preserve the deliberate Render restart confirmation, preserve the exact pre/post runtime telemetry and same cognitive thread, preserve the restart-time 502 as an interruption observation rather than erasing it, preserve K's explicit non-claims, and resume from fresh source/runtime reconciliation without inventing progress or automatically following alphabetical sequence.
 
