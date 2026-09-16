@@ -1,9 +1,9 @@
 /**
  * MEOS Institutional Repository Authority
  *
- * Version: 1.1.1
- * Commission: 006.017D0B1
- * Build: IRA111-PORTABILITY-PUBLIC-INTERFACE-20260808-A
+ * Version: 1.1.2
+ * Commission: 006.033M
+ * Build: IRA112-DURABLE-PROVIDER-PRESSURE-CIRCUIT-BREAKER-20260916-A
  *
  * Purpose:
  * - Give MEOS one provider-neutral authority for durable organizational state.
@@ -21,10 +21,11 @@
 
 import crypto from "crypto";
 
-const VERSION = "1.1.1";
-const COMMISSION = "006.017D0B1";
+const VERSION = "1.1.2";
+const COMMISSION = "006.033M";
 const BUILD_ID =
-  "IRA111-PORTABILITY-PUBLIC-INTERFACE-20260808-A";
+  "IRA112-DURABLE-PROVIDER-PRESSURE-CIRCUIT-BREAKER-20260916-A";
+const PROVIDER_PRESSURE_COOLDOWN_MS = 60_000;
 
 const SCHEMA = Object.freeze({
   status: "meos.institutional-repository-authority.status.v1",
@@ -285,6 +286,62 @@ class InstitutionalRepositoryAuthority {
     this.lastDurableWriteAt = null;
     this.lastDurableReadAt = null;
     this.lastError = null;
+    this.providerPressure = new Map();
+  }
+
+  providerPressureState(providerId) {
+    const state = this.providerPressure.get(providerId);
+    if (!state) return null;
+    const now = Date.now();
+    return {
+      ...state,
+      open: now < state.retryAfterMs,
+      retryAfterAt: new Date(state.retryAfterMs).toISOString()
+    };
+  }
+
+  isProviderPressureFailure(error) {
+    const status = Number(error?.status || error?.statusCode || 0);
+    const code = String(error?.code || "").toUpperCase();
+    const message = String(error?.message || "").toLowerCase();
+    return status === 429 || status >= 500 ||
+      ["ECONNRESET","ECONNREFUSED","ETIMEDOUT","ENETUNREACH","EHOSTUNREACH","UND_ERR_CONNECT_TIMEOUT","UND_ERR_SOCKET"].includes(code) ||
+      message.includes("too many requests") || message.includes("rate limit") ||
+      message.includes("timed out") || message.includes("network");
+  }
+
+  openProviderPressureCircuit(provider, operation, error) {
+    if (!provider?.id || !this.isProviderPressureFailure(error)) return false;
+    const now = Date.now();
+    const previous = this.providerPressure.get(provider.id);
+    const failureCount = Number(previous?.failureCount || 0) + 1;
+    const retryAfterMs = now + PROVIDER_PRESSURE_COOLDOWN_MS;
+    this.providerPressure.set(provider.id, {
+      providerId: provider.id, state: "open",
+      openedAt: new Date(now).toISOString(), retryAfterMs, operation,
+      failureCount, code: error?.code || null,
+      status: Number(error?.status || error?.statusCode || 0) || null,
+      message: error?.message || String(error)
+    });
+    this.recordEvent("provider-pressure-circuit-opened", {
+      providerId: provider.id, operation, failureCount,
+      retryAfterAt: new Date(retryAfterMs).toISOString(),
+      code: error?.code || null,
+      status: Number(error?.status || error?.statusCode || 0) || null
+    });
+    return true;
+  }
+
+  clearProviderPressureCircuit(provider, operation) {
+    if (!provider?.id) return false;
+    const previous = this.providerPressure.get(provider.id);
+    if (!previous) return false;
+    this.providerPressure.delete(provider.id);
+    this.recordEvent("provider-pressure-circuit-recovered", {
+      providerId: provider.id, operation,
+      previousFailureCount: Number(previous.failureCount || 0)
+    });
+    return true;
   }
 
   recordEvent(type, details = {}) {
@@ -407,6 +464,16 @@ class InstitutionalRepositoryAuthority {
 
     for (const provider of this.providers.values()) {
       if (!hasCapabilities(provider, required)) continue;
+
+      const pressure = this.providerPressureState(provider.id);
+      if (pressure?.open) {
+        this.recordEvent("provider-pressure-circuit-skipped", {
+          providerId: provider.id, operation,
+          classification: normalizedClass,
+          retryAfterAt: pressure.retryAfterAt
+        });
+        continue;
+      }
 
       const inspected =
         await this.inspectProvider(provider);
@@ -630,6 +697,7 @@ class InstitutionalRepositoryAuthority {
           ? nowIso()
           : this.lastDurableReadAt;
 
+      this.clearProviderPressureCircuit(provider, "read");
       this.lastError = null;
       this.recordEvent("record-read", {
         namespace: record.namespace,
@@ -656,6 +724,7 @@ class InstitutionalRepositoryAuthority {
         verified: true
       };
     } catch (error) {
+      this.openProviderPressureCircuit(provider, "read", error);
       this.lastError = {
         at: nowIso(),
         operation: "read",
@@ -852,6 +921,7 @@ class InstitutionalRepositoryAuthority {
         this.lastDurableWriteAt = nowIso();
       }
 
+      this.clearProviderPressureCircuit(provider, "write");
       this.lastError = null;
       this.recordEvent("record-written", {
         namespace: record.namespace,
@@ -883,6 +953,7 @@ class InstitutionalRepositoryAuthority {
             : null
       };
     } catch (error) {
+      this.openProviderPressureCircuit(provider, "write", error);
       this.lastError = {
         at: nowIso(),
         operation: "write",
@@ -937,8 +1008,19 @@ class InstitutionalRepositoryAuthority {
     const providerKey =
       this.providerKey(namespace, key);
 
-    const result =
-      await provider.delete(providerKey);
+    let result;
+    try {
+      result = await provider.delete(providerKey);
+      this.clearProviderPressureCircuit(provider, "delete");
+    } catch (error) {
+      this.openProviderPressureCircuit(provider, "delete", error);
+      this.lastError = {
+        at: nowIso(), operation: "delete", providerId: provider.id,
+        code: error?.code || "MEOS_REPOSITORY_DELETE_FAILED",
+        message: error?.message || String(error)
+      };
+      throw error;
+    }
 
     this.recordEvent("record-deleted", {
       namespace:
@@ -1258,6 +1340,11 @@ class InstitutionalRepositoryAuthority {
       durableProviderCount:
         durableProviders.length,
       providers: this.listProviders(),
+      providerPressureCircuits:
+        [...this.providerPressure.keys()]
+          .map(providerId => this.providerPressureState(providerId))
+          .filter(Boolean),
+      providerPressureCooldownMs: PROVIDER_PRESSURE_COOLDOWN_MS,
       memoryClasses:
         clone(MEMORY_CLASS_POLICY),
       lastProviderSelection:
@@ -1645,6 +1732,64 @@ class InstitutionalRepositoryAuthority {
       name:
         "Tampered portable state is rejected before restore",
       passed: tamperRejected
+    });
+
+    const pressureAuthority = new InstitutionalRepositoryAuthority();
+    let pressuredProviderReadCount = 0;
+    const fallbackMemory = new Map();
+
+    pressureAuthority.registerProvider({
+      id: "pressured-primary", name: "Pressured Primary", priority: 200,
+      capabilities: [CAPABILITY.DURABLE_READ, CAPABILITY.DURABLE_WRITE, CAPABILITY.READ_AFTER_WRITE, CAPABILITY.ORGANIZATION_OWNED],
+      health: async () => ({ available: true, durable: true }),
+      read: async () => {
+        pressuredProviderReadCount += 1;
+        const error = new Error("Too Many Requests");
+        error.status = 429;
+        error.code = "PROVIDER_RATE_LIMITED";
+        throw error;
+      },
+      write: async () => ({ success: true })
+    });
+
+    pressureAuthority.registerProvider({
+      id: "healthy-secondary", name: "Healthy Secondary", priority: 100,
+      capabilities: [CAPABILITY.DURABLE_READ, CAPABILITY.DURABLE_WRITE, CAPABILITY.READ_AFTER_WRITE, CAPABILITY.ORGANIZATION_OWNED],
+      health: async () => ({ available: true, durable: true }),
+      read: async providerKey => ({ found: fallbackMemory.has(providerKey), value: fallbackMemory.get(providerKey) || null }),
+      write: async (providerKey, value) => {
+        fallbackMemory.set(providerKey, clone(value));
+        return { success: true };
+      }
+    });
+
+    let pressureFailureObserved = false;
+    try {
+      await pressureAuthority.read({
+        namespace: "acceptance", key: "pressure-sentinel",
+        classification: MEMORY_CLASSES.INSTITUTIONAL
+      });
+    } catch (error) {
+      pressureFailureObserved = error?.status === 429 && pressuredProviderReadCount === 1;
+    }
+
+    const pressureCircuit = pressureAuthority.providerPressureState("pressured-primary");
+    const fallbackRead = await pressureAuthority.read({
+      namespace: "acceptance", key: "pressure-sentinel",
+      classification: MEMORY_CLASSES.INSTITUTIONAL
+    });
+
+    checks.push({
+      name: "Provider pressure opens a bounded shared circuit after one real provider failure",
+      passed: pressureFailureObserved === true && pressureCircuit?.open === true && pressureCircuit?.failureCount === 1
+    });
+    checks.push({
+      name: "Open pressure circuit prevents repeated calls to the throttled provider",
+      passed: pressuredProviderReadCount === 1
+    });
+    checks.push({
+      name: "Repository Authority selects a healthy secondary durable provider while the pressured provider cools down",
+      passed: fallbackRead?.success === true && fallbackRead?.providerId === "healthy-secondary" && pressuredProviderReadCount === 1
     });
 
     const passed =
