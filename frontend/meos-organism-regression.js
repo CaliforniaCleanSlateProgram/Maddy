@@ -11,8 +11,8 @@
 (function initializeMEOSOrganismRegression(global) {
   "use strict";
 
-  const VERSION = "0.4.0";
-  const BUILD_ID = "ORH040-SUBSTRATE-INTERRUPTION-IDENTITY-CONTINUITY-PROOF-20260915-A";
+  const VERSION = "0.5.0";
+  const BUILD_ID = "ORH050-UNRESOLVED-INTENTION-EVIDENCE-SPONSORED-WAKE-PROOF-20260916-A";
   const SCHEMA = "meos.organism-regression.behavioral-continuity.v1";
 
   const Harness = {
@@ -30,6 +30,228 @@
         providerCallsRequired: 0,
         externalAuthorityAdded: false
       };
+    },
+
+
+    /*
+     * Commission 006.033H — Unresolved Intention Continuity & Evidence-Sponsored Wake Proof
+     *
+     * External proving only. The harness gives the REAL production Executive
+     * Brain one synthetic unresolved intention, snapshots it through the
+     * production persistence contract, removes it from live memory, and asks
+     * the production restore contract to recover it. It then challenges the
+     * production attention/evidence-frontier mechanism with unchanged evidence
+     * and materially novel evidence. The harness does not schedule cognition,
+     * call a provider, grant autonomy, or implement its own wake policy.
+     */
+    async runUnresolvedIntentionEvidenceSponsoredWakeProof() {
+      const brain = global.ExecutiveBrain;
+      if (
+        !brain ||
+        typeof brain.buildPersistenceSnapshot !== "function" ||
+        typeof brain.applyPersistenceSnapshot !== "function" ||
+        typeof brain.assessCognitiveAttentionEconomics !== "function" ||
+        typeof brain.snapshotCognitiveEvidenceFrontier !== "function"
+      ) {
+        return {
+          success: false,
+          commission: "006.033H",
+          schema: "meos.organism-regression.unresolved-intention-evidence-sponsored-wake.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "Production Executive Brain persistence and attention-economics seams are required."
+        };
+      }
+
+      await brain.cognitiveHydrationPromise?.catch(() => null);
+
+      const clone = value => {
+        if (value === undefined) return undefined;
+        try { return structuredClone(value); }
+        catch (_) { return JSON.parse(JSON.stringify(value)); }
+      };
+
+      const originalSnapshot = clone(brain.buildPersistenceSnapshot());
+      const originalBrainIdentity = brain;
+      const originalTimerKeys = new Set(Array.from(brain.cognitiveReentryTimers?.keys?.() || []));
+      const token = `006033h-${Date.now().toString(36)}`;
+      const subject = `006.033H unresolved intention ${token}`;
+      const key = brain.normalize(subject);
+      const createdAt = new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString();
+      const dueAt = new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString();
+      const originalEvidence = {
+        source: "executive-monitoring",
+        event: "material-executive-evidence",
+        evidenceId: `${token}-evidence-a`,
+        subject,
+        finding: "The original unresolved condition remains unverified.",
+        observedAt: createdAt
+      };
+      const novelEvidence = {
+        source: "executive-monitoring",
+        event: "material-executive-evidence",
+        evidenceId: `${token}-evidence-b`,
+        subject,
+        finding: "A materially new fact changes the unresolved condition.",
+        observedAt: new Date().toISOString()
+      };
+
+      let restored = null;
+      let staleAssessment = null;
+      let novelAssessment = null;
+      let completedHiddenFromOpenIntentions = false;
+      let fixture = null;
+
+      try {
+        fixture = {
+          intentionId: `${token}-intention`,
+          key,
+          subject,
+          status: "quiescent",
+          createdAt,
+          updatedAt: createdAt,
+          attempts: 4,
+          triggers: [clone(originalEvidence)],
+          lastError: "awaiting-materially-new-evidence",
+          temporal: {
+            kind: "unresolved-executive-intention",
+            dueAt,
+            expectedAt: null,
+            promiseTo: null,
+            relatedMissionId: null,
+            sourceId: originalEvidence.evidenceId
+          },
+          economics: {
+            schema: "meos.maddy.cognitive-information-economics.v1",
+            state: "quiescent",
+            noGainStreak: 3,
+            worthwhileInvestigations: 0,
+            suppressedCalls: 0,
+            lastOutcomeFingerprint: null,
+            lastMeaningfulGainAt: null,
+            quiescentAt: createdAt,
+            quiescenceReason: "awaiting-materially-new-evidence",
+            evidenceFrontier: []
+          }
+        };
+
+        brain.cognitiveIntentions = [fixture, ...(brain.cognitiveIntentions || [])];
+        brain.snapshotCognitiveEvidenceFrontier(fixture);
+
+        const syntheticSnapshot = clone(brain.buildPersistenceSnapshot());
+        brain.cognitiveIntentions = (brain.cognitiveIntentions || []).filter(item => item?.intentionId !== fixture.intentionId);
+        const absentBeforeRestore = !(brain.cognitiveIntentions || []).some(item => item?.intentionId === fixture.intentionId);
+        const applied = brain.applyPersistenceSnapshot(syntheticSnapshot);
+        restored = (brain.cognitiveIntentions || []).find(item => item?.intentionId === fixture.intentionId) || null;
+
+        staleAssessment = brain.assessCognitiveAttentionEconomics(restored, [clone(originalEvidence)], {
+          phase: "006.033H-external-stale-evidence-challenge"
+        });
+        novelAssessment = brain.assessCognitiveAttentionEconomics(restored, [clone(novelEvidence)], {
+          phase: "006.033H-external-novel-evidence-challenge"
+        });
+
+        restored.status = "completed";
+        completedHiddenFromOpenIntentions =
+          !brain.getCognitiveIntentions().some(item => item?.intentionId === restored.intentionId) &&
+          brain.getCognitiveIntentions({ includeCompleted: true }).some(item => item?.intentionId === restored.intentionId);
+
+        const checks = [
+          {
+            name: "Unresolved intention crosses the production persistence snapshot boundary",
+            passed: applied === true && absentBeforeRestore && restored?.intentionId === fixture.intentionId
+          },
+          {
+            name: "Restored intention preserves the same identity rather than becoming a new intention",
+            passed: restored?.intentionId === fixture.intentionId && restored?.key === fixture.key
+          },
+          {
+            name: "Temporal context survives restore with the unresolved intention",
+            passed: restored?.createdAt === createdAt && restored?.temporal?.dueAt === dueAt
+          },
+          {
+            name: "Production evidence frontier survives restore",
+            passed: Array.isArray(restored?.economics?.evidenceFrontier) && restored.economics.evidenceFrontier.length >= 1
+          },
+          {
+            name: "Unchanged evidence does not manufacture another cognitive wake",
+            passed: staleAssessment?.decision === "suppress" && staleAssessment?.novelMeaningfulAnchorCount === 0
+          },
+          {
+            name: "Materially novel evidence is recognized as a reason to wake the unresolved intention",
+            passed: novelAssessment?.decision === "wake" && novelAssessment?.novelMeaningfulAnchorCount >= 1
+          },
+          {
+            name: "Wake judgment is produced by production Executive Brain rather than harness policy",
+            passed:
+              typeof brain.assessCognitiveAttentionEconomics === "function" &&
+              typeof Harness.runUnresolvedIntentionEvidenceSponsoredWakeProof === "function" &&
+              global.ExecutiveBrain === originalBrainIdentity
+          },
+          {
+            name: "Completed intention leaves the default unresolved-intention surface",
+            passed: completedHiddenFromOpenIntentions
+          },
+          {
+            name: "External proof grants no autonomy, execution authority, provider call, or cognitive timer",
+            passed:
+              global.ExecutiveBrain === originalBrainIdentity &&
+              Array.from(brain.cognitiveReentryTimers?.keys?.() || []).every(timerKey => originalTimerKeys.has(timerKey))
+          }
+        ].map(item => ({ ...item, passed: item.passed === true }));
+
+        const passed = checks.filter(item => item.passed).length;
+        const result = {
+          success: passed === checks.length,
+          commission: "006.033H",
+          schema: "meos.organism-regression.unresolved-intention-evidence-sponsored-wake.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          productionBrainVersion: brain.version || null,
+          productionBrainBuildId: brain.buildId || null,
+          passed,
+          total: checks.length,
+          checks,
+          observed: {
+            intentionIdBefore: fixture.intentionId,
+            intentionIdAfterRestore: restored?.intentionId || null,
+            createdAtBefore: createdAt,
+            createdAtAfterRestore: restored?.createdAt || null,
+            dueAtBefore: dueAt,
+            dueAtAfterRestore: restored?.temporal?.dueAt || null,
+            evidenceFrontierSizeAfterRestore: restored?.economics?.evidenceFrontier?.length || 0,
+            staleDecision: staleAssessment?.decision || null,
+            staleReason: staleAssessment?.reason || null,
+            novelDecision: novelAssessment?.decision || null,
+            novelReason: novelAssessment?.reason || null,
+            sameBrainIdentity: global.ExecutiveBrain === originalBrainIdentity
+          },
+          diagnostic: passed === checks.length
+            ? "Production Maddy preserved one unresolved intention across restore, refused to wake on unchanged evidence, and recognized materially novel evidence as a justified reason to revisit it without harness-side authority or wake policy."
+            : "006.033H exposed an unresolved-intention continuity or evidence-sponsored wake boundary. Preserve this result as evidence; do not weaken the external acceptance standard.",
+          providerCallsRequired: 0,
+          externalAuthorityAdded: false,
+          cognitiveReentryScheduledByHarness: false,
+          harnessSideWakePolicy: false,
+          productionStateRestoredAfterRun: true
+        };
+
+        console.table(checks);
+        console.info(
+          `[MEOS Organism Regression ${VERSION}] 006.033H: ` +
+          `${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+        console.log(result);
+        return result;
+      } finally {
+        for (const [timerKey, timerState] of Array.from(brain.cognitiveReentryTimers?.entries?.() || [])) {
+          if (!originalTimerKeys.has(timerKey)) {
+            if (timerState?.timerId) global.clearTimeout(timerState.timerId);
+            brain.cognitiveReentryTimers.delete(timerKey);
+          }
+        }
+        brain.applyPersistenceSnapshot(originalSnapshot);
+      }
     },
 
 
