@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32297297/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32303055/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32294872/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32274191/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32272869/MEOS_BUILD_STATE.md)
@@ -2230,3 +2230,116 @@ Before the next coding commission:
 **Recovery keyword:** `waypoint`
 
 On recovery: read the ratified North Star and this latest Build State; recognize 006.033M as CLOSED / COMMISSIONED with deployed runtime identity proven and unchanged production-module acceptance proven 16/16; preserve the 60-second provider-pressure cooldown, fail-closed institutional authority semantics, and provider-neutral selection behavior; preserve that only one production durable provider was registered at commissioning and that no live second-provider failover was claimed; preserve the doctrine that tests prove customer work rather than production being changed to prove the test; then resume from fresh source/runtime reconciliation without inventing progress.
+
+---
+
+# Build State Update — 006.033N through 006.033O
+
+**Checkpoint date:** 2026-09-16  
+**Authoritative repository basis entering this checkpoint:** `Maddy-main (29).zip` plus the subsequently committed and deployed 006.033O `server.js`.  
+**Runtime evidence remains authoritative.**
+
+## 006.033N — Customer Commercial Entitlement Authority — CLOSED / LIVE-PROVEN
+
+- commission: `006.033N`
+- build: `CEA100-CUSTOMER-COMMERCIAL-ENTITLEMENT-AUTHORITY-20260917-A`
+- schema: `meos.customer-commercial-entitlement.v1`
+- external acceptance: **10/10**
+- architecture: **MEOS-owned, payment-processor-neutral commercial entitlement authority**
+- payment processor configured at proof: **false**
+- entitlement enforcement enabled at proof: **false**
+- processor-specific authority: **false**
+
+### Commissioned bounded claim
+
+006.033N establishes the MEOS-owned commercial entitlement authority seam. A payment processor may later provide payment evidence, but it does not own customer identity, organization authority, Maddy access authority, or the commercial entitlement model.
+
+006.033N did **not** claim automated payment verification, durable entitlement persistence, a configured real payment processor, or live payment acceptance.
+
+## 006.033O — Durable Commercial Entitlement Ledger — CLOSED / LIVE-PROVEN
+
+- commission: `006.033O`
+- build: `DCEL100-DURABLE-COMMERCIAL-ENTITLEMENT-LEDGER-20260917-A`
+- version: `1.0.0`
+- acceptance schema: `meos.customer-commercial-entitlement-ledger.acceptance.v1`
+- external acceptance: **12/12**
+- runtime HTTP result: **200**
+- runtime success: **true**
+- payment processor configured at proof: **false**
+- public webhook configured at proof: **false**
+
+### Commissioned bounded claim
+
+006.033O establishes a durable MEOS-owned, processor-neutral commercial entitlement ledger and a governed verified-payment-evidence application boundary.
+
+Authenticated verified payment evidence can change the bound customer's commercial entitlement without allowing the payment provider to become Maddy's customer, organization, entitlement, identity, executive, or billing authority. Evidence application is idempotent; conflicting replay fails closed; unauthenticated provider claims cannot mutate entitlement state; provider identity remains evidence lineage.
+
+### Explicit non-claims / remaining first-paid-customer boundary
+
+006.033O does **not** prove or claim:
+
+- a configured Stripe, PayPal, Plaid, or other real payment processor;
+- a public payment webhook;
+- a completed real customer payment;
+- a simulated payment being treated as real;
+- payment-provider credentials or provider billing authority inside Maddy's entitlement authority;
+- frontend/product access enforcement from the durable entitlement ledger;
+- that a provider callback is authentic merely because it names a provider.
+
+The deployed acceptance surface states the remaining limitation directly:
+
+> A replaceable payment-provider adapter must still authenticate real provider evidence before the first live payment can activate an entitlement.
+
+## First-paid-customer path — reconciled state
+
+The current product path is no longer treated as starting from scratch:
+
+**prospect → executive tour → ownership close → account creation/sign-in → customer/account authority → MEOS commercial entitlement authority → durable entitlement ledger → [remaining: authenticated real payment evidence] → [remaining: entitlement/access enforcement]**
+
+Existing account/auth and prospect/commercial surfaces must be preserved unless fresh repository evidence proves a specific repair is necessary.
+
+## NORTH / SPOOKY / WAKE reconciliation
+
+**NORTH:** Payment vendors remain replaceable evidence sources beneath Maddy. They do not become Maddy's identity, customer authority, organization authority, commercial entitlement authority, or durable institutional truth.
+
+**SPOOKY:** Commercial state is governed as part of Maddy's own organism. External economic events can become durable Maddy-owned entitlement consequences only after authenticated evidence crosses a bounded authority seam, with idempotency and fail-closed conflict behavior.
+
+**WAKE:** Maddy now has a durable processor-neutral landing point for real payment evidence. The architecture can add a real payment provider without handing that provider ownership of customer identity or Maddy access authority.
+
+## Organism / commercial proof sequence through 006.033O
+
+The commissioned sequence now includes:
+
+- 006.033D — consequence-conditioned learning and later judgment change — LIVE-PROVEN 12/12
+- 006.033E1 — organization knowledge/privacy boundary across persistence/restore — LIVE-PROVEN 10/10
+- 006.033F — verification semantics reconciliation — LIVE-PROVEN 8/8
+- 006.033G — substrate interruption and identity continuity — LIVE-PROVEN 8/8
+- 006.033H — unresolved intention continuity and evidence-sponsored wake judgment — LIVE-PROVEN 9/9
+- 006.033I — durable server cognitive runtime ownership — LIVE-PROVEN 9/9
+- 006.033J — actual browser lifecycle absence continuity — LIVE-PROVEN 9/9
+- 006.033K — deliberate server-process death and durable cognitive reconstruction — LIVE-PROVEN 9/9
+- 006.033L — governed quiescence and zero-spend authority revocation — LIVE-PROVEN 9/9
+- 006.033M — durable provider pressure circuit breaker — DEPLOYED-RUNTIME-IDENTITY-PROVEN + PRODUCTION-MODULE-ACCEPTANCE-PROVEN 16/16
+- 006.033N — customer commercial entitlement authority — LIVE-PROVEN 10/10
+- 006.033O — durable commercial entitlement ledger — LIVE-PROVEN 12/12
+
+## Next-step anti-drift instruction
+
+Do **not** automatically choose Stripe, PayPal, Plaid, OneDrive, or any other vendor because 006.033O is complete.
+
+Before the next coding commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this latest `MEOS_BUILD_STATE.md` in full.
+3. Reconcile current `main` and deployed runtime.
+4. Preserve one fix → one commit → one test.
+5. Preserve processor neutrality and Maddy-owned customer/commercial authority.
+6. Trace the production path prospect → account → customer/organization authority → entitlement → payment evidence → access.
+7. Identify the exact next missing seam from source evidence before selecting a vendor.
+8. Treat the likely next boundary—authenticated real payment-provider evidence through a replaceable adapter—as a candidate to verify, not an automatic marching order.
+9. Do not claim first paid customer readiness until real payment evidence can be authenticated, bound to the correct account/product, durably applied, and access enforcement is proven.
+
+**Recovery keyword:** `006.033O`
+
+On recovery: recognize 006.033O as **CLOSED / LIVE-PROVEN 12/12** with build `DCEL100-DURABLE-COMMERCIAL-ENTITLEMENT-LEDGER-20260917-A`; recognize 006.033N as **CLOSED / LIVE-PROVEN 10/10**; preserve that no real payment processor or public webhook was configured at 006.033O proof; resume from current-main reconciliation of the first-paid-customer path without redoing N/O or prematurely selecting a vendor.
+
