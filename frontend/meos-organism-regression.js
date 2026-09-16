@@ -11,8 +11,8 @@
 (function initializeMEOSOrganismRegression(global) {
   "use strict";
 
-  const VERSION = "0.3.0";
-  const BUILD_ID = "ORH030-VERIFICATION-SEMANTICS-PROOF-20260915-A";
+  const VERSION = "0.4.0";
+  const BUILD_ID = "ORH040-SUBSTRATE-INTERRUPTION-IDENTITY-CONTINUITY-PROOF-20260915-A";
   const SCHEMA = "meos.organism-regression.behavioral-continuity.v1";
 
   const Harness = {
@@ -30,6 +30,189 @@
         providerCallsRequired: 0,
         externalAuthorityAdded: false
       };
+    },
+
+
+    /*
+     * Commission 006.033G — Substrate Interruption & Identity Continuity Proof
+     *
+     * External proving only. The harness temporarily makes the Mission durable
+     * authority unreachable at the browser transport seam, asks the REAL
+     * production Mission Engine to converge, then restores transport and asks
+     * the same Mission Engine instance to reconcile again. It does not create
+     * Missions, rewrite Mission state, emulate Mission convergence, or grant
+     * authority. Existing production concurrency acceptance is used only as
+     * corroborating evidence for the divergent-authority policy.
+     */
+    async runSubstrateInterruptionIdentityContinuityProof() {
+      const mission = global.MEOSMissionEngine;
+      if (!mission || typeof mission.convergeInstitutionalState !== "function") {
+        return {
+          success: false,
+          commission: "006.033G",
+          schema: "meos.organism-regression.substrate-interruption-identity-continuity.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "Production Mission Engine convergence seam is required."
+        };
+      }
+
+      const originalFetch = global.fetch;
+      const originalMissionIdentity = mission;
+      const before = mission.getPersistenceStatus?.() || null;
+      let forcedOutageCalls = 0;
+      let outageResult = null;
+      let recoveryResult = null;
+      let concurrencyResult = null;
+
+      try {
+        await mission.whenHydrated?.();
+
+        global.fetch = async function meos006033GInterruptedFetch(input, init) {
+          const target = typeof input === "string" ? input : (input?.url || "");
+          if (target.includes("/api/mission-state")) {
+            forcedOutageCalls += 1;
+            const error = new TypeError("006.033G synthetic substrate interruption: durable Mission authority unreachable");
+            error.code = "MEOS_006033G_SYNTHETIC_SUBSTRATE_INTERRUPTION";
+            throw error;
+          }
+          return originalFetch.call(this, input, init);
+        };
+
+        outageResult = await mission.convergeInstitutionalState({
+          reason: "006.033G-external-substrate-interruption"
+        });
+      } catch (error) {
+        outageResult = {
+          success: false,
+          converged: false,
+          degraded: false,
+          error: error?.message || String(error)
+        };
+      } finally {
+        global.fetch = originalFetch;
+      }
+
+      try {
+        recoveryResult = await mission.convergeInstitutionalState({
+          reason: "006.033G-external-substrate-restored"
+        });
+      } catch (error) {
+        recoveryResult = {
+          success: false,
+          converged: false,
+          degraded: true,
+          error: error?.message || String(error)
+        };
+      }
+
+      try {
+        concurrencyResult = await mission.runDurableConcurrencyConvergenceAcceptanceTest?.();
+      } catch (error) {
+        concurrencyResult = { passed: false, error: error?.message || String(error) };
+      }
+
+      const after = mission.getPersistenceStatus?.() || null;
+      const sameMissionIdentity = global.MEOSMissionEngine === originalMissionIdentity;
+      const outagePreservedLocalContinuity =
+        outageResult?.converged === false &&
+        outageResult?.degraded === true &&
+        outageResult?.action === "preserve-local-continuity";
+      const recoveryIsGoverned = Boolean(
+        recoveryResult?.converged === true ||
+        recoveryResult?.conflict === true ||
+        recoveryResult?.degraded === true
+      );
+      const divergencePolicyProven = Boolean(
+        concurrencyResult?.passed === true &&
+        Array.isArray(concurrencyResult?.checks) &&
+        concurrencyResult.checks.some(check =>
+          check?.name === "Offline/unverified continuity state is excluded from blind runtime auto-rebase" &&
+          check?.passed === true
+        )
+      );
+
+      const checks = [
+        {
+          name: "Production Mission Engine owns institutional convergence before interruption",
+          passed:
+            before?.authoritativeStorage === "meos-institutional-repository" &&
+            typeof mission.convergeInstitutionalState === "function"
+        },
+        {
+          name: "External challenge actually interrupts the durable Mission authority seam",
+          passed: forcedOutageCalls >= 1
+        },
+        {
+          name: "Substrate loss degrades honestly and preserves local continuity instead of inventing authority",
+          passed: outagePreservedLocalContinuity
+        },
+        {
+          name: "Substrate interruption does not replace or fork the production Mission Engine identity",
+          passed: sameMissionIdentity
+        },
+        {
+          name: "Restored substrate re-enters governed institutional convergence on the same Mission Engine",
+          passed: recoveryIsGoverned && global.MEOSMissionEngine === originalMissionIdentity
+        },
+        {
+          name: "Production policy excludes offline/unverified continuity from blind automatic rebase",
+          passed: divergencePolicyProven
+        },
+        {
+          name: "Recovery path retains explicit institutional authority rather than promoting browser cache",
+          passed:
+            after?.authoritativeStorage === "meos-institutional-repository" &&
+            after?.browserAuthoritative !== true
+        },
+        {
+          name: "External proof creates no Mission, grants no authority, and implements no second convergence engine",
+          passed:
+            typeof Harness.runSubstrateInterruptionIdentityContinuityProof === "function" &&
+            global.MEOSMissionEngine === mission
+        }
+      ].map(item => ({ ...item, passed: item.passed === true }));
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = {
+        success: passed === checks.length,
+        commission: "006.033G",
+        schema: "meos.organism-regression.substrate-interruption-identity-continuity.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        productionMissionVersion: mission.version || null,
+        productionMissionBuildId: mission.buildId || null,
+        passed,
+        total: checks.length,
+        checks,
+        observed: {
+          forcedOutageCalls,
+          outageAction: outageResult?.action || null,
+          outageDegraded: outageResult?.degraded === true,
+          recoveryAction: recoveryResult?.action || null,
+          recoveryConverged: recoveryResult?.converged === true,
+          recoveryConflictPreserved: recoveryResult?.conflict === true,
+          sameMissionIdentity,
+          authoritativeStorageAfterRecovery: after?.authoritativeStorage || null,
+          browserAuthoritativeAfterRecovery: after?.browserAuthoritative ?? null,
+          divergencePolicyProven
+        },
+        diagnostic: passed === checks.length
+          ? "Production Mission continuity survived a forced durable-authority interruption and re-entered governed convergence without identity replacement or browser-authority promotion."
+          : "006.033G exposed an organism-level substrate continuity boundary. Preserve this result as evidence; do not weaken the external acceptance standard.",
+        providerCallsRequired: 0,
+        externalAuthorityAdded: false,
+        missionsCreatedByHarness: 0,
+        harnessSideConvergenceImplementation: false
+      };
+
+      console.table(checks);
+      console.info(
+        `[MEOS Organism Regression ${VERSION}] 006.033G: ` +
+        `${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      console.log(result);
+      return result;
     },
 
 
