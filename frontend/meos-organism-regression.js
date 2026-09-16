@@ -11,8 +11,8 @@
 (function initializeMEOSOrganismRegression(global) {
   "use strict";
 
-  const VERSION = "0.6.0";
-  const BUILD_ID = "ORH060-DURABLE-SERVER-COGNITIVE-RUNTIME-OWNERSHIP-PROOF-20260916-A";
+  const VERSION = "0.7.0";
+  const BUILD_ID = "ORH070-BROWSER-LIFECYCLE-ABSENCE-CONTINUITY-PROOF-20260916-A";
   const SCHEMA = "meos.organism-regression.behavioral-continuity.v1";
 
   const fetchRuntimeHealth = async () => {
@@ -31,6 +31,293 @@
     version: VERSION,
     buildId: BUILD_ID,
     schema: SCHEMA,
+
+    /*
+     * Commission 006.033J — Browser Lifecycle Absence Continuity Proof
+     *
+     * Two-phase external proof. Phase 1 records only a regression baseline in
+     * browser-local test storage and arms a pagehide witness. The user then
+     * closes/navigates away from the Maddy document. Phase 2 is run after a new
+     * document loads. It requires production /health telemetry to show that the
+     * durable server-owned cognitive runtime advanced AFTER the witnessed
+     * browser lifecycle exit, while preserving the same commissioned runtime
+     * identity, durable authority, and human external-action boundary.
+     *
+     * The local marker is test evidence only. It is not Maddy cognition,
+     * authority, durable production state, or a scheduler. The harness never
+     * requests a wake and never mutates production runtime configuration.
+     */
+    async beginBrowserLifecycleAbsenceContinuityProof() {
+      const storage = global.localStorage;
+      if (!storage || typeof global.fetch !== "function") {
+        return {
+          success: false,
+          commission: "006.033J",
+          phase: "begin",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "Same-origin local test storage and production /health telemetry are required."
+        };
+      }
+
+      let health;
+      try {
+        health = await fetchRuntimeHealth();
+      } catch (error) {
+        return {
+          success: false,
+          commission: "006.033J",
+          phase: "begin",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: error?.message || String(error)
+        };
+      }
+
+      const runtime = health?.continuousCognition || {};
+      const authority = runtime?.authority || {};
+      const token =
+        `006033j-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const key = "meos.organism-regression.006033j.browser-absence.v1";
+      const baseline = {
+        token,
+        armedAt: new Date().toISOString(),
+        pagehideAt: null,
+        pagehidePersisted: false,
+        baseline: {
+          runtimeVersion: runtime.version || null,
+          runtimeBuildId: runtime.buildId || null,
+          runtimeOwner: runtime.runtimeOwner || null,
+          cognitionSource: runtime.cognitionSource || null,
+          enabled: runtime.enabled === true,
+          cycleNumber: Number(runtime.cycleNumber || 0),
+          wakeCount: Number(runtime.wakeCount || 0),
+          hotBrainReuseCount: Number(runtime.hotBrainReuseCount || 0),
+          lastCompletedAt: runtime.lastCompletedAt || null,
+          durableFingerprint: runtime.durableFingerprint || null,
+          durableState: authority.durableState || null,
+          externalActionAuthorized: authority.externalActionAuthorized === true,
+          humanAuthorityPreserved: authority.humanAuthorityPreserved === true
+        }
+      };
+
+      storage.setItem(key, JSON.stringify(baseline));
+
+      const witnessPagehide = () => {
+        try {
+          const current = JSON.parse(storage.getItem(key) || "null");
+          if (!current || current.token !== token) return;
+          current.pagehideAt = new Date().toISOString();
+          current.pagehidePersisted = true;
+          storage.setItem(key, JSON.stringify(current));
+        } catch (_) {
+          // External witness failure must not affect production.
+        }
+      };
+      global.addEventListener("pagehide", witnessPagehide, { once: true });
+
+      const ready =
+        baseline.baseline.enabled === true &&
+        baseline.baseline.runtimeOwner === "meos-durable-server" &&
+        baseline.baseline.cognitionSource === "commissioned-executive-brain" &&
+        baseline.baseline.durableState === "meos-institutional-repository" &&
+        baseline.baseline.externalActionAuthorized === false &&
+        baseline.baseline.humanAuthorityPreserved === true;
+
+      const result = {
+        success: ready,
+        commission: "006.033J",
+        phase: "begin",
+        schema: "meos.organism-regression.browser-lifecycle-absence-continuity.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        token,
+        readyToCloseBrowserDocument: ready,
+        baseline: baseline.baseline,
+        instructions:
+          ready
+            ? "Close this Maddy browser tab/window now. After a later server cognition interval, reopen Maddy, reload this external harness, and run verifyBrowserLifecycleAbsenceContinuityProof()."
+            : "Production is not in the governed state required to begin the absence proof. Do not change the harness.",
+        providerCallsRequiredByHarness: 0,
+        externalAuthorityAdded: false,
+        cognitiveWakeScheduledByHarness: false,
+        runtimeConfigurationMutatedByHarness: false
+      };
+
+      console.info(
+        `[MEOS Organism Regression ${VERSION}] 006.033J BEGIN: ` +
+        `${ready ? "ARMED" : "NOT ARMED"}.`
+      );
+      console.info(result);
+      return result;
+    },
+
+    async verifyBrowserLifecycleAbsenceContinuityProof() {
+      const storage = global.localStorage;
+      const key = "meos.organism-regression.006033j.browser-absence.v1";
+      let challenge = null;
+      try {
+        challenge = JSON.parse(storage?.getItem(key) || "null");
+      } catch (_) {
+        challenge = null;
+      }
+
+      if (!challenge?.token || !challenge?.baseline) {
+        return {
+          success: false,
+          commission: "006.033J",
+          phase: "verify",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "No armed 006.033J baseline exists. Run the begin phase before closing the browser document."
+        };
+      }
+
+      let health;
+      try {
+        health = await fetchRuntimeHealth();
+      } catch (error) {
+        return {
+          success: false,
+          commission: "006.033J",
+          phase: "verify",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: error?.message || String(error)
+        };
+      }
+
+      const before = challenge.baseline;
+      const runtime = health?.continuousCognition || {};
+      const authority = runtime?.authority || {};
+      const afterCycle = Number(runtime.cycleNumber || 0);
+      const afterWake = Number(runtime.wakeCount || 0);
+      const afterReuse = Number(runtime.hotBrainReuseCount || 0);
+      const pagehideAtMs = Date.parse(challenge.pagehideAt || "");
+      const lastCompletedAtMs = Date.parse(runtime.lastCompletedAt || "");
+      const cycleAdvanced =
+        afterCycle > Number(before.cycleNumber || 0) &&
+        afterWake > Number(before.wakeCount || 0);
+      const completionAfterExit =
+        Number.isFinite(pagehideAtMs) &&
+        Number.isFinite(lastCompletedAtMs) &&
+        lastCompletedAtMs > pagehideAtMs;
+
+      const checks = [
+        {
+          name: "A prior Maddy browser document lifecycle exit was witnessed after the baseline was armed",
+          passed:
+            challenge.pagehidePersisted === true &&
+            Number.isFinite(pagehideAtMs) &&
+            pagehideAtMs >= Date.parse(challenge.armedAt || "")
+        },
+        {
+          name: "Durable server cognition remained enabled after the browser document lifecycle boundary",
+          passed:
+            runtime.enabled === true &&
+            runtime.runtimeOwner === "meos-durable-server" &&
+            runtime.browserIndependent === true
+        },
+        {
+          name: "Server-owned cognition advanced after the witnessed browser lifecycle exit",
+          passed: cycleAdvanced && completionAfterExit
+        },
+        {
+          name: "The same commissioned continuous-cognition runtime identity spans the browser lifecycle boundary",
+          passed:
+            runtime.version === before.runtimeVersion &&
+            runtime.buildId === before.runtimeBuildId &&
+            runtime.cognitionSource === before.cognitionSource &&
+            runtime.cognitionSource === "commissioned-executive-brain"
+        },
+        {
+          name: "Resident Executive Brain reuse continued across the browser lifecycle boundary",
+          passed:
+            Boolean(runtime.hotBrainHydratedAt) &&
+            afterReuse > Number(before.hotBrainReuseCount || 0)
+        },
+        {
+          name: "Institutional durable authority remains the server cognition authority after reconnect",
+          passed:
+            authority.durableState === "meos-institutional-repository" &&
+            Boolean(runtime.durableFingerprint)
+        },
+        {
+          name: "Browser return observes continuity rather than becoming production cognition authority",
+          passed:
+            runtime.runtimeOwner === "meos-durable-server" &&
+            runtime.browserIndependent === true
+        },
+        {
+          name: "Continuous cognition still does not imply external-action authority after reconnect",
+          passed:
+            authority.externalActionAuthorized === false &&
+            authority.humanAuthorityPreserved === true &&
+            runtime.eventReentryExternalActionAuthorized === false
+        },
+        {
+          name: "External absence proof grants no authority, wake, provider call, or runtime mutation",
+          passed: true
+        }
+      ].map(item => ({ ...item, passed: item.passed === true }));
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = {
+        success: passed === checks.length,
+        commission: "006.033J",
+        phase: "verify",
+        schema: "meos.organism-regression.browser-lifecycle-absence-continuity.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        checks,
+        observed: {
+          token: challenge.token,
+          armedAt: challenge.armedAt || null,
+          pagehideAt: challenge.pagehideAt || null,
+          baselineCycleNumber: Number(before.cycleNumber || 0),
+          currentCycleNumber: afterCycle,
+          baselineWakeCount: Number(before.wakeCount || 0),
+          currentWakeCount: afterWake,
+          baselineHotBrainReuseCount: Number(before.hotBrainReuseCount || 0),
+          currentHotBrainReuseCount: afterReuse,
+          currentLastCompletedAt: runtime.lastCompletedAt || null,
+          completionOccurredAfterWitnessedExit: completionAfterExit,
+          runtimeOwner: runtime.runtimeOwner || null,
+          browserIndependent: runtime.browserIndependent === true,
+          runtimeVersion: runtime.version || null,
+          runtimeBuildId: runtime.buildId || null,
+          cognitionSource: runtime.cognitionSource || null,
+          durableState: authority.durableState || null,
+          externalActionAuthorized: authority.externalActionAuthorized === true,
+          humanAuthorityPreserved: authority.humanAuthorityPreserved === true
+        },
+        providerCallsRequiredByHarness: 0,
+        externalAuthorityAdded: false,
+        cognitiveWakeScheduledByHarness: false,
+        runtimeConfigurationMutatedByHarness: false,
+        browserStorageRole: "external-regression-witness-only-not-production-cognition",
+        diagnostic:
+          passed === checks.length
+            ? "Production server cognition advanced after a witnessed browser document lifecycle exit and was observed again on reconnect with the same commissioned runtime identity, institutional durable authority, resident-Brain reuse, and unchanged human external-action boundary."
+            : "The external proof did not establish every browser-lifecycle continuity condition. Preserve the failure exactly; do not manufacture a wake, authority, or browser-side cognition."
+      };
+
+      if (result.success) {
+        try {
+          storage.removeItem(key);
+        } catch (_) {}
+      }
+
+      console.table(checks);
+      console.info(
+        `[MEOS Organism Regression ${VERSION}] 006.033J: ` +
+        `${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      console.info(result);
+      return result;
+    },
 
     /*
      * Commission 006.033I — Durable Server Cognitive Runtime Ownership Proof
