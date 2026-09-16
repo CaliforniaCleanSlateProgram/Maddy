@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.87";
+const VERSION = "2.10.88";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7770,6 +7770,153 @@ function commercialEntitlementStatus(record, options = {}) {
   };
 }
 
+
+/**
+ * Commission 006.033O — Durable Commercial Entitlement Ledger
+ *
+ * Processor adapters may deliver already-verified payment evidence here, but
+ * they do not own entitlement state. MEOS durably records the evidence lineage,
+ * applies it idempotently to the MEOS-owned entitlement ledger, and fails closed
+ * on malformed, duplicate-conflicting, or unsupported evidence.
+ *
+ * This commission does NOT configure a payment processor and does NOT expose a
+ * public webhook. A later replaceable adapter must verify provider authenticity
+ * before calling applyVerifiedCommercialPaymentEvidence().
+ */
+const MEOS_COMMERCIAL_LEDGER_COMMISSION = "006.033O";
+const MEOS_COMMERCIAL_LEDGER_VERSION = "1.0.0";
+const MEOS_COMMERCIAL_LEDGER_BUILD_ID =
+  "DCEL100-DURABLE-COMMERCIAL-ENTITLEMENT-LEDGER-20260917-A";
+const MEOS_COMMERCIAL_LEDGER_DIR = path.join(MEOS_DATA_DIR, "commercial-entitlements");
+const MEOS_COMMERCIAL_LEDGER_PATH = path.join(MEOS_COMMERCIAL_LEDGER_DIR, "ledger.json");
+let meosCommercialLedgerWriteLock = Promise.resolve();
+
+function emptyCommercialLedger() {
+  return {
+    schema: "meos.customer-commercial-entitlement-ledger.v1",
+    version: MEOS_COMMERCIAL_LEDGER_VERSION,
+    entitlements: [],
+    appliedEvidence: [],
+    updatedAt: null
+  };
+}
+
+async function readCommercialLedger() {
+  await fs.mkdir(MEOS_COMMERCIAL_LEDGER_DIR, { recursive: true, mode: 0o700 });
+  try {
+    const parsed = JSON.parse(await fs.readFile(MEOS_COMMERCIAL_LEDGER_PATH, "utf8"));
+    return parsed && Array.isArray(parsed.entitlements) && Array.isArray(parsed.appliedEvidence)
+      ? parsed
+      : emptyCommercialLedger();
+  } catch (error) {
+    if (error?.code === "ENOENT") return emptyCommercialLedger();
+    throw error;
+  }
+}
+
+async function writeCommercialLedger(ledger) {
+  const operation = async () => {
+    await fs.mkdir(MEOS_COMMERCIAL_LEDGER_DIR, { recursive: true, mode: 0o700 });
+    const temporary = `${MEOS_COMMERCIAL_LEDGER_PATH}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(temporary, `${JSON.stringify(ledger, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600
+    });
+    await fs.rename(temporary, MEOS_COMMERCIAL_LEDGER_PATH);
+  };
+  meosCommercialLedgerWriteLock = meosCommercialLedgerWriteLock.then(operation, operation);
+  return meosCommercialLedgerWriteLock;
+}
+
+function normalizeVerifiedCommercialPaymentEvidence(input = {}) {
+  const status = String(input.status || "").trim().toLowerCase();
+  const supported = new Set(["paid", "refunded", "disputed", "canceled"]);
+  return {
+    schema: "meos.verified-commercial-payment-evidence.v1",
+    evidenceId: String(input.evidenceId || "").trim(),
+    providerId: String(input.providerId || "").trim(),
+    providerReference: String(input.providerReference || "").trim(),
+    accountId: String(input.accountId || "").trim(),
+    productId: String(input.productId || "").trim(),
+    status: supported.has(status) ? status : null,
+    occurredAt: input.occurredAt || null,
+    verifiedAt: input.verifiedAt || null,
+    verification: {
+      authenticatedByAdapter: input.verification?.authenticatedByAdapter === true,
+      adapterId: String(input.verification?.adapterId || "").trim() || null
+    }
+  };
+}
+
+function commercialPaymentEvidenceFingerprint(evidence) {
+  return crypto.createHash("sha256").update(JSON.stringify(evidence)).digest("hex");
+}
+
+async function applyVerifiedCommercialPaymentEvidence(input = {}, options = {}) {
+  const evidence = normalizeVerifiedCommercialPaymentEvidence(input);
+  if (!evidence.evidenceId || !evidence.providerId || !evidence.providerReference ||
+      !evidence.accountId || !evidence.productId || !evidence.status ||
+      !evidence.verifiedAt || evidence.verification.authenticatedByAdapter !== true ||
+      !evidence.verification.adapterId) {
+    const error = new Error("Complete adapter-authenticated payment evidence is required.");
+    error.code = "COMMERCIAL_PAYMENT_EVIDENCE_INVALID";
+    throw error;
+  }
+
+  const ledger = options.ledger || await readCommercialLedger();
+  const fingerprint = commercialPaymentEvidenceFingerprint(evidence);
+  const prior = ledger.appliedEvidence.find(item => item.evidenceId === evidence.evidenceId);
+  if (prior) {
+    if (prior.fingerprint !== fingerprint) {
+      const error = new Error("Payment evidence id was replayed with conflicting contents.");
+      error.code = "COMMERCIAL_PAYMENT_EVIDENCE_CONFLICT";
+      throw error;
+    }
+    return { ledger, entitlement: ledger.entitlements.find(item => item.id === prior.entitlementId) || null, duplicate: true };
+  }
+
+  const now = new Date().toISOString();
+  const entitlementId = `ent_${crypto.createHash("sha256").update(`${evidence.accountId}|${evidence.productId}`).digest("hex").slice(0, 24)}`;
+  const existingIndex = ledger.entitlements.findIndex(item => item.id === entitlementId);
+  const previous = existingIndex >= 0 ? normalizeCommercialEntitlement(ledger.entitlements[existingIndex]) : null;
+  const nextState = evidence.status === "paid"
+    ? MEOS_COMMERCIAL_ENTITLEMENT_STATES.ACTIVE
+    : evidence.status === "canceled"
+      ? MEOS_COMMERCIAL_ENTITLEMENT_STATES.EXPIRED
+      : MEOS_COMMERCIAL_ENTITLEMENT_STATES.SUSPENDED;
+  const entitlement = normalizeCommercialEntitlement({
+    ...(previous || {}),
+    id: entitlementId,
+    accountId: evidence.accountId,
+    productId: evidence.productId,
+    state: nextState,
+    source: {
+      providerId: evidence.providerId,
+      providerReference: evidence.providerReference,
+      verifiedAt: evidence.verifiedAt
+    },
+    startsAt: previous?.startsAt || (nextState === MEOS_COMMERCIAL_ENTITLEMENT_STATES.ACTIVE ? evidence.occurredAt || now : null),
+    expiresAt: nextState === MEOS_COMMERCIAL_ENTITLEMENT_STATES.EXPIRED ? evidence.occurredAt || now : previous?.expiresAt || null,
+    createdAt: previous?.createdAt || now,
+    updatedAt: now
+  });
+
+  if (existingIndex >= 0) ledger.entitlements[existingIndex] = entitlement;
+  else ledger.entitlements.push(entitlement);
+  ledger.appliedEvidence.push({
+    evidenceId: evidence.evidenceId,
+    fingerprint,
+    entitlementId,
+    providerId: evidence.providerId,
+    providerReference: evidence.providerReference,
+    verifiedAt: evidence.verifiedAt,
+    appliedAt: now
+  });
+  ledger.updatedAt = now;
+  if (options.persist !== false) await writeCommercialLedger(ledger);
+  return { ledger, entitlement, duplicate: false };
+}
+
 const MEOS_AUTH_COMMISSION = "006.019B";
 const MEOS_AUTH_VERSION = "1.0.0";
 const MEOS_AUTH_BUILD_ID =
@@ -8098,6 +8245,79 @@ app.get("/api/auth/acceptance-test", async (request, response) => {
     total: checks.length,
     checks
   });
+});
+
+
+app.get("/api/commercial-entitlement/ledger-acceptance-test", async (request, response, next) => {
+  try {
+    const ledger = emptyCommercialLedger();
+    const paidEvidence = {
+      evidenceId: "evt_acceptance_paid_1",
+      providerId: "replaceable-payment-provider",
+      providerReference: "pay_acceptance_1",
+      accountId: "acct_acceptance",
+      productId: "maddy-professional",
+      status: "paid",
+      occurredAt: "2026-09-17T12:00:00.000Z",
+      verifiedAt: "2026-09-17T12:00:01.000Z",
+      verification: { authenticatedByAdapter: true, adapterId: "acceptance-adapter" }
+    };
+    const paid = await applyVerifiedCommercialPaymentEvidence(paidEvidence, { ledger, persist: false });
+    const duplicate = await applyVerifiedCommercialPaymentEvidence(paidEvidence, { ledger, persist: false });
+    const refunded = await applyVerifiedCommercialPaymentEvidence({
+      ...paidEvidence,
+      evidenceId: "evt_acceptance_refund_1",
+      providerReference: "refund_acceptance_1",
+      status: "refunded",
+      occurredAt: "2026-09-18T12:00:00.000Z",
+      verifiedAt: "2026-09-18T12:00:01.000Z"
+    }, { ledger, persist: false });
+    let unauthenticatedRejected = false;
+    try {
+      await applyVerifiedCommercialPaymentEvidence({
+        ...paidEvidence,
+        evidenceId: "evt_unverified",
+        verification: { authenticatedByAdapter: false, adapterId: "acceptance-adapter" }
+      }, { ledger: emptyCommercialLedger(), persist: false });
+    } catch (error) {
+      unauthenticatedRejected = error?.code === "COMMERCIAL_PAYMENT_EVIDENCE_INVALID";
+    }
+    let conflictRejected = false;
+    try {
+      await applyVerifiedCommercialPaymentEvidence({ ...paidEvidence, status: "canceled" }, { ledger, persist: false });
+    } catch (error) {
+      conflictRejected = error?.code === "COMMERCIAL_PAYMENT_EVIDENCE_CONFLICT";
+    }
+    const checks = [
+      ["Commercial entitlement ledger is MEOS-owned and processor-neutral", ledger.schema === "meos.customer-commercial-entitlement-ledger.v1"],
+      ["Adapter-authenticated paid evidence activates the bound entitlement", paid.entitlement.state === "active"],
+      ["Activated entitlement grants only its bound account access", commercialEntitlementGrantsAccess(paid.entitlement, { accountId: "acct_acceptance", now: Date.parse("2026-09-17T12:01:00.000Z") }) === true && commercialEntitlementGrantsAccess(paid.entitlement, { accountId: "acct_other", now: Date.parse("2026-09-17T12:01:00.000Z") }) === false],
+      ["Payment evidence is idempotent", duplicate.duplicate === true && ledger.appliedEvidence.filter(item => item.evidenceId === paidEvidence.evidenceId).length === 1],
+      ["Conflicting replay of the same evidence id fails closed", conflictRejected],
+      ["Unauthenticated provider claims cannot change entitlement", unauthenticatedRejected],
+      ["Refund or dispute evidence suspends rather than silently preserving access", refunded.entitlement.state === "suspended"],
+      ["Provider reference remains evidence lineage rather than authority", refunded.entitlement.source.providerId === paidEvidence.providerId],
+      ["Ledger is rooted under the server-side MEOS data directory", MEOS_COMMERCIAL_LEDGER_PATH.startsWith(MEOS_DATA_DIR)],
+      ["Ledger design requires no processor-specific implementation", !MEOS_COMMERCIAL_LEDGER_PATH.toLowerCase().includes("stripe") && !MEOS_COMMERCIAL_LEDGER_PATH.toLowerCase().includes("paypal")],
+      ["Commercial evidence grants no identity or organization authority", commercialEntitlementStatus(refunded.entitlement).authorityBoundary.identityAuthority === false && commercialEntitlementStatus(refunded.entitlement).authorityBoundary.organizationAuthority === false],
+      ["Commission grants no external-action or provider billing authority", commercialEntitlementStatus(refunded.entitlement).authorityBoundary.executiveActionAuthority === false && commercialEntitlementStatus(refunded.entitlement).authorityBoundary.providerBillingAuthority === false]
+    ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+    response.json({
+      success: checks.every(check => check.passed),
+      commission: MEOS_COMMERCIAL_LEDGER_COMMISSION,
+      version: MEOS_COMMERCIAL_LEDGER_VERSION,
+      buildId: MEOS_COMMERCIAL_LEDGER_BUILD_ID,
+      schema: "meos.customer-commercial-entitlement-ledger.acceptance.v1",
+      passed: checks.filter(check => check.passed).length,
+      total: checks.length,
+      checks,
+      paymentProcessorConfigured: false,
+      publicWebhookConfigured: false,
+      limitation: "A replaceable payment-provider adapter must still authenticate real provider evidence before the first live payment can activate an entitlement."
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 
