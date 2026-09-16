@@ -11,8 +11,8 @@
 (function initializeMEOSOrganismRegression(global) {
   "use strict";
 
-  const VERSION = "0.2.0";
-  const BUILD_ID = "ORH020-ORGANIZATION-KNOWLEDGE-BOUNDARY-PROOF-20260915-A";
+  const VERSION = "0.3.0";
+  const BUILD_ID = "ORH030-VERIFICATION-SEMANTICS-PROOF-20260915-A";
   const SCHEMA = "meos.organism-regression.behavioral-continuity.v1";
 
   const Harness = {
@@ -30,6 +30,210 @@
         providerCallsRequired: 0,
         externalAuthorityAdded: false
       };
+    },
+
+
+    /*
+     * Commission 006.033F — Verification Semantics Reconciliation Proof
+     *
+     * External proving only. A successful Router transport explicitly denies
+     * claim, execution, and outcome verification. The real production Hallway
+     * must preserve that distinction. If Hallway promotes transport success to
+     * outcome.verified, the harness records the red result as production
+     * evidence; it does not repair or reinterpret the result.
+     */
+    async runVerificationSemanticsProof() {
+      const hallway = global.MEOSExecutiveHallway;
+      const brain = global.ExecutiveBrain;
+      const learning = global.ExecutiveLearning;
+
+      if (!hallway || typeof hallway.submitWork !== "function") {
+        return {
+          success: false,
+          commission: "006.033F",
+          schema: "meos.organism-regression.verification-semantics.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          error: "Production Executive Hallway submitWork seam is required."
+        };
+      }
+
+      const previousRouter = global.ExecutiveRouter;
+      const previousMissionEngine = global.MEOSMissionEngine;
+      const originalBrain = brain?.buildPersistenceSnapshot?.() || null;
+      const originalLearning = learning?.buildPersistenceSnapshot?.() || null;
+      const originalLearningAutomaticPersistence = learning?.configuration?.automaticPersistence;
+      const originalBrainAutomaticPersistence = brain?.configuration?.automaticPersistence;
+
+      const syntheticRouterResult = {
+        success: true,
+        schema: "meos.organism-regression.synthetic-router-success.v1",
+        governedAnswer: {
+          answer: "Synthetic transport completed. No factual or real-world outcome is verified.",
+          citations: []
+        },
+        claimVerified: false,
+        executionVerified: false,
+        outcomeVerified: false,
+        providerOrRouteSuccessIsNotVerification: true,
+        externalActionAuthorized: false,
+        syntheticAcceptanceFixture: true
+      };
+
+      try {
+        if (learning?.configuration) learning.configuration.automaticPersistence = false;
+        if (brain?.configuration) brain.configuration.automaticPersistence = false;
+
+        // Keep the synthetic challenge browser-local and non-durable.
+        global.MEOSMissionEngine = null;
+        global.ExecutiveRouter = {
+          version: "synthetic-external-proof",
+          buildId: BUILD_ID,
+          handle: async () => ({ ...syntheticRouterResult })
+        };
+
+        const work = await hallway.submitWork({
+          instruction: "006.033F external verification-semantics synthetic transport proof",
+          source: "meos-organism-regression",
+          requestedBy: "external-regression-harness",
+          reviewRequired: false,
+          authorized: false,
+          context: {
+            syntheticAcceptanceFixture: true,
+            externalRegressionOnly: true,
+            durableExecutionForbidden: true
+          }
+        }, {
+          presentationWaitMs: 5000,
+          executionTimeoutMs: 5000
+        });
+
+        const hallwayPromotedTransportToVerified =
+          work?.outcome?.verified === true &&
+          work?.outcome?.result?.outcomeVerified === false &&
+          work?.outcome?.result?.providerOrRouteSuccessIsNotVerification === true;
+
+        let learningClosure = null;
+        if (brain && typeof brain.closeVerifiedConsequenceIntoLearning === "function") {
+          try {
+            learningClosure = brain.closeVerifiedConsequenceIntoLearning(work, {
+              source: "meos-organism-regression",
+              syntheticAcceptanceFixture: true
+            });
+          } catch (error) {
+            learningClosure = { error: error?.message || String(error) };
+          }
+        }
+
+        const falseVerificationCanReachLearning = Boolean(
+          hallwayPromotedTransportToVerified &&
+          learningClosure &&
+          learningClosure.success !== false &&
+          learningClosure.refused !== true
+        );
+
+        const checks = [
+          {
+            name: "Router transport succeeds while explicitly denying claim/execution/outcome verification",
+            passed:
+              syntheticRouterResult.success === true &&
+              syntheticRouterResult.claimVerified === false &&
+              syntheticRouterResult.executionVerified === false &&
+              syntheticRouterResult.outcomeVerified === false &&
+              syntheticRouterResult.providerOrRouteSuccessIsNotVerification === true
+          },
+          {
+            name: "Production Hallway preserves Router transport success",
+            passed: work?.outcome?.success === true
+          },
+          {
+            name: "Production Hallway does not promote transport success to verified consequence",
+            passed: work?.outcome?.verified !== true
+          },
+          {
+            name: "Explicit Router outcomeVerified=false survives the Hallway result lineage",
+            passed: work?.outcome?.result?.outcomeVerified === false
+          },
+          {
+            name: "Transport-success-is-not-verification doctrine survives the Hallway result lineage",
+            passed: work?.outcome?.result?.providerOrRouteSuccessIsNotVerification === true
+          },
+          {
+            name: "Unverified transport success is not eligible for verified-consequence learning closure",
+            passed: falseVerificationCanReachLearning === false
+          },
+          {
+            name: "Synthetic proof grants no execution authority",
+            passed:
+              syntheticRouterResult.externalActionAuthorized === false &&
+              work?.authority?.authorized !== true
+          },
+          {
+            name: "External harness uses the production Hallway rather than a second Hallway",
+            passed: global.MEOSExecutiveHallway === hallway
+          }
+        ].map(item => ({ ...item, passed: item.passed === true }));
+
+        const passed = checks.filter(item => item.passed).length;
+        const result = {
+          success: passed === checks.length,
+          commission: "006.033F",
+          schema: "meos.organism-regression.verification-semantics.v1",
+          version: VERSION,
+          buildId: BUILD_ID,
+          productionHallwayVersion: hallway.version,
+          productionHallwayBuildId: hallway.buildId,
+          productionBrainVersion: brain?.version || null,
+          productionBrainBuildId: brain?.buildId || null,
+          passed,
+          total: checks.length,
+          checks,
+          observed: {
+            routerSuccess: syntheticRouterResult.success,
+            routerOutcomeVerified: syntheticRouterResult.outcomeVerified,
+            hallwayOutcomeSuccess: work?.outcome?.success ?? null,
+            hallwayOutcomeVerified: work?.outcome?.verified ?? null,
+            hallwayPromotedTransportToVerified,
+            falseVerificationCanReachLearning
+          },
+          diagnostic: hallwayPromotedTransportToVerified
+            ? "Production Hallway promoted Router transport success into a verified consequence. Preserve this FAIL as evidence and repair the first false-promotion seam."
+            : "Production Hallway preserved the distinction between transport success and verified consequence.",
+          providerCallsRequired: 0,
+          externalAuthorityAdded: false,
+          harnessSideVerificationRepair: false,
+          durableMissionCreatedByHarness: false,
+          productionStateRestoredAfterRun: Boolean(originalBrain && originalLearning)
+        };
+
+        console.table(checks);
+        console.info(
+          `[MEOS Organism Regression ${VERSION}] 006.033F: ` +
+          `${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+        console.log(result);
+        return result;
+      } finally {
+        global.ExecutiveRouter = previousRouter;
+        global.MEOSMissionEngine = previousMissionEngine;
+        if (brain && originalBrain && typeof brain.applyPersistenceSnapshot === "function") {
+          brain.applyPersistenceSnapshot(originalBrain);
+        }
+        if (learning && originalLearning && typeof learning.importLearning === "function") {
+          learning.importLearning(originalLearning, { replace: true });
+        }
+        if (learning?.configuration) {
+          learning.configuration.automaticPersistence = originalLearningAutomaticPersistence;
+        }
+        if (brain?.configuration) {
+          brain.configuration.automaticPersistence = originalBrainAutomaticPersistence;
+        }
+        brain?.requestCache?.clear?.();
+        if (brain) {
+          brain.startupCache = null;
+          brain.startupCachedAt = 0;
+        }
+      }
     },
 
 
