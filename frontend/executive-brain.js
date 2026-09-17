@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.7";
-  const BUILD_ID = "EB1267-ORGANIZATION-KNOWLEDGE-BOUNDARY-20260915-A";
+  const VERSION = "1.26.8";
+  const BUILD_ID = "EB1268-CONTINUOUS-CURIOSITY-CIRCLE-20260917-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -209,6 +209,9 @@
       autonomousLearningConnectivityWeight: 0.14,
       autonomousLearningFreshnessWeight: 0.08,
       autonomousLearningCostWeight: 0.06,
+      maximumCuriosityCircleHistory: 160,
+      curiosityTransferCandidateLimit: 6,
+      curiosityTransferMinimumScore: 0.34,
       openDomainCuriosityAdjacentValue: 0.52,
       openDomainCuriosityMissionSeedLimit: 8,
       meaningfulChangeDebounceMs: 1200,
@@ -366,6 +369,10 @@
     productiveIdleHistory: [],
     lastProductiveIdleAction: null,
     productiveIdleConsecutiveSameSubject: 0,
+    curiosityCircleHistory: [],
+    curiosityCircleCount: 0,
+    lastCuriosityCircle: null,
+    learningStrategyState: null,
     meaningfulChangeSignatures: new Map(),
     cognitiveReentryTimers: new Map(),
     cognitiveReentryInFlight: new Set(),
@@ -18631,9 +18638,20 @@
           captionsOrTranscriptsBeforeVideoFrames: true,
           reuseExistingEvidenceBeforeRetrieval: true,
           deduplicateBeforeResearch: true,
-          maxResearchPasses: Number(
-            this.configuration.autonomousLearningMaxResearchPasses || 1
+          maxResearchPasses: Math.max(
+            0,
+            Math.min(
+              2,
+              Number(
+                this.learningStrategyState?.recommendedMaxResearchPasses ??
+                this.configuration.autonomousLearningMaxResearchPasses ??
+                1
+              )
+            )
           ),
+          preferredEvidenceFocus:
+            this.learningStrategyState?.preferredEvidenceFocus ||
+            "authoritative-primary-source-when-available",
           paidModelAuthorized: false,
           paidSearchAuthorized: false,
           largeMediaProcessingAuthorized: false
@@ -18877,6 +18895,7 @@
         const subject=String(signal?.subject||"").trim();
         if(!subject) return;
         if(!["active-mission","monitoring-alert","cognitive-intention"].includes(kind)) return;
+        if(kind==="cognitive-intention" && String(signal?.status||"")==="quiescent") return;
 
         const salience=Math.max(0,Math.min(100,Number(signal.salience||0)));
         add({
@@ -19008,6 +19027,274 @@
         outcome:{selectedForDevelopment:true,externalResearchExecuted:false,expectedValue:action.expectedValue},
         truthStatus:"internal-cognitive-action"});
       return {success:true,productive:true,action:this.clone(action),candidates:this.clone(candidates)};
+    },
+
+    /*
+     * Commission 006.034A — Continuous Curiosity Circle
+     *
+     * Research execution is not the end of curiosity. The same Executive Brain
+     * receives the bounded research result, turns the experience into durable
+     * autobiography, reflects on how the learning process performed, searches
+     * its existing concerns for evidence-grounded transfer hypotheses, and
+     * carries useful unresolved implications into the next cognitive moment.
+     *
+     * The circle never upgrades retrieved text into verified reality, never
+     * self-grants spend or external-action authority, and never invents a
+     * cross-domain connection when there is no inspectable bridge.
+     */
+    curiosityTransferTokens(value = "") {
+      const stop = new Set([
+        "about","after","again","against","because","before","could","from",
+        "have","into","learn","learned","learning","maddy","research","should",
+        "that","their","there","these","this","through","using","what","when",
+        "where","which","with","would","world","evidence","method","methods"
+      ]);
+      return [...new Set(String(value || "").toLowerCase()
+        .replace(/[^a-z0-9\s-]/g," ").split(/\s+/)
+        .filter(token=>token.length>=4&&!stop.has(token)))].slice(0,96);
+    },
+
+    discoverCuriosityTransferCandidates(learning = {}, options = {}) {
+      const sourceText = [
+        learning.subject,
+        ...(learning.supportedFacts || []),
+        ...(learning.inferences || []),
+        ...(learning.unknowns || [])
+      ].filter(Boolean).join(" ");
+      const sourceTokens = new Set(this.curiosityTransferTokens(sourceText));
+      if (!sourceTokens.size) return [];
+
+      const targets = [];
+      const addTarget = (target = {}) => {
+        const subject = String(target.subject || "").trim();
+        if (!subject) return;
+        const text = [subject,target.reason,...(target.unknowns||[])].filter(Boolean).join(" ");
+        const tokens = this.curiosityTransferTokens(text);
+        const shared = tokens.filter(token=>sourceTokens.has(token));
+        if (!shared.length) return;
+        const lexical = shared.length / Math.max(1,Math.min(sourceTokens.size,tokens.length,8));
+        const consequence = Math.max(0,Math.min(1,Number(target.consequence ?? .5)));
+        const gap = Math.max(0,Math.min(1,Number(target.gap ?? .5)));
+        const score = Math.max(0,Math.min(1,lexical*.62+consequence*.23+gap*.15));
+        if (score < Number(this.configuration.curiosityTransferMinimumScore || .34)) return;
+        targets.push({
+          schema:"meos.maddy.cross-domain-learning-transfer-hypothesis.v1",
+          subject,
+          targetType:String(target.targetType || "existing-cognitive-concern"),
+          sourceLearningSubject:String(learning.subject || ""),
+          sharedConcepts:shared.slice(0,12),
+          score:Number(score.toFixed(3)),
+          hypothesis:`Learning about ${learning.subject || "the source subject"} may change how Maddy reasons about ${subject}.`,
+          question:`Does the newly learned evidence about ${learning.subject || "the source subject"} materially improve, falsify, or reframe ${subject}?`,
+          epistemicStatus:"transfer-hypothesis-not-fact",
+          externalActionAuthorized:false,
+          truthRule:"A structural connection is a reason to investigate transfer, not evidence that transfer is valid."
+        });
+      };
+
+      (this.developmentalGoals || []).filter(x=>x?.status!=="achieved").slice(0,24).forEach(goal=>addTarget({
+        subject:goal.capability || goal.subject || goal.goal,
+        targetType:"developmental-goal",
+        reason:goal.developmentalQuestion || goal.reason,
+        unknowns:goal.unknowns || [],
+        consequence:Number(goal.impact ?? goal.motivation ?? .65),
+        gap:Number(goal.ambition?.gap ?? (1-Number(goal.ambition?.demonstrated ?? .5)))
+      }));
+      (this.cognitiveIntentions || []).filter(x=>x?.status!=="completed"&&x?.status!=="quiescent").slice(0,32).forEach(intention=>addTarget({
+        subject:intention.subject,
+        targetType:"cognitive-intention",
+        reason:intention.temporal?.kind || "unresolved cognition",
+        unknowns:(intention.triggers || []).flatMap(x=>x?.unknowns || []).slice(0,8),
+        consequence:intention.status==="blocked"?.72:.58,
+        gap:.65
+      }));
+      const world=this.worldModel || this.getWorldModel?.({refresh:false});
+      const unknowns=world?.temporal?.unknowns || world?.unknowns || [];
+      (Array.isArray(unknowns)?unknowns:[]).slice(0,24).forEach(item=>addTarget({
+        subject:String(item?.subject || item?.question || item || ""),
+        targetType:"world-model-unknown",
+        reason:item?.reason || item?.question,
+        unknowns:[item?.question].filter(Boolean),
+        consequence:Number(item?.consequence ?? .55),
+        gap:Number(item?.confidence != null ? 1-Number(item.confidence) : .75)
+      }));
+
+      const deduped=[];
+      const seen=new Set();
+      targets.sort((a,b)=>b.score-a.score).forEach(item=>{
+        const key=this.normalize(`${item.targetType}:${item.subject}`);
+        if(seen.has(key)) return;
+        seen.add(key); deduped.push(item);
+      });
+      return deduped.slice(0,Math.max(1,Number(options.limit || this.configuration.curiosityTransferCandidateLimit || 6)));
+    },
+
+    evaluateCuriosityLearningStrategy(learning = {}) {
+      const quality=String(learning.evidenceQuality || "none").toLowerCase();
+      const evidenceCount=Math.max(0,Number(learning.evidenceCount || 0));
+      const authoritativeCount=Math.max(0,Number(learning.authoritativeSourceCount || 0));
+      const directCount=Math.max(0,Number(learning.directSubjectMatchCount || 0));
+      const passes=Math.max(1,Number(learning.passesExecuted || 1));
+      const unresolved=learning.requiresFurtherInvestigation===true || (learning.unknowns || []).length>0;
+      const strong=["strong","high","authoritative","sufficient"].some(token=>quality.includes(token));
+      const weak=evidenceCount===0 || ["none","weak","insufficient","low"].some(token=>quality.includes(token));
+
+      let recommendedMaxResearchPasses=0;
+      let preferredEvidenceFocus="authoritative-primary-source-when-available";
+      let directive="Retain cheap-first bounded research and close when evidence is sufficient.";
+      let adjustment="retain-efficient-strategy";
+
+      if (weak || (unresolved && directCount===0)) {
+        recommendedMaxResearchPasses=1;
+        preferredEvidenceFocus="direct-authoritative-primary-source";
+        directive="On the next materially similar learning problem, spend one bounded follow-up pass seeking direct authoritative evidence before accepting a weak closure.";
+        adjustment="increase-bounded-depth-for-weak-evidence";
+      } else if (unresolved && evidenceCount>0) {
+        recommendedMaxResearchPasses=1;
+        preferredEvidenceFocus=authoritativeCount>0?"resolve-specific-remaining-unknown":"authoritative-primary-source";
+        directive="Use one bounded follow-up pass only on the unresolved discriminating question; do not repeat broad retrieval.";
+        adjustment="target-unresolved-question";
+      } else if (strong || (directCount>0 && authoritativeCount>0)) {
+        recommendedMaxResearchPasses=0;
+        preferredEvidenceFocus="authoritative-primary-source-when-available";
+        directive="The cheap first pass produced direct high-quality evidence; preserve the shallow strategy unless future outcomes show it misses material facts.";
+        adjustment="prefer-shallow-closure-when-direct-evidence-is-strong";
+      }
+
+      return {
+        schema:"meos.maddy.learning-strategy-state.v1",
+        updatedAt:new Date().toISOString(),
+        basedOnSubject:String(learning.subject || ""),
+        evidenceQuality:quality,
+        evidenceCount,authoritativeSourceCount:authoritativeCount,directSubjectMatchCount:directCount,
+        passesObserved:passes,unresolved,
+        adjustment,directive,recommendedMaxResearchPasses,preferredEvidenceFocus,
+        economics:{cheapFirst:true,paidSearchAuthorized:false,paidModelAuthorized:false,largeMediaProcessingAuthorized:false},
+        authority:{externalActionAuthorized:false,curiosityDoesNotManufactureAuthority:true},
+        truthRule:"Learning strategy may adapt from observed research performance; it may not self-authorize spend or treat one successful method as universally optimal."
+      };
+    },
+
+    completeAutonomousCuriosityCircle(input = {}, options = {}) {
+      const subject=String(input.subject || this.lastProductiveIdleAction?.subject || "").trim();
+      if(!subject) return {success:false,reason:"curiosity-subject-required"};
+      const evidence=Array.isArray(input.evidence)?input.evidence:[];
+      const synthesis=input.synthesis || {};
+      const closure=input.closure || input.researchLoop?.closure || {};
+      const supportedFacts=Array.isArray(synthesis.supportedFacts)?synthesis.supportedFacts.map(x=>typeof x==="string"?x:(x?.claim||x?.fact||x?.summary)).filter(Boolean):[];
+      const inferences=Array.isArray(synthesis.inferences)?synthesis.inferences.map(x=>typeof x==="string"?x:(x?.claim||x?.inference||x?.summary)).filter(Boolean):[];
+      const unknowns=Array.isArray(synthesis.unknowns)?synthesis.unknowns.map(x=>typeof x==="string"?x:(x?.question||x?.unknown)).filter(Boolean):[];
+      const evidenceQuality=String(synthesis.evidenceQuality || closure.evidenceQuality || "none");
+      const authoritativeSourceCount=Number(synthesis.authoritativeSourceCount || evidence.filter(x=>["authoritative","official","primary"].includes(String(x?.authority||"").toLowerCase())).length || 0);
+      const directSubjectMatchCount=Number(synthesis.directSubjectMatchCount || 0);
+      const researchSuccess=input.success===true && evidence.length>0;
+
+      const learning={
+        subject,supportedFacts,inferences,unknowns,evidenceQuality,
+        evidenceCount:evidence.length,authoritativeSourceCount,directSubjectMatchCount,
+        passesExecuted:Number(input.researchLoop?.closure?.passesExecuted || closure.passesExecuted || 1),
+        requiresFurtherInvestigation:closure.requiresFurtherInvestigation===true || synthesis.requiresFurtherInvestigation===true,
+        stopReason:closure.stopReason || null
+      };
+      const episodeResult=this.formAutobiographicalEpisode({
+        eventType:"autonomous-curiosity-learning",
+        subject,
+        sourceId:input.durableLearning?.record?.id || input.durableLearning?.learningId || `curiosity-${this.fingerprintCognitiveDispatch({subject,learning})}`,
+        perception:{evidenceCount:evidence.length,evidenceQuality,authoritativeSourceCount,directSubjectMatchCount},
+        beliefsBefore:{expectedSuccess:true,confidence:Number(this.lastProductiveIdleAction?.expectedValue || .55),unresolvedAtStart:this.clone(this.lastProductiveIdleAction?.unknowns || [])},
+        intention:{type:"self-directed-learning",expectedSuccess:true,unknowns:this.clone(this.lastProductiveIdleAction?.unknowns || [])},
+        action:{type:"bounded-cheap-public-research",passesExecuted:learning.passesExecuted,paidSearchUsed:false,paidModelUsed:false},
+        outcome:{success:researchSuccess,changed:researchSuccess,verified:false,evidenceCount:evidence.length,durableLearningPersisted:input.durableLearning?.persisted===true||input.durableLearning?.success===true},
+        learning:{summary:supportedFacts.slice(0,4).join(" ") || `Research closed with evidence quality ${evidenceQuality}.`,unresolvedAfter:unknowns,truthRule:"Retrieved research remains evidence-bound; this episode records what Maddy experienced learning, not universal truth."}
+      });
+      const episode=episodeResult?.episode || null;
+      const reflection=episode?.episodeId?this.reflectOnAutobiographicalEpisode(episode,{persist:false}):null;
+      const transfers=this.discoverCuriosityTransferCandidates(learning,options);
+      const promoted=[];
+      transfers.slice(0,3).forEach(transfer=>{
+        const intention=this.upsertCognitiveIntention(
+          `Test learning transfer: ${transfer.subject}`,
+          [{source:"executive-brain-curiosity-circle",event:"cross-domain-transfer-hypothesis",sourceLearningSubject:subject,sharedConcepts:this.clone(transfer.sharedConcepts),score:transfer.score,unknowns:[transfer.question],externalActionAuthorized:false}],
+          {status:"pending",kind:"cross-domain-learning-transfer",sourceId:episode?.episodeId || null,persist:false}
+        );
+        if(intention) promoted.push({intentionId:intention.intentionId,subject:intention.subject,transfer:this.clone(transfer)});
+      });
+      const strategy=this.evaluateCuriosityLearningStrategy(learning);
+      this.learningStrategyState=this.clone(strategy);
+      const patterns=typeof this.synthesizeCrossTimePatterns==="function"
+        ? this.synthesizeCrossTimePatterns({persist:false,source:"autonomous-curiosity-circle"})
+        : null;
+
+      this.curiosityCircleCount=Number(this.curiosityCircleCount || 0)+1;
+      const circle={
+        schema:"meos.maddy.continuous-curiosity-circle.v1",
+        circleNumber:this.curiosityCircleCount,
+        completedAt:new Date().toISOString(),subject,
+        research:{success:input.success===true,evidenceCount:evidence.length,evidenceQuality,passesExecuted:learning.passesExecuted,stopReason:learning.stopReason,durableLearningPersisted:input.durableLearning?.persisted===true||input.durableLearning?.success===true},
+        autobiography:{episodeId:episode?.episodeId || null,formed:episodeResult?.created===true||Boolean(episode)},
+        metacognition:{reflectionId:reflection?.reflection?.reflectionId || null,created:reflection?.created===true,strategy:this.clone(strategy)},
+        transfer:{candidateCount:transfers.length,promotedCount:promoted.length,candidates:this.clone(transfers),promoted:this.clone(promoted)},
+        patternSynthesis:{ran:Boolean(patterns),patternCount:Number(patterns?.patterns?.length || patterns?.candidates?.length || 0)},
+        nextCognitiveMoment:promoted[0]?.subject || (unknowns[0]?`Resolve remaining unknown: ${unknowns[0]}`:"Return to governed productive-idle selection"),
+        authority:{internalLearningAuthorized:true,paidSpendAuthorized:false,externalActionAuthorized:false,privateDataPublicationAuthorized:false},
+        epistemicRule:"Curiosity closes into experience, reflection, transfer hypotheses, and future cognition without promoting retrieval to verified reality.",
+        changed:true
+      };
+      circle.fingerprint=this.fingerprintCognitiveDispatch(circle);
+      this.lastCuriosityCircle=circle;
+      this.curiosityCircleHistory.unshift(this.clone(circle));
+      this.curiosityCircleHistory=this.curiosityCircleHistory.slice(0,Number(this.configuration.maximumCuriosityCircleHistory || 160));
+      if(options.persist!==false && brainPersistence.hydrated===true) this.persist();
+      this.emit("brain:curiosity-circle-completed",this.clone(circle));
+      return {success:true,changed:true,circle:this.clone(circle),episode:this.clone(episode),reflection:this.clone(reflection),transfers:this.clone(transfers),strategy:this.clone(strategy),patterns:this.clone(patterns)};
+    },
+
+    runContinuousCuriosityCircleAcceptanceTest() {
+      const original={
+        goals:this.clone(this.developmentalGoals),intentions:this.clone(this.cognitiveIntentions),world:this.clone(this.worldModel),
+        autobiography:this.clone(this.autobiographicalMemory),episodeCount:this.autobiographicalEpisodeCount,
+        reflections:this.clone(this.metacognitiveReflections),reflectionCount:this.metacognitiveReflectionCount,
+        circles:this.clone(this.curiosityCircleHistory),circleCount:this.curiosityCircleCount,lastCircle:this.clone(this.lastCuriosityCircle),
+        strategy:this.clone(this.learningStrategyState),lastIdle:this.clone(this.lastProductiveIdleAction),patterns:this.clone(this.crossTimePatternHistory),patternCount:this.crossTimePatternSynthesisCount
+      };
+      try {
+        this.developmentalGoals=[{id:"goal-evidence",capability:"evidence provenance reasoning",status:"active",impact:.9,ambition:{demonstrated:.4,required:.9,gap:.5},developmentalQuestion:"How can evidence provenance improve executive reasoning?"},{id:"goal-hair",capability:"strand hair simulation",status:"active",impact:.5,ambition:{demonstrated:.3,required:.8,gap:.5},developmentalQuestion:"How can hair physics improve rendering?"}];
+        this.cognitiveIntentions=[];
+        this.worldModel={unknowns:[]};
+        this.lastProductiveIdleAction={subject:"primary-source evidence provenance",origin:"self-directed-world-learning",expectedValue:.82,unknowns:["Which provenance signals matter most?"]};
+        const beforeRequest=this.buildAutonomousLearningResearchRequest({subject:"primary-source evidence provenance",reason:"fixture"});
+        const result=this.completeAutonomousCuriosityCircle({
+          subject:"primary-source evidence provenance",success:true,
+          evidence:[{source:"acceptance://primary",authority:"authoritative",summary:"Primary-source provenance improves traceability."}],
+          synthesis:{evidenceQuality:"strong",supportedFacts:["Primary-source provenance improves evidence traceability and reasoning auditability."],inferences:["Provenance may improve evidence reasoning."],unknowns:[],authoritativeSourceCount:1,directSubjectMatchCount:1,requiresFurtherInvestigation:false},
+          researchLoop:{closure:{passesExecuted:1,stopReason:"evidence-sufficient-for-bounded-closure",evidenceQuality:"strong",requiresFurtherInvestigation:false}},
+          durableLearning:{persisted:true,record:{id:"acceptance-learning"}}
+        },{persist:false});
+        const afterRequest=this.buildAutonomousLearningResearchRequest({subject:"another evidence provenance question",reason:"fixture-after"});
+        const snapshot=this.buildPersistenceSnapshot();
+        const checks=[
+          {name:"Curiosity research closes into autobiographical experience",passed:result?.episode?.eventType==="autonomous-curiosity-learning"},
+          {name:"The learning experience enters the existing metacognitive reflection loop",passed:result?.reflection?.success===true&&Boolean(result?.reflection?.reflection?.reflectionId)},
+          {name:"Maddy searches existing concerns for an inspectable cross-domain transfer bridge",passed:result?.transfers?.some(x=>x.subject==="evidence provenance reasoning"&&x.sharedConcepts.includes("provenance"))===true},
+          {name:"Unrelated domains are not fabricated into transfer merely to keep the circle moving",passed:result?.transfers?.some(x=>x.subject==="strand hair simulation")!==true},
+          {name:"A supported transfer hypothesis becomes future cognition rather than external action",passed:result?.circle?.transfer?.promotedCount>0&&result.circle.authority.externalActionAuthorized===false},
+          {name:"Meta-learning changes the next research strategy from the observed outcome",passed:beforeRequest?.acquisitionPolicy?.maxResearchPasses===1&&afterRequest?.acquisitionPolicy?.maxResearchPasses===0&&afterRequest?.acquisitionPolicy?.preferredEvidenceFocus==="authoritative-primary-source-when-available"},
+          {name:"Strong direct evidence teaches Maddy to preserve the cheaper shallow path",passed:result?.strategy?.adjustment==="prefer-shallow-closure-when-direct-evidence-is-strong"&&result?.strategy?.economics?.paidSearchAuthorized===false},
+          {name:"The full circle survives the sovereign Executive Brain persistence snapshot",passed:snapshot?.lastCuriosityCircle?.fingerprint===result?.circle?.fingerprint&&snapshot?.learningStrategyState?.adjustment===result?.strategy?.adjustment&&snapshot?.curiosityCircleHistory?.length>0},
+          {name:"Curiosity still cannot manufacture spend or external-action authority",passed:result?.circle?.authority?.paidSpendAuthorized===false&&result?.circle?.authority?.externalActionAuthorized===false&&result?.strategy?.authority?.curiosityDoesNotManufactureAuthority===true}
+        ];
+        const passed=checks.every(x=>x.passed);
+        console.table(checks.map(x=>({name:x.name,passed:x.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.034A Continuous Curiosity Circle: ${passed?"PASS":"FAIL"}.`);
+        return {commission:"006.034A",version:this.version,buildId:this.buildId,passed,checks,result};
+      } finally {
+        this.developmentalGoals=original.goals; this.cognitiveIntentions=original.intentions; this.worldModel=original.world;
+        this.autobiographicalMemory=original.autobiography; this.autobiographicalEpisodeCount=original.episodeCount;
+        this.metacognitiveReflections=original.reflections; this.metacognitiveReflectionCount=original.reflectionCount;
+        this.curiosityCircleHistory=original.circles; this.curiosityCircleCount=original.circleCount; this.lastCuriosityCircle=original.lastCircle;
+        this.learningStrategyState=original.strategy; this.lastProductiveIdleAction=original.lastIdle;
+        this.crossTimePatternHistory=original.patterns; this.crossTimePatternSynthesisCount=original.patternCount;
+      }
     },
 
     /*
@@ -21042,7 +21329,11 @@
         lastContinuousCognitionCycle: this.lastContinuousCognitionCycle ? this.clone(this.lastContinuousCognitionCycle) : null,
         productiveIdleHistory: this.productiveIdleHistory.slice(0, this.configuration.productiveIdleHistoryLimit),
         lastProductiveIdleAction: this.lastProductiveIdleAction ? this.clone(this.lastProductiveIdleAction) : null,
-        productiveIdleConsecutiveSameSubject: Number(this.productiveIdleConsecutiveSameSubject || 0)
+        productiveIdleConsecutiveSameSubject: Number(this.productiveIdleConsecutiveSameSubject || 0),
+        curiosityCircleHistory: this.curiosityCircleHistory.slice(0, this.configuration.maximumCuriosityCircleHistory),
+        curiosityCircleCount: Number(this.curiosityCircleCount || 0),
+        lastCuriosityCircle: this.lastCuriosityCircle ? this.clone(this.lastCuriosityCircle) : null,
+        learningStrategyState: this.learningStrategyState ? this.clone(this.learningStrategyState) : null
       };
     },
 
@@ -21217,6 +21508,10 @@
       this.productiveIdleHistory = Array.isArray(saved.productiveIdleHistory) ? saved.productiveIdleHistory.slice(0, this.configuration.productiveIdleHistoryLimit) : [];
       this.lastProductiveIdleAction = saved.lastProductiveIdleAction && typeof saved.lastProductiveIdleAction === "object" ? this.clone(saved.lastProductiveIdleAction) : null;
       this.productiveIdleConsecutiveSameSubject = Number(saved.productiveIdleConsecutiveSameSubject || 0);
+      this.curiosityCircleHistory = Array.isArray(saved.curiosityCircleHistory) ? saved.curiosityCircleHistory.slice(0, this.configuration.maximumCuriosityCircleHistory) : [];
+      this.lastCuriosityCircle = saved.lastCuriosityCircle && typeof saved.lastCuriosityCircle === "object" ? this.clone(saved.lastCuriosityCircle) : (this.curiosityCircleHistory[0] ? this.clone(this.curiosityCircleHistory[0]) : null);
+      this.curiosityCircleCount = Math.max(Number(saved.curiosityCircleCount || 0), Number(this.lastCuriosityCircle?.circleNumber || 0));
+      this.learningStrategyState = saved.learningStrategyState && typeof saved.learningStrategyState === "object" ? this.clone(saved.learningStrategyState) : null;
       this.temporalContinuity =
         saved.temporalContinuity?.schema === "meos.maddy.temporal-continuity.v1"
           ? this.clone(saved.temporalContinuity)
