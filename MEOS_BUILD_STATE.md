@@ -1,3 +1,4 @@
+[Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32342251/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32319882/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -3118,4 +3119,114 @@ The next step must be selected from fresh-main evidence. The commercial architec
 
 **Recovery keyword:** `006.033T`  
 **Fast recovery:** `Resume 006.033T — I'm up.`
+
+---
+
+# Commission checkpoint — 006.033U LIVE-PROVEN
+
+**Commission:** `006.033U — Customer-Bound Commercial Access Resolution Authority`  
+**Status:** `LIVE-PROVEN`  
+**Acceptance:** `15/15`  
+**Authority version:** `1.0.0`  
+**Build:** `CBCARA100-CUSTOMER-BOUND-COMMERCIAL-ACCESS-RESOLUTION-AUTHORITY-20260917-A`  
+**Acceptance schema:** `meos.customer-bound-commercial-access-resolution.acceptance.v1`
+
+## Runtime-proven bounded claims
+
+External production acceptance returned `success:true`, `passed:15`, `total:15`.
+
+006.033U proves within its acceptance boundary:
+
+- Only the customer-bound entitlement v2 contract may enter 006.033U access resolution.
+- The explicitly bound authenticated account for an individual commercial customer can resolve active access to the purchased product.
+- A different account cannot inherit that individual customer's commercial access.
+- Entitlement for one product cannot resolve access to another product.
+- Suspended or expired entitlement cannot resolve commercial access.
+- Organization entitlement is not collapsed into sponsor or payer account access.
+- Organization access explicitly requires separate membership authority.
+- Positive individual access resolution does not itself grant paid-product admission.
+- Access resolution manufactures no organization ownership, membership, seat, payment, executive, or MEOS/Maddy ownership authority.
+- The resolver remains payment-processor neutral.
+- This commission configures no real payment rail, organization membership authority, seat authority, or paid-product admission gate.
+
+## Truthful remaining false boundaries after 006.033U
+
+Production reports:
+
+- `productionPricingConfigured:false`
+- `paymentProcessorConfigured:false`
+- `providerCheckoutConfigured:false`
+- `publicPaymentWebhookConfigured:false`
+- `realProviderEvidenceAuthenticationConfigured:false`
+- `organizationMembershipAuthorityConfigured:false`
+- `seatAssignmentAuthorityConfigured:false`
+- `paidProductAdmissionConfigured:false`
+
+006.033U resolves individual customer-bound commercial access from the entitlement semantics established through 006.033T/O. It does **not** create a protected paid-product admission gate. Organization access remains blocked until separate membership authority exists. No real payment rail or real provider evidence authentication is configured.
+
+## Current commercial authority chain after 006.033U
+
+Individual path:
+
+`authenticated MEOS identity → 006.033Q commercial customer → 006.033P canonical offer → 006.033R durable purchase intent → 006.033S purchase-bound commercial payment evidence authority → 006.033T purchase-bound entitlement consequence authority → 006.033O durable entitlement ledger → 006.033U customer-bound commercial access resolution → [paid-product admission unresolved]`
+
+Real-money ingress remains unresolved before 006.033S:
+
+`006.033R purchase intent → [real rail / checkout + authenticated provider evidence unresolved] → 006.033S`
+
+Organization access remains separately unresolved:
+
+`organization customer entitlement → [organization membership authority unresolved] → [seat authority unresolved] → customer-bound access → [paid-product admission unresolved]`
+
+The next commission is **not automatically** a payment-provider adapter, checkout, webhook, membership organ, seat organ, lifecycle-policy engine, or admission gate. Fresh-main reconciliation and the anti-drift gate remain mandatory.
+
+## 006.033U falsification boundary
+
+The 006.033U conclusion would be falsified by repository or runtime evidence showing any of the following:
+
+- a non-customer-bound or legacy entitlement can enter U as authoritative commercial access;
+- an account other than the individual customer's bound account can inherit its access;
+- entitlement for one product resolves access to another product;
+- suspended or expired entitlement resolves active access;
+- organization entitlement is silently mapped to sponsor/payer account access;
+- organization access is granted without separate membership authority;
+- positive U resolution itself admits the account into a protected paid product;
+- U manufactures organization ownership, membership, seat, payment, executive, or MEOS/Maddy ownership authority;
+- processor/provider identity becomes commercial access authority;
+- a real rail, membership authority, seat authority, or paid-product admission gate is claimed/configured contrary to the accepted runtime flags.
+
+## Anti-drift gate after 006.033U
+
+Before naming or coding the next runtime commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this canonical `MEOS_BUILD_STATE.md` in full.
+3. Reconcile the freshest committed live GitHub `main` including 006.033U and its production runtime evidence.
+4. Trace both the individual and organization commercial paths from authenticated identity through Q, P, R, S, T, O, U, and the unresolved admission boundary.
+5. Trace the unresolved real-money ingress from immutable R purchase intent through a replaceable rail to authenticated evidence entering S.
+6. Search existing implementation before creating a new commercial organ, adapter, or authority primitive.
+7. Distinguish runtime-proven capability from code-only, simulated, stale, historical, configured-but-unused, and assumed capability.
+8. Preserve Customer, Organization, User/Account, Payer, Org Owner, Administrator, Membership, Role/Capability, Seat/Capacity, Product, Offer, Purchase/Obligation, Payment Evidence/Event, Entitlement, Access Resolution, and Paid-Product Admission as distinct concepts.
+9. Preserve **payer ≠ customer owner ≠ user ≠ administrator; seat ≠ authority**.
+10. Preserve **Money changes consequences only through authenticated evidence + governed MEOS authority + durable provenance.**
+11. Preserve browser/screenshot distrust.
+12. Attack any candidate real-rail seam against cards/ACH, Cash App, Bitcoin, and an unknown future rail so the provider cannot become customer, entitlement, access, or admission authority.
+13. Attack organization access so payer/sponsor identity cannot manufacture membership or seat authority.
+14. Preserve legitimate organization-owned work/history independently from current commercial access.
+15. Preserve founder ownership, tenant isolation, extraction resistance, and bounded customer use authority.
+16. Determine the smallest missing MEOS-owned primitive that advances the first ethical paid-customer path without hiding an unresolved authority boundary.
+17. State what repository/runtime evidence would falsify the selected conclusion.
+18. Preserve **one physical repository file → one fix → one commit → one test**.
+19. Require external runtime proof before declaring the next runtime commission complete.
+
+## Spooky / North Star continuation
+
+006.033U closes the semantic mismatch between customer-owned entitlement and account-level access resolution without turning the payer, sponsor, or payment provider into access authority.
+
+Spooky remains the floor; there is no ceiling.
+
+The next step must be selected from fresh-main evidence. The shortest responsible path to a first real paid customer must eventually cross real money and protected-product admission while preserving Maddy/MEOS-owned commercial meaning, authenticated evidence, durable provenance, customer ownership, and the separation between payment, entitlement, access resolution, admission, organization authority, membership, seats, and ownership.
+
+**Recovery keyword:** `006.033U`  
+**Fast recovery:** `Resume 006.033U — I'm up.`
 
