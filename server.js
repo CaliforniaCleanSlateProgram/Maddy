@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.90
+ * Server Version: 2.10.91
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.90";
+const VERSION = "2.10.91";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -8120,6 +8120,381 @@ app.get("/api/commercial-customers/contract", (request, response) => {
 app.get("/api/commercial-customers/acceptance-test", async (request, response, next) => {
   try {
     response.json(await runCommercialCustomerSubjectAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+/**
+ * Commission 006.033R — Durable Commercial Purchase Intent Authority
+ *
+ * Money must not be allowed to invent what was purchased, who purchased it,
+ * or which commercial subject owns the resulting relationship. Before any
+ * replaceable payment rail creates checkout, MEOS durably freezes a canonical
+ * purchase intent from:
+ *
+ *   authenticated MEOS account sponsorship
+ *   + 006.033Q commercial customer subject
+ *   + 006.033P canonical offer selection/fingerprint
+ *
+ * The resulting intent is an obligation/request to purchase only. It grants no
+ * entitlement, organization membership, seat assignment, product admission,
+ * executive authority, IP ownership, disclosure authority, or reproduction
+ * authority. A future payment adapter may reference the intent, but may not
+ * rewrite its commercial meaning.
+ */
+const MEOS_PURCHASE_INTENT_COMMISSION = "006.033R";
+const MEOS_PURCHASE_INTENT_VERSION = "1.0.0";
+const MEOS_PURCHASE_INTENT_BUILD_ID =
+  "DCPIA100-DURABLE-COMMERCIAL-PURCHASE-INTENT-AUTHORITY-20260917-A";
+const MEOS_PURCHASE_INTENT_SCHEMA = "meos.commercial-purchase-intent.v1";
+const MEOS_PURCHASE_INTENT_LEDGER_SCHEMA =
+  "meos.commercial-purchase-intent-ledger.v1";
+const MEOS_PURCHASE_INTENT_DIR = path.join(MEOS_DATA_DIR, "commercial-purchases");
+const MEOS_PURCHASE_INTENT_PATH = path.join(
+  MEOS_PURCHASE_INTENT_DIR,
+  "purchase-intents.json"
+);
+let meosPurchaseIntentWriteLock = Promise.resolve();
+
+function emptyCommercialPurchaseIntentLedger() {
+  return {
+    schema: MEOS_PURCHASE_INTENT_LEDGER_SCHEMA,
+    version: MEOS_PURCHASE_INTENT_VERSION,
+    updatedAt: null,
+    intents: []
+  };
+}
+
+function normalizeCommercialPurchaseIntent(record = {}) {
+  const required = (value, field, max = 240) => {
+    const normalized = String(value || "").trim();
+    if (!normalized || normalized.length > max) {
+      const error = new Error(`Commercial purchase intent ${field} is required.`);
+      error.code = "COMMERCIAL_PURCHASE_INTENT_INVALID";
+      throw error;
+    }
+    return normalized;
+  };
+  const quantity = Number(record.quantity);
+  const unitAmountMinor = Number(record.unitAmountMinor);
+  const totalAmountMinor = Number(record.totalAmountMinor);
+  if (
+    !Number.isSafeInteger(quantity) || quantity < 1 ||
+    !Number.isSafeInteger(unitAmountMinor) || unitAmountMinor < 0 ||
+    !Number.isSafeInteger(totalAmountMinor) ||
+    totalAmountMinor !== unitAmountMinor * quantity
+  ) {
+    const error = new Error("Commercial purchase intent monetary snapshot is invalid.");
+    error.code = "COMMERCIAL_PURCHASE_INTENT_INVALID";
+    throw error;
+  }
+  return {
+    schema: MEOS_PURCHASE_INTENT_SCHEMA,
+    id: required(record.id, "id", 180),
+    customerId: required(record.customerId, "customerId", 180),
+    customerType: required(record.customerType, "customerType", 40),
+    sponsorAccountId: required(record.sponsorAccountId, "sponsorAccountId", 180),
+    offerId: required(record.offerId, "offerId", 180),
+    offerFingerprint: required(record.offerFingerprint, "offerFingerprint", 128),
+    productId: required(record.productId, "productId", 180),
+    termsVersion: required(record.termsVersion, "termsVersion", 80),
+    billingModel: required(record.billingModel, "billingModel", 40),
+    quantity,
+    unitAmountMinor,
+    totalAmountMinor,
+    currency: required(record.currency, "currency", 3).toUpperCase(),
+    state: String(record.state || "created").trim().toLowerCase() === "created"
+      ? "created"
+      : "closed",
+    createdAt: required(record.createdAt, "createdAt", 80),
+    authorityBoundary: {
+      paymentProviderMayRewriteIntent: false,
+      entitlementAuthority: false,
+      organizationMembershipAuthority: false,
+      seatAssignmentAuthority: false,
+      productAdmissionAuthority: false,
+      executiveActionAuthority: false,
+      intellectualPropertyOwnershipAuthority: false,
+      disclosureAuthority: false,
+      reproductionAuthority: false
+    }
+  };
+}
+
+function commercialPurchaseIntentFingerprint(record = {}) {
+  const normalized = normalizeCommercialPurchaseIntent(record);
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify({
+      schema: normalized.schema,
+      id: normalized.id,
+      customerId: normalized.customerId,
+      customerType: normalized.customerType,
+      sponsorAccountId: normalized.sponsorAccountId,
+      offerId: normalized.offerId,
+      offerFingerprint: normalized.offerFingerprint,
+      productId: normalized.productId,
+      termsVersion: normalized.termsVersion,
+      billingModel: normalized.billingModel,
+      quantity: normalized.quantity,
+      unitAmountMinor: normalized.unitAmountMinor,
+      totalAmountMinor: normalized.totalAmountMinor,
+      currency: normalized.currency,
+      createdAt: normalized.createdAt
+    }))
+    .digest("hex");
+}
+
+async function readCommercialPurchaseIntentLedger(
+  ledgerPath = MEOS_PURCHASE_INTENT_PATH
+) {
+  try {
+    const raw = await fs.readFile(ledgerPath, "utf8");
+    const parsed = JSON.parse(raw);
+    return {
+      schema: MEOS_PURCHASE_INTENT_LEDGER_SCHEMA,
+      version: MEOS_PURCHASE_INTENT_VERSION,
+      updatedAt: parsed.updatedAt || null,
+      intents: Array.isArray(parsed.intents)
+        ? parsed.intents.map(normalizeCommercialPurchaseIntent)
+        : []
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") return emptyCommercialPurchaseIntentLedger();
+    throw error;
+  }
+}
+
+async function writeCommercialPurchaseIntentLedger(
+  ledger,
+  ledgerPath = MEOS_PURCHASE_INTENT_PATH
+) {
+  const operation = async () => {
+    await fs.mkdir(path.dirname(ledgerPath), { recursive: true, mode: 0o700 });
+    const temporary =
+      `${ledgerPath}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+    await fs.writeFile(temporary, `${JSON.stringify(ledger, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600
+    });
+    await fs.rename(temporary, ledgerPath);
+  };
+  meosPurchaseIntentWriteLock =
+    meosPurchaseIntentWriteLock.then(operation, operation);
+  return meosPurchaseIntentWriteLock;
+}
+
+async function createCommercialPurchaseIntent(input = {}, options = {}) {
+  const sponsorAccountId = String(input.sponsorAccountId || "").trim();
+  const customerId = String(input.customerId || "").trim();
+  if (!sponsorAccountId || !customerId) {
+    const error = new Error("Purchase intent requires sponsor account and commercial customer.");
+    error.code = "COMMERCIAL_PURCHASE_INTENT_INVALID";
+    throw error;
+  }
+
+  const customers = Array.isArray(options.customers)
+    ? options.customers.map(normalizeCommercialCustomerSubject)
+    : (await readCommercialCustomerRegistry()).customers;
+  const customer = customers.find(candidate => candidate.id === customerId);
+  if (!customer || customer.state !== "active") {
+    const error = new Error("Commercial customer is unavailable.");
+    error.code = "COMMERCIAL_PURCHASE_CUSTOMER_UNAVAILABLE";
+    throw error;
+  }
+  if (!commercialCustomerCanOwnPurchase(customer, { accountId: sponsorAccountId })) {
+    const error = new Error("Account is not authorized to sponsor this commercial customer.");
+    error.code = "COMMERCIAL_PURCHASE_SPONSOR_UNAUTHORIZED";
+    throw error;
+  }
+
+  const selection = resolveCommercialOfferSelection(
+    {
+      offerId: input.offerId,
+      subjectType: customer.type,
+      quantity: input.quantity
+    },
+    Array.isArray(options.offers) ? options.offers : loadConfiguredCommercialOffers()
+  );
+
+  const now = options.now || new Date().toISOString();
+  const intent = normalizeCommercialPurchaseIntent({
+    id: input.id || `purchase_${crypto.randomUUID()}`,
+    customerId: customer.id,
+    customerType: customer.type,
+    sponsorAccountId,
+    offerId: selection.offer.id,
+    offerFingerprint: selection.offerFingerprint,
+    productId: selection.offer.productId,
+    termsVersion: selection.offer.termsVersion,
+    billingModel: selection.offer.billingModel,
+    quantity: selection.quantity,
+    unitAmountMinor: selection.offer.unitAmountMinor,
+    totalAmountMinor: selection.totalAmountMinor,
+    currency: selection.currency,
+    state: "created",
+    createdAt: now
+  });
+
+  const ledgerPath = options.ledgerPath || MEOS_PURCHASE_INTENT_PATH;
+  const ledger = await readCommercialPurchaseIntentLedger(ledgerPath);
+  if (ledger.intents.some(candidate => candidate.id === intent.id)) {
+    const error = new Error("Commercial purchase intent id already exists.");
+    error.code = "COMMERCIAL_PURCHASE_INTENT_EXISTS";
+    throw error;
+  }
+  ledger.intents.push(intent);
+  ledger.updatedAt = now;
+  if (options.persist !== false) {
+    await writeCommercialPurchaseIntentLedger(ledger, ledgerPath);
+  }
+  return {
+    intent,
+    fingerprint: commercialPurchaseIntentFingerprint(intent)
+  };
+}
+
+async function runCommercialPurchaseIntentAcceptance() {
+  const owner = { id: "acct_purchase_owner" };
+  const outsider = { id: "acct_purchase_outsider" };
+  const customer = normalizeCommercialCustomerSubject({
+    id: "cust_purchase_org",
+    type: "organization",
+    displayName: "Purchase Acceptance Organization",
+    organizationId: "org_purchase_acceptance",
+    ownerAccountId: owner.id,
+    state: "active",
+    createdAt: "2026-09-17T13:00:00.000Z",
+    updatedAt: "2026-09-17T13:00:00.000Z"
+  });
+  const offer = normalizeCommercialOffer({
+    id: "offer_purchase_acceptance",
+    productId: "maddy-professional",
+    name: "Purchase Acceptance Team Offer",
+    currency: "USD",
+    unitAmountMinor: 1250,
+    billingModel: "seat",
+    allowedSubjectTypes: ["organization"],
+    minimumQuantity: 1,
+    maximumQuantity: 20,
+    termsVersion: "acceptance-r1"
+  });
+
+  const created = await createCommercialPurchaseIntent(
+    {
+      id: "purchase_acceptance",
+      customerId: customer.id,
+      sponsorAccountId: owner.id,
+      offerId: offer.id,
+      quantity: 7,
+      unitAmountMinor: 1,
+      totalAmountMinor: 1,
+      currency: "XXX"
+    },
+    {
+      customers: [customer],
+      offers: [offer],
+      persist: false,
+      now: "2026-09-17T13:30:00.000Z"
+    }
+  );
+
+  let outsiderRejected = false;
+  try {
+    await createCommercialPurchaseIntent(
+      {
+        id: "purchase_outsider",
+        customerId: customer.id,
+        sponsorAccountId: outsider.id,
+        offerId: offer.id,
+        quantity: 7
+      },
+      { customers: [customer], offers: [offer], persist: false }
+    );
+  } catch (error) {
+    outsiderRejected = error?.code === "COMMERCIAL_PURCHASE_SPONSOR_UNAUTHORIZED";
+  }
+
+  let inventedOfferRejected = false;
+  try {
+    await createCommercialPurchaseIntent(
+      {
+        id: "purchase_invented",
+        customerId: customer.id,
+        sponsorAccountId: owner.id,
+        offerId: "browser-invented-offer",
+        quantity: 7
+      },
+      { customers: [customer], offers: [offer], persist: false }
+    );
+  } catch (error) {
+    inventedOfferRejected = error?.code === "COMMERCIAL_OFFER_UNAVAILABLE";
+  }
+
+  const intent = created.intent;
+  const checks = [
+    ["Purchase intent authority is MEOS-owned and processor-neutral", MEOS_PURCHASE_INTENT_COMMISSION === "006.033R"],
+    ["Purchase intent binds a canonical 006.033Q commercial customer", intent.customerId === customer.id && intent.customerType === "organization"],
+    ["Only the MEOS-recognized commercial owner may sponsor the purchase", intent.sponsorAccountId === owner.id && outsiderRejected],
+    ["Purchase intent binds the canonical 006.033P offer fingerprint", intent.offerFingerprint === commercialOfferFingerprint(offer)],
+    ["Browser-supplied price cannot rewrite the purchase snapshot", intent.unitAmountMinor === 1250 && intent.totalAmountMinor === 8750],
+    ["Browser-supplied currency cannot rewrite the purchase snapshot", intent.currency === "USD"],
+    ["Purchase quantity remains bounded by the canonical offer", intent.quantity === 7],
+    ["Browser-invented offers fail closed before payment", inventedOfferRejected],
+    ["Purchase fingerprint binds customer, sponsor, offer, product, terms, quantity, and money", typeof created.fingerprint === "string" && created.fingerprint.length === 64],
+    ["Payment provider cannot rewrite MEOS purchase meaning", intent.authorityBoundary.paymentProviderMayRewriteIntent === false],
+    ["Purchase intent grants no entitlement or paid-product admission", intent.authorityBoundary.entitlementAuthority === false && intent.authorityBoundary.productAdmissionAuthority === false],
+    ["Purchase intent grants no organization membership or seat assignment authority", intent.authorityBoundary.organizationMembershipAuthority === false && intent.authorityBoundary.seatAssignmentAuthority === false],
+    ["Purchase intent grants no executive-action authority", intent.authorityBoundary.executiveActionAuthority === false],
+    ["Purchase intent grants no MEOS/Maddy IP ownership, disclosure, or reproduction authority", intent.authorityBoundary.intellectualPropertyOwnershipAuthority === false && intent.authorityBoundary.disclosureAuthority === false && intent.authorityBoundary.reproductionAuthority === false],
+    ["No payment processor or checkout session is created by this commission", true]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+  return {
+    success: checks.every(check => check.passed),
+    commission: MEOS_PURCHASE_INTENT_COMMISSION,
+    version: MEOS_PURCHASE_INTENT_VERSION,
+    buildId: MEOS_PURCHASE_INTENT_BUILD_ID,
+    schema: "meos.commercial-purchase-intent.acceptance.v1",
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    durablePurchaseIntentAuthorityConfigured: true,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    paymentEvidenceAdapterConfigured: false,
+    paidProductAdmissionConfigured: false,
+    organizationMembershipAuthorityConfigured: false,
+    seatAssignmentAuthorityConfigured: false,
+    limitation:
+      "A real provider adapter must later create checkout from this immutable MEOS intent and authenticate provider evidence before 006.033O may alter entitlement; paid-product admission and team membership/seat authority remain separate boundaries."
+  };
+}
+
+app.get("/api/commercial-purchase-intents/contract", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    success: true,
+    commission: MEOS_PURCHASE_INTENT_COMMISSION,
+    version: MEOS_PURCHASE_INTENT_VERSION,
+    buildId: MEOS_PURCHASE_INTENT_BUILD_ID,
+    schema: MEOS_PURCHASE_INTENT_SCHEMA,
+    ledgerSchema: MEOS_PURCHASE_INTENT_LEDGER_SCHEMA,
+    durablePurchaseIntentAuthorityConfigured: true,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    paymentEvidenceAdapterConfigured: false,
+    paidProductAdmissionConfigured: false
+  });
+});
+
+app.get("/api/commercial-purchase-intents/acceptance-test", async (request, response, next) => {
+  try {
+    response.json(await runCommercialPurchaseIntentAcceptance());
   } catch (error) {
     next(error);
   }
