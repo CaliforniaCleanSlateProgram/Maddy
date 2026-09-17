@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.96";
+const VERSION = "2.10.97";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -12260,7 +12260,7 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
 const MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION = "006.033W";
 const MEOS_PAID_ROUTE_ENFORCEMENT_VERSION = "1.0.0";
 const MEOS_PAID_ROUTE_ENFORCEMENT_BUILD_ID =
-  "SPREA100-SELLABLE-PRODUCT-ROUTE-ENFORCEMENT-AUTHORITY-20260917-A";
+  "SPREA101-SELLABLE-PRODUCT-ROUTE-ENFORCEMENT-CONTEXT-REPAIR-20260917-A";
 const MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA =
   "meos.sellable-product-route-enforcement.v1";
 const MEOS_PRIMARY_PAID_PRODUCT_ID = "maddy-professional";
@@ -12329,8 +12329,7 @@ async function resolvePaidProductRouteAdmission(request, options = {}) {
   }
 
   const admission = resolveAuthenticatedPaidProductAdmission(entitlement, {
-    authenticated: true,
-    accountId: account.id,
+    authenticatedAccountId: account.id,
     productId: classification.productId,
     now: options.now || Date.now()
   });
@@ -12390,15 +12389,13 @@ function runPaidProductRouteEnforcementAcceptance() {
   );
 
   const ownerAdmission = resolveAuthenticatedPaidProductAdmission(ownerEntitlement, {
-    authenticated: true,
-    accountId: "acct_w_owner",
+    authenticatedAccountId: "acct_w_owner",
     productId: MEOS_PRIMARY_PAID_PRODUCT_ID,
     now
   });
 
   const wrongProductAdmission = resolveAuthenticatedPaidProductAdmission(ownerEntitlement, {
-    authenticated: true,
-    accountId: "acct_w_owner",
+    authenticatedAccountId: "acct_w_owner",
     productId: "maddy-personal",
     now
   });
