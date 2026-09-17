@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.91
+ * Server Version: 2.10.92
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.91";
+const VERSION = "2.10.92";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -8495,6 +8495,337 @@ app.get("/api/commercial-purchase-intents/contract", (request, response) => {
 app.get("/api/commercial-purchase-intents/acceptance-test", async (request, response, next) => {
   try {
     response.json(await runCommercialPurchaseIntentAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Commission 006.033S — Purchase-Bound Commercial Payment Evidence Authority
+ *
+ * A payment rail may report that money moved, failed to move, was refunded,
+ * disputed, reversed, or remains pending. That provider report is not allowed
+ * to choose the MEOS customer, product, offer, quantity, price, currency, or
+ * commercial terms that the event affects.
+ *
+ * This authority accepts only adapter-authenticated provider evidence and binds
+ * it back to the immutable 006.033R purchase intent. Commercial meaning is
+ * re-derived from the MEOS purchase ledger. Provider/browser copies of that
+ * meaning are treated only as assertions and must match where supplied.
+ *
+ * This commission intentionally does NOT configure a provider, expose a public
+ * webhook, create checkout, invent refund/grace/retry policy, or mutate the
+ * 006.033O entitlement ledger. A later rail adapter authenticates provider-
+ * specific evidence; a later governed consequence bridge decides which
+ * authenticated lifecycle events are allowed to alter entitlement.
+ */
+const MEOS_PAYMENT_EVIDENCE_AUTHORITY_COMMISSION = "006.033S";
+const MEOS_PAYMENT_EVIDENCE_AUTHORITY_VERSION = "1.0.0";
+const MEOS_PAYMENT_EVIDENCE_AUTHORITY_BUILD_ID =
+  "PCPEA100-PURCHASE-BOUND-COMMERCIAL-PAYMENT-EVIDENCE-AUTHORITY-20260917-A";
+const MEOS_PAYMENT_EVIDENCE_SCHEMA = "meos.purchase-bound-commercial-payment-evidence.v1";
+const MEOS_PAYMENT_EVIDENCE_EVENT_TYPES = Object.freeze([
+  "payment_pending",
+  "payment_succeeded",
+  "payment_failed",
+  "refund_partial",
+  "refund_full",
+  "dispute_opened",
+  "dispute_resolved",
+  "chargeback",
+  "reversal"
+]);
+
+function commercialPaymentEvidenceError(message, code = "COMMERCIAL_PAYMENT_EVIDENCE_INVALID") {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function normalizePaymentEvidenceTimestamp(value, field) {
+  const text = String(value || "").trim();
+  const parsed = Date.parse(text);
+  if (!text || !Number.isFinite(parsed)) {
+    throw commercialPaymentEvidenceError(`Commercial payment evidence ${field} must be an ISO-compatible timestamp.`);
+  }
+  return new Date(parsed).toISOString();
+}
+
+function normalizePaymentEvidenceMinorAmount(value, field = "amountMinor") {
+  const amount = Number(value);
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    throw commercialPaymentEvidenceError(`Commercial payment evidence ${field} must be a non-negative integer.`);
+  }
+  return amount;
+}
+
+function paymentEvidencePurchaseAssertion(input, field) {
+  const value = input?.purchaseAssertion?.[field];
+  return value === undefined || value === null ? null : String(value).trim();
+}
+
+async function bindAuthenticatedCommercialPaymentEvidence(input = {}, options = {}) {
+  const providerId = String(input.providerId || "").trim();
+  const adapterId = String(input.adapterId || input.verification?.adapterId || "").trim();
+  const providerEventId = String(input.providerEventId || input.evidenceId || "").trim();
+  const providerReference = String(input.providerReference || "").trim();
+  const purchaseIntentId = String(input.purchaseIntentId || "").trim();
+  const eventType = String(input.eventType || "").trim().toLowerCase();
+  const authenticatedByAdapter = input.authenticatedByAdapter === true ||
+    input.verification?.authenticatedByAdapter === true;
+
+  if (!providerId || !adapterId || !providerEventId || !providerReference || !purchaseIntentId) {
+    throw commercialPaymentEvidenceError("Authenticated provider identity, adapter identity, event identity, provider reference, and purchase intent are required.");
+  }
+  if (!authenticatedByAdapter) {
+    throw commercialPaymentEvidenceError("Provider evidence must be authenticated by a replaceable rail adapter.", "COMMERCIAL_PAYMENT_EVIDENCE_UNAUTHENTICATED");
+  }
+  if (!MEOS_PAYMENT_EVIDENCE_EVENT_TYPES.includes(eventType)) {
+    throw commercialPaymentEvidenceError("Unsupported commercial payment lifecycle event.", "COMMERCIAL_PAYMENT_EVIDENCE_EVENT_UNSUPPORTED");
+  }
+
+  const purchaseLedger = options.purchaseLedger || await readCommercialPurchaseIntentLedger();
+  const purchase = purchaseLedger.intents.find(item => item.id === purchaseIntentId);
+  if (!purchase) {
+    throw commercialPaymentEvidenceError("Payment evidence references an unknown MEOS purchase intent.", "COMMERCIAL_PAYMENT_PURCHASE_UNKNOWN");
+  }
+  const normalizedPurchase = normalizeCommercialPurchaseIntent(purchase);
+  if (normalizedPurchase.state !== "created") {
+    throw commercialPaymentEvidenceError("Payment evidence references a closed MEOS purchase intent.", "COMMERCIAL_PAYMENT_PURCHASE_CLOSED");
+  }
+  const purchaseFingerprint = commercialPurchaseIntentFingerprint(normalizedPurchase);
+
+  const assertedFingerprint = paymentEvidencePurchaseAssertion(input, "purchaseFingerprint");
+  const assertedCustomerId = paymentEvidencePurchaseAssertion(input, "customerId");
+  const assertedProductId = paymentEvidencePurchaseAssertion(input, "productId");
+  const assertedOfferId = paymentEvidencePurchaseAssertion(input, "offerId");
+  const assertedCurrency = paymentEvidencePurchaseAssertion(input, "currency");
+  const assertedTotal = input?.purchaseAssertion?.totalAmountMinor;
+  const assertionChecks = [
+    ["purchase fingerprint", assertedFingerprint, purchaseFingerprint],
+    ["customer", assertedCustomerId, normalizedPurchase.customerId],
+    ["product", assertedProductId, normalizedPurchase.productId],
+    ["offer", assertedOfferId, normalizedPurchase.offerId],
+    ["currency", assertedCurrency ? assertedCurrency.toUpperCase() : null, normalizedPurchase.currency]
+  ];
+  for (const [label, asserted, canonical] of assertionChecks) {
+    if (asserted !== null && asserted !== canonical) {
+      throw commercialPaymentEvidenceError(`Provider ${label} assertion conflicts with the MEOS purchase intent.`, "COMMERCIAL_PAYMENT_PURCHASE_CONFLICT");
+    }
+  }
+  if (assertedTotal !== undefined && assertedTotal !== null &&
+      normalizePaymentEvidenceMinorAmount(assertedTotal, "purchaseAssertion.totalAmountMinor") !== normalizedPurchase.totalAmountMinor) {
+    throw commercialPaymentEvidenceError("Provider amount assertion conflicts with the MEOS purchase intent.", "COMMERCIAL_PAYMENT_PURCHASE_CONFLICT");
+  }
+
+  const amountMinor = normalizePaymentEvidenceMinorAmount(input.amountMinor);
+  const currency = String(input.currency || "").trim().toUpperCase();
+  if (!currency || currency.length !== 3) {
+    throw commercialPaymentEvidenceError("Commercial payment evidence currency is required.");
+  }
+  if (currency !== normalizedPurchase.currency) {
+    throw commercialPaymentEvidenceError("Payment evidence currency does not match the MEOS purchase intent.", "COMMERCIAL_PAYMENT_CURRENCY_CONFLICT");
+  }
+  if (eventType === "payment_succeeded" && amountMinor !== normalizedPurchase.totalAmountMinor) {
+    throw commercialPaymentEvidenceError("A successful-payment event must settle the exact MEOS purchase amount before it can be represented as full payment.", "COMMERCIAL_PAYMENT_AMOUNT_CONFLICT");
+  }
+  if (["refund_partial", "refund_full", "chargeback", "reversal"].includes(eventType) &&
+      amountMinor > normalizedPurchase.totalAmountMinor) {
+    throw commercialPaymentEvidenceError("A monetary reversal event cannot exceed the bound MEOS purchase amount.", "COMMERCIAL_PAYMENT_AMOUNT_CONFLICT");
+  }
+  if (eventType === "refund_partial" &&
+      (amountMinor <= 0 || amountMinor >= normalizedPurchase.totalAmountMinor)) {
+    throw commercialPaymentEvidenceError("A partial refund must be greater than zero and less than the bound purchase amount.", "COMMERCIAL_PAYMENT_AMOUNT_CONFLICT");
+  }
+  if (eventType === "refund_full" && amountMinor !== normalizedPurchase.totalAmountMinor) {
+    throw commercialPaymentEvidenceError("A full refund must equal the bound MEOS purchase amount.", "COMMERCIAL_PAYMENT_AMOUNT_CONFLICT");
+  }
+
+  const occurredAt = normalizePaymentEvidenceTimestamp(input.occurredAt, "occurredAt");
+  const verifiedAt = normalizePaymentEvidenceTimestamp(input.verifiedAt, "verifiedAt");
+  const evidence = {
+    schema: MEOS_PAYMENT_EVIDENCE_SCHEMA,
+    evidenceId: `payev_${crypto.createHash("sha256").update(`${providerId}|${providerEventId}`).digest("hex").slice(0, 28)}`,
+    providerId,
+    adapterId,
+    providerEventId,
+    providerReference,
+    eventType,
+    amountMinor,
+    currency,
+    occurredAt,
+    verifiedAt,
+    purchase: {
+      purchaseIntentId: normalizedPurchase.id,
+      purchaseFingerprint,
+      customerId: normalizedPurchase.customerId,
+      customerType: normalizedPurchase.customerType,
+      sponsorAccountId: normalizedPurchase.sponsorAccountId,
+      offerId: normalizedPurchase.offerId,
+      offerFingerprint: normalizedPurchase.offerFingerprint,
+      productId: normalizedPurchase.productId,
+      termsVersion: normalizedPurchase.termsVersion,
+      billingModel: normalizedPurchase.billingModel,
+      quantity: normalizedPurchase.quantity,
+      unitAmountMinor: normalizedPurchase.unitAmountMinor,
+      totalAmountMinor: normalizedPurchase.totalAmountMinor,
+      currency: normalizedPurchase.currency
+    },
+    verification: {
+      authenticatedByAdapter: true,
+      adapterId,
+      providerSpecificEvidenceRetainedByAdapter: true
+    },
+    authorityBoundary: {
+      browserIsPaymentAuthority: false,
+      screenshotIsPaymentAuthority: false,
+      providerIsCommercialMeaningAuthority: false,
+      providerIsCustomerAuthority: false,
+      providerIsOrganizationAuthority: false,
+      entitlementAuthority: false,
+      productAdmissionAuthority: false,
+      organizationMembershipAuthority: false,
+      seatAssignmentAuthority: false,
+      executiveActionAuthority: false,
+      intellectualPropertyOwnershipAuthority: false
+    }
+  };
+  evidence.fingerprint = crypto.createHash("sha256").update(JSON.stringify(evidence)).digest("hex");
+  return evidence;
+}
+
+async function runCommercialPaymentEvidenceAuthorityAcceptance() {
+  const purchase = normalizeCommercialPurchaseIntent({
+    id: "purchase_acceptance_s_1",
+    customerId: "customer_acceptance_s_org",
+    customerType: "organization",
+    sponsorAccountId: "acct_acceptance_s_owner",
+    offerId: "offer_acceptance_s",
+    offerFingerprint: "f".repeat(64),
+    productId: "maddy-professional",
+    termsVersion: "terms-acceptance-s",
+    billingModel: "one-time",
+    quantity: 2,
+    unitAmountMinor: 2500,
+    totalAmountMinor: 5000,
+    currency: "USD",
+    state: "created",
+    createdAt: "2026-09-17T14:00:00.000Z"
+  });
+  const purchaseLedger = {
+    ...emptyCommercialPurchaseIntentLedger(),
+    intents: [purchase]
+  };
+  const base = {
+    providerId: "replaceable-test-rail",
+    adapterId: "test-rail-adapter",
+    providerEventId: "evt_s_paid_1",
+    providerReference: "provider_payment_s_1",
+    purchaseIntentId: purchase.id,
+    eventType: "payment_succeeded",
+    amountMinor: 5000,
+    currency: "USD",
+    occurredAt: "2026-09-17T14:01:00.000Z",
+    verifiedAt: "2026-09-17T14:01:01.000Z",
+    authenticatedByAdapter: true,
+    purchaseAssertion: {
+      purchaseFingerprint: commercialPurchaseIntentFingerprint(purchase),
+      customerId: purchase.customerId,
+      productId: purchase.productId,
+      offerId: purchase.offerId,
+      totalAmountMinor: purchase.totalAmountMinor,
+      currency: purchase.currency
+    }
+  };
+  const bound = await bindAuthenticatedCommercialPaymentEvidence(base, { purchaseLedger });
+
+  let unauthenticatedRejected = false;
+  let unknownPurchaseRejected = false;
+  let rewrittenProductRejected = false;
+  let rewrittenAmountRejected = false;
+  let wrongCurrencyRejected = false;
+  let oversizedReversalRejected = false;
+  let partialRefundAccepted = false;
+  try { await bindAuthenticatedCommercialPaymentEvidence({ ...base, authenticatedByAdapter: false }, { purchaseLedger }); }
+  catch (error) { unauthenticatedRejected = error?.code === "COMMERCIAL_PAYMENT_EVIDENCE_UNAUTHENTICATED"; }
+  try { await bindAuthenticatedCommercialPaymentEvidence({ ...base, purchaseIntentId: "purchase_invented" }, { purchaseLedger }); }
+  catch (error) { unknownPurchaseRejected = error?.code === "COMMERCIAL_PAYMENT_PURCHASE_UNKNOWN"; }
+  try { await bindAuthenticatedCommercialPaymentEvidence({ ...base, purchaseAssertion: { ...base.purchaseAssertion, productId: "maddy-invented" } }, { purchaseLedger }); }
+  catch (error) { rewrittenProductRejected = error?.code === "COMMERCIAL_PAYMENT_PURCHASE_CONFLICT"; }
+  try { await bindAuthenticatedCommercialPaymentEvidence({ ...base, amountMinor: 1 }, { purchaseLedger }); }
+  catch (error) { rewrittenAmountRejected = error?.code === "COMMERCIAL_PAYMENT_AMOUNT_CONFLICT"; }
+  try { await bindAuthenticatedCommercialPaymentEvidence({ ...base, currency: "EUR" }, { purchaseLedger }); }
+  catch (error) { wrongCurrencyRejected = error?.code === "COMMERCIAL_PAYMENT_CURRENCY_CONFLICT"; }
+  try { await bindAuthenticatedCommercialPaymentEvidence({ ...base, providerEventId: "evt_s_reversal", eventType: "reversal", amountMinor: 5001 }, { purchaseLedger }); }
+  catch (error) { oversizedReversalRejected = error?.code === "COMMERCIAL_PAYMENT_AMOUNT_CONFLICT"; }
+  try {
+    const partial = await bindAuthenticatedCommercialPaymentEvidence({ ...base, providerEventId: "evt_s_partial", eventType: "refund_partial", amountMinor: 1000 }, { purchaseLedger });
+    partialRefundAccepted = partial.eventType === "refund_partial" && partial.amountMinor === 1000 && partial.authorityBoundary.entitlementAuthority === false;
+  } catch {}
+
+  const checks = [
+    ["Authenticated provider evidence binds to immutable 006.033R purchase intent", bound.purchase.purchaseIntentId === purchase.id && bound.purchase.purchaseFingerprint === commercialPurchaseIntentFingerprint(purchase)],
+    ["MEOS re-derives customer and product meaning from the purchase intent", bound.purchase.customerId === purchase.customerId && bound.purchase.productId === purchase.productId],
+    ["MEOS re-derives offer, terms, quantity, and money from the purchase intent", bound.purchase.offerId === purchase.offerId && bound.purchase.termsVersion === purchase.termsVersion && bound.purchase.quantity === 2 && bound.purchase.totalAmountMinor === 5000],
+    ["Unauthenticated provider claims fail closed", unauthenticatedRejected],
+    ["Unknown purchase intent fails closed", unknownPurchaseRejected],
+    ["Provider cannot rewrite the purchased product", rewrittenProductRejected],
+    ["Provider cannot call an underpayment a successful full payment", rewrittenAmountRejected],
+    ["Provider currency cannot contradict MEOS purchase currency", wrongCurrencyRejected],
+    ["Monetary reversal cannot exceed the bound purchase amount", oversizedReversalRejected],
+    ["Partial refund is representable without silently deciding entitlement policy", partialRefundAccepted],
+    ["Payment lifecycle is not collapsed to paid true/false", MEOS_PAYMENT_EVIDENCE_EVENT_TYPES.includes("payment_failed") && MEOS_PAYMENT_EVIDENCE_EVENT_TYPES.includes("dispute_opened") && MEOS_PAYMENT_EVIDENCE_EVENT_TYPES.includes("reversal")],
+    ["Provider event identity deterministically produces evidence identity", bound.evidenceId === `payev_${crypto.createHash("sha256").update(`${base.providerId}|${base.providerEventId}`).digest("hex").slice(0, 28)}`],
+    ["Browser and screenshot remain non-authoritative", bound.authorityBoundary.browserIsPaymentAuthority === false && bound.authorityBoundary.screenshotIsPaymentAuthority === false],
+    ["Provider evidence grants no entitlement or paid-product admission", bound.authorityBoundary.entitlementAuthority === false && bound.authorityBoundary.productAdmissionAuthority === false],
+    ["Provider evidence grants no organization, membership, seat, or executive authority", bound.authorityBoundary.providerIsOrganizationAuthority === false && bound.authorityBoundary.organizationMembershipAuthority === false && bound.authorityBoundary.seatAssignmentAuthority === false && bound.authorityBoundary.executiveActionAuthority === false],
+    ["Provider evidence grants no MEOS/Maddy ownership authority", bound.authorityBoundary.intellectualPropertyOwnershipAuthority === false],
+    ["Commission configures no processor, checkout, webhook, or entitlement mutation", true]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+  return {
+    success: checks.every(check => check.passed),
+    commission: MEOS_PAYMENT_EVIDENCE_AUTHORITY_COMMISSION,
+    version: MEOS_PAYMENT_EVIDENCE_AUTHORITY_VERSION,
+    buildId: MEOS_PAYMENT_EVIDENCE_AUTHORITY_BUILD_ID,
+    schema: "meos.purchase-bound-commercial-payment-evidence.acceptance.v1",
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    purchaseBoundPaymentEvidenceAuthorityConfigured: true,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    publicPaymentWebhookConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false,
+    entitlementConsequenceBridgeConfigured: false,
+    paidProductAdmissionConfigured: false,
+    limitation: "A replaceable rail adapter must still authenticate real provider evidence. A governed consequence bridge must then decide which bound lifecycle evidence may alter 006.033O entitlement. No real payment is accepted by this commission."
+  };
+}
+
+app.get("/api/commercial-payment-evidence/contract", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    success: true,
+    commission: MEOS_PAYMENT_EVIDENCE_AUTHORITY_COMMISSION,
+    version: MEOS_PAYMENT_EVIDENCE_AUTHORITY_VERSION,
+    buildId: MEOS_PAYMENT_EVIDENCE_AUTHORITY_BUILD_ID,
+    schema: MEOS_PAYMENT_EVIDENCE_SCHEMA,
+    eventTypes: MEOS_PAYMENT_EVIDENCE_EVENT_TYPES,
+    purchaseBoundPaymentEvidenceAuthorityConfigured: true,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    publicPaymentWebhookConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false,
+    entitlementConsequenceBridgeConfigured: false,
+    paidProductAdmissionConfigured: false
+  });
+});
+
+app.get("/api/commercial-payment-evidence/acceptance-test", async (request, response, next) => {
+  try {
+    response.json(await runCommercialPaymentEvidenceAuthorityAcceptance());
   } catch (error) {
     next(error);
   }
