@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32341530/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32342251/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32319882/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32318611/MEOS_BUILD_STATE.md)
@@ -3004,4 +3004,118 @@ The next commercial step must preserve that architecture across real money, prov
 
 **Recovery keyword:** `006.033S`  
 **Fast recovery:** `Resume 006.033S — I'm up.`
+
+---
+
+# Commission checkpoint — 006.033T LIVE-PROVEN
+
+**Commission:** `006.033T — Purchase-Bound Entitlement Consequence Authority`  
+**Status:** `LIVE-PROVEN`  
+**Acceptance:** `17/17`  
+**Authority version:** `1.0.0`  
+**Build:** `PECA100-PURCHASE-BOUND-ENTITLEMENT-CONSEQUENCE-AUTHORITY-20260917-A`  
+**Acceptance schema:** `meos.purchase-bound-entitlement-consequence.acceptance.v1`
+
+## Runtime-proven bounded claims
+
+External production acceptance returned `success:true`, `passed:17`, `total:17`.
+
+006.033T proves within its acceptance boundary:
+
+- Only the 006.033S purchase-bound evidence contract may enter entitlement consequence authority.
+- Tampering after 006.033S binding fails closed before entitlement mutation.
+- Exact `payment_succeeded` evidence can activate a durable MEOS-owned entitlement consequence.
+- Entitlement consequence is keyed to canonical commercial customer plus product.
+- Individual commercial entitlement retains its canonical customer subject.
+- Organization commercial entitlement belongs to the organization customer rather than payer/sponsor.
+- Organization payment does not manufacture membership or seat authority.
+- Entitlement consequence does not manufacture paid-product admission.
+- Entitlement consequence does not manufacture executive or MEOS/Maddy ownership authority.
+- Pending and failed payment evidence cannot manufacture entitlement.
+- Refund consequence fails closed until refund entitlement policy is ratified.
+- Dispute consequence fails closed until dispute entitlement policy is ratified.
+- Evidence application is idempotent.
+- Applied provenance retains purchase, customer, product, provider, and evidence lineage.
+- The bridge remains processor-neutral.
+- This commission configures no real provider adapter, checkout, webhook, lifecycle policy, membership, seat, or admission authority.
+
+## Truthful remaining false boundaries after 006.033T
+
+Production reports:
+
+- `productionPricingConfigured:false`
+- `paymentProcessorConfigured:false`
+- `providerCheckoutConfigured:false`
+- `publicPaymentWebhookConfigured:false`
+- `realProviderEvidenceAuthenticationConfigured:false`
+- `refundEntitlementPolicyConfigured:false`
+- `disputeEntitlementPolicyConfigured:false`
+- `cancellationEntitlementPolicyConfigured:false`
+- `renewalEntitlementPolicyConfigured:false`
+- `organizationMembershipAuthorityConfigured:false`
+- `seatAssignmentAuthorityConfigured:false`
+- `paidProductAdmissionConfigured:false`
+
+These remain unresolved boundaries, not implied capability.
+
+006.033T establishes the governed semantic bridge from valid 006.033S evidence to a customer-bound entitlement consequence. It does **not** authenticate evidence from a real payment rail and does not establish refund, dispute, cancellation, renewal, retry/grace, credit/comp, membership, seat, or paid-product admission policy.
+
+## Current commercial authority chain after 006.033T
+
+`authenticated MEOS identity → 006.033Q commercial customer → 006.033P canonical offer → 006.033R durable purchase intent → 006.033S purchase-bound commercial payment evidence authority → 006.033T purchase-bound entitlement consequence authority → 006.033O durable entitlement ledger → 006.033N entitlement/access decision → [paid-product admission unresolved]`
+
+A real rail adapter / real provider evidence authentication remains unresolved before real monetary evidence can enter 006.033S.
+
+The next commission is **not automatically a payment-provider adapter, checkout, webhook, lifecycle-policy engine, membership/seat authority, or admission gate**. Fresh-main reconciliation and the anti-drift gate remain mandatory before naming or coding the next runtime commission.
+
+## 006.033T falsification boundary
+
+The 006.033T conclusion would be falsified by repository or runtime evidence showing any of the following:
+
+- evidence outside the complete 006.033S purchase-bound contract can mutate entitlement consequence;
+- post-binding tampering can cross the consequence boundary;
+- pending or failed evidence can manufacture entitlement;
+- an organization purchase is collapsed into payer/sponsor ownership;
+- payment consequence manufactures organization membership or seat authority;
+- payment consequence manufactures paid-product admission;
+- payment consequence manufactures executive authority or MEOS/Maddy ownership authority;
+- refund/dispute events silently invent unratified entitlement policy;
+- replay of the same evidence produces duplicate non-idempotent consequence;
+- durable consequence loses purchase/customer/product/provider/evidence provenance;
+- the bridge becomes processor-owned or processor-specific authority;
+- a real provider adapter, checkout, webhook, lifecycle policy, membership, seat, or admission capability is claimed/configured contrary to the accepted runtime flags.
+
+## Anti-drift gate after 006.033T
+
+Before naming or coding the next runtime commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this canonical `MEOS_BUILD_STATE.md` in full.
+3. Reconcile the freshest committed live GitHub `main` including 006.033T and its production runtime evidence.
+4. Trace the complete commercial path from authenticated identity through Q, P, R, S, T, O, N, and the unresolved real-rail and paid-product admission boundaries.
+5. Search existing implementation before creating a new commercial organ or authority primitive.
+6. Distinguish runtime-proven capability from code-only, simulated, stale, historical, configured-but-unused, and assumed capability.
+7. Preserve Customer, Organization, User/Account, Payer, Org Owner, Administrator, Membership, Role/Capability, Seat/Capacity, Product, Offer, Purchase/Obligation, Payment Evidence/Event, Entitlement, and Current Access/Authorization as distinct concepts.
+8. Preserve the rule: **payer ≠ customer owner ≠ user ≠ administrator; seat ≠ authority.**
+9. Preserve the rule: **Money changes consequences only through authenticated evidence + governed MEOS authority + durable provenance.**
+10. Attack any candidate real-rail seam against conventional cards/ACH, Cash App, Bitcoin, and an unknown future rail so the provider cannot become commercial authority.
+11. Attack lifecycle semantics including pending, success, failure, renewal, partial/full refund, dispute, chargeback, reversal, cancellation, retries/grace, credits, discounts, free periods, comps, grandfathering, duplicate/delayed/reordered/replayed evidence, and provider outage without inventing business policy.
+12. Preserve browser/screenshot distrust.
+13. Preserve legitimate organization-owned work/history independently from current commercial access.
+14. Preserve founder ownership, tenant isolation, extraction resistance, and bounded customer use authority.
+15. Determine the smallest missing MEOS-owned primitive that survives reconciliation and falsification.
+16. State what repository/runtime evidence would falsify the selected conclusion.
+17. Preserve **one physical repository file → one fix → one commit → one test**.
+18. Require external runtime proof before declaring the next runtime commission complete.
+
+## Spooky / North Star continuation
+
+006.033T closes the internal evidence-to-entitlement semantic gap without allowing a payer, browser, or payment provider to become the owner of customer meaning.
+
+Spooky remains the floor; there is no ceiling.
+
+The next step must be selected from fresh-main evidence. The commercial architecture must eventually cross real money while keeping the rail replaceable, preserving durable provenance, refusing invented lifecycle policy, and maintaining the separation between payment, entitlement, admission, organization authority, membership, seats, and ownership.
+
+**Recovery keyword:** `006.033T`  
+**Fast recovery:** `Resume 006.033T — I'm up.`
 
