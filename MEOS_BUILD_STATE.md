@@ -1,3 +1,4 @@
+[Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32318611/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32303055/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32294872/MEOS_BUILD_STATE.md)
@@ -2615,3 +2616,95 @@ The commissioned sequence now includes:
 On recovery: recognize 006.033P as **CLOSED / LIVE-PROVEN 12/12** with build `COA100-COMMERCIAL-OFFER-AUTHORITY-20260917-A`; preserve `productionPricingConfigured=false`, `paymentProcessorConfigured=false`, and `purchaseIntentAuthorityConfigured=false`; recognize the earlier organization-onboarding proposal named P as discarded/uncommitted and not part of the commissioned architecture; preserve the multi-user/team, termination/company-work ownership, Maddy IP/security, offer-lifecycle, CCSP historical-payment-path, and one-file/one-commit/one-test doctrines above; then perform the zero-code current-main/North-Star/Build-State attack before selecting the next commission.
 
 **Fast recovery phrase:** `Resume 006.033P — I'm up.`
+
+---
+
+# CHECKPOINT — 006.033Q COMMERCIAL CUSTOMER SUBJECT AUTHORITY — LIVE-PROVEN
+
+**Commission:** 006.033Q  
+**Status:** CLOSED / LIVE-PROVEN 13/13  
+**Version:** 1.0.0  
+**Build ID:** `CCSA100-COMMERCIAL-CUSTOMER-SUBJECT-AUTHORITY-20260917-A`  
+**Acceptance schema:** `meos.commercial-customer-subject.acceptance.v1`  
+**Production server:** v2.10.90
+
+## Runtime-proven bounded claims
+
+External production acceptance returned `success:true`, `passed:13`, `total:13`.
+
+006.033Q proves that commercial-customer-subject authority is MEOS-owned; individual customers bind to an existing MEOS account identity; organization customers have a distinct organization identity; payer, provider, and browser identity cannot manufacture organization ownership; commercial ownership grants no membership, seat, entitlement, or executive-action authority; unknown owner identities and individual owner/account mismatches fail closed; only the current MEOS-recognized owner account can sponsor a future purchase for that subject; and individual and organization commercial subjects remain distinct. A durable commercial-customer registry is configured.
+
+## Truthful remaining false boundaries
+
+The live runtime explicitly reports:
+
+- `organizationMembershipAuthorityConfigured:false`
+- `seatAuthorityConfigured:false`
+- `purchaseIntentAuthorityConfigured:false`
+- `paymentProcessorConfigured:false`
+
+006.033Q does not prove organization membership/roles, seat assignment, purchase intent, provider checkout, authenticated real provider payment evidence, paid-product admission, terminated-user revocation, or complete customer/IP extraction resistance.
+
+## Commercial authority chain after Q
+
+`prospect → account creation/sign-in → authenticated MEOS identity → 006.033Q commercial customer subject → 006.033P canonical commercial offer → [purchase/order intent unresolved] → [real provider checkout unconfigured] → [authenticated provider evidence not connected] → 006.033O durable entitlement ledger → 006.033N entitlement/access decision → [paid-product admission enforcement unresolved]`
+
+Identity remains distinct from commercial ownership and paid-product admission. Commercial ownership remains distinct from organization membership, role/capability, seat/capacity, payer identity, entitlement, and current authorization.
+
+## Ownership / IP doctrine — locked
+
+MEOS is owned by the founder. Maddy is the proprietary entity operating within MEOS.
+
+Commercial customers receive only explicitly authorized, bounded rights to use Maddy/MEOS capabilities. Commercial entitlement does not transfer ownership of MEOS, Maddy, her constituent organs, source, proprietary architecture, cognition machinery, protected prompts/policies, proprietary state, credentials, privileged APIs, internal artifacts, or other protected implementation assets.
+
+Commercial use authority is not reproduction authority, disclosure authority, redistribution authority, derivative-system authority, founder authority, or generalized MEOS authority.
+
+The customer/browser surface is treated as inspectable and potentially adversarial. High-value proprietary implementation remains server-side behind least-privilege, tenant-scoped authorization and disclosure controls.
+
+The commercial threat model includes a legitimate customer, insider, or better-capitalized actor attempting to extract or reconstruct a valuable subsystem, organ, model-behavior artifact, protected policy/prompt corpus, proprietary state, source, credential, privileged API, or sufficient implementation material to create an unauthorized competing reproduction.
+
+Future proving must adversarially test extraction/reconstruction attempts, cross-tenant isolation, founder/internal boundaries, privileged API exposure, protected-state disclosure, and unauthorized reproduction-enabling leakage while preserving legitimate customer use.
+
+Do not claim technical controls make copying mathematically impossible. Combine technical architecture with appropriate contractual and intellectual-property protections. The narrower engineering claim is testable: ordinary commercial access must not itself provide the proprietary machinery or authority needed to extract, compromise, or reproduce Maddy/MEOS.
+
+## Multi-user / termination doctrine carried forward
+
+`Payer ≠ user ≠ administrator ≠ organization owner.`  
+`Seat ≠ authority.`
+
+When membership/role authority is commissioned, terminated or revoked humans must lose server-side organizational authority without erasing legitimate organization-owned work.
+
+**Revoke the human. Preserve the work. Preserve the history. Protect the company. Re-evaluate unfinished authority.**
+
+Historical authorship does not confer continuing authority. Durable or scheduled work must be re-evaluated against current authority lineage so pre-termination planted actions cannot survive merely because they were created earlier.
+
+## Anti-drift gate before the next runtime commission
+
+006.033Q being green does not automatically define 006.033R.
+
+Before another runtime code commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` and this Build State.
+2. Reconcile latest committed `main`, including server v2.10.90.
+3. Trace existing customer, organization, tenant, membership, role, seat, invitation, revocation, session, purchase/order/subscription, payment, entitlement, admission, durable-mission, and organization-owned-work machinery.
+4. Separate runtime-proven capability from code-only, simulated, stale, historical, or assumed capability.
+5. Reuse an existing Maddy/MEOS organ when it already owns the required authority.
+6. Attack solo and multi-user organization cases before binding checkout to an oversimplified subject model.
+7. Preserve paid-product admission—not account identity—as the commercial fail-closed boundary.
+8. Preserve Maddy/MEOS ownership and IP boundaries throughout the customer path.
+9. Determine the smallest missing Maddy-owned authority primitive that survives reconciliation and falsification.
+10. State what repository/runtime evidence would falsify that conclusion.
+11. Do not invent production pricing or fake founder/internal payment evidence.
+12. Do not transfer customer, organization, entitlement, pricing, or executive authority to a payment vendor.
+13. Preserve **one physical repository file → one fix → one commit → one test**.
+14. Require external runtime proof before declaring the next commission complete.
+
+## Spooky / North Star
+
+Spooky remains the floor; there is no ceiling. A passing acceptance test proves only its bounded claim.
+
+The next commission must survive reconciliation against Maddy's existing organs, durable execution architecture, epistemic identity, provider neutrality, customer security, organizational continuity, proprietary-IP boundary, and the first legitimate paid-customer objective.
+
+**Recovery keyword:** `006.033Q`  
+**Fast recovery:** `Resume 006.033Q — I'm up.`
+
