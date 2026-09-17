@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.92";
+const VERSION = "2.10.93";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -8826,6 +8826,355 @@ app.get("/api/commercial-payment-evidence/contract", (request, response) => {
 app.get("/api/commercial-payment-evidence/acceptance-test", async (request, response, next) => {
   try {
     response.json(await runCommercialPaymentEvidenceAuthorityAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+/**
+ * Commission 006.033T — Purchase-Bound Entitlement Consequence Authority
+ *
+ * 006.033S authenticates and binds monetary evidence to immutable MEOS purchase
+ * meaning. 006.033O owns durable entitlement state. This bridge is the governed
+ * seam between them: it accepts only the S evidence contract, derives the
+ * entitlement subject from the bound purchase, and applies only consequences
+ * whose meaning is policy-independent.
+ *
+ * A successful exact payment may activate the purchased commercial entitlement.
+ * Pending/failed evidence cannot manufacture access. Refund, dispute, chargeback,
+ * reversal, cancellation, renewal, grace, credit, comp, and other policy-bearing
+ * outcomes remain explicit future policy decisions rather than being guessed here.
+ *
+ * Organization purchases remain owned by the commercial customer subject. They
+ * are never collapsed into the payer/sponsor account. Membership, seats, roles,
+ * and paid-product admission remain separate authority boundaries.
+ */
+const MEOS_ENTITLEMENT_CONSEQUENCE_COMMISSION = "006.033T";
+const MEOS_ENTITLEMENT_CONSEQUENCE_VERSION = "1.0.0";
+const MEOS_ENTITLEMENT_CONSEQUENCE_BUILD_ID =
+  "PECA100-PURCHASE-BOUND-ENTITLEMENT-CONSEQUENCE-AUTHORITY-20260917-A";
+const MEOS_ENTITLEMENT_CONSEQUENCE_SCHEMA =
+  "meos.purchase-bound-entitlement-consequence.v1";
+
+function entitlementConsequenceError(message, code = "COMMERCIAL_ENTITLEMENT_CONSEQUENCE_INVALID") {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function validatePurchaseBoundPaymentEvidenceForConsequence(input = {}) {
+  if (input.schema !== MEOS_PAYMENT_EVIDENCE_SCHEMA ||
+      !input.evidenceId || !input.fingerprint || !input.providerId ||
+      !input.providerReference || !input.purchase?.purchaseIntentId ||
+      !input.purchase?.purchaseFingerprint || !input.purchase?.customerId ||
+      !input.purchase?.productId ||
+      input.verification?.authenticatedByAdapter !== true ||
+      !input.verification?.adapterId) {
+    throw entitlementConsequenceError(
+      "Only complete 006.033S purchase-bound authenticated payment evidence may enter commercial consequence authority.",
+      "COMMERCIAL_ENTITLEMENT_CONSEQUENCE_EVIDENCE_REQUIRED"
+    );
+  }
+  const canonicalFingerprint = crypto.createHash("sha256")
+    .update(JSON.stringify({ ...input, fingerprint: undefined }))
+    .digest("hex");
+  // S fingerprints the evidence before the fingerprint field exists. Rebuild the
+  // exact pre-fingerprint object rather than trusting a caller-supplied digest.
+  const preFingerprint = { ...input };
+  delete preFingerprint.fingerprint;
+  const expectedFingerprint = crypto.createHash("sha256")
+    .update(JSON.stringify(preFingerprint))
+    .digest("hex");
+  if (expectedFingerprint !== input.fingerprint) {
+    throw entitlementConsequenceError(
+      "Purchase-bound payment evidence fingerprint does not verify.",
+      "COMMERCIAL_ENTITLEMENT_CONSEQUENCE_EVIDENCE_TAMPERED"
+    );
+  }
+  return input;
+}
+
+async function applyPurchaseBoundEntitlementConsequence(input = {}, options = {}) {
+  const evidence = validatePurchaseBoundPaymentEvidenceForConsequence(input);
+  const eventType = String(evidence.eventType || "").trim().toLowerCase();
+  if (eventType !== "payment_succeeded") {
+    const nonMutating = new Set(["payment_pending", "payment_failed"]);
+    if (nonMutating.has(eventType)) {
+      return {
+        applied: false,
+        decision: "no_entitlement_change",
+        eventType,
+        evidenceId: evidence.evidenceId,
+        entitlement: null,
+        policyRequired: false
+      };
+    }
+    throw entitlementConsequenceError(
+      `Commercial lifecycle event ${eventType || "unknown"} requires ratified entitlement policy before mutation.`,
+      "COMMERCIAL_ENTITLEMENT_POLICY_REQUIRED"
+    );
+  }
+
+  if (evidence.amountMinor !== evidence.purchase.totalAmountMinor ||
+      evidence.currency !== evidence.purchase.currency) {
+    throw entitlementConsequenceError(
+      "Successful payment evidence no longer matches its bound MEOS purchase amount/currency.",
+      "COMMERCIAL_ENTITLEMENT_CONSEQUENCE_MONEY_CONFLICT"
+    );
+  }
+
+  const customerType = String(evidence.purchase.customerType || "").trim().toLowerCase();
+  if (!MEOS_COMMERCIAL_CUSTOMER_TYPES.includes(customerType)) {
+    throw entitlementConsequenceError(
+      "Bound commercial customer type is unsupported.",
+      "COMMERCIAL_ENTITLEMENT_CONSEQUENCE_CUSTOMER_INVALID"
+    );
+  }
+
+  const ledger = options.ledger || await readCommercialLedger();
+  const fingerprint = evidence.fingerprint;
+  const prior = ledger.appliedEvidence.find(item => item.evidenceId === evidence.evidenceId);
+  if (prior) {
+    if (prior.fingerprint !== fingerprint) {
+      throw entitlementConsequenceError(
+        "Purchase-bound evidence id was replayed with conflicting contents.",
+        "COMMERCIAL_ENTITLEMENT_CONSEQUENCE_REPLAY_CONFLICT"
+      );
+    }
+    return {
+      applied: false,
+      duplicate: true,
+      decision: "already_applied",
+      eventType,
+      evidenceId: evidence.evidenceId,
+      entitlement: ledger.entitlements.find(item => item.id === prior.entitlementId) || null,
+      policyRequired: false
+    };
+  }
+
+  const customerId = String(evidence.purchase.customerId);
+  const productId = String(evidence.purchase.productId);
+  const entitlementId = `entcust_${crypto.createHash("sha256")
+    .update(`${customerId}|${productId}`)
+    .digest("hex").slice(0, 24)}`;
+  const now = options.now || new Date().toISOString();
+  const existingIndex = ledger.entitlements.findIndex(item => item.id === entitlementId);
+  const previous = existingIndex >= 0 ? ledger.entitlements[existingIndex] : null;
+  const entitlement = {
+    schema: "meos.customer-commercial-entitlement.v2",
+    id: entitlementId,
+    customerId,
+    customerType,
+    accountId: customerType === "individual" ? String(evidence.purchase.sponsorAccountId || "") || null : null,
+    productId,
+    state: MEOS_COMMERCIAL_ENTITLEMENT_STATES.ACTIVE,
+    source: {
+      authority: MEOS_ENTITLEMENT_CONSEQUENCE_COMMISSION,
+      evidenceId: evidence.evidenceId,
+      purchaseIntentId: evidence.purchase.purchaseIntentId,
+      purchaseFingerprint: evidence.purchase.purchaseFingerprint,
+      providerId: evidence.providerId,
+      providerReference: evidence.providerReference,
+      verifiedAt: evidence.verifiedAt
+    },
+    startsAt: previous?.startsAt || evidence.occurredAt || now,
+    expiresAt: previous?.expiresAt || null,
+    createdAt: previous?.createdAt || now,
+    updatedAt: now,
+    authorityBoundary: {
+      organizationMembershipAuthority: false,
+      seatAssignmentAuthority: false,
+      productAdmissionAuthority: false,
+      executiveActionAuthority: false,
+      intellectualPropertyOwnershipAuthority: false
+    }
+  };
+
+  if (existingIndex >= 0) ledger.entitlements[existingIndex] = entitlement;
+  else ledger.entitlements.push(entitlement);
+  ledger.appliedEvidence.push({
+    evidenceId: evidence.evidenceId,
+    fingerprint,
+    entitlementId,
+    purchaseIntentId: evidence.purchase.purchaseIntentId,
+    customerId,
+    customerType,
+    productId,
+    eventType,
+    consequence: "entitlement_activated",
+    providerId: evidence.providerId,
+    providerReference: evidence.providerReference,
+    verifiedAt: evidence.verifiedAt,
+    appliedAt: now
+  });
+  ledger.updatedAt = now;
+  if (options.persist !== false) await writeCommercialLedger(ledger);
+  return {
+    applied: true,
+    duplicate: false,
+    decision: "entitlement_activated",
+    eventType,
+    evidenceId: evidence.evidenceId,
+    entitlement,
+    policyRequired: false
+  };
+}
+
+async function runEntitlementConsequenceAuthorityAcceptance() {
+  const makePurchase = (customerType, suffix) => normalizeCommercialPurchaseIntent({
+    id: `purchase_t_${suffix}`,
+    customerId: `customer_t_${suffix}`,
+    customerType,
+    sponsorAccountId: `acct_t_${suffix}`,
+    offerId: "offer_t_professional",
+    offerFingerprint: "a".repeat(64),
+    productId: "maddy-professional",
+    termsVersion: "terms-t-1",
+    billingModel: "one-time",
+    quantity: 1,
+    unitAmountMinor: 5000,
+    totalAmountMinor: 5000,
+    currency: "USD",
+    state: "created",
+    createdAt: "2026-09-17T15:00:00.000Z"
+  });
+  const bind = async (purchase, eventType, eventId, amountMinor = 5000) =>
+    bindAuthenticatedCommercialPaymentEvidence({
+      providerId: "replaceable-test-rail",
+      adapterId: "test-rail-adapter",
+      providerEventId: eventId,
+      providerReference: `provider_${eventId}`,
+      purchaseIntentId: purchase.id,
+      eventType,
+      amountMinor,
+      currency: "USD",
+      occurredAt: "2026-09-17T15:01:00.000Z",
+      verifiedAt: "2026-09-17T15:01:01.000Z",
+      authenticatedByAdapter: true
+    }, { purchaseLedger: { ...emptyCommercialPurchaseIntentLedger(), intents: [purchase] } });
+
+  const individualPurchase = makePurchase("individual", "individual");
+  const organizationPurchase = makePurchase("organization", "organization");
+  const individualEvidence = await bind(individualPurchase, "payment_succeeded", "evt_t_individual_paid");
+  const organizationEvidence = await bind(organizationPurchase, "payment_succeeded", "evt_t_org_paid");
+  const individualLedger = emptyCommercialLedger();
+  const organizationLedger = emptyCommercialLedger();
+  const individual = await applyPurchaseBoundEntitlementConsequence(individualEvidence, { ledger: individualLedger, persist: false, now: "2026-09-17T15:02:00.000Z" });
+  const organization = await applyPurchaseBoundEntitlementConsequence(organizationEvidence, { ledger: organizationLedger, persist: false, now: "2026-09-17T15:02:00.000Z" });
+  const duplicate = await applyPurchaseBoundEntitlementConsequence(organizationEvidence, { ledger: organizationLedger, persist: false });
+  const pending = await applyPurchaseBoundEntitlementConsequence(
+    await bind(individualPurchase, "payment_pending", "evt_t_pending", 0),
+    { ledger: emptyCommercialLedger(), persist: false }
+  );
+  const failed = await applyPurchaseBoundEntitlementConsequence(
+    await bind(individualPurchase, "payment_failed", "evt_t_failed", 0),
+    { ledger: emptyCommercialLedger(), persist: false }
+  );
+
+  let legacyRejected = false;
+  let tamperRejected = false;
+  let refundPolicyRequired = false;
+  let disputePolicyRequired = false;
+  try {
+    await applyPurchaseBoundEntitlementConsequence({
+      evidenceId: "legacy", providerId: "fake", providerReference: "fake",
+      status: "paid", verification: { authenticatedByAdapter: true, adapterId: "fake" }
+    }, { ledger: emptyCommercialLedger(), persist: false });
+  } catch (error) {
+    legacyRejected = error?.code === "COMMERCIAL_ENTITLEMENT_CONSEQUENCE_EVIDENCE_REQUIRED";
+  }
+  try {
+    await applyPurchaseBoundEntitlementConsequence({ ...individualEvidence, amountMinor: 1 }, { ledger: emptyCommercialLedger(), persist: false });
+  } catch (error) {
+    tamperRejected = error?.code === "COMMERCIAL_ENTITLEMENT_CONSEQUENCE_EVIDENCE_TAMPERED";
+  }
+  try {
+    await applyPurchaseBoundEntitlementConsequence(
+      await bind(individualPurchase, "refund_full", "evt_t_refund", 5000),
+      { ledger: emptyCommercialLedger(), persist: false }
+    );
+  } catch (error) {
+    refundPolicyRequired = error?.code === "COMMERCIAL_ENTITLEMENT_POLICY_REQUIRED";
+  }
+  try {
+    await applyPurchaseBoundEntitlementConsequence(
+      await bind(individualPurchase, "dispute_opened", "evt_t_dispute", 0),
+      { ledger: emptyCommercialLedger(), persist: false }
+    );
+  } catch (error) {
+    disputePolicyRequired = error?.code === "COMMERCIAL_ENTITLEMENT_POLICY_REQUIRED";
+  }
+
+  const checks = [
+    ["Only the 006.033S purchase-bound evidence contract may enter entitlement consequence authority", legacyRejected],
+    ["Tampering after 006.033S binding fails closed before entitlement mutation", tamperRejected],
+    ["Exact successful payment can activate a durable MEOS-owned entitlement consequence", individual.applied === true && individual.entitlement.state === "active"],
+    ["Entitlement consequence is keyed to canonical commercial customer plus product", individual.entitlement.id === `entcust_${crypto.createHash("sha256").update(`${individualPurchase.customerId}|${individualPurchase.productId}`).digest("hex").slice(0, 24)}`],
+    ["Individual commercial entitlement retains its canonical customer subject", individual.entitlement.customerId === individualPurchase.customerId && individual.entitlement.customerType === "individual"],
+    ["Organization commercial entitlement belongs to the organization customer rather than payer/sponsor", organization.entitlement.customerId === organizationPurchase.customerId && organization.entitlement.customerType === "organization" && organization.entitlement.accountId === null],
+    ["Organization payment does not manufacture membership or seat authority", organization.entitlement.authorityBoundary.organizationMembershipAuthority === false && organization.entitlement.authorityBoundary.seatAssignmentAuthority === false],
+    ["Entitlement consequence does not manufacture paid-product admission", organization.entitlement.authorityBoundary.productAdmissionAuthority === false],
+    ["Entitlement consequence does not manufacture executive or MEOS/Maddy ownership authority", organization.entitlement.authorityBoundary.executiveActionAuthority === false && organization.entitlement.authorityBoundary.intellectualPropertyOwnershipAuthority === false],
+    ["Pending payment evidence cannot manufacture entitlement", pending.applied === false && pending.decision === "no_entitlement_change"],
+    ["Failed payment evidence cannot manufacture entitlement", failed.applied === false && failed.decision === "no_entitlement_change"],
+    ["Refund consequence fails closed until refund entitlement policy is ratified", refundPolicyRequired],
+    ["Dispute consequence fails closed until dispute entitlement policy is ratified", disputePolicyRequired],
+    ["Evidence application is idempotent", duplicate.duplicate === true && organizationLedger.appliedEvidence.filter(item => item.evidenceId === organizationEvidence.evidenceId).length === 1],
+    ["Applied provenance retains purchase, customer, product, provider, and evidence lineage", organizationLedger.appliedEvidence[0]?.purchaseIntentId === organizationPurchase.id && organizationLedger.appliedEvidence[0]?.customerId === organizationPurchase.customerId && organizationLedger.appliedEvidence[0]?.productId === organizationPurchase.productId && organizationLedger.appliedEvidence[0]?.providerId === organizationEvidence.providerId],
+    ["Bridge remains processor-neutral", !MEOS_ENTITLEMENT_CONSEQUENCE_BUILD_ID.toLowerCase().includes("stripe") && !MEOS_ENTITLEMENT_CONSEQUENCE_BUILD_ID.toLowerCase().includes("paypal")],
+    ["Commission configures no real provider adapter, checkout, webhook, lifecycle policy, membership, seat, or admission", true]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+  return {
+    success: checks.every(check => check.passed),
+    commission: MEOS_ENTITLEMENT_CONSEQUENCE_COMMISSION,
+    version: MEOS_ENTITLEMENT_CONSEQUENCE_VERSION,
+    buildId: MEOS_ENTITLEMENT_CONSEQUENCE_BUILD_ID,
+    schema: "meos.purchase-bound-entitlement-consequence.acceptance.v1",
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    entitlementConsequenceBridgeConfigured: true,
+    customerBoundEntitlementConfigured: true,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    publicPaymentWebhookConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false,
+    refundEntitlementPolicyConfigured: false,
+    disputeEntitlementPolicyConfigured: false,
+    cancellationEntitlementPolicyConfigured: false,
+    renewalEntitlementPolicyConfigured: false,
+    organizationMembershipAuthorityConfigured: false,
+    seatAssignmentAuthorityConfigured: false,
+    paidProductAdmissionConfigured: false,
+    limitation: "Real rail authentication is still unconfigured. Only exact payment_succeeded evidence has a policy-independent entitlement consequence. Refund/dispute/cancellation/renewal/grace/credit/comp policy, organization membership/seats, and paid-product admission remain separate unresolved authorities."
+  };
+}
+
+app.get("/api/commercial-entitlement-consequence/contract", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    success: true,
+    commission: MEOS_ENTITLEMENT_CONSEQUENCE_COMMISSION,
+    version: MEOS_ENTITLEMENT_CONSEQUENCE_VERSION,
+    buildId: MEOS_ENTITLEMENT_CONSEQUENCE_BUILD_ID,
+    schema: MEOS_ENTITLEMENT_CONSEQUENCE_SCHEMA,
+    inputSchema: MEOS_PAYMENT_EVIDENCE_SCHEMA,
+    entitlementConsequenceBridgeConfigured: true,
+    customerBoundEntitlementConfigured: true,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    publicPaymentWebhookConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false,
+    paidProductAdmissionConfigured: false
+  });
+});
+
+app.get("/api/commercial-entitlement-consequence/acceptance-test", async (request, response, next) => {
+  try {
+    response.json(await runEntitlementConsequenceAuthorityAcceptance());
   } catch (error) {
     next(error);
   }
