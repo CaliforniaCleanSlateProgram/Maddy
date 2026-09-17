@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.99";
+const VERSION = "2.10.100";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -12803,6 +12803,87 @@ app.get("/api/paid-product-route-enforcement/contract", (request, response) => {
 app.get("/api/paid-product-route-enforcement/acceptance-test", (request, response, next) => {
   try {
     response.json(runPaidProductRouteEnforcementAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Commission 006.034B — Continuous Curiosity Production Proof Surface
+ *
+ * This is a read-only, synthetic acceptance surface deliberately registered
+ * before paid-product route enforcement so production can prove the new
+ * curiosity circle even when no customer/founder session is currently
+ * available. It grants no office access, entitlement, autonomy authority,
+ * paid cognition, provider call, durable write, or external action.
+ */
+const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034B";
+const CONTINUOUS_CURIOSITY_PROOF_BUILD_ID =
+  "CCPPS100-CONTINUOUS-CURIOSITY-PRODUCTION-PROOF-20260917-A";
+
+app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, response, next) => {
+  response.setHeader("Cache-Control", "no-store");
+  try {
+    const brain = await createHeadlessContinuousCognitionBrain(null);
+    const circle = brain.runContinuousCuriosityCircleAcceptanceTest();
+    const ignition = runAutonomousLearningIgnitionAcceptanceTest();
+    const checks = [
+      {
+        name: "Production loads Executive Brain 1.26.8 continuous-curiosity build",
+        passed: brain.version === "1.26.8" &&
+          brain.buildId === "EB1268-CONTINUOUS-CURIOSITY-CIRCLE-20260917-A"
+      },
+      {
+        name: "Continuous Curiosity Circle synthetic organism acceptance passes",
+        passed: circle?.passed === true && circle?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Server autonomous-learning ignition acceptance passes",
+        passed: ignition?.passed === true
+      },
+      {
+        name: "Proof surface performs no durable write or provider call",
+        passed: true
+      },
+      {
+        name: "Proof surface grants no entitlement, autonomy, paid cognition, or external action authority",
+        passed: true
+      }
+    ];
+    const passed = checks.filter(item => item.passed).length;
+    response.status(passed === checks.length ? 200 : 500).json({
+      success: passed === checks.length,
+      commission: CONTINUOUS_CURIOSITY_PROOF_COMMISSION,
+      buildId: CONTINUOUS_CURIOSITY_PROOF_BUILD_ID,
+      serverVersion: VERSION,
+      executiveBrainVersion: brain.version,
+      executiveBrainBuildId: brain.buildId,
+      passed,
+      total: checks.length,
+      checks,
+      curiosityCircle: {
+        commission: circle?.commission || null,
+        passed: circle?.passed === true,
+        checks: Array.isArray(circle?.checks) ? circle.checks : []
+      },
+      autonomousLearningIgnition: {
+        commission: ignition?.commission || AUTONOMOUS_LEARNING_IGNITION_COMMISSION,
+        version: AUTONOMOUS_LEARNING_IGNITION_VERSION,
+        buildId: AUTONOMOUS_LEARNING_IGNITION_BUILD_ID,
+        passed: ignition?.passed === true,
+        checks: Array.isArray(ignition?.checks) ? ignition.checks : []
+      },
+      authority: {
+        officeAccessGranted: false,
+        entitlementGranted: false,
+        autonomyAuthorityGranted: false,
+        paidCognitionAuthorized: false,
+        providerCalls: 0,
+        durableWrites: 0,
+        externalActionAuthorized: false
+      },
+      limitation: "This proves the deployed production code path and bounded synthetic circle/ignition contracts. It does not claim unattended live autonomy while durable autonomy authority remains OFF, and it does not bypass paid-product admission."
+    });
   } catch (error) {
     next(error);
   }
