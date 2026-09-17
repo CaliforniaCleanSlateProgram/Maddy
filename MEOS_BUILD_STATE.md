@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32318611/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32303055/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32294872/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32274191/MEOS_BUILD_STATE.md)
@@ -2343,3 +2344,274 @@ Before the next coding commission:
 
 On recovery: recognize 006.033O as **CLOSED / LIVE-PROVEN 12/12** with build `DCEL100-DURABLE-COMMERCIAL-ENTITLEMENT-LEDGER-20260917-A`; recognize 006.033N as **CLOSED / LIVE-PROVEN 10/10**; preserve that no real payment processor or public webhook was configured at 006.033O proof; resume from current-main reconciliation of the first-paid-customer path without redoing N/O or prematurely selecting a vendor.
 
+---
+
+# Build State Update — 006.033P Commercial Offer Authority
+
+**Checkpoint date:** 2026-09-16  
+**Authoritative predecessor:** 006.033O — Durable Commercial Entitlement Ledger — CLOSED / LIVE-PROVEN 12/12  
+**Production code file changed by 006.033P:** `server.js` only  
+**Server version after corrected deployment:** `2.10.89`  
+**Runtime evidence is authoritative.**
+
+## 006.033P — Commercial Offer Authority — CLOSED / LIVE-PROVEN
+
+- commission: `006.033P`
+- build: `COA100-COMMERCIAL-OFFER-AUTHORITY-20260917-A`
+- version: `1.0.0`
+- acceptance schema: `meos.commercial-offer-authority.acceptance.v1`
+- external acceptance: **12/12**
+- runtime success: **true**
+- production pricing configured at proof: **false**
+- payment processor configured at proof: **false**
+- purchase-intent authority configured at proof: **false**
+
+### Runtime-proven bounded claim
+
+006.033P establishes a MEOS-owned, processor-neutral Commercial Offer Authority.
+
+The live acceptance proof established that:
+
+1. commercial offer authority is MEOS-owned and processor-neutral;
+2. canonical product identity comes from the server-owned offer;
+3. browser-supplied price cannot override the canonical offer;
+4. browser-supplied currency cannot override the canonical offer;
+5. seat quantity is bounded by the canonical offer;
+6. customer subject type is bounded by the canonical offer;
+7. unknown or browser-invented offers fail closed;
+8. the offer fingerprint binds product, price, quantity rules, subject rules, and terms version;
+9. offer selection grants no organization or membership authority;
+10. offer selection grants no entitlement or executive-action authority;
+11. the browser and payment provider have no pricing authority;
+12. production pricing is not invented by the acceptance fixture.
+
+The deployed acceptance surface states the remaining limitation directly:
+
+> Ratified production offers must be configured server-side before a real purchase intent or provider checkout can be created.
+
+### Corrective deployment note
+
+The first attempted 006.033P deployment artifact was contaminated at line 1 by accidental non-code chat text and failed Node parsing on Render. Render remained on the prior healthy 006.033O runtime (`v2.10.88`).
+
+A corrective `server.js`-only commit removed the contamination, preserved the intended 006.033P architecture, reconciled the human-readable server header and runtime version to `2.10.89`, and was externally proven 12/12.
+
+The failed artifact created **no commissioned capability** and must not be treated as a separate architectural waypoint.
+
+## Commercial path after 006.033P
+
+The current bounded architecture is:
+
+**prospect → executive tour → ownership close → account creation/sign-in → authenticated identity → MEOS-owned commercial offer meaning → [purchase/order intent not yet commissioned] → [real provider checkout not yet configured] → [authenticated provider evidence not yet connected] → 006.033O durable entitlement ledger → 006.033N entitlement/access decision → [paid-product admission enforcement not yet proven]**
+
+Account identity must not be confused with paid-product admission. A customer may need an authenticated identity before purchase so a later purchase can be securely bound; possession of an account alone must not become proof of payment or ownership.
+
+## Commercial ontology / team architecture under active reconciliation
+
+Do not collapse the following concepts into one record or one authority:
+
+- customer / commercial customer;
+- organization;
+- human user / account identity;
+- payer;
+- organization owner;
+- administrator;
+- organization membership;
+- role / capability;
+- seat / licensed capacity;
+- product;
+- commercial offer;
+- purchase / order / subscription;
+- payment evidence;
+- commercial entitlement;
+- current access/authorization decision.
+
+Required future cases include at minimum:
+
+- one individual customer / one user;
+- one organization / one user;
+- one organization / multiple users or seats;
+- organization adds or removes seats;
+- payer changes without silently changing organization ownership;
+- employee termination without canceling the organization's commercial relationship;
+- multiple products/add-ons;
+- refund/dispute/cancel consequences;
+- payment-provider migration without changing Maddy-owned commercial truth;
+- CCSP entering as an initial real organization/customer through universal architecture rather than a hard-coded CCSP-only payment path.
+
+**Payer ≠ user ≠ administrator ≠ organization owner.**
+
+**Seat ≠ authority.** A seat is commercial capacity. Membership, role/capability, entitlement, and current authorization are separate facts.
+
+## Organization work ownership and termination doctrine
+
+A terminated or disgruntled user must lose continuing organizational authority without erasing legitimate company work.
+
+On termination/revocation:
+
+- the human's organization access must fail closed server-side;
+- old browser state, cached URLs, sessions, tokens, or stale authorization artifacts must not resurrect authority;
+- organization-owned artifacts, documents, institutional memory, mission history, evidence, decisions, workflows, configurations, and legitimate work product remain with the organization;
+- provenance remains truthful: Maddy preserves who created/changed/authorized something and when;
+- historical authorship does not grant continuing authority;
+- unfinished organization-owned work may be reassigned to an authorized successor;
+- pending/future actions whose authority depended specifically on the terminated user must halt or require reauthorization;
+- pre-termination planted missions, destructive scheduled actions, unauthorized invitations, privilege escalation, data extraction, or generated access mechanisms must not survive merely because they were created before revocation.
+
+Design this through existing durable Mission, authority hydration, consequence, monitoring, learning, and organizational-boundary organs where they legitimately own the responsibility. Do not create a parallel security universe.
+
+## Maddy source/IP and customer-security boundary
+
+A customer purchases the right to **use Maddy**, not the right to receive Maddy's proprietary implementation.
+
+Treat everything delivered to a browser/customer device as inspectable.
+
+Protected Maddy/MEOS implementation, cognition, proprietary server organs, durable institutional state, credentials, signing secrets, privileged APIs, founder-only authority, and protected internal artifacts must remain server-side or behind explicit least-privilege authorization.
+
+A valid commercial entitlement must never mean broad server authority.
+
+Future sellable-release proving must adversarially test a legitimately paying customer and establish that ordinary customer authority cannot retrieve or exercise:
+
+- Maddy proprietary source/internal organs;
+- provider/server secrets;
+- founder-only capabilities;
+- privileged administrative APIs;
+- another organization's private state;
+- internal authority sufficient to compromise or reproduce the actual Maddy system.
+
+Do not claim cloning is mathematically impossible. The bounded security objective is that customer access does not disclose the proprietary artifacts, credentials, internal state, or privileged authority needed to reproduce or compromise Maddy.
+
+## Offer lifecycle / pricing direction
+
+006.033P intentionally did **not** ratify production prices.
+
+Pricing semantics may be determined later without handing price authority to the browser or payment processor.
+
+Future commercial governance must be able to distinguish an offer being defined from an offer being publicly purchasable. Candidate lifecycle semantics to reconcile before implementation include states such as:
+
+**draft → available → restricted/qualified → paused → retired**
+
+This should permit Maddy to expose only commercially/capability-ready tiers—for example an individual offer or a bounded small-team offer—while withholding larger-team tiers until Maddy's capability, security, infrastructure, support, and economics justify opening them.
+
+Founder/internal Maddy access must not be fabricated as a fake payment, fake provider event, coupon, or false $0 commercial transaction. Internal/founder authority, if implemented, must retain truthful non-commercial authority lineage.
+
+No production tier names, prices, seat limits, discounts, nonprofit terms, or enterprise terms are ratified by this checkpoint.
+
+## Historical CCSP payment-path caution
+
+The old-laptop CCSP-first-customer/payment/onboarding path contained or was suspected to contain a weakness in which onboarding/product progression could occur without verified commercial payment.
+
+Do not assume the old CCSP payment wall should be preserved. Do not assume it should be discarded wholesale either.
+
+Current-main reconciliation found the prospect/auth path and the newer N/O/P commercial authorities, but no surviving active Stripe/PayPal customer-billing implementation or clearly authoritative old CCSP payment wall was established.
+
+CCSP may become Customer/Organization #1 only through the same universal commercial/security machinery that future customers use. CCSP-specific assumptions must not become universal runtime authority.
+
+## What 006.033P does NOT prove
+
+006.033P does **not** prove or claim:
+
+- ratified production pricing;
+- public offer lifecycle/visibility controls;
+- organization membership authority;
+- organization owner/admin authority;
+- seat assignment or seat revocation;
+- a durable purchase/order/subscription authority;
+- a real payment provider or checkout;
+- authenticated real payment-provider evidence;
+- first live payment acceptance;
+- paid-product admission enforcement;
+- terminated-user revocation behavior;
+- durable mission reauthorization after user termination;
+- Maddy source/IP extraction resistance;
+- complete multi-tenant customer isolation;
+- that `accountId + productId` alone is sufficient for the final team/organization commercial model.
+
+These remain separate proof boundaries.
+
+## Current objective — first ethical paid customer without architectural debt
+
+The near-term objective remains to accept the first legitimate customer payment and grant the correct Maddy capability ethically and securely.
+
+The customer-facing money movement should remain familiar and low-friction:
+
+**choose available offer → ordinary secure checkout → payment confirmation → use purchased Maddy capability**
+
+The Spooky engineering belongs underneath that familiar experience:
+
+- Maddy owns offer meaning;
+- browser claims never become commercial truth;
+- payment providers remain replaceable rails/evidence sources;
+- payment evidence is authenticated before entitlement consequence;
+- customer/organization/user/seat authorities remain distinct;
+- entitlement does not imply unrestricted authority;
+- revocation propagates through continuing authority;
+- legitimate organization work survives employee termination;
+- proprietary Maddy implementation remains protected;
+- durable state survives browser/server/provider disruption according to separately proven boundaries.
+
+## Next-step anti-drift / pre-code attack
+
+**Do not automatically commission Stripe, PayPal, a purchase-intent object, organization onboarding, seat management, access enforcement, or pricing merely because 006.033P is green.**
+
+Before the next runtime coding commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this latest `MEOS_BUILD_STATE.md` in full.
+3. Reconcile the latest `main` and deployed runtime, beginning from server `v2.10.89`.
+4. Preserve **one physical repository file → one fix → one commit → one test**.
+5. Search current and prior implementation for customer, organization, tenant, membership, role, seat, invitation, revocation, order, purchase, subscription, payment, entitlement, admission, session, API authorization, and organization-owned-work semantics before declaring any seam missing.
+6. Reconstruct the old CCSP onboarding/payment weakness from source/runtime evidence where possible; do not rebuild an imagined historical payment wall.
+7. Attack the commercial ontology against solo and multi-user organizations before binding a provider checkout to an oversimplified `accountId + productId` model.
+8. Determine the smallest missing **Maddy-owned authority primitive** that must exist before a real provider adapter and before paid-product enforcement.
+9. Falsify that proposed primitive: if an existing Maddy organ already owns the responsibility, connect/reuse it rather than duplicate architecture.
+10. Keep checkout conventional; push depth into evidence, authority, durability, security, revocation, provenance, isolation, and provider independence.
+11. Do not invent production pricing merely to make a test pass.
+12. Do not enable founder/internal access by fabricating commercial payment evidence.
+13. Do not call the next commission complete until its bounded runtime claim survives an external test.
+
+### Specific holes the next reconciliation must resolve
+
+- Who is the durable commercial subject for an organization purchase?
+- What existing organ, if any, owns organization membership and role authority?
+- How is a payer bound to a commercial customer without becoming organization owner?
+- How should a future purchase/order intent bind canonical offer terms, customer subject, purchaser identity, quantity/capacity, and later provider evidence?
+- How does current entitlement ultimately gate paid-product admission without making account creation itself equivalent to ownership?
+- How does membership termination invalidate continuing authority while preserving organization-owned work and provenance?
+- Which durable missions/actions survive termination as organization-owned work, and which require successor reauthorization?
+- Which routes/assets are currently exposed to an authenticated or unauthenticated customer that would leak Maddy internals or cross tenant boundaries?
+- How can offer availability be governed so larger tiers remain hidden/restricted until Maddy is ready without corrupting existing customer entitlements?
+- What evidence would prove the proposed next seam is unnecessary, duplicated, or architecturally wrong?
+
+## NORTH / SPOOKY / WAKE after 006.033P
+
+**NORTH:** Maddy now owns the meaning of what is being sold before an external payment rail participates. Provider choice cannot redefine Maddy's products, customer subject rules, price/currency authority, or terms fingerprint.
+
+**SPOOKY:** The floor is not a decorative checkout. The deeper construction is an organism in which economic events become consequences only through bounded, falsifiable authority chains while identity, organization, membership, commercial ownership, payment evidence, entitlement, and action authority remain distinguishable and durable.
+
+**WAKE:** Maddy has a proven processor-neutral offer authority that can support future individual and team commercial models without browser/provider pricing authority. The next work can build toward the first real payment without letting the first chosen vendor dictate Maddy's customer model.
+
+**Spooky is the floor; there is no ceiling. A passing acceptance test proves only its bounded claim.**
+
+## Organism / commercial proof sequence through 006.033P
+
+The commissioned sequence now includes:
+
+- 006.033D — consequence-conditioned learning and later judgment change — LIVE-PROVEN 12/12
+- 006.033E1 — organization knowledge/privacy boundary across persistence/restore — LIVE-PROVEN 10/10
+- 006.033F — verification semantics reconciliation — LIVE-PROVEN 8/8
+- 006.033G — substrate interruption and identity continuity — LIVE-PROVEN 8/8
+- 006.033H — unresolved intention continuity and evidence-sponsored wake judgment — LIVE-PROVEN 9/9
+- 006.033I — durable server cognitive runtime ownership — LIVE-PROVEN 9/9
+- 006.033J — actual browser lifecycle absence continuity — LIVE-PROVEN 9/9
+- 006.033K — deliberate server-process death and durable cognitive reconstruction — LIVE-PROVEN 9/9
+- 006.033L — governed quiescence and zero-spend authority revocation — LIVE-PROVEN 9/9
+- 006.033M — durable provider pressure circuit breaker — DEPLOYED-RUNTIME-IDENTITY-PROVEN + PRODUCTION-MODULE-ACCEPTANCE-PROVEN 16/16
+- 006.033N — customer commercial entitlement authority — LIVE-PROVEN 10/10
+- 006.033O — durable commercial entitlement ledger — LIVE-PROVEN 12/12
+- 006.033P — commercial offer authority — LIVE-PROVEN 12/12
+
+**Recovery keyword:** `006.033P`
+
+On recovery: recognize 006.033P as **CLOSED / LIVE-PROVEN 12/12** with build `COA100-COMMERCIAL-OFFER-AUTHORITY-20260917-A`; preserve `productionPricingConfigured=false`, `paymentProcessorConfigured=false`, and `purchaseIntentAuthorityConfigured=false`; recognize the earlier organization-onboarding proposal named P as discarded/uncommitted and not part of the commissioned architecture; preserve the multi-user/team, termination/company-work ownership, Maddy IP/security, offer-lifecycle, CCSP historical-payment-path, and one-file/one-commit/one-test doctrines above; then perform the zero-code current-main/North-Star/Build-State attack before selecting the next commission.
+
+**Fast recovery phrase:** `Resume 006.033P — I'm up.`
