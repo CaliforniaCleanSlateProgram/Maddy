@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.94";
+const VERSION = "2.10.95";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -9389,6 +9389,217 @@ app.get("/api/commercial-access-resolution/contract", (request, response) => {
 app.get("/api/commercial-access-resolution/acceptance-test", (request, response, next) => {
   try {
     response.json(runCustomerBoundCommercialAccessAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+/**
+ * Commission 006.033V — Authenticated Paid-Product Admission Authority
+ *
+ * 006.033U resolves whether an authenticated account is commercially entitled
+ * to a product. Admission is a separate authority decision: browser state,
+ * purchase intent, provider evidence, payment success pages, and payer identity
+ * cannot admit a user by themselves.
+ *
+ * This authority evaluates server-owned customer-bound entitlement through U
+ * against the authenticated MEOS account and requested product. Organization
+ * subjects continue to fail closed until membership authority exists. This
+ * commission establishes the admission decision contract but intentionally does
+ * not claim that every Maddy product route is already wrapped by enforcement.
+ */
+const MEOS_PAID_PRODUCT_ADMISSION_COMMISSION = "006.033V";
+const MEOS_PAID_PRODUCT_ADMISSION_VERSION = "1.0.0";
+const MEOS_PAID_PRODUCT_ADMISSION_BUILD_ID =
+  "APPAA100-AUTHENTICATED-PAID-PRODUCT-ADMISSION-AUTHORITY-20260917-A";
+const MEOS_PAID_PRODUCT_ADMISSION_SCHEMA =
+  "meos.authenticated-paid-product-admission.v1";
+
+function paidProductAdmissionError(message, code = "PAID_PRODUCT_ADMISSION_INVALID") {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function resolveAuthenticatedPaidProductAdmission(entitlementInput = {}, context = {}) {
+  const authenticatedAccountId = String(context.authenticatedAccountId || "").trim();
+  const productId = String(context.productId || "").trim();
+  if (!authenticatedAccountId) {
+    throw paidProductAdmissionError(
+      "Authenticated MEOS account is required for paid-product admission.",
+      "PAID_PRODUCT_AUTHENTICATION_REQUIRED"
+    );
+  }
+  if (!productId) {
+    throw paidProductAdmissionError(
+      "Canonical product id is required for paid-product admission.",
+      "PAID_PRODUCT_ID_REQUIRED"
+    );
+  }
+
+  // The browser never supplies an authoritative access-resolution object.
+  // Admission re-runs U from the server-owned entitlement and authenticated identity.
+  const access = resolveCustomerBoundCommercialAccess(entitlementInput, {
+    accountId: authenticatedAccountId,
+    productId,
+    now: Number.isFinite(context.now) ? context.now : Date.now()
+  });
+
+  const admitted = access.accessResolved === true &&
+    access.accountId === authenticatedAccountId &&
+    access.productId === productId &&
+    access.membershipAuthorityRequired === false;
+
+  return {
+    schema: MEOS_PAID_PRODUCT_ADMISSION_SCHEMA,
+    commission: MEOS_PAID_PRODUCT_ADMISSION_COMMISSION,
+    version: MEOS_PAID_PRODUCT_ADMISSION_VERSION,
+    buildId: MEOS_PAID_PRODUCT_ADMISSION_BUILD_ID,
+    accountId: authenticatedAccountId,
+    customerId: access.customerId,
+    customerType: access.customerType,
+    entitlementId: access.entitlementId,
+    productId,
+    admitted,
+    reason: admitted ? "authenticated_customer_bound_access" : access.reason,
+    accessResolution: {
+      schema: access.schema,
+      commission: access.commission,
+      buildId: access.buildId,
+      accessResolved: access.accessResolved,
+      membershipAuthorityRequired: access.membershipAuthorityRequired
+    },
+    authorityBoundary: {
+      browserAdmissionAuthority: false,
+      purchaseIntentAdmissionAuthority: false,
+      paymentProviderAdmissionAuthority: false,
+      paymentEvidenceAdmissionAuthority: false,
+      payerAdmissionAuthority: false,
+      organizationOwnershipAuthority: false,
+      organizationMembershipAuthority: false,
+      seatAssignmentAuthority: false,
+      executiveActionAuthority: false,
+      intellectualPropertyOwnershipAuthority: false
+    }
+  };
+}
+
+function runAuthenticatedPaidProductAdmissionAcceptance() {
+  const now = Date.parse("2026-09-17T17:00:00.000Z");
+  const base = {
+    schema: "meos.customer-commercial-entitlement.v2",
+    id: "entcust_v_individual",
+    customerId: "customer_v_individual",
+    customerType: "individual",
+    accountId: "acct_v_owner",
+    productId: "maddy-professional",
+    state: "active",
+    startsAt: "2026-09-17T16:00:00.000Z",
+    expiresAt: null
+  };
+  const admitted = resolveAuthenticatedPaidProductAdmission(base, {
+    authenticatedAccountId: "acct_v_owner", productId: "maddy-professional", now
+  });
+  const wrongAccount = resolveAuthenticatedPaidProductAdmission(base, {
+    authenticatedAccountId: "acct_v_other", productId: "maddy-professional", now
+  });
+  const wrongProduct = resolveAuthenticatedPaidProductAdmission(base, {
+    authenticatedAccountId: "acct_v_owner", productId: "maddy-personal", now
+  });
+  const suspended = resolveAuthenticatedPaidProductAdmission({ ...base, state: "suspended" }, {
+    authenticatedAccountId: "acct_v_owner", productId: "maddy-professional", now
+  });
+  const organization = resolveAuthenticatedPaidProductAdmission({
+    ...base,
+    id: "entcust_v_org",
+    customerId: "customer_v_org",
+    customerType: "organization",
+    accountId: null
+  }, { authenticatedAccountId: "acct_v_sponsor", productId: "maddy-professional", now });
+  let unauthenticatedRejected = false;
+  try {
+    resolveAuthenticatedPaidProductAdmission(base, {
+      authenticatedAccountId: "", productId: "maddy-professional", now
+    });
+  } catch (error) {
+    unauthenticatedRejected = error?.code === "PAID_PRODUCT_AUTHENTICATION_REQUIRED";
+  }
+  let legacyRejected = false;
+  try {
+    resolveAuthenticatedPaidProductAdmission({
+      schema: MEOS_COMMERCIAL_ENTITLEMENT_SCHEMA,
+      id: "legacy_v",
+      accountId: "acct_v_owner",
+      productId: "maddy-professional",
+      state: "active"
+    }, { authenticatedAccountId: "acct_v_owner", productId: "maddy-professional", now });
+  } catch (error) {
+    legacyRejected = error?.code === "COMMERCIAL_ACCESS_CUSTOMER_ENTITLEMENT_REQUIRED";
+  }
+
+  const checks = [
+    ["Paid-product admission requires authenticated MEOS identity", unauthenticatedRejected],
+    ["Admission re-runs 006.033U from customer-bound entitlement rather than trusting browser resolution", admitted.accessResolution.commission === MEOS_CUSTOMER_BOUND_ACCESS_COMMISSION],
+    ["Active individual customer entitlement admits only its bound authenticated account", admitted.admitted === true],
+    ["Different authenticated account is denied", wrongAccount.admitted === false],
+    ["Wrong product is denied", wrongProduct.admitted === false],
+    ["Suspended entitlement is denied", suspended.admitted === false],
+    ["Legacy account-only entitlement cannot bypass customer-bound admission", legacyRejected],
+    ["Organization sponsor/payer is not admitted as organization member", organization.admitted === false],
+    ["Organization admission remains blocked on separate membership authority", organization.accessResolution.membershipAuthorityRequired === true],
+    ["Browser has no admission authority", admitted.authorityBoundary.browserAdmissionAuthority === false],
+    ["Purchase intent and payment evidence do not themselves grant admission", admitted.authorityBoundary.purchaseIntentAdmissionAuthority === false && admitted.authorityBoundary.paymentEvidenceAdmissionAuthority === false],
+    ["Payment provider and payer identity do not grant admission", admitted.authorityBoundary.paymentProviderAdmissionAuthority === false && admitted.authorityBoundary.payerAdmissionAuthority === false],
+    ["Admission manufactures no organization ownership, membership, or seat authority", admitted.authorityBoundary.organizationOwnershipAuthority === false && admitted.authorityBoundary.organizationMembershipAuthority === false && admitted.authorityBoundary.seatAssignmentAuthority === false],
+    ["Admission manufactures no executive authority", admitted.authorityBoundary.executiveActionAuthority === false],
+    ["Admission grants no MEOS/Maddy ownership authority", admitted.authorityBoundary.intellectualPropertyOwnershipAuthority === false],
+    ["Admission authority remains payment-processor neutral", !MEOS_PAID_PRODUCT_ADMISSION_BUILD_ID.toLowerCase().includes("stripe") && !MEOS_PAID_PRODUCT_ADMISSION_BUILD_ID.toLowerCase().includes("paypal")]
+  ].map(([name, passed]) => ({ name, passed: passed === true }));
+
+  return {
+    success: checks.every(check => check.passed),
+    commission: MEOS_PAID_PRODUCT_ADMISSION_COMMISSION,
+    version: MEOS_PAID_PRODUCT_ADMISSION_VERSION,
+    buildId: MEOS_PAID_PRODUCT_ADMISSION_BUILD_ID,
+    schema: "meos.authenticated-paid-product-admission.acceptance.v1",
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    paidProductAdmissionAuthorityConfigured: true,
+    paidProductRouteEnforcementConfigured: false,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    publicPaymentWebhookConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false,
+    organizationMembershipAuthorityConfigured: false,
+    seatAssignmentAuthorityConfigured: false,
+    limitation: "MEOS can now make an authenticated individual paid-product admission decision from customer-bound entitlement. Existing product routes are not yet claimed as universally enforcement-wrapped; organization admission still requires membership authority, and no real payment rail is configured."
+  };
+}
+
+app.get("/api/paid-product-admission/contract", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    success: true,
+    commission: MEOS_PAID_PRODUCT_ADMISSION_COMMISSION,
+    version: MEOS_PAID_PRODUCT_ADMISSION_VERSION,
+    buildId: MEOS_PAID_PRODUCT_ADMISSION_BUILD_ID,
+    schema: MEOS_PAID_PRODUCT_ADMISSION_SCHEMA,
+    inputEntitlementSchema: "meos.customer-commercial-entitlement.v2",
+    inputAccessAuthority: MEOS_CUSTOMER_BOUND_ACCESS_COMMISSION,
+    paidProductAdmissionAuthorityConfigured: true,
+    paidProductRouteEnforcementConfigured: false,
+    organizationMembershipAuthorityConfigured: false,
+    paymentProcessorConfigured: false,
+    note: "Admission is derived server-side from authenticated identity plus customer-bound entitlement; browser, payer, purchase intent, and payment provider cannot manufacture admission."
+  });
+});
+
+app.get("/api/paid-product-admission/acceptance-test", (request, response, next) => {
+  try {
+    response.json(runAuthenticatedPaidProductAdmissionAcceptance());
   } catch (error) {
     next(error);
   }
