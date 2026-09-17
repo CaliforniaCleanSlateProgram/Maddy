@@ -1,4 +1,4 @@
-/**
+nd lets say some one with a seat gets fired and is disgrutled they shouldnt be able to attack the company through our maddy/**
  * MEOS Secure Realtime Session Server
  *
  * Server Version: 2.10.87
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.88";
+const VERSION = "2.10.89";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7770,6 +7770,276 @@ function commercialEntitlementStatus(record, options = {}) {
   };
 }
 
+
+/**
+ * Commission 006.033P — Commercial Offer Authority
+ *
+ * Checkout presentation may display a Maddy offer, but the browser and a
+ * future payment provider do not define what Maddy is selling or what it
+ * costs. MEOS owns the canonical offer contract that a later purchase intent
+ * must resolve before any provider checkout session is created.
+ *
+ * This commission intentionally does NOT invent production pricing. Offers
+ * can be supplied through server-owned configuration once commercial terms
+ * are ratified. An empty production catalog fails closed rather than allowing
+ * browser-supplied price, currency, quantity, customer type, or product terms
+ * to become commercial authority.
+ */
+const MEOS_COMMERCIAL_OFFER_COMMISSION = "006.033P";
+const MEOS_COMMERCIAL_OFFER_VERSION = "1.0.0";
+const MEOS_COMMERCIAL_OFFER_BUILD_ID =
+  "COA100-COMMERCIAL-OFFER-AUTHORITY-20260917-A";
+const MEOS_COMMERCIAL_OFFER_SCHEMA = "meos.commercial-offer.v1";
+const MEOS_COMMERCIAL_OFFER_CATALOG_SCHEMA = "meos.commercial-offer-catalog.v1";
+const MEOS_COMMERCIAL_SUBJECT_TYPES = Object.freeze(["individual", "organization"]);
+const MEOS_COMMERCIAL_BILLING_MODELS = Object.freeze(["flat", "seat"]);
+
+function commercialOfferRequiredText(value, field, max = 180) {
+  const text = String(value || "").trim();
+  if (!text || text.length > max) {
+    const error = new Error(`Commercial offer ${field} is required.`);
+    error.code = "COMMERCIAL_OFFER_INVALID";
+    throw error;
+  }
+  return text;
+}
+
+function normalizeCommercialOffer(input = {}) {
+  const id = commercialOfferRequiredText(input.id, "id");
+  const productId = commercialOfferRequiredText(input.productId, "productId");
+  const name = commercialOfferRequiredText(input.name, "name", 240);
+  const currency = String(input.currency || "").trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    const error = new Error("Commercial offer currency must be a three-letter currency code.");
+    error.code = "COMMERCIAL_OFFER_INVALID";
+    throw error;
+  }
+  const unitAmountMinor = Number(input.unitAmountMinor);
+  if (!Number.isSafeInteger(unitAmountMinor) || unitAmountMinor < 0) {
+    const error = new Error("Commercial offer unitAmountMinor must be a non-negative safe integer.");
+    error.code = "COMMERCIAL_OFFER_INVALID";
+    throw error;
+  }
+  const billingModel = String(input.billingModel || "flat").trim().toLowerCase();
+  if (!MEOS_COMMERCIAL_BILLING_MODELS.includes(billingModel)) {
+    const error = new Error("Commercial offer billingModel is unsupported.");
+    error.code = "COMMERCIAL_OFFER_INVALID";
+    throw error;
+  }
+  const allowedSubjectTypes = [...new Set(
+    (Array.isArray(input.allowedSubjectTypes) ? input.allowedSubjectTypes : [])
+      .map(value => String(value || "").trim().toLowerCase())
+      .filter(value => MEOS_COMMERCIAL_SUBJECT_TYPES.includes(value))
+  )];
+  if (!allowedSubjectTypes.length) {
+    const error = new Error("Commercial offer requires at least one allowed customer subject type.");
+    error.code = "COMMERCIAL_OFFER_INVALID";
+    throw error;
+  }
+  const minimumQuantity = Number(input.minimumQuantity ?? 1);
+  const maximumQuantity = Number(input.maximumQuantity ?? minimumQuantity);
+  if (
+    !Number.isSafeInteger(minimumQuantity) || minimumQuantity < 1 ||
+    !Number.isSafeInteger(maximumQuantity) || maximumQuantity < minimumQuantity
+  ) {
+    const error = new Error("Commercial offer quantity bounds are invalid.");
+    error.code = "COMMERCIAL_OFFER_INVALID";
+    throw error;
+  }
+  if (billingModel === "flat" && (minimumQuantity !== 1 || maximumQuantity !== 1)) {
+    const error = new Error("Flat commercial offers must have quantity fixed at one.");
+    error.code = "COMMERCIAL_OFFER_INVALID";
+    throw error;
+  }
+  return {
+    schema: MEOS_COMMERCIAL_OFFER_SCHEMA,
+    id,
+    productId,
+    name,
+    currency,
+    unitAmountMinor,
+    billingModel,
+    allowedSubjectTypes,
+    minimumQuantity,
+    maximumQuantity,
+    active: input.active !== false,
+    termsVersion: commercialOfferRequiredText(input.termsVersion || "1", "termsVersion", 80)
+  };
+}
+
+function commercialOfferFingerprint(offer) {
+  const normalized = normalizeCommercialOffer(offer);
+  return crypto.createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+}
+
+function loadConfiguredCommercialOffers() {
+  const raw = String(process.env.MEOS_COMMERCIAL_OFFERS_JSON || "").trim();
+  if (!raw) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    const wrapped = new Error("MEOS commercial offer configuration is not valid JSON.");
+    wrapped.code = "COMMERCIAL_OFFER_CONFIGURATION_INVALID";
+    throw wrapped;
+  }
+  if (!Array.isArray(parsed)) {
+    const error = new Error("MEOS commercial offer configuration must be an array.");
+    error.code = "COMMERCIAL_OFFER_CONFIGURATION_INVALID";
+    throw error;
+  }
+  const offers = parsed.map(normalizeCommercialOffer);
+  const ids = new Set();
+  for (const offer of offers) {
+    if (ids.has(offer.id)) {
+      const error = new Error(`Duplicate commercial offer id: ${offer.id}`);
+      error.code = "COMMERCIAL_OFFER_CONFIGURATION_INVALID";
+      throw error;
+    }
+    ids.add(offer.id);
+  }
+  return offers;
+}
+
+function resolveCommercialOfferSelection(input = {}, offers = loadConfiguredCommercialOffers()) {
+  const offerId = String(input.offerId || "").trim();
+  const subjectType = String(input.subjectType || "").trim().toLowerCase();
+  const quantity = Number(input.quantity ?? 1);
+  const offer = offers.find(candidate => candidate.id === offerId && candidate.active === true);
+  if (!offer) {
+    const error = new Error("Commercial offer is unavailable.");
+    error.code = "COMMERCIAL_OFFER_UNAVAILABLE";
+    throw error;
+  }
+  if (!offer.allowedSubjectTypes.includes(subjectType)) {
+    const error = new Error("Commercial offer is not authorized for that customer subject type.");
+    error.code = "COMMERCIAL_OFFER_SUBJECT_MISMATCH";
+    throw error;
+  }
+  if (!Number.isSafeInteger(quantity) || quantity < offer.minimumQuantity || quantity > offer.maximumQuantity) {
+    const error = new Error("Commercial offer quantity is outside the authorized bounds.");
+    error.code = "COMMERCIAL_OFFER_QUANTITY_INVALID";
+    throw error;
+  }
+  const totalAmountMinor = offer.unitAmountMinor * quantity;
+  if (!Number.isSafeInteger(totalAmountMinor)) {
+    const error = new Error("Commercial offer total exceeds safe integer bounds.");
+    error.code = "COMMERCIAL_OFFER_TOTAL_INVALID";
+    throw error;
+  }
+  return {
+    schema: "meos.commercial-offer-selection.v1",
+    offer,
+    offerFingerprint: commercialOfferFingerprint(offer),
+    subjectType,
+    quantity,
+    totalAmountMinor,
+    currency: offer.currency,
+    authorityBoundary: {
+      browserPricingAuthority: false,
+      paymentProviderPricingAuthority: false,
+      organizationAuthority: false,
+      membershipAuthority: false,
+      entitlementAuthority: false,
+      executiveActionAuthority: false
+    }
+  };
+}
+
+function publicCommercialOffer(offer) {
+  const normalized = normalizeCommercialOffer(offer);
+  return { ...normalized, fingerprint: commercialOfferFingerprint(normalized) };
+}
+
+app.get("/api/commercial-offers", (request, response, next) => {
+  try {
+    const offers = loadConfiguredCommercialOffers()
+      .filter(offer => offer.active)
+      .map(publicCommercialOffer);
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      success: true,
+      commission: MEOS_COMMERCIAL_OFFER_COMMISSION,
+      version: MEOS_COMMERCIAL_OFFER_VERSION,
+      buildId: MEOS_COMMERCIAL_OFFER_BUILD_ID,
+      schema: MEOS_COMMERCIAL_OFFER_CATALOG_SCHEMA,
+      offers,
+      productionPricingConfigured: offers.length > 0,
+      authority: "MEOS",
+      processorSpecific: false
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/commercial-offers/acceptance-test", (request, response) => {
+  const fixture = normalizeCommercialOffer({
+    id: "offer_acceptance_team",
+    productId: "maddy-professional",
+    name: "Acceptance Team Offer",
+    currency: "USD",
+    unitAmountMinor: 1000,
+    billingModel: "seat",
+    allowedSubjectTypes: ["organization"],
+    minimumQuantity: 2,
+    maximumQuantity: 10,
+    termsVersion: "acceptance-1"
+  });
+  const selection = resolveCommercialOfferSelection(
+    { offerId: fixture.id, subjectType: "organization", quantity: 10, unitAmountMinor: 1, currency: "XXX" },
+    [fixture]
+  );
+  let wrongSubjectRejected = false;
+  let excessiveQuantityRejected = false;
+  let unknownOfferRejected = false;
+  try {
+    resolveCommercialOfferSelection({ offerId: fixture.id, subjectType: "individual", quantity: 2 }, [fixture]);
+  } catch (error) {
+    wrongSubjectRejected = error?.code === "COMMERCIAL_OFFER_SUBJECT_MISMATCH";
+  }
+  try {
+    resolveCommercialOfferSelection({ offerId: fixture.id, subjectType: "organization", quantity: 11 }, [fixture]);
+  } catch (error) {
+    excessiveQuantityRejected = error?.code === "COMMERCIAL_OFFER_QUANTITY_INVALID";
+  }
+  try {
+    resolveCommercialOfferSelection({ offerId: "browser-invented-offer", subjectType: "organization", quantity: 2 }, [fixture]);
+  } catch (error) {
+    unknownOfferRejected = error?.code === "COMMERCIAL_OFFER_UNAVAILABLE";
+  }
+  const checks = [
+    ["Commercial offer authority is MEOS-owned and processor-neutral", MEOS_COMMERCIAL_OFFER_COMMISSION === "006.033P"],
+    ["Canonical product identity comes from the server-owned offer", selection.offer.productId === "maddy-professional"],
+    ["Browser-supplied price cannot override the canonical offer", selection.totalAmountMinor === 10000 && selection.offer.unitAmountMinor === 1000],
+    ["Browser-supplied currency cannot override the canonical offer", selection.currency === "USD"],
+    ["Seat quantity is bounded by the canonical offer", selection.quantity === 10 && excessiveQuantityRejected],
+    ["Customer subject type is bounded by the canonical offer", selection.subjectType === "organization" && wrongSubjectRejected],
+    ["Unknown or browser-invented offers fail closed", unknownOfferRejected],
+    ["Offer fingerprint binds product, price, quantity rules, subject rules, and terms version", /^[a-f0-9]{64}$/.test(selection.offerFingerprint)],
+    ["Offer selection grants no organization or membership authority", selection.authorityBoundary.organizationAuthority === false && selection.authorityBoundary.membershipAuthority === false],
+    ["Offer selection grants no entitlement or executive-action authority", selection.authorityBoundary.entitlementAuthority === false && selection.authorityBoundary.executiveActionAuthority === false],
+    ["Browser and payment provider have no pricing authority", selection.authorityBoundary.browserPricingAuthority === false && selection.authorityBoundary.paymentProviderPricingAuthority === false],
+    ["Production pricing is not invented by the acceptance fixture", loadConfiguredCommercialOffers().length === 0 || String(process.env.MEOS_COMMERCIAL_OFFERS_JSON || "").trim().length > 0]
+  ];
+  const results = checks.map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+  const passed = results.filter(result => result.passed).length;
+  response.setHeader("Cache-Control", "no-store");
+  response.status(passed === results.length ? 200 : 500).json({
+    success: passed === results.length,
+    commission: MEOS_COMMERCIAL_OFFER_COMMISSION,
+    version: MEOS_COMMERCIAL_OFFER_VERSION,
+    buildId: MEOS_COMMERCIAL_OFFER_BUILD_ID,
+    schema: "meos.commercial-offer-authority.acceptance.v1",
+    passed,
+    total: results.length,
+    results,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    purchaseIntentAuthorityConfigured: false,
+    limitation: "Ratified production offers must be configured server-side before a real purchase intent or provider checkout can be created."
+  });
+});
 
 /**
  * Commission 006.033O — Durable Commercial Entitlement Ledger
