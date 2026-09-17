@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32344769/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32344052/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32343157/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -3472,4 +3473,117 @@ Spooky remains the floor; there is no ceiling.
 
 **Recovery keyword:** `006.033W`  
 **Fast recovery:** `Resume 006.033W — I'm up.`
+
+---
+
+# Commission checkpoint — 006.033X LIVE-PROVEN
+
+**Commission:** `006.033X — Authenticated Individual Purchase Initiation Surface`  
+**Status:** `LIVE-PROVEN`  
+**Acceptance:** `16/16`  
+**Authority version:** `1.0.0`  
+**Build:** `AIPIS100-AUTHENTICATED-INDIVIDUAL-PURCHASE-INITIATION-SURFACE-20260917-A`  
+**Acceptance schema:** `meos.authenticated-individual-purchase-initiation.acceptance.v1`
+
+## Runtime-proven bounded claims
+
+External production acceptance returned `success:true`, `passed:16`, `total:16`.
+
+006.033X proves within its acceptance boundary:
+
+- Purchase initiation requires authenticated MEOS identity.
+- The authenticated account becomes the owner of its individual commercial customer subject.
+- The authenticated account becomes the purchase sponsor.
+- Only canonical 006.033P offer identity may initiate a purchase.
+- An individual purchase cannot select an organization-only offer.
+- Browser-supplied price cannot rewrite the canonical purchase snapshot.
+- Browser-supplied currency cannot rewrite the canonical purchase snapshot.
+- Browser-supplied product cannot rewrite the canonical product.
+- Browser-supplied customer identity cannot rewrite MEOS customer ownership.
+- Browser-supplied sponsor identity cannot rewrite authenticated sponsorship.
+- Purchase initiation produces a durable 006.033R purchase-intent contract.
+- Purchase initiation does not itself claim payment success.
+- Purchase initiation grants no entitlement.
+- Purchase initiation grants no paid-product admission.
+- Payment providers remain outside customer and pricing authority.
+- The surface remains payment-processor neutral.
+
+## Production truth after 006.033X
+
+Production reports:
+
+- `authenticatedIndividualPurchaseInitiationConfigured:true`
+- `productionPricingConfigured:false`
+- `paymentProcessorConfigured:false`
+- `providerCheckoutConfigured:false`
+- `publicPaymentWebhookConfigured:false`
+- `realProviderEvidenceAuthenticationConfigured:false`
+- `paidProductRouteEnforcementConfigured:true`
+
+006.033X establishes the real server-owned buyer action that connects authenticated individual identity to existing Q customer authority, canonical P offer authority, and durable R purchase-intent authority.
+
+It does **not** ratify a production offer or price. Production pricing remains deliberately governed through the existing `MEOS_COMMERCIAL_OFFERS_JSON` seam owned by 006.033P.
+
+It does **not** move money, authenticate payment-provider evidence, create payment success, grant entitlement, grant access, or grant paid-product admission.
+
+## Current first-individual-customer chain
+
+`public prospect/tour → account creation/sign-in → authenticated MEOS identity → 006.033X purchase initiation → 006.033Q individual commercial customer → 006.033P canonical production offer [production configuration still absent] → 006.033R durable purchase intent → [real checkout / replaceable rail + authenticated provider evidence unresolved] → 006.033S purchase-bound payment evidence authority → 006.033T entitlement consequence → 006.033O durable entitlement → 006.033U customer-bound access resolution → 006.033V authenticated paid-product admission → 006.033W enforced Maddy Professional product`
+
+Two concrete first-dollar gaps remain visible at this checkpoint:
+
+1. `006.033P` production offer/pricing configuration is not yet ratified (`productionPricingConfigured:false`).
+2. The `006.033R → real value movement / authenticated provider evidence → 006.033S` ingress remains unconfigured.
+
+These are distinct. A production price is MEOS commercial meaning; a payment rail moves value and supplies evidence. Neither may manufacture the other's authority.
+
+## 006.033X falsification boundary
+
+The 006.033X conclusion would be falsified by repository or runtime evidence showing any of the following:
+
+- an unauthenticated actor can initiate the individual commercial purchase;
+- browser input can select or manufacture customer ownership;
+- browser input can rewrite sponsor identity independently of authenticated identity;
+- browser input can rewrite canonical product, price, currency, quantity, or offer terms;
+- an individual can purchase an organization-only offer through X;
+- X can create a purchase without canonical 006.033P offer resolution;
+- X bypasses durable 006.033R purchase-intent authority;
+- X itself claims payment success, entitlement, access, or admission;
+- payment-provider identity becomes customer, pricing, entitlement, access, admission, or route authority;
+- X is represented as production-priced while `productionPricingConfigured:false`;
+- X is represented as real-money capable while payment/provider authentication flags remain false.
+
+## Anti-drift gate after 006.033X
+
+Before naming or coding the next runtime commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this canonical `MEOS_BUILD_STATE.md` in full.
+3. Reconcile the freshest committed live GitHub `main`, including 006.033X and this checkpoint.
+4. Trace the actual public-tour → identity → X → Q/P/R → real-money ingress → S/T/O/U/V/W → protected-product path.
+5. Inspect the existing `MEOS_COMMERCIAL_OFFERS_JSON` contract and every place configured production offers are consumed before changing pricing code.
+6. Determine whether ratifying the first production offer is a deployment/configuration decision rather than a new code commission.
+7. Do not invent the selling price, billing cadence, trial, discount, refund promise, cancellation promise, or renewal terms. Those are explicit commercial decisions.
+8. Inspect current payment/checkout/webhook/provider-evidence code before selecting a payment provider or creating an adapter.
+9. Preserve processor neutrality: cards, ACH, Cash App, Bitcoin, and future rails must be able to enter through governed evidence without owning MEOS commercial meaning.
+10. Attack any real-money ingress against forged browser success, replay, duplicate provider events, wrong purchase/customer/product/amount/currency, stale or canceled intent, pending/failed payments, refund/reversal/dispute, provider migration, and out-of-order lifecycle events.
+11. Preserve **Money changes consequences only through authenticated evidence + governed MEOS authority + durable provenance.**
+12. Preserve browser/screenshot distrust.
+13. Preserve Customer, Organization, User/Account, Payer, Membership, Seat, Product, Offer, Purchase/Obligation, Payment Evidence/Event, Entitlement, Access, Admission, and Route Enforcement as distinct concepts.
+14. Preserve historical commercial truth independently from current access.
+15. Preserve founder ownership, privacy, tenant isolation, extraction resistance, and bounded customer use.
+16. Preserve **one physical repository file → one fix → one commit → one test**.
+17. State what repository/runtime evidence would falsify the selected next conclusion.
+18. Require external runtime proof before declaring the next runtime commission complete.
+
+## Spooky / North Star continuation
+
+006.033X gives the real authenticated buyer a governed ignition switch without giving the browser commercial authority.
+
+The remaining path to the first ethical dollar is now concrete rather than abstract: ratify a real offer under P, then connect R to real value movement and authenticated evidence entering S without surrendering customer, pricing, entitlement, access, admission, route, or ownership authority to the rail.
+
+Spooky remains the floor; there is no ceiling.
+
+**Recovery keyword:** `006.033X`  
+**Fast recovery:** `Resume 006.033X — I'm up.`
 
