@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.93";
+const VERSION = "2.10.94";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -9175,6 +9175,220 @@ app.get("/api/commercial-entitlement-consequence/contract", (request, response) 
 app.get("/api/commercial-entitlement-consequence/acceptance-test", async (request, response, next) => {
   try {
     response.json(await runEntitlementConsequenceAuthorityAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+/**
+ * Commission 006.033U — Customer-Bound Commercial Access Resolution Authority
+ *
+ * 006.033T corrected commercial entitlement ownership from the legacy
+ * accountId + productId model to canonical commercial customer + product.
+ * The older 006.033N access helper cannot safely infer organization membership
+ * from that richer subject. This resolver closes that semantic mismatch without
+ * pretending membership, seats, or paid-product admission already exist.
+ *
+ * Individual customer access may resolve only when the authenticated account is
+ * the account explicitly bound to the individual entitlement. Organization
+ * access fails closed until a separate organization-membership authority can
+ * prove that the authenticated account currently belongs to the organization.
+ * A positive resolution is an authorization fact for later admission policy; it
+ * is not itself a protected-route/product-admission gate.
+ */
+const MEOS_CUSTOMER_BOUND_ACCESS_COMMISSION = "006.033U";
+const MEOS_CUSTOMER_BOUND_ACCESS_VERSION = "1.0.0";
+const MEOS_CUSTOMER_BOUND_ACCESS_BUILD_ID =
+  "CBCARA100-CUSTOMER-BOUND-COMMERCIAL-ACCESS-RESOLUTION-AUTHORITY-20260917-A";
+const MEOS_CUSTOMER_BOUND_ACCESS_SCHEMA =
+  "meos.customer-bound-commercial-access-resolution.v1";
+
+function customerBoundAccessError(message, code = "COMMERCIAL_ACCESS_RESOLUTION_INVALID") {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function resolveCustomerBoundCommercialAccess(entitlementInput = {}, context = {}) {
+  const entitlement = entitlementInput && typeof entitlementInput === "object"
+    ? entitlementInput
+    : {};
+  const accountId = String(context.accountId || "").trim();
+  const productId = String(context.productId || entitlement.productId || "").trim();
+  const now = Number.isFinite(context.now) ? context.now : Date.now();
+
+  if (entitlement.schema !== "meos.customer-commercial-entitlement.v2" ||
+      !entitlement.id || !entitlement.customerId || !entitlement.customerType ||
+      !entitlement.productId) {
+    throw customerBoundAccessError(
+      "Complete customer-bound commercial entitlement v2 is required.",
+      "COMMERCIAL_ACCESS_CUSTOMER_ENTITLEMENT_REQUIRED"
+    );
+  }
+
+  const customerType = String(entitlement.customerType).trim().toLowerCase();
+  if (!MEOS_COMMERCIAL_CUSTOMER_TYPES.includes(customerType)) {
+    throw customerBoundAccessError(
+      "Commercial customer type is unsupported.",
+      "COMMERCIAL_ACCESS_CUSTOMER_TYPE_INVALID"
+    );
+  }
+
+  const stateActive = entitlement.state === MEOS_COMMERCIAL_ENTITLEMENT_STATES.ACTIVE;
+  const productMatches = Boolean(productId) && productId === String(entitlement.productId);
+  const startsAt = entitlement.startsAt ? Date.parse(entitlement.startsAt) : null;
+  const expiresAt = entitlement.expiresAt ? Date.parse(entitlement.expiresAt) : null;
+  const inWindow = (!Number.isFinite(startsAt) || now >= startsAt) &&
+    (!Number.isFinite(expiresAt) || now < expiresAt);
+
+  let subjectAuthorized = false;
+  let reason = "entitlement_not_active";
+  let membershipAuthorityRequired = false;
+
+  if (stateActive && !productMatches) {
+    reason = "product_mismatch";
+  } else if (stateActive && productMatches && !inWindow) {
+    reason = "outside_entitlement_window";
+  } else if (stateActive && productMatches && inWindow && customerType === "individual") {
+    subjectAuthorized = Boolean(accountId) && Boolean(entitlement.accountId) &&
+      accountId === String(entitlement.accountId);
+    reason = subjectAuthorized ? "individual_customer_account_bound" : "individual_account_mismatch";
+  } else if (stateActive && productMatches && inWindow && customerType === "organization") {
+    membershipAuthorityRequired = true;
+    reason = "organization_membership_authority_required";
+  }
+
+  return {
+    schema: MEOS_CUSTOMER_BOUND_ACCESS_SCHEMA,
+    commission: MEOS_CUSTOMER_BOUND_ACCESS_COMMISSION,
+    version: MEOS_CUSTOMER_BOUND_ACCESS_VERSION,
+    buildId: MEOS_CUSTOMER_BOUND_ACCESS_BUILD_ID,
+    entitlementId: String(entitlement.id),
+    customerId: String(entitlement.customerId),
+    customerType,
+    productId: String(entitlement.productId),
+    accountId: accountId || null,
+    accessResolved: subjectAuthorized,
+    reason,
+    membershipAuthorityRequired,
+    paidProductAdmissionGranted: false,
+    authorityBoundary: {
+      identityAuthority: false,
+      organizationOwnershipAuthority: false,
+      organizationMembershipAuthority: false,
+      seatAssignmentAuthority: false,
+      productAdmissionAuthority: false,
+      paymentAuthority: false,
+      executiveActionAuthority: false,
+      intellectualPropertyOwnershipAuthority: false
+    }
+  };
+}
+
+function runCustomerBoundCommercialAccessAcceptance() {
+  const base = {
+    schema: "meos.customer-commercial-entitlement.v2",
+    id: "entcust_u_individual",
+    customerId: "customer_u_individual",
+    customerType: "individual",
+    accountId: "acct_u_owner",
+    productId: "maddy-professional",
+    state: "active",
+    startsAt: "2026-09-17T15:00:00.000Z",
+    expiresAt: null
+  };
+  const now = Date.parse("2026-09-17T16:00:00.000Z");
+  const individual = resolveCustomerBoundCommercialAccess(base, {
+    accountId: "acct_u_owner", productId: "maddy-professional", now
+  });
+  const wrongAccount = resolveCustomerBoundCommercialAccess(base, {
+    accountId: "acct_u_other", productId: "maddy-professional", now
+  });
+  const wrongProduct = resolveCustomerBoundCommercialAccess(base, {
+    accountId: "acct_u_owner", productId: "maddy-personal", now
+  });
+  const suspended = resolveCustomerBoundCommercialAccess({ ...base, state: "suspended" }, {
+    accountId: "acct_u_owner", productId: "maddy-professional", now
+  });
+  const expired = resolveCustomerBoundCommercialAccess({
+    ...base, expiresAt: "2026-09-17T15:30:00.000Z"
+  }, { accountId: "acct_u_owner", productId: "maddy-professional", now });
+  const organization = resolveCustomerBoundCommercialAccess({
+    ...base,
+    id: "entcust_u_org",
+    customerId: "customer_u_org",
+    customerType: "organization",
+    accountId: null
+  }, { accountId: "acct_u_sponsor", productId: "maddy-professional", now });
+  let legacyRejected = false;
+  try {
+    resolveCustomerBoundCommercialAccess({
+      schema: MEOS_COMMERCIAL_ENTITLEMENT_SCHEMA,
+      id: "ent_u_legacy", accountId: "acct_u_owner", productId: "maddy-professional", state: "active"
+    }, { accountId: "acct_u_owner", productId: "maddy-professional", now });
+  } catch (error) {
+    legacyRejected = error?.code === "COMMERCIAL_ACCESS_CUSTOMER_ENTITLEMENT_REQUIRED";
+  }
+
+  const checks = [
+    ["006.033U resolves only the customer-bound entitlement v2 contract", legacyRejected],
+    ["Bound individual account can resolve active purchased-product access", individual.accessResolved === true],
+    ["Different account cannot inherit an individual customer's commercial access", wrongAccount.accessResolved === false],
+    ["Entitlement for one product cannot resolve access to another product", wrongProduct.accessResolved === false],
+    ["Suspended entitlement cannot resolve commercial access", suspended.accessResolved === false],
+    ["Expired entitlement cannot resolve commercial access", expired.accessResolved === false],
+    ["Organization entitlement is not collapsed into sponsor or payer account access", organization.accessResolved === false],
+    ["Organization access explicitly requires separate membership authority", organization.membershipAuthorityRequired === true],
+    ["Positive individual resolution does not itself grant paid-product admission", individual.paidProductAdmissionGranted === false],
+    ["Access resolution manufactures no organization ownership authority", individual.authorityBoundary.organizationOwnershipAuthority === false],
+    ["Access resolution manufactures no membership or seat authority", organization.authorityBoundary.organizationMembershipAuthority === false && organization.authorityBoundary.seatAssignmentAuthority === false],
+    ["Access resolution manufactures no payment or executive authority", individual.authorityBoundary.paymentAuthority === false && individual.authorityBoundary.executiveActionAuthority === false],
+    ["Access resolution grants no MEOS/Maddy ownership authority", individual.authorityBoundary.intellectualPropertyOwnershipAuthority === false],
+    ["Resolver is payment-processor neutral", !MEOS_CUSTOMER_BOUND_ACCESS_BUILD_ID.toLowerCase().includes("stripe") && !MEOS_CUSTOMER_BOUND_ACCESS_BUILD_ID.toLowerCase().includes("paypal")],
+    ["Commission configures no real rail, membership, seat, or paid-product admission gate", true]
+  ].map(([name, passed]) => ({ name, passed: passed === true }));
+
+  return {
+    success: checks.every(check => check.passed),
+    commission: MEOS_CUSTOMER_BOUND_ACCESS_COMMISSION,
+    version: MEOS_CUSTOMER_BOUND_ACCESS_VERSION,
+    buildId: MEOS_CUSTOMER_BOUND_ACCESS_BUILD_ID,
+    schema: "meos.customer-bound-commercial-access-resolution.acceptance.v1",
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    customerBoundAccessResolutionConfigured: true,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    publicPaymentWebhookConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false,
+    organizationMembershipAuthorityConfigured: false,
+    seatAssignmentAuthorityConfigured: false,
+    paidProductAdmissionConfigured: false,
+    limitation: "Individual customer-bound commercial access can now be resolved from 006.033T/O entitlement semantics. Organization access still requires separate membership authority, and no paid-product route/admission gate or real payment rail is configured."
+  };
+}
+
+app.get("/api/commercial-access-resolution/contract", (request, response) => {
+  response.json({
+    success: true,
+    commission: MEOS_CUSTOMER_BOUND_ACCESS_COMMISSION,
+    version: MEOS_CUSTOMER_BOUND_ACCESS_VERSION,
+    buildId: MEOS_CUSTOMER_BOUND_ACCESS_BUILD_ID,
+    schema: MEOS_CUSTOMER_BOUND_ACCESS_SCHEMA,
+    inputEntitlementSchema: "meos.customer-commercial-entitlement.v2",
+    organizationMembershipAuthorityConfigured: false,
+    paidProductAdmissionConfigured: false,
+    paymentProcessorConfigured: false,
+    note: "This resolver reconciles customer-bound entitlement ownership with account-level access without inventing organization membership or product admission."
+  });
+});
+
+app.get("/api/commercial-access-resolution/acceptance-test", (request, response, next) => {
+  try {
+    response.json(runCustomerBoundCommercialAccessAcceptance());
   } catch (error) {
     next(error);
   }
