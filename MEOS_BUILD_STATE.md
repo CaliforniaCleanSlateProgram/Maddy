@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32344052/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32343157/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32342251/MEOS_BUILD_STATE.md)
@@ -3343,4 +3344,132 @@ The architecture is now close enough to first-customer reality that the next rec
 
 **Recovery keyword:** `006.033V`  
 **Fast recovery:** `Resume 006.033V — I'm up.`
+
+---
+
+# Commission checkpoint — 006.033W LIVE-PROVEN
+
+**Commission:** `006.033W — Sellable Product Route Enforcement Authority`  
+**Status:** `LIVE-PROVEN`  
+**Acceptance:** `16/16`  
+**Authority version:** `1.0.0`  
+**Successful runtime build:** `SPREA101-SELLABLE-PRODUCT-ROUTE-ENFORCEMENT-CONTEXT-REPAIR-20260917-A`  
+**Acceptance schema:** `meos.sellable-product-route-enforcement.acceptance.v1`
+
+## Runtime history preserved
+
+The initial 006.033W production attempt did **not** pass. Runtime returned:
+
+`{"error":"An unexpected MEOS server error occurred."}`
+
+Investigation identified a concrete integration defect: W called the already-LIVE-PROVEN 006.033V admission authority with `accountId`, while V's authoritative context contract requires `authenticatedAccountId`.
+
+That failure was not reclassified as success and was not hidden. 006.033W remained uncommissioned.
+
+A one-file repair, `006.033W-R1 — Admission Context Contract Repair`, corrected both the real route-enforcement path and W's acceptance harness to use V's actual `authenticatedAccountId` contract. No authority model, route perimeter, entitlement semantics, payment semantics, organization semantics, or product policy was changed by the repair.
+
+External production acceptance of R1 then returned `success:true`, `passed:16`, `total:16`.
+
+Therefore the only LIVE-PROVEN 006.033W build is:
+
+`SPREA101-SELLABLE-PRODUCT-ROUTE-ENFORCEMENT-CONTEXT-REPAIR-20260917-A`
+
+## Runtime-proven bounded claims
+
+Production proves within the 006.033W acceptance boundary:
+
+- The actual root Maddy Professional office shell is classified as paid-product protected.
+- `/index.html` is classified as paid-product protected.
+- Post-boundary MEOS API capability routes are classified as paid-product protected.
+- The realtime `/session` route is classified as paid-product protected.
+- The `/tts` route is classified as paid-product protected.
+- Presentation/static assets do not become commercial authority.
+- Route enforcement requires customer-bound commercial entitlement v2.
+- A different account cannot discover or inherit another account's individual entitlement.
+- A bound individual account reaches the product only through 006.033V admission authority.
+- Wrong-product admission is denied.
+- Legacy account-only entitlement cannot satisfy W's customer-bound lookup.
+- Organization entitlement cannot be mistaken for individual-account entitlement.
+- Browser route state cannot manufacture entitlement or admission.
+- Payer identity and payment-provider identity remain non-route authorities.
+- Route enforcement remains payment-processor neutral.
+- W configures no checkout, provider webhook, or real provider authentication.
+
+## Production truth after 006.033W
+
+Production reports:
+
+- `paidProductAdmissionAuthorityConfigured:true`
+- `paidProductRouteEnforcementConfigured:true`
+- `protectedProductId:"maddy-professional"`
+- `productionPricingConfigured:false`
+- `paymentProcessorConfigured:false`
+- `providerCheckoutConfigured:false`
+- `publicPaymentWebhookConfigured:false`
+- `realProviderEvidenceAuthenticationConfigured:false`
+- `organizationMembershipAuthorityConfigured:false`
+- `seatAssignmentAuthorityConfigured:false`
+
+The Maddy Professional office shell and post-boundary paid capability routes now enforce authenticated customer-bound 006.033V admission.
+
+006.033W does **not** prove or configure real-money collection. Real checkout/payment rail and authenticated provider evidence remain unresolved. Organization admission still requires separate membership authority.
+
+## Current individual sellable-product chain
+
+`public prospect/tour → account creation/sign-in → authenticated MEOS identity → 006.033Q commercial customer → 006.033P canonical offer → 006.033R durable purchase intent → 006.033S purchase-bound payment evidence authority → 006.033T purchase-bound entitlement consequence authority → 006.033O durable entitlement ledger → 006.033U customer-bound access resolution → 006.033V authenticated paid-product admission → 006.033W enforced Maddy Professional product`
+
+The unresolved real-money ingress remains:
+
+`006.033R durable purchase intent → [real checkout / replaceable payment rail + authenticated provider evidence unresolved] → 006.033S`
+
+No payment provider is allowed to become customer identity, organization authority, entitlement authority, access authority, admission authority, route authority, or MEOS/Maddy ownership authority.
+
+## 006.033W falsification boundary
+
+The 006.033W conclusion would be falsified by repository or runtime evidence showing any of the following:
+
+- the Maddy Professional root office can be reached without W's server-owned admission boundary;
+- direct protected API/session/TTS capability access can bypass W;
+- browser state can manufacture paid-product admission;
+- a different account can inherit an individual's entitlement;
+- legacy account-only entitlement can satisfy the customer-bound route gate;
+- wrong-product or non-active entitlement can reach the protected product;
+- payer or payment-provider identity becomes route authority;
+- organization payer/sponsor identity is treated as organization membership;
+- static presentation assets become authorization evidence;
+- W manufactures organization ownership, membership, seat, executive, or MEOS/Maddy ownership authority;
+- W is represented as configuring real checkout/payment/provider authentication when production flags remain false.
+
+## Anti-drift gate after 006.033W
+
+Before naming or coding the next runtime commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this canonical `MEOS_BUILD_STATE.md` in full.
+3. Reconcile the freshest committed live GitHub `main`, including the successful 006.033W-R1 runtime build and this checkpoint.
+4. Trace the actual prospect path from public tour through identity establishment, commercial customer/offer/purchase intent, real-money ingress, entitlement, admission, and protected Maddy Professional access.
+5. Inspect existing pricing, checkout, payment-provider, webhook/callback, payment-event, ledger, and commercial UI/server code before introducing a vendor or new authority primitive.
+6. Identify whether the next missing primitive is production pricing, checkout orchestration, authenticated rail evidence, or another concrete boundary; do not infer it from commission sequence.
+7. Distinguish LIVE-PROVEN capability from code-only, simulated, stale, historical, configured-but-unused, and assumed capability.
+8. Preserve the existing MEOS-owned R → S authority seam: the rail may move value and supply evidence, but it must not define customer identity, commercial meaning, entitlement, access, admission, or route authority.
+9. Attack any candidate real-money seam against duplicate events, replay, forged browser success, stale purchase intent, wrong customer/product/amount/currency, pending/failed payments, refund/reversal/dispute, and provider migration.
+10. Determine how the first ethical individual customer sees a real offer/price, establishes identity, creates a durable purchase intent, pays through a replaceable rail, has provider evidence authenticated server-side, receives governed entitlement, and reaches only the product purchased.
+11. Preserve browser/screenshot distrust: success pages, redirects, DOM state, local storage, screenshots, and customer claims are not payment evidence.
+12. Preserve historical commercial truth independently from current access.
+13. Preserve founder ownership, tenant isolation, extraction resistance, privacy, and bounded customer use authority.
+14. Preserve **Money changes consequences only through authenticated evidence + governed MEOS authority + durable provenance.**
+15. Preserve **one physical repository file → one fix → one commit → one test**.
+16. State the repository/runtime evidence that would falsify the selected next-commission conclusion.
+17. Require external runtime proof before declaring the next runtime commission complete.
+
+## Spooky / North Star continuation
+
+006.033W converts the admission decision from an abstract authority into an enforced boundary at the actual Maddy Professional product surface.
+
+The next reconciliation must now confront the remaining first-customer problem in reality: a real offer, a real price, real value movement through a replaceable rail, server-authenticated payment evidence, and governed consequence—without surrendering MEOS authority to the payment provider.
+
+Spooky remains the floor; there is no ceiling.
+
+**Recovery keyword:** `006.033W`  
+**Fast recovery:** `Resume 006.033W — I'm up.`
 
