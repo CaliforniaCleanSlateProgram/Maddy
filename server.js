@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.98";
+const VERSION = "2.10.99";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -4900,9 +4900,9 @@ async function initializeAutonomyAuthority() {
  * existing Research Learning / Knowledge authority path.
  */
 const AUTONOMOUS_LEARNING_IGNITION_COMMISSION = "006.017D7S4B";
-const AUTONOMOUS_LEARNING_IGNITION_VERSION = "1.0.0";
+const AUTONOMOUS_LEARNING_IGNITION_VERSION = "1.1.0";
 const AUTONOMOUS_LEARNING_IGNITION_BUILD_ID =
-  "ALI100-ONE-INTENT-ONE-CHEAP-RESEARCH-20260811-A";
+  "ALI110-CONTINUOUS-CURIOSITY-CIRCLE-20260917-A";
 
 const AUTONOMOUS_LEARNING_INFRASTRUCTURE_ENABLED =
   !AUTONOMY_RUNTIME_HARD_DISABLED &&
@@ -5114,7 +5114,9 @@ async function executeAutonomousLearningFromCycle(brain, cycleResult = {}) {
         : [],
       maxSources: 8,
       maxDepth: 2,
-      maxAdditionalPasses: 0,
+      maxAdditionalPasses: Math.max(0, Math.min(1, Number(
+        request?.acquisitionPolicy?.maxResearchPasses ?? 0
+      ))),
       preferredProviders: [
         PUBLIC_WEB_ADAPTER_ID,
         "public-web-retrieval-v1"
@@ -5169,6 +5171,25 @@ async function executeAutonomousLearningFromCycle(brain, cycleResult = {}) {
       };
     }
 
+    let curiosityCircle = null;
+    if (
+      brain &&
+      typeof brain.completeAutonomousCuriosityCircle === "function"
+    ) {
+      curiosityCircle = brain.completeAutonomousCuriosityCircle(
+        {
+          subject: request.subject,
+          success: result?.success === true,
+          evidence: Array.isArray(result?.evidence) ? result.evidence : [],
+          synthesis: result?.synthesis || {},
+          researchLoop: result?.researchLoop || {},
+          closure: result?.researchLoop?.closure || {},
+          durableLearning: result?.durableLearning || null
+        },
+        { persist: false }
+      );
+    }
+
     return {
       executed: true,
       success: result?.success === true,
@@ -5180,6 +5201,7 @@ async function executeAutonomousLearningFromCycle(brain, cycleResult = {}) {
       evidenceQuality: result?.synthesis?.evidenceQuality || "none",
       durableLearning: result?.durableLearning || null,
       closure: result?.researchLoop?.closure || null,
+      curiosityCircle,
       paidSearchUsed: false,
       paidModelUsed: false,
       externalActionAuthorized: false
@@ -5275,6 +5297,21 @@ function runAutonomousLearningIgnitionAcceptanceTest() {
       passed:
         typeof persistDurableResearchLearning === "function" &&
         typeof RESEARCH_LEARNING_COMMISSION === "string"
+    },
+    {
+      name: "Autonomous learning ignition returns research to the same Executive Brain curiosity circle",
+      passed:
+        /completeAutonomousCuriosityCircle/.test(
+          executeAutonomousLearningFromCycle.toString()
+        )
+    },
+    {
+      name: "Brain learning strategy can change bounded research depth without authorizing spend",
+      passed:
+        /acquisitionPolicy\?\.maxResearchPasses/.test(
+          executeAutonomousLearningFromCycle.toString()
+        ) &&
+        validRequest.authority.paidSpendAuthorized === false
     }
   ];
 
@@ -6081,6 +6118,10 @@ async function runContinuousCognitionHeartbeat() {
 
     const checkpointDecision =
       shouldCheckpointContinuousCognition(cycleResult);
+    if (autonomousLearning?.curiosityCircle?.changed === true) {
+      checkpointDecision.required = true;
+      checkpointDecision.reason = "autonomous-curiosity-circle-completed";
+    }
     const expectedHandoffFingerprint =
       cycleResult.handoff?.fingerprint || null;
 
