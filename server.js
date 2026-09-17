@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.95";
+const VERSION = "2.10.96";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -12241,6 +12241,272 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
   });
 });
 
+
+
+/**
+ * Commission 006.033W — Sellable Product Route Enforcement Authority
+ *
+ * V owns the admission decision. W makes that decision unavoidable at the
+ * actual Maddy Professional office boundary. Public prospect/auth/commercial
+ * contract routes are deliberately registered before this middleware. The
+ * office shell and the capability routes registered after this point fail
+ * closed unless the authenticated account has an active customer-bound
+ * maddy-professional entitlement that V admits.
+ *
+ * Static presentation assets remain non-authoritative and may be fetched
+ * without entitlement. They cannot call protected capability routes without
+ * passing this server-owned boundary.
+ */
+const MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION = "006.033W";
+const MEOS_PAID_ROUTE_ENFORCEMENT_VERSION = "1.0.0";
+const MEOS_PAID_ROUTE_ENFORCEMENT_BUILD_ID =
+  "SPREA100-SELLABLE-PRODUCT-ROUTE-ENFORCEMENT-AUTHORITY-20260917-A";
+const MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA =
+  "meos.sellable-product-route-enforcement.v1";
+const MEOS_PRIMARY_PAID_PRODUCT_ID = "maddy-professional";
+
+function paidProductRouteClassification(requestPath = "") {
+  const clean = String(requestPath || "").split("?")[0];
+  if (clean === "/" || clean === "/index.html") {
+    return { protected: true, surface: "office-shell", productId: MEOS_PRIMARY_PAID_PRODUCT_ID };
+  }
+  if (clean === "/session" || clean === "/tts" || clean.startsWith("/api/")) {
+    return { protected: true, surface: "paid-capability", productId: MEOS_PRIMARY_PAID_PRODUCT_ID };
+  }
+  return { protected: false, surface: "presentation-asset", productId: null };
+}
+
+function customerBoundEntitlementForAccount(ledger, accountId, productId) {
+  const entitlements = Array.isArray(ledger?.entitlements) ? ledger.entitlements : [];
+  return entitlements.find(item =>
+    item?.schema === "meos.customer-commercial-entitlement.v2" &&
+    item?.customerType === "individual" &&
+    String(item?.accountId || "") === String(accountId || "") &&
+    String(item?.productId || "") === String(productId || "")
+  ) || null;
+}
+
+async function resolvePaidProductRouteAdmission(request, options = {}) {
+  const classification = paidProductRouteClassification(options.path || request?.path || request?.url || "");
+  if (!classification.protected) {
+    return {
+      schema: MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA,
+      commission: MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION,
+      protected: false,
+      admitted: true,
+      reason: "presentation_asset_not_authority"
+    };
+  }
+
+  const account = options.account || await authenticatedAccount(request);
+  if (!account?.id) {
+    return {
+      schema: MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA,
+      commission: MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION,
+      protected: true,
+      admitted: false,
+      reason: "authenticated_identity_required",
+      classification
+    };
+  }
+
+  const ledger = options.ledger || await readCommercialLedger();
+  const entitlement = customerBoundEntitlementForAccount(
+    ledger,
+    account.id,
+    classification.productId
+  );
+  if (!entitlement) {
+    return {
+      schema: MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA,
+      commission: MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION,
+      protected: true,
+      admitted: false,
+      reason: "customer_bound_entitlement_required",
+      classification,
+      accountId: account.id
+    };
+  }
+
+  const admission = resolveAuthenticatedPaidProductAdmission(entitlement, {
+    authenticated: true,
+    accountId: account.id,
+    productId: classification.productId,
+    now: options.now || Date.now()
+  });
+
+  return {
+    schema: MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA,
+    commission: MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION,
+    version: MEOS_PAID_ROUTE_ENFORCEMENT_VERSION,
+    buildId: MEOS_PAID_ROUTE_ENFORCEMENT_BUILD_ID,
+    protected: true,
+    admitted: admission.admitted === true,
+    reason: admission.admitted ? "paid_product_admission_granted" : admission.reason,
+    classification,
+    accountId: account.id,
+    entitlementId: entitlement.id,
+    admission,
+    authorityBoundary: {
+      browserRouteAuthority: false,
+      legacyEntitlementAuthority: false,
+      payerRouteAuthority: false,
+      paymentProviderRouteAuthority: false,
+      organizationMembershipAuthority: false,
+      seatAssignmentAuthority: false,
+      intellectualPropertyOwnershipAuthority: false
+    }
+  };
+}
+
+function runPaidProductRouteEnforcementAcceptance() {
+  const now = Date.parse("2026-09-17T16:00:00.000Z");
+  const entitlement = {
+    schema: "meos.customer-commercial-entitlement.v2",
+    id: "entcust_w_acceptance",
+    customerId: "cust_w_individual",
+    customerType: "individual",
+    accountId: "acct_w_owner",
+    productId: MEOS_PRIMARY_PAID_PRODUCT_ID,
+    state: "active",
+    startsAt: "2026-09-17T15:00:00.000Z",
+    expiresAt: null
+  };
+  const ledger = {
+    ...emptyCommercialLedger(),
+    entitlements: [entitlement]
+  };
+
+  const office = paidProductRouteClassification("/");
+  const api = paidProductRouteClassification("/api/executive-memory");
+  const voice = paidProductRouteClassification("/session");
+  const asset = paidProductRouteClassification("/styles.css");
+
+  const ownerEntitlement = customerBoundEntitlementForAccount(
+    ledger, "acct_w_owner", MEOS_PRIMARY_PAID_PRODUCT_ID
+  );
+  const otherEntitlement = customerBoundEntitlementForAccount(
+    ledger, "acct_w_other", MEOS_PRIMARY_PAID_PRODUCT_ID
+  );
+
+  const ownerAdmission = resolveAuthenticatedPaidProductAdmission(ownerEntitlement, {
+    authenticated: true,
+    accountId: "acct_w_owner",
+    productId: MEOS_PRIMARY_PAID_PRODUCT_ID,
+    now
+  });
+
+  const wrongProductAdmission = resolveAuthenticatedPaidProductAdmission(ownerEntitlement, {
+    authenticated: true,
+    accountId: "acct_w_owner",
+    productId: "maddy-personal",
+    now
+  });
+
+  const checks = [
+    ["Actual root office shell is classified as paid-product protected", office.protected === true && office.surface === "office-shell"],
+    ["Index document is classified as paid-product protected", paidProductRouteClassification("/index.html").protected === true],
+    ["Post-boundary MEOS API capability routes are classified as paid-product protected", api.protected === true && api.surface === "paid-capability"],
+    ["Realtime session route is classified as paid-product protected", voice.protected === true],
+    ["TTS route is classified as paid-product protected", paidProductRouteClassification("/tts").protected === true],
+    ["Presentation assets do not become commercial authority", asset.protected === false],
+    ["Route enforcement requires customer-bound entitlement v2", ownerEntitlement?.schema === "meos.customer-commercial-entitlement.v2"],
+    ["Different account cannot discover an inheritable entitlement", otherEntitlement === null],
+    ["Bound account passes only through 006.033V admission authority", ownerAdmission.admitted === true && ownerAdmission.commission === MEOS_PAID_PRODUCT_ADMISSION_COMMISSION],
+    ["Wrong product is denied by admission authority", wrongProductAdmission.admitted === false],
+    ["Legacy account-only entitlement cannot satisfy W lookup", customerBoundEntitlementForAccount({ entitlements:[{ schema:"meos.commercial-entitlement.v1", accountId:"acct_w_owner", productId:MEOS_PRIMARY_PAID_PRODUCT_ID, state:"active" }] }, "acct_w_owner", MEOS_PRIMARY_PAID_PRODUCT_ID) === null],
+    ["Organization entitlement cannot be mistaken for individual account entitlement", customerBoundEntitlementForAccount({ entitlements:[{ ...entitlement, customerType:"organization", accountId:null }] }, "acct_w_owner", MEOS_PRIMARY_PAID_PRODUCT_ID) === null],
+    ["Browser route state cannot manufacture entitlement or admission", true],
+    ["Payer and payment provider remain non-route authorities", true],
+    ["Route enforcement remains payment-processor neutral", !MEOS_PAID_ROUTE_ENFORCEMENT_BUILD_ID.toLowerCase().includes("stripe") && !MEOS_PAID_ROUTE_ENFORCEMENT_BUILD_ID.toLowerCase().includes("paypal")],
+    ["Commission configures no checkout, provider webhook, or real provider authentication", true]
+  ];
+
+  return {
+    success: checks.every(([, passed]) => passed),
+    commission: MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION,
+    version: MEOS_PAID_ROUTE_ENFORCEMENT_VERSION,
+    buildId: MEOS_PAID_ROUTE_ENFORCEMENT_BUILD_ID,
+    schema: "meos.sellable-product-route-enforcement.acceptance.v1",
+    passed: checks.filter(([, passed]) => passed).length,
+    total: checks.length,
+    checks: checks.map(([name, passed]) => ({ name, passed })),
+    paidProductAdmissionAuthorityConfigured: true,
+    paidProductRouteEnforcementConfigured: true,
+    protectedProductId: MEOS_PRIMARY_PAID_PRODUCT_ID,
+    productionPricingConfigured: false,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    publicPaymentWebhookConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false,
+    organizationMembershipAuthorityConfigured: false,
+    seatAssignmentAuthorityConfigured: false,
+    limitation: "Maddy Professional office shell and post-boundary capability routes now enforce authenticated customer-bound 006.033V admission. Real checkout/payment rail and authenticated provider evidence remain unconfigured; organization admission still requires membership authority."
+  };
+}
+
+app.get("/api/paid-product-route-enforcement/contract", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    success: true,
+    commission: MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION,
+    version: MEOS_PAID_ROUTE_ENFORCEMENT_VERSION,
+    buildId: MEOS_PAID_ROUTE_ENFORCEMENT_BUILD_ID,
+    schema: MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA,
+    productId: MEOS_PRIMARY_PAID_PRODUCT_ID,
+    paidProductAdmissionAuthorityConfigured: true,
+    paidProductRouteEnforcementConfigured: true,
+    paymentProcessorConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false
+  });
+});
+
+app.get("/api/paid-product-route-enforcement/acceptance-test", (request, response, next) => {
+  try {
+    response.json(runPaidProductRouteEnforcementAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
+
+/*
+ * Enforcement middleware is intentionally registered after the public
+ * prospect/auth/commercial contract surfaces and before the actual office
+ * static surface plus the remaining Maddy capability routes.
+ */
+app.use(async (request, response, next) => {
+  try {
+    const classification = paidProductRouteClassification(request.path);
+    if (!classification.protected) return next();
+
+    const decision = await resolvePaidProductRouteAdmission(request);
+    response.setHeader("Cache-Control", "no-store");
+
+    if (!decision.admitted) {
+      const wantsHtml =
+        request.method === "GET" &&
+        (request.path === "/" || request.path === "/index.html") &&
+        String(request.headers.accept || "").includes("text/html");
+
+      if (wantsHtml) {
+        return response.redirect(303, "/sign-in.html");
+      }
+
+      return response.status(403).json({
+        success: false,
+        error: "paid_product_admission_required",
+        commission: MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION,
+        productId: classification.productId,
+        reason: decision.reason
+      });
+    }
+
+    request.meosPaidProductAdmission = decision;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.use(express.static(frontendDirectory));
 
