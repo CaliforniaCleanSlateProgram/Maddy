@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32319882/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32318611/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32303055/MEOS_BUILD_STATE.md)
@@ -2707,4 +2708,192 @@ The next commission must survive reconciliation against Maddy's existing organs,
 
 **Recovery keyword:** `006.033Q`  
 **Fast recovery:** `Resume 006.033Q — I'm up.`
+
+---
+
+# CHECKPOINT — 006.033R DURABLE COMMERCIAL PURCHASE INTENT AUTHORITY — LIVE-PROVEN
+
+**Commission:** 006.033R  
+**Status:** CLOSED / LIVE-PROVEN 15/15  
+**Version:** 1.0.0  
+**Build ID:** `DCPIA100-DURABLE-COMMERCIAL-PURCHASE-INTENT-AUTHORITY-20260917-A`  
+**Acceptance schema:** `meos.commercial-purchase-intent.acceptance.v1`  
+**Production server:** v2.10.91
+
+## Runtime-proven bounded claims
+
+External production acceptance returned `success:true`, `passed:15`, `total:15`.
+
+006.033R proves within its acceptance boundary:
+
+- Purchase-intent authority is MEOS-owned and payment-processor neutral.
+- A durable purchase intent binds a canonical 006.033Q commercial customer.
+- Only the MEOS-recognized commercial owner may sponsor that purchase.
+- The purchase binds the canonical 006.033P offer fingerprint.
+- Browser-supplied price and currency cannot rewrite the purchase snapshot.
+- Purchase quantity remains bounded by the canonical offer.
+- Browser-invented offers fail closed before payment.
+- The purchase fingerprint binds customer, sponsor, offer, product, terms, quantity, and money.
+- A payment provider cannot rewrite MEOS purchase meaning.
+- Purchase intent grants no entitlement or paid-product admission.
+- Purchase intent grants no organization membership or seat-assignment authority.
+- Purchase intent grants no executive-action authority.
+- Purchase intent grants no MEOS/Maddy IP ownership, disclosure, or reproduction authority.
+- This commission creates no payment processor or checkout session.
+
+## Truthful remaining false boundaries
+
+Production reports:
+
+- `productionPricingConfigured:false`
+- `paymentProcessorConfigured:false`
+- `providerCheckoutConfigured:false`
+- `paymentEvidenceAdapterConfigured:false`
+- `paidProductAdmissionConfigured:false`
+- `organizationMembershipAuthorityConfigured:false`
+- `seatAssignmentAuthorityConfigured:false`
+
+These remain unresolved boundaries, not implied capability.
+
+## Current commercial authority chain
+
+`authenticated MEOS identity → 006.033Q commercial customer → 006.033P canonical offer → 006.033R durable purchase intent → [payment lifecycle / rail / authenticated evidence boundary unresolved] → 006.033O durable entitlement ledger → 006.033N entitlement/access decision → [paid-product admission unresolved]`
+
+The next commission is **not automatically 006.033S of any predetermined kind**. Fresh-main reconciliation must determine the smallest missing MEOS-owned authority primitive.
+
+## Commercial-policy evolvability — locked
+
+MEOS must allow commercial policy to evolve without rewriting identity, customer, organization, entitlement, or executive authority.
+
+Future architecture must be capable of truthfully representing, where later ratified:
+
+- new and retired offers;
+- grandfathered commercial terms;
+- free periods and trials;
+- founder/admin-authorized comps;
+- discretionary credits and discounts;
+- renewals and autopay;
+- failed or insufficient-funds payment attempts;
+- retry and grace policies;
+- cancellation;
+- full and partial refunds;
+- disputes, chargebacks, and reversals;
+- multiple simultaneous payment rails;
+- future payment methods not known today.
+
+**Commercial terms may change. Historical truth and provenance may not be rewritten.**
+
+A free month, comp, credit, or discount must not be represented as a fabricated successful payment. Governed commercial adjustments require truthful lineage of their own.
+
+Payment lifecycle must not collapse to `paid=true/false`.
+
+## Payment-rail neutrality — locked
+
+MEOS commercial authority must remain independent of the rail used to move value.
+
+Potential rails include conventional cards, ACH, Cash App, Bitcoin, and future providers or networks. Supporting one rail must not make that provider the owner of customer identity, organization authority, offer meaning, purchase meaning, entitlement, or Maddy/MEOS IP.
+
+A future rail adapter translates rail-specific authenticated evidence into the MEOS-owned commercial evidence/consequence system.
+
+Bitcoin may require distinct evidence semantics such as transaction identifier, network, expected amount, receiving invoice/address, confirmation policy, expiry or exchange-rate handling for fiat-denominated obligations, under/overpayment, replay prevention, and refund semantics. Ordinary on-chain Bitcoin does not share card-style autopay or insufficient-funds behavior. Those rail differences belong at the adapter/evidence boundary rather than inside MEOS core authority.
+
+006.033R remains rail-neutral and is not to be modified merely to add a specific provider.
+
+## Browser / screenshot / presentation distrust — locked
+
+The browser is presentation, not authority.
+
+Customer-controlled presentation may make claims but cannot create commercial consequences.
+
+Screenshots, DOM or DevTools edits, success pages, redirects, local-storage values, browser JavaScript state, displayed balances, displayed payment status, and customer-originated HTTP claims may be retained as artifacts of what a user reports seeing, but they are not authoritative proof of:
+
+- payment;
+- refund;
+- cancellation;
+- entitlement;
+- identity;
+- organization ownership;
+- authorization.
+
+A user-visible `PAID` screen is not payment evidence.
+
+**Money changes consequences only through authenticated evidence + governed MEOS authority + durable provenance.**
+
+## Commercial evidence and dispute reconstruction — locked
+
+Commercial disputes should be reconstructable from durable evidence rather than memory, screenshots, or unsupported claims.
+
+The future commercial lineage should be capable of answering, as applicable:
+
+- who requested the action;
+- what authority they held;
+- what canonical terms applied;
+- which purchase intent governed;
+- amount and currency;
+- provider, rail, or blockchain reference;
+- evidence-authentication lineage;
+- relevant timestamps;
+- renewal/failure/refund/dispute/reversal events;
+- commercial adjustments;
+- resulting entitlement/access consequence.
+
+The architecture must defend against duplicate, delayed, reordered, conflicting, or replayed provider events; duplicate refund actions; provider outages; expired payment instruments; delayed blockchain confirmation; and mistaken administrative actions.
+
+Payment evidence is evidence of a commercial event. It does not manufacture identity, organization authority, product meaning, or unrestricted MEOS authority.
+
+## Cancellation, nonpayment, and organizational continuity
+
+Cancellation, nonpayment, refund, suspension, or commercial expiration must not silently destroy legitimate organization-owned work.
+
+Commercial access consequences and data/work ownership are separate concerns.
+
+Preserve legitimate organizational work, provenance, and history according to governed retention/ownership policy while re-evaluating current access and unfinished authority.
+
+Carry forward:
+
+**Revoke the human. Preserve the work. Preserve the history. Protect the company. Re-evaluate unfinished authority.**
+
+## Ownership / IP boundary — reaffirmed
+
+The founder owns MEOS. Maddy is the proprietary entity operating within MEOS.
+
+A purchase intent, payment, subscription, commercial adjustment, or entitlement may grant only explicitly bounded use authority. None grants ownership, source access, reproduction rights, disclosure authority, redistribution authority, derivative-system authority, founder authority, or generalized MEOS authority.
+
+Legitimate customers, insiders, and better-capitalized actors remain part of the extraction/reconstruction threat model. High-value proprietary implementation stays server-side behind least-privilege, tenant-scoped authorization and disclosure controls.
+
+Future commercial proving must include adversarial attempts to extract or reconstruct protected Maddy/MEOS organs, source, policies/prompts, proprietary state, credentials, privileged APIs, founder/internal capabilities, or cross-tenant information while preserving legitimate use.
+
+Do not claim copying can be made mathematically impossible. The measurable engineering objective is that ordinary commercial access does not itself expose the proprietary machinery or authority required to extract, compromise, or reproduce Maddy/MEOS.
+
+## Anti-drift gate before the next runtime commission
+
+Before naming or coding the next commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md`.
+2. Re-read this canonical `MEOS_BUILD_STATE.md`.
+3. Reconcile the freshest committed live GitHub `main`, including production server v2.10.91.
+4. Search current and prior implementation for payment, billing, subscription, checkout, webhook, refund, cancellation, renewal, failure, retry, grace, credit, discount, comp, promotion, entitlement, admission, organization, membership, seat, revocation, session, durable mission, and organization-owned-work machinery.
+5. Distinguish runtime-proven capability from code-only, simulated, stale, historical, or assumed capability.
+6. Reuse an existing Maddy/MEOS organ if it already owns the required authority.
+7. Reconstruct historical CCSP payment behavior only from source/runtime evidence.
+8. Attack the candidate architecture against conventional card/ACH, Cash App, Bitcoin, and an unknown future rail so a single vendor cannot become architectural authority.
+9. Attack refunds, partial refunds, cancellation, renewal, failed payment, insufficient funds, retries/grace, disputes/chargebacks, reversals, credits, discounts, free periods, comps, grandfathering, duplicate/delayed/replayed evidence, and provider outage semantics before hard-coding a simplistic payment state.
+10. Preserve browser/screenshot distrust and require authenticated evidence for monetary consequences.
+11. Preserve Maddy/MEOS ownership, IP, extraction-resistance, tenant isolation, and founder/internal boundaries.
+12. Preserve organizational work/history independently from current commercial access.
+13. Determine the smallest missing MEOS-owned primitive that survives reconciliation and falsification.
+14. State what repository/runtime evidence would falsify that conclusion.
+15. Do not invent production pricing, retry counts, grace periods, discount rules, refund policy, or other business policy not yet ratified.
+16. Do not fabricate payment evidence for founder/internal access, free periods, comps, or credits.
+17. Preserve **one physical repository file → one fix → one commit → one test**.
+18. Require external runtime proof before declaring the next commission complete.
+
+## Spooky / North Star
+
+Spooky is the floor; there is no ceiling.
+
+The next financial commission must not merely connect a payment API. It must preserve MEOS-owned commercial meaning across changing providers, changing business policy, adversarial customers, operational mistakes, interruptions, disputes, and future payment methods while remaining empirically testable and truthful.
+
+**Recovery keyword:** `006.033R`  
+**Fast recovery:** `Resume 006.033R — I'm up.`
 
