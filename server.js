@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.97";
+const VERSION = "2.10.98";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -12242,6 +12242,307 @@ app.get("/api/prospect-tour/acceptance-test", (request, response) => {
 });
 
 
+
+
+/**
+ * Commission 006.033X — Authenticated Individual Purchase Initiation Surface
+ *
+ * P already owns canonical offer/pricing meaning and R already owns durable
+ * purchase intent. X exposes the missing server-owned customer action that
+ * joins authenticated identity -> individual commercial customer -> canonical
+ * production offer -> durable R intent without allowing the browser to invent
+ * customer ownership, price, currency, product, terms, or payment state.
+ *
+ * This is deliberately a pre-payment surface. It moves no money and creates
+ * no entitlement, access, admission, or provider authority.
+ */
+const MEOS_INDIVIDUAL_PURCHASE_INITIATION_COMMISSION = "006.033X";
+const MEOS_INDIVIDUAL_PURCHASE_INITIATION_VERSION = "1.0.0";
+const MEOS_INDIVIDUAL_PURCHASE_INITIATION_BUILD_ID =
+  "AIPIS100-AUTHENTICATED-INDIVIDUAL-PURCHASE-INITIATION-SURFACE-20260917-A";
+const MEOS_INDIVIDUAL_PURCHASE_INITIATION_SCHEMA =
+  "meos.authenticated-individual-purchase-initiation.v1";
+
+async function resolveOrCreateIndividualCommercialCustomer(account, options = {}) {
+  if (!account?.id) {
+    const error = new Error("Authenticated MEOS account is required.");
+    error.code = "COMMERCIAL_PURCHASE_AUTHENTICATION_REQUIRED";
+    throw error;
+  }
+
+  const registryPath = options.registryPath || MEOS_COMMERCIAL_CUSTOMER_PATH;
+  const registry = await readCommercialCustomerRegistry(registryPath);
+  const existing = registry.customers.find(customer =>
+    customer.type === "individual" &&
+    customer.state === "active" &&
+    customer.ownerAccountId === account.id &&
+    customer.individualAccountId === account.id
+  );
+  if (existing) return { customer: existing, created: false };
+
+  const customer = await createCommercialCustomerSubject(
+    {
+      type: "individual",
+      displayName: String(account.displayName || account.email || "Maddy Customer").slice(0, 240),
+      ownerAccountId: account.id
+    },
+    {
+      accounts: options.accounts || [account],
+      registryPath,
+      persist: options.persist !== false,
+      now: options.now
+    }
+  );
+  return { customer, created: true };
+}
+
+async function initiateAuthenticatedIndividualPurchase(account, input = {}, options = {}) {
+  if (!account?.id) {
+    const error = new Error("Authenticated MEOS account is required.");
+    error.code = "COMMERCIAL_PURCHASE_AUTHENTICATION_REQUIRED";
+    throw error;
+  }
+
+  const offerId = String(input.offerId || "").trim();
+  if (!offerId) {
+    const error = new Error("A canonical commercial offer id is required.");
+    error.code = "COMMERCIAL_PURCHASE_OFFER_REQUIRED";
+    throw error;
+  }
+
+  const offers = Array.isArray(options.offers)
+    ? options.offers
+    : loadConfiguredCommercialOffers();
+
+  // Resolve P first. If production pricing is absent or the offer is not
+  // authorized for an individual, fail before creating customer state.
+  const selection = resolveCommercialOfferSelection(
+    { offerId, subjectType: "individual", quantity: 1 },
+    offers
+  );
+
+  const customerResult = await resolveOrCreateIndividualCommercialCustomer(account, options);
+  const purchase = await createCommercialPurchaseIntent(
+    {
+      customerId: customerResult.customer.id,
+      sponsorAccountId: account.id,
+      offerId: selection.offer.id,
+      quantity: 1
+    },
+    {
+      offers,
+      customers: [customerResult.customer],
+      ledgerPath: options.ledgerPath,
+      persist: options.persist !== false,
+      now: options.now
+    }
+  );
+
+  return {
+    schema: MEOS_INDIVIDUAL_PURCHASE_INITIATION_SCHEMA,
+    commission: MEOS_INDIVIDUAL_PURCHASE_INITIATION_COMMISSION,
+    version: MEOS_INDIVIDUAL_PURCHASE_INITIATION_VERSION,
+    buildId: MEOS_INDIVIDUAL_PURCHASE_INITIATION_BUILD_ID,
+    customerCreated: customerResult.created,
+    customer: {
+      id: customerResult.customer.id,
+      type: customerResult.customer.type,
+      ownerAccountId: customerResult.customer.ownerAccountId
+    },
+    purchaseIntent: purchase.intent,
+    purchaseFingerprint: purchase.fingerprint,
+    paymentRequired: purchase.intent.totalAmountMinor > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    entitlementGranted: false,
+    paidProductAdmissionGranted: false,
+    authorityBoundary: {
+      browserCustomerOwnershipAuthority: false,
+      browserPricingAuthority: false,
+      browserCurrencyAuthority: false,
+      browserProductAuthority: false,
+      browserPaymentAuthority: false,
+      paymentProviderCustomerAuthority: false,
+      entitlementAuthority: false,
+      productAdmissionAuthority: false
+    }
+  };
+}
+
+async function runAuthenticatedIndividualPurchaseInitiationAcceptance() {
+  const account = {
+    id: "acct_x_buyer",
+    email: "buyer@example.test",
+    displayName: "Acceptance Buyer"
+  };
+  const offer = normalizeCommercialOffer({
+    id: "offer_x_professional",
+    productId: "maddy-professional",
+    name: "Maddy Professional Acceptance Offer",
+    currency: "USD",
+    unitAmountMinor: 2500,
+    billingModel: "flat",
+    allowedSubjectTypes: ["individual"],
+    minimumQuantity: 1,
+    maximumQuantity: 1,
+    termsVersion: "x-acceptance-1"
+  });
+
+  const baseOptions = {
+    accounts: [account],
+    offers: [offer],
+    persist: false,
+    now: "2026-09-17T18:00:00.000Z"
+  };
+  const initiated = await initiateAuthenticatedIndividualPurchase(
+    account,
+    {
+      offerId: offer.id,
+      unitAmountMinor: 1,
+      totalAmountMinor: 1,
+      currency: "XXX",
+      productId: "browser-invented-product",
+      customerId: "browser-invented-customer",
+      sponsorAccountId: "browser-invented-sponsor"
+    },
+    baseOptions
+  );
+
+  let unauthenticatedRejected = false;
+  try {
+    await initiateAuthenticatedIndividualPurchase(null, { offerId: offer.id }, baseOptions);
+  } catch (error) {
+    unauthenticatedRejected = error?.code === "COMMERCIAL_PURCHASE_AUTHENTICATION_REQUIRED";
+  }
+
+  let unknownOfferRejected = false;
+  try {
+    await initiateAuthenticatedIndividualPurchase(
+      account,
+      { offerId: "browser-invented-offer" },
+      baseOptions
+    );
+  } catch (error) {
+    unknownOfferRejected = error?.code === "COMMERCIAL_OFFER_UNAVAILABLE";
+  }
+
+  const organizationOnlyOffer = normalizeCommercialOffer({
+    ...offer,
+    id: "offer_x_org_only",
+    allowedSubjectTypes: ["organization"]
+  });
+  let wrongSubjectRejected = false;
+  try {
+    await initiateAuthenticatedIndividualPurchase(
+      account,
+      { offerId: organizationOnlyOffer.id },
+      { ...baseOptions, offers: [organizationOnlyOffer] }
+    );
+  } catch (error) {
+    wrongSubjectRejected = error?.code === "COMMERCIAL_OFFER_SUBJECT_MISMATCH";
+  }
+
+  const intent = initiated.purchaseIntent;
+  const checks = [
+    ["Purchase initiation requires authenticated MEOS identity", unauthenticatedRejected],
+    ["Authenticated account becomes the individual commercial customer owner", initiated.customer.ownerAccountId === account.id && initiated.customer.type === "individual"],
+    ["Authenticated account is the purchase sponsor", intent.sponsorAccountId === account.id],
+    ["Only canonical 006.033P offer identity may initiate purchase", intent.offerId === offer.id && unknownOfferRejected],
+    ["Individual purchase cannot select an organization-only offer", wrongSubjectRejected],
+    ["Browser-supplied price cannot rewrite the purchase snapshot", intent.unitAmountMinor === 2500 && intent.totalAmountMinor === 2500],
+    ["Browser-supplied currency cannot rewrite the purchase snapshot", intent.currency === "USD"],
+    ["Browser-supplied product cannot rewrite the canonical product", intent.productId === "maddy-professional"],
+    ["Browser-supplied customer identity cannot rewrite MEOS customer ownership", initiated.customer.id !== "browser-invented-customer"],
+    ["Browser-supplied sponsor cannot rewrite authenticated sponsorship", intent.sponsorAccountId !== "browser-invented-sponsor"],
+    ["Purchase initiation produces a durable 006.033R intent contract", intent.schema === MEOS_PURCHASE_INTENT_SCHEMA && typeof initiated.purchaseFingerprint === "string" && initiated.purchaseFingerprint.length === 64],
+    ["Purchase initiation itself does not claim payment success", initiated.paymentProcessorConfigured === false && initiated.providerCheckoutConfigured === false],
+    ["Purchase initiation itself grants no entitlement", initiated.entitlementGranted === false],
+    ["Purchase initiation itself grants no paid-product admission", initiated.paidProductAdmissionGranted === false],
+    ["Payment provider remains outside customer and pricing authority", initiated.authorityBoundary.paymentProviderCustomerAuthority === false && initiated.authorityBoundary.browserPricingAuthority === false],
+    ["Surface remains payment-processor neutral", !MEOS_INDIVIDUAL_PURCHASE_INITIATION_BUILD_ID.toLowerCase().includes("stripe") && !MEOS_INDIVIDUAL_PURCHASE_INITIATION_BUILD_ID.toLowerCase().includes("paypal")]
+  ];
+
+  return {
+    success: checks.every(([, passed]) => passed),
+    commission: MEOS_INDIVIDUAL_PURCHASE_INITIATION_COMMISSION,
+    version: MEOS_INDIVIDUAL_PURCHASE_INITIATION_VERSION,
+    buildId: MEOS_INDIVIDUAL_PURCHASE_INITIATION_BUILD_ID,
+    schema: "meos.authenticated-individual-purchase-initiation.acceptance.v1",
+    passed: checks.filter(([, passed]) => passed).length,
+    total: checks.length,
+    checks: checks.map(([name, passed]) => ({ name, passed: Boolean(passed) })),
+    authenticatedIndividualPurchaseInitiationConfigured: true,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    publicPaymentWebhookConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false,
+    paidProductRouteEnforcementConfigured: true,
+    limitation: "An authenticated individual can now create MEOS-owned customer and durable purchase-intent state from a canonical configured offer. Production pricing must be ratified through MEOS_COMMERCIAL_OFFERS_JSON before a real offer is purchasable, and no real payment rail or authenticated provider evidence adapter is configured."
+  };
+}
+
+app.post(
+  "/api/commercial-purchase-intents",
+  express.json({ limit: "16kb", strict: true }),
+  async (request, response, next) => {
+    try {
+      const account = await authenticatedAccount(request);
+      if (!account) {
+        return response.status(401).json({
+          success: false,
+          error: "authentication_required",
+          commission: MEOS_INDIVIDUAL_PURCHASE_INITIATION_COMMISSION
+        });
+      }
+
+      const result = await initiateAuthenticatedIndividualPurchase(account, {
+        offerId: request.body?.offerId
+      });
+      response.setHeader("Cache-Control", "no-store");
+      response.status(201).json({ success: true, ...result });
+    } catch (error) {
+      if (
+        [
+          "COMMERCIAL_PURCHASE_OFFER_REQUIRED",
+          "COMMERCIAL_OFFER_UNAVAILABLE",
+          "COMMERCIAL_OFFER_SUBJECT_MISMATCH",
+          "COMMERCIAL_OFFER_QUANTITY_INVALID"
+        ].includes(error?.code)
+      ) {
+        return response.status(400).json({
+          success: false,
+          error: error.code.toLowerCase(),
+          commission: MEOS_INDIVIDUAL_PURCHASE_INITIATION_COMMISSION
+        });
+      }
+      next(error);
+    }
+  }
+);
+
+app.get("/api/authenticated-individual-purchase-initiation/contract", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    success: true,
+    commission: MEOS_INDIVIDUAL_PURCHASE_INITIATION_COMMISSION,
+    version: MEOS_INDIVIDUAL_PURCHASE_INITIATION_VERSION,
+    buildId: MEOS_INDIVIDUAL_PURCHASE_INITIATION_BUILD_ID,
+    schema: MEOS_INDIVIDUAL_PURCHASE_INITIATION_SCHEMA,
+    productionPricingConfigured: loadConfiguredCommercialOffers().length > 0,
+    paymentProcessorConfigured: false,
+    providerCheckoutConfigured: false,
+    realProviderEvidenceAuthenticationConfigured: false
+  });
+});
+
+app.get("/api/authenticated-individual-purchase-initiation/acceptance-test", async (request, response, next) => {
+  try {
+    response.json(await runAuthenticatedIndividualPurchaseInitiationAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * Commission 006.033W — Sellable Product Route Enforcement Authority
