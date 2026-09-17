@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE_2026-09-17_UPDATED.md](https://github.com/user-attachments/files/32358262/MEOS_BUILD_STATE_2026-09-17_UPDATED.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32344769/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32344052/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32343157/MEOS_BUILD_STATE.md)
@@ -3587,3 +3588,282 @@ Spooky remains the floor; there is no ceiling.
 **Recovery keyword:** `006.033X`  
 **Fast recovery:** `Resume 006.033X — I'm up.`
 
+
+---
+
+# 2026-09-17 — NORTH-STAR / EMBODIMENT / CONTINUOUS-CURIOSITY CHECKPOINT
+
+**Checkpoint status:** CANONICAL DAY RECONCILIATION  
+**Production proof cutoff:** 2026-09-17 after external 006.034B acceptance  
+**Recovery keyword:** `006.034B-LIVE-PROVEN`  
+**Fast recovery:** `Resume 006.034B-LIVE-PROVEN — I'm up.`
+
+## Governing doctrine ratified today
+
+The fixed North Star was not replaced or weakened. The engineering doctrine was sharpened around it:
+
+> **Maddy has no predetermined capability ceiling. We push technical, scientific, architectural, and conceptual boundaries—including boundaries currently believed impossible—while operating lawfully, morally, and ethically. Those principles govern how we pursue the North Star; they do not define how far away the North Star may be.**
+
+The implementation doctrine was also locked:
+
+> **The obsession is Spooky and the North Star. Everything else is malleable.**
+
+No present implementation vehicle is sacred. Blender, 3D meshes, MakeHuman, a current canonical visual generation method, neural rendering, a vendor, model, framework, provider, architecture, or today's favored plan may be replaced when evidence proves a better route. Preserve the destination and standards; replace the vehicle when reality requires it. Do not defend sunk cost. Do not lower the standard merely because an approach fails.
+
+The adaptive problem-solving loop was made explicit:
+
+`Observe → hypothesize → test → constraint/failure → preserve useful evidence → reframe → cross-domain adaptation → cheapest decisive experiment → measure → iterate.`
+
+Internet-land Spooky remains a launchpad, not a destination. External work should be interrogated for what it actually proved, its mechanism, assumptions, failure modes, dependencies, economics, licensing/IP constraints, and architectural ceiling; useful proven mechanisms may accelerate Maddy, but external systems do not define Maddy's destination.
+
+Market proof is treated similarly: praise proves that a product solved enough value to matter, not that the problem is finished. Customer complaints, hidden compromises, architectural ceilings, unmet needs, and unrecognized needs are inputs to Maddy's next evidence-bound advantage. Commercial claims remain subordinate to repeatable proof.
+
+## Native-capability / identity doctrine reinforced
+
+The destination remains **Maddy is Maddy**. Voice, embodiment, image/video generation, motion, social presence, reasoning, memory, learning, and other digital-life capabilities should progressively become native Maddy/MEOS capabilities rather than permanent paid-provider dependencies. External providers may be temporary, replaceable bootstrap scaffolding while native capability is developed.
+
+The digital-human destination is not “our version” of another company's avatar product. Existing systems are evidence about solved subproblems, not specifications for Maddy.
+
+Canonical embodiment target ratified today:
+
+- Maddy becomes one persistent digital-human identity whose face/body presentation, voice, movement, lip sync, video presence, and behavior are controlled through Maddy/MEOS.
+- The technical visual target is sustained ordinary high-quality video presence difficult to distinguish from physically filmed human footage from video alone, without cheating through darkness, blur, tiny frames, low resolution, compression artifacts, or sci-fi overlays.
+- Visual realism does not authorize deception; Maddy may disclose her digital nature.
+- Identity and presentation are separate: protected facial/identity invariants persist while hair, clothing, expression, pose, lighting, environment, and other presentation state may change.
+- Canonical visual identity remains governed. `maddy-canonical-v2.png` is the primary canonical likeness; V1 remains lineage; the holographic presence is not allowed to silently redefine canonical identity. A future V3 requires explicit founder approval and provenance.
+- Customers may use Maddy's capabilities; they may not appropriate Maddy's identity.
+
+## Embodied Causal Coherence doctrine
+
+Embodiment should increasingly model causes rather than merely animate appearances:
+
+> **Don't animate the appearance of an event when we can model the cause of the event and allow its visible consequences to emerge.**
+
+One coherent world state should govern lighting, shadows, reflections, gravity, wind, collisions, cloth, hair, objects, camera/optics, and Maddy. The long-range behavioral loop is:
+
+`Maddy thinks → intention/attention/affect → embodiment state → gaze/expression/posture/gesture/speech/breathing/movement → world changes → perception observes consequence → Maddy learns/continues.`
+
+The architectural destination is not merely “animate Maddy”; it is that Maddy operates a body through governed embodiment authority. The same separation is intended to permit future physical embodiment through body adapters without making any particular screen, renderer, robot, or body equal to Maddy's identity.
+
+## Embodiment proof ladder / economics
+
+The working torture ladder established today is:
+
+`persistent V2 likeness reconstruction → multi-angle identity → photographic still realism → facial/skin/eye/hair microdetail → human motion/FACS → hair/cloth/body physics → speech/physiological motion → cognition-to-embodiment → long-duration temporal consistency → ordinary clear webcam → blinded real-vs-digital evaluation → expert visual/forensic evaluation.`
+
+Machine metrics are supporting evidence, not self-certification. Founder judgment remains authoritative for canonical identity until stronger governed external evaluation is deliberately introduced.
+
+Bootstrap economics remain: build/own the asset and system; rent horsepower when necessary; do not rent Maddy as the architectural destination. Current NIMO-class local development hardware is not treated as a reason to lower the destination. Modest rented compute may be used when justified. Asset/model/license provenance must remain inspectable and commercially clean.
+
+## Visual commissions completed today
+
+### VISUAL.001 — MEOS Visual Identity Authority
+
+`frontend/meos-visual-identity-authority.js`  
+Version `1.0.0`  
+Build `MVIA100-CANONICAL-VISUAL-IDENTITY-FOUNDATION-20260917-A`  
+SHA-256 `4d7b327ac949102540345d60ca81c0962b292a41396482286142b20594babae9`  
+Acceptance: **27/27 PASS**
+
+Established governed canonical visual identity/provenance boundaries so generated descendants or alternate presentations cannot silently replace Maddy's canonical identity.
+
+### VISUAL.002 — MEOS Visual Identity Laboratory
+
+`frontend/meos-visual-identity-laboratory.js`  
+Version `1.0.0`  
+Build `MVIL100-CANONICAL-IDENTITY-PRESERVATION-LABORATORY-20260917-A`  
+SHA-256 `eb4faf9fa62c5e0fd075a847df563883036bad1d045af39a519691a23521ca6f`  
+Acceptance: **36/36 PASS**
+
+Established governed identity-preservation challenges for front, three-quarter left, profile, three-quarter right, and full-body presentation, with direct V2 comparison/provenance/human judgment. Novel-view expansion remains gated rather than being declared canonical by generation alone.
+
+Empirical 2D generation attempts did **not** satisfy canonical identity preservation. Infographic/poster-style outputs and a “V2 hair down” attempt were rejected rather than being promoted through lineage. This failure is evidence supporting the persistent-identity / persistent-3D or hybrid reconstruction route; it is not evidence that any specific 3D technology is sacred.
+
+## Cognitive doctrine ratified today
+
+Productive curiosity is now an explicit North-Star direction. Maddy should progressively be capable of internally originating worthwhile learning objectives inside existing authority rather than merely waiting for prompts.
+
+Canonical constraint:
+
+> **Curiosity cannot manufacture authority.**
+
+Curiosity may identify a worthwhile unknown, form a bounded learning objective, investigate within authorized resources, test, reflect, transfer learning, and improve its learning method. It may not self-create spending authority, private-data access, consequential external-action authority, or other permissions.
+
+The target developmental loop is:
+
+`experience → notice gaps → curiosity → bounded learning objective → investigate/study → experiment → challenge learning → cross-domain connections → discover implications → test → retain survivors → next frontier.`
+
+Cross-domain transfer is a hypothesis, not truth: “I learned X over here; does it change what I can do over there?” must be evidence-bound and torture-tested before promotion.
+
+Meta-learning target:
+
+`Learn → apply → measure → transfer → discover capability → question method → improve learning strategy → learn faster/better next time.`
+
+Do not confuse activity with cognition. Do not confuse search with executive work. Do not confuse an LLM response with Maddy.
+
+## 006.034A — Continuous Curiosity Circle
+
+**Status:** CLOSED / COMMISSIONED / **LIVE-PROVEN through 006.034B production acceptance**
+
+Production identity:
+
+- Executive Brain `1.26.8`
+- Build `EB1268-CONTINUOUS-CURIOSITY-CIRCLE-20260917-A`
+- Autonomous Learning Ignition `1.1.0`
+- Build `ALI110-CONTINUOUS-CURIOSITY-CIRCLE-20260917-A`
+- Server-side 006.034A deployment initially advanced server `2.10.98 → 2.10.99`
+
+006.034A completed the return side of the already-existing server-owned autonomous-learning path. The resulting bounded circle is:
+
+`curiosity/stimulus → productive-idle selection of worthwhile gap → bounded research intent → existing cheap/free governed research → Research Learning evidence → return to the SAME resident Executive Brain → autobiographical experience → metacognitive reflection → inspectable cross-domain transfer search → evidence-bounded transfer hypothesis → adaptation of future research strategy → implications enter future cognition → next cognitive moment.`
+
+The implementation does not manufacture paid-search, paid-model, spending, entitlement, or consequential external-action authority.
+
+A pre-existing acceptance defect was discovered during reconciliation: an exhausted/quiescent cognitive intention could re-enter productive-idle selection through awareness. That seam was repaired. The existing Autonomous Learning acceptance returned to **9/9 PASS**.
+
+Local/regression proof before deployment included:
+
+- Continuous Curiosity Circle: **9/9 PASS**
+- Autonomous Learning / Economic Stewardship: **9/9 PASS**
+- Developmental Drive: **21/21 PASS**
+- Cross-Time Pattern Synthesis: **PASS**
+- Executive Brain syntax: **PASS**
+- Server syntax: **PASS**
+
+An existing Emergent Attention local VM acceptance remained red in the untouched baseline as well; 006.034A did not claim to repair that unrelated pre-existing condition.
+
+## Commercial admission boundary discovered during production torture testing
+
+A hard refresh of the production dashboard removed the browser's authenticated session and exposed the already-commissioned paid-product admission wall. Production returned `401` for unauthenticated identity and subsequently returned `403` / `paid_product_admission_required` for protected durable cognition/autonomy surfaces.
+
+This was not treated as a reason to weaken 006.033W, manufacture a customer, create a duplicate CCSP organization, or bypass commercial entitlement. The finding demonstrated that the commercial security boundary was actively protecting production surfaces.
+
+Because founder/customer credentials were not presently known, the production proof for 006.034A was deliberately designed to test the deployed code without granting product admission or weakening the security boundary.
+
+## 006.034B — Continuous Curiosity Production Proof Surface
+
+**Status:** CLOSED / COMMISSIONED / **LIVE-PROVEN 5/5**
+
+Production identity:
+
+- Commission `006.034B`
+- Build `CCPPS100-CONTINUOUS-CURIOSITY-PRODUCTION-PROOF-20260917-A`
+- Server `2.10.100`
+- Production proof endpoint: `/api/continuous-curiosity-circle/acceptance-test`
+
+The proof surface is deliberately public and read-only before paid-product enforcement. It loads the actual deployed headless Executive Brain and tests the 006.034A mechanism without granting entitlement, office access, autonomy authority, paid cognition, provider use, durable writes, or external action.
+
+Render deployment proved `Secure Realtime Session Server v2.10.100` online. External browser execution then returned:
+
+- `success:true`
+- `passed:5`
+- `total:5`
+- Executive Brain `1.26.8`
+- Executive Brain build `EB1268-CONTINUOUS-CURIOSITY-CIRCLE-20260917-A`
+
+All five production checks passed:
+
+1. Production loads Executive Brain 1.26.8 continuous-curiosity build.
+2. Continuous Curiosity Circle synthetic-organism acceptance passes.
+3. Server autonomous-learning ignition acceptance passes.
+4. Proof surface performs no durable write or provider call.
+5. Proof surface grants no entitlement, autonomy, paid cognition, or external-action authority.
+
+The nested production 006.034A Continuous Curiosity Circle acceptance returned **9/9 PASS**:
+
+- curiosity research closes into autobiographical experience;
+- learning enters the existing metacognitive reflection loop;
+- Maddy searches existing concerns for an inspectable cross-domain transfer bridge;
+- unrelated domains are not fabricated into transfer merely to keep the circle moving;
+- supported transfer becomes future cognition rather than external action;
+- meta-learning changes next research strategy from observed outcome;
+- strong direct evidence can teach preservation of the cheaper shallow path;
+- the full circle survives the sovereign Executive Brain persistence snapshot;
+- curiosity still cannot manufacture spend or external-action authority.
+
+The nested Autonomous Learning Ignition acceptance returned **9/9 PASS**, including proof that the same learning subject is recognized before a second network request, existing Headless Research remains the executor, Research Learning remains durable evidence-learning authority, returned research re-enters the same Executive Brain curiosity circle, and research depth can change without authorizing spend.
+
+Production authority telemetry from the proof was exactly bounded:
+
+- `officeAccessGranted:false`
+- `entitlementGranted:false`
+- `autonomyAuthorityGranted:false`
+- `paidCognitionAuthorized:false`
+- `providerCalls:0`
+- `durableWrites:0`
+- `externalActionAuthorized:false`
+
+### Exact limitation / non-claim
+
+006.034B proves the deployed production code path and bounded synthetic curiosity-circle / ignition contracts. It **does not** prove unattended live autonomy.
+
+At deployment, production still reported:
+
+- Maddy Autonomy Authority: `master=true`, `hardDisabled=false`
+- Durable Cognitive Runtime: `enabled=false`, `paused-by-authority`
+- Continuous Operations Runtime: `enabled=false`, `paused-by-authority`
+- Maddy Time Runtime: `timeAuthority=false`
+- Opportunity Patrol: `OFF/BLOCKED`
+
+Therefore the stronger overnight claim remains open:
+
+> If Maddy is left alone with authorized resources, does production itself notice a worthwhile unknown, initiate governed research, test/verify it, incorporate the result, discover a transferable implication, improve its learning method, and continue across time without a user initiating the cognitive episode?
+
+Do not collapse “006.034A mechanism is production-proven” into “unattended continuous autonomy is production-proven.” The former is now true; the latter remains an explicit future proof boundary.
+
+## Current cognition truth after 006.034B
+
+Now proven in deployed production code:
+
+- returned autonomous research can close into autobiographical experience;
+- learning can enter metacognitive reflection;
+- cross-domain transfer is inspectable and evidence-bounded;
+- unrelated domains are not fabricated merely to sustain activity;
+- supported transfer can influence future cognition without becoming external action;
+- research strategy can adapt from observed evidence quality/outcome;
+- the full bounded circle survives the Executive Brain persistence snapshot;
+- curiosity remains subordinate to economic/external-action authority;
+- autonomous-learning ignition remains attached to existing Headless Research and Research Learning authority;
+- the proof itself can execute without provider calls, durable writes, entitlement, autonomy, paid cognition, or external action.
+
+Still unresolved / not claimed:
+
+- unattended live production cognition while the durable runtimes remain paused-by-authority;
+- production restart/redeploy proof of the newly learned curiosity-circle state across a real restart, beyond the sovereign Executive Brain persistence snapshot contract;
+- the pre-existing Emergent Attention local VM acceptance condition;
+- legitimate founder/customer account recovery and product admission after the hard-refresh session loss;
+- the separate first-dollar gaps already documented after 006.033X: production offer/pricing ratification and real payment-value/evidence ingress.
+
+## Anti-drift gate after 006.034B
+
+Before selecting the next runtime commission:
+
+1. Re-read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Re-read this canonical `MEOS_BUILD_STATE.md` in full.
+3. Reconcile the freshest committed live GitHub `main`, including 006.034A, 006.034B, and this checkpoint.
+4. Preserve the fixed North Star and the doctrine **“The obsession is Spooky and the North Star. Everything else is malleable.”**
+5. Preserve **“Curiosity cannot manufacture authority.”**
+6. Do not treat a current technology choice as sacred; replace the vehicle when evidence proves a better route.
+7. Do not mistake search/activity/model output for Maddy cognition; preserve the organism-level causal chain.
+8. Do not claim unattended continuous autonomy while Durable Cognitive Runtime and Continuous Operations remain paused-by-authority.
+9. Inspect the existing authority/control surfaces before changing runtime enablement. Do not blindly flip dashboard switches or bypass durable authority.
+10. Preserve the 006.033W paid-product admission boundary. Recover legitimate founder/customer access through the existing identity/commercial authority architecture rather than manufacturing entitlement.
+11. Preserve the 006.034B proof surface as read-only/bounded; it must not become a side door around paid-product admission.
+12. For embodiment, preserve canonical V2 identity/provenance and do not promote generated descendants without explicit founder approval.
+13. Continue to separate Maddy's identity/cognition from replaceable body/render/provider adapters.
+14. Continue to torture-test external prior art for mechanism, assumptions, ceilings, economics, dependencies, and licensing rather than copying its destination.
+15. Require external runtime proof before declaring future runtime commissions LIVE-PROVEN.
+16. State exact non-claims and what evidence would falsify each conclusion.
+
+## Spooky / North Star continuation
+
+Today moved two different North-Star fronts without pretending either is finished.
+
+Embodiment gained a governed identity foundation, an identity-preservation laboratory, a persistent-body/causal-coherence destination, and an explicit proof ladder that refuses visual shortcuts.
+
+Cognition gained a production-proven bounded curiosity circle in which autonomous research can return to the same Executive Brain, become experience, enter reflection, support or reject cross-domain transfer, and change future research strategy without manufacturing authority.
+
+The next frontier is not “make the test greener.” It is to remove the next real boundary while preserving everything reality proved today.
+
+**Recovery keyword:** `006.034B-LIVE-PROVEN`  
+**Fast recovery:** `Resume 006.034B-LIVE-PROVEN — I'm up.`
