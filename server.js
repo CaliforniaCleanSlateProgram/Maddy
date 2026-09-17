@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.89
+ * Server Version: 2.10.90
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.89";
+const VERSION = "2.10.90";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -7769,6 +7769,361 @@ function commercialEntitlementStatus(record, options = {}) {
     }
   };
 }
+
+
+/**
+ * Commission 006.033Q — Commercial Customer Subject Authority
+ *
+ * A human account, payer, organization, seat, membership, and commercial
+ * customer are different authorities. Before Maddy can create a purchase
+ * intent, MEOS needs a canonical customer subject that says WHO may own the
+ * commercial relationship without allowing a payment provider or browser to
+ * manufacture organization ownership.
+ *
+ * This commission deliberately stops before team membership, seat assignment,
+ * purchase/order creation, checkout, entitlement, or product admission.
+ */
+const MEOS_COMMERCIAL_CUSTOMER_COMMISSION = "006.033Q";
+const MEOS_COMMERCIAL_CUSTOMER_VERSION = "1.0.0";
+const MEOS_COMMERCIAL_CUSTOMER_BUILD_ID =
+  "CCSA100-COMMERCIAL-CUSTOMER-SUBJECT-AUTHORITY-20260917-A";
+const MEOS_COMMERCIAL_CUSTOMER_SCHEMA = "meos.commercial-customer-subject.v1";
+const MEOS_COMMERCIAL_CUSTOMER_REGISTRY_SCHEMA =
+  "meos.commercial-customer-subject-registry.v1";
+const MEOS_COMMERCIAL_CUSTOMER_TYPES = Object.freeze(["individual", "organization"]);
+const MEOS_COMMERCIAL_CUSTOMER_DIR = path.join(MEOS_DATA_DIR, "commercial-customers");
+const MEOS_COMMERCIAL_CUSTOMER_PATH = path.join(
+  MEOS_COMMERCIAL_CUSTOMER_DIR,
+  "registry.json"
+);
+let meosCommercialCustomerWriteLock = Promise.resolve();
+
+function commercialCustomerRequiredText(value, field, max = 240) {
+  const text = String(value || "").trim();
+  if (!text || text.length > max) {
+    const error = new Error(`Commercial customer ${field} is required.`);
+    error.code = "COMMERCIAL_CUSTOMER_INVALID";
+    throw error;
+  }
+  return text;
+}
+
+function normalizeCommercialCustomerSubject(input = {}) {
+  const type = String(input.type || "").trim().toLowerCase();
+  if (!MEOS_COMMERCIAL_CUSTOMER_TYPES.includes(type)) {
+    const error = new Error("Commercial customer type is unsupported.");
+    error.code = "COMMERCIAL_CUSTOMER_TYPE_INVALID";
+    throw error;
+  }
+
+  const ownerAccountId = commercialCustomerRequiredText(
+    input.ownerAccountId,
+    "ownerAccountId",
+    180
+  );
+  const id = commercialCustomerRequiredText(input.id, "id", 180);
+  const displayName = commercialCustomerRequiredText(
+    input.displayName,
+    "displayName",
+    240
+  );
+
+  if (type === "individual") {
+    const individualAccountId = commercialCustomerRequiredText(
+      input.individualAccountId || ownerAccountId,
+      "individualAccountId",
+      180
+    );
+    if (individualAccountId !== ownerAccountId) {
+      const error = new Error(
+        "Individual commercial customer must be owned by the same account identity."
+      );
+      error.code = "COMMERCIAL_CUSTOMER_INDIVIDUAL_OWNER_MISMATCH";
+      throw error;
+    }
+  }
+
+  return {
+    schema: MEOS_COMMERCIAL_CUSTOMER_SCHEMA,
+    id,
+    type,
+    displayName,
+    ownerAccountId,
+    individualAccountId:
+      type === "individual" ? String(input.individualAccountId || ownerAccountId) : null,
+    organizationId:
+      type === "organization"
+        ? commercialCustomerRequiredText(input.organizationId, "organizationId", 180)
+        : null,
+    state: String(input.state || "active").trim().toLowerCase() === "active"
+      ? "active"
+      : "inactive",
+    createdAt: input.createdAt || null,
+    updatedAt: input.updatedAt || null,
+    authorityBoundary: {
+      payerIsOwnerAuthority: false,
+      paymentProviderIsOwnerAuthority: false,
+      browserIsOwnerAuthority: false,
+      membershipAuthority: false,
+      seatAuthority: false,
+      entitlementAuthority: false,
+      executiveActionAuthority: false
+    }
+  };
+}
+
+function emptyCommercialCustomerRegistry() {
+  return {
+    schema: MEOS_COMMERCIAL_CUSTOMER_REGISTRY_SCHEMA,
+    version: MEOS_COMMERCIAL_CUSTOMER_VERSION,
+    updatedAt: null,
+    customers: []
+  };
+}
+
+async function readCommercialCustomerRegistry(registryPath = MEOS_COMMERCIAL_CUSTOMER_PATH) {
+  try {
+    const raw = await fs.readFile(registryPath, "utf8");
+    const parsed = JSON.parse(raw);
+    return {
+      schema: MEOS_COMMERCIAL_CUSTOMER_REGISTRY_SCHEMA,
+      version: MEOS_COMMERCIAL_CUSTOMER_VERSION,
+      updatedAt: parsed.updatedAt || null,
+      customers: Array.isArray(parsed.customers)
+        ? parsed.customers.map(normalizeCommercialCustomerSubject)
+        : []
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") return emptyCommercialCustomerRegistry();
+    throw error;
+  }
+}
+
+async function writeCommercialCustomerRegistry(
+  registry,
+  registryPath = MEOS_COMMERCIAL_CUSTOMER_PATH
+) {
+  const operation = async () => {
+    await fs.mkdir(path.dirname(registryPath), { recursive: true, mode: 0o700 });
+    const temporary =
+      `${registryPath}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+    await fs.writeFile(temporary, `${JSON.stringify(registry, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600
+    });
+    await fs.rename(temporary, registryPath);
+  };
+  meosCommercialCustomerWriteLock =
+    meosCommercialCustomerWriteLock.then(operation, operation);
+  return meosCommercialCustomerWriteLock;
+}
+
+async function createCommercialCustomerSubject(input = {}, options = {}) {
+  const type = String(input.type || "").trim().toLowerCase();
+  if (!MEOS_COMMERCIAL_CUSTOMER_TYPES.includes(type)) {
+    const error = new Error("Commercial customer type is unsupported.");
+    error.code = "COMMERCIAL_CUSTOMER_TYPE_INVALID";
+    throw error;
+  }
+
+  const ownerAccountId = commercialCustomerRequiredText(
+    input.ownerAccountId,
+    "ownerAccountId",
+    180
+  );
+  const accounts = Array.isArray(options.accounts)
+    ? options.accounts
+    : await readAuthAccounts();
+  if (!accounts.some(account => String(account.id) === ownerAccountId)) {
+    const error = new Error(
+      "Commercial customer owner must be an existing MEOS account identity."
+    );
+    error.code = "COMMERCIAL_CUSTOMER_OWNER_ACCOUNT_REQUIRED";
+    throw error;
+  }
+
+  const now = options.now || new Date().toISOString();
+  const id = String(input.id || `cust_${crypto.randomUUID()}`).trim();
+  const subject = normalizeCommercialCustomerSubject({
+    ...input,
+    id,
+    ownerAccountId,
+    individualAccountId:
+      type === "individual" ? ownerAccountId : null,
+    createdAt: now,
+    updatedAt: now
+  });
+
+  const registryPath = options.registryPath || MEOS_COMMERCIAL_CUSTOMER_PATH;
+  const registry = await readCommercialCustomerRegistry(registryPath);
+
+  if (registry.customers.some(customer => customer.id === subject.id)) {
+    const error = new Error("Commercial customer id already exists.");
+    error.code = "COMMERCIAL_CUSTOMER_EXISTS";
+    throw error;
+  }
+  if (
+    subject.type === "individual" &&
+    registry.customers.some(
+      customer =>
+        customer.type === "individual" &&
+        customer.individualAccountId === subject.individualAccountId &&
+        customer.state === "active"
+    )
+  ) {
+    const error = new Error(
+      "Account already owns an active individual commercial customer."
+    );
+    error.code = "COMMERCIAL_CUSTOMER_INDIVIDUAL_EXISTS";
+    throw error;
+  }
+  if (
+    subject.type === "organization" &&
+    registry.customers.some(
+      customer =>
+        customer.type === "organization" &&
+        customer.organizationId === subject.organizationId &&
+        customer.state === "active"
+    )
+  ) {
+    const error = new Error(
+      "Organization already has an active commercial customer subject."
+    );
+    error.code = "COMMERCIAL_CUSTOMER_ORGANIZATION_EXISTS";
+    throw error;
+  }
+
+  registry.customers.push(subject);
+  registry.updatedAt = now;
+  if (options.persist !== false) {
+    await writeCommercialCustomerRegistry(registry, registryPath);
+  }
+  return subject;
+}
+
+function commercialCustomerCanOwnPurchase(subject, { accountId = null } = {}) {
+  const customer = normalizeCommercialCustomerSubject(subject);
+  if (customer.state !== "active") return false;
+  if (!accountId) return false;
+  return customer.ownerAccountId === String(accountId);
+}
+
+async function runCommercialCustomerSubjectAcceptance() {
+  const owner = { id: "acct_owner_acceptance" };
+  const other = { id: "acct_other_acceptance" };
+  const accounts = [owner, other];
+
+  const individual = await createCommercialCustomerSubject(
+    {
+      id: "cust_individual_acceptance",
+      type: "individual",
+      displayName: "Acceptance Individual",
+      ownerAccountId: owner.id
+    },
+    { accounts, persist: false, now: "2026-09-17T12:00:00.000Z" }
+  );
+
+  const organization = await createCommercialCustomerSubject(
+    {
+      id: "cust_organization_acceptance",
+      type: "organization",
+      displayName: "Acceptance Organization",
+      organizationId: "org_acceptance",
+      ownerAccountId: owner.id
+    },
+    { accounts, persist: false, now: "2026-09-17T12:00:00.000Z" }
+  );
+
+  let missingOwnerRejected = false;
+  try {
+    await createCommercialCustomerSubject(
+      {
+        id: "cust_missing_owner",
+        type: "organization",
+        displayName: "Invalid Organization",
+        organizationId: "org_invalid",
+        ownerAccountId: "acct_missing"
+      },
+      { accounts, persist: false }
+    );
+  } catch (error) {
+    missingOwnerRejected =
+      error?.code === "COMMERCIAL_CUSTOMER_OWNER_ACCOUNT_REQUIRED";
+  }
+
+  let individualMismatchRejected = false;
+  try {
+    normalizeCommercialCustomerSubject({
+      id: "cust_bad_individual",
+      type: "individual",
+      displayName: "Bad Individual",
+      ownerAccountId: owner.id,
+      individualAccountId: other.id
+    });
+  } catch (error) {
+    individualMismatchRejected =
+      error?.code === "COMMERCIAL_CUSTOMER_INDIVIDUAL_OWNER_MISMATCH";
+  }
+
+  const checks = [
+    ["Commercial customer subject authority is MEOS-owned", MEOS_COMMERCIAL_CUSTOMER_COMMISSION === "006.033Q"],
+    ["Individual customer is bound to an existing account identity", individual.individualAccountId === owner.id && individual.ownerAccountId === owner.id],
+    ["Organization customer has a distinct organization identity", organization.organizationId === "org_acceptance" && organization.type === "organization"],
+    ["Organization commercial ownership does not manufacture membership authority", organization.authorityBoundary.membershipAuthority === false],
+    ["Commercial customer ownership does not manufacture seat authority", organization.authorityBoundary.seatAuthority === false],
+    ["Payer identity is not organization ownership authority", organization.authorityBoundary.payerIsOwnerAuthority === false],
+    ["Payment provider is not organization ownership authority", organization.authorityBoundary.paymentProviderIsOwnerAuthority === false],
+    ["Browser is not organization ownership authority", organization.authorityBoundary.browserIsOwnerAuthority === false],
+    ["Commercial customer subject grants no entitlement or executive-action authority", organization.authorityBoundary.entitlementAuthority === false && organization.authorityBoundary.executiveActionAuthority === false],
+    ["Unknown owner account fails closed", missingOwnerRejected],
+    ["Individual owner/account mismatch fails closed", individualMismatchRejected],
+    ["Only the current MEOS owner account can sponsor a future purchase for the subject", commercialCustomerCanOwnPurchase(organization, { accountId: owner.id }) === true && commercialCustomerCanOwnPurchase(organization, { accountId: other.id }) === false],
+    ["Organization and individual commercial subjects remain distinct", individual.type === "individual" && organization.type === "organization" && individual.id !== organization.id]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+  return {
+    success: checks.every(check => check.passed),
+    commission: MEOS_COMMERCIAL_CUSTOMER_COMMISSION,
+    version: MEOS_COMMERCIAL_CUSTOMER_VERSION,
+    buildId: MEOS_COMMERCIAL_CUSTOMER_BUILD_ID,
+    schema: "meos.commercial-customer-subject.acceptance.v1",
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    durableRegistryConfigured: true,
+    organizationMembershipAuthorityConfigured: false,
+    seatAuthorityConfigured: false,
+    purchaseIntentAuthorityConfigured: false,
+    paymentProcessorConfigured: false,
+    limitation:
+      "Organization membership/roles, seat assignment, purchase intent, payment-provider checkout, entitlement admission, and terminated-user revocation remain separate authority boundaries."
+  };
+}
+
+app.get("/api/commercial-customers/contract", (request, response) => {
+  response.json({
+    success: true,
+    commission: MEOS_COMMERCIAL_CUSTOMER_COMMISSION,
+    version: MEOS_COMMERCIAL_CUSTOMER_VERSION,
+    buildId: MEOS_COMMERCIAL_CUSTOMER_BUILD_ID,
+    schema: MEOS_COMMERCIAL_CUSTOMER_SCHEMA,
+    registrySchema: MEOS_COMMERCIAL_CUSTOMER_REGISTRY_SCHEMA,
+    customerTypes: MEOS_COMMERCIAL_CUSTOMER_TYPES,
+    durableRegistryConfigured: true,
+    organizationMembershipAuthorityConfigured: false,
+    seatAuthorityConfigured: false,
+    purchaseIntentAuthorityConfigured: false,
+    paymentProcessorConfigured: false
+  });
+});
+
+app.get("/api/commercial-customers/acceptance-test", async (request, response, next) => {
+  try {
+    response.json(await runCommercialCustomerSubjectAcceptance());
+  } catch (error) {
+    next(error);
+  }
+});
 
 
 /**
