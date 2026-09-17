@@ -1,7 +1,7 @@
-nd lets say some one with a seat gets fired and is disgrutled they shouldnt be able to attack the company through our maddy/**
+/**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.87
+ * Server Version: 2.10.89
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
