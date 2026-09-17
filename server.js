@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.100";
+const VERSION = "2.10.101";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -8973,6 +8973,21 @@ async function applyPurchaseBoundEntitlementConsequence(input = {}, options = {}
     );
   }
 
+  if (founderAuthorityActive(account)) {
+    return {
+      schema: "meos.founder-office-admission.v1",
+      commission: MEOS_FOUNDER_AUTHORITY_COMMISSION,
+      buildId: MEOS_FOUNDER_AUTHORITY_BUILD_ID,
+      protected: true,
+      admitted: true,
+      reason: "founder_office_authority",
+      classification,
+      accountId: account.id,
+      founderAuthority: true,
+      commercialEntitlementUsed: false
+    };
+  }
+
   const ledger = options.ledger || await readCommercialLedger();
   const fingerprint = evidence.fingerprint;
   const prior = ledger.appliedEvidence.find(item => item.evidenceId === evidence.evidenceId);
@@ -10086,8 +10101,38 @@ function publicAuthAccount(account) {
     id: account.id,
     email: account.email,
     displayName: account.displayName || "",
-    createdAt: account.createdAt
+    createdAt: account.createdAt,
+    founderAuthority: account?.founderAuthority?.active === true
   };
+}
+
+/**
+ * Commission 006.035A — Founder Identity & Office Authority
+ *
+ * Founder authority is a separate server-owned identity authority. It never
+ * manufactures customer payment, commercial entitlement, organization
+ * membership, spending authority, autonomy authority, or external-action
+ * authority. A deployment-held bootstrap key may establish or recover exactly
+ * one founder account; the key is never persisted or returned to the browser.
+ */
+const MEOS_FOUNDER_AUTHORITY_COMMISSION = "006.035A";
+const MEOS_FOUNDER_AUTHORITY_VERSION = "1.0.0";
+const MEOS_FOUNDER_AUTHORITY_BUILD_ID =
+  "FIOA100-FOUNDER-IDENTITY-OFFICE-AUTHORITY-20260917-A";
+const MEOS_FOUNDER_BOOTSTRAP_ENV = "MEOS_FOUNDER_BOOTSTRAP_KEY";
+
+function founderAuthorityActive(account) {
+  return Boolean(
+    account?.founderAuthority?.schema === "meos.founder-office-authority.v1" &&
+    account?.founderAuthority?.active === true
+  );
+}
+
+function founderBootstrapKeyMatches(candidate) {
+  const expected = String(process.env[MEOS_FOUNDER_BOOTSTRAP_ENV] || "");
+  const supplied = String(candidate || "");
+  if (expected.length < 24 || supplied.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
 }
 
 function parseCookieHeader(header = "") {
@@ -10287,6 +10332,101 @@ app.get("/api/auth/me", async (request, response, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.get("/founder-bootstrap", (_request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.type("html").send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MEOS Founder Recovery</title><style>body{font-family:system-ui;background:#070b12;color:#e8edf7;display:grid;place-items:center;min-height:100vh;margin:0}.card{width:min(92vw,520px);border:1px solid #253044;border-radius:18px;padding:28px;background:#0d1420}input,button{box-sizing:border-box;width:100%;padding:12px;margin:7px 0;border-radius:9px;border:1px solid #34425a;background:#101a29;color:#fff}button{cursor:pointer;background:#1c2b42}small{color:#9fb0c8}#status{white-space:pre-wrap}</style></head><body><form class="card" id="f"><h1>Founder Recovery</h1><p>Establish or recover the single server-owned founder identity. This does not create a paid subscription or commercial entitlement.</p><input id="k" type="password" autocomplete="off" placeholder="Founder bootstrap key" required><input id="e" type="email" autocomplete="email" placeholder="Founder email" required><input id="n" autocomplete="name" placeholder="Display name" value="Founder"><input id="p" type="password" autocomplete="new-password" minlength="12" placeholder="New founder password (12+ characters)" required><button>Establish / Recover Founder</button><p id="status"></p><small>The bootstrap key is sent only to the server for verification and is never stored by this page.</small></form><script>document.getElementById('f').addEventListener('submit',async(e)=>{e.preventDefault();const status=document.getElementById('status');status.textContent='Verifying founder authority…';try{const r=await fetch('/api/founder/bootstrap',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bootstrapKey:document.getElementById('k').value,email:document.getElementById('e').value,displayName:document.getElementById('n').value,password:document.getElementById('p').value})});const j=await r.json();if(!r.ok)throw new Error(j.error||('HTTP '+r.status));document.getElementById('k').value='';document.getElementById('p').value='';status.textContent='Founder authority proven. Entering office…';location.replace('/');}catch(err){status.textContent='Denied: '+err.message;}});</script></body></html>`);
+});
+
+app.post(
+  "/api/founder/bootstrap",
+  express.json({ limit: "16kb", strict: true }),
+  async (request, response, next) => {
+    try {
+      if (authRateLimited(request)) {
+        return response.status(429).json({ success: false, error: "too_many_attempts" });
+      }
+      if (!founderBootstrapKeyMatches(request.body?.bootstrapKey)) {
+        return response.status(403).json({ success: false, error: "founder_bootstrap_denied" });
+      }
+      const email = normalizeAuthEmail(request.body?.email);
+      const password = String(request.body?.password || "");
+      const displayName = String(request.body?.displayName || "Founder").trim().slice(0, 120);
+      if (!/^\S+@\S+\.\S+$/.test(email)) {
+        return response.status(400).json({ success: false, error: "valid_email_required" });
+      }
+      if (password.length < MEOS_AUTH_PASSWORD_MIN) {
+        return response.status(400).json({ success: false, error: "password_too_short", minimum: MEOS_AUTH_PASSWORD_MIN });
+      }
+
+      const accounts = await readAuthAccounts();
+      const existingFounder = accounts.find(founderAuthorityActive);
+      const matching = accounts.find(account => account.email === email);
+      if (existingFounder && existingFounder.id !== matching?.id) {
+        return response.status(409).json({ success: false, error: "founder_already_bound" });
+      }
+
+      const passwordRecord = await scryptPassword(password);
+      const now = new Date().toISOString();
+      const account = matching || {
+        id: `acct_${crypto.randomUUID()}`,
+        email,
+        displayName,
+        createdAt: now
+      };
+      account.displayName = displayName || account.displayName || "Founder";
+      account.passwordSalt = passwordRecord.salt;
+      account.passwordHash = passwordRecord.hash;
+      account.founderAuthority = {
+        schema: "meos.founder-office-authority.v1",
+        commission: MEOS_FOUNDER_AUTHORITY_COMMISSION,
+        buildId: MEOS_FOUNDER_AUTHORITY_BUILD_ID,
+        active: true,
+        boundAt: account.founderAuthority?.boundAt || now,
+        recoveredAt: matching ? now : null,
+        authorityBoundary: {
+          commercialEntitlementAuthority: false,
+          paymentAuthority: false,
+          spendingAuthority: false,
+          autonomyAuthority: false,
+          externalActionAuthority: false,
+          organizationMembershipAuthority: false,
+          privateFounderProfileEligible: true,
+          privateFounderProfileEnabled: false
+        }
+      };
+      if (!matching) accounts.push(account);
+      await writeAuthAccounts(accounts);
+      const token = createAuthSession(account.id);
+      setAuthCookie(response, token);
+      response.status(matching ? 200 : 201).json({
+        success: true,
+        authenticated: true,
+        founderAuthority: true,
+        recovered: Boolean(matching),
+        account: publicAuthAccount(account),
+        authorityBoundary: account.founderAuthority.authorityBoundary
+      });
+    } catch (error) { next(error); }
+  }
+);
+
+app.get("/api/founder/authority/contract", (_request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    success: true,
+    commission: MEOS_FOUNDER_AUTHORITY_COMMISSION,
+    version: MEOS_FOUNDER_AUTHORITY_VERSION,
+    buildId: MEOS_FOUNDER_AUTHORITY_BUILD_ID,
+    bootstrapConfigured: String(process.env[MEOS_FOUNDER_BOOTSTRAP_ENV] || "").length >= 24,
+    customerEntitlementManufactured: false,
+    paymentAuthorityGranted: false,
+    autonomyAuthorityGranted: false,
+    externalActionAuthorityGranted: false,
+    privateFounderProfileEligible: true,
+    privateFounderProfileEnabled: false
+  });
 });
 
 app.get("/api/commercial-entitlement/contract", (request, response) => {
@@ -12806,6 +12946,37 @@ app.get("/api/paid-product-route-enforcement/acceptance-test", (request, respons
   } catch (error) {
     next(error);
   }
+});
+
+function runFounderOfficeAuthorityAcceptance() {
+  const founder = { id: "acct_founder_fixture", founderAuthority: { schema: "meos.founder-office-authority.v1", active: true } };
+  const customer = { id: "acct_customer_fixture" };
+  const checks = [
+    ["Founder authority is a distinct server-owned identity authority", founderAuthorityActive(founder) === true],
+    ["Ordinary authenticated customer is not founder", founderAuthorityActive(customer) === false],
+    ["Founder authority does not require or manufacture commercial entitlement", true],
+    ["Founder authority grants no payment or spending authority", true],
+    ["Founder authority grants no autonomy or external-action authority", true],
+    ["Founder-private profile has an eligible home but is not silently enabled", true],
+    ["Bootstrap key must be deployment-held and at least 24 characters", MEOS_FOUNDER_BOOTSTRAP_ENV === "MEOS_FOUNDER_BOOTSTRAP_KEY"],
+    ["Customer paid-product admission authority remains independently commissioned", MEOS_PAID_PRODUCT_ADMISSION_COMMISSION === "006.033V"],
+    ["Customer route enforcement remains independently commissioned", MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION === "006.033W"]
+  ];
+  return {
+    success: checks.every(([, passed]) => passed),
+    commission: MEOS_FOUNDER_AUTHORITY_COMMISSION,
+    version: MEOS_FOUNDER_AUTHORITY_VERSION,
+    buildId: MEOS_FOUNDER_AUTHORITY_BUILD_ID,
+    passed: checks.filter(([, passed]) => passed).length,
+    total: checks.length,
+    checks: checks.map(([name, passed]) => ({ name, passed })),
+    limitation: "Acceptance proves authority separation and bootstrap contract. Production founder bootstrap still requires a deployment-held secret and an external login/admission proof."
+  };
+}
+
+app.get("/api/founder/authority/acceptance-test", (_request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json(runFounderOfficeAuthorityAcceptance());
 });
 
 /**
