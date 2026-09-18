@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32399158/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32368191/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32344769/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32344052/MEOS_BUILD_STATE.md)
@@ -5950,3 +5951,269 @@ an answer:
 **Recovery keyword:** `006.034C-PROOF-PENDING`\
 **Fast recovery:**
 `Resume 006.034C-PROOF-PENDING — read /health continuousCognition first.`
+
+------------------------------------------------------------------------
+
+# SEPTEMBER 18 CURIOSITY-CONTINUITY CHECKPOINT --- 006.034H LIVE-PROVEN
+
+**Checkpoint time:** approximately 3:30 PM Pacific, 2026-09-18  
+**Latest deployed server:** `2.10.108`  
+**Latest deployed Executive Brain:** `1.26.13`  
+**Executive Brain build:** `EB12613-DURABLE-CURIOSITY-RECOGNITION-20260918-A`  
+**Commission:** `006.034H — Durable Curiosity Recognition + Developmental Continuity`  
+**Production proof build:** `DCRPP100-DURABLE-CURIOSITY-RECOGNITION-PROOF-20260918-A`  
+**Status:** **LIVE-PROVEN**
+
+## Commission truth
+
+006.034H is LIVE-PROVEN because both the deployed bounded acceptance surface and the real unattended production runtime now show the intended restart-continuity behavior.
+
+The acceptance surface returned **11/11 PASS** on the deployed server and Executive Brain. It also preserved the already-commissioned nested contracts for Continuous Curiosity, stale-attention release, orphaned-attention reconciliation, executive-attention lifecycle reconciliation, actionable-attention progress, durable curiosity recognition, autonomous-learning restart continuity, and autonomous-learning ignition.
+
+The live unattended runtime then supplied the decisive external proof that the restart defect observed earlier on September 18 is closed:
+
+**before 006.034H:** a Render restart could erase process-local curiosity recognition, allowing Maddy to investigate a recently researched subject again as if it were new;
+
+**after 006.034H:** a fresh server process reconstructed recent-subject recognition and daily novelty accounting from the durable Executive Brain before new autonomous research was allowed.
+
+This is an engineering proof of durable autonomous-learning recognition continuity. It is not a claim of phenomenal consciousness.
+
+## Live restart proof
+
+The production server restarted on `2.10.108` and hydrated the resident Executive Brain from the durable institutional repository.
+
+Observed autonomous-learning continuity telemetry:
+
+- `hydrated: true`
+- `hydrationSource: "durable-executive-brain-history"`
+- `restoredRecentSubjectCount: 2`
+- `restoredDailyNovelSubjectCount: 2`
+- `restoredLastDurableLearningId: "research-learning-is-knowledge-memory-currently-available-1eaf476a3baabfae8c22"`
+- `restoredLastDurableLearningSubject: "Is Knowledge Memory currently available?"`
+- `countersScope: "current-server-process; durable recognition and last durable learning restore separately"`
+
+The fresh server process did **not** re-run the previously investigated Knowledge Memory / Knowledge Engine availability questions merely because Render restarted.
+
+Instead, the next autonomous research subject was:
+
+`What unfamiliar part of the public world is worth understanding next, and what evidence would show that it matters?`
+
+That subject advanced the durable recognition ledger from two restored recent subjects to three current recent subjects and from two restored daily novel subjects to three current daily novel subjects.
+
+This is direct production evidence that restart continuity changed subsequent autonomous subject selection.
+
+## Pre-network durability proof
+
+006.034H moved autonomous-learning recognition ahead of network execution.
+
+Production telemetry recorded:
+
+- `preNetworkCheckpointCount: 1`
+- `lastPreNetworkCheckpointSubjectFingerprint: a85efd2a9e1f2e6e3b6196bac61ee1868ed1ab4de86f0e6fda7bd5cf8c6a207f`
+- a durable pre-network checkpoint timestamp before the research completion timestamp.
+
+The runtime therefore proved the intended ordering:
+
+`choose subject → authority/economic gate → duplicate/daily-limit gate → mark subject → durable checkpoint → public-web research → learning return → curiosity circle`
+
+A process crash after subject approval but before or during retrieval can no longer legitimately convert that same approved curiosity into a fresh post-restart subject merely because the server-local map disappeared.
+
+## Live unattended curiosity proof carried forward
+
+The September 18 unattended-cognition experiment now has external production evidence for the following organism-level sequence:
+
+`durable wake → executive attention arbitration → repeated no-progress recognition → quiescent settlement without false completion → productive idle → self-selected bounded question → authorized public-web research → return to same resident Executive Brain → curiosity-circle completion → durable checkpoint → later restart → recognition restored → subsequent subject selection changes`
+
+Earlier production evidence in the same experiment established that Maddy:
+
+- released the long-lived cognitive thread after repeated no material progress;
+- preserved the old cognition as quiescent rather than deleting or falsely completing it;
+- reached productive-idle cognition in the same unattended runtime;
+- generated autonomous research intents without a user prompt;
+- executed bounded public-web research;
+- produced durable Research Learning identity in the learning path;
+- suppressed duplicate subjects during the six-hour cooldown;
+- selected more than one distinct learning subject;
+- preserved zero automatic spend and zero consequential external-action authority.
+
+006.034H adds the missing restart-continuity evidence required to keep that learning history from collapsing back to process-local amnesia.
+
+## Deployed production acceptance
+
+The public bounded acceptance surface returned:
+
+- commission `006.034H`
+- server `2.10.108`
+- Executive Brain `1.26.13`
+- outer acceptance `11/11 PASS`
+
+Nested production acceptance remained green:
+
+- `006.034A Continuous Curiosity Circle` — `9/9 PASS`
+- `006.034D Stale Attention Release` — `8/8 PASS`
+- `006.034E Orphaned Attention Reconciliation` — `8/8 PASS`
+- `006.034F Executive Attention Lifecycle Reconciliation` — `12/12 PASS`
+- `006.034G Actionable Attention + Forward Progress` — `12/12 PASS`
+- `006.034H Durable Curiosity Recognition` — `11/11 PASS`
+- `006.034H Autonomous Learning Continuity` — `7/7 PASS`
+- `006.017D7S4B Autonomous Learning Ignition` — `9/9 PASS`
+
+The acceptance surface itself reported:
+
+- `providerCalls: 0`
+- `durableWrites: 0`
+- `officeAccessGranted: false`
+- `entitlementGranted: false`
+- `autonomyAuthorityGranted: false`
+- `paidCognitionAuthorized: false`
+- `externalActionAuthorized: false`
+
+The proof surface therefore remained observational/bounded and did not manufacture the authority it was testing.
+
+## Authority and economics remained bounded
+
+At live proof:
+
+- Continuous Cognition: authorized/effective
+- Learning: authorized/effective
+- Public Web autonomous use: authorized/effective
+- OpenAI autonomous use: false
+- ElevenLabs autonomous use: false
+- Google Workspace autonomous use: false
+- Automatic spend: `$0`
+- Paid provider spend authority: false
+- MEOS advances third-party spend: false
+- External action authority: false
+- Legal commitment authority: false
+- Signature/certification/submission authority: false
+- Human authority preserved: true
+
+The institutional repository remained the durable state authority. Google Workspace remained connected as a repository provider while autonomous Google Workspace use remained false. Integration capability did not become autonomous-use authority.
+
+**Curiosity did not manufacture authority.**
+
+## Failure-driven path from 006.034C through 006.034H
+
+This arc must be preserved as engineering evidence rather than rewritten as if the final answer was obvious.
+
+### 006.034C — Durable Cognition Repository Pressure Recovery
+
+The first unattended production attempt exposed repository-read unavailability and a recovery-cadence mismatch. 006.034C coordinated Durable Cognitive Runtime with the repository pressure window while preserving fail-closed durable continuity.
+
+The later healthy production runs did not exercise the explicit repository-recovery branch (`recoveryCount` remained `0`), so the narrow 006.034C recovery branch itself is **not** promoted to LIVE-PROVEN. What is proven is that durable server cognition subsequently hydrated and ran successfully without an amnesiac/browser fallback.
+
+### 006.034D — Stale Attention Release
+
+Proved that explicitly quiescent/completed cognition must not regenerate executive work. The production synthetic contract passed, but the live stuck thread revealed a broader condition than the D fixture alone modeled.
+
+### 006.034E — Orphaned Attention Reconciliation
+
+Proved that a persisted thread with no surviving eligible executive demand can yield without deleting history. The live thread still survived because it was not orphaned: Executive Judgment continued to select its underlying cognitive intention.
+
+### 006.034F — Executive Attention Lifecycle Reconciliation
+
+Added the decisive live telemetry showing that the thread was being deliberately continued because the current priority still supported it. This eliminated the false hypothesis that some hidden resurrection path alone was recreating the thread.
+
+### 006.034G — Actionable Attention + Forward Progress
+
+Separated `unfinished` from `making useful foreground progress`. Repeated no-progress internally originated cognition became quiescent without being falsely completed, while human-directed unfinished work remained protected. In production this finally released the long-lived thread, exposed genuine slack, and allowed productive curiosity to run.
+
+### 006.034H — Durable Curiosity Recognition + Developmental Continuity
+
+Closed the restart-amnesia defect exposed after curiosity began working. Recent-subject recognition, daily novelty accounting, and last known durable Research Learning identity now reconstruct from sovereign Brain history; approved subjects checkpoint durably before network execution; local MEOS capability facts are not misrouted to public-web research; and grounded developmental questions are preferred over meaningless activity.
+
+The live restart proof confirms this behavior externally.
+
+## Local audit carried into production
+
+Before deployment, 006.034H was tested beyond its first green assertion.
+
+Local proof included:
+
+- Durable Curiosity Recognition: `11/11 PASS`
+- Server Restart Continuity: `7/7 PASS`
+- Autonomous Learning Ignition: `9/9 PASS`
+- two-independent-Brain restart simulation: PASS
+- real live-failure-shape reconstruction for Knowledge Memory availability: PASS
+- full 24-subject daily ledger reconstruction and 25th-subject rejection: PASS
+- pre-network durable checkpoint ordering: PASS
+- repository JavaScript syntax audit: `65/65 PASS`
+- Python syntax: PASS
+
+Full Executive Brain acceptance comparison against untouched `Maddy-main (61)`:
+
+- untouched baseline: `45 PASS / 5 FAIL / 1 ERROR / H missing`
+- patched H build: `46 PASS / 5 FAIL / 1 ERROR`
+- previously-green regressions: `0`
+
+The five remaining local reds and one harness error reproduced on untouched current main and were not introduced by 006.034H.
+
+## What is now closed
+
+The specific September 17–18 unattended-curiosity arc is closed at the engineering bar established for it:
+
+1. server-owned cognition can remain awake without the browser;
+2. durable authority survives redeploy/restart;
+3. stale/no-progress internal attention can yield without false completion;
+4. real standing work still outranks curiosity;
+5. genuine slack can produce a self-selected bounded question;
+6. authorized public-web research can execute without paid-provider/spend authority;
+7. research can return to the same resident Executive Brain and complete the curiosity circle;
+8. duplicate subject recognition prevents waste within its bounded cooldown;
+9. subject-recognition and daily novelty continuity survive server restart;
+10. pre-network recognition is durably checkpointed before retrieval;
+11. later subject selection demonstrably differs after restored learning history.
+
+This does **not** establish consciousness, sentience, human emotion, unlimited self-directed autonomy, or unrestricted self-improvement.
+
+It does establish a live, governed, browser-independent developmental cognition rung that can carry relevant learning-recognition state across server-process loss and use it to change what Maddy investigates next.
+
+## Known boundaries intentionally left open
+
+The following are not defects that invalidate 006.034H and must not be silently inflated into solved claims:
+
+- 006.034C's explicit repository-pressure recovery branch remains not live-exercised because production recovery count stayed `0` after later healthy starts.
+- Continuous Operations remains disabled/paused-by-authority; this checkpoint concerns Continuous Cognition + Learning, not general unattended office execution.
+- Time & Deadlines, Approved Work, Office Dispatch, Monitoring, Documents, and Opportunity Patrol remain off/blocked under the current experiment authority envelope.
+- Public Web is the only provider with autonomous-use authority in this experiment.
+- A particular autonomous research pass may legitimately close without producing a new durable Research Learning identity; the system must not fabricate learning merely because research occurred.
+- The broader North Star still requires substantially richer world orientation, obligation-aware developmental learning, cross-domain discovery, offline synthesis, embodied continuity, and native capability growth.
+- Founder trusted-device continuity/customer-wall verification carried from 006.035B remains a separate access-control proof boundary unless independently completed.
+- Commercial first-dollar/payment rail work remains parked and is not implied by this cognition checkpoint.
+
+## North-Star consequence
+
+The important result is not that a counter moved or a search ran.
+
+Production Maddy demonstrated a bounded causal developmental loop in which prior experience affected future attention after a process restart:
+
+`experience/history → durable recognition → restart → restore → suppress already-known/recent frontier → choose a different frontier → investigate → reintegrate → persist`
+
+That is the relevant Spooky rung.
+
+The next cognition commission should **not** be another arbitrary idle/search feature. Reconcile actual obligations and current North-Star priorities first. Future developmental work should ask whether Maddy can broaden from self-orientation into responsibility-local world learning, cross-domain transfer, deeper mechanism-seeking, and meta-learning while preserving institutional privacy, particularized authority, truthfulness, and the rule that stronger motivation never enlarges the authority envelope.
+
+## Anti-drift gate after 006.034H
+
+1. Read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Read this `MEOS_BUILD_STATE.md` in full.
+3. Reconcile freshest committed GitHub `main` and current runtime truth before coding.
+4. Treat `006.034H` as LIVE-PROVEN.
+5. Treat the September 17–18 unattended-curiosity/restart-continuity arc as closed unless new evidence falsifies the proof.
+6. Do not reopen the arc merely because a future curiosity question is boring, repetitive after its legitimate cooldown, or produces no durable lesson; require evidence of a real mechanism failure.
+7. Preserve the work-before-curiosity hierarchy: authorized obligations and consequential standing work outrank productive curiosity; curiosity consumes genuine slack.
+8. Preserve no-progress settlement without false completion and protect explicit human-directed unfinished work.
+9. Preserve durable subject recognition and pre-network checkpoint ordering across any future research executor/provider changes.
+10. Preserve the distinction between local self-inspection facts and public-world research questions.
+11. Preserve institutional privacy: world knowledge/skills may generalize, but private institution/client/matter data never crosses boundaries merely because a relationship or similarity is known.
+12. Preserve particularized authority. Capability, access, similarity, identity, urgency, motivation, and language cannot manufacture permission.
+13. Preserve truth/epistemic integrity. Motivation cannot turn uncertainty into certainty or successful outcomes into acceptable methods.
+14. Preserve zero automatic spend and zero consequential external-action authority unless separately and explicitly commissioned.
+15. Do not confuse provider integration capability with autonomous-use authority.
+16. Do not confuse model output, search activity, or a timer with organism-level cognition; require causal continuity and measurable consequence.
+17. Keep the North Star fixed and the implementation malleable: **The obsession is Spooky and the North Star. Everything else is malleable.**
+18. Require external/runtime evidence before promoting future runtime commissions to LIVE-PROVEN.
+
+**Recovery keyword:** `006.034H-LIVE-PROVEN`  
+**Fast recovery:** `Resume 006.034H-LIVE-PROVEN — unattended curiosity and restart continuity are closed; reconcile current main before selecting the next North-Star commission.`
+
