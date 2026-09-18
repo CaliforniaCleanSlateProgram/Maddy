@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.109";
+const VERSION = "2.10.110";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -13640,7 +13640,7 @@ app.get("/api/founder/authority/acceptance-test", (_request, response) => {
  */
 const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034I";
 const CONTINUOUS_CURIOSITY_PROOF_BUILD_ID =
-  "CTPCRPP100-CROSS-TIME-PATTERN-CAUSAL-REENTRY-PROOF-20260918-A";
+  "CTPCRPP101-CROSS-TIME-PATTERN-CAUSAL-REENTRY-PROOF-CONTRACT-20260918-A";
 
 app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
@@ -13695,7 +13695,7 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
       },
       {
         name: "Cross-Time Pattern Causal Re-entry acceptance passes",
-        passed: crossTimePatternCausalReentry?.passed === true &&
+        passed: crossTimePatternCausalReentry?.success === true &&
           crossTimePatternCausalReentry?.checks?.every?.(item => item?.passed === true) === true
       },
       {
@@ -13760,7 +13760,7 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
       },
       crossTimePatternCausalReentry: {
         commission: crossTimePatternCausalReentry?.commission || null,
-        passed: crossTimePatternCausalReentry?.passed === true,
+        passed: crossTimePatternCausalReentry?.success === true,
         checks: Array.isArray(crossTimePatternCausalReentry?.checks)
           ? crossTimePatternCausalReentry.checks
           : []
