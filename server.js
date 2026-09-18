@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.101";
+const VERSION = "2.10.102";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -10120,6 +10120,72 @@ const MEOS_FOUNDER_AUTHORITY_VERSION = "1.0.0";
 const MEOS_FOUNDER_AUTHORITY_BUILD_ID =
   "FIOA100-FOUNDER-IDENTITY-OFFICE-AUTHORITY-20260917-A";
 const MEOS_FOUNDER_BOOTSTRAP_ENV = "MEOS_FOUNDER_BOOTSTRAP_KEY";
+const MEOS_FOUNDER_TRUST_COOKIE = "meos_founder_trust";
+const MEOS_FOUNDER_TRUST_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+
+function founderTrustSigningKey() {
+  return String(process.env[MEOS_FOUNDER_BOOTSTRAP_ENV] || "");
+}
+
+function encodeFounderTrust(account) {
+  const payload = Buffer.from(JSON.stringify({
+    schema: "meos.founder-trust.v1",
+    accountId: String(account.id || ""),
+    email: normalizeAuthEmail(account.email),
+    displayName: String(account.displayName || "Founder").slice(0, 120),
+    issuedAt: Date.now(),
+    expiresAt: Date.now() + MEOS_FOUNDER_TRUST_TTL_MS
+  })).toString("base64url");
+  const signature = crypto.createHmac("sha256", founderTrustSigningKey()).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function decodeFounderTrust(token) {
+  try {
+    const key = founderTrustSigningKey();
+    if (key.length < 24) return null;
+    const [payload, suppliedSignature, extra] = String(token || "").split(".");
+    if (!payload || !suppliedSignature || extra) return null;
+    const expectedSignature = crypto.createHmac("sha256", key).update(payload).digest("base64url");
+    const supplied = Buffer.from(suppliedSignature);
+    const expected = Buffer.from(expectedSignature);
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (decoded?.schema !== "meos.founder-trust.v1" || Number(decoded.expiresAt) <= Date.now()) return null;
+    if (!decoded.accountId || !/^\S+@\S+\.\S+$/.test(normalizeAuthEmail(decoded.email))) return null;
+    return decoded;
+  } catch { return null; }
+}
+
+function founderPrincipalFromTrust(trust) {
+  return {
+    id: String(trust.accountId),
+    email: normalizeAuthEmail(trust.email),
+    displayName: String(trust.displayName || "Founder"),
+    createdAt: new Date(Number(trust.issuedAt) || Date.now()).toISOString(),
+    founderAuthority: {
+      schema: "meos.founder-office-authority.v1",
+      commission: MEOS_FOUNDER_AUTHORITY_COMMISSION,
+      buildId: MEOS_FOUNDER_AUTHORITY_BUILD_ID,
+      active: true,
+      authorityBoundary: {
+        commercialEntitlementAuthority: false, paymentAuthority: false, spendingAuthority: false,
+        autonomyAuthority: false, externalActionAuthority: false, organizationMembershipAuthority: false,
+        privateFounderProfileEligible: true, privateFounderProfileEnabled: false
+      }
+    }
+  };
+}
+
+function setFounderTrustCookie(response, account) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  response.append("Set-Cookie", `${MEOS_FOUNDER_TRUST_COOKIE}=${encodeURIComponent(encodeFounderTrust(account))}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(MEOS_FOUNDER_TRUST_TTL_MS / 1000)}${secure}`);
+}
+
+function clearFounderTrustCookie(response) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  response.append("Set-Cookie", `${MEOS_FOUNDER_TRUST_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure}`);
+}
 
 function founderAuthorityActive(account) {
   return Boolean(
@@ -10235,7 +10301,10 @@ function clearAuthCookie(response) {
 }
 
 async function authenticatedAccount(request) {
-  const token = parseCookieHeader(request.headers.cookie || "")[MEOS_AUTH_COOKIE];
+  const cookies = parseCookieHeader(request.headers.cookie || "");
+  const founderTrust = decodeFounderTrust(cookies[MEOS_FOUNDER_TRUST_COOKIE]);
+  if (founderTrust) return founderPrincipalFromTrust(founderTrust);
+  const token = cookies[MEOS_AUTH_COOKIE];
   if (!token) return null;
   const session = meosAuthSessions.get(token);
   if (!session || session.expiresAt <= Date.now()) {
@@ -10319,6 +10388,7 @@ app.post("/api/auth/logout", async (request, response) => {
   const token = parseCookieHeader(request.headers.cookie || "")[MEOS_AUTH_COOKIE];
   if (token) meosAuthSessions.delete(token);
   clearAuthCookie(response);
+  clearFounderTrustCookie(response);
   response.json({ success: true, authenticated: false });
 });
 
@@ -10400,6 +10470,7 @@ app.post(
       await writeAuthAccounts(accounts);
       const token = createAuthSession(account.id);
       setAuthCookie(response, token);
+      setFounderTrustCookie(response, account);
       response.status(matching ? 200 : 201).json({
         success: true,
         authenticated: true,
@@ -12789,6 +12860,27 @@ async function resolvePaidProductRouteAdmission(request, options = {}) {
       admitted: false,
       reason: "authenticated_identity_required",
       classification
+    };
+  }
+
+  // Founder Office authority is deliberately parallel to customer commercial
+  // entitlement. It admits only the cryptographically trusted founder principal
+  // and manufactures no customer entitlement or payment state.
+  if (founderAuthorityActive(account)) {
+    return {
+      schema: MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA,
+      commission: MEOS_FOUNDER_AUTHORITY_COMMISSION,
+      protected: true,
+      admitted: true,
+      reason: "founder_office_authority_granted",
+      classification,
+      accountId: account.id,
+      founderAuthority: true,
+      entitlementId: null,
+      authorityBoundary: {
+        commercialEntitlementAuthority: false, paymentAuthority: false, spendingAuthority: false,
+        autonomyAuthority: false, externalActionAuthority: false, organizationMembershipAuthority: false
+      }
     };
   }
 
