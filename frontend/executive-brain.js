@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.26.3
- * Build: EB1263-EVIDENCE-BOUND-RESEARCH-SPEECH-20260913-A
+ * Version: 1.26.11
+ * Build: EB12611-EXECUTIVE-ATTENTION-LIFECYCLE-RECONCILIATION-20260918-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.10";
-  const BUILD_ID = "EB12610-ORPHANED-ATTENTION-RECONCILIATION-20260918-A";
+  const VERSION = "1.26.11";
+  const BUILD_ID = "EB12611-EXECUTIVE-ATTENTION-LIFECYCLE-RECONCILIATION-20260918-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -182,6 +182,7 @@
       executiveHomeostasisEnabled: true,
       executiveHomeostasisLearningInfluenceLimit: 0.16,
       executiveHomeostasisPeripheralLimit: 12,
+      executiveHomeostasisPursuitFloor: 0.52,
       cognitiveThreadLimit: 48,
       cognitiveThreadStepLimit: 24,
       cognitiveThreadDiminishingReturnFloor: 0.08,
@@ -16855,17 +16856,55 @@
         .slice(0,Number(options.limit || this.configuration.anticipatoryCandidateLimit));
     },
 
+    sanitizeAnticipatorySupportValue(value) {
+      if (Array.isArray(value)) {
+        return value.map(item => this.sanitizeAnticipatorySupportValue(item));
+      }
+      if (!value || typeof value !== "object") return value;
+      const transientKeys = new Set([
+        "observedAt", "createdAt", "updatedAt", "checkedAt", "generatedAt",
+        "reflectedAt", "assimilatedAt", "lastSeenAt", "lastObservedAt",
+        "lastAdvancedAt", "reactivatedAt", "retiredAt", "timestamp"
+      ]);
+      return Object.keys(value).sort().reduce((out,key)=>{
+        if (transientKeys.has(key)) return out;
+        out[key]=this.sanitizeAnticipatorySupportValue(value[key]);
+        return out;
+      },{});
+    },
+
+    buildAnticipatorySupportFingerprint(candidate = {}) {
+      const identity={
+        subject:this.normalize(candidate.subject || ""),
+        origin:String(candidate.origin || ""),
+        origins:[...new Set((candidate.origins || [candidate.origin]).filter(Boolean).map(String))].sort(),
+        reason:this.normalize(candidate.reason || ""),
+        evidence:this.sanitizeAnticipatorySupportValue(candidate.evidence || []),
+        unknowns:this.sanitizeAnticipatorySupportValue(candidate.unknowns || []),
+        assumptions:this.sanitizeAnticipatorySupportValue(candidate.assumptions || []),
+        falsifiers:this.sanitizeAnticipatorySupportValue(candidate.falsifiers || []),
+        convergence:this.sanitizeAnticipatorySupportValue(candidate.convergence || null),
+        dimensions:this.sanitizeAnticipatorySupportValue(candidate.dimensions || null),
+        score:Number(candidate.score || 0),
+        horizonDays:Number(candidate.horizonDays || 0),
+        proposedInternalMove:String(candidate.proposedInternalMove || "")
+      };
+      return this.fingerprintCognitiveDispatch(identity);
+    },
+
     runAnticipatorySweep(options = {}) {
       if (this.configuration.anticipatoryInitiativeEnabled !== true) {
         return {success:true,enabled:false,candidates:[],initiatives:[]};
       }
       const candidates = this.collectAnticipatoryCandidates(options);
-      const initiatives = candidates
+      const observedAt=new Date().toISOString();
+      const proposed = candidates
         .filter(item => item.score >= Number(this.configuration.anticipatoryActionThreshold))
         .map(candidate => ({
           schema:"meos.maddy.anticipatory-initiative.v1",
           id:`anticipatory-${this.fingerprintCognitiveDispatch({subject:candidate.subject,origin:candidate.origin,reason:candidate.reason})}`,
-          createdAt:new Date().toISOString(),
+          createdAt:observedAt,
+          lastObservedAt:observedAt,
           subject:candidate.subject,
           origin:candidate.origin,
           origins:this.clone(candidate.origins || [candidate.origin]),
@@ -16889,27 +16928,95 @@
           truthRule:"Anticipation is a prioritized hypothesis about what may matter, not evidence that the anticipated event will occur."
         }));
 
-      const existing = new Map((this.anticipatoryInitiatives || []).map(item => [item.id,item]));
-      initiatives.forEach(item => existing.set(item.id,item));
+      proposed.forEach(item=>{
+        item.supportFingerprint=this.buildAnticipatorySupportFingerprint(item);
+      });
+
+      const existing = new Map((this.anticipatoryInitiatives || []).map(item => [item.id,this.clone(item)]));
+      const currentIds=new Set(proposed.map(item=>item.id));
+      const current=[];
+
+      for (const item of proposed) {
+        const prior=existing.get(item.id) || null;
+        if (!prior) {
+          current.push(item);
+          existing.set(item.id,this.clone(item));
+          continue;
+        }
+
+        const priorFingerprint=prior.supportFingerprint || null;
+        const supportChanged=Boolean(
+          priorFingerprint && item.supportFingerprint && priorFingerprint!==item.supportFingerprint
+        );
+        const priorStatus=String(prior.status || "active");
+        const terminalWithoutNewSupport=["researched","blocked","quiescent"].includes(priorStatus);
+        const returnedAfterAbsence=["retired","dormant"].includes(priorStatus);
+        const nextStatus=returnedAfterAbsence || supportChanged
+          ? "active"
+          : (terminalWithoutNewSupport ? priorStatus : "active");
+
+        const merged={
+          ...prior,
+          ...item,
+          createdAt:prior.createdAt || item.createdAt,
+          status:nextStatus,
+          lastObservedAt:observedAt,
+          lastAdvancedAt:prior.lastAdvancedAt || null,
+          lastInvestigation:this.clone(prior.lastInvestigation || null)
+        };
+        if (returnedAfterAbsence || supportChanged) {
+          merged.reactivatedAt=observedAt;
+          merged.reactivationReason=returnedAfterAbsence
+            ? "supporting-candidate-returned-after-absence"
+            : "material-support-fingerprint-changed";
+        } else {
+          merged.reactivatedAt=prior.reactivatedAt || null;
+          merged.reactivationReason=prior.reactivationReason || null;
+        }
+        current.push(merged);
+        existing.set(item.id,this.clone(merged));
+      }
+
+      for (const [id,prior] of existing) {
+        if (currentIds.has(id)) continue;
+        if (["retired","dormant"].includes(String(prior.status || ""))) continue;
+        existing.set(id,{
+          ...prior,
+          status:"retired",
+          retiredAt:observedAt,
+          retirementReason:"no-current-supporting-candidate",
+          attentionLevel:"historical"
+        });
+      }
+
       this.anticipatoryInitiatives = [...existing.values()]
-        .sort((a,b)=>b.score-a.score)
+        .sort((a,b)=>Number(b.score || 0)-Number(a.score || 0))
         .slice(0,this.configuration.anticipatoryCandidateLimit);
+
+      const currentById=new Map(this.anticipatoryInitiatives.map(item=>[item.id,item]));
+      const currentInitiatives=current
+        .map(item=>currentById.get(item.id) || item)
+        .filter(Boolean);
+      const retiredCount=this.anticipatoryInitiatives.filter(item=>item.status==="retired").length;
 
       const sweep = {
         schema:"meos.maddy.anticipatory-sweep.v1",
         sweepNumber:Number(this.anticipatorySweepCount || 0)+1,
-        sweptAt:new Date().toISOString(),
+        sweptAt:observedAt,
         candidateCount:candidates.length,
-        initiativeCount:initiatives.length,
-        foregroundCount:initiatives.filter(item=>item.attentionLevel==="foreground").length,
+        initiativeCount:currentInitiatives.length,
+        activeInitiativeCount:currentInitiatives.filter(item=>item.status==="active").length,
+        retiredCount,
+        foregroundCount:currentInitiatives.filter(item=>item.status==="active"&&item.attentionLevel==="foreground").length,
         topCandidate:this.clone(candidates[0] || null),
-        initiatives:this.clone(initiatives),
-        promptedByHuman:options.promptedByHuman === true
+        initiatives:this.clone(currentInitiatives),
+        promptedByHuman:options.promptedByHuman === true,
+        lifecycleRule:"Current evidence may create or reactivate initiative; unchanged researched/blocked initiatives stay settled; vanished support retires from executive demand without erasing history."
       };
       sweep.fingerprint=this.fingerprintCognitiveDispatch(sweep);
       this.anticipatorySweepCount=sweep.sweepNumber;
       this.lastAnticipatorySweep=sweep;
-      return {success:true,enabled:true,candidates:this.clone(candidates),initiatives:this.clone(initiatives),sweep:this.clone(sweep)};
+      return {success:true,enabled:true,candidates:this.clone(candidates),initiatives:this.clone(currentInitiatives),sweep:this.clone(sweep)};
     },
 
     async advanceAnticipatoryInitiative(initiativeInput = {}, options = {}) {
@@ -17202,10 +17309,13 @@
 
       const challenger=scored[0] || null;
       const priorIncumbent=this.currentExecutivePriority ? this.clone(this.currentExecutivePriority) : null;
-      const incumbent=priorIncumbent && scored.some(item => item.id === priorIncumbent.id)
+      const completeDemandSet=options.completeDemandSet===true;
+      const incumbent=priorIncumbent && (
+        completeDemandSet!==true || scored.some(item => item.id === priorIncumbent.id)
+      )
         ? priorIncumbent
         : null;
-      let selected=challenger;
+      let selected=challenger || incumbent;
       let preempted=false;
       let judgment="select-highest-value-demand";
 
@@ -17225,9 +17335,14 @@
       if (selected) {
         selected={...this.clone(selected),status:"selected",selectedAt:now};
         this.currentExecutivePriority=selected;
-      } else if (!challenger && priorIncumbent) {
+      } else if (!challenger && priorIncumbent && completeDemandSet===true) {
         this.currentExecutivePriority=null;
+        selected=null;
         judgment="release-incumbent-no-live-demand";
+      } else if (!challenger && incumbent) {
+        selected=this.clone(incumbent);
+        this.currentExecutivePriority=this.clone(incumbent);
+        judgment="preserve-incumbent-partial-challenger-set";
       }
 
       this.executivePriorityPortfolio=scored
@@ -17280,7 +17395,7 @@
 
     collectExecutivePriorityDemands(options = {}) {
       const demands=[];
-      (this.anticipatoryInitiatives || []).filter(x=>["active","researched"].includes(x.status)).forEach(x=>demands.push({
+      (this.anticipatoryInitiatives || []).filter(x=>x.status==="active").forEach(x=>demands.push({
         id:x.id,subject:x.subject,origin:"anticipatory-initiative",reason:x.reason,
         consequence:x.supportingSignals?.[0]?.dimensions?.consequence ?? x.score,
         urgency:x.supportingSignals?.[0]?.dimensions?.urgency ?? x.score,
@@ -17298,6 +17413,41 @@
         missionConsequence:0.66,urgency:x.status==="blocked"?0.72:0.5,
         commitmentStrength:0.72,capacityFit:0.75
       }));
+
+      /*
+       * 006.034F — A human-directed thread is itself durable evidence of an
+       * unfinished human commitment. Browser/server re-entry must not erase
+       * that obligation merely because the original utterance is no longer in
+       * the current call. This is intentionally limited to human-direction;
+       * anticipatory and developmental threads still require current support.
+       */
+      const activeThread=(this.cognitiveThreads || []).find(thread=>
+        thread?.id===this.activeCognitiveThreadId &&
+        thread?.status==="active" &&
+        thread?.closureState!=="verified-closed"
+      ) || null;
+      const explicitHumanId=options.humanDirection?.id || null;
+      if (
+        activeThread?.origin==="human-direction" &&
+        (!explicitHumanId || explicitHumanId!==activeThread.priorityId)
+      ) {
+        demands.push({
+          id:activeThread.priorityId || activeThread.id,
+          subject:activeThread.subject,
+          origin:"human-direction",
+          reason:"Unfinished human-directed cognitive thread remains a standing commitment across continuity re-entry.",
+          humanDirection:1,
+          missionConsequence:Number(this.currentExecutivePriority?.missionConsequence ?? 0.78),
+          urgency:Number(this.currentExecutivePriority?.urgency ?? 0.62),
+          irreversibility:Number(this.currentExecutivePriority?.irreversibility ?? 0.45),
+          leverage:Number(this.currentExecutivePriority?.leverage ?? 0.65),
+          commitmentStrength:1,
+          capacityFit:0.8,
+          evidence:this.clone(activeThread.evidence || []),
+          unknowns:this.clone(activeThread.unknowns || []),
+          externalAuthorityRequired:false
+        });
+      }
       (this.developmentalGoals || []).filter(x=>x.status!=="achieved").forEach(x=>demands.push({
         id:x.id,subject:x.subject||x.goal||x.capability,origin:"developmental-drive",
         reason:x.reason,missionConsequence:Number(x.impact??0.55),
@@ -17464,8 +17614,9 @@
         acc[origin] = (acc[origin] || 0) + 1;
         return acc;
       }, {});
+      const pursuitFloor=Number(this.configuration.executiveHomeostasisPursuitFloor || 0.52);
       const peripheral = prepared
-        .filter(item => item.__homeostasisScore < 0.52)
+        .filter(item => item.__homeostasisScore < pursuitFloor)
         .sort((a,b) => b.__homeostasisScore-a.__homeostasisScore)
         .slice(0, Number(this.configuration.executiveHomeostasisPeripheralLimit || 12))
         .map(item => ({
@@ -17481,7 +17632,12 @@
         principle:"Maintain productive equilibrium across competing needs; no category has a permanently fixed rank beyond constitutional and authority boundaries.",
         categories,
         peripheralAwareness:peripheral,
-        nothingRequiresPursuit:prepared.length===0 || prepared.every(item=>item.__homeostasisScore<0.52),
+        pursuitFloor,
+        nothingRequiresPursuit:prepared.length===0 || prepared.every(item=>
+          item.origin!=="human-direction" &&
+          item.origin!=="cognitive-intention" &&
+          item.__homeostasisScore<pursuitFloor
+        ),
         providerCallRequired:false
       };
       return {demands:prepared,state:this.clone(this.executiveHomeostasisState)};
@@ -17492,7 +17648,13 @@
         return this.arbitrateExecutivePriorities(demands, options);
       }
       const balanced = this.applyExecutiveHomeostasis(demands, options);
-      const scoredInputs = balanced.demands.map(demand => {
+      const pursuitFloor=Number(this.configuration.executiveHomeostasisPursuitFloor || 0.52);
+      const standingCommitment=(demand={})=>
+        demand.origin==="human-direction" || demand.origin==="cognitive-intention";
+      const pursuitEligible=balanced.demands.filter(demand=>
+        standingCommitment(demand) || Number(demand.__homeostasisScore || 0)>=pursuitFloor
+      );
+      const scoredInputs = pursuitEligible.map(demand => {
         const target = Number(demand.__homeostasisScore ?? 0);
         const base = this.scoreExecutivePriority(demand).score;
         const delta = target - base;
@@ -17504,11 +17666,21 @@
           Number(demand.missionConsequence ?? demand.consequence ?? 0.5) + delta / 0.22
         ));
         adjusted.homeostasis = demand.homeostasis;
+        adjusted.homeostasisPursuitEligible = true;
+        adjusted.homeostasisPursuitBasis = standingCommitment(demand)
+          ? "standing-commitment"
+          : "balanced-score-clears-pursuit-floor";
         delete adjusted.__homeostasisScore;
         return adjusted;
       });
       const result = this.arbitrateExecutivePriorities(scoredInputs, options);
-      result.homeostasis = balanced.state;
+      result.homeostasis = {
+        ...balanced.state,
+        pursuitEligibleCount:pursuitEligible.length,
+        pursuitSuppressedCount:Math.max(0,balanced.demands.length-pursuitEligible.length),
+        pursuitRule:"Peripheral developmental or anticipatory awareness cannot manufacture foreground work; human direction and unresolved cognitive commitments remain standing claims on attention."
+      };
+      this.executiveHomeostasisState=this.clone(result.homeostasis);
       return result;
     },
 
@@ -17593,7 +17765,7 @@
 
     runExecutiveJudgmentCycle(options = {}) {
       const demands=this.collectExecutivePriorityDemands(options);
-      return this.arbitrateHomeostaticPriorities(demands,options);
+      return this.arbitrateHomeostaticPriorities(demands,{...options,completeDemandSet:true});
     },
 
 
@@ -18496,15 +18668,42 @@
     preemptCognitiveThreadForPriority(newPriority = {}, options = {}) {
       const active=this.cognitiveThreads.find(thread=>thread.id===this.activeCognitiveThreadId);
       if (!active) return {success:true,preempted:false,reason:"no-active-thread"};
+
+      const priorArbitration=options.arbitration || null;
+      const alreadySelectedByJudgment=Boolean(
+        priorArbitration?.selected?.id &&
+        newPriority?.id &&
+        priorArbitration.selected.id===newPriority.id &&
+        active.priorityId &&
+        active.priorityId!==newPriority.id
+      );
+      const preemptionAlreadyAuthorized=Boolean(
+        alreadySelectedByJudgment && priorArbitration?.preempted===true
+      );
+
+      if (preemptionAlreadyAuthorized) {
+        const checkpoint=this.checkpointCognitiveThread(active,"executive-priority-preemption",{
+          status:"paused",
+          resumeTrigger:"preempting priority reaches closure or loses priority"
+        });
+        return {
+          success:true,
+          preempted:true,
+          checkpoint,
+          arbitration:this.clone(priorArbitration),
+          decisionSource:"existing-executive-judgment-arbitration"
+        };
+      }
+
       const arbitration=this.arbitrateExecutivePriorities([newPriority],{materialChange:options.materialChange===true});
       if (arbitration.arbitration.preempted!==true) {
-        return {success:true,preempted:false,arbitration};
+        return {success:true,preempted:false,arbitration,decisionSource:"fresh-arbitration"};
       }
       const checkpoint=this.checkpointCognitiveThread(active,"executive-priority-preemption",{
         status:"paused",
         resumeTrigger:"preempting priority reaches closure or loses priority"
       });
-      return {success:true,preempted:true,checkpoint,arbitration};
+      return {success:true,preempted:true,checkpoint,arbitration,decisionSource:"fresh-arbitration"};
     },
 
     releaseStaleContinuousCognitionAttention(options = {}) {
@@ -18525,10 +18724,19 @@
         this.normalize(a || "") &&
         this.normalize(a || "")===this.normalize(b || "")
       );
+      const lineageCompatible=Boolean(
+        selected && active && (
+          String(active.origin || "")===String(selected.origin || "") ||
+          (active.origin==="cognitive-intention" && selected.origin==="cognitive-intention") ||
+          (active.origin==="anticipatory-initiative" && selected.origin==="anticipatory-initiative") ||
+          (active.origin==="developmental-drive" && selected.origin==="developmental-drive") ||
+          (active.origin==="human-direction" && selected.origin==="human-direction")
+        )
+      );
       const activeMatchesSelected=Boolean(
         selected && (
           (active.priorityId && selected.id===active.priorityId) ||
-          sameSubject(selected.subject,active.subject)
+          (!active.priorityId && lineageCompatible && sameSubject(selected.subject,active.subject))
         )
       );
       const linkedAttentionEligible=Boolean(
@@ -19570,9 +19778,25 @@
 
       if (active && selected && active.priorityId && selected.id!==active.priorityId) {
         const preemption=this.preemptCognitiveThreadForPriority(selected,{
-          materialChange:options.materialChange===true
+          materialChange:options.materialChange===true,
+          arbitration:judgment.arbitration
         });
-        threadAction={action:preemption.preempted?"checkpoint-preempt":"protect-thread",...preemption};
+        if (preemption.preempted===true) {
+          const opened=this.createCognitiveThread({
+            subject:selected.subject,
+            origin:selected.origin,
+            priorityId:selected.id,
+            objective:`Pursue the current executive priority until verified closure or a governed pause: ${selected.subject}.`,
+            unknowns:this.clone(selected.unknowns || []),
+            evidence:this.clone(selected.evidence || []),
+            nextIntendedMove:selected.cognitiveInvestment?.allocation==="investigate"
+              ? "investigate highest-value unresolved question"
+              : "determine the next evidence-grounded cognitive move"
+          });
+          threadAction={action:"checkpoint-preempt-open-thread",...preemption,opened};
+        } else {
+          threadAction={action:"protect-thread",...preemption};
+        }
       } else if (active) {
         threadAction={
           action:"continue-thread",
@@ -20132,6 +20356,276 @@
       }
     },
 
+    runExecutiveAttentionLifecycleReconciliationAcceptanceTest() {
+      const original={
+        intentions:this.clone(this.cognitiveIntentions),
+        goals:this.clone(this.developmentalGoals),
+        investigations:this.clone(this.investigativeIntentions),
+        preparedness:this.clone(this.preparednessInsights),
+        initiatives:this.clone(this.anticipatoryInitiatives),
+        threads:this.clone(this.cognitiveThreads),
+        activeThreadId:this.activeCognitiveThreadId,
+        priority:this.clone(this.currentExecutivePriority),
+        portfolio:this.clone(this.executivePriorityPortfolio),
+        arbitration:this.clone(this.lastPriorityArbitration),
+        homeostasis:this.clone(this.executiveHomeostasisState),
+        lastSweep:this.clone(this.lastAnticipatorySweep),
+        sweepCount:this.anticipatorySweepCount,
+        lastIdle:this.clone(this.lastProductiveIdleAction),
+        idleHistory:this.clone(this.productiveIdleHistory),
+        idleSame:this.productiveIdleConsecutiveSameSubject,
+        world:this.clone(this.worldModel),
+        cycleState:this.clone(this.continuousCognitionState),
+        cycleCount:this.continuousCognitionCycleCount,
+        lastCycle:this.clone(this.lastContinuousCognitionCycle),
+        threadEvent:this.clone(this.lastCognitiveThreadEvent),
+        threadEventCount:this.cognitiveThreadEventCount
+      };
+      const reset=()=>{
+        this.cognitiveIntentions=[];
+        this.developmentalGoals=[];
+        this.investigativeIntentions=[];
+        this.preparednessInsights=[];
+        this.anticipatoryInitiatives=[];
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        this.lastPriorityArbitration=null;
+        this.executiveHomeostasisState=null;
+        this.lastAnticipatorySweep=null;
+        this.worldModel={unknowns:[]};
+        this.lastProductiveIdleAction=null;
+        this.productiveIdleHistory=[];
+        this.productiveIdleConsecutiveSameSubject=0;
+        this.continuousCognitionState=null;
+        this.lastContinuousCognitionCycle=null;
+      };
+      try {
+        // 1) A historical anticipatory record whose supporting candidate vanished
+        // must become history, not a permanent executive demand.
+        reset();
+        this.anticipatoryInitiatives=[{
+          schema:"meos.maddy.anticipatory-initiative.v1",
+          id:"acceptance-stale-anticipatory",
+          subject:"Historical anticipatory concern",
+          origin:"unresolved-intention",
+          score:.82,
+          reason:"Prior support no longer exists.",
+          evidence:[],unknowns:[],supportingSignals:[],status:"active",
+          attentionLevel:"active",
+          authority:{internalInvestigationAllowed:true,externalActionAuthorized:false}
+        }];
+        this.createCognitiveThread({
+          id:"acceptance-stale-anticipatory-thread",
+          subject:"Historical anticipatory concern",
+          origin:"anticipatory-initiative",
+          priorityId:"acceptance-stale-anticipatory",
+          objective:"Acceptance fixture: vanished anticipatory support must not own attention."
+        });
+        const staleCycle=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+        const retiredInitiative=this.anticipatoryInitiatives.find(item=>item.id==="acceptance-stale-anticipatory") || null;
+
+        // 2) Homeostasis already knew weak developmental noise was peripheral;
+        // arbitration must honor that conclusion instead of opening active work.
+        reset();
+        this.developmentalGoals=[{
+          id:"acceptance-low-development",
+          capability:"Low-value background capability",
+          subject:"Low-value background capability",
+          status:"active",
+          impact:.1,urgency:.05,leverage:.1,
+          ambition:{demonstrated:.4,required:.5,gap:.1},
+          developmentalQuestion:"Can this background capability improve cheaply?"
+        }];
+        const lowCycle=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+
+        // 3) A researched initiative cannot be resurrected every sweep merely
+        // because the same unchanged support is observed again.
+        reset();
+        this.developmentalGoals=[{
+          id:"acceptance-high-development",
+          capability:"High-value capability",
+          subject:"High-value capability",
+          status:"active",
+          impact:.99,urgency:.99,leverage:.99,horizonDays:7,
+          unknowns:["fixture-gap"],
+          ambition:{demonstrated:.2,required:.9,gap:.7},
+          developmentalQuestion:"How can this high-value capability improve?"
+        }];
+        const firstSweep=this.runAnticipatorySweep({promptedByHuman:false});
+        const firstInitiative=this.anticipatoryInitiatives.find(item=>item.id===firstSweep.initiatives?.[0]?.id) || null;
+        if (firstInitiative) firstInitiative.status="researched";
+        const secondSweep=this.runAnticipatorySweep({promptedByHuman:false});
+        const unchangedInitiative=this.anticipatoryInitiatives.find(item=>item.id===firstInitiative?.id) || null;
+        const unchangedDemands=this.collectExecutivePriorityDemands({});
+
+        // Material support change may legitimately wake the same initiative.
+        if (this.developmentalGoals[0]) {
+          this.developmentalGoals[0].unknowns=["fixture-gap","new-material-unknown"];
+          this.developmentalGoals[0].impact=.995;
+        }
+        const changedSweep=this.runAnticipatorySweep({promptedByHuman:false});
+        const changedInitiative=this.anticipatoryInitiatives.find(item=>item.id===firstInitiative?.id) || null;
+
+        // 4) Same words do not make two different executive lineages the same
+        // work item. An orphan must yield to a distinct live demand even when
+        // the subject string happens to match.
+        reset();
+        this.developmentalGoals=[{
+          id:"acceptance-live-shared-subject",
+          capability:"Shared subject",
+          subject:"Shared subject",
+          status:"active",
+          impact:1,urgency:1,leverage:1,horizonDays:7,
+          ambition:{demonstrated:.1,required:.95,gap:.85},
+          developmentalQuestion:"Improve shared subject capability."
+        }];
+        this.createCognitiveThread({
+          id:"acceptance-foreign-lineage-thread",
+          subject:"Shared subject",
+          origin:"cognitive-intention",
+          priorityId:"missing-cognitive-lineage",
+          objective:"Acceptance fixture: subject coincidence cannot manufacture lineage."
+        });
+        const lineageCycle=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+        const oldLineageThread=this.cognitiveThreads.find(item=>item.id==="acceptance-foreign-lineage-thread") || null;
+        const newLineageThread=this.cognitiveThreads.find(item=>item.id===this.activeCognitiveThreadId) || null;
+
+        // 5) Standing unresolved cognitive commitments remain executive claims
+        // even if their numeric score is quieter than background pursuit floor.
+        reset();
+        this.cognitiveIntentions=[{
+          intentionId:"acceptance-standing-commitment",
+          subject:"Quiet but unresolved cognitive commitment",
+          status:"pending",attempts:0,triggers:[]
+        }];
+        const commitmentJudgment=this.runExecutiveJudgmentCycle({});
+
+        // 6) Once Executive Judgment has already authorized a real switch,
+        // thread preemption must consume that decision instead of re-arbitrating
+        // against the just-selected challenger and accidentally protecting old work.
+        reset();
+        this.createCognitiveThread({
+          id:"acceptance-preemption-old-thread",
+          subject:"Old live priority",
+          origin:"cognitive-intention",
+          priorityId:"acceptance-old-priority",
+          objective:"Acceptance fixture: already-authorized switch must checkpoint this thread."
+        });
+        const directPreemption=this.preemptCognitiveThreadForPriority(
+          {id:"acceptance-new-priority",subject:"New material priority",origin:"human-direction"},
+          {arbitration:{selected:{id:"acceptance-new-priority"},preempted:true}}
+        );
+        const preemptedOld=this.cognitiveThreads.find(item=>item.id==="acceptance-preemption-old-thread") || null;
+
+        const checks=[
+          {
+            name:"Anticipatory initiative with vanished support retires instead of remaining active executive work",
+            passed:retiredInitiative?.status==="retired" && retiredInitiative?.retirementReason==="no-current-supporting-candidate"
+          },
+          {
+            name:"Retired anticipatory history no longer survives as the selected priority",
+            passed:staleCycle?.handoff?.currentPriority==null && staleCycle?.handoff?.activeThreadId==null
+          },
+          {
+            name:"A homeostatically peripheral developmental signal does not manufacture foreground work",
+            passed:lowCycle?.handoff?.currentPriority==null &&
+              lowCycle?.handoff?.activeThreadId==null &&
+              lowCycle?.threadAction?.action==="productive-idle" &&
+              Number(lowCycle?.judgment?.homeostasis?.pursuitSuppressedCount || 0)>=1
+          },
+          {
+            name:"Unchanged researched anticipatory initiative stays settled across repeated sweeps",
+            passed:unchangedInitiative?.status==="researched" &&
+              secondSweep?.initiatives?.some(item=>item.id===unchangedInitiative.id&&item.status==="researched")
+          },
+          {
+            name:"Settled researched anticipatory initiative is not reintroduced as an executive demand",
+            passed:!unchangedDemands.some(item=>item.id===unchangedInitiative?.id)
+          },
+          {
+            name:"Materially changed support can reactivate the same anticipatory initiative",
+            passed:changedInitiative?.status==="active" &&
+              changedInitiative?.reactivationReason==="material-support-fingerprint-changed" &&
+              changedSweep?.initiatives?.some(item=>item.id===changedInitiative.id&&item.status==="active")
+          },
+          {
+            name:"Subject coincidence across different executive lineages cannot protect an orphaned thread",
+            passed:oldLineageThread?.status==="paused" &&
+              lineageCycle?.threadAction?.staleAttentionRelease?.staleReason==="orphaned-active-thread-no-live-executive-demand"
+          },
+          {
+            name:"Distinct live executive demand receives a fresh thread after false lineage is released",
+            passed:newLineageThread?.id!=="acceptance-foreign-lineage-thread" &&
+              newLineageThread?.priorityId==="acceptance-live-shared-subject" &&
+              newLineageThread?.status==="active"
+          },
+          {
+            name:"Standing unresolved cognitive commitment remains pursuit-eligible below the peripheral score floor",
+            passed:commitmentJudgment?.arbitration?.selected?.id==="acceptance-standing-commitment" &&
+              commitmentJudgment?.homeostasis?.pursuitEligibleCount===1
+          },
+          {
+            name:"Already-authorized executive preemption checkpoints old attention without self-defeating re-arbitration",
+            passed:directPreemption?.preempted===true &&
+              directPreemption?.decisionSource==="existing-executive-judgment-arbitration" &&
+              preemptedOld?.status==="paused"
+          },
+          {
+            name:"Attention lifecycle reconciliation preserves productive-idle authority boundaries",
+            passed:lowCycle?.cycle?.authorityUnchanged===true &&
+              lowCycle?.handoff?.authority?.externalActionAuthorized===false &&
+              lowCycle?.threadAction?.productiveIdle?.action?.researchRequest?.authority?.paidSpendAuthorized===false
+          },
+          {
+            name:"Executive attention lifecycle remains provider-neutral and does not manufacture external authority",
+            passed:!JSON.stringify({staleCycle,lowCycle,lineageCycle}).toLowerCase().includes("google") &&
+              lowCycle?.threadAction?.productiveIdle?.action?.researchRequest?.authority?.externalActionAuthorized===false
+          }
+        ];
+        const passed=checks.every(item=>item.passed);
+        console.table(checks.map(item=>({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.034F Executive Attention Lifecycle Reconciliation: ${passed?"PASS":"FAIL"} (${checks.filter(item=>item.passed).length}/${checks.length}).`);
+        return {
+          commission:"006.034F",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          checks,
+          staleCycle:this.clone(staleCycle),
+          lowCycle:this.clone(lowCycle),
+          lifecycle:{firstSweep:this.clone(firstSweep),secondSweep:this.clone(secondSweep),changedSweep:this.clone(changedSweep)},
+          lineageCycle:this.clone(lineageCycle),
+          commitmentJudgment:this.clone(commitmentJudgment),
+          directPreemption:this.clone(directPreemption)
+        };
+      } finally {
+        this.cognitiveIntentions=original.intentions;
+        this.developmentalGoals=original.goals;
+        this.investigativeIntentions=original.investigations;
+        this.preparednessInsights=original.preparedness;
+        this.anticipatoryInitiatives=original.initiatives;
+        this.cognitiveThreads=original.threads;
+        this.activeCognitiveThreadId=original.activeThreadId;
+        this.currentExecutivePriority=original.priority;
+        this.executivePriorityPortfolio=original.portfolio;
+        this.lastPriorityArbitration=original.arbitration;
+        this.executiveHomeostasisState=original.homeostasis;
+        this.lastAnticipatorySweep=original.lastSweep;
+        this.anticipatorySweepCount=original.sweepCount;
+        this.lastProductiveIdleAction=original.lastIdle;
+        this.productiveIdleHistory=original.idleHistory;
+        this.productiveIdleConsecutiveSameSubject=original.idleSame;
+        this.worldModel=original.world;
+        this.continuousCognitionState=original.cycleState;
+        this.continuousCognitionCycleCount=original.cycleCount;
+        this.lastContinuousCognitionCycle=original.lastCycle;
+        this.lastCognitiveThreadEvent=original.threadEvent;
+        this.cognitiveThreadEventCount=original.threadEventCount;
+      }
+    },
+
     async runContinuousCognitionHandoffAcceptanceTest() {
       const original={
         cognitionState:this.clone(this.continuousCognitionState),
@@ -20194,6 +20688,10 @@
         const restoredThread=this.cognitiveThreads.find(thread=>thread.id===firstThreadId);
         const second=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
         const secondHandoff=second.handoff;
+        const cadenceActiveId=this.activeCognitiveThreadId;
+        this.activeCognitiveThreadId=null;
+        const governedRestCadence=this.determineContinuousCognitionCadence({});
+        this.activeCognitiveThreadId=cadenceActiveId;
 
         const checks=[
           {name:"Continuous cognition is exposed as an invokable cycle rather than a browser timer claim",passed:typeof this.runContinuousCognitionCycle==="function"&&first.cycle.browserIndependentExecutionClaimed===false},
@@ -20206,7 +20704,7 @@
           {name:"The handoff preserves the next intended cognitive move",passed:firstHandoff.openThreads.some(thread=>thread.id===firstThreadId&&Boolean(thread.nextIntendedMove))},
           {name:"The handoff contains an explicit next wake time for a durable runtime",passed:typeof firstHandoff.nextWakeAt==="string"&&!Number.isNaN(Date.parse(firstHandoff.nextWakeAt))},
           {name:"Continuous cognition exposes an economic cadence decision",passed:Boolean(firstHandoff.economicCadence?.mode)&&Number(firstHandoff.economicCadence?.backoffMs)>0},
-          {name:"Governed rest requests a materially slower wake cadence than active thought",passed:this.determineContinuousCognitionCadence({}).backoffMs>this.configuration.continuousCognitionActiveBackoffMs},
+          {name:"Governed rest requests a materially slower wake cadence than active thought",passed:governedRestCadence.backoffMs>this.configuration.continuousCognitionActiveBackoffMs},
           {name:"Human direction can immediately restore urgent cognition cadence",passed:this.determineContinuousCognitionCadence({humanDirection:{subject:"fixture"}}).mode==="urgent-attention"},
           {name:"Economic cadence never self-authorizes paid cognition",passed:firstHandoff.economicCadence?.paidCognitionJustified===false},
           {name:"Governed rest carries an explicit bounded maximum backoff",passed:Number(firstHandoff.economicCadence?.maximumBackoffMs || this.configuration.continuousCognitionIdleMaxBackoffMs)>=Number(this.configuration.continuousCognitionIdleBackoffMs)},
