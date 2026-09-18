@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.106
+ * Server Version: 2.10.107
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.106";
+const VERSION = "2.10.107";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -5387,15 +5387,23 @@ const continuousCognitionRuntimeState = {
   durableFingerprint: null,
   activeThreadId: null,
   attentionLifecycle: {
-    commission: "006.034F",
+    commission: "006.034G",
     lastThreadAction: null,
     activeThreadOrigin: null,
     activeThreadStatus: null,
+    activeThreadNoProgressWakeCount: 0,
     currentPriorityPresent: false,
     currentPriorityOrigin: null,
     currentPriorityJudgment: null,
     activeThreadSupportedByCurrentPriority: false,
+    linkedIntentionStatus: null,
+    linkedIntentionAttempts: null,
+    linkedIntentionEconomicsState: null,
     lastReleaseReason: null,
+    lastNoProgressSettlementAt: null,
+    lastNoProgressSettlementReason: null,
+    lastNoProgressSettlementOrigin: null,
+    lastNoProgressSettlementSourceType: null,
     subjectDisclosed: false
   },
   wakeCount: 0,
@@ -6199,18 +6207,63 @@ async function runContinuousCognitionHeartbeat() {
         )
       )
     );
+    const attentionSettlement =
+      cycleResult?.threadAction?.attentionSettlement || null;
+    const settlementSourceId =
+      attentionSettlement?.sourceSettlement?.sourceType === "cognitive-intention"
+        ? attentionSettlement?.sourceSettlement?.sourceId || null
+        : null;
+    const linkedIntentionId =
+      settlementSourceId ||
+      (activeThread?.origin === "cognitive-intention"
+        ? activeThread?.priorityId || null
+        : currentPriority?.origin === "cognitive-intention"
+          ? currentPriority?.id || null
+          : null);
+    const linkedIntention =
+      linkedIntentionId && Array.isArray(brain?.cognitiveIntentions)
+        ? brain.cognitiveIntentions.find(item =>
+            item?.intentionId === linkedIntentionId
+          ) || null
+        : null;
+    const priorAttentionLifecycle =
+      continuousCognitionRuntimeState.attentionLifecycle || {};
     continuousCognitionRuntimeState.attentionLifecycle = {
-      commission: "006.034F",
+      commission: "006.034G",
       lastThreadAction: cycleResult?.threadAction?.action || null,
       activeThreadOrigin: activeThread?.origin || null,
       activeThreadStatus: activeThread?.status || null,
+      activeThreadNoProgressWakeCount: Number(
+        activeThread?.continuityObservation?.noProgressWakeCount || 0
+      ),
       currentPriorityPresent: Boolean(currentPriority),
       currentPriorityOrigin: currentPriority?.origin || null,
       currentPriorityJudgment:
         cycleResult?.judgment?.arbitration?.judgment || null,
       activeThreadSupportedByCurrentPriority,
+      linkedIntentionStatus: linkedIntention?.status || null,
+      linkedIntentionAttempts:
+        linkedIntention ? Number(linkedIntention?.attempts || 0) : null,
+      linkedIntentionEconomicsState:
+        linkedIntention?.economics?.state || null,
       lastReleaseReason:
         cycleResult?.threadAction?.staleAttentionRelease?.staleReason || null,
+      lastNoProgressSettlementAt:
+        attentionSettlement?.settled === true
+          ? attentionSettlement?.settledAt || new Date().toISOString()
+          : priorAttentionLifecycle.lastNoProgressSettlementAt || null,
+      lastNoProgressSettlementReason:
+        attentionSettlement?.settled === true
+          ? attentionSettlement?.reason || null
+          : priorAttentionLifecycle.lastNoProgressSettlementReason || null,
+      lastNoProgressSettlementOrigin:
+        attentionSettlement?.settled === true
+          ? attentionSettlement?.origin || null
+          : priorAttentionLifecycle.lastNoProgressSettlementOrigin || null,
+      lastNoProgressSettlementSourceType:
+        attentionSettlement?.settled === true
+          ? attentionSettlement?.sourceSettlement?.sourceType || null
+          : priorAttentionLifecycle.lastNoProgressSettlementSourceType || null,
       subjectDisclosed: false
     };
     continuousCognitionRuntimeState.wakeCount += 1;
@@ -13174,20 +13227,21 @@ app.get("/api/founder/authority/acceptance-test", (_request, response) => {
 });
 
 /**
- * Commission 006.034B / 006.034D / 006.034E / 006.034F — Continuous Curiosity Production Proof Surface
+ * Commission 006.034B / 006.034D / 006.034E / 006.034F / 006.034G — Continuous Curiosity Production Proof Surface
  *
  * The existing read-only production proof surface now also proves the
  * 006.034D stale-attention release seam, 006.034E orphaned-attention
- * reconciliation, and 006.034F executive-attention lifecycle reconciliation
- * that prevents settled or vanished work from being regenerated as foreground
- * cognition while preserving real standing commitments. It remains registered
+ * reconciliation, 006.034F executive-attention lifecycle reconciliation, and
+ * 006.034G actionable-attention progress reconciliation so durable cognition
+ * cannot confuse repeated no-progress wakes with useful foreground work. It
+ * remains registered
  * before paid-product route enforcement and grants no office access,
  * entitlement, autonomy authority, paid cognition, provider call, durable
  * write, or external action.
  */
-const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034F";
+const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034G";
 const CONTINUOUS_CURIOSITY_PROOF_BUILD_ID =
-  "EALRPP100-EXECUTIVE-ATTENTION-LIFECYCLE-PROOF-20260918-A";
+  "AAPPP100-ACTIONABLE-ATTENTION-PROGRESS-PROOF-20260918-A";
 
 app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
@@ -13197,12 +13251,13 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
     const staleAttention = brain.runStaleAttentionReleaseAcceptanceTest();
     const orphanedAttention = brain.runOrphanedAttentionReconciliationAcceptanceTest();
     const attentionLifecycle = brain.runExecutiveAttentionLifecycleReconciliationAcceptanceTest();
+    const actionableAttention = brain.runActionableAttentionProgressAcceptanceTest();
     const ignition = runAutonomousLearningIgnitionAcceptanceTest();
     const checks = [
       {
-        name: "Production loads Executive Brain 1.26.11 executive-attention-lifecycle-reconciliation build",
-        passed: brain.version === "1.26.11" &&
-          brain.buildId === "EB12611-EXECUTIVE-ATTENTION-LIFECYCLE-RECONCILIATION-20260918-A"
+        name: "Production loads Executive Brain 1.26.12 actionable-attention-progress build",
+        passed: brain.version === "1.26.12" &&
+          brain.buildId === "EB12612-ACTIONABLE-ATTENTION-PROGRESS-20260918-A"
       },
       {
         name: "Continuous Curiosity Circle synthetic organism acceptance still passes",
@@ -13222,6 +13277,11 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         name: "Executive Attention Lifecycle Reconciliation integration acceptance passes",
         passed: attentionLifecycle?.passed === true &&
           attentionLifecycle?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Actionable Attention + Forward Progress integration acceptance passes",
+        passed: actionableAttention?.passed === true &&
+          actionableAttention?.checks?.every?.(item => item?.passed === true) === true
       },
       {
         name: "Server autonomous-learning ignition acceptance passes",
@@ -13267,6 +13327,11 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         passed: attentionLifecycle?.passed === true,
         checks: Array.isArray(attentionLifecycle?.checks) ? attentionLifecycle.checks : []
       },
+      actionableAttentionProgress: {
+        commission: actionableAttention?.commission || null,
+        passed: actionableAttention?.passed === true,
+        checks: Array.isArray(actionableAttention?.checks) ? actionableAttention.checks : []
+      },
       autonomousLearningIgnition: {
         commission: ignition?.commission || AUTONOMOUS_LEARNING_IGNITION_COMMISSION,
         version: AUTONOMOUS_LEARNING_IGNITION_VERSION,
@@ -13283,7 +13348,7 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         durableWrites: 0,
         externalActionAuthorized: false
       },
-      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, orphaned-attention, executive-attention-lifecycle, curiosity-circle, and ignition contracts. Live unattended behavior still requires observation of the production runtime; real standing work may correctly outrank curiosity. This surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
+      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, orphaned-attention, executive-attention-lifecycle, actionable-attention-progress, curiosity-circle, and ignition contracts. Live unattended behavior still requires observation of the production runtime; real standing work may correctly outrank curiosity, while non-progressing internally originated cognition may pause without being falsely completed. This surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
     });
   } catch (error) {
     next(error);
