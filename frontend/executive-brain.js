@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.26.11
- * Build: EB12611-EXECUTIVE-ATTENTION-LIFECYCLE-RECONCILIATION-20260918-A
+ * Version: 1.26.12
+ * Build: EB12612-ACTIONABLE-ATTENTION-PROGRESS-20260918-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.11";
-  const BUILD_ID = "EB12611-EXECUTIVE-ATTENTION-LIFECYCLE-RECONCILIATION-20260918-A";
+  const VERSION = "1.26.12";
+  const BUILD_ID = "EB12612-ACTIONABLE-ATTENTION-PROGRESS-20260918-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -190,6 +190,7 @@
       continuousCognitionIdleBackoffMs: 300000,
       continuousCognitionIdleMaxBackoffMs: 1800000,
       continuousCognitionActiveBackoffMs: 30000,
+      continuousCognitionNoProgressWakeLimit: 3,
       continuousCognitionUrgentBackoffMs: 5000,
       productiveIdleCognitionEnabled: true,
       productiveIdleMinimumValue: 0.42,
@@ -3818,7 +3819,7 @@
       return { gained, economics: this.clone(economics) };
     },
 
-    migrateCognitiveEconomicsState() {
+    migrateCognitiveEconomicsState(options = {}) {
       let quiesced = 0;
       let removedTestArtifacts = 0;
 
@@ -3860,7 +3861,7 @@
         }
       }
 
-      if (quiesced || removedTestArtifacts) {
+      if ((quiesced || removedTestArtifacts) && options.persist !== false) {
         this.persist();
       }
       return {
@@ -17393,6 +17394,231 @@
       );
     },
 
+    /*
+     * Commission 006.034G — Actionable Attention + Forward Progress
+     *
+     * A remembered unresolved intention is not the same thing as executable
+     * foreground work. Durable cognition must notice when an active thread is
+     * receiving wake after wake without any material change in what is known,
+     * unknown, hypothesized, evidenced, or intended next. In that condition
+     * Maddy preserves the obligation and its evidence, but yields scarce
+     * foreground attention until materially new support or explicit human
+     * direction justifies another attempt. This is a pause, never a fabricated
+     * completion.
+     */
+    cognitiveThreadProgressFingerprint(thread = {}) {
+      return this.fingerprintCognitiveDispatch({
+        objective:String(thread?.objective || ""),
+        established:this.clone(thread?.established || []),
+        unknowns:this.clone(thread?.unknowns || []),
+        hypotheses:this.clone(thread?.hypotheses || []),
+        contradictions:this.clone(thread?.contradictions || []),
+        evidence:this.clone(thread?.evidence || []),
+        nextIntendedMove:String(thread?.nextIntendedMove || ""),
+        closureState:String(thread?.closureState || "open"),
+        cycleCount:Number(thread?.cycleCount || 0)
+      });
+    },
+
+    buildDevelopmentalAttentionFingerprint(goal = {}) {
+      return this.fingerprintCognitiveDispatch({
+        id:goal?.id || null,
+        subject:goal?.subject || goal?.goal || goal?.capability || null,
+        status:goal?.status || null,
+        impact:Number(goal?.impact ?? 0),
+        urgency:Number(goal?.urgency ?? 0),
+        leverage:Number(goal?.leverage ?? 0),
+        horizonDays:Number(goal?.horizonDays ?? 0),
+        ambition:this.clone(goal?.ambition || null),
+        unknowns:this.clone(goal?.unknowns || []),
+        evidence:this.clone(goal?.evidence || []),
+        developmentalQuestion:goal?.developmentalQuestion || null,
+        reason:goal?.reason || null
+      });
+    },
+
+    developmentalGoalEligibleForExecutiveAttention(goal = {}) {
+      if (!goal || goal.status === "achieved") return false;
+      if (goal.attentionState !== "paused-no-progress") return true;
+      const current=this.buildDevelopmentalAttentionFingerprint(goal);
+      if (current && current !== goal.attentionPauseFingerprint) {
+        goal.attentionState="active";
+        goal.attentionReactivatedAt=new Date().toISOString();
+        goal.attentionReactivationReason="material-developmental-support-changed";
+        goal.attentionPauseFingerprint=null;
+        goal.attentionPausedAt=null;
+        goal.attentionPauseReason=null;
+        return true;
+      }
+      return false;
+    },
+
+    settleNoProgressExecutiveAttention(thread = {}, selectedPriority = null) {
+      if (!thread?.id || thread.status !== "active") {
+        return {settled:false,reason:"active-thread-required"};
+      }
+      if (thread.origin === "human-direction") {
+        return {
+          settled:false,
+          protectedHumanCommitment:true,
+          reason:"human-directed-work-remains-standing-until-explicitly-completed-paused-or-replaced"
+        };
+      }
+
+      let sourceSettlement=null;
+      if (thread.origin === "cognitive-intention") {
+        const intention=(this.cognitiveIntentions || []).find(item=>
+          item?.intentionId === thread.priorityId &&
+          item?.status !== "completed"
+        ) || null;
+        if (intention) {
+          const now=new Date().toISOString();
+          intention.status="quiescent";
+          intention.updatedAt=now;
+          intention.economics={
+            ...(intention.economics || {}),
+            schema:"meos.maddy.cognitive-information-economics.v1",
+            state:"quiescent",
+            noGainStreak:Math.max(
+              Number(this.configuration.cognitiveNoGainQuiescenceThreshold || 2),
+              Number(intention?.economics?.noGainStreak || 0)
+            ),
+            quiescentAt:now,
+            quiescenceReason:"continuous-cognition-thread-produced-no-material-progress"
+          };
+          this.snapshotCognitiveEvidenceFrontier(intention);
+          sourceSettlement={
+            sourceType:"cognitive-intention",
+            sourceId:intention.intentionId,
+            status:intention.status,
+            economicsState:intention.economics.state
+          };
+          this.record("cognition.intention-quiescent",{
+            intentionId:intention.intentionId,
+            subject:intention.subject,
+            attempts:Number(intention.attempts || 0),
+            noGainStreak:Number(intention.economics.noGainStreak || 0),
+            reason:intention.economics.quiescenceReason
+          });
+        }
+      } else if (thread.origin === "anticipatory-initiative") {
+        const initiative=(this.anticipatoryInitiatives || []).find(item=>item?.id===thread.priorityId) || null;
+        if (initiative) {
+          const now=new Date().toISOString();
+          initiative.status="blocked";
+          initiative.attentionLevel="watch";
+          initiative.lastAdvancedAt=now;
+          initiative.blockedAt=now;
+          initiative.blockReason="continuous-cognition-thread-produced-no-material-progress";
+          sourceSettlement={
+            sourceType:"anticipatory-initiative",
+            sourceId:initiative.id,
+            status:initiative.status
+          };
+        }
+      } else if (thread.origin === "developmental-drive") {
+        const goal=(this.developmentalGoals || []).find(item=>item?.id===thread.priorityId) || null;
+        if (goal) {
+          const now=new Date().toISOString();
+          goal.attentionState="paused-no-progress";
+          goal.attentionPauseFingerprint=this.buildDevelopmentalAttentionFingerprint(goal);
+          goal.attentionPausedAt=now;
+          goal.attentionPauseReason="continuous-cognition-thread-produced-no-material-progress";
+          sourceSettlement={
+            sourceType:"developmental-drive",
+            sourceId:goal.id,
+            status:goal.attentionState
+          };
+        }
+      }
+
+      if (!sourceSettlement) {
+        return {settled:false,reason:"thread-origin-has-no-governed-no-progress-settlement"};
+      }
+
+      const checkpoint=this.checkpointCognitiveThread(
+        thread,
+        "continuous-cognition-no-progress",
+        {
+          status:"paused",
+          resumeTrigger:"material evidence, changed support, or explicit human direction"
+        }
+      );
+      if (this.currentExecutivePriority?.id === (selectedPriority?.id || thread.priorityId)) {
+        this.currentExecutivePriority=null;
+      }
+      this.executivePriorityPortfolio=(this.executivePriorityPortfolio || [])
+        .filter(item=>item?.id !== (selectedPriority?.id || thread.priorityId));
+
+      const settlement={
+        schema:"meos.maddy.actionable-attention-settlement.v1",
+        commission:"006.034G",
+        settled:true,
+        settledAt:new Date().toISOString(),
+        threadId:thread.id,
+        origin:thread.origin,
+        priorityId:thread.priorityId || null,
+        reason:"continuous-cognition-repeated-no-material-progress",
+        checkpoint:this.clone(checkpoint?.checkpoint || null),
+        sourceSettlement:this.clone(sourceSettlement),
+        truthRule:"No-progress settlement pauses foreground attention without claiming the underlying obligation is complete."
+      };
+      this.recordCognitiveThreadEvent("no-progress-settled",thread,{
+        origin:thread.origin,
+        priorityId:thread.priorityId || null,
+        sourceSettlement:this.clone(sourceSettlement)
+      });
+      return settlement;
+    },
+
+    observeContinuousCognitiveThreadProgress(thread = {}, selectedPriority = null, options = {}) {
+      if (!thread?.id || thread.status !== "active") {
+        return {success:true,settled:false,reason:"no-active-thread"};
+      }
+      const now=new Date().toISOString();
+      const fingerprint=this.cognitiveThreadProgressFingerprint(thread);
+      const prior=thread.continuityObservation || null;
+      const materialReset=options.materialChange===true || Boolean(options.humanDirection);
+      const progressObserved=Boolean(
+        materialReset ||
+        !prior?.progressFingerprint ||
+        prior.progressFingerprint !== fingerprint
+      );
+      const noProgressWakeCount=progressObserved
+        ? 0
+        : Number(prior?.noProgressWakeCount || 0)+1;
+      thread.continuityObservation={
+        schema:"meos.maddy.cognitive-thread-continuity-observation.v1",
+        observedAt:now,
+        progressFingerprint:fingerprint,
+        noProgressWakeCount,
+        progressObserved,
+        materialReset
+      };
+      thread.updatedAt=thread.updatedAt || now;
+
+      const limit=Math.max(1,Number(this.configuration.continuousCognitionNoProgressWakeLimit || 3));
+      if (noProgressWakeCount < limit) {
+        return {
+          success:true,
+          settled:false,
+          progressObserved,
+          noProgressWakeCount,
+          noProgressWakeLimit:limit,
+          protectedHumanCommitment:thread.origin === "human-direction"
+        };
+      }
+
+      const settlement=this.settleNoProgressExecutiveAttention(thread,selectedPriority);
+      return {
+        success:true,
+        progressObserved:false,
+        noProgressWakeCount,
+        noProgressWakeLimit:limit,
+        ...this.clone(settlement)
+      };
+    },
+
     collectExecutivePriorityDemands(options = {}) {
       const demands=[];
       (this.anticipatoryInitiatives || []).filter(x=>x.status==="active").forEach(x=>demands.push({
@@ -17448,7 +17674,9 @@
           externalAuthorityRequired:false
         });
       }
-      (this.developmentalGoals || []).filter(x=>x.status!=="achieved").forEach(x=>demands.push({
+      (this.developmentalGoals || []).filter(x=>
+        this.developmentalGoalEligibleForExecutiveAttention(x)
+      ).forEach(x=>demands.push({
         id:x.id,subject:x.subject||x.goal||x.capability,origin:"developmental-drive",
         reason:x.reason,missionConsequence:Number(x.impact??0.55),
         urgency:Number(x.urgency??0.3),leverage:Number(x.leverage??0.75),
@@ -18492,6 +18720,14 @@
         marginalValueHistory:[],
         authority:{externalActionAuthorized:false},
         truthRule:"Thread continuity preserves reasoning state; it does not convert hypotheses, simulations, or remembered conclusions into verified facts."
+      };
+      thread.continuityObservation={
+        schema:"meos.maddy.cognitive-thread-continuity-observation.v1",
+        observedAt:now,
+        progressFingerprint:this.cognitiveThreadProgressFingerprint(thread),
+        noProgressWakeCount:0,
+        progressObserved:true,
+        materialReset:false
       };
       this.cognitiveThreads.unshift(thread);
       this.cognitiveThreads=this.cognitiveThreads.slice(0,this.configuration.cognitiveThreadLimit);
@@ -19762,13 +19998,13 @@
       });
 
       const anticipatory=this.runAnticipatorySweep({promptedByHuman:false});
-      const judgment=this.runExecutiveJudgmentCycle({
+      let judgment=this.runExecutiveJudgmentCycle({
         materialChange:options.materialChange===true,
         humanDirection:options.humanDirection
       });
 
       let threadAction={action:"idle",success:true};
-      const selected=judgment.arbitration?.selected || null;
+      let selected=judgment.arbitration?.selected || null;
       const staleAttentionRelease=this.releaseStaleContinuousCognitionAttention({
         selectedPriority:selected,
         materialChange:options.materialChange===true,
@@ -19798,12 +20034,57 @@
           threadAction={action:"protect-thread",...preemption};
         }
       } else if (active) {
-        threadAction={
-          action:"continue-thread",
-          success:true,
-          threadId:active.id,
-          nextIntendedMove:active.nextIntendedMove
-        };
+        const continuity=this.observeContinuousCognitiveThreadProgress(
+          active,
+          selected,
+          {
+            materialChange:options.materialChange===true,
+            humanDirection:options.humanDirection || null
+          }
+        );
+        if (continuity?.settled === true) {
+          judgment=this.runExecutiveJudgmentCycle({
+            materialChange:options.materialChange===true,
+            humanDirection:options.humanDirection
+          });
+          selected=judgment.arbitration?.selected || null;
+          active=this.cognitiveThreads.find(thread=>thread.id===this.activeCognitiveThreadId) || null;
+          if (selected) {
+            const opened=this.createCognitiveThread({
+              subject:selected.subject,
+              origin:selected.origin,
+              priorityId:selected.id,
+              objective:`Pursue the current executive priority until verified closure or a governed pause: ${selected.subject}.`,
+              unknowns:this.clone(selected.unknowns || []),
+              evidence:this.clone(selected.evidence || []),
+              nextIntendedMove:selected.cognitiveInvestment?.allocation==="investigate"
+                ? "investigate highest-value unresolved question"
+                : "determine the next evidence-grounded cognitive move"
+            });
+            threadAction={
+              action:"settle-no-progress-open-next-thread",
+              success:true,
+              attentionSettlement:this.clone(continuity),
+              opened
+            };
+          } else {
+            const productiveIdle=this.runProductiveIdleCognition(options);
+            threadAction={
+              action:productiveIdle.productive?"productive-idle":"governed-rest",
+              success:productiveIdle.success,
+              productiveIdle:this.clone(productiveIdle),
+              attentionSettlement:this.clone(continuity)
+            };
+          }
+        } else {
+          threadAction={
+            action:"continue-thread",
+            success:true,
+            threadId:active.id,
+            nextIntendedMove:active.nextIntendedMove,
+            continuityObservation:this.clone(continuity)
+          };
+        }
       } else if (selected) {
         const opened=this.createCognitiveThread({
           subject:selected.subject,
@@ -20623,6 +20904,263 @@
         this.lastContinuousCognitionCycle=original.lastCycle;
         this.lastCognitiveThreadEvent=original.threadEvent;
         this.cognitiveThreadEventCount=original.threadEventCount;
+      }
+    },
+
+    runActionableAttentionProgressAcceptanceTest() {
+      const originalSnapshot=this.buildPersistenceSnapshot();
+      const originalNoProgressLimit=this.configuration.continuousCognitionNoProgressWakeLimit;
+      const originalPersistence=this.configuration.persistenceEnabled;
+      const reset=()=>{
+        this.cognitiveIntentions=[];
+        this.developmentalGoals=[];
+        this.investigativeIntentions=[];
+        this.preparednessInsights=[];
+        this.anticipatoryInitiatives=[];
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        this.lastPriorityArbitration=null;
+        this.executiveHomeostasisState=null;
+        this.lastAnticipatorySweep=null;
+        this.worldModel={unknowns:[]};
+        this.lastProductiveIdleAction=null;
+        this.productiveIdleHistory=[];
+        this.productiveIdleConsecutiveSameSubject=0;
+        this.continuousCognitionState=null;
+        this.lastContinuousCognitionCycle=null;
+      };
+      const makeIntention=(id="acceptance-progress-intention",subject="Resolve a real but currently non-progressing cognitive question")=>({
+        intentionId:id,
+        key:this.normalize(subject),
+        subject,
+        status:"pending",
+        createdAt:new Date().toISOString(),
+        updatedAt:new Date().toISOString(),
+        attempts:0,
+        triggers:[{
+          source:"executive learning",
+          event:"verified-follow-through-question",
+          sourceId:`${id}-source`
+        }],
+        lastError:null,
+        temporal:{kind:"cognitive-intention"}
+      });
+      try {
+        this.configuration.persistenceEnabled=false;
+        this.configuration.continuousCognitionNoProgressWakeLimit=3;
+
+        // A) Reproduce the live pattern: a legitimate unresolved intention opens
+        // a thread, then receives repeated wakes with no actual change.
+        reset();
+        this.cognitiveIntentions=[makeIntention()];
+        const stuckCycles=[];
+        for (let index=0; index<4; index+=1) {
+          stuckCycles.push(this.runContinuousCognitionCycle({serverRuntimeAuthorized:true}));
+        }
+        const settledIntention=this.cognitiveIntentions[0] || null;
+        const settledThread=this.cognitiveThreads.find(item=>item.priorityId===settledIntention?.intentionId) || null;
+        const settlementCycle=stuckCycles[3] || null;
+        const settlementRequest=settlementCycle?.threadAction?.productiveIdle?.action?.researchRequest || null;
+        const settlementSnapshot=this.buildPersistenceSnapshot();
+
+        // B) A real material change resets the no-progress counter instead of
+        // falsely settling active cognition.
+        reset();
+        this.cognitiveIntentions=[makeIntention("acceptance-progress-reset","Question whose evidence changes")];
+        const progressOpen=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+        const progressOne=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+        const progressThread=this.cognitiveThreads.find(item=>item.id===this.activeCognitiveThreadId) || null;
+        if (progressThread) {
+          progressThread.evidence.push({source:"acceptance://new-material-evidence",verified:true,claim:"new evidence arrived"});
+        }
+        const progressReset=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+        const progressAfter=this.cognitiveThreads.find(item=>item.id===this.activeCognitiveThreadId) || null;
+
+        // C) Human-directed work is not auto-quiesced merely because several
+        // unattended wakes contain no new evidence.
+        reset();
+        this.createCognitiveThread({
+          id:"acceptance-human-standing-thread",
+          subject:"Explicit human-directed unfinished work",
+          origin:"human-direction",
+          priorityId:"acceptance-human-standing-priority",
+          objective:"Preserve explicit human work until a governed completion, pause, or replacement."
+        });
+        const humanCycles=[];
+        for (let index=0; index<5; index+=1) {
+          humanCycles.push(this.runContinuousCognitionCycle({serverRuntimeAuthorized:true}));
+        }
+        const humanThread=this.cognitiveThreads.find(item=>item.id==="acceptance-human-standing-thread") || null;
+
+        // D) The same anti-spin rule applies to self-originated anticipatory and
+        // developmental attention without deleting the underlying developmental
+        // goal. Unchanged support settles; materially changed support may wake it.
+        reset();
+        this.developmentalGoals=[{
+          id:"acceptance-developmental-no-progress",
+          capability:"High-value developmental capability",
+          subject:"High-value developmental capability",
+          status:"active",impact:.99,urgency:.95,leverage:.99,horizonDays:7,
+          unknowns:["first developmental unknown"],
+          ambition:{demonstrated:.1,required:.95,gap:.85},
+          developmentalQuestion:"How can this capability improve?"
+        }];
+        const developmentalCycles=[];
+        for (let index=0; index<7; index+=1) {
+          developmentalCycles.push(this.runContinuousCognitionCycle({serverRuntimeAuthorized:true}));
+        }
+        const settledInitiative=(this.anticipatoryInitiatives || [])[0] || null;
+        const settledGoal=this.developmentalGoals[0] || null;
+        if (settledGoal) {
+          settledGoal.unknowns=[...(settledGoal.unknowns || []),"materially new developmental unknown"];
+          settledGoal.impact=1;
+        }
+        const developmentalReactivated=this.runContinuousCognitionCycle({
+          serverRuntimeAuthorized:true,
+          materialChange:true
+        });
+        const reactivatedInitiative=(this.anticipatoryInitiatives || [])[0] || null;
+
+        // E) Durable restore itself must quiesce old high-retry cognition even in
+        // the server headless path, which deliberately bypasses browser initialize().
+        const hydrationFixture=this.buildPersistenceSnapshot();
+        hydrationFixture.cognitiveIntentions=[{
+          ...makeIntention("acceptance-hydration-high-retry","Legacy high-retry cognition"),
+          attempts:9
+        }];
+        hydrationFixture.cognitiveThreads=[];
+        hydrationFixture.activeCognitiveThreadId=null;
+        hydrationFixture.currentExecutivePriority=null;
+        this.applyPersistenceSnapshot(hydrationFixture);
+        const hydratedLegacy=this.cognitiveIntentions.find(item=>item.intentionId==="acceptance-hydration-high-retry") || null;
+
+        // F) New materially meaningful evidence can still justify waking a
+        // quiescent intention; no-progress settlement is not deletion.
+        const wakeAssessment=this.assessCognitiveAttentionEconomics(
+          hydratedLegacy,
+          [{
+            source:"executive learning",
+            event:"material-new-evidence",
+            sourceId:"acceptance-new-evidence-after-quiescence"
+          }],
+          {}
+        );
+
+        const checks=[
+          {
+            name:"Unchanged unresolved cognitive work no longer owns foreground attention forever",
+            passed:stuckCycles[0]?.threadAction?.action==="open-thread" &&
+              stuckCycles[1]?.threadAction?.action==="continue-thread" &&
+              stuckCycles[2]?.threadAction?.action==="continue-thread" &&
+              settlementCycle?.threadAction?.attentionSettlement?.settled===true
+          },
+          {
+            name:"Repeated no-progress cognition becomes quiescent without being falsely completed",
+            passed:settledIntention?.status==="quiescent" &&
+              settledIntention?.economics?.state==="quiescent" &&
+              settledIntention?.economics?.quiescenceReason==="continuous-cognition-thread-produced-no-material-progress" &&
+              settledIntention?.completedAt==null
+          },
+          {
+            name:"No-progress thread is checkpointed and preserved rather than erased",
+            passed:settledThread?.status==="paused" &&
+              settledThread?.closureState!=="verified-closed" &&
+              settledThread?.checkpoints?.some(item=>item.reason==="continuous-cognition-no-progress")===true
+          },
+          {
+            name:"The same cognition cycle can yield freed capacity to existing productive-idle curiosity",
+            passed:settlementCycle?.threadAction?.action==="productive-idle" &&
+              settlementCycle?.handoff?.activeThreadId==null &&
+              settlementCycle?.handoff?.currentPriority==null &&
+              settlementRequest?.schema==="meos.maddy.autonomous-learning-research-request.v1"
+          },
+          {
+            name:"Material thread progress resets no-progress pressure instead of causing false settlement",
+            passed:progressOpen?.threadAction?.action==="open-thread" &&
+              progressOne?.threadAction?.continuityObservation?.noProgressWakeCount===1 &&
+              progressReset?.threadAction?.action==="continue-thread" &&
+              progressReset?.threadAction?.continuityObservation?.progressObserved===true &&
+              progressAfter?.status==="active"
+          },
+          {
+            name:"Explicit human-directed unfinished work remains protected from automatic no-progress quiescence",
+            passed:humanThread?.status==="active" &&
+              humanCycles.every(cycle=>cycle?.threadAction?.attentionSettlement?.settled!==true) &&
+              humanCycles.slice(1).some(cycle=>cycle?.threadAction?.continuityObservation?.protectedHumanCommitment===true)
+          },
+          {
+            name:"Static anticipatory and developmental attention can settle instead of cycling forever",
+            passed:developmentalCycles.some(cycle=>
+                cycle?.threadAction?.attentionSettlement?.sourceSettlement?.sourceType==="anticipatory-initiative"
+              ) &&
+              developmentalCycles.some(cycle=>
+                cycle?.threadAction?.attentionSettlement?.sourceSettlement?.sourceType==="developmental-drive"
+              ) &&
+              developmentalCycles[6]?.threadAction?.action==="productive-idle" &&
+              settledInitiative?.status==="blocked" &&
+              settledGoal?.status==="active" &&
+              settledGoal?.attentionState==="active"
+          },
+          {
+            name:"Materially changed developmental support can reactivate settled self-directed attention",
+            passed:developmentalReactivated?.handoff?.currentPriority?.origin==="anticipatory-initiative" &&
+              reactivatedInitiative?.status==="active" &&
+              settledGoal?.attentionReactivationReason==="material-developmental-support-changed"
+          },
+          {
+            name:"Headless durable hydration applies legacy cognitive-economics migration",
+            passed:hydratedLegacy?.status==="quiescent" &&
+              hydratedLegacy?.economics?.state==="quiescent" &&
+              hydratedLegacy?.economics?.migratedFromAttempts===9
+          },
+          {
+            name:"Materially novel evidence can still justify waking settled cognition",
+            passed:wakeAssessment?.decision==="wake" &&
+              wakeAssessment?.reason==="materially-novel-executive-evidence"
+          },
+          {
+            name:"No-progress settlement survives sovereign Executive Brain persistence",
+            passed:settlementSnapshot?.cognitiveIntentions?.some(item=>
+              item.intentionId===settledIntention?.intentionId &&
+              item.status==="quiescent"
+            )===true &&
+              settlementSnapshot?.cognitiveThreads?.some(item=>
+                item.id===settledThread?.id && item.status==="paused"
+              )===true
+          },
+          {
+            name:"Actionable-attention settlement preserves zero spend and external-action authority",
+            passed:settlementRequest?.authority?.paidSpendAuthorized===false &&
+              settlementRequest?.authority?.externalActionAuthorized===false &&
+              settlementCycle?.cycle?.authorityUnchanged===true &&
+              settlementCycle?.handoff?.authority?.externalActionAuthorized===false
+          }
+        ];
+        const passed=checks.every(item=>item.passed);
+        console.table(checks.map(item=>({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.034G Actionable Attention + Forward Progress: ${passed?"PASS":"FAIL"} (${checks.filter(item=>item.passed).length}/${checks.length}).`);
+        return {
+          commission:"006.034G",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          checks,
+          settlementCycle:this.clone(settlementCycle),
+          settledIntention:this.clone(settledIntention),
+          settledThread:this.clone(settledThread),
+          progressReset:this.clone(progressReset),
+          humanThread:this.clone(humanThread),
+          developmentalCycles:this.clone(developmentalCycles),
+          developmentalReactivated:this.clone(developmentalReactivated),
+          hydratedLegacy:this.clone(hydratedLegacy),
+          wakeAssessment:this.clone(wakeAssessment)
+        };
+      } finally {
+        this.configuration.continuousCognitionNoProgressWakeLimit=originalNoProgressLimit;
+        this.configuration.persistenceEnabled=originalPersistence;
+        this.applyPersistenceSnapshot(originalSnapshot);
       }
     },
 
@@ -22370,6 +22908,11 @@
           }
         );
       this.cognitiveIntentions = intentionHealing.intentions;
+      /* 006.034G: headless durable hydration bypasses browser initialize(), so
+       * legacy cognitive-economics migration must be applied as part of the
+       * sovereign snapshot restore itself. This is mutation of restored state,
+       * not a write; the durable server decides when to checkpoint it. */
+      this.migrateCognitiveEconomicsState({ persist: false });
       this.selfModel =
         saved.selfModel?.schema === "meos.maddy.self-model.v1"
           ? this.clone(saved.selfModel)
