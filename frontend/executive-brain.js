@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.8";
-  const BUILD_ID = "EB1268-CONTINUOUS-CURIOSITY-CIRCLE-20260917-A";
+  const VERSION = "1.26.9";
+  const BUILD_ID = "EB1269-STALE-ATTENTION-RELEASE-20260918-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -16692,7 +16692,9 @@
         });
       };
 
-      (this.cognitiveIntentions || []).filter(item => item?.status !== "completed").forEach(item => add({
+      (this.cognitiveIntentions || [])
+        .filter(item => this.isCognitiveIntentionEligibleForExecutiveAttention(item))
+        .forEach(item => add({
         subject:item.subject,
         origin:"unresolved-intention",
         reason:"Unresolved cognition remains open and may become more important as time or evidence changes.",
@@ -17223,6 +17225,9 @@
       if (selected) {
         selected={...this.clone(selected),status:"selected",selectedAt:now};
         this.currentExecutivePriority=selected;
+      } else if (!challenger && priorIncumbent) {
+        this.currentExecutivePriority=null;
+        judgment="release-incumbent-no-live-demand";
       }
 
       this.executivePriorityPortfolio=scored
@@ -17248,6 +17253,31 @@
       return {success:true,portfolio:this.clone(this.executivePriorityPortfolio),arbitration:this.clone(arbitration)};
     },
 
+    /*
+     * Commission 006.034D — Stale Attention Release
+     *
+     * Quiescence is a governed conclusion that repeated cognition has stopped
+     * producing material information gain. It must remain remembered and
+     * wakeable by materially novel evidence or explicit human direction, but it
+     * must not silently re-enter Executive Judgment as active work merely
+     * because the record still exists. Otherwise a stale intention can occupy
+     * the durable attention thread forever and prevent productive-idle learning
+     * from ever receiving a turn.
+     */
+    isQuiescentCognitiveIntention(intention = {}) {
+      return intention?.status === "quiescent" ||
+        intention?.economics?.state === "quiescent";
+    },
+
+    isCognitiveIntentionEligibleForExecutiveAttention(intention = {}) {
+      return Boolean(
+        intention &&
+        intention.status !== "completed" &&
+        !this.isQuiescentCognitiveIntention(intention) &&
+        !this.isTemporalOrientationSubject(intention.subject)
+      );
+    },
+
     collectExecutivePriorityDemands(options = {}) {
       const demands=[];
       (this.anticipatoryInitiatives || []).filter(x=>["active","researched"].includes(x.status)).forEach(x=>demands.push({
@@ -17260,9 +17290,9 @@
         evidence:x.evidence,unknowns:x.unknowns,
         externalAuthorityRequired:x.authority?.externalAuthorityRequired===true
       }));
-      (this.cognitiveIntentions || []).filter(x=>
-        x.status!=="completed" && !this.isTemporalOrientationSubject(x.subject)
-      ).forEach(x=>demands.push({
+      (this.cognitiveIntentions || [])
+        .filter(x=>this.isCognitiveIntentionEligibleForExecutiveAttention(x))
+        .forEach(x=>demands.push({
         id:x.intentionId,subject:x.subject,origin:"cognitive-intention",
         reason:"Existing cognitive commitment remains unresolved.",
         missionConsequence:0.66,urgency:x.status==="blocked"?0.72:0.5,
@@ -18477,6 +18507,79 @@
       return {success:true,preempted:true,checkpoint,arbitration};
     },
 
+    releaseStaleContinuousCognitionAttention(options = {}) {
+      const active=this.cognitiveThreads.find(thread=>thread.id===this.activeCognitiveThreadId) || null;
+      if (!active) return {success:true,released:false,reason:"no-active-thread"};
+
+      const linkedById=(this.cognitiveIntentions || []).find(item=>
+        item?.intentionId && item.intentionId===active.priorityId
+      ) || null;
+      const linkedBySubject=!linkedById && active.origin==="cognitive-intention"
+        ? (this.cognitiveIntentions || []).find(item=>
+            this.normalize(item?.subject || "")===this.normalize(active.subject || "")
+          ) || null
+        : null;
+      const linked=linkedById || linkedBySubject;
+
+      const staleReason = linked?.status === "completed"
+        ? "completed-cognitive-intention-still-held-active-thread"
+        : (this.isQuiescentCognitiveIntention(linked || {})
+            ? "quiescent-cognitive-intention-still-held-active-thread"
+            : null);
+
+      if (!staleReason) {
+        return {
+          success:true,
+          released:false,
+          reason:"active-thread-remains-attention-eligible",
+          threadId:active.id,
+          priorityId:active.priorityId || null
+        };
+      }
+
+      const checkpoint=this.checkpointCognitiveThread(
+        active,
+        "stale-attention-release",
+        {
+          status:"paused",
+          resumeTrigger:"materially novel evidence or explicit human direction re-establishes executive attention"
+        }
+      );
+
+      if (
+        this.currentExecutivePriority?.id===active.priorityId ||
+        (
+          this.currentExecutivePriority?.origin==="cognitive-intention" &&
+          this.normalize(this.currentExecutivePriority?.subject || "")===
+            this.normalize(active.subject || "")
+        )
+      ) {
+        this.currentExecutivePriority=null;
+      }
+      this.executivePriorityPortfolio=(this.executivePriorityPortfolio || []).filter(item=>
+        item?.id!==active.priorityId &&
+        !(item?.origin==="cognitive-intention" &&
+          this.normalize(item?.subject || "")===this.normalize(active.subject || ""))
+      );
+
+      const release={
+        schema:"meos.maddy.stale-attention-release.v1",
+        released:true,
+        releasedAt:new Date().toISOString(),
+        threadId:active.id,
+        priorityId:active.priorityId || null,
+        subject:active.subject || linked?.subject || null,
+        staleReason,
+        priorIntentionStatus:linked?.status || null,
+        priorEconomicsState:linked?.economics?.state || null,
+        checkpoint:this.clone(checkpoint?.checkpoint || null),
+        authorityUnchanged:true,
+        truthRule:"Quiescent or completed cognition remains remembered and may wake on legitimate new evidence or human direction; stale existence alone cannot monopolize executive attention."
+      };
+      this.recordCognitiveThreadEvent("stale-attention-released",active,release);
+      return {success:true,released:true,release:this.clone(release)};
+    },
+
     async runSustainedCognitiveThreadAcceptanceTest() {
       const original={
         threads:this.clone(this.cognitiveThreads),
@@ -19420,7 +19523,12 @@
 
       let threadAction={action:"idle",success:true};
       const selected=judgment.arbitration?.selected || null;
-      const active=this.cognitiveThreads.find(thread=>thread.id===this.activeCognitiveThreadId);
+      const staleAttentionRelease=this.releaseStaleContinuousCognitionAttention({
+        selectedPriority:selected,
+        materialChange:options.materialChange===true,
+        humanDirection:options.humanDirection || null
+      });
+      let active=this.cognitiveThreads.find(thread=>thread.id===this.activeCognitiveThreadId) || null;
 
       if (active && selected && active.priorityId && selected.id!==active.priorityId) {
         const preemption=this.preemptCognitiveThreadForPriority(selected,{
@@ -19451,6 +19559,10 @@
         const productiveIdle=this.runProductiveIdleCognition(options);
         threadAction={action:productiveIdle.productive?"productive-idle":"governed-rest",
           success:productiveIdle.success,productiveIdle:this.clone(productiveIdle)};
+      }
+
+      if (staleAttentionRelease?.released === true) {
+        threadAction.staleAttentionRelease=this.clone(staleAttentionRelease.release);
       }
 
       const handoff=this.buildContinuousCognitionHandoff(options);
@@ -19618,6 +19730,176 @@
         this.lastProductiveIdleAction = original.lastIdle;
         this.productiveIdleHistory = original.idleHistory;
         this.productiveIdleConsecutiveSameSubject = original.sameCount;
+      }
+    },
+
+    runStaleAttentionReleaseAcceptanceTest() {
+      const original={
+        intentions:this.clone(this.cognitiveIntentions),
+        goals:this.clone(this.developmentalGoals),
+        investigations:this.clone(this.investigativeIntentions),
+        preparedness:this.clone(this.preparednessInsights),
+        initiatives:this.clone(this.anticipatoryInitiatives),
+        threads:this.clone(this.cognitiveThreads),
+        activeThreadId:this.activeCognitiveThreadId,
+        priority:this.clone(this.currentExecutivePriority),
+        portfolio:this.clone(this.executivePriorityPortfolio),
+        arbitration:this.clone(this.lastPriorityArbitration),
+        lastSweep:this.clone(this.lastAnticipatorySweep),
+        sweepCount:this.anticipatorySweepCount,
+        lastIdle:this.clone(this.lastProductiveIdleAction),
+        idleHistory:this.clone(this.productiveIdleHistory),
+        idleSame:this.productiveIdleConsecutiveSameSubject,
+        world:this.clone(this.worldModel),
+        cycleState:this.clone(this.continuousCognitionState),
+        cycleCount:this.continuousCognitionCycleCount,
+        lastCycle:this.clone(this.lastContinuousCognitionCycle),
+        threadEvent:this.clone(this.lastCognitiveThreadEvent),
+        threadEventCount:this.cognitiveThreadEventCount
+      };
+      try {
+        const staleIntention={
+          intentionId:"acceptance-stale-intention",
+          subject:"Exhausted cognition awaiting genuinely new evidence",
+          status:"quiescent",
+          attempts:12,
+          economics:{
+            state:"quiescent",
+            noGainStreak:3,
+            quiescenceReason:"repeated-cognition-produced-no-material-information-gain"
+          },
+          triggers:[]
+        };
+        this.cognitiveIntentions=[staleIntention];
+        this.developmentalGoals=[];
+        this.investigativeIntentions=[];
+        this.preparednessInsights=[];
+        this.anticipatoryInitiatives=[];
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority={
+          id:staleIntention.intentionId,
+          subject:staleIntention.subject,
+          origin:"cognitive-intention",
+          score:.66,
+          status:"selected",
+          selectedAt:new Date().toISOString()
+        };
+        this.executivePriorityPortfolio=[];
+        this.worldModel={unknowns:[]};
+        this.lastProductiveIdleAction=null;
+        this.productiveIdleHistory=[];
+        this.productiveIdleConsecutiveSameSubject=0;
+        this.continuousCognitionState=null;
+        this.lastContinuousCognitionCycle=null;
+
+        const anticipatory=this.collectAnticipatoryCandidates({});
+        const demands=this.collectExecutivePriorityDemands({});
+        const staleThread=this.createCognitiveThread({
+          id:"acceptance-stale-thread",
+          subject:staleIntention.subject,
+          origin:"cognitive-intention",
+          priorityId:staleIntention.intentionId,
+          objective:"Acceptance fixture: stale quiescent thought must not monopolize attention.",
+          nextIntendedMove:"wait for genuinely new evidence"
+        });
+        const cycle=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+        const releasedThread=this.cognitiveThreads.find(item=>item.id==="acceptance-stale-thread") || null;
+        const request=cycle?.threadAction?.productiveIdle?.action?.researchRequest || null;
+
+        this.cognitiveIntentions=[{
+          intentionId:"acceptance-live-intention",
+          subject:"Live unresolved cognition",
+          status:"pending",
+          attempts:0,
+          triggers:[{source:"human",event:"acceptance-live-work"}]
+        }];
+        this.anticipatoryInitiatives=[];
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        this.lastPriorityArbitration=null;
+        const liveCycle=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+
+        const checks=[
+          {
+            name:"Quiescent cognition is excluded from anticipatory initiative generation until legitimate re-entry evidence exists",
+            passed:!anticipatory.some(item=>item.subject===staleIntention.subject)
+          },
+          {
+            name:"Quiescent cognition is excluded from Executive Judgment demand arbitration",
+            passed:!demands.some(item=>item.id===staleIntention.intentionId)
+          },
+          {
+            name:"A persisted active thread tied to quiescent cognition is checkpointed and released",
+            passed:releasedThread?.status==="paused" &&
+              cycle?.threadAction?.staleAttentionRelease?.staleReason===
+                "quiescent-cognitive-intention-still-held-active-thread"
+          },
+          {
+            name:"Stale priority identity is removed rather than surviving as a phantom incumbent",
+            passed:this.normalize(cycle?.handoff?.currentPriority?.subject || "")!==
+              this.normalize(staleIntention.subject)
+          },
+          {
+            name:"The same unattended cycle can reach productive-idle cognition after stale attention is released",
+            passed:cycle?.threadAction?.action==="productive-idle" &&
+              cycle?.threadAction?.productiveIdle?.productive===true
+          },
+          {
+            name:"Existing autonomous-learning machinery can finally emit its bounded research intent once genuine idle capacity exists",
+            passed:request?.schema==="meos.maddy.autonomous-learning-research-request.v1" &&
+              request?.authority?.paidSpendAuthorized===false &&
+              request?.authority?.externalActionAuthorized===false
+          },
+          {
+            name:"A live unresolved intention still receives executive attention rather than being mistaken for stale work",
+            passed:liveCycle?.threadAction?.action==="open-thread" &&
+              Boolean(this.activeCognitiveThreadId)
+          },
+          {
+            name:"Stale-attention repair grants no provider, spend, or external-action authority",
+            passed:cycle?.cycle?.authorityUnchanged===true &&
+              cycle?.handoff?.authority?.externalActionAuthorized===false &&
+              request?.acquisitionPolicy?.paidModelAuthorized===false &&
+              request?.acquisitionPolicy?.paidSearchAuthorized===false
+          }
+        ];
+        const passed=checks.every(item=>item.passed);
+        console.table(checks.map(item=>({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.034D Stale Attention Release: ${passed?"PASS":"FAIL"} (${checks.filter(item=>item.passed).length}/${checks.length}).`);
+        return {
+          commission:"006.034D",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          checks,
+          staleCycle:this.clone(cycle),
+          liveCycle:this.clone(liveCycle)
+        };
+      } finally {
+        this.cognitiveIntentions=original.intentions;
+        this.developmentalGoals=original.goals;
+        this.investigativeIntentions=original.investigations;
+        this.preparednessInsights=original.preparedness;
+        this.anticipatoryInitiatives=original.initiatives;
+        this.cognitiveThreads=original.threads;
+        this.activeCognitiveThreadId=original.activeThreadId;
+        this.currentExecutivePriority=original.priority;
+        this.executivePriorityPortfolio=original.portfolio;
+        this.lastPriorityArbitration=original.arbitration;
+        this.lastAnticipatorySweep=original.lastSweep;
+        this.anticipatorySweepCount=original.sweepCount;
+        this.lastProductiveIdleAction=original.lastIdle;
+        this.productiveIdleHistory=original.idleHistory;
+        this.productiveIdleConsecutiveSameSubject=original.idleSame;
+        this.worldModel=original.world;
+        this.continuousCognitionState=original.cycleState;
+        this.continuousCognitionCycleCount=original.cycleCount;
+        this.lastContinuousCognitionCycle=original.lastCycle;
+        this.lastCognitiveThreadEvent=original.threadEvent;
+        this.cognitiveThreadEventCount=original.threadEventCount;
       }
     },
 
