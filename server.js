@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.103
+ * Server Version: 2.10.104
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.103";
+const VERSION = "2.10.104";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -13128,33 +13128,40 @@ app.get("/api/founder/authority/acceptance-test", (_request, response) => {
 });
 
 /**
- * Commission 006.034B — Continuous Curiosity Production Proof Surface
+ * Commission 006.034B / 006.034D — Continuous Curiosity Production Proof Surface
  *
- * This is a read-only, synthetic acceptance surface deliberately registered
- * before paid-product route enforcement so production can prove the new
- * curiosity circle even when no customer/founder session is currently
- * available. It grants no office access, entitlement, autonomy authority,
- * paid cognition, provider call, durable write, or external action.
+ * The existing read-only production proof surface now also proves the
+ * 006.034D stale-attention release seam that lets genuinely idle cognition
+ * reach the already-commissioned curiosity machinery. It remains registered
+ * before paid-product route enforcement and grants no office access,
+ * entitlement, autonomy authority, paid cognition, provider call, durable
+ * write, or external action.
  */
-const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034B";
+const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034D";
 const CONTINUOUS_CURIOSITY_PROOF_BUILD_ID =
-  "CCPPS100-CONTINUOUS-CURIOSITY-PRODUCTION-PROOF-20260917-A";
+  "SARPP100-STALE-ATTENTION-PRODUCTION-PROOF-20260918-A";
 
 app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
   try {
     const brain = await createHeadlessContinuousCognitionBrain(null);
     const circle = brain.runContinuousCuriosityCircleAcceptanceTest();
+    const staleAttention = brain.runStaleAttentionReleaseAcceptanceTest();
     const ignition = runAutonomousLearningIgnitionAcceptanceTest();
     const checks = [
       {
-        name: "Production loads Executive Brain 1.26.8 continuous-curiosity build",
-        passed: brain.version === "1.26.8" &&
-          brain.buildId === "EB1268-CONTINUOUS-CURIOSITY-CIRCLE-20260917-A"
+        name: "Production loads Executive Brain 1.26.9 stale-attention-release build",
+        passed: brain.version === "1.26.9" &&
+          brain.buildId === "EB1269-STALE-ATTENTION-RELEASE-20260918-A"
       },
       {
-        name: "Continuous Curiosity Circle synthetic organism acceptance passes",
+        name: "Continuous Curiosity Circle synthetic organism acceptance still passes",
         passed: circle?.passed === true && circle?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Stale Attention Release integration acceptance passes",
+        passed: staleAttention?.passed === true &&
+          staleAttention?.checks?.every?.(item => item?.passed === true) === true
       },
       {
         name: "Server autonomous-learning ignition acceptance passes",
@@ -13185,6 +13192,11 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         passed: circle?.passed === true,
         checks: Array.isArray(circle?.checks) ? circle.checks : []
       },
+      staleAttentionRelease: {
+        commission: staleAttention?.commission || null,
+        passed: staleAttention?.passed === true,
+        checks: Array.isArray(staleAttention?.checks) ? staleAttention.checks : []
+      },
       autonomousLearningIgnition: {
         commission: ignition?.commission || AUTONOMOUS_LEARNING_IGNITION_COMMISSION,
         version: AUTONOMOUS_LEARNING_IGNITION_VERSION,
@@ -13201,7 +13213,7 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         durableWrites: 0,
         externalActionAuthorized: false
       },
-      limitation: "This proves the deployed production code path and bounded synthetic circle/ignition contracts. It does not claim unattended live autonomy while durable autonomy authority remains OFF, and it does not bypass paid-product admission."
+      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, curiosity-circle, and ignition contracts. Live unattended curiosity still requires observation of the production runtime; this surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
     });
   } catch (error) {
     next(error);
