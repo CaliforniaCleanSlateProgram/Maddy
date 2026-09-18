@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.107
+ * Server Version: 2.10.108
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.107";
+const VERSION = "2.10.108";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -4945,6 +4945,35 @@ const autonomousLearningIgnitionState = {
 const autonomousLearningRecentSubjects = new Map();
 const autonomousLearningDailySubjects = new Map();
 
+/*
+ * Commission 006.034H — Durable Curiosity Recognition Continuity
+ *
+ * The six-hour subject-recognition guard may not be merely process memory.
+ * Executive Brain already durably records productive-idle research selection,
+ * so the server reconstructs its network-deduplication ledger from that
+ * sovereign history after restart. New research recognition is checkpointed
+ * before network execution so a process loss during retrieval cannot turn one
+ * curiosity into a rediscovery/retry storm.
+ */
+const AUTONOMOUS_LEARNING_CONTINUITY_COMMISSION = "006.034H";
+const AUTONOMOUS_LEARNING_CONTINUITY_VERSION = "1.0.0";
+const AUTONOMOUS_LEARNING_CONTINUITY_BUILD_ID =
+  "ALC100-DURABLE-CURIOSITY-RECOGNITION-20260918-A";
+const autonomousLearningContinuityState = {
+  hydrated: false,
+  hydrationSource: null,
+  hydratedAt: null,
+  restoredRecentSubjectCount: 0,
+  restoredDailyNovelSubjectCount: 0,
+  restoredLastDurableLearningId: null,
+  restoredLastDurableLearningAt: null,
+  restoredLastDurableLearningSubject: null,
+  preNetworkCheckpointCount: 0,
+  lastPreNetworkCheckpointAt: null,
+  lastPreNetworkCheckpointSubjectFingerprint: null,
+  lastError: null
+};
+
 function normalizeAutonomousLearningSubject(value = "") {
   return String(value || "")
     .trim()
@@ -5007,6 +5036,153 @@ function markAutonomousLearningIntentRecognized(recognition, nowMs = Date.now())
     autonomousLearningDailySubjects.get(recognition.day) || new Set();
   daySet.add(recognition.fingerprint);
   autonomousLearningDailySubjects.set(recognition.day, daySet);
+}
+
+function autonomousLearningResearchBearingHistory(brain = {}) {
+  const actions = [
+    ...(brain?.lastProductiveIdleAction ? [brain.lastProductiveIdleAction] : []),
+    ...(Array.isArray(brain?.productiveIdleHistory)
+      ? brain.productiveIdleHistory
+      : [])
+  ];
+  const circles = [
+    ...(brain?.lastCuriosityCircle ? [brain.lastCuriosityCircle] : []),
+    ...(Array.isArray(brain?.curiosityCircleHistory)
+      ? brain.curiosityCircleHistory
+      : [])
+  ];
+  const records = [];
+
+  for (const action of actions) {
+    const subject = String(action?.subject || "").trim();
+    if (!subject) continue;
+    const researchBearing =
+      action?.researchRequest?.schema ===
+        "meos.maddy.autonomous-learning-research-request.v1" ||
+      action?.capability?.externalResearchUseful === true;
+    if (!researchBearing) continue;
+    records.push({
+      subject,
+      recognizedAt: action?.completedAt || action?.startedAt || null,
+      source: "productive-idle-history"
+    });
+  }
+
+  for (const circle of circles) {
+    const subject = String(circle?.subject || "").trim();
+    if (!subject) continue;
+    records.push({
+      subject,
+      recognizedAt: circle?.completedAt || null,
+      source: "curiosity-circle-history"
+    });
+  }
+
+  return records;
+}
+
+function hydrateAutonomousLearningRecognitionFromBrain(
+  brain = {},
+  nowMs = Date.now()
+) {
+  autonomousLearningRecentSubjects.clear();
+  autonomousLearningDailySubjects.clear();
+
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  const records = autonomousLearningResearchBearingHistory(brain);
+  let restoredRecent = 0;
+
+  for (const record of records) {
+    const subject = String(record?.subject || "").trim();
+    const seenMs = Date.parse(String(record?.recognizedAt || ""));
+    if (!subject || !Number.isFinite(seenMs)) continue;
+    if (seenMs > nowMs + 60_000) continue;
+
+    const fingerprint = fingerprintAutonomousLearningSubject(subject);
+    const ageMs = nowMs - seenMs;
+    if (ageMs >= 0 && ageMs < AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS) {
+      const previous = autonomousLearningRecentSubjects.get(fingerprint) || 0;
+      if (seenMs > previous) {
+        autonomousLearningRecentSubjects.set(fingerprint, seenMs);
+      }
+    }
+
+    const day = new Date(seenMs).toISOString().slice(0, 10);
+    if (day === today) {
+      const daySet = autonomousLearningDailySubjects.get(day) || new Set();
+      daySet.add(fingerprint);
+      autonomousLearningDailySubjects.set(day, daySet);
+    }
+  }
+
+  restoredRecent = autonomousLearningRecentSubjects.size;
+  const restoredDaily =
+    (autonomousLearningDailySubjects.get(today) || new Set()).size;
+
+  const durableEpisodes = Array.isArray(brain?.autobiographicalMemory)
+    ? brain.autobiographicalMemory
+        .filter(episode =>
+          episode?.eventType === "autonomous-curiosity-learning" &&
+          String(episode?.sourceId || "").startsWith("research-learning-")
+        )
+        .sort((a, b) =>
+          Date.parse(String(b?.occurredAt || "")) -
+          Date.parse(String(a?.occurredAt || ""))
+        )
+    : [];
+  const latestDurableLearning = durableEpisodes[0] || null;
+
+  if (latestDurableLearning) {
+    autonomousLearningIgnitionState.lastResearchLearningId =
+      latestDurableLearning.sourceId ||
+      autonomousLearningIgnitionState.lastResearchLearningId;
+    autonomousLearningIgnitionState.lastSubject =
+      latestDurableLearning.subject ||
+      autonomousLearningIgnitionState.lastSubject;
+    autonomousLearningIgnitionState.lastExecutedAt =
+      latestDurableLearning.occurredAt ||
+      autonomousLearningIgnitionState.lastExecutedAt;
+  }
+
+  autonomousLearningContinuityState.hydrated = true;
+  autonomousLearningContinuityState.hydrationSource =
+    "durable-executive-brain-history";
+  autonomousLearningContinuityState.hydratedAt = new Date(nowMs).toISOString();
+  autonomousLearningContinuityState.restoredRecentSubjectCount = restoredRecent;
+  autonomousLearningContinuityState.restoredDailyNovelSubjectCount = restoredDaily;
+  autonomousLearningContinuityState.restoredLastDurableLearningId =
+    latestDurableLearning?.sourceId || null;
+  autonomousLearningContinuityState.restoredLastDurableLearningAt =
+    latestDurableLearning?.occurredAt || null;
+  autonomousLearningContinuityState.restoredLastDurableLearningSubject =
+    latestDurableLearning?.subject || null;
+  autonomousLearningContinuityState.lastError = null;
+
+  return {
+    success: true,
+    restoredRecentSubjectCount: restoredRecent,
+    restoredDailyNovelSubjectCount: restoredDaily,
+    lastDurableLearningId: latestDurableLearning?.sourceId || null
+  };
+}
+
+async function checkpointAutonomousLearningRecognitionBeforeNetwork(
+  brain,
+  cycleResult,
+  recognition
+) {
+  const result = await checkpointContinuousCognition(
+    brain,
+    cycleResult,
+    "autonomous-learning-recognition-before-network"
+  );
+  autonomousLearningContinuityState.preNetworkCheckpointCount += 1;
+  autonomousLearningContinuityState.lastPreNetworkCheckpointAt =
+    new Date().toISOString();
+  autonomousLearningContinuityState.lastPreNetworkCheckpointSubjectFingerprint =
+    recognition?.fingerprint || null;
+  autonomousLearningContinuityState.lastError = null;
+  return result;
 }
 
 function extractAutonomousLearningResearchRequest(cycleResult = {}) {
@@ -5104,6 +5280,36 @@ async function executeAutonomousLearningFromCycle(brain, cycleResult = {}) {
    * not turn one curiosity into a rapid retry storm.
    */
   markAutonomousLearningIntentRecognized(recognition);
+
+  try {
+    await checkpointAutonomousLearningRecognitionBeforeNetwork(
+      brain,
+      cycleResult,
+      recognition
+    );
+  } catch (error) {
+    autonomousLearningIgnitionState.failedCount += 1;
+    autonomousLearningIgnitionState.lastError = {
+      code:
+        error?.code ||
+        "AUTONOMOUS_LEARNING_RECOGNITION_CHECKPOINT_FAILED",
+      message: error?.message || String(error),
+      at: new Date().toISOString()
+    };
+    autonomousLearningIgnitionState.lastStopReason =
+      "autonomous-learning-recognition-durable-checkpoint-failed";
+    autonomousLearningContinuityState.lastError =
+      autonomousLearningIgnitionState.lastError;
+    return {
+      executed: false,
+      blocked: true,
+      reason: autonomousLearningIgnitionState.lastStopReason,
+      recognition,
+      paidSearchUsed: false,
+      paidModelUsed: false,
+      externalActionAuthorized: false
+    };
+  }
 
   try {
     const result = await executeHeadlessResearch({
@@ -5219,6 +5425,7 @@ async function executeAutonomousLearningFromCycle(brain, cycleResult = {}) {
       executed: true,
       success: false,
       reason: "autonomous-learning-execution-failed",
+      recognition,
       error: autonomousLearningIgnitionState.lastError,
       paidSearchUsed: false,
       paidModelUsed: false,
@@ -5328,6 +5535,183 @@ function runAutonomousLearningIgnitionAcceptanceTest() {
   };
 }
 
+function runAutonomousLearningContinuityAcceptanceTest() {
+  const recentBackup = [...autonomousLearningRecentSubjects.entries()];
+  const dailyBackup = [...autonomousLearningDailySubjects.entries()].map(
+    ([day, set]) => [day, [...set]]
+  );
+  const ignitionBackup = JSON.parse(JSON.stringify(autonomousLearningIgnitionState));
+  const continuityBackup = JSON.parse(JSON.stringify(autonomousLearningContinuityState));
+
+  try {
+    const now = Date.parse("2026-09-18T20:00:00.000Z");
+    const today = new Date(now).toISOString().slice(0, 10);
+    const recentA = "acceptance durable curiosity alpha";
+    const recentB = "acceptance durable curiosity beta";
+    const oldToday = "acceptance durable curiosity old-today";
+    const oldTodayAt = Math.max(
+      Date.parse(`${today}T00:01:00.000Z`),
+      now - AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS - 60_000
+    );
+    const fakeBrain = {
+      lastProductiveIdleAction: null,
+      productiveIdleHistory: [
+        {
+          subject: recentA,
+          completedAt: new Date(now - 10 * 60_000).toISOString(),
+          capability: { externalResearchUseful: true },
+          researchRequest: {
+            schema: "meos.maddy.autonomous-learning-research-request.v1"
+          }
+        },
+        {
+          subject: recentB,
+          completedAt: new Date(now - 20 * 60_000).toISOString(),
+          capability: { externalResearchUseful: true }
+        },
+        {
+          subject: oldToday,
+          completedAt: new Date(oldTodayAt).toISOString(),
+          capability: { externalResearchUseful: true }
+        },
+        {
+          subject: "internal-only-thought",
+          completedAt: new Date(now - 5 * 60_000).toISOString(),
+          capability: { externalResearchUseful: false }
+        }
+      ],
+      curiosityCircleHistory: [],
+      autobiographicalMemory: [
+        {
+          eventType: "autonomous-curiosity-learning",
+          sourceId: "research-learning-acceptance-durable-id",
+          occurredAt: new Date(now - 8 * 60_000).toISOString(),
+          subject: recentA
+        }
+      ]
+    };
+
+    const hydration = hydrateAutonomousLearningRecognitionFromBrain(
+      fakeBrain,
+      now
+    );
+    const duplicate = recognizeAutonomousLearningIntent(
+      { subject: recentA },
+      now + 1
+    );
+    const oldRecognition = recognizeAutonomousLearningIntent(
+      { subject: oldToday },
+      now + 1
+    );
+    const internalOnly = recognizeAutonomousLearningIntent(
+      { subject: "internal-only-thought" },
+      now + 1
+    );
+
+    const dailyLimitBrain = {
+      lastProductiveIdleAction: null,
+      productiveIdleHistory: Array.from(
+        { length: AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT },
+        (_, index) => ({
+          subject: `acceptance daily durable subject ${index + 1}`,
+          completedAt: new Date(now - (index + 1) * 5 * 60_000).toISOString(),
+          capability: { externalResearchUseful: true },
+          researchRequest: {
+            schema: "meos.maddy.autonomous-learning-research-request.v1"
+          }
+        })
+      ),
+      curiosityCircleHistory: [],
+      autobiographicalMemory: [
+        {
+          eventType: "autonomous-curiosity-learning",
+          sourceId: "research-learning-acceptance-durable-id",
+          occurredAt: new Date(now - 8 * 60_000).toISOString(),
+          subject: recentA
+        }
+      ]
+    };
+    const dailyLimitHydration = hydrateAutonomousLearningRecognitionFromBrain(
+      dailyLimitBrain,
+      now
+    );
+    const twentyFifth = recognizeAutonomousLearningIntent(
+      { subject: "acceptance daily durable subject 25" },
+      now + 1
+    );
+
+    const checks = [
+      {
+        name: "Server reconstructs recent autonomous-learning subject recognition from durable Executive Brain history after restart",
+        passed:
+          hydration.restoredRecentSubjectCount >= 2 &&
+          duplicate.duplicate === true
+      },
+      {
+        name: "Daily novel-subject accounting survives restart even when an earlier subject has aged beyond the six-hour retry cooldown",
+        passed:
+          hydration.restoredDailyNovelSubjectCount >= 3 &&
+          oldRecognition.duplicate === false
+      },
+      {
+        name: "Internal cognition that never requested external research does not pollute the autonomous-learning network deduplication ledger",
+        passed: internalOnly.duplicate === false
+      },
+      {
+        name: "The complete daily novel-subject budget is reconstructed from durable history and still blocks a twenty-fifth subject after restart",
+        passed:
+          dailyLimitHydration.restoredDailyNovelSubjectCount ===
+            AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT &&
+          twentyFifth.dailyLimitReached === true
+      },
+      {
+        name: "Last known durable Research Learning identity is restored from autobiographical continuity rather than appearing lost after restart",
+        passed:
+          autonomousLearningIgnitionState.lastResearchLearningId ===
+            "research-learning-acceptance-durable-id" &&
+          autonomousLearningContinuityState.restoredLastDurableLearningId ===
+            "research-learning-acceptance-durable-id"
+      },
+      {
+        name: "A newly recognized autonomous subject is durably checkpointed before network execution can begin",
+        passed:
+          /checkpointAutonomousLearningRecognitionBeforeNetwork/.test(
+            executeAutonomousLearningFromCycle.toString()
+          ) &&
+          /autonomous-learning-recognition-before-network/.test(
+            checkpointAutonomousLearningRecognitionBeforeNetwork.toString()
+          )
+      },
+      {
+        name: "Recognition continuity remains provider-neutral and grants no paid-search, paid-model, spend, or external-action authority",
+        passed:
+          AUTONOMOUS_LEARNING_CONTINUITY_COMMISSION === "006.034H" &&
+          AUTONOMOUS_LEARNING_IGNITION_COMMISSION === "006.017D7S4B"
+      }
+    ];
+
+    return {
+      commission: AUTONOMOUS_LEARNING_CONTINUITY_COMMISSION,
+      version: AUTONOMOUS_LEARNING_CONTINUITY_VERSION,
+      buildId: AUTONOMOUS_LEARNING_CONTINUITY_BUILD_ID,
+      passed: checks.every(check => check.passed),
+      checks,
+      hydration
+    };
+  } finally {
+    autonomousLearningRecentSubjects.clear();
+    for (const [key, value] of recentBackup) {
+      autonomousLearningRecentSubjects.set(key, value);
+    }
+    autonomousLearningDailySubjects.clear();
+    for (const [day, values] of dailyBackup) {
+      autonomousLearningDailySubjects.set(day, new Set(values));
+    }
+    Object.assign(autonomousLearningIgnitionState, ignitionBackup);
+    Object.assign(autonomousLearningContinuityState, continuityBackup);
+  }
+}
+
 function getAutonomousLearningIgnitionStatus() {
   pruneAutonomousLearningRecognition();
   const today = new Date().toISOString().slice(0, 10);
@@ -5342,12 +5726,19 @@ function getAutonomousLearningIgnitionStatus() {
     researchExecutor: HEADLESS_RESEARCH_COMMISSION,
     researchLearningAuthority: RESEARCH_LEARNING_COMMISSION,
     recognition: {
-      mode: "canonical-subject-cooldown-before-network",
+      mode: "durable-executive-brain-history+canonical-subject-cooldown-before-network",
       recentSubjectCount: autonomousLearningRecentSubjects.size,
       dailyNovelSubjectCount:
         (autonomousLearningDailySubjects.get(today) || new Set()).size,
       dailyNovelSubjectLimit: AUTONOMOUS_LEARNING_DAILY_NOVEL_SUBJECT_LIMIT,
-      subjectCooldownMs: AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS
+      subjectCooldownMs: AUTONOMOUS_LEARNING_SUBJECT_COOLDOWN_MS,
+      continuity: {
+        commission: AUTONOMOUS_LEARNING_CONTINUITY_COMMISSION,
+        version: AUTONOMOUS_LEARNING_CONTINUITY_VERSION,
+        buildId: AUTONOMOUS_LEARNING_CONTINUITY_BUILD_ID,
+        ...autonomousLearningContinuityState,
+        countersScope: "current-server-process; durable recognition and last durable learning restore separately"
+      }
     },
     economics: {
       cheapPublicResearchOnly: true,
@@ -5859,6 +6250,9 @@ async function getResidentContinuousCognitionBrain() {
     durable?.record?.payloadFingerprint || null;
   continuousCognitionRuntimeState.hotBrainHydratedAt =
     new Date().toISOString();
+  hydrateAutonomousLearningRecognitionFromBrain(
+    continuousCognitionHotBrain
+  );
   return continuousCognitionHotBrain;
 }
 
@@ -13227,21 +13621,21 @@ app.get("/api/founder/authority/acceptance-test", (_request, response) => {
 });
 
 /**
- * Commission 006.034B / 006.034D / 006.034E / 006.034F / 006.034G — Continuous Curiosity Production Proof Surface
+ * Commission 006.034B / 006.034D / 006.034E / 006.034F / 006.034G / 006.034H — Continuous Curiosity Production Proof Surface
  *
  * The existing read-only production proof surface now also proves the
  * 006.034D stale-attention release seam, 006.034E orphaned-attention
  * reconciliation, 006.034F executive-attention lifecycle reconciliation, and
- * 006.034G actionable-attention progress reconciliation so durable cognition
+ * 006.034G actionable-attention progress reconciliation and 006.034H durable curiosity recognition so durable cognition
  * cannot confuse repeated no-progress wakes with useful foreground work. It
  * remains registered
  * before paid-product route enforcement and grants no office access,
  * entitlement, autonomy authority, paid cognition, provider call, durable
  * write, or external action.
  */
-const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034G";
+const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034H";
 const CONTINUOUS_CURIOSITY_PROOF_BUILD_ID =
-  "AAPPP100-ACTIONABLE-ATTENTION-PROGRESS-PROOF-20260918-A";
+  "DCRPP100-DURABLE-CURIOSITY-RECOGNITION-PROOF-20260918-A";
 
 app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
@@ -13252,12 +13646,16 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
     const orphanedAttention = brain.runOrphanedAttentionReconciliationAcceptanceTest();
     const attentionLifecycle = brain.runExecutiveAttentionLifecycleReconciliationAcceptanceTest();
     const actionableAttention = brain.runActionableAttentionProgressAcceptanceTest();
+    const durableCuriosityRecognition =
+      brain.runDurableCuriosityRecognitionAcceptanceTest();
     const ignition = runAutonomousLearningIgnitionAcceptanceTest();
+    const learningContinuity =
+      runAutonomousLearningContinuityAcceptanceTest();
     const checks = [
       {
-        name: "Production loads Executive Brain 1.26.12 actionable-attention-progress build",
-        passed: brain.version === "1.26.12" &&
-          brain.buildId === "EB12612-ACTIONABLE-ATTENTION-PROGRESS-20260918-A"
+        name: "Production loads Executive Brain 1.26.13 durable-curiosity-recognition build",
+        passed: brain.version === "1.26.13" &&
+          brain.buildId === "EB12613-DURABLE-CURIOSITY-RECOGNITION-20260918-A"
       },
       {
         name: "Continuous Curiosity Circle synthetic organism acceptance still passes",
@@ -13284,8 +13682,17 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
           actionableAttention?.checks?.every?.(item => item?.passed === true) === true
       },
       {
+        name: "Durable Curiosity Recognition broadening acceptance passes",
+        passed: durableCuriosityRecognition?.passed === true &&
+          durableCuriosityRecognition?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
         name: "Server autonomous-learning ignition acceptance passes",
         passed: ignition?.passed === true
+      },
+      {
+        name: "Autonomous-learning restart continuity acceptance passes",
+        passed: learningContinuity?.passed === true
       },
       {
         name: "Proof surface performs no durable write or provider call",
@@ -13332,6 +13739,24 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         passed: actionableAttention?.passed === true,
         checks: Array.isArray(actionableAttention?.checks) ? actionableAttention.checks : []
       },
+      durableCuriosityRecognition: {
+        commission: durableCuriosityRecognition?.commission || null,
+        passed: durableCuriosityRecognition?.passed === true,
+        checks: Array.isArray(durableCuriosityRecognition?.checks)
+          ? durableCuriosityRecognition.checks
+          : []
+      },
+      autonomousLearningContinuity: {
+        commission:
+          learningContinuity?.commission ||
+          AUTONOMOUS_LEARNING_CONTINUITY_COMMISSION,
+        version: AUTONOMOUS_LEARNING_CONTINUITY_VERSION,
+        buildId: AUTONOMOUS_LEARNING_CONTINUITY_BUILD_ID,
+        passed: learningContinuity?.passed === true,
+        checks: Array.isArray(learningContinuity?.checks)
+          ? learningContinuity.checks
+          : []
+      },
       autonomousLearningIgnition: {
         commission: ignition?.commission || AUTONOMOUS_LEARNING_IGNITION_COMMISSION,
         version: AUTONOMOUS_LEARNING_IGNITION_VERSION,
@@ -13348,7 +13773,7 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         durableWrites: 0,
         externalActionAuthorized: false
       },
-      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, orphaned-attention, executive-attention-lifecycle, actionable-attention-progress, curiosity-circle, and ignition contracts. Live unattended behavior still requires observation of the production runtime; real standing work may correctly outrank curiosity, while non-progressing internally originated cognition may pause without being falsely completed. This surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
+      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, orphaned-attention, executive-attention-lifecycle, actionable-attention-progress, durable-curiosity-recognition, restart-continuity, curiosity-circle, and ignition contracts. Live unattended behavior still requires observation of the production runtime; real standing work may correctly outrank curiosity, while non-progressing internally originated cognition may pause without being falsely completed. This surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
     });
   } catch (error) {
     next(error);
