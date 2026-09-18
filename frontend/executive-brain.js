@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.9";
-  const BUILD_ID = "EB1269-STALE-ATTENTION-RELEASE-20260918-A";
+  const VERSION = "1.26.10";
+  const BUILD_ID = "EB12610-ORPHANED-ATTENTION-RECONCILIATION-20260918-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -18520,12 +18520,46 @@
           ) || null
         : null;
       const linked=linkedById || linkedBySubject;
+      const selected=options.selectedPriority || null;
+      const sameSubject=(a,b)=>Boolean(
+        this.normalize(a || "") &&
+        this.normalize(a || "")===this.normalize(b || "")
+      );
+      const activeMatchesSelected=Boolean(
+        selected && (
+          (active.priorityId && selected.id===active.priorityId) ||
+          sameSubject(selected.subject,active.subject)
+        )
+      );
+      const linkedAttentionEligible=Boolean(
+        linked && this.isCognitiveIntentionEligibleForExecutiveAttention(linked)
+      );
 
-      const staleReason = linked?.status === "completed"
+      let staleReason = linked?.status === "completed"
         ? "completed-cognitive-intention-still-held-active-thread"
         : (this.isQuiescentCognitiveIntention(linked || {})
             ? "quiescent-cognitive-intention-still-held-active-thread"
             : null);
+
+      /*
+       * 006.034E — Orphaned Attention Reconciliation
+       *
+       * A durable thread may outlive the executive demand that originally
+       * created it. Thread continuity is valuable, but existence alone is not
+       * a current claim on attention. If the active thread has no surviving
+       * eligible intention and is not the priority selected by the current
+       * Executive Judgment cycle, checkpoint it and release attention.
+       *
+       * This is deliberately fail-closed with respect to real work: a live
+       * eligible cognitive intention remains supported, and a thread that
+       * matches the currently selected priority remains active even when its
+       * historical priority id is absent.
+       */
+      if (!staleReason && !activeMatchesSelected && !linkedAttentionEligible) {
+        staleReason = linked
+          ? "linked-cognitive-intention-no-longer-attention-eligible"
+          : "orphaned-active-thread-no-live-executive-demand";
+      }
 
       if (!staleReason) {
         return {
@@ -18533,7 +18567,9 @@
           released:false,
           reason:"active-thread-remains-attention-eligible",
           threadId:active.id,
-          priorityId:active.priorityId || null
+          priorityId:active.priorityId || null,
+          selectedPriorityId:selected?.id || null,
+          linkedIntentionId:linked?.intentionId || null
         };
       }
 
@@ -18572,6 +18608,8 @@
         staleReason,
         priorIntentionStatus:linked?.status || null,
         priorEconomicsState:linked?.economics?.state || null,
+        selectedPriorityId:selected?.id || null,
+        linkedIntentionId:linked?.intentionId || null,
         checkpoint:this.clone(checkpoint?.checkpoint || null),
         authorityUnchanged:true,
         truthRule:"Quiescent or completed cognition remains remembered and may wake on legitimate new evidence or human direction; stale existence alone cannot monopolize executive attention."
@@ -19877,6 +19915,197 @@
           checks,
           staleCycle:this.clone(cycle),
           liveCycle:this.clone(liveCycle)
+        };
+      } finally {
+        this.cognitiveIntentions=original.intentions;
+        this.developmentalGoals=original.goals;
+        this.investigativeIntentions=original.investigations;
+        this.preparednessInsights=original.preparedness;
+        this.anticipatoryInitiatives=original.initiatives;
+        this.cognitiveThreads=original.threads;
+        this.activeCognitiveThreadId=original.activeThreadId;
+        this.currentExecutivePriority=original.priority;
+        this.executivePriorityPortfolio=original.portfolio;
+        this.lastPriorityArbitration=original.arbitration;
+        this.lastAnticipatorySweep=original.lastSweep;
+        this.anticipatorySweepCount=original.sweepCount;
+        this.lastProductiveIdleAction=original.lastIdle;
+        this.productiveIdleHistory=original.idleHistory;
+        this.productiveIdleConsecutiveSameSubject=original.idleSame;
+        this.worldModel=original.world;
+        this.continuousCognitionState=original.cycleState;
+        this.continuousCognitionCycleCount=original.cycleCount;
+        this.lastContinuousCognitionCycle=original.lastCycle;
+        this.lastCognitiveThreadEvent=original.threadEvent;
+        this.cognitiveThreadEventCount=original.threadEventCount;
+      }
+    },
+
+    runOrphanedAttentionReconciliationAcceptanceTest() {
+      const original={
+        intentions:this.clone(this.cognitiveIntentions),
+        goals:this.clone(this.developmentalGoals),
+        investigations:this.clone(this.investigativeIntentions),
+        preparedness:this.clone(this.preparednessInsights),
+        initiatives:this.clone(this.anticipatoryInitiatives),
+        threads:this.clone(this.cognitiveThreads),
+        activeThreadId:this.activeCognitiveThreadId,
+        priority:this.clone(this.currentExecutivePriority),
+        portfolio:this.clone(this.executivePriorityPortfolio),
+        arbitration:this.clone(this.lastPriorityArbitration),
+        lastSweep:this.clone(this.lastAnticipatorySweep),
+        sweepCount:this.anticipatorySweepCount,
+        lastIdle:this.clone(this.lastProductiveIdleAction),
+        idleHistory:this.clone(this.productiveIdleHistory),
+        idleSame:this.productiveIdleConsecutiveSameSubject,
+        world:this.clone(this.worldModel),
+        cycleState:this.clone(this.continuousCognitionState),
+        cycleCount:this.continuousCognitionCycleCount,
+        lastCycle:this.clone(this.lastContinuousCognitionCycle),
+        threadEvent:this.clone(this.lastCognitiveThreadEvent),
+        threadEventCount:this.cognitiveThreadEventCount
+      };
+      try {
+        this.cognitiveIntentions=[];
+        this.developmentalGoals=[];
+        this.investigativeIntentions=[];
+        this.preparednessInsights=[];
+        this.anticipatoryInitiatives=[];
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority={
+          id:"vanished-priority",
+          subject:"Persisted thought whose originating demand no longer exists",
+          origin:"cognitive-intention",
+          score:.61,
+          status:"selected"
+        };
+        this.executivePriorityPortfolio=[];
+        this.worldModel={unknowns:[]};
+        this.lastProductiveIdleAction=null;
+        this.productiveIdleHistory=[];
+        this.productiveIdleConsecutiveSameSubject=0;
+        this.continuousCognitionState=null;
+        this.lastContinuousCognitionCycle=null;
+
+        this.createCognitiveThread({
+          id:"acceptance-orphan-thread",
+          subject:"Persisted thought whose originating demand no longer exists",
+          origin:"cognitive-intention",
+          priorityId:"vanished-priority",
+          objective:"Acceptance fixture: durable continuity must not turn an orphaned thread into permanent attention.",
+          nextIntendedMove:"continue only if a live executive demand still supports this thought"
+        });
+        const orphanCycle=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+        const releasedOrphan=this.cognitiveThreads.find(item=>item.id==="acceptance-orphan-thread") || null;
+        const orphanRequest=orphanCycle?.threadAction?.productiveIdle?.action?.researchRequest || null;
+
+        this.cognitiveIntentions=[{
+          intentionId:"acceptance-current-live-demand",
+          subject:"Current live work that should own attention",
+          status:"pending",
+          attempts:0,
+          triggers:[{source:"human",event:"acceptance-live-demand"}]
+        }];
+        this.anticipatoryInitiatives=[];
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        this.lastPriorityArbitration=null;
+        this.createCognitiveThread({
+          id:"acceptance-orphan-before-live-work",
+          subject:"Legacy orphaned thought",
+          origin:"cognitive-intention",
+          priorityId:"missing-legacy-priority",
+          objective:"Acceptance fixture: orphan must yield when real work exists."
+        });
+        const replacementCycle=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+        const orphanBeforeLive=this.cognitiveThreads.find(item=>item.id==="acceptance-orphan-before-live-work") || null;
+        const replacementActive=this.cognitiveThreads.find(item=>item.id===this.activeCognitiveThreadId) || null;
+
+        this.cognitiveIntentions=[{
+          intentionId:"acceptance-supported-intention",
+          subject:"Still-supported live cognitive work",
+          status:"pending",
+          attempts:1,
+          triggers:[{source:"human",event:"acceptance-supported"}]
+        }];
+        this.anticipatoryInitiatives=[];
+        this.cognitiveThreads=[];
+        this.activeCognitiveThreadId=null;
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        this.lastPriorityArbitration=null;
+        this.createCognitiveThread({
+          id:"acceptance-supported-thread",
+          subject:"Still-supported live cognitive work",
+          origin:"cognitive-intention",
+          priorityId:"acceptance-supported-intention",
+          objective:"Acceptance fixture: live work must not be mistaken for an orphan."
+        });
+        const supportedCycle=this.runContinuousCognitionCycle({serverRuntimeAuthorized:true});
+
+        const checks=[
+          {
+            name:"A persisted active thread with no surviving executive demand is checkpointed and released",
+            passed:releasedOrphan?.status==="paused" &&
+              orphanCycle?.threadAction?.staleAttentionRelease?.staleReason===
+                "orphaned-active-thread-no-live-executive-demand"
+          },
+          {
+            name:"Orphan release removes the vanished priority instead of preserving a phantom incumbent",
+            passed:orphanCycle?.handoff?.currentPriority==null &&
+              orphanCycle?.handoff?.activeThreadId==null
+          },
+          {
+            name:"The same unattended cycle reaches productive-idle cognition after orphan reconciliation",
+            passed:orphanCycle?.threadAction?.action==="productive-idle" &&
+              orphanCycle?.threadAction?.productiveIdle?.productive===true
+          },
+          {
+            name:"Existing curiosity machinery can emit a bounded research intent after an orphaned thread yields",
+            passed:orphanRequest?.schema==="meos.maddy.autonomous-learning-research-request.v1" &&
+              orphanRequest?.authority?.paidSpendAuthorized===false &&
+              orphanRequest?.authority?.externalActionAuthorized===false
+          },
+          {
+            name:"An orphaned legacy thread yields when a different live executive demand exists",
+            passed:orphanBeforeLive?.status==="paused" &&
+              replacementCycle?.threadAction?.staleAttentionRelease?.staleReason===
+                "orphaned-active-thread-no-live-executive-demand"
+          },
+          {
+            name:"Real live work becomes the active thread after the orphan yields",
+            passed:replacementCycle?.threadAction?.action==="open-thread" &&
+              replacementActive?.priorityId==="acceptance-current-live-demand" &&
+              replacementActive?.status==="active"
+          },
+          {
+            name:"A thread backed by a live eligible intention remains active and is not falsely released",
+            passed:supportedCycle?.threadAction?.action==="continue-thread" &&
+              !supportedCycle?.threadAction?.staleAttentionRelease
+          },
+          {
+            name:"Orphan reconciliation grants no provider, spend, or external-action authority",
+            passed:orphanCycle?.cycle?.authorityUnchanged===true &&
+              orphanCycle?.handoff?.authority?.externalActionAuthorized===false &&
+              orphanRequest?.acquisitionPolicy?.paidModelAuthorized===false &&
+              orphanRequest?.acquisitionPolicy?.paidSearchAuthorized===false
+          }
+        ];
+        const passed=checks.every(item=>item.passed);
+        console.table(checks.map(item=>({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.034E Orphaned Attention Reconciliation: ${passed?"PASS":"FAIL"} (${checks.filter(item=>item.passed).length}/${checks.length}).`);
+        return {
+          commission:"006.034E",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          checks,
+          orphanCycle:this.clone(orphanCycle),
+          replacementCycle:this.clone(replacementCycle),
+          supportedCycle:this.clone(supportedCycle)
         };
       } finally {
         this.cognitiveIntentions=original.intentions;
