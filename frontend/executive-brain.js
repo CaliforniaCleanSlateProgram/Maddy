@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.26.12
- * Build: EB12612-ACTIONABLE-ATTENTION-PROGRESS-20260918-A
+ * Version: 1.26.13
+ * Build: EB12613-DURABLE-CURIOSITY-RECOGNITION-20260918-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.12";
-  const BUILD_ID = "EB12612-ACTIONABLE-ATTENTION-PROGRESS-20260918-A";
+  const VERSION = "1.26.13";
+  const BUILD_ID = "EB12613-DURABLE-CURIOSITY-RECOGNITION-20260918-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -562,6 +562,23 @@
           version: reported?.version || component?.version || null
         };
       });
+    },
+
+    getRuntimeCapabilityGaps(manifest = this.getSystemManifest()) {
+      return (Array.isArray(manifest) ? manifest : [])
+        .filter(item => item?.available !== true)
+        .map(item => ({
+          domain: "capability",
+          component: item.label || item.globalName || "unknown-component",
+          globalName: item.globalName || null,
+          available: false,
+          status: item.status || "missing",
+          knownState: true,
+          resolutionAuthority: "local-runtime-introspection",
+          externalResearchUseful: false,
+          truthRule:
+            "Current runtime availability is a local system observation. Public-web research cannot establish whether a MEOS component is loaded in this runtime."
+        }));
     },
 
     /*
@@ -19317,25 +19334,41 @@
       (this.developmentalGoals || [])
         .filter(goal => goal?.status !== "achieved")
         .slice(0, 24)
-        .forEach(goal => add({
-          subject:
-            goal.subject || goal.capability || goal.goal,
-          origin: "self-development-gap",
-          reason:
-            goal.reason ||
-            "Maddy identified a capability gap that could improve future judgment or execution.",
-          worldBreadth: Number(goal.worldBreadth ?? 0.45),
-          executiveGrowth: Number(goal.impact ?? 0.8),
-          knowledgeGap: Math.max(
-            0.2,
-            1 - Number(goal.demonstrated ?? goal.confidence ?? 0.35)
-          ),
-          connectivity: Number(goal.leverage ?? 0.7),
-          freshness: Number(goal.urgency ?? 0.35),
-          cheapness: 0.9,
-          evidence: goal.evidence || [],
-          unknowns: goal.unknowns || []
-        }));
+        .forEach(goal => {
+          const developmentalQuestion = String(
+            goal?.developmentalQuestion || ""
+          ).trim();
+          const subject =
+            developmentalQuestion ||
+            goal.subject ||
+            goal.capability ||
+            goal.goal;
+          const unknowns = [
+            developmentalQuestion,
+            ...(Array.isArray(goal?.unknowns) ? goal.unknowns : [])
+          ].filter((value, index, all) =>
+            Boolean(String(value || "").trim()) &&
+            all.findIndex(other => String(other || "").trim() === String(value || "").trim()) === index
+          );
+          add({
+            subject,
+            origin: "self-development-gap",
+            reason:
+              goal.reason ||
+              "Maddy identified a capability gap that could improve future judgment or execution.",
+            worldBreadth: Number(goal.worldBreadth ?? 0.45),
+            executiveGrowth: Number(goal.impact ?? 0.8),
+            knowledgeGap: Math.max(
+              0.2,
+              1 - Number(goal.demonstrated ?? goal.confidence ?? 0.35)
+            ),
+            connectivity: Number(goal.leverage ?? 0.7),
+            freshness: Number(goal.urgency ?? 0.35),
+            cheapness: 0.9,
+            evidence: goal.evidence || [],
+            unknowns
+          });
+        });
 
       /*
        * World Model unknowns can earn curiosity because they expose blind spots.
@@ -19369,19 +19402,82 @@
         });
 
       /*
-       * When no explicit blind spot exists, Maddy still gets an open intellectual
-       * horizon. The organization is context, not a cage. This seed deliberately
-       * asks her to improve her understanding of human systems, executive craft,
-       * science/technology, economics, institutions, culture, environment, or
-       * another unfamiliar domain she judges worth knowing.
+       * Curiosity may deepen a frontier that Maddy herself opened. A remaining
+       * unknown from the last completed curiosity circle is an evidence-grounded
+       * next question; it is categorically different from inventing a random topic
+       * just to make the autonomy counters move.
        */
-      if (seeds.length === 0) {
+      const nextMoment = String(
+        this.lastCuriosityCircle?.nextCognitiveMoment || ""
+      ).trim();
+      const unresolvedPrefix = "Resolve remaining unknown:";
+      if (nextMoment.startsWith(unresolvedPrefix)) {
+        const question = nextMoment.slice(unresolvedPrefix.length).trim();
+        if (question) {
+          add({
+            subject: question,
+            origin: "curiosity-frontier",
+            reason:
+              "Continue an unresolved question produced by Maddy's prior evidence-bound curiosity circle instead of manufacturing a disconnected topic.",
+            worldBreadth: 0.72,
+            executiveGrowth: 0.62,
+            knowledgeGap: 0.92,
+            connectivity: 0.68,
+            freshness: 0.72,
+            cheapness: 0.95,
+            evidence: [{
+              source: "continuous-curiosity-circle",
+              fingerprint: this.lastCuriosityCircle?.fingerprint || null,
+              sourceSubject: this.lastCuriosityCircle?.subject || null
+            }],
+            unknowns: [question]
+          });
+        }
+      }
+
+      /*
+       * Spooky is not fake busyness. When no seed clears the normal learning
+       * floor, genuine slack may promote the best *concrete, already-grounded*
+       * question to one bounded cheap learning pass. If there is no grounded
+       * question at all, the correct outcome is governed rest. A meta-prompt like
+       * "choose something unfamiliar" is not itself a research subject and must
+       * never be sent to the public web as if it were one.
+       */
+      const learningFloor = Math.max(
+        Number(this.configuration.productiveIdleDiminishingReturnFloor || 0),
+        Number(this.configuration.productiveIdleMinimumValue || 0)
+      );
+      const viableBeforeFallback = seeds.some(seed => seed.value >= learningFloor);
+      if (!viableBeforeFallback && seeds.length) {
+        const grounded = seeds
+          .filter(seed =>
+            /[?]/.test(String(seed.subject || "")) ||
+            (Array.isArray(seed.unknowns) && seed.unknowns.some(item =>
+              Boolean(String(item || "").trim())
+            ))
+          )
+          .sort((a, b) => b.value - a.value)[0] || null;
+        if (grounded) {
+          grounded.value = Number(learningFloor.toFixed(3));
+          grounded.reason = `${grounded.reason} Genuine slack permits one bounded cheap pass on this already-grounded question even though it would not deserve foreground attention.`;
+          grounded.slackFrontier = true;
+        }
+      }
+
+      /*
+       * A truly blank developmental state still needs a bootstrap doorway into
+       * the public world. Keep that doorway explicit and epistemically humble:
+       * it is a discovery prompt, not a claim that any topic matters. As soon as
+       * Maddy has a grounded unresolved question, that evidence-grounded frontier
+       * outranks this bootstrap scaffold.
+       */
+      if (!seeds.some(seed => seed.value >= learningFloor)) {
         add({
           subject:
-            "Choose and investigate a high-value unfamiliar part of the world",
+            "What unfamiliar part of the public world is worth understanding next, and what evidence would show that it matters?",
           origin: "self-directed-world-learning",
           reason:
-            "Maddy has no higher-value unresolved learning seed. She may choose an unfamiliar domain because understanding the world and improving herself are legitimate internal goals, even when the subject is not immediately tied to an organizational mission.",
+            "No evidence-grounded learning frontier currently clears the bounded value floor. Use one cheap public discovery pass to encounter a candidate subject, then evaluate its evidence, significance, and connections before investing further.",
           worldBreadth: 1,
           executiveGrowth: 0.65,
           knowledgeGap: 1,
@@ -19390,17 +19486,15 @@
           cheapness: 0.95,
           evidence: [],
           unknowns: [
-            "What part of the world do I understand poorly enough that learning it could change how I reason?",
-            "What human, scientific, technological, economic, institutional, cultural, environmental, or executive subject am I genuinely curious about?",
-            "Can I satisfy this curiosity through cheap public text, captions, transcripts, structured data, or already-held evidence before spending more?"
+            "What concrete subject did the discovery pass expose?",
+            "Why might it matter, and what evidence would falsify that judgment?",
+            "Does it connect to an existing responsibility, capability gap, prior learning, or genuinely new world-model uncertainty?"
           ]
         });
       }
 
       return seeds
-        .filter(seed => seed.value >= Number(
-          this.configuration.productiveIdleDiminishingReturnFloor || 0
-        ))
+        .filter(seed => seed.value >= learningFloor)
         .sort((a, b) => b.value - a.value);
     },
 
@@ -19545,12 +19639,45 @@
       }
 
       const last=this.lastProductiveIdleAction;
+      const durableIdleHistory=[
+        ...(last?[last]:[]),
+        ...(Array.isArray(this.productiveIdleHistory)?this.productiveIdleHistory:[])
+      ];
+      const autonomousCooldownMs=Number(
+        this.configuration.autonomousLearningSubjectCooldownMs || 0
+      );
+      const recentResearchRecognitionFor=subject=>{
+        const normalized=this.normalize(subject);
+        if(!normalized||autonomousCooldownMs<=0) return null;
+        for(const prior of durableIdleHistory){
+          if(this.normalize(prior?.subject)!==normalized) continue;
+          const researchBearing=
+            prior?.researchRequest?.schema==="meos.maddy.autonomous-learning-research-request.v1" ||
+            prior?.capability?.externalResearchUseful===true;
+          if(!researchBearing) continue;
+          const recognizedAt=Date.parse(prior?.completedAt||prior?.startedAt||"");
+          if(!Number.isFinite(recognizedAt)) continue;
+          const age=now-recognizedAt;
+          if(age>=-60000&&age<autonomousCooldownMs){
+            return {
+              recognizedAt:new Date(recognizedAt).toISOString(),
+              eligibleAfter:new Date(recognizedAt+autonomousCooldownMs).toISOString(),
+              source:"durable-productive-idle-history"
+            };
+          }
+        }
+        return null;
+      };
       return candidates.map(item=>{
         const same=last&&this.normalize(last.subject)===this.normalize(item.subject);
         const age=last?.completedAt?now-Date.parse(last.completedAt):Infinity;
-        const cooldown=same&&age<Number(this.configuration.productiveIdleCooldownMs||0);
+        const ordinaryCooldown=same&&age<Number(this.configuration.productiveIdleCooldownMs||0);
+        const durableResearchRecognition=item.externalResearchUseful
+          ?recentResearchRecognitionFor(item.subject)
+          :null;
+        const cooldown=ordinaryCooldown||Boolean(durableResearchRecognition);
         const repetitionPenalty=same?Math.min(0.45,Number(this.productiveIdleConsecutiveSameSubject||0)*0.15):0;
-        return {...item,cooldown,repetitionPenalty,
+        return {...item,cooldown,repetitionPenalty,durableResearchRecognition,
           adjustedValue:Number(Math.max(0,item.value-repetitionPenalty).toFixed(3))};
       }).filter(x=>!x.cooldown)
         .filter(x=>x.adjustedValue>=Number(this.configuration.productiveIdleDiminishingReturnFloor||0))
@@ -20273,6 +20400,182 @@
         this.lastProductiveIdleAction = original.lastIdle;
         this.productiveIdleHistory = original.idleHistory;
         this.productiveIdleConsecutiveSameSubject = original.sameCount;
+      }
+    },
+
+    runDurableCuriosityRecognitionAcceptanceTest() {
+      const original={
+        goals:this.clone(this.developmentalGoals),
+        intentions:this.clone(this.cognitiveIntentions),
+        investigations:this.clone(this.investigativeIntentions),
+        preparedness:this.clone(this.preparednessInsights),
+        world:this.clone(this.worldModel),
+        worldHistory:this.clone(this.worldModelHistory),
+        worldCount:this.worldModelProjectionCount,
+        lastIdle:this.clone(this.lastProductiveIdleAction),
+        idleHistory:this.clone(this.productiveIdleHistory),
+        sameCount:this.productiveIdleConsecutiveSameSubject,
+        lastCircle:this.clone(this.lastCuriosityCircle)
+      };
+      try {
+        const now=Date.now();
+        const cooldown=Number(this.configuration.autonomousLearningSubjectCooldownMs||0);
+        const recentSubject="Knowledge Memory availability";
+        const alternateSubject="Knowledge Engine availability";
+        this.developmentalGoals=[
+          {id:"durable-recognition-a",capability:recentSubject,status:"active",impact:.95,leverage:.9,urgency:.6,unknowns:["Is it available?"]},
+          {id:"durable-recognition-b",capability:alternateSubject,status:"active",impact:.8,leverage:.8,urgency:.5,unknowns:["Is it available?"]}
+        ];
+        this.cognitiveIntentions=[];
+        this.investigativeIntentions=[];
+        this.preparednessInsights=[];
+        this.worldModel={unknowns:[]};
+        const recentAction={
+          schema:"meos.maddy.productive-idle-action.v1",
+          action:"study-practice-integrate",
+          subject:recentSubject,
+          origin:"developmental-drive",
+          completedAt:new Date(now-Math.min(cooldown/2,60*60*1000)).toISOString(),
+          capability:{externalResearchUseful:true},
+          researchRequest:{schema:"meos.maddy.autonomous-learning-research-request.v1",subject:recentSubject}
+        };
+        this.lastProductiveIdleAction=this.clone(recentAction);
+        this.productiveIdleHistory=[this.clone(recentAction)];
+        this.productiveIdleConsecutiveSameSubject=1;
+
+        const candidates=this.collectProductiveIdleCandidates({});
+        const selected=this.runProductiveIdleCognition({});
+        const snapshot=this.buildPersistenceSnapshot();
+
+        const expiredAction={
+          ...recentAction,
+          completedAt:new Date(now-cooldown-60000).toISOString()
+        };
+        this.lastProductiveIdleAction=this.clone(expiredAction);
+        this.productiveIdleHistory=[this.clone(expiredAction)];
+        this.productiveIdleConsecutiveSameSubject=1;
+        const afterExpiry=this.collectProductiveIdleCandidates({});
+        const capabilityGaps=this.getRuntimeCapabilityGaps([
+          {globalName:"KnowledgeMemory",label:"Knowledge Memory",available:false,status:"missing"},
+          {globalName:"KnowledgeEngine",label:"Knowledge Engine",available:false,status:"missing"},
+          {globalName:"ExecutiveLearning",label:"Executive Learning",available:true,status:"online"}
+        ]);
+        const projected=this.projectWorldModel({
+          reason:"006.034H-capability-introspection-acceptance",
+          persist:false
+        });
+
+        this.developmentalGoals=[];
+        this.cognitiveIntentions=[];
+        this.investigativeIntentions=[];
+        this.preparednessInsights=[];
+        this.worldModel={unknowns:[]};
+        this.lastCuriosityCircle=null;
+        const blankSeeds=this.collectAutonomousLearningSeeds({});
+        const blankBootstrap=blankSeeds.find(item=>item.origin==="self-directed-world-learning") || null;
+
+        this.developmentalGoals=[{
+          id:"grounded-slack-question",
+          capability:"background evidence calibration",
+          developmentalQuestion:"Which evidence would materially improve background evidence calibration?",
+          status:"active",impact:.05,leverage:.05,urgency:.01,confidence:.8
+        }];
+        const groundedSlackSeeds=this.collectAutonomousLearningSeeds({});
+        const groundedSlack=groundedSlackSeeds.find(item=>item.origin==="self-development-gap") || null;
+
+        this.developmentalGoals=[];
+        this.lastCuriosityCircle={
+          subject:"prior durable curiosity",
+          fingerprint:"acceptance-prior-circle",
+          nextCognitiveMoment:"Resolve remaining unknown: What evidence would distinguish the two surviving explanations?"
+        };
+        const frontierSeeds=this.collectAutonomousLearningSeeds({});
+        const curiosityFrontier=frontierSeeds.find(item=>item.origin==="curiosity-frontier") || null;
+
+        const checks=[
+          {
+            name:"A recently selected autonomous research subject is recognized from durable productive-idle history, not only the last server-process map",
+            passed:!candidates.some(item=>this.normalize(item.subject)===this.normalize(recentSubject))
+          },
+          {
+            name:"Durable subject recognition broadens curiosity to another eligible subject instead of generating a duplicate research intent",
+            passed:selected?.productive===true&&this.normalize(selected?.action?.subject)===this.normalize(alternateSubject)
+          },
+          {
+            name:"Recognition uses the autonomous-learning cooldown rather than the short ordinary idle cooldown",
+            passed:cooldown>Number(this.configuration.productiveIdleCooldownMs||0)&&
+              !candidates.some(item=>this.normalize(item.subject)===this.normalize(recentSubject))
+          },
+          {
+            name:"A subject becomes eligible again after the bounded recognition cooldown expires",
+            passed:afterExpiry.some(item=>this.normalize(item.subject)===this.normalize(recentSubject))
+          },
+          {
+            name:"The recognition source itself survives the sovereign Executive Brain persistence snapshot",
+            passed:Array.isArray(snapshot?.productiveIdleHistory)&&snapshot.productiveIdleHistory.some(item=>
+              this.normalize(item?.subject)===this.normalize(recentSubject)&&
+              item?.researchRequest?.schema==="meos.maddy.autonomous-learning-research-request.v1"
+            )
+          },
+          {
+            name:"Known local component unavailability is represented as an inspectable runtime capability gap rather than a public-world unknown",
+            passed:capabilityGaps.length===2&&capabilityGaps.every(item=>
+              item.knownState===true&&item.externalResearchUseful===false&&
+              item.resolutionAuthority==="local-runtime-introspection"
+            )
+          },
+          {
+            name:"World Model no longer asks the public web whether its own locally observed missing components are loaded",
+            passed:!(projected?.unknowns||[]).some(item=>
+              item?.domain==="capability"&&/currently available/i.test(String(item?.question||""))
+            )&&Array.isArray(projected?.world?.capabilityGaps)
+          },
+          {
+            name:"Durable curiosity recognition changes attention allocation without manufacturing spend or external-action authority",
+            passed:selected?.action?.economics?.paidSpendAuthorized===false&&
+              selected?.action?.authority?.externalActionAuthorized===false
+          },
+          {
+            name:"A truly blank learning horizon uses an explicit epistemic discovery question rather than a command disguised as a research subject",
+            passed:Boolean(blankBootstrap)&&/[?]$/.test(String(blankBootstrap?.subject||"").trim())&&
+              !/^choose and investigate/i.test(String(blankBootstrap?.subject||""))
+          },
+          {
+            name:"Genuine slack promotes the best concrete developmental question before falling back to generic world discovery",
+            passed:groundedSlack?.subject==="Which evidence would materially improve background evidence calibration?"&&
+              groundedSlack?.slackFrontier===true&&
+              Number(groundedSlack?.value)>=Number(this.configuration.productiveIdleMinimumValue||0)
+          },
+          {
+            name:"An unresolved question produced by a prior curiosity circle becomes the next evidence-grounded curiosity frontier",
+            passed:curiosityFrontier?.subject==="What evidence would distinguish the two surviving explanations?"&&
+              curiosityFrontier?.unknowns?.includes?.("What evidence would distinguish the two surviving explanations?")===true
+          }
+        ];
+        const passed=checks.every(item=>item.passed);
+        console.table(checks.map(item=>({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.034H Durable Curiosity Recognition: ${passed?"PASS":"FAIL"} (${checks.filter(item=>item.passed).length}/${checks.length}).`);
+        return {
+          commission:"006.034H",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          checks,
+          selected:this.clone(selected),
+          candidates:this.clone(candidates)
+        };
+      } finally {
+        this.developmentalGoals=original.goals;
+        this.cognitiveIntentions=original.intentions;
+        this.investigativeIntentions=original.investigations;
+        this.preparednessInsights=original.preparedness;
+        this.worldModel=original.world;
+        this.worldModelHistory=original.worldHistory;
+        this.worldModelProjectionCount=original.worldCount;
+        this.lastProductiveIdleAction=original.lastIdle;
+        this.productiveIdleHistory=original.idleHistory;
+        this.productiveIdleConsecutiveSameSubject=original.sameCount;
+        this.lastCuriosityCircle=original.lastCircle;
       }
     },
 
@@ -21372,18 +21675,8 @@
         });
       }
 
-      manifest
-        .filter(item => item.available !== true)
-        .slice(0, 12)
-        .forEach(item => {
-          unknowns.push({
-            domain: "capability",
-            question:
-              `Is ${item.label} currently available?`,
-            component: item.label,
-            reason: "component-unavailable"
-          });
-        });
+      const capabilityGaps =
+        this.getRuntimeCapabilityGaps(manifest).slice(0, 24);
 
       const priorFingerprint =
         this.worldModel?.fingerprint || null;
@@ -21415,7 +21708,9 @@
           monitoring:
             this.clone(this.collectMonitoring()),
           capabilities:
-            this.clone(manifest)
+            this.clone(manifest),
+          capabilityGaps:
+            this.clone(capabilityGaps)
         },
 
         people: relationshipModels.map(item => ({
