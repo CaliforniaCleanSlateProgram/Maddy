@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.104
+ * Server Version: 2.10.105
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.104";
+const VERSION = "2.10.105";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -13128,18 +13128,19 @@ app.get("/api/founder/authority/acceptance-test", (_request, response) => {
 });
 
 /**
- * Commission 006.034B / 006.034D — Continuous Curiosity Production Proof Surface
+ * Commission 006.034B / 006.034D / 006.034E — Continuous Curiosity Production Proof Surface
  *
  * The existing read-only production proof surface now also proves the
- * 006.034D stale-attention release seam that lets genuinely idle cognition
- * reach the already-commissioned curiosity machinery. It remains registered
+ * 006.034D stale-attention release seam plus 006.034E orphaned-attention
+ * reconciliation that lets genuinely idle cognition reach the already-
+ * commissioned curiosity machinery. It remains registered
  * before paid-product route enforcement and grants no office access,
  * entitlement, autonomy authority, paid cognition, provider call, durable
  * write, or external action.
  */
-const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034D";
+const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034E";
 const CONTINUOUS_CURIOSITY_PROOF_BUILD_ID =
-  "SARPP100-STALE-ATTENTION-PRODUCTION-PROOF-20260918-A";
+  "OARPP100-ORPHANED-ATTENTION-PRODUCTION-PROOF-20260918-A";
 
 app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
@@ -13147,12 +13148,13 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
     const brain = await createHeadlessContinuousCognitionBrain(null);
     const circle = brain.runContinuousCuriosityCircleAcceptanceTest();
     const staleAttention = brain.runStaleAttentionReleaseAcceptanceTest();
+    const orphanedAttention = brain.runOrphanedAttentionReconciliationAcceptanceTest();
     const ignition = runAutonomousLearningIgnitionAcceptanceTest();
     const checks = [
       {
-        name: "Production loads Executive Brain 1.26.9 stale-attention-release build",
-        passed: brain.version === "1.26.9" &&
-          brain.buildId === "EB1269-STALE-ATTENTION-RELEASE-20260918-A"
+        name: "Production loads Executive Brain 1.26.10 orphaned-attention-reconciliation build",
+        passed: brain.version === "1.26.10" &&
+          brain.buildId === "EB12610-ORPHANED-ATTENTION-RECONCILIATION-20260918-A"
       },
       {
         name: "Continuous Curiosity Circle synthetic organism acceptance still passes",
@@ -13162,6 +13164,11 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         name: "Stale Attention Release integration acceptance passes",
         passed: staleAttention?.passed === true &&
           staleAttention?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Orphaned Attention Reconciliation integration acceptance passes",
+        passed: orphanedAttention?.passed === true &&
+          orphanedAttention?.checks?.every?.(item => item?.passed === true) === true
       },
       {
         name: "Server autonomous-learning ignition acceptance passes",
@@ -13197,6 +13204,11 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         passed: staleAttention?.passed === true,
         checks: Array.isArray(staleAttention?.checks) ? staleAttention.checks : []
       },
+      orphanedAttentionReconciliation: {
+        commission: orphanedAttention?.commission || null,
+        passed: orphanedAttention?.passed === true,
+        checks: Array.isArray(orphanedAttention?.checks) ? orphanedAttention.checks : []
+      },
       autonomousLearningIgnition: {
         commission: ignition?.commission || AUTONOMOUS_LEARNING_IGNITION_COMMISSION,
         version: AUTONOMOUS_LEARNING_IGNITION_VERSION,
@@ -13213,7 +13225,7 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         durableWrites: 0,
         externalActionAuthorized: false
       },
-      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, curiosity-circle, and ignition contracts. Live unattended curiosity still requires observation of the production runtime; this surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
+      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, orphaned-attention, curiosity-circle, and ignition contracts. Live unattended curiosity still requires observation of the production runtime; this surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
     });
   } catch (error) {
     next(error);
