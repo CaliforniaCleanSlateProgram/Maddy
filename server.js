@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.92
+ * Server Version: 2.10.103
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.102";
+const VERSION = "2.10.103";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -5367,6 +5367,10 @@ function getAutonomousLearningIgnitionStatus() {
   };
 }
 
+const CONTINUOUS_COGNITION_REPOSITORY_RECOVERY_COMMISSION = "006.034C";
+const CONTINUOUS_COGNITION_REPOSITORY_RECOVERY_BUILD_ID =
+  "CCRR100-DURABLE-COGNITION-REPOSITORY-PRESSURE-RECOVERY-20260917-A";
+
 const continuousCognitionRuntimeState = {
   status: "initializing",
   enabled: false,
@@ -5416,6 +5420,10 @@ const continuousCognitionRuntimeState = {
   lastAutonomousLearningSubject: null,
   lastAutonomousLearningExecuted: false,
   lastAutonomousLearningReason: null,
+  repositoryRecoveryCount: 0,
+  lastRepositoryRecoveryAt: null,
+  lastRepositoryRetryAfterAt: null,
+  lastRepositoryFailureCode: null,
   inFlight: false,
   timer: null,
   lastError: null
@@ -6069,6 +6077,26 @@ function requestContinuousCognitionReentry(event = {}) {
   };
 }
 
+function continuousCognitionRepositoryRetryAt(error) {
+  if (
+    error?.code !== "MEOS_DURABLE_REPOSITORY_UNAVAILABLE" &&
+    error?.code !== "MEOS_REPOSITORY_PROVIDER_UNAVAILABLE"
+  ) {
+    return null;
+  }
+
+  const repositoryStatus = InstitutionalRepositoryAuthority.getStatus();
+  const retryTimes = (repositoryStatus?.providerPressureCircuits || [])
+    .map(circuit => Date.parse(String(circuit?.retryAfterAt || "")))
+    .filter(value => Number.isFinite(value) && value > Date.now());
+
+  const retryAtMs = retryTimes.length
+    ? Math.max(...retryTimes) + 1000
+    : Date.now() + CONTINUOUS_COGNITION_RETRY_MS;
+
+  return new Date(retryAtMs).toISOString();
+}
+
 async function runContinuousCognitionHeartbeat() {
   if (!continuousCognitionRuntimeEnabled()) {
     continuousCognitionRuntimeState.status = "paused-by-authority";
@@ -6155,6 +6183,23 @@ async function runContinuousCognitionHeartbeat() {
       message: error?.message || String(error),
       at: new Date().toISOString()
     };
+    const repositoryRetryAt =
+      continuousCognitionRepositoryRetryAt(error);
+
+    if (repositoryRetryAt) {
+      continuousCognitionRuntimeState.repositoryRecoveryCount += 1;
+      continuousCognitionRuntimeState.lastRepositoryRecoveryAt =
+        new Date().toISOString();
+      continuousCognitionRuntimeState.lastRepositoryRetryAfterAt =
+        repositoryRetryAt;
+      continuousCognitionRuntimeState.lastRepositoryFailureCode =
+        error?.code || "MEOS_DURABLE_REPOSITORY_UNAVAILABLE";
+      continuousCognitionRuntimeState.status =
+        "waiting-for-durable-repository";
+      scheduleContinuousCognitionWake(repositoryRetryAt);
+      return getContinuousCognitionRuntimeStatus();
+    }
+
     scheduleContinuousCognitionWake(
       new Date(Date.now() + CONTINUOUS_COGNITION_RETRY_MS).toISOString()
     );
@@ -6256,6 +6301,17 @@ function getContinuousCognitionRuntimeStatus() {
     lastDurableCheckpointReason:
       continuousCognitionRuntimeState.lastDurableCheckpointReason,
     persistenceMode: "resident-hot-cognition-bounded-durable-checkpoint",
+    repositoryRecovery: {
+      commission: CONTINUOUS_COGNITION_REPOSITORY_RECOVERY_COMMISSION,
+      buildId: CONTINUOUS_COGNITION_REPOSITORY_RECOVERY_BUILD_ID,
+      recoveryCount: continuousCognitionRuntimeState.repositoryRecoveryCount,
+      lastRecoveryAt: continuousCognitionRuntimeState.lastRepositoryRecoveryAt,
+      retryAfterAt: continuousCognitionRuntimeState.lastRepositoryRetryAfterAt,
+      lastFailureCode: continuousCognitionRuntimeState.lastRepositoryFailureCode,
+      failClosedWithoutDurableState: true,
+      paidProviderAuthorityChanged: false,
+      externalActionAuthorityChanged: false
+    },
     inFlight: continuousCognitionRuntimeState.inFlight,
     lastError: continuousCognitionRuntimeState.lastError
   };
