@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.26.13
- * Build: EB12613-DURABLE-CURIOSITY-RECOGNITION-20260918-A
+ * Version: 1.26.14
+ * Build: EB12614-CROSS-TIME-PATTERN-CAUSAL-REENTRY-20260918-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.13";
-  const BUILD_ID = "EB12613-DURABLE-CURIOSITY-RECOGNITION-20260918-A";
+  const VERSION = "1.26.14";
+  const BUILD_ID = "EB12614-CROSS-TIME-PATTERN-CAUSAL-REENTRY-20260918-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -262,7 +262,9 @@
       crossTimePatternLookback: 180,
       crossTimePatternMinimumIndependentLineages: 3,
       crossTimePatternMinimumDomains: 2,
-      crossTimePatternMinimumSpanMs: 12 * 60 * 60 * 1000
+      crossTimePatternMinimumSpanMs: 12 * 60 * 60 * 1000,
+      crossTimePatternCausalReentryEnabled: true,
+      crossTimePatternCausalReentryLimit: 1
     },
 
     initializedAt: null,
@@ -18267,6 +18269,109 @@
         providerCallRequired:false,missionCreated:false};
     },
 
+    /*
+     * Commission 006.034I — Cross-Time Pattern Causal Re-entry
+     *
+     * 006.018P already taught Maddy how to notice weak evidence converging
+     * across time, domains, and independent lineages. Two seams prevented that
+     * organ from changing later cognition: the pattern's own evidence-derived
+     * score was being replaced by a generic executive-demand score, and even an
+     * "investigate" disposition had no consumer that could carry the pattern
+     * into the next cognitive moment.
+     *
+     * This bridge keeps pattern confidence separate from executive authority. A
+     * qualifying pattern may earn one bounded cognitive intention whose job is
+     * to seek the smallest discriminating/falsifying evidence. It does not create
+     * a Mission, call a provider, spend money, or authorize external action.
+     */
+    promoteCrossTimePatternInvestigations(patterns = [], options = {}) {
+      if (this.configuration.crossTimePatternCausalReentryEnabled !== true) {
+        return {success:true,promoted:[],suppressed:[],reason:"causal-reentry-disabled"};
+      }
+      const limit=Math.max(0,Math.min(4,Number(
+        options.limit ?? this.configuration.crossTimePatternCausalReentryLimit ?? 1
+      )));
+      if (!limit) return {success:true,promoted:[],suppressed:[],reason:"promotion-limit-zero"};
+
+      const eligible=(Array.isArray(patterns)?patterns:[])
+        .filter(pattern=>pattern?.qualifies===true&&pattern?.disposition==="investigate"&&pattern?.fingerprint)
+        .sort((a,b)=>Number(b.homeostaticScore??b.score??0)-Number(a.homeostaticScore??a.score??0));
+      const promoted=[];
+      const suppressed=[];
+
+      for (const pattern of eligible) {
+        if (promoted.length>=limit) break;
+        const sourceId=`cross-time-pattern:${pattern.fingerprint}`;
+        const prior=(this.cognitiveIntentions||[]).find(intention=>
+          String(intention?.temporal?.sourceId||"")===sourceId
+        ) || null;
+        if (prior) {
+          suppressed.push({
+            patternFingerprint:pattern.fingerprint,
+            intentionId:prior.intentionId||null,
+            status:prior.status||null,
+            reason:"pattern-lineage-already-has-cognitive-intention"
+          });
+          continue;
+        }
+
+        const cues=(pattern.cueTokens||[]).slice(0,5);
+        const cueLabel=cues.length?cues.join(" / "):`pattern ${String(pattern.fingerprint).slice(-8)}`;
+        const question=`What smallest independent evidence would confirm, falsify, or materially reframe the recurring ${cueLabel} pattern?`;
+        /*
+         * Generic cognitive intentions converge by normalized subject. Cross-time
+         * pattern identity is evidence-lineage identity, not wording identity, so
+         * retain a short lineage discriminator in the internal subject. Otherwise
+         * two genuinely distinct patterns with the same cue words could overwrite
+         * one another's temporal source identity.
+         */
+        const subject=`Investigate cross-time pattern [${String(pattern.fingerprint).slice(-8)}]: ${cueLabel}`;
+        const trigger={
+          source:"executive-brain-cross-time-pattern-synthesis",
+          event:"cross-time-pattern-earned-investigation",
+          sourcePatternFingerprint:pattern.fingerprint,
+          hypothesisStatus:pattern.hypothesisStatus||"hypothesis-not-fact",
+          score:Number(pattern.score||0),
+          homeostaticScore:Number(pattern.homeostaticScore??pattern.score??0),
+          cueTokens:this.clone(cues),
+          domains:this.clone((pattern.domains||[]).slice(0,12)),
+          independentLineages:this.clone((pattern.independentLineages||[]).slice(0,20)),
+          contradictionCount:Number(pattern.contradictionCount||0),
+          unknowns:[question],
+          externalActionAuthorized:false,
+          truthRule:"Cross-time recurrence earned investigation, not belief. Seek discriminating evidence before changing conclusions or acting."
+        };
+        const intention=this.upsertCognitiveIntention(subject,[trigger],{
+          status:"pending",
+          kind:"cross-time-pattern-investigation",
+          sourceId,
+          persist:false
+        });
+        if (intention) {
+          promoted.push({
+            patternFingerprint:pattern.fingerprint,
+            intentionId:intention.intentionId,
+            subject:intention.subject,
+            question,
+            score:Number(pattern.score||0),
+            homeostaticScore:Number(pattern.homeostaticScore??pattern.score??0),
+            externalActionAuthorized:false,
+            providerCallRequired:false,
+            missionCreated:false
+          });
+        }
+      }
+
+      return {
+        success:true,
+        promoted:this.clone(promoted),
+        suppressed:this.clone(suppressed),
+        providerCallRequired:false,
+        missionCreated:false,
+        externalActionAuthorized:false
+      };
+    },
+
     synthesizeCrossTimePatterns(options = {}) {
       const observations=Array.isArray(options.observations)
         ? options.observations.map(x=>this.normalizeCrossTimePatternObservation(x))
@@ -18302,11 +18407,21 @@
           uncertainty:1-candidate.score
         };
         const homeo=this.applyExecutiveHomeostasis([demand]).demands[0];
-        const balanced=Number(homeo?.__homeostasisScore ?? candidate.score);
+        /*
+         * Preserve the evidence-derived pattern score as the primary signal.
+         * Executive Homeostasis is allowed to nudge that score only through its
+         * already-bounded learned-experience influence. Replacing the pattern
+         * score with a generic demand score made the investigate branch
+         * structurally unreachable even for a 0.92 / four-lineage / four-domain
+         * pattern.
+         */
+        const homeostasisInfluence=Number(homeo?.homeostasis?.learningInfluence || 0);
+        const balanced=Math.max(0,Math.min(1,Number(candidate.score||0)+homeostasisInfluence));
         const disposition=candidate.qualifies && balanced>=.66 ? "investigate"
           : candidate.score>=.42 && candidate.independentLineageCount>=2 ? "watch" : "release";
         const result={...candidate,homeostaticScore:Number(balanced.toFixed(3)),
-          homeostasisInfluence:homeo?.homeostasis?.learningInfluence || 0,disposition,
+          executiveDemandScore:Number(homeo?.__homeostasisScore ?? 0),
+          homeostasisInfluence,disposition,
           activeWorkCreated:false,nextMove:disposition==="investigate"
             ? "Target the smallest decision-relevant unknown that could confirm or falsify this pattern."
             : disposition==="watch"
@@ -18315,11 +18430,24 @@
         if (disposition==="watch") this.registerCrossTimePatternTrap(result,{persist:false});
         return result;
       });
+      const causalReentry=options.promoteInvestigations===true
+        ?this.promoteCrossTimePatternInvestigations(patterns,options)
+        :{success:true,promoted:[],suppressed:[],providerCallRequired:false,missionCreated:false,externalActionAuthorized:false};
+      const promotedFingerprints=new Set((causalReentry.promoted||[]).map(item=>item.patternFingerprint));
+      patterns.forEach(pattern=>{
+        if (promotedFingerprints.has(pattern.fingerprint)) {
+          pattern.activeWorkCreated=true;
+          pattern.causalReentry="bounded-cognitive-intention-created";
+        }
+      });
       this.crossTimePatternSynthesisCount=Number(this.crossTimePatternSynthesisCount || 0)+1;
       this.lastCrossTimePatternSynthesis={
         schema:"meos.maddy.cross-time-pattern-synthesis.v1",
         synthesisNumber:this.crossTimePatternSynthesisCount,generatedAt:new Date().toISOString(),
         observationCount:observations.length,patterns:this.clone(patterns.slice(0,8)),
+        promotedInvestigationCount:Number(causalReentry.promoted?.length||0),
+        promotedInvestigationIds:(causalReentry.promoted||[]).map(item=>item.intentionId).filter(Boolean).slice(0,4),
+        suppressedDuplicatePromotionCount:Number(causalReentry.suppressed?.length||0),
         providerCallRequired:false,missionCreated:false
       };
       patterns.filter(x=>x.qualifies).forEach(x=>{
@@ -18331,6 +18459,8 @@
       if (options.persist!==false) this.persist();
       this.emit("brain:cross-time-pattern-synthesis",this.clone(this.lastCrossTimePatternSynthesis));
       return {success:true,patterns:this.clone(patterns),traps:this.clone(this.crossTimePatternTraps),
+        causalReentry:this.clone(causalReentry),
+        promotedInvestigations:this.clone(causalReentry.promoted||[]),
         providerCallRequired:false,missionCreated:false};
     },
 
@@ -18392,6 +18522,232 @@
         this.crossTimePatternHistory=original.history; this.crossTimePatternTraps=original.traps;
         this.lastCrossTimePatternSynthesis=original.last; this.crossTimePatternSynthesisCount=original.count;
         this.executiveHomeostasisState=original.homeostasis;
+      }
+    },
+
+    runCrossTimePatternCausalReentryAcceptanceTest() {
+      const original={
+        intentions:this.clone(this.cognitiveIntentions),
+        history:this.clone(this.crossTimePatternHistory),
+        traps:this.clone(this.crossTimePatternTraps),
+        last:this.clone(this.lastCrossTimePatternSynthesis),
+        count:this.crossTimePatternSynthesisCount,
+        homeostasis:this.clone(this.executiveHomeostasisState),
+        priority:this.clone(this.currentExecutivePriority),
+        portfolio:this.clone(this.executivePriorityPortfolio),
+        arbitration:this.clone(this.lastPriorityArbitration),
+        autobiography:this.clone(this.autobiographicalMemory),
+        episodeCount:this.autobiographicalEpisodeCount,
+        reflections:this.clone(this.metacognitiveReflections),
+        reflectionCount:this.metacognitiveReflectionCount,
+        circles:this.clone(this.curiosityCircleHistory),
+        circleCount:this.curiosityCircleCount,
+        lastCircle:this.clone(this.lastCuriosityCircle),
+        strategy:this.clone(this.learningStrategyState),
+        lastIdle:this.clone(this.lastProductiveIdleAction)
+      };
+      const priorHydrated=brainPersistence.hydrated;
+      brainPersistence.hydrated=false;
+      try {
+        this.cognitiveIntentions=[];
+        this.crossTimePatternHistory=[];
+        this.crossTimePatternTraps=[];
+        this.lastCrossTimePatternSynthesis=null;
+        this.crossTimePatternSynthesisCount=0;
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        this.lastPriorityArbitration=null;
+        this.executiveHomeostasisState=null;
+        this.autobiographicalMemory=[];
+        this.autobiographicalEpisodeCount=0;
+        this.metacognitiveReflections=[];
+        this.metacognitiveReflectionCount=0;
+        this.curiosityCircleHistory=[];
+        this.curiosityCircleCount=0;
+        this.lastCuriosityCircle=null;
+        this.learningStrategyState=null;
+
+        const base=Date.parse("2026-01-01T08:00:00Z"), hour=3600000;
+        const strongObservations=[
+          {id:"p1",occurredAt:new Date(base).toISOString(),subject:"handoff latency dependency failure",domains:["operations"],lineageId:"ops-1",reliability:1,strength:1,materiality:1},
+          {id:"p2",occurredAt:new Date(base+18*hour).toISOString(),subject:"handoff latency dependency failure",domains:["compliance"],lineageId:"comp-1",reliability:1,strength:1,materiality:1},
+          {id:"p3",occurredAt:new Date(base+36*hour).toISOString(),subject:"handoff latency dependency failure",domains:["funding"],lineageId:"fund-1",reliability:1,strength:1,materiality:1},
+          {id:"p4",occurredAt:new Date(base+54*hour).toISOString(),subject:"handoff latency dependency failure",domains:["strategy"],lineageId:"strategy-1",reliability:1,strength:1,materiality:1}
+        ];
+
+        const noPromotion=this.synthesizeCrossTimePatterns({
+          observations:strongObservations,persist:false,promoteInvestigations:false
+        });
+        const strong=noPromotion.patterns[0] || null;
+        const promoted=this.synthesizeCrossTimePatterns({
+          observations:strongObservations,persist:false,promoteInvestigations:true
+        });
+        const promotedPattern=promoted.patterns[0] || null;
+        const promotion=promoted.promotedInvestigations?.[0] || null;
+        const intention=promotion?.intentionId
+          ?this.cognitiveIntentions.find(item=>item.intentionId===promotion.intentionId)||null
+          :null;
+        const repeat=this.synthesizeCrossTimePatterns({
+          observations:strongObservations,persist:false,promoteInvestigations:true
+        });
+
+        // Audit-after-green fixtures: a duplicate top-ranked pattern must not
+        // starve the next novel eligible pattern, and same wording must never
+        // collapse distinct evidence lineages into one intention identity.
+        const secondPattern={
+          ...this.clone(promotedPattern),
+          fingerprint:"fixture-second-pattern-lineage",
+          score:.84,
+          homeostaticScore:.84,
+          executiveDemandScore:.45,
+          activeWorkCreated:false
+        };
+        const duplicateThenNovel=this.promoteCrossTimePatternInvestigations(
+          [promotedPattern,secondPattern],{limit:1}
+        );
+        const sameWordsThirdPattern={
+          ...this.clone(secondPattern),
+          fingerprint:"fixture-third-pattern-same-words",
+          score:.82,
+          homeostaticScore:.82
+        };
+        const sameWordsDistinctLineage=this.promoteCrossTimePatternInvestigations(
+          [sameWordsThirdPattern],{limit:1}
+        );
+        const distinctPatternIntentions=this.cognitiveIntentions.filter(item=>
+          String(item?.temporal?.sourceId||"").startsWith("cross-time-pattern:")
+        );
+
+        const demands=this.collectExecutivePriorityDemands({});
+        this.currentExecutivePriority=null;
+        this.executivePriorityPortfolio=[];
+        const judgment=this.runExecutiveJudgmentCycle({});
+        const human=this.runExecutiveJudgmentCycle({
+          humanDirection:{
+            id:"human-urgent-fixture",
+            subject:"Human urgent fixture",
+            missionConsequence:1,
+            urgency:1,
+            irreversibility:.8,
+            leverage:.9
+          }
+        });
+
+        const weak=this.synthesizeCrossTimePatterns({
+          observations:[
+            {id:"w1",occurredAt:new Date(base).toISOString(),subject:"coffee inventory low",domains:["office"],lineageId:"w1",reliability:.55,strength:.2,materiality:.05},
+            {id:"w2",occurredAt:new Date(base+20*hour).toISOString(),subject:"coffee inventory low",domains:["office"],lineageId:"w2",reliability:.55,strength:.2,materiality:.05}
+          ],persist:false,promoteInvestigations:true
+        });
+
+        const sameLineage=this.synthesizeCrossTimePatterns({
+          observations:[
+            {id:"s1",occurredAt:new Date(base).toISOString(),subject:"repeated copied signal",domains:["operations"],lineageId:"same",reliability:1,strength:1,materiality:1},
+            {id:"s2",occurredAt:new Date(base+20*hour).toISOString(),subject:"repeated copied signal",domains:["funding"],lineageId:"same",reliability:1,strength:1,materiality:1},
+            {id:"s3",occurredAt:new Date(base+40*hour).toISOString(),subject:"repeated copied signal",domains:["strategy"],lineageId:"same",reliability:1,strength:1,materiality:1}
+          ],persist:false,promoteInvestigations:true
+        });
+
+        /*
+         * Integrated curiosity-circle path: three independent prior experiences
+         * should be able to synthesize into a new bounded cognitive commitment
+         * after a later curiosity result returns, without a new provider call.
+         */
+        this.cognitiveIntentions=[];
+        this.crossTimePatternHistory=[];
+        this.crossTimePatternTraps=[];
+        this.lastCrossTimePatternSynthesis=null;
+        this.crossTimePatternSynthesisCount=0;
+        this.autobiographicalMemory=strongObservations.map((item,index)=>({
+          schema:"meos.maddy.autobiographical-memory.v1",
+          episodeId:`pattern-episode-${index+1}`,
+          experienceFingerprint:item.lineageId,
+          occurredAt:item.occurredAt,
+          createdAt:item.occurredAt,
+          eventType:item.domains[0],
+          subject:item.subject,
+          domains:item.domains,
+          learning:{learned:item.subject},
+          outcome:{success:false,verified:true,materiality:item.materiality}
+        }));
+        this.autobiographicalEpisodeCount=this.autobiographicalMemory.length;
+        this.lastProductiveIdleAction={
+          subject:"unrelated bounded learning fixture",
+          origin:"self-directed-world-learning",
+          expectedValue:.72,
+          unknowns:["What evidence matters?"]
+        };
+        const circle=this.completeAutonomousCuriosityCircle({
+          subject:"unrelated bounded learning fixture",
+          success:true,
+          evidence:[{source:"acceptance://fixture",authority:"authoritative",summary:"Fixture evidence."}],
+          synthesis:{
+            evidenceQuality:"strong",
+            supportedFacts:["Fixture evidence was retrieved."],
+            inferences:[],
+            unknowns:[],
+            authoritativeSourceCount:1,
+            directSubjectMatchCount:1,
+            requiresFurtherInvestigation:false
+          },
+          researchLoop:{closure:{passesExecuted:1,stopReason:"evidence-sufficient-for-bounded-closure",requiresFurtherInvestigation:false}}
+        },{persist:false});
+        const integratedPatternIntention=this.cognitiveIntentions.find(item=>
+          item?.temporal?.kind==="cross-time-pattern-investigation"
+        ) || null;
+
+        const snapshot=this.buildPersistenceSnapshot();
+        const checks=[
+          {name:"A maximally strong cross-time pattern can actually reach investigate disposition",passed:strong?.qualifies===true&&strong?.score>=.9&&strong?.disposition==="investigate"&&Number(strong?.homeostaticScore)>=.66},
+          {name:"Pattern strength remains evidence-derived while homeostasis contributes only its bounded learned-experience influence",passed:Number(strong?.homeostaticScore)===Number(strong?.score)&&Number.isFinite(Number(strong?.executiveDemandScore))&&Number(strong?.executiveDemandScore)<Number(strong?.homeostaticScore)},
+          {name:"Cross-time synthesis remains non-operative by default unless the caller explicitly requests causal re-entry",passed:(noPromotion.promotedInvestigations||[]).length===0&&strong?.activeWorkCreated===false},
+          {name:"An investigate disposition can create one bounded cognitive intention",passed:(promoted.promotedInvestigations||[]).length===1&&promotedPattern?.activeWorkCreated===true&&Boolean(intention)},
+          {name:"The promoted intention preserves the pattern lineage and asks for discriminating or falsifying evidence",passed:intention?.temporal?.kind==="cross-time-pattern-investigation"&&String(intention?.temporal?.sourceId||"").includes(promotedPattern?.fingerprint||"missing")&&String(intention?.triggers?.[0]?.unknowns?.[0]||"").includes("falsify")},
+          {name:"Re-synthesizing the same unchanged pattern cannot multiply cognitive commitments",passed:(repeat.promotedInvestigations||[]).length===0&&(repeat.causalReentry?.suppressed||[]).some(item=>item.reason==="pattern-lineage-already-has-cognitive-intention")&&this.cognitiveIntentions.filter(item=>item?.temporal?.sourceId===`cross-time-pattern:${promotedPattern?.fingerprint}`).length===1},
+          {name:"A previously promoted top-ranked pattern cannot starve the next novel eligible pattern",passed:(duplicateThenNovel.promoted||[]).length===1&&duplicateThenNovel.promoted[0]?.patternFingerprint===secondPattern.fingerprint&&(duplicateThenNovel.suppressed||[]).some(item=>item.patternFingerprint===promotedPattern?.fingerprint)},
+          {name:"Distinct evidence lineages with the same cue wording retain distinct cognitive-intention identity",passed:(sameWordsDistinctLineage.promoted||[]).length===1&&sameWordsDistinctLineage.promoted[0]?.patternFingerprint===sameWordsThirdPattern.fingerprint&&new Set(distinctPatternIntentions.map(item=>item?.temporal?.sourceId)).size===distinctPatternIntentions.length},
+          {name:"Weak recurrence remains watch/release rather than manufacturing standing work",passed:(weak.promotedInvestigations||[]).length===0&&weak.patterns.every(item=>item.disposition!=="investigate")},
+          {name:"Copied evidence from one lineage cannot manufacture an investigate commitment",passed:(sameLineage.promotedInvestigations||[]).length===0&&sameLineage.patterns.every(item=>item.qualifies!==true)},
+          {name:"A causally promoted pattern enters the existing Executive Judgment demand path",passed:demands.some(item=>item.id===promotion?.intentionId&&item.origin==="cognitive-intention")&&distinctPatternIntentions.some(item=>item.intentionId===judgment?.arbitration?.selected?.id)},
+          {name:"Explicit human direction still outranks internally synthesized pattern work",passed:human?.arbitration?.selected?.origin==="human-direction"||human?.arbitration?.selected?.id==="human-urgent-fixture"},
+          {name:"Continuous Curiosity Circle can turn prior experience synthesis into later cognitive re-entry",passed:circle?.success===true&&Number(circle?.circle?.patternSynthesis?.promotedInvestigationCount||0)>=1&&Boolean(integratedPatternIntention)},
+          {name:"Pattern causal re-entry survives the sovereign Executive Brain persistence snapshot",passed:Array.isArray(snapshot?.cognitiveIntentions)&&snapshot.cognitiveIntentions.some(item=>item?.temporal?.kind==="cross-time-pattern-investigation")&&Number(snapshot?.lastCrossTimePatternSynthesis?.promotedInvestigationCount||0)>=1},
+          {name:"Pattern causal re-entry grants no provider, spend, Mission, or external-action authority",passed:promoted?.providerCallRequired===false&&promoted?.missionCreated===false&&promotion?.providerCallRequired===false&&promotion?.missionCreated===false&&promotion?.externalActionAuthorized===false}
+        ];
+        const passed=checks.every(item=>item.passed);
+        console.table(checks.map(item=>({name:item.name,passed:item.passed})));
+        console.info(`[MEOS ${this.version}] Commission 006.034I Cross-Time Pattern Causal Re-entry: ${passed?"PASS":"FAIL"} (${checks.filter(item=>item.passed).length}/${checks.length}).`);
+        return {
+          success:passed,
+          commission:"006.034I",
+          schema:"meos.executive-brain.cross-time-pattern-causal-reentry.acceptance.v1",
+          version:this.version,
+          buildId:this.buildId,
+          passed:checks.filter(item=>item.passed).length,
+          total:checks.length,
+          checks,
+          examples:{strong,promotedPattern,promotion,repeat:repeat.causalReentry,weak:weak.patterns,circle:circle?.circle||null}
+        };
+      } finally {
+        brainPersistence.hydrated=priorHydrated;
+        this.cognitiveIntentions=original.intentions;
+        this.crossTimePatternHistory=original.history;
+        this.crossTimePatternTraps=original.traps;
+        this.lastCrossTimePatternSynthesis=original.last;
+        this.crossTimePatternSynthesisCount=original.count;
+        this.executiveHomeostasisState=original.homeostasis;
+        this.currentExecutivePriority=original.priority;
+        this.executivePriorityPortfolio=original.portfolio;
+        this.lastPriorityArbitration=original.arbitration;
+        this.autobiographicalMemory=original.autobiography;
+        this.autobiographicalEpisodeCount=original.episodeCount;
+        this.metacognitiveReflections=original.reflections;
+        this.metacognitiveReflectionCount=original.reflectionCount;
+        this.curiosityCircleHistory=original.circles;
+        this.curiosityCircleCount=original.circleCount;
+        this.lastCuriosityCircle=original.lastCircle;
+        this.learningStrategyState=original.strategy;
+        this.lastProductiveIdleAction=original.lastIdle;
       }
     },
 
@@ -19934,7 +20290,11 @@
       const strategy=this.evaluateCuriosityLearningStrategy(learning);
       this.learningStrategyState=this.clone(strategy);
       const patterns=typeof this.synthesizeCrossTimePatterns==="function"
-        ? this.synthesizeCrossTimePatterns({persist:false,source:"autonomous-curiosity-circle"})
+        ? this.synthesizeCrossTimePatterns({
+            persist:false,
+            source:"autonomous-curiosity-circle",
+            promoteInvestigations:true
+          })
         : null;
 
       this.curiosityCircleCount=Number(this.curiosityCircleCount || 0)+1;
@@ -19946,7 +20306,12 @@
         autobiography:{episodeId:episode?.episodeId || null,formed:episodeResult?.created===true||Boolean(episode)},
         metacognition:{reflectionId:reflection?.reflection?.reflectionId || null,created:reflection?.created===true,strategy:this.clone(strategy)},
         transfer:{candidateCount:transfers.length,promotedCount:promoted.length,candidates:this.clone(transfers),promoted:this.clone(promoted)},
-        patternSynthesis:{ran:Boolean(patterns),patternCount:Number(patterns?.patterns?.length || patterns?.candidates?.length || 0)},
+        patternSynthesis:{
+          ran:Boolean(patterns),
+          patternCount:Number(patterns?.patterns?.length || patterns?.candidates?.length || 0),
+          promotedInvestigationCount:Number(patterns?.promotedInvestigations?.length || 0),
+          promotedInvestigationIds:(patterns?.promotedInvestigations||[]).map(item=>item.intentionId).filter(Boolean).slice(0,4)
+        },
         nextCognitiveMoment:promoted[0]?.subject || (unknowns[0]?`Resolve remaining unknown: ${unknowns[0]}`:"Return to governed productive-idle selection"),
         authority:{internalLearningAuthorized:true,paidSpendAuthorized:false,externalActionAuthorized:false,privateDataPublicationAuthorized:false},
         epistemicRule:"Curiosity closes into experience, reflection, transfer hypotheses, and future cognition without promoting retrieval to verified reality.",
