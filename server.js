@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.108";
+const VERSION = "2.10.109";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -5790,6 +5790,7 @@ const continuousCognitionRuntimeState = {
     linkedIntentionStatus: null,
     linkedIntentionAttempts: null,
     linkedIntentionEconomicsState: null,
+    linkedIntentionKind: null,
     lastReleaseReason: null,
     lastNoProgressSettlementAt: null,
     lastNoProgressSettlementReason: null,
@@ -6640,6 +6641,8 @@ async function runContinuousCognitionHeartbeat() {
         linkedIntention ? Number(linkedIntention?.attempts || 0) : null,
       linkedIntentionEconomicsState:
         linkedIntention?.economics?.state || null,
+      linkedIntentionKind:
+        linkedIntention?.temporal?.kind || null,
       lastReleaseReason:
         cycleResult?.threadAction?.staleAttentionRelease?.staleReason || null,
       lastNoProgressSettlementAt:
@@ -13621,21 +13624,23 @@ app.get("/api/founder/authority/acceptance-test", (_request, response) => {
 });
 
 /**
- * Commission 006.034B / 006.034D / 006.034E / 006.034F / 006.034G / 006.034H — Continuous Curiosity Production Proof Surface
+ * Commission 006.034B / 006.034D / 006.034E / 006.034F / 006.034G / 006.034H / 006.034I — Continuous Curiosity Production Proof Surface
  *
- * The existing read-only production proof surface now also proves the
- * 006.034D stale-attention release seam, 006.034E orphaned-attention
- * reconciliation, 006.034F executive-attention lifecycle reconciliation, and
- * 006.034G actionable-attention progress reconciliation and 006.034H durable curiosity recognition so durable cognition
- * cannot confuse repeated no-progress wakes with useful foreground work. It
- * remains registered
+ * The existing read-only production proof surface also proves the 006.034D
+ * stale-attention release seam, 006.034E orphaned-attention reconciliation,
+ * 006.034F executive-attention lifecycle reconciliation, 006.034G
+ * actionable-attention progress, 006.034H durable curiosity recognition, and
+ * 006.034I cross-time-pattern causal re-entry. This closes the bounded seam
+ * from evidence-grounded recurring experience -> qualifying pattern -> one
+ * falsifiable cognitive intention without manufacturing external authority.
+ * It remains registered
  * before paid-product route enforcement and grants no office access,
  * entitlement, autonomy authority, paid cognition, provider call, durable
  * write, or external action.
  */
-const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034H";
+const CONTINUOUS_CURIOSITY_PROOF_COMMISSION = "006.034I";
 const CONTINUOUS_CURIOSITY_PROOF_BUILD_ID =
-  "DCRPP100-DURABLE-CURIOSITY-RECOGNITION-PROOF-20260918-A";
+  "CTPCRPP100-CROSS-TIME-PATTERN-CAUSAL-REENTRY-PROOF-20260918-A";
 
 app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
@@ -13648,14 +13653,16 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
     const actionableAttention = brain.runActionableAttentionProgressAcceptanceTest();
     const durableCuriosityRecognition =
       brain.runDurableCuriosityRecognitionAcceptanceTest();
+    const crossTimePatternCausalReentry =
+      brain.runCrossTimePatternCausalReentryAcceptanceTest();
     const ignition = runAutonomousLearningIgnitionAcceptanceTest();
     const learningContinuity =
       runAutonomousLearningContinuityAcceptanceTest();
     const checks = [
       {
-        name: "Production loads Executive Brain 1.26.13 durable-curiosity-recognition build",
-        passed: brain.version === "1.26.13" &&
-          brain.buildId === "EB12613-DURABLE-CURIOSITY-RECOGNITION-20260918-A"
+        name: "Production loads Executive Brain 1.26.14 cross-time-pattern-causal-reentry build",
+        passed: brain.version === "1.26.14" &&
+          brain.buildId === "EB12614-CROSS-TIME-PATTERN-CAUSAL-REENTRY-20260918-A"
       },
       {
         name: "Continuous Curiosity Circle synthetic organism acceptance still passes",
@@ -13685,6 +13692,11 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         name: "Durable Curiosity Recognition broadening acceptance passes",
         passed: durableCuriosityRecognition?.passed === true &&
           durableCuriosityRecognition?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Cross-Time Pattern Causal Re-entry acceptance passes",
+        passed: crossTimePatternCausalReentry?.passed === true &&
+          crossTimePatternCausalReentry?.checks?.every?.(item => item?.passed === true) === true
       },
       {
         name: "Server autonomous-learning ignition acceptance passes",
@@ -13746,6 +13758,13 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
           ? durableCuriosityRecognition.checks
           : []
       },
+      crossTimePatternCausalReentry: {
+        commission: crossTimePatternCausalReentry?.commission || null,
+        passed: crossTimePatternCausalReentry?.passed === true,
+        checks: Array.isArray(crossTimePatternCausalReentry?.checks)
+          ? crossTimePatternCausalReentry.checks
+          : []
+      },
       autonomousLearningContinuity: {
         commission:
           learningContinuity?.commission ||
@@ -13773,7 +13792,7 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         durableWrites: 0,
         externalActionAuthorized: false
       },
-      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, orphaned-attention, executive-attention-lifecycle, actionable-attention-progress, durable-curiosity-recognition, restart-continuity, curiosity-circle, and ignition contracts. Live unattended behavior still requires observation of the production runtime; real standing work may correctly outrank curiosity, while non-progressing internally originated cognition may pause without being falsely completed. This surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
+      limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, orphaned-attention, executive-attention-lifecycle, actionable-attention-progress, durable-curiosity-recognition, cross-time-pattern-causal-reentry, restart-continuity, curiosity-circle, and ignition contracts. It proves that a qualifying evidence-grounded recurring pattern can create one bounded falsifiable cognitive intention without manufacturing external authority. Live unattended observation is still required before claiming that production Maddy naturally encountered and promoted a real cross-time pattern. Real standing work may correctly outrank curiosity, while non-progressing internally originated cognition may pause without being falsely completed. This surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
     });
   } catch (error) {
     next(error);
