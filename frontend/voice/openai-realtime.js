@@ -1,14 +1,16 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.5
+ * File Version: 2.0.6
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
  * Responsibilities:
  * - Establish one secure OpenAI Realtime WebRTC session.
  * - Maintain one microphone stream and one data channel.
- * - Use server VAD to detect user speech.
+ * - Use server VAD as a provisional speech sensor, not as automatic user-turn authority.
+ * - Wake foreground conversation on "Maddy" / "Maddison" and preserve natural follow-up turns.
+ * - Keep background office speech from stealing conversational control or interrupting Maddy.
  * - Authorize no more than one OpenAI response per user turn.
  * - Accept and publish each OpenAI response only once.
  * - Preserve turn IDs and response IDs for downstream TTS control.
@@ -18,16 +20,34 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.5";
+  const VERSION = "2.0.6";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE205-ACTIVE-CUSTOMER-REPRESENTATIVE-CONTEXT-20260919-A";
+  const BUILD_ID = "VE206-FOREGROUND-CONVERSATION-ATTENTION-GATE-20260919-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
 
   const RESPONSE_TIMEOUT_MS = 45_000;
-  const TRANSCRIPT_TIMEOUT_MS = 900;
   const MAX_HANDLED_RESPONSE_IDS = 200;
+
+  /**
+   * Foreground Conversation Attention Gate
+   *
+   * Server VAD is intentionally only a speech sensor. It is not authority to
+   * interrupt Maddy or create a user turn. A transcript must first pass this
+   * foreground-attention gate.
+   */
+  const WAKE_WORD_PATTERN = /\b(?:maddy|maddie|maddison|madison)\b/i;
+  const ATTENTION_LEASE_MS = 60_000;
+  const FOLLOW_UP_GRACE_MS = 15_000;
+  const CANDIDATE_TRANSCRIPT_TIMEOUT_MS = 4_000;
+  const MIN_ACOUSTIC_SAMPLES = 3;
+  const MIN_FOREGROUND_RMS = 0.012;
+  const MIN_FOREGROUND_NOISE_RATIO = 1.35;
+  const MIN_FOREGROUND_REFERENCE_RATIO = 0.58;
+  const MIN_BARGE_IN_REFERENCE_RATIO = 0.72;
+  const MIN_BARGE_IN_NOISE_RATIO = 1.60;
+  const NOISE_FLOOR_MIN = 0.0035;
 
   const state = {
     connected: false,
@@ -58,7 +78,39 @@
     awaitingTranscript: false,
     transcriptTimeout: null,
     lastTranscript: "",
-    lastRouterResult: null
+    lastRouterResult: null,
+
+    // Foreground conversation / wake state.
+    attentionAwake: false,
+    attentionAwakeAt: null,
+    attentionExpiresAt: null,
+    lastWakeTranscript: "",
+    lastAcceptedSpeechAt: null,
+    acceptedForegroundTurns: 0,
+    ignoredBackgroundTurns: 0,
+    wakeCount: 0,
+
+    // Audible Maddy state is separate from OpenAI response generation.
+    maddySpeaking: false,
+    lastMaddySpeechStartedAt: null,
+    lastMaddySpeechEndedAt: null,
+
+    // Provisional VAD candidates.
+    speechCandidateCounter: 0,
+    activeSpeechCandidate: null,
+    pendingSpeechCandidates: [],
+
+    // Browser-native near/far acoustic evidence.
+    audioContext: null,
+    microphoneSource: null,
+    analyser: null,
+    analyserData: null,
+    analyserFrame: null,
+    currentRms: 0,
+    currentPeak: 0,
+    noiseFloorRms: 0.01,
+    foregroundReferenceRms: null,
+    foregroundReferencePeak: null
   };
 
   function now() {
@@ -127,6 +179,22 @@
       lastTranscript: state.lastTranscript,
       lastRoute: state.lastRouterResult?.route || null,
 
+      attention: Object.freeze({
+        awake: attentionIsAwake(),
+        wakeCount: state.wakeCount,
+        acceptedForegroundTurns: state.acceptedForegroundTurns,
+        ignoredBackgroundTurns: state.ignoredBackgroundTurns,
+        maddySpeaking: state.maddySpeaking,
+        foregroundReferenceRms: state.foregroundReferenceRms,
+        currentRms: state.currentRms,
+        noiseFloorRms: state.noiseFloorRms,
+        pendingCandidates: state.pendingSpeechCandidates.length +
+          (state.activeSpeechCandidate ? 1 : 0),
+        expiresInMs: Number.isFinite(state.attentionExpiresAt)
+          ? Math.max(0, Math.round(state.attentionExpiresAt - now()))
+          : null
+      }),
+
       microphoneActive: Boolean(
         state.microphoneStream?.getTracks().some(
           (track) => track.readyState === "live"
@@ -157,6 +225,517 @@
       `[MEOS Voice v${VERSION}] ${message}`,
       metadata
     );
+  }
+
+  function normalizeTranscript(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function containsWakeWord(transcript) {
+    return WAKE_WORD_PATTERN.test(normalizeTranscript(transcript));
+  }
+
+  function attentionIsAwake() {
+    if (!state.attentionAwake) {
+      return false;
+    }
+
+    if (
+      Number.isFinite(state.attentionExpiresAt) &&
+      now() > state.attentionExpiresAt
+    ) {
+      state.attentionAwake = false;
+      state.attentionExpiresAt = null;
+
+      log("Foreground conversation attention expired; wake word required.");
+
+      emit("attention-sleeping", {
+        reason: "inactivity-timeout"
+      });
+
+      return false;
+    }
+
+    return true;
+  }
+
+  function extendAttention(reason = "conversation-activity") {
+    if (!state.attentionAwake) {
+      return false;
+    }
+
+    state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
+
+    emit("attention-extended", {
+      reason,
+      expiresInMs: ATTENTION_LEASE_MS
+    });
+
+    return true;
+  }
+
+  function wakeAttention(transcript, candidate = null) {
+    state.attentionAwake = true;
+    state.attentionAwakeAt = now();
+    state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
+    state.lastWakeTranscript = normalizeTranscript(transcript);
+    state.wakeCount += 1;
+
+    const rms = Number(candidate?.avgRms) || 0;
+    const peak = Number(candidate?.peakRms) || 0;
+
+    if (rms > 0) {
+      state.foregroundReferenceRms = rms;
+    }
+
+    if (peak > 0) {
+      state.foregroundReferencePeak = peak;
+    }
+
+    log("Foreground conversation acquired by wake word.", {
+      wakeTranscript: state.lastWakeTranscript,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      noiseFloorRms: state.noiseFloorRms
+    });
+
+    emit("attention-awake", {
+      wakeTranscript: state.lastWakeTranscript,
+      wakeCount: state.wakeCount,
+      foregroundReferenceRms: state.foregroundReferenceRms
+    });
+  }
+
+  function releaseAttention(reason = "manual-release") {
+    const wasAwake = state.attentionAwake;
+
+    state.attentionAwake = false;
+    state.attentionAwakeAt = null;
+    state.attentionExpiresAt = null;
+    state.lastWakeTranscript = "";
+    state.foregroundReferenceRms = null;
+    state.foregroundReferencePeak = null;
+
+    if (wasAwake) {
+      log(`Foreground conversation released. reason=${reason}.`);
+      emit("attention-sleeping", { reason });
+    }
+
+    return wasAwake;
+  }
+
+  function acousticSnapshot(candidate = null) {
+    const avgRms = Number(candidate?.avgRms) || 0;
+    const peakRms = Number(candidate?.peakRms) || 0;
+    const sampleCount = Number(candidate?.sampleCount) || 0;
+    const noiseFloor = Math.max(
+      Number(candidate?.noiseFloorAtStart) || 0,
+      Number(state.noiseFloorRms) || 0,
+      NOISE_FLOOR_MIN
+    );
+    const foregroundReference =
+      Number(state.foregroundReferenceRms) || 0;
+
+    return {
+      available:
+        sampleCount >= MIN_ACOUSTIC_SAMPLES && avgRms > 0,
+      avgRms,
+      peakRms,
+      sampleCount,
+      noiseFloor,
+      noiseRatio: avgRms > 0 ? avgRms / noiseFloor : 0,
+      foregroundReference,
+      referenceRatio:
+        avgRms > 0 && foregroundReference > 0
+          ? avgRms / foregroundReference
+          : null
+    };
+  }
+
+  function evaluateForegroundCandidate(transcript, candidate = null) {
+    const cleanTranscript = normalizeTranscript(transcript);
+    const wakeWord = containsWakeWord(cleanTranscript);
+    const awake = attentionIsAwake();
+    const acoustics = acousticSnapshot(candidate);
+    const currentTime = now();
+    const sinceMaddyEnded = Number.isFinite(state.lastMaddySpeechEndedAt)
+      ? currentTime - state.lastMaddySpeechEndedAt
+      : null;
+    const inFollowUpGrace =
+      sinceMaddyEnded !== null &&
+      sinceMaddyEnded >= 0 &&
+      sinceMaddyEnded <= FOLLOW_UP_GRACE_MS;
+
+    if (wakeWord) {
+      return {
+        accepted: true,
+        reason: awake ? "wake-word-refresh" : "wake-word-acquire",
+        wakeWord: true,
+        acoustics
+      };
+    }
+
+    if (!awake) {
+      return {
+        accepted: false,
+        reason: "attention-asleep-wake-word-required",
+        wakeWord: false,
+        acoustics
+      };
+    }
+
+    if (
+      candidate?.maddyOccupiedAtStart ||
+      state.maddySpeaking ||
+      state.responseInProgress ||
+      state.activeResponseId
+    ) {
+      if (!acoustics.available) {
+        return {
+          accepted: false,
+          reason: "maddy-speaking-no-foreground-proof",
+          wakeWord: false,
+          acoustics
+        };
+      }
+
+      const strongBargeIn =
+        acoustics.avgRms >= MIN_FOREGROUND_RMS &&
+        acoustics.noiseRatio >= MIN_BARGE_IN_NOISE_RATIO &&
+        (
+          acoustics.referenceRatio === null ||
+          acoustics.referenceRatio >= MIN_BARGE_IN_REFERENCE_RATIO
+        );
+
+      return {
+        accepted: strongBargeIn,
+        reason: strongBargeIn
+          ? "confirmed-foreground-barge-in"
+          : "background-during-maddy-speech",
+        wakeWord: false,
+        acoustics
+      };
+    }
+
+    if (acoustics.available) {
+      const foregroundByNoise =
+        acoustics.avgRms >= MIN_FOREGROUND_RMS &&
+        acoustics.noiseRatio >= MIN_FOREGROUND_NOISE_RATIO;
+      const foregroundByReference =
+        acoustics.referenceRatio === null ||
+        acoustics.referenceRatio >= MIN_FOREGROUND_REFERENCE_RATIO;
+      const accepted = foregroundByNoise && foregroundByReference;
+
+      return {
+        accepted,
+        reason: accepted
+          ? "foreground-acoustic-continuity"
+          : "background-acoustic-mismatch",
+        wakeWord: false,
+        acoustics
+      };
+    }
+
+    // Modern Chromium should provide Web Audio evidence. This fallback keeps
+    // natural follow-up mode usable on browsers where it is unavailable, but
+    // only immediately after Maddy has yielded the conversational floor.
+    return {
+      accepted: inFollowUpGrace,
+      reason: inFollowUpGrace
+        ? "follow-up-grace-without-acoustic-metrics"
+        : "no-foreground-proof",
+      wakeWord: false,
+      acoustics
+    };
+  }
+
+  function updateForegroundReference(candidate, force = false) {
+    const rms = Number(candidate?.avgRms) || 0;
+    const peak = Number(candidate?.peakRms) || 0;
+
+    if (rms <= 0) {
+      return;
+    }
+
+    if (force || !Number.isFinite(state.foregroundReferenceRms)) {
+      state.foregroundReferenceRms = rms;
+      state.foregroundReferencePeak = peak || rms;
+      return;
+    }
+
+    const current = state.foregroundReferenceRms;
+    const ratio = current > 0 ? rms / current : 1;
+
+    // Only let plausible foreground turns slowly adapt the reference. A loud
+    // room event must not immediately redefine who owns the conversation.
+    if (ratio >= 0.55 && ratio <= 1.80) {
+      state.foregroundReferenceRms = current * 0.85 + rms * 0.15;
+      state.foregroundReferencePeak =
+        (Number(state.foregroundReferencePeak) || peak || rms) * 0.85 +
+        (peak || rms) * 0.15;
+    }
+  }
+
+  function clearCandidateTimer(candidate) {
+    if (candidate?.timeout !== null && candidate?.timeout !== undefined) {
+      global.clearTimeout(candidate.timeout);
+      candidate.timeout = null;
+    }
+  }
+
+  function clearAllSpeechCandidates() {
+    if (state.activeSpeechCandidate) {
+      clearCandidateTimer(state.activeSpeechCandidate);
+    }
+
+    for (const candidate of state.pendingSpeechCandidates) {
+      clearCandidateTimer(candidate);
+    }
+
+    state.activeSpeechCandidate = null;
+    state.pendingSpeechCandidates = [];
+  }
+
+  function beginSpeechCandidate(message = {}) {
+    state.speechCandidateCounter += 1;
+
+    const candidate = {
+      id: `speech-candidate-${state.speechCandidateCounter}`,
+      startedAt: now(),
+      stoppedAt: null,
+      audioStartMs: message.audio_start_ms ?? null,
+      audioEndMs: null,
+      noiseFloorAtStart: Math.max(
+        Number(state.noiseFloorRms) || 0,
+        NOISE_FLOOR_MIN
+      ),
+      maddyOccupiedAtStart: Boolean(
+        state.maddySpeaking ||
+        state.responseInProgress ||
+        state.activeResponseId
+      ),
+      rmsSum: 0,
+      sampleCount: 0,
+      avgRms: 0,
+      peakRms: 0,
+      timeout: null
+    };
+
+    // A new VAD start before the previous one stopped is treated as a new
+    // provisional candidate, never as authority to interrupt Maddy.
+    if (state.activeSpeechCandidate) {
+      finalizeSpeechCandidate({
+        audio_end_ms: message.audio_start_ms ?? null
+      });
+    }
+
+    state.activeSpeechCandidate = candidate;
+
+    emit("speech-candidate-started", {
+      candidateId: candidate.id,
+      audioStartMs: candidate.audioStartMs
+    });
+
+    return candidate;
+  }
+
+  function finalizeSpeechCandidate(message = {}) {
+    const candidate = state.activeSpeechCandidate;
+
+    if (!candidate) {
+      return null;
+    }
+
+    candidate.stoppedAt = now();
+    candidate.audioEndMs = message.audio_end_ms ?? null;
+    candidate.avgRms = candidate.sampleCount > 0
+      ? candidate.rmsSum / candidate.sampleCount
+      : Number(state.currentRms) || 0;
+    candidate.peakRms = Math.max(
+      candidate.peakRms,
+      Number(state.currentPeak) || 0
+    );
+
+    state.activeSpeechCandidate = null;
+    state.pendingSpeechCandidates.push(candidate);
+
+    candidate.timeout = global.setTimeout(() => {
+      const index = state.pendingSpeechCandidates.findIndex(
+        (item) => item.id === candidate.id
+      );
+
+      if (index < 0) {
+        return;
+      }
+
+      state.pendingSpeechCandidates.splice(index, 1);
+      state.ignoredBackgroundTurns += 1;
+
+      warn("Provisional speech expired without a transcript; no user turn created.", {
+        candidateId: candidate.id
+      });
+
+      emit("speech-candidate-ignored", {
+        candidateId: candidate.id,
+        reason: "transcript-timeout"
+      });
+    }, CANDIDATE_TRANSCRIPT_TIMEOUT_MS);
+
+    emit("speech-candidate-stopped", {
+      candidateId: candidate.id,
+      audioEndMs: candidate.audioEndMs,
+      avgRms: candidate.avgRms,
+      peakRms: candidate.peakRms,
+      noiseFloorRms: candidate.noiseFloorAtStart
+    });
+
+    return candidate;
+  }
+
+  function takeNextSpeechCandidate() {
+    let candidate = state.pendingSpeechCandidates.shift() || null;
+
+    // Some provider event orderings can deliver transcription completion
+    // before speech_stopped. Finalize the live candidate so the transcript and
+    // its acoustic evidence still travel together.
+    if (!candidate && state.activeSpeechCandidate) {
+      candidate = finalizeSpeechCandidate({});
+      const index = state.pendingSpeechCandidates.findIndex(
+        (item) => item.id === candidate?.id
+      );
+      if (index >= 0) {
+        state.pendingSpeechCandidates.splice(index, 1);
+      }
+    }
+
+    clearCandidateTimer(candidate);
+    return candidate;
+  }
+
+  function sampleAcoustics() {
+    if (!state.analyser || !state.analyserData) {
+      state.analyserFrame = null;
+      return;
+    }
+
+    state.analyser.getFloatTimeDomainData(state.analyserData);
+
+    let sumSquares = 0;
+    let peak = 0;
+
+    for (const sample of state.analyserData) {
+      const absolute = Math.abs(sample);
+      sumSquares += sample * sample;
+      if (absolute > peak) {
+        peak = absolute;
+      }
+    }
+
+    const rms = Math.sqrt(sumSquares / state.analyserData.length);
+
+    state.currentRms = rms;
+    state.currentPeak = peak;
+
+    const candidate = state.activeSpeechCandidate;
+    if (candidate) {
+      candidate.rmsSum += rms;
+      candidate.sampleCount += 1;
+      candidate.peakRms = Math.max(candidate.peakRms, peak);
+    } else {
+      // Slow environmental baseline. Never allow silence to collapse the floor
+      // to zero; the gate cares about contrast against the current room.
+      const bounded = Math.max(rms, NOISE_FLOOR_MIN);
+      state.noiseFloorRms =
+        state.noiseFloorRms * 0.97 + bounded * 0.03;
+    }
+
+    state.analyserFrame = global.requestAnimationFrame(sampleAcoustics);
+  }
+
+  async function startAcousticMonitor(stream) {
+    const AudioContextConstructor =
+      global.AudioContext || global.webkitAudioContext;
+
+    if (!AudioContextConstructor || !stream) {
+      warn("Web Audio foreground evidence unavailable; wake-word gating remains active.");
+      return false;
+    }
+
+    try {
+      const audioContext = new AudioContextConstructor();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.25;
+      source.connect(analyser);
+
+      state.audioContext = audioContext;
+      state.microphoneSource = source;
+      state.analyser = analyser;
+      state.analyserData = new Float32Array(analyser.fftSize);
+
+      if (audioContext.state === "suspended") {
+        await audioContext.resume().catch(() => undefined);
+      }
+
+      if (typeof global.requestAnimationFrame === "function") {
+        state.analyserFrame = global.requestAnimationFrame(sampleAcoustics);
+      }
+
+      log("Foreground acoustic monitor online.");
+      return true;
+    } catch (error) {
+      warn("Foreground acoustic monitor could not start.", error);
+      return false;
+    }
+  }
+
+  async function stopAcousticMonitor() {
+    if (
+      state.analyserFrame !== null &&
+      typeof global.cancelAnimationFrame === "function"
+    ) {
+      global.cancelAnimationFrame(state.analyserFrame);
+    }
+
+    state.analyserFrame = null;
+
+    try {
+      state.microphoneSource?.disconnect();
+    } catch (_) {
+      // Best effort only.
+    }
+
+    try {
+      state.analyser?.disconnect();
+    } catch (_) {
+      // Best effort only.
+    }
+
+    try {
+      await state.audioContext?.close();
+    } catch (_) {
+      // Best effort only.
+    }
+
+    state.audioContext = null;
+    state.microphoneSource = null;
+    state.analyser = null;
+    state.analyserData = null;
+    state.currentRms = 0;
+    state.currentPeak = 0;
+  }
+
+  function handleMaddySpeechStarted() {
+    state.maddySpeaking = true;
+    state.lastMaddySpeechStartedAt = now();
+    extendAttention("maddy-speaking");
+  }
+
+  function handleMaddySpeechEnded() {
+    state.maddySpeaking = false;
+    state.lastMaddySpeechEndedAt = now();
+    extendAttention("maddy-yielded-floor");
   }
 
   function clearResponseTimeout() {
@@ -342,42 +921,93 @@
     state.activeResponseStartedAt = null;
   }
 
-  function beginUserTurn(message = {}) {
-    /**
-     * New human speech supersedes any older Maddy response.
-     */
-    if (state.responseInProgress || state.activeResponseId) {
-      cancelActiveResponse("user-interruption");
+  function acceptForegroundTurn(
+    transcript,
+    candidate = null,
+    decision = {},
+    message = {}
+  ) {
+    const cleanTranscript = normalizeTranscript(transcript);
+    const priorTurnId = state.activeTurnId;
+    const priorResponseId = state.activeResponseId;
+    const shouldInterrupt = Boolean(
+      state.maddySpeaking ||
+      state.responseInProgress ||
+      state.activeResponseId
+    );
+
+    if (decision.wakeWord) {
+      wakeAttention(cleanTranscript, candidate);
+      updateForegroundReference(candidate, true);
+    } else {
+      extendAttention("accepted-foreground-turn");
+      updateForegroundReference(candidate, false);
     }
 
-    emitMaddyEvent("interrupt", {
-      reason: "user-speech-started",
-      priorTurnId: state.activeTurnId,
-      priorResponseId: state.activeResponseId
-    });
+    if (state.responseInProgress || state.activeResponseId) {
+      cancelActiveResponse("confirmed-foreground-interruption");
+    }
+
+    if (shouldInterrupt) {
+      emitMaddyEvent("interrupt", {
+        reason: decision.wakeWord
+          ? "wake-word-interruption"
+          : "confirmed-foreground-interruption",
+        priorTurnId,
+        priorResponseId
+      });
+    }
 
     state.activeTurnId = createTurnId();
-    state.turnStartedAt = now();
-    state.turnStoppedAt = null;
+    state.turnStartedAt = Number.isFinite(candidate?.startedAt)
+      ? candidate.startedAt
+      : now();
+    state.turnStoppedAt = Number.isFinite(candidate?.stoppedAt)
+      ? candidate.stoppedAt
+      : now();
 
     state.responseRequestedForTurn = false;
     state.responseRequestedAt = null;
 
     clearTranscriptTimeout();
     state.awaitingTranscript = false;
-    state.lastTranscript = "";
+    state.lastTranscript = cleanTranscript;
     state.lastRouterResult = null;
 
     resetActiveResponseState();
 
-    log(`User turn started: ${state.activeTurnId}`, {
-      audioStartMs: message.audio_start_ms ?? null
+    state.lastAcceptedSpeechAt = now();
+    state.acceptedForegroundTurns += 1;
+
+    log(`Foreground user turn accepted: ${state.activeTurnId}.`, {
+      reason: decision.reason || "foreground",
+      wakeWord: Boolean(decision.wakeWord),
+      transcript: cleanTranscript,
+      acoustics: decision.acoustics || acousticSnapshot(candidate)
     });
 
+    // Only accepted foreground speech reaches the canonical conversation
+    // lifecycle. Raw VAD activity never receives user-turn authority.
     emit("speech-started", {
       turnId: state.activeTurnId,
-      audioStartMs: message.audio_start_ms ?? null
+      audioStartMs: candidate?.audioStartMs ?? message.audio_start_ms ?? null,
+      provisional: false
     });
+
+    emit("speech-stopped", {
+      turnId: state.activeTurnId,
+      audioEndMs: candidate?.audioEndMs ?? message.audio_end_ms ?? null,
+      provisional: false,
+      detectedSpeechDurationMs:
+        Number.isFinite(candidate?.startedAt) &&
+        Number.isFinite(candidate?.stoppedAt)
+          ? Math.max(0, Math.round(candidate.stoppedAt - candidate.startedAt))
+          : null
+    });
+
+    void routeTranscriptAndAuthorize(cleanTranscript, message);
+
+    return true;
   }
 
   function clearTranscriptTimeout() {
@@ -829,133 +1459,98 @@
   }
 
   function awaitTranscriptBeforeResponse(message = {}) {
-    if (!state.activeTurnId) {
-      warn(
-        "Speech stopped without an active turn. Creating a recovery turn."
-      );
+    const candidate = finalizeSpeechCandidate(message);
 
-      state.activeTurnId = createTurnId();
-      state.turnStartedAt = now();
-      state.responseRequestedForTurn = false;
+    if (!candidate) {
+      emit("speech-candidate-ignored", {
+        reason: "speech-stopped-without-candidate"
+      });
+      return false;
     }
 
-    state.turnStoppedAt = now();
-    state.awaitingTranscript = true;
-
-    emit("speech-stopped", {
-      turnId: state.activeTurnId,
-      audioEndMs: message.audio_end_ms ?? null,
-      detectedSpeechDurationMs:
-        state.turnStartedAt !== null
-          ? elapsedSince(state.turnStartedAt)
-          : null
+    log(`Provisional speech captured: ${candidate.id}; awaiting transcript before attention judgment.`, {
+      avgRms: candidate.avgRms,
+      peakRms: candidate.peakRms,
+      noiseFloorRms: candidate.noiseFloorAtStart
     });
-
-    clearTranscriptTimeout();
-
-    state.transcriptTimeout = global.setTimeout(() => {
-      if (!state.awaitingTranscript) {
-        return;
-      }
-
-      state.awaitingTranscript = false;
-
-      warn(
-        `Transcript was not ready within ${TRANSCRIPT_TIMEOUT_MS}ms for ${state.activeTurnId}; using Brain-safe response.`
-      );
-
-      emit("transcript-timeout", {
-        turnId: state.activeTurnId
-      });
-
-      authorizeFallbackResponse("transcript not ready within 900ms");
-    }, TRANSCRIPT_TIMEOUT_MS);
-
-    log(
-      `User turn committed; awaiting MEOS transcript routing: ${state.activeTurnId}.`
-    );
 
     return true;
   }
 
   function handleInputTranscriptionCompleted(message = {}) {
-    const transcript =
-      typeof message.transcript === "string"
-        ? message.transcript.trim()
-        : "";
+    const transcript = normalizeTranscript(message.transcript);
+    const candidate = takeNextSpeechCandidate();
 
     clearTranscriptTimeout();
-
-    const wasAwaiting = state.awaitingTranscript;
     state.awaitingTranscript = false;
 
     if (!transcript) {
-      if (wasAwaiting) {
-        authorizeFallbackResponse("empty input transcript");
-      }
-      return;
-    }
+      state.ignoredBackgroundTurns += 1;
 
-    if (state.responseRequestedForTurn || state.responseInProgress) {
-      state.lastTranscript = transcript;
-
-      const router = global.ExecutiveRouter;
-
-      if (router && typeof router.handle === "function") {
-        void router
-          .handle(transcript, {
-            source: "openai-realtime-late-transcript",
-            requestId: state.activeTurnId
-          })
-          .then((routerResult) => {
-            state.lastRouterResult = routerResult;
-
-            emit("request-routed-late", {
-              turnId: state.activeTurnId,
-              route: routerResult.route,
-              researchDepth: routerResult.researchDepth
-            });
-          })
-          .catch((error) => {
-            warn(
-              "Late transcript routing failed.",
-              error
-            );
-          });
-      }
-
-      emit("transcript-completed", {
-        turnId: state.activeTurnId,
-        transcript,
-        itemId: message.item_id || null,
-        late: true
+      emit("speech-candidate-ignored", {
+        candidateId: candidate?.id || null,
+        reason: "empty-transcript"
       });
 
       return;
     }
 
-    void routeTranscriptAndAuthorize(
+    const decision = evaluateForegroundCandidate(
       transcript,
+      candidate
+    );
+
+    if (!decision.accepted) {
+      state.ignoredBackgroundTurns += 1;
+
+      log("Background/unaddressed speech ignored; conversational floor preserved.", {
+        candidateId: candidate?.id || null,
+        reason: decision.reason,
+        transcript,
+        acoustics: decision.acoustics
+      });
+
+      emit("speech-candidate-ignored", {
+        candidateId: candidate?.id || null,
+        reason: decision.reason,
+        transcript,
+        acoustics: decision.acoustics
+      });
+
+      return;
+    }
+
+    acceptForegroundTurn(
+      transcript,
+      candidate,
+      decision,
       message
     );
   }
 
   function handleInputTranscriptionFailed(message = {}) {
-    clearTranscriptTimeout();
-    state.awaitingTranscript = false;
-
+    const candidate = takeNextSpeechCandidate();
     const failure =
       message?.error?.message ||
       "Input transcription failed.";
 
-    warn(failure, message);
+    clearTranscriptTimeout();
+    state.awaitingTranscript = false;
+    state.ignoredBackgroundTurns += 1;
 
-    emit("transcript-failed", {
-      message: failure,
-      turnId: state.activeTurnId
+    warn(
+      "Provisional speech transcription failed; no user turn or fallback response was created.",
+      {
+        candidateId: candidate?.id || null,
+        failure
+      }
+    );
+
+    emit("speech-candidate-ignored", {
+      candidateId: candidate?.id || null,
+      reason: "transcription-failed",
+      message: failure
     });
-
-    authorizeFallbackResponse(failure);
   }
 
   function cancelActiveResponse(reason = "cancelled") {
@@ -1374,7 +1969,7 @@
         break;
 
       case "input_audio_buffer.speech_started":
-        beginUserTurn(message);
+        beginSpeechCandidate(message);
         break;
 
       case "input_audio_buffer.speech_stopped":
@@ -1536,12 +2131,23 @@
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true,
+            // Automatic gain can amplify distant office chatter and erase
+            // useful near/far level differences. Preserve those differences
+            // for the foreground-attention gate; device DSP may still apply
+            // its own bounded processing.
+            autoGainControl: false,
             channelCount: 1
           }
         });
 
       state.microphoneStream = microphoneStream;
+
+      await startAcousticMonitor(microphoneStream);
+
+      const microphoneTrack = microphoneStream.getAudioTracks?.()[0] || null;
+      if (microphoneTrack?.getSettings) {
+        log("Microphone foreground-attention settings.", microphoneTrack.getSettings());
+      }
 
       microphoneStream.getTracks().forEach((track) => {
         peerConnection.addTrack(
@@ -1635,7 +2241,10 @@
 
     clearResponseTimeout();
     clearTranscriptTimeout();
+    clearAllSpeechCandidates();
     state.awaitingTranscript = false;
+
+    await stopAcousticMonitor();
 
     if (state.responseInProgress) {
       cancelActiveResponse(reason);
@@ -1698,6 +2307,11 @@
 
     resetActiveResponseState();
 
+    state.maddySpeaking = false;
+    state.lastMaddySpeechStartedAt = null;
+    state.lastMaddySpeechEndedAt = null;
+    releaseAttention(reason);
+
     state.disconnecting = false;
 
     if (!options.suppressLog) {
@@ -1723,6 +2337,16 @@
 
     return getStatus();
   }
+
+  global.addEventListener(
+    "meos:maddy:speech-started",
+    handleMaddySpeechStarted
+  );
+
+  global.addEventListener(
+    "meos:maddy:speech-ended",
+    handleMaddySpeechEnded
+  );
 
   global.OpenAIRealtime = Object.freeze({
     version: VERSION,
