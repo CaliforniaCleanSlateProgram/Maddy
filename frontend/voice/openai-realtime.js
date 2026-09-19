@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.7
+ * File Version: 2.0.8
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -13,7 +13,8 @@
  * - Preserve the leading wake word with a longer server-VAD prefix window in noisy rooms.
  * - Never reuse stale acoustic samples as proof that a later speaker is the foreground user.
  * - Keep background office speech from stealing conversational control or interrupting Maddy.
- * - Authorize no more than one OpenAI response per user turn.
+ * - Bind every asynchronous routing result to the exact user turn that created it.
+ * - Authorize no more than one OpenAI response per user turn, even when prior routing finishes late.
  * - Accept and publish each OpenAI response only once.
  * - Preserve turn IDs and response IDs for downstream TTS control.
  * - Support interruption and complete session shutdown.
@@ -22,9 +23,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.7";
+  const VERSION = "2.0.8";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE207-WAKE-CAPTURE-ROBUSTNESS-20260919-A";
+  const BUILD_ID = "VE208-TURN-BOUND-ROUTING-AUTHORITY-20260919-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -69,6 +70,8 @@
 
     responseRequestedForTurn: false,
     responseRequestedAt: null,
+    routingTurnId: null,
+    authorizedTurnId: null,
     responseInProgress: false,
     activeResponseId: null,
     activeResponseStartedAt: null,
@@ -173,6 +176,8 @@
       activeTurnId: state.activeTurnId,
       responseRequestedForTurn:
         state.responseRequestedForTurn,
+      routingTurnId: state.routingTurnId,
+      authorizedTurnId: state.authorizedTurnId,
 
       responseInProgress: state.responseInProgress,
       activeResponseId: state.activeResponseId,
@@ -979,6 +984,8 @@
 
     state.responseRequestedForTurn = false;
     state.responseRequestedAt = null;
+    state.routingTurnId = null;
+    state.authorizedTurnId = null;
 
     clearTranscriptTimeout();
     state.awaitingTranscript = false;
@@ -1180,7 +1187,43 @@
     ].join(" ");
   }
 
-  function sendGovernedResponse(routerResult, transcript) {
+  function sendGovernedResponse(
+    routerResult,
+    transcript,
+    turnId = state.activeTurnId
+  ) {
+    if (!turnId || state.activeTurnId !== turnId) {
+      warn(
+        `Stale routing result blocked before response authorization: ${turnId || "unknown"}.`,
+        { activeTurnId: state.activeTurnId }
+      );
+
+      emit("duplicate-blocked", {
+        layer: "stale-turn-routing-result",
+        turnId,
+        activeTurnId: state.activeTurnId
+      });
+
+      return false;
+    }
+
+    if (
+      state.authorizedTurnId === turnId ||
+      state.responseRequestedForTurn
+    ) {
+      warn(
+        `Additional response authorization blocked for ${turnId}.`
+      );
+
+      emit("duplicate-blocked", {
+        layer: "turn-response-authorization",
+        turnId
+      });
+
+      return false;
+    }
+
+    state.authorizedTurnId = turnId;
     state.responseRequestedForTurn = true;
     state.responseRequestedAt = now();
     state.responseInProgress = true;
@@ -1199,6 +1242,9 @@
     });
 
     if (!sent) {
+      if (state.authorizedTurnId === turnId) {
+        state.authorizedTurnId = null;
+      }
       state.responseRequestedForTurn = false;
       state.responseRequestedAt = null;
       state.responseInProgress = false;
@@ -1213,14 +1259,14 @@
     }
 
     log(
-      `VERDICT: one MEOS-governed OpenAI response authorized for ${state.activeTurnId}.`,
+      `VERDICT: one MEOS-governed OpenAI response authorized for ${turnId}.`,
       {
         route: routerResult?.route || null
       }
     );
 
     emit("response-authorized", {
-      turnId: state.activeTurnId,
+      turnId,
       route: routerResult?.route || null,
       authorizationLatencyMs:
         state.turnStoppedAt !== null
@@ -1250,14 +1296,25 @@
       return authorizeFallbackResponse("empty input transcript");
     }
 
-    if (state.responseRequestedForTurn) {
+    const turnId = state.activeTurnId;
+
+    if (!turnId) {
+      warn("MEOS routing attempted without an active user turn.");
+      return false;
+    }
+
+    if (
+      state.responseRequestedForTurn ||
+      state.authorizedTurnId === turnId ||
+      state.routingTurnId === turnId
+    ) {
       warn(
-        `Duplicate routed response blocked for ${state.activeTurnId}.`
+        `Duplicate routed response blocked for ${turnId}.`
       );
 
       emit("duplicate-blocked", {
         layer: "meos-router-authorization",
-        turnId: state.activeTurnId
+        turnId
       });
 
       return false;
@@ -1282,14 +1339,19 @@
       });
 
       return authorizeFallbackResponse(
-        "MEOS Executive Router unavailable"
+        "MEOS Executive Router unavailable",
+        turnId
       );
     }
 
+    // Claim routing authority before the first await. This closes the race where
+    // two transcript-complete callbacks for the same turn could both pass the
+    // pre-await duplicate checks and later authorize two responses.
+    state.routingTurnId = turnId;
     state.lastTranscript = cleanTranscript;
 
     emit("transcript-completed", {
-      turnId: state.activeTurnId,
+      turnId,
       transcript: cleanTranscript,
       itemId: message.item_id || null
     });
@@ -1299,12 +1361,26 @@
         cleanTranscript,
         {
           source: "openai-realtime-transcript",
-          requestId: state.activeTurnId
+          requestId: turnId
         }
       );
 
+      if (state.activeTurnId !== turnId) {
+        warn(
+          `Stale routing result discarded for ${turnId}; active turn is ${state.activeTurnId || "none"}.`
+        );
+
+        emit("duplicate-blocked", {
+          layer: "stale-turn-routing-result",
+          turnId,
+          activeTurnId: state.activeTurnId
+        });
+
+        return false;
+      }
+
       emit("request-routed", {
-        turnId: state.activeTurnId,
+        turnId,
         route: routerResult.route,
         researchDepth: routerResult.researchDepth,
         provider: routerResult.provider || null
@@ -1312,14 +1388,15 @@
 
       return sendGovernedResponse(
         routerResult,
-        cleanTranscript
+        cleanTranscript,
+        turnId
       );
     } catch (error) {
       const brain = global.ExecutiveBrain;
       const brainResult =
         brain && typeof brain.routeRequest === "function"
           ? brain.routeRequest(cleanTranscript, {
-              requestId: state.activeTurnId,
+              requestId: turnId,
               source: "openai-realtime-transcript"
             })
           : null;
@@ -1338,15 +1415,23 @@
           }
         };
 
+        if (state.activeTurnId !== turnId) {
+          warn(
+            `Stale provider-fallback result discarded for ${turnId}; active turn is ${state.activeTurnId || "none"}.`
+          );
+          return false;
+        }
+
         emit("provider-unavailable", {
-          turnId: state.activeTurnId,
+          turnId,
           route: brainResult.route,
           message: error?.message || String(error)
         });
 
         return sendGovernedResponse(
           limitedResult,
-          cleanTranscript
+          cleanTranscript,
+          turnId
         );
       }
 
@@ -1359,12 +1444,17 @@
         message:
           error?.message ||
           "MEOS could not route the user request.",
-        turnId: state.activeTurnId
+        turnId
       });
 
       return authorizeFallbackResponse(
-        error?.message || "MEOS routing failed"
+        error?.message || "MEOS routing failed",
+        turnId
       );
+    } finally {
+      if (state.routingTurnId === turnId) {
+        state.routingTurnId = null;
+      }
     }
   }
 
@@ -1430,11 +1520,27 @@
     ].join(" ");
   }
 
-  function authorizeFallbackResponse(reason) {
-    if (state.responseRequestedForTurn || state.responseInProgress) {
+  function authorizeFallbackResponse(
+    reason,
+    turnId = state.activeTurnId
+  ) {
+    if (!turnId || state.activeTurnId !== turnId) {
+      warn(
+        `Stale fallback response blocked for ${turnId || "unknown"}.`,
+        { activeTurnId: state.activeTurnId, reason }
+      );
       return false;
     }
 
+    if (
+      state.responseRequestedForTurn ||
+      state.responseInProgress ||
+      state.authorizedTurnId === turnId
+    ) {
+      return false;
+    }
+
+    state.authorizedTurnId = turnId;
     state.responseRequestedForTurn = true;
     state.responseRequestedAt = now();
     state.responseInProgress = true;
@@ -1448,6 +1554,9 @@
     });
 
     if (!sent) {
+      if (state.authorizedTurnId === turnId) {
+        state.authorizedTurnId = null;
+      }
       state.responseRequestedForTurn = false;
       state.responseRequestedAt = null;
       state.responseInProgress = false;
@@ -1455,12 +1564,12 @@
     }
 
     warn(
-      `MEOS Brain-safe response authorized for ${state.activeTurnId}.`,
+      `MEOS Brain-safe response authorized for ${turnId}.`,
       { reason }
     );
 
     emit("response-authorized", {
-      turnId: state.activeTurnId,
+      turnId,
       route: "brain-context-fallback",
       fallback: true,
       reason
@@ -2313,6 +2422,8 @@
 
     state.responseRequestedForTurn = false;
     state.responseRequestedAt = null;
+    state.routingTurnId = null;
+    state.authorizedTurnId = null;
 
     state.responseTextById.clear();
 
