@@ -1,7 +1,7 @@
 /*
  * MEOS Executive Recall Engine
- * Version: 1.0.2
- * Build: ERCL102-CACHE-AUTHORITY-CIRCUIT-BREAKER-20260808-A
+ * Version: 1.0.3
+ * Build: ERCL103-RECONSTRUCTIVE-RECALL-WORKING-MEMORY-20260919-A
  *
  * Mission:
  * Reconstruct executive context from MEOS knowledge, memory, search results,
@@ -31,14 +31,14 @@
 
     const ExecutiveRecall = {
         name: "MEOS Executive Recall Engine",
-        version: "1.0.2",
-        buildId: "ERCL102-CACHE-AUTHORITY-CIRCUIT-BREAKER-20260808-A",
+        version: "1.0.3",
+        buildId: "ERCL103-RECONSTRUCTIVE-RECALL-WORKING-MEMORY-20260919-A",
         status: "initializing",
         operatingMode: "context-reconstruction",
 
         configuration: {
-            persistenceEnabled: true,
-            automaticPersistence: true,
+            persistenceEnabled: false,
+            automaticPersistence: false,
             localStorageKey: STORAGE_KEY,
             organizationNeutralCore: true,
             defaultMode: RECALL_MODES.EXECUTIVE,
@@ -69,7 +69,20 @@
 
         persistenceRuntime: {
             authority: "repository-backed-source-knowledge",
-            localRole: "best-effort-recall-cache",
+            memoryModel: "reconstructive-recall",
+            localRole: "optional-disposable-recall-workspace",
+            browserAuthority: false,
+            automaticBrowserHydration: false,
+            sessionStateDurability: "ephemeral-until-governed-durable-scope",
+            sourceReconstructionEnabled: true,
+            reconstructionCount: 0,
+            lastReconstructionAt: null,
+            lastLineageFingerprint: null,
+            legacySnapshotObserved: false,
+            legacySnapshotBytes: 0,
+            legacySnapshotSchema: null,
+            legacySnapshotVersion: null,
+            legacySnapshotImported: false,
             suspended: false,
             reason: null,
             suspendedAt: null,
@@ -84,7 +97,7 @@
                 ...(options.configuration || options)
             };
 
-            this.restore();
+            this.observeLegacyBrowserSnapshot();
             this.initializedAt = new Date().toISOString();
             this.status = "online";
 
@@ -261,6 +274,7 @@
                     0,
                     Number((completedAt - startedAt).toFixed(2))
                 ),
+                continuity: this.buildRecallContinuity(evidence),
                 generatedAt: new Date().toISOString()
             };
 
@@ -1526,7 +1540,11 @@
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 runCount: 0,
-                lastRunAt: null
+                lastRunAt: null,
+                continuityRole: "recall-lens",
+                durability: this.configuration.persistenceEnabled
+                    ? "explicit-browser-cache-only"
+                    : "session-only-until-governed-durable-scope"
             };
 
             this.savedRecalls.push(saved);
@@ -1576,6 +1594,8 @@
                 openLoopCount: response.openLoops.length,
                 conflictCount: response.conflicts.length,
                 durationMs: response.durationMs,
+                lineageFingerprint:
+                    response.continuity?.lineageFingerprint || null,
                 recalledAt: new Date().toISOString()
             };
 
@@ -1640,9 +1660,9 @@
                 recordType: "system-component",
                 title: "MEOS Executive Recall Engine",
                 summary:
-                    "Universal executive context reconstruction across knowledge, memory, search, missions, timelines, documents, decisions, dependencies, and open loops.",
+                    "Universal reconstructive executive memory across durable knowledge, memory, search, missions, timelines, documents, decisions, dependencies, and open loops.",
                 content:
-                    "Executive Recall organizes existing evidence into a supported executive context package. It does not invent facts, approve policy, or alter source records.",
+                    "Executive Recall reconstructs context from connected source authority on demand. Browser state is disposable workspace, not memory authority. It does not invent facts, approve policy, or alter source records.",
                 tags: [
                     "meos-core",
                     "executive-recall",
@@ -1708,12 +1728,36 @@
                     this.savedRecalls.length,
                 analytics:
                     this.clone(this.analytics),
+                continuity: {
+                    memoryModel: this.persistenceRuntime.memoryModel,
+                    authority: this.persistenceRuntime.authority,
+                    browserAuthority: this.persistenceRuntime.browserAuthority,
+                    localRole: this.persistenceRuntime.localRole,
+                    sessionStateDurability:
+                        this.persistenceRuntime.sessionStateDurability,
+                    sourceReconstructionEnabled:
+                        this.persistenceRuntime.sourceReconstructionEnabled,
+                    reconstructionCount:
+                        this.persistenceRuntime.reconstructionCount,
+                    lastReconstructionAt:
+                        this.persistenceRuntime.lastReconstructionAt,
+                    lastLineageFingerprint:
+                        this.persistenceRuntime.lastLineageFingerprint
+                },
                 persistence: {
                     authority: this.persistenceRuntime.authority,
                     localRole: this.persistenceRuntime.localRole,
                     configured:
                         this.configuration.persistenceEnabled &&
                         this.configuration.automaticPersistence,
+                    automaticBrowserHydration:
+                        this.persistenceRuntime.automaticBrowserHydration,
+                    legacySnapshotObserved:
+                        this.persistenceRuntime.legacySnapshotObserved,
+                    legacySnapshotBytes:
+                        this.persistenceRuntime.legacySnapshotBytes,
+                    legacySnapshotImported:
+                        this.persistenceRuntime.legacySnapshotImported,
                     suspended: this.persistenceRuntime.suspended,
                     reason: this.persistenceRuntime.reason,
                     suspendedAt: this.persistenceRuntime.suspendedAt,
@@ -1809,6 +1853,115 @@
             };
         },
 
+        buildRecallLineageFingerprint(evidence = []) {
+            const canonical = (Array.isArray(evidence) ? evidence : [])
+                .map((item) => [
+                    item?.id || item?.recordId || item?.sourceId || "",
+                    item?.source || item?.sourceType || "",
+                    item?.date || item?.updatedAt || item?.createdAt || "",
+                    Number(item?.confidence || 0).toFixed(3)
+                ].join("|"))
+                .sort()
+                .join("\n");
+
+            let hash = 2166136261;
+            for (let index = 0; index < canonical.length; index += 1) {
+                hash ^= canonical.charCodeAt(index);
+                hash = Math.imul(hash, 16777619);
+            }
+
+            return `fnv1a32:${(hash >>> 0)
+                .toString(16)
+                .padStart(8, "0")}:${evidence.length}`;
+        },
+
+        buildRecallContinuity(evidence = []) {
+            const lineageFingerprint =
+                this.buildRecallLineageFingerprint(evidence);
+
+            this.persistenceRuntime.reconstructionCount += 1;
+            this.persistenceRuntime.lastReconstructionAt =
+                new Date().toISOString();
+            this.persistenceRuntime.lastLineageFingerprint =
+                lineageFingerprint;
+
+            return {
+                schema: "meos.executive-recall.continuity.v1",
+                memoryModel: this.persistenceRuntime.memoryModel,
+                authority: this.persistenceRuntime.authority,
+                browserAuthority: false,
+                reconstructedFromConnectedSources: true,
+                evidenceCount: Array.isArray(evidence)
+                    ? evidence.length
+                    : 0,
+                lineageFingerprint,
+                localWorkspaceRole: this.persistenceRuntime.localRole,
+                localWorkspaceDurable: false,
+                sessionRecallLensesDurable:
+                    this.configuration.persistenceEnabled === true,
+                sessionStateDurability:
+                    this.persistenceRuntime.sessionStateDurability
+            };
+        },
+
+        observeLegacyBrowserSnapshot() {
+            this.persistenceRuntime.legacySnapshotObserved = false;
+            this.persistenceRuntime.legacySnapshotBytes = 0;
+            this.persistenceRuntime.legacySnapshotSchema = null;
+            this.persistenceRuntime.legacySnapshotVersion = null;
+            this.persistenceRuntime.legacySnapshotImported = false;
+
+            if (!global.localStorage) {
+                return {
+                    success: true,
+                    observed: false,
+                    browserStorageAvailable: false
+                };
+            }
+
+            try {
+                const stored = global.localStorage.getItem(
+                    this.configuration.localStorageKey
+                );
+
+                if (!stored) {
+                    return {
+                        success: true,
+                        observed: false,
+                        browserStorageAvailable: true
+                    };
+                }
+
+                this.persistenceRuntime.legacySnapshotObserved = true;
+                this.persistenceRuntime.legacySnapshotBytes =
+                    typeof Blob === "function"
+                        ? new Blob([stored]).size
+                        : stored.length;
+
+                try {
+                    const parsed = JSON.parse(stored);
+                    this.persistenceRuntime.legacySnapshotSchema =
+                        parsed?.schema || null;
+                    this.persistenceRuntime.legacySnapshotVersion =
+                        parsed?.version || null;
+                } catch {}
+
+                return {
+                    success: true,
+                    observed: true,
+                    imported: false,
+                    authorityClaimed: false,
+                    bytes: this.persistenceRuntime.legacySnapshotBytes
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    observed: false,
+                    error: error?.message || String(error)
+                };
+            }
+        },
+
         isStorageQuotaError(error) {
             return Boolean(
                 error &&
@@ -1832,7 +1985,7 @@
             if (!this.persistenceRuntime.warningEmitted) {
                 this.persistenceRuntime.warningEmitted = true;
                 console.warn(
-                    "[MEOS Executive Recall] Browser recall cache persistence suspended after storage quota exhaustion. Recall continues from repository-backed source knowledge; repeated local writes are suppressed until explicitly retried."
+                    "[MEOS Executive Recall] Optional browser recall workspace persistence suspended after storage quota exhaustion. Recall reconstruction continues from repository-backed source knowledge; browser state is not memory authority."
                 );
             }
 
@@ -1958,21 +2111,29 @@
             }
         },
 
-        restore() {
-            if (
-                !this.configuration.persistenceEnabled ||
-                !global.localStorage
-            ) {
+        restore(options = {}) {
+            if (options.allowBrowserCacheImport !== true) {
                 return {
-                    success: false,
-                    restored: false
+                    success: true,
+                    restored: false,
+                    blocked: true,
+                    reason: "browser-cache-not-authority",
+                    authority: this.persistenceRuntime.authority,
+                    localRole: this.persistenceRuntime.localRole
                 };
             }
 
-            const stored =
-                global.localStorage.getItem(
-                    this.configuration.localStorageKey
-                );
+            if (!global.localStorage) {
+                return {
+                    success: false,
+                    restored: false,
+                    error: "Browser local storage is unavailable."
+                };
+            }
+
+            const stored = global.localStorage.getItem(
+                this.configuration.localStorageKey
+            );
 
             if (!stored) {
                 return {
@@ -1993,17 +2154,19 @@
                 if (result.success) {
                     this.persistenceRuntime.lastRestoreAt =
                         new Date().toISOString();
+                    this.persistenceRuntime.legacySnapshotImported = true;
                 }
 
                 return {
                     ...result,
                     restored: result.success,
+                    explicitLegacyImport: true,
                     authority: this.persistenceRuntime.authority,
                     localRole: this.persistenceRuntime.localRole
                 };
             } catch (error) {
                 console.warn(
-                    "[MEOS Executive Recall] Stored state could not be restored:",
+                    "[MEOS Executive Recall] Explicit browser-cache import failed:",
                     error
                 );
 
@@ -2015,100 +2178,125 @@
             }
         },
 
-        runRecallCacheAuthorityAcceptanceTest() {
-            const originalRuntime = this.clone(this.persistenceRuntime);
-            const originalSetItem = global.localStorage?.setItem;
+        runBrowserIndependenceAcceptanceTest() {
             const checks = [];
+            const originalConfiguration = this.clone(this.configuration);
+            const originalRuntime = this.clone(this.persistenceRuntime);
+            const originalHistory = this.clone(this.recallHistory);
+            const originalSavedRecalls = this.clone(this.savedRecalls);
+            const originalAnalytics = this.clone(this.analytics);
 
             try {
                 checks.push({
-                    name: "Executive Recall declares repository-backed source knowledge as authority",
+                    name: "Automatic browser persistence is disabled by default",
+                    passed:
+                        this.configuration.persistenceEnabled === false &&
+                        this.configuration.automaticPersistence === false
+                });
+
+                checks.push({
+                    name: "Repository-backed source knowledge remains recall authority",
                     passed:
                         this.persistenceRuntime.authority ===
-                        "repository-backed-source-knowledge"
+                            "repository-backed-source-knowledge" &&
+                        this.persistenceRuntime.browserAuthority === false
                 });
 
                 checks.push({
-                    name: "Browser persistence is explicitly classified as best-effort recall cache",
+                    name: "Executive Recall uses a reconstructive memory model rather than browser snapshot authority",
                     passed:
-                        this.persistenceRuntime.localRole ===
-                        "best-effort-recall-cache"
+                        this.persistenceRuntime.memoryModel ===
+                            "reconstructive-recall" &&
+                        this.persistenceRuntime.sourceReconstructionEnabled === true
                 });
 
-                if (global.localStorage && typeof originalSetItem === "function") {
-                    global.localStorage.setItem = () => {
-                        const error = new DOMException(
-                            "Acceptance quota exhaustion",
-                            "QuotaExceededError"
-                        );
-                        throw error;
-                    };
-
-                    this.persistenceRuntime.suspended = false;
-                    this.persistenceRuntime.reason = null;
-                    this.persistenceRuntime.suspendedAt = null;
-                    this.persistenceRuntime.warningEmitted = false;
-
-                    const first = this.persist();
-                    const second = this.persistIfEnabled();
-
-                    checks.push({
-                        name: "Quota exhaustion trips a fail-visible browser persistence circuit breaker",
-                        passed:
-                            first?.suspended === true &&
-                            first?.reason ===
-                            "browser-storage-quota-exhausted"
-                    });
-
-                    checks.push({
-                        name: "Repeated recall-cache writes are suppressed after the first quota failure",
-                        passed:
-                            second?.suspended === true &&
-                            second?.persisted === false
-                    });
-                } else {
-                    checks.push({
-                        name: "Quota exhaustion trips a fail-visible browser persistence circuit breaker",
-                        passed: true
-                    });
-                    checks.push({
-                        name: "Repeated recall-cache writes are suppressed after the first quota failure",
-                        passed: true
-                    });
-                }
-
+                const blockedRestore = this.restore();
                 checks.push({
-                    name: "Recall engine remains online when its local cache is suspended",
-                    passed: this.status === "online"
-                });
-
-                checks.push({
-                    name: "Persistence degradation does not grant new external authority or alter recall behavior",
+                    name: "Legacy browser state is never hydrated automatically",
                     passed:
+                        blockedRestore?.blocked === true &&
+                        blockedRestore?.reason ===
+                            "browser-cache-not-authority"
+                });
+
+                const beforeCount =
+                    this.persistenceRuntime.reconstructionCount;
+                const continuity = this.buildRecallContinuity([
+                    {
+                        id: "acceptance-evidence",
+                        source: "acceptance-source",
+                        date: "2026-09-19T00:00:00.000Z",
+                        confidence: 1
+                    }
+                ]);
+                checks.push({
+                    name: "Recall reconstruction emits source-lineage continuity telemetry",
+                    passed:
+                        continuity?.reconstructedFromConnectedSources === true &&
+                        continuity?.lineageFingerprint?.startsWith(
+                            "fnv1a32:"
+                        ) &&
+                        this.persistenceRuntime.reconstructionCount ===
+                            beforeCount + 1
+                });
+
+                const persistenceResult = this.persistIfEnabled();
+                checks.push({
+                    name: "Normal recall activity cannot trigger browser writes",
+                    passed:
+                        persistenceResult?.persisted === false &&
+                        this.configuration.automaticPersistence === false
+                });
+
+                const saved = this.saveRecall(
+                    "acceptance lens",
+                    "browser-independent recall",
+                    { mode: RECALL_MODES.TOPIC }
+                );
+                checks.push({
+                    name: "Saved recall lenses are honest about session durability until governed durable scope exists",
+                    passed:
+                        saved?.success === true &&
+                        saved?.savedRecall?.durability ===
+                            "session-only-until-governed-durable-scope"
+                });
+
+                checks.push({
+                    name: "Browser independence does not manufacture cross-customer durable storage or external authority",
+                    passed:
+                        this.configuration.organizationNeutralCore === true &&
                         this.operatingMode === "context-reconstruction" &&
-                        this.configuration.organizationNeutralCore === true
+                        continuity?.browserAuthority === false &&
+                        continuity?.localWorkspaceDurable === false
                 });
 
                 const passed = checks.every((check) => check.passed);
                 console.table(checks);
                 console.info(
-                    `[MEOS ${this.version}] Commission 006.017D4H2A Executive Recall cache authority / persistence circuit breaker: ${passed ? "PASS" : "FAIL"}.`
+                    `[MEOS ${this.version}] Executive Recall reconstructive browser-independence acceptance: ${passed ? "PASS" : "FAIL"}.`
                 );
 
                 return {
-                    commission: "006.017D4H2A",
+                    commission: "REBUILD-RECALL-01",
                     version: this.version,
                     buildId: this.buildId,
+                    schema:
+                        "meos.executive-recall.browser-independence.acceptance.v1",
                     passed,
                     checks,
                     status: this.getStatus()
                 };
             } finally {
-                if (global.localStorage && typeof originalSetItem === "function") {
-                    global.localStorage.setItem = originalSetItem;
-                }
+                this.configuration = originalConfiguration;
                 this.persistenceRuntime = originalRuntime;
+                this.recallHistory = originalHistory;
+                this.savedRecalls = originalSavedRecalls;
+                this.analytics = originalAnalytics;
             }
+        },
+
+        runRecallCacheAuthorityAcceptanceTest() {
+            return this.runBrowserIndependenceAcceptanceTest();
         },
 
         clear(options = {}) {
