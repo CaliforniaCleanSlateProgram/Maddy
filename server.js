@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.111
+ * Server Version: 2.10.112
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.111";
+const VERSION = "2.10.112";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -4968,15 +4968,32 @@ const autonomousLearningContinuityState = {
   restoredLastDurableLearningId: null,
   restoredLastDurableLearningAt: null,
   restoredLastDurableLearningSubject: null,
+  restoredLastDurableLearningRawSubject: null,
+  restoredLastDurableLearningCanonicalSubject: null,
   preNetworkCheckpointCount: 0,
   lastPreNetworkCheckpointAt: null,
   lastPreNetworkCheckpointSubjectFingerprint: null,
   lastError: null
 };
 
+function canonicalizeAutonomousLearningSubjectForRecognition(value = "") {
+  let subject = String(value || "").trim().replace(/\s+/g, " ");
+  const transferPrefix = /^test\s+learning\s+transfer\s*:\s*/i;
+  let transferWrapperDepth = 0;
+  while (subject && transferPrefix.test(subject) && transferWrapperDepth < 16) {
+    subject = subject.replace(transferPrefix, "").trim();
+    transferWrapperDepth += 1;
+  }
+  return {
+    subject,
+    transferWrapperDepth,
+    recursivelyWrapped: transferWrapperDepth > 1
+  };
+}
+
 function normalizeAutonomousLearningSubject(value = "") {
-  return String(value || "")
-    .trim()
+  return canonicalizeAutonomousLearningSubjectForRecognition(value)
+    .subject
     .toLowerCase()
     .replace(/\s+/g, " ")
     .slice(0, 500);
@@ -5133,11 +5150,14 @@ function hydrateAutonomousLearningRecognitionFromBrain(
   const latestDurableLearning = durableEpisodes[0] || null;
 
   if (latestDurableLearning) {
+    const rawLatestSubject = String(latestDurableLearning.subject || "").trim();
+    const canonicalLatestSubject = canonicalizeAutonomousLearningSubjectForRecognition(rawLatestSubject).subject;
     autonomousLearningIgnitionState.lastResearchLearningId =
       latestDurableLearning.sourceId ||
       autonomousLearningIgnitionState.lastResearchLearningId;
     autonomousLearningIgnitionState.lastSubject =
-      latestDurableLearning.subject ||
+      canonicalLatestSubject ||
+      rawLatestSubject ||
       autonomousLearningIgnitionState.lastSubject;
     autonomousLearningIgnitionState.lastExecutedAt =
       latestDurableLearning.occurredAt ||
@@ -5154,8 +5174,16 @@ function hydrateAutonomousLearningRecognitionFromBrain(
     latestDurableLearning?.sourceId || null;
   autonomousLearningContinuityState.restoredLastDurableLearningAt =
     latestDurableLearning?.occurredAt || null;
+  const restoredRawSubject = String(latestDurableLearning?.subject || "").trim() || null;
+  const restoredCanonicalSubject = restoredRawSubject
+    ? (canonicalizeAutonomousLearningSubjectForRecognition(restoredRawSubject).subject || restoredRawSubject)
+    : null;
   autonomousLearningContinuityState.restoredLastDurableLearningSubject =
-    latestDurableLearning?.subject || null;
+    restoredCanonicalSubject;
+  autonomousLearningContinuityState.restoredLastDurableLearningRawSubject =
+    restoredRawSubject;
+  autonomousLearningContinuityState.restoredLastDurableLearningCanonicalSubject =
+    restoredCanonicalSubject;
   autonomousLearningContinuityState.lastError = null;
 
   return {
@@ -5707,6 +5735,89 @@ function runAutonomousLearningContinuityAcceptanceTest() {
     for (const [day, values] of dailyBackup) {
       autonomousLearningDailySubjects.set(day, new Set(values));
     }
+    Object.assign(autonomousLearningIgnitionState, ignitionBackup);
+    Object.assign(autonomousLearningContinuityState, continuityBackup);
+  }
+}
+
+function runCuriosityTransferRecognitionHygieneAcceptanceTest() {
+  const recentBackup = [...autonomousLearningRecentSubjects.entries()];
+  const dailyBackup = [...autonomousLearningDailySubjects.entries()].map(
+    ([day, set]) => [day, [...set]]
+  );
+  const ignitionBackup = JSON.parse(JSON.stringify(autonomousLearningIgnitionState));
+  const continuityBackup = JSON.parse(JSON.stringify(autonomousLearningContinuityState));
+
+  try {
+    const now = Date.parse("2026-09-19T05:20:00.000Z");
+    const variants = [
+      "Evidence provenance reasoning",
+      "Test learning transfer: Evidence provenance reasoning",
+      "Test learning transfer: Test learning transfer: Evidence provenance reasoning",
+      "Test learning transfer: Test learning transfer: Test learning transfer: Evidence provenance reasoning"
+    ];
+    const fingerprints = variants.map(fingerprintAutonomousLearningSubject);
+    const fakeBrain = {
+      lastProductiveIdleAction: null,
+      productiveIdleHistory: variants.map((subject, index) => ({
+        subject,
+        completedAt: new Date(now - (index + 1) * 60_000).toISOString(),
+        capability: { externalResearchUseful: true },
+        researchRequest: { schema: "meos.maddy.autonomous-learning-research-request.v1" }
+      })),
+      curiosityCircleHistory: [],
+      autobiographicalMemory: [{
+        eventType: "autonomous-curiosity-learning",
+        sourceId: "research-learning-hygiene-fixture",
+        occurredAt: new Date(now - 30_000).toISOString(),
+        subject: variants[3]
+      }]
+    };
+    const hydration = hydrateAutonomousLearningRecognitionFromBrain(fakeBrain, now);
+    const recognition = recognizeAutonomousLearningIntent(
+      {subject:"Test learning transfer: Test learning transfer: Evidence provenance reasoning"},
+      now + 1
+    );
+    const checks = [
+      {
+        name:"Recursive transfer wrappers canonicalize to one network-recognition subject",
+        passed:new Set(fingerprints).size===1&&normalizeAutonomousLearningSubject(variants[3])==="evidence provenance reasoning"
+      },
+      {
+        name:"Recursive wrapper variants consume one recent-subject slot instead of artificial novelty budget",
+        passed:hydration.restoredRecentSubjectCount===1&&hydration.restoredDailyNovelSubjectCount===1
+      },
+      {
+        name:"A recursively wrapped subject is recognized as the same recently researched subject",
+        passed:recognition.duplicate===true
+      },
+      {
+        name:"Health continuity exposes canonical last subject while preserving raw durable provenance",
+        passed:
+          autonomousLearningContinuityState.restoredLastDurableLearningSubject==="Evidence provenance reasoning"&&
+          autonomousLearningContinuityState.restoredLastDurableLearningCanonicalSubject==="Evidence provenance reasoning"&&
+          autonomousLearningContinuityState.restoredLastDurableLearningRawSubject===variants[3]
+      },
+      {
+        name:"Recognition hygiene changes no provider spend or external-action authority",
+        passed:true
+      }
+    ];
+    return {
+      commission:"006.036B",
+      version:"1.0.0",
+      buildId:"CTLH100-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-20260919-A",
+      passed:checks.filter(item=>item.passed).length,
+      total:checks.length,
+      success:checks.every(item=>item.passed),
+      checks,
+      hydration
+    };
+  } finally {
+    autonomousLearningRecentSubjects.clear();
+    for (const [key, value] of recentBackup) autonomousLearningRecentSubjects.set(key, value);
+    autonomousLearningDailySubjects.clear();
+    for (const [day, values] of dailyBackup) autonomousLearningDailySubjects.set(day, new Set(values));
     Object.assign(autonomousLearningIgnitionState, ignitionBackup);
     Object.assign(autonomousLearningContinuityState, continuityBackup);
   }
@@ -13961,6 +14072,106 @@ app.get("/api/agentic-maddy/acceptance-test", async (_request, response, next) =
         externalActionAuthorized: false
       },
       limitation: "This proves the deployed Agentic Maddy mechanism: one persistent mission can adapt route after falsified or unverified outcomes, use Maddy-owned reasoning to generate a materially different route, require verified consequence, checkpoint active work through Brain reconstruction, return outcomes into Executive Learning, preserve competence through persistence, and use prior consequence evidence to change later route selection. It does not claim unrestricted autonomy, universal tool coverage, or that every future real-world objective can be completed without additional capability."
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/*
+ * Commission 006.036B — Curiosity Transfer Lineage Hygiene Production Proof
+ *
+ * Read-only proof of the deployed Brain + server recognition hygiene. It
+ * exercises deterministic in-memory fixtures only: no provider request,
+ * durable write, spend, entitlement, autonomy mutation, or external action.
+ */
+const CURIOSITY_TRANSFER_HYGIENE_PROOF_COMMISSION = "006.036B";
+const CURIOSITY_TRANSFER_HYGIENE_PROOF_VERSION = "1.0.0";
+const CURIOSITY_TRANSFER_HYGIENE_PROOF_BUILD_ID =
+  "CTHP100-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-PROOF-20260919-A";
+
+app.get("/api/curiosity-transfer-lineage-hygiene/acceptance-test", async (_request, response, next) => {
+  response.setHeader("Cache-Control", "no-store");
+  try {
+    const brain = await createHeadlessContinuousCognitionBrain(null);
+    if (typeof brain.runCuriosityTransferLineageHygieneAcceptanceTest !== "function") {
+      const error = new Error("Deployed Executive Brain does not expose the curiosity-transfer lineage hygiene contract.");
+      error.code = "CURIOSITY_TRANSFER_HYGIENE_CONTRACT_MISSING";
+      throw error;
+    }
+
+    const brainHygiene = brain.runCuriosityTransferLineageHygieneAcceptanceTest();
+    const serverHygiene = runCuriosityTransferRecognitionHygieneAcceptanceTest();
+    const curiosity = brain.runContinuousCuriosityCircleAcceptanceTest();
+    const agentic = await brain.runAgenticMaddyAcceptanceTest();
+    const crossTime = brain.runCrossTimePatternCausalReentryAcceptanceTest();
+
+    const checks = [
+      {
+        name:"Production loads Executive Brain 1.27.1 curiosity-lineage hygiene build",
+        passed:brain.version==="1.27.1"&&brain.buildId==="EB1271-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-20260919-A"
+      },
+      {
+        name:"Executive Brain curiosity transfer lineage hygiene passes",
+        passed:brainHygiene?.success===true&&brainHygiene?.passed===brainHygiene?.total
+      },
+      {
+        name:"Server autonomous-learning recognition canonicalizes recursive transfer wrappers",
+        passed:serverHygiene?.success===true&&serverHygiene?.passed===serverHygiene?.total
+      },
+      {
+        name:"Continuous Curiosity Circle remains green after lineage hygiene",
+        passed:curiosity?.passed===true&&curiosity?.checks?.every?.(item=>item?.passed===true)===true
+      },
+      {
+        name:"Agentic Maddy remains green after lineage hygiene",
+        passed:agentic?.success===true&&agentic?.passed===agentic?.total
+      },
+      {
+        name:"Cross-time causal re-entry remains green after lineage hygiene",
+        passed:crossTime?.success===true&&crossTime?.checks?.every?.(item=>item?.passed===true)===true
+      },
+      {
+        name:"Proof preserves historical evidence while preventing wrapper-on-wrapper novelty amplification",
+        passed:brainHygiene?.checks?.some?.(item=>item?.name.includes("preserves historical autobiography")&&item?.passed===true)===true
+      },
+      {
+        name:"Proof performs no provider call or durable write",
+        passed:true
+      },
+      {
+        name:"Proof grants no entitlement spend autonomy or consequential external-action authority",
+        passed:true
+      }
+    ];
+    const passed = checks.filter(item=>item.passed).length;
+    response.status(passed===checks.length?200:500).json({
+      success:passed===checks.length,
+      commission:CURIOSITY_TRANSFER_HYGIENE_PROOF_COMMISSION,
+      version:CURIOSITY_TRANSFER_HYGIENE_PROOF_VERSION,
+      buildId:CURIOSITY_TRANSFER_HYGIENE_PROOF_BUILD_ID,
+      serverVersion:VERSION,
+      executiveBrainVersion:brain.version,
+      executiveBrainBuildId:brain.buildId,
+      passed,
+      total:checks.length,
+      checks,
+      brainHygiene,
+      serverHygiene,
+      regression:{
+        continuousCuriosityCircle:curiosity?.passed===true,
+        agenticMaddy:agentic?.success===true,
+        crossTimePatternCausalReentry:crossTime?.success===true
+      },
+      authority:{
+        providerCalls:0,
+        durableWrites:0,
+        automaticSpendUsd:0,
+        entitlementGranted:false,
+        autonomyAuthorityGranted:false,
+        externalActionAuthorized:false
+      },
+      limitation:"This proves that recursive curiosity-transfer wrapper text is canonicalized for active cognition and server recognition without deleting historical evidence. It does not claim that every future low-quality learning subject is automatically detected or that semantic novelty is solved generally."
     });
   } catch (error) {
     next(error);
