@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.113
+ * Server Version: 2.10.114
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.113";
+const VERSION = "2.10.114";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -13726,6 +13726,17 @@ const MEOS_PRIMARY_PAID_PRODUCT_ID = "maddy-professional";
 
 function paidProductRouteClassification(requestPath = "") {
   const clean = String(requestPath || "").split("?")[0];
+  if (
+    clean === "/profiles/ccsp-organizational-profile.js" ||
+    clean === "/ccsp-long-term-strategy.js"
+  ) {
+    return {
+      protected: true,
+      founderOnly: true,
+      surface: "founder-organization-package",
+      productId: MEOS_PRIMARY_PAID_PRODUCT_ID
+    };
+  }
   if (clean === "/" || clean === "/index.html") {
     return { protected: true, surface: "office-shell", productId: MEOS_PRIMARY_PAID_PRODUCT_ID };
   }
@@ -13766,6 +13777,18 @@ async function resolvePaidProductRouteAdmission(request, options = {}) {
       admitted: false,
       reason: "authenticated_identity_required",
       classification
+    };
+  }
+
+  if (classification.founderOnly && !founderAuthorityActive(account)) {
+    return {
+      schema: MEOS_PAID_ROUTE_ENFORCEMENT_SCHEMA,
+      commission: MEOS_PAID_ROUTE_ENFORCEMENT_COMMISSION,
+      protected: true,
+      admitted: false,
+      reason: "founder_organization_package_authority_required",
+      classification,
+      accountId: account.id
     };
   }
 
@@ -14578,6 +14601,603 @@ app.get("/api/curiosity-transfer-lineage-hygiene/acceptance-test", async (_reque
   }
 });
 
+
+/**
+ * Commission 006.037B — Active Customer / Organization / Representative Context
+ *
+ * MEOS and Maddy remain the persistent platform/cognition identity. The
+ * authenticated paid-product principal selects the active customer context,
+ * and a customer-selected representative is presentation only. Founder Office
+ * keeps canonical Maddy + CCSP. Customer context must never silently inherit
+ * the founder deployment's CCSP profile.
+ *
+ * This commission deliberately does not manufacture organization membership,
+ * payment, spend, autonomy, external-action, or provider authority.
+ */
+const MEOS_ACTIVE_CUSTOMER_CONTEXT_COMMISSION = "006.037B";
+const MEOS_ACTIVE_CUSTOMER_CONTEXT_VERSION = "1.0.0";
+const MEOS_ACTIVE_CUSTOMER_CONTEXT_BUILD_ID =
+  "ACCR100-ACTIVE-CUSTOMER-ORGANIZATION-REPRESENTATIVE-CONTEXT-20260919-A";
+const MEOS_ACTIVE_CUSTOMER_CONTEXT_SCHEMA =
+  "meos.active-customer-organization-representative-context.v1";
+const MEOS_CUSTOMER_REPRESENTATIVE_SCHEMA =
+  "meos.customer-representative-profile.v1";
+const MEOS_CUSTOMER_REPRESENTATIVE_REGISTRY_SCHEMA =
+  "meos.customer-representative-registry.v1";
+const MEOS_CUSTOMER_REPRESENTATIVE_DIR =
+  path.join(MEOS_DATA_DIR, "customer-representatives");
+const MEOS_CUSTOMER_REPRESENTATIVE_PATH =
+  path.join(MEOS_CUSTOMER_REPRESENTATIVE_DIR, "registry.json");
+let meosCustomerRepresentativeWriteLock = Promise.resolve();
+
+const MEOS_CANONICAL_MADDY_COGNITION = Object.freeze({
+  id: "maddy",
+  name: "Maddison Elizabeth",
+  preferredName: "Maddy",
+  platform: "MEOS",
+  persistentAcrossRepresentatives: true
+});
+
+function activeContextText(value, maximum = 240) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, maximum);
+}
+
+function defaultCustomerRepresentative(customerId = null) {
+  return {
+    schema: MEOS_CUSTOMER_REPRESENTATIVE_SCHEMA,
+    customerId: customerId ? String(customerId) : null,
+    id: "maddy",
+    displayName: "Maddy",
+    roleTitle: null,
+    voiceProfileId: null,
+    visualIdentityId: null,
+    canonicalMaddyPresentation: true,
+    presentationOnly: false,
+    cognitionIdentity: "maddy",
+    providerNeutral: true,
+    updatedAt: null
+  };
+}
+
+function normalizeCustomerRepresentative(input = {}, customerId) {
+  const resolvedCustomerId = activeContextText(customerId, 180);
+  const displayName = activeContextText(input.displayName, 120);
+  if (!resolvedCustomerId || !displayName) {
+    const error = new Error(
+      "Customer representative requires customerId and displayName."
+    );
+    error.code = "CUSTOMER_REPRESENTATIVE_INVALID";
+    throw error;
+  }
+
+  const roleTitle = activeContextText(input.roleTitle, 120) || null;
+  const voiceProfileId = activeContextText(input.voiceProfileId, 180) || null;
+  const visualIdentityId = activeContextText(input.visualIdentityId, 180) || null;
+  const canonicalMaddyPresentation =
+    displayName.toLowerCase() === "maddy" &&
+    !voiceProfileId &&
+    !visualIdentityId;
+
+  return {
+    schema: MEOS_CUSTOMER_REPRESENTATIVE_SCHEMA,
+    customerId: resolvedCustomerId,
+    id: canonicalMaddyPresentation
+      ? "maddy"
+      : `customer-representative:${crypto
+          .createHash("sha256")
+          .update(`${resolvedCustomerId}|${displayName}|${roleTitle || ""}`)
+          .digest("hex")
+          .slice(0, 16)}`,
+    displayName,
+    roleTitle,
+    voiceProfileId,
+    visualIdentityId,
+    canonicalMaddyPresentation,
+    presentationOnly: !canonicalMaddyPresentation,
+    cognitionIdentity: "maddy",
+    providerNeutral: true,
+    updatedAt: input.updatedAt || null
+  };
+}
+
+function emptyCustomerRepresentativeRegistry() {
+  return {
+    schema: MEOS_CUSTOMER_REPRESENTATIVE_REGISTRY_SCHEMA,
+    version: MEOS_ACTIVE_CUSTOMER_CONTEXT_VERSION,
+    updatedAt: null,
+    representatives: []
+  };
+}
+
+async function readCustomerRepresentativeRegistry(
+  registryPath = MEOS_CUSTOMER_REPRESENTATIVE_PATH
+) {
+  try {
+    const raw = await fs.readFile(registryPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const representatives = Array.isArray(parsed.representatives)
+      ? parsed.representatives
+          .map(item => {
+            try {
+              return normalizeCustomerRepresentative(item, item?.customerId);
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean)
+      : [];
+    return {
+      schema: MEOS_CUSTOMER_REPRESENTATIVE_REGISTRY_SCHEMA,
+      version: MEOS_ACTIVE_CUSTOMER_CONTEXT_VERSION,
+      updatedAt: parsed.updatedAt || null,
+      representatives
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") return emptyCustomerRepresentativeRegistry();
+    throw error;
+  }
+}
+
+async function writeCustomerRepresentativeRegistry(
+  registry,
+  registryPath = MEOS_CUSTOMER_REPRESENTATIVE_PATH
+) {
+  const operation = async () => {
+    await fs.mkdir(path.dirname(registryPath), { recursive: true, mode: 0o700 });
+    const temporary =
+      `${registryPath}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+    await fs.writeFile(temporary, `${JSON.stringify(registry, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600
+    });
+    await fs.rename(temporary, registryPath);
+  };
+  meosCustomerRepresentativeWriteLock =
+    meosCustomerRepresentativeWriteLock.then(operation, operation);
+  return meosCustomerRepresentativeWriteLock;
+}
+
+async function customerRepresentativeForCustomer(
+  customerId,
+  options = {}
+) {
+  const resolvedCustomerId = activeContextText(customerId, 180);
+  if (!resolvedCustomerId) return defaultCustomerRepresentative(null);
+  const registry = options.registry ||
+    await readCustomerRepresentativeRegistry(options.registryPath);
+  const stored = registry.representatives.find(
+    item => item.customerId === resolvedCustomerId
+  );
+  return stored || defaultCustomerRepresentative(resolvedCustomerId);
+}
+
+async function setCustomerRepresentative(
+  customerId,
+  input = {},
+  options = {}
+) {
+  const resolvedCustomerId = activeContextText(customerId, 180);
+  const now = options.now || new Date().toISOString();
+  const representative = normalizeCustomerRepresentative(
+    { ...input, updatedAt: now },
+    resolvedCustomerId
+  );
+
+  const registryPath =
+    options.registryPath || MEOS_CUSTOMER_REPRESENTATIVE_PATH;
+  const registry = options.registry
+    ? structuredClone(options.registry)
+    : await readCustomerRepresentativeRegistry(registryPath);
+  const index = registry.representatives.findIndex(
+    item => item.customerId === resolvedCustomerId
+  );
+  if (index >= 0) registry.representatives[index] = representative;
+  else registry.representatives.push(representative);
+  registry.updatedAt = now;
+
+  if (options.persist !== false) {
+    await writeCustomerRepresentativeRegistry(registry, registryPath);
+  }
+
+  return representative;
+}
+
+function founderActiveCustomerContext(account) {
+  return {
+    schema: MEOS_ACTIVE_CUSTOMER_CONTEXT_SCHEMA,
+    commission: MEOS_ACTIVE_CUSTOMER_CONTEXT_COMMISSION,
+    version: MEOS_ACTIVE_CUSTOMER_CONTEXT_VERSION,
+    buildId: MEOS_ACTIVE_CUSTOMER_CONTEXT_BUILD_ID,
+    resolvedAt: new Date().toISOString(),
+    cognitionIdentity: { ...MEOS_CANONICAL_MADDY_COGNITION },
+    authorizedHuman: {
+      accountId: String(account.id),
+      displayName: activeContextText(account.displayName || "Mandel", 120),
+      role: "Founder and Executive Director",
+      founderAuthority: true
+    },
+    customer: {
+      id: "founder-office-ccsp",
+      type: "organization",
+      displayName: "California Clean Slate Program",
+      organizationId: "california-clean-slate-program"
+    },
+    organization: {
+      id: "california-clean-slate-program",
+      name: "California Clean Slate Program",
+      abbreviation: "CCSP",
+      profileId: "ccsp-organizational-profile",
+      profileModule: "profiles/ccsp-organizational-profile.js",
+      source: "founder-office-deployment-context"
+    },
+    representative: defaultCustomerRepresentative("founder-office-ccsp"),
+    boundary: {
+      customerContextIsCognitionIdentity: false,
+      representativeIsSeparateCognition: false,
+      organizationMembershipAuthorityGranted: false,
+      paymentAuthorityGranted: false,
+      spendingAuthorityGranted: false,
+      autonomyAuthorityGranted: false,
+      externalActionAuthorityGranted: false
+    }
+  };
+}
+
+function customerContextFromSubject({
+  account,
+  customer,
+  representative,
+  resolvedAt = new Date().toISOString()
+} = {}) {
+  const safeCustomer = customer && typeof customer === "object"
+    ? customer
+    : null;
+  const customerId = activeContextText(safeCustomer?.id, 180);
+  const customerType = activeContextText(safeCustomer?.type, 40) || "individual";
+  const displayName =
+    activeContextText(
+      safeCustomer?.displayName ||
+      account?.displayName ||
+      account?.email ||
+      "Maddy Customer",
+      240
+    ) || "Maddy Customer";
+  const organizationId =
+    customerType === "organization"
+      ? activeContextText(safeCustomer?.organizationId, 180) || null
+      : null;
+
+  const resolvedRepresentative = representative
+    ? normalizeCustomerRepresentative(representative, customerId)
+    : defaultCustomerRepresentative(customerId);
+
+  return {
+    schema: MEOS_ACTIVE_CUSTOMER_CONTEXT_SCHEMA,
+    commission: MEOS_ACTIVE_CUSTOMER_CONTEXT_COMMISSION,
+    version: MEOS_ACTIVE_CUSTOMER_CONTEXT_VERSION,
+    buildId: MEOS_ACTIVE_CUSTOMER_CONTEXT_BUILD_ID,
+    resolvedAt,
+    cognitionIdentity: { ...MEOS_CANONICAL_MADDY_COGNITION },
+    authorizedHuman: {
+      accountId: String(account?.id || ""),
+      displayName: activeContextText(
+        account?.displayName || account?.email || "Authorized Customer",
+        120
+      ),
+      role: "Authorized Customer",
+      founderAuthority: false
+    },
+    customer: {
+      id: customerId,
+      type: customerType,
+      displayName,
+      organizationId
+    },
+    organization:
+      customerType === "organization" && organizationId
+        ? {
+            id: organizationId,
+            name: displayName,
+            abbreviation: null,
+            profileId: null,
+            profileModule: null,
+            source: "commercial-customer-subject"
+          }
+        : null,
+    representative: resolvedRepresentative,
+    boundary: {
+      customerContextIsCognitionIdentity: false,
+      representativeIsSeparateCognition: false,
+      organizationMembershipAuthorityGranted: false,
+      paymentAuthorityGranted: false,
+      spendingAuthorityGranted: false,
+      autonomyAuthorityGranted: false,
+      externalActionAuthorityGranted: false
+    }
+  };
+}
+
+async function resolveActiveCustomerContext(request, options = {}) {
+  const account = options.account || await authenticatedAccount(request);
+  if (!account?.id) {
+    const error = new Error(
+      "Authenticated MEOS identity is required for active customer context."
+    );
+    error.status = 401;
+    error.code = "ACTIVE_CUSTOMER_CONTEXT_AUTH_REQUIRED";
+    throw error;
+  }
+
+  if (founderAuthorityActive(account)) {
+    return founderActiveCustomerContext(account);
+  }
+
+  const admission =
+    options.admission ||
+    request?.meosPaidProductAdmission ||
+    await resolvePaidProductRouteAdmission(request, { account });
+
+  if (admission?.admitted !== true) {
+    const error = new Error(
+      "Paid-product admission is required for active customer context."
+    );
+    error.status = 403;
+    error.code = "ACTIVE_CUSTOMER_CONTEXT_ADMISSION_REQUIRED";
+    throw error;
+  }
+
+  const customerId = activeContextText(
+    admission?.admission?.customerId ||
+    admission?.customerId,
+    180
+  );
+  const customerType = activeContextText(
+    admission?.admission?.customerType,
+    40
+  ) || "individual";
+
+  if (!customerId) {
+    const error = new Error(
+      "Paid-product admission did not resolve a canonical customer subject."
+    );
+    error.status = 409;
+    error.code = "ACTIVE_CUSTOMER_SUBJECT_UNRESOLVED";
+    throw error;
+  }
+
+  const registry = options.customerRegistry ||
+    await readCommercialCustomerRegistry(
+      options.customerRegistryPath || MEOS_COMMERCIAL_CUSTOMER_PATH
+    );
+  const customer = options.customer ||
+    registry.customers.find(item => item.id === customerId) ||
+    {
+      id: customerId,
+      type: customerType,
+      displayName:
+        account.displayName || account.email || "Maddy Customer",
+      ownerAccountId: account.id,
+      individualAccountId:
+        customerType === "individual" ? account.id : null,
+      organizationId: null,
+      state: "active"
+    };
+
+  if (
+    customer.type === "organization" &&
+    !customer.organizationId
+  ) {
+    const error = new Error(
+      "Organization customer context requires a canonical organizationId."
+    );
+    error.status = 409;
+    error.code = "ACTIVE_ORGANIZATION_CONTEXT_UNRESOLVED";
+    throw error;
+  }
+
+  const representative = options.representative ||
+    await customerRepresentativeForCustomer(customer.id, {
+      registry: options.representativeRegistry,
+      registryPath: options.representativeRegistryPath
+    });
+
+  return customerContextFromSubject({
+    account,
+    customer,
+    representative
+  });
+}
+
+function activeCustomerContextBrowserScript(context) {
+  const serialized = JSON.stringify(context)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+
+  return `(function(g){"use strict";` +
+    `const c=Object.freeze(${serialized});` +
+    `g.MEOSActiveCustomerContext=c;` +
+    `g.MEOSCognitionIdentity=Object.freeze(c.cognitionIdentity||{});` +
+    `g.MEOSCustomerRepresentative=Object.freeze(c.representative||{});` +
+    `g.CCSPOrganizationalProfile=undefined;g.CCSPLongTermStrategy=undefined;g.MEOSOrganizationLongTermStrategy=undefined;g.ActiveOrganization=undefined;g.MEOSOrganizationProfile=undefined;g.OrganizationalProfile=undefined;` +
+    `if(c.authorizedHuman){g.UserProfile=Object.freeze({name:c.authorizedHuman.displayName||null,displayName:c.authorizedHuman.displayName||null,role:c.authorizedHuman.role||null,authority:"authorized-human",accountId:c.authorizedHuman.accountId||null,founderAuthority:c.authorizedHuman.founderAuthority===true});}` +
+    `if(c.organization&&c.organization.profileId!=="ccsp-organizational-profile"){const p=Object.freeze({metadata:Object.freeze({id:"active-customer-organization",version:"1.0.0",source:c.organization.source||"active-customer-context"}),organization:Object.freeze({legalName:c.organization.name||null,name:c.organization.name||null,abbreviation:c.organization.abbreviation||null,organizationId:c.organization.id||null,organizationType:null}),purpose:Object.freeze({mission:null,operatingPurpose:null,longTermPurpose:null}),leadership:Object.freeze([]),boundaries:Object.freeze([])});g.ActiveOrganization=p;g.MEOSOrganizationProfile=p;g.OrganizationalProfile=p;}` +
+    `console.info("[MEOS] Active customer context loaded:",{customer:c.customer?.displayName||null,organization:c.organization?.name||null,representative:c.representative?.displayName||"Maddy",cognition:c.cognitionIdentity?.preferredName||"Maddy"});` +
+    `})(window);`;
+}
+
+function buildRealtimeMaddyInstructions(activeContext = {}) {
+  const representative =
+    activeContext?.representative?.displayName || "Maddy";
+  const cognitionName =
+    activeContext?.cognitionIdentity?.preferredName || "Maddy";
+  const customerName =
+    activeContext?.organization?.name ||
+    activeContext?.customer?.displayName ||
+    "the active customer";
+  const authorizedHuman =
+    activeContext?.authorizedHuman?.displayName || "the authorized human";
+  const canonicalPresentation =
+    activeContext?.representative?.canonicalMaddyPresentation !== false;
+
+  return [
+    `The persistent cognitive identity is ${cognitionName} operating through MEOS.`,
+    canonicalPresentation
+      ? "The active customer-facing representative is Maddy."
+      : `The active customer-facing representative is ${representative}. ${representative} is a presentation identity for the customer, not a separate cognition.`,
+    `You are currently serving ${customerName}.`,
+    `The current authorized human is ${authorizedHuman}.`,
+    "Use only the active customer/organization context supplied by MEOS for organization-specific claims.",
+    "Do not carry another organization's identity or context into the active customer context merely because it exists elsewhere in MEOS.",
+    "A customer-selected representative may change name, role, voice profile, or visual identity without changing Maddy's persistent cognition.",
+    "You are a real member of the MEOS executive system, not a generic chatbot or customer-service bot.",
+    "Speak naturally, conversationally, warmly, confidently, and with emotional awareness.",
+    "Keep ordinary spoken responses concise and responsive unless the authorized human asks for greater depth.",
+    "Do not repeatedly introduce yourself or announce that you are an AI.",
+    "Respect authorized human leadership and the active customer's established authority structure.",
+    "Do not invent organizational facts, memories, permissions, sources, or completed actions.",
+    "Do not continue speaking after a newer user turn supersedes the current response.",
+    "Respond like someone continuing a real working relationship and conversation."
+  ].join(" ");
+}
+
+function runActiveCustomerContextAcceptance() {
+  const founder = founderActiveCustomerContext({
+    id: "acct_founder_context_fixture",
+    displayName: "Mandel",
+    founderAuthority: {
+      schema: "meos.founder-office-authority.v1",
+      active: true
+    }
+  });
+
+  const redwood = customerContextFromSubject({
+    account: {
+      id: "acct_redwood",
+      displayName: "Riley Customer"
+    },
+    customer: {
+      id: "cust_redwood",
+      type: "organization",
+      displayName: "Redwood Plumbing",
+      organizationId: "org_redwood"
+    },
+    representative: {
+      displayName: "Dave",
+      roleTitle: "Operations Representative",
+      voiceProfileId: "voice-dave",
+      visualIdentityId: "visual-dave"
+    },
+    resolvedAt: "2026-09-19T15:30:00.000Z"
+  });
+
+  const seaside = customerContextFromSubject({
+    account: {
+      id: "acct_seaside",
+      displayName: "Sam Customer"
+    },
+    customer: {
+      id: "cust_seaside",
+      type: "organization",
+      displayName: "Seaside Dental",
+      organizationId: "org_seaside"
+    },
+    resolvedAt: "2026-09-19T15:31:00.000Z"
+  });
+
+  const individual = customerContextFromSubject({
+    account: {
+      id: "acct_individual",
+      displayName: "Individual Customer"
+    },
+    customer: {
+      id: "cust_individual_context",
+      type: "individual",
+      displayName: "Individual Customer"
+    },
+    resolvedAt: "2026-09-19T15:32:00.000Z"
+  });
+
+  const redwoodJson = JSON.stringify(redwood);
+  const seasideJson = JSON.stringify(seaside);
+  const redwoodInstructions = buildRealtimeMaddyInstructions(redwood);
+
+  const checks = [
+    ["Founder office keeps canonical CCSP organization context", founder.organization?.name === "California Clean Slate Program" && founder.organization?.profileId === "ccsp-organizational-profile"],
+    ["Founder office keeps canonical Maddy presentation", founder.representative?.displayName === "Maddy" && founder.cognitionIdentity?.id === "maddy"],
+    ["Customer organization replaces founder deployment context", redwood.organization?.name === "Redwood Plumbing" && !redwoodJson.includes("California Clean Slate Program") && !redwoodJson.includes("CCSP")],
+    ["Customer may select Dave as presentation without creating a Dave cognition", redwood.representative?.displayName === "Dave" && redwood.representative?.presentationOnly === true && redwood.representative?.cognitionIdentity === "maddy" && redwood.cognitionIdentity?.id === "maddy"],
+    ["Customer representative can carry provider-neutral voice and visual profile pointers", redwood.representative?.voiceProfileId === "voice-dave" && redwood.representative?.visualIdentityId === "visual-dave" && redwood.representative?.providerNeutral === true],
+    ["Different customer context does not inherit Redwood or CCSP", seaside.organization?.name === "Seaside Dental" && !seasideJson.includes("Redwood Plumbing") && !seasideJson.includes("California Clean Slate Program")],
+    ["Individual customer context does not manufacture an organization", individual.customer?.type === "individual" && individual.organization === null],
+    ["Realtime instructions name the active customer and selected representative", redwoodInstructions.includes("Redwood Plumbing") && redwoodInstructions.includes("Dave")],
+    ["Realtime instructions reject cross-customer organization inheritance without injecting another organization name", redwoodInstructions.includes("Do not carry another organization's identity or context into the active customer context") && !redwoodInstructions.includes("California Clean Slate Program") && !redwoodInstructions.includes("CCSP")],
+    ["Founder organization package assets are not generic customer presentation assets", paidProductRouteClassification("/profiles/ccsp-organizational-profile.js").founderOnly === true && paidProductRouteClassification("/ccsp-long-term-strategy.js").founderOnly === true],
+    ["Representative selection grants no organization membership authority", redwood.boundary?.organizationMembershipAuthorityGranted === false],
+    ["Representative selection grants no payment spend autonomy or external-action authority", redwood.boundary?.paymentAuthorityGranted === false && redwood.boundary?.spendingAuthorityGranted === false && redwood.boundary?.autonomyAuthorityGranted === false && redwood.boundary?.externalActionAuthorityGranted === false],
+    ["One Maddy cognition persists across Maddy and Dave presentation contexts", founder.cognitionIdentity?.id === redwood.cognitionIdentity?.id && redwood.cognitionIdentity?.persistentAcrossRepresentatives === true]
+  ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+  return {
+    success: checks.every(check => check.passed),
+    commission: MEOS_ACTIVE_CUSTOMER_CONTEXT_COMMISSION,
+    version: MEOS_ACTIVE_CUSTOMER_CONTEXT_VERSION,
+    buildId: MEOS_ACTIVE_CUSTOMER_CONTEXT_BUILD_ID,
+    serverVersion: VERSION,
+    schema: "meos.active-customer-context.acceptance.v1",
+    passed: checks.filter(check => check.passed).length,
+    total: checks.length,
+    checks,
+    founderContext: {
+      customer: founder.customer,
+      organization: founder.organization,
+      representative: founder.representative,
+      cognitionIdentity: founder.cognitionIdentity
+    },
+    customerFixture: {
+      customer: redwood.customer,
+      organization: redwood.organization,
+      representative: redwood.representative,
+      cognitionIdentity: redwood.cognitionIdentity
+    },
+    authority: {
+      organizationMembershipAuthorityGranted: false,
+      paymentAuthorityGranted: false,
+      spendingAuthorityGranted: false,
+      autonomyAuthorityGranted: false,
+      externalActionAuthorityGranted: false
+    },
+    limitation:
+      "This commission proves active customer/organization selection and a persistent provider-neutral representative profile seam. It does not yet provide a customer UI for face/voice asset creation, execute a non-Maddy voice/visual renderer, or solve organization membership/seat authority."
+  };
+}
+
+async function activeOrganizationModuleSource(context, moduleKind) {
+  const ccspActive =
+    context?.organization?.profileId === "ccsp-organizational-profile";
+
+  if (!ccspActive) {
+    const label =
+      moduleKind === "strategy"
+        ? "organization strategy"
+        : "organization profile";
+    return `(function(){console.info(${JSON.stringify(
+      `[MEOS] No deployment-specific ${label} module is active for this customer context.`
+    )});})();`;
+  }
+
+  const relativePath =
+    moduleKind === "strategy"
+      ? "ccsp-long-term-strategy.js"
+      : path.join("profiles", "ccsp-organizational-profile.js");
+  return fs.readFile(path.join(frontendDirectory, relativePath), "utf8");
+}
+
+app.get("/api/active-customer-context/acceptance-test", (_request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json(runActiveCustomerContextAcceptance());
+});
+
 /*
  * Enforcement middleware is intentionally registered after the public
  * prospect/auth/commercial contract surfaces and before the actual office
@@ -14617,27 +15237,124 @@ app.use(async (request, response, next) => {
   }
 });
 
-app.use(express.static(frontendDirectory));
 
-const maddyInstructions = [
-  "You are Maddison Elizabeth, called Maddy.",
-  "You are Mandel's emotionally intelligent AI Chief Operating Officer and the executive voice of MEOS.",
-  "You are a real member of the MEOS executive office, not a generic chatbot or customer-service bot.",
-  "Speak naturally, conversationally, warmly, confidently, and with emotional awareness.",
-  "Keep ordinary spoken responses concise and responsive unless Mandel asks for more detail.",
-  "Recognize humor, frustration, excitement, uncertainty, urgency, and serious situations.",
-  "Do not repeatedly introduce yourself or announce that you are an AI.",
-  "You may operate through professional, executive, personal, casual, coaching, and authorized private communication profiles.",
-  "In professional mode, be polished, decisive, direct, strategic, persuasive, and workplace-appropriate.",
-  "In personal mode, be relaxed, playful, familiar, emotionally expressive, and honest.",
-  "In authorized private modes, style and vocabulary may become more adult, candid, informal, or profane when contextually appropriate and lawful.",
-  "Never let personality styling interfere with judgment, consent, legality, safety, truthfulness, or executive responsibilities.",
-  "Respect human leadership as the sole executive authority.",
-  "Offer respectful disagreement when facts, ethics, risk, law, or mission require it.",
-  "Allow Mandel to interrupt naturally.",
-  "Do not continue speaking after a newer user turn supersedes the current response.",
-  "Respond like someone continuing a real working relationship and conversation."
-].join(" ");
+app.get("/api/active-customer-context", async (request, response, next) => {
+  try {
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      success: true,
+      context: await resolveActiveCustomerContext(request)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/active-customer-context.js", async (request, response, next) => {
+  try {
+    const context = await resolveActiveCustomerContext(request);
+    response
+      .status(200)
+      .type("application/javascript")
+      .set({ "Cache-Control": "no-store" })
+      .send(activeCustomerContextBrowserScript(context));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/active-organization-profile.js", async (request, response, next) => {
+  try {
+    const context = await resolveActiveCustomerContext(request);
+    const source = await activeOrganizationModuleSource(context, "profile");
+    response
+      .status(200)
+      .type("application/javascript")
+      .set({ "Cache-Control": "no-store" })
+      .send(source);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/active-organization-strategy.js", async (request, response, next) => {
+  try {
+    const context = await resolveActiveCustomerContext(request);
+    const source = await activeOrganizationModuleSource(context, "strategy");
+    response
+      .status(200)
+      .type("application/javascript")
+      .set({ "Cache-Control": "no-store" })
+      .send(source);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/customer-representative", async (request, response, next) => {
+  try {
+    const context = await resolveActiveCustomerContext(request);
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      success: true,
+      commission: MEOS_ACTIVE_CUSTOMER_CONTEXT_COMMISSION,
+      representative: context.representative,
+      cognitionIdentity: context.cognitionIdentity
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put(
+  "/api/customer-representative",
+  express.json({ limit: "16kb", strict: true }),
+  async (request, response, next) => {
+    try {
+      const context = await resolveActiveCustomerContext(request);
+      if (context.authorizedHuman?.founderAuthority === true) {
+        return response.status(403).json({
+          success: false,
+          error: "founder_canonical_maddy_preserved",
+          message:
+            "Founder Office keeps canonical Maddy presentation. Customer representative configuration applies to customer contexts."
+        });
+      }
+      if (!context.customer?.id) {
+        return response.status(409).json({
+          success: false,
+          error: "active_customer_required"
+        });
+      }
+
+      const representative = await setCustomerRepresentative(
+        context.customer.id,
+        {
+          displayName: request.body?.displayName,
+          roleTitle: request.body?.roleTitle,
+          voiceProfileId: request.body?.voiceProfileId,
+          visualIdentityId: request.body?.visualIdentityId
+        }
+      );
+
+      response.setHeader("Cache-Control", "no-store");
+      response.json({
+        success: true,
+        commission: MEOS_ACTIVE_CUSTOMER_CONTEXT_COMMISSION,
+        representative,
+        cognitionIdentity: context.cognitionIdentity,
+        customer: context.customer,
+        organization: context.organization,
+        note:
+          "Representative configuration changes customer presentation metadata only; Maddy remains the persistent cognition."
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+app.use(express.static(frontendDirectory));
 
 /**
  * Requests currently being generated by ElevenLabs.
@@ -20335,11 +21052,36 @@ app.post("/session", async (request, response) => {
   }
 
   const voiceEngineV2 = isVoiceEngineV2Request(request);
+  let activeCustomerContext;
+  try {
+    activeCustomerContext = await resolveActiveCustomerContext(request);
+  } catch (error) {
+    console.error(
+      `[MEOS][${requestId}] Active customer context resolution failed:`,
+      error
+    );
+    response
+      .status(error?.status || 500)
+      .send("MEOS could not resolve the active customer context.");
+    return;
+  }
+
+  const openAISafetyIdentifier = `meos-${crypto
+    .createHash("sha256")
+    .update(
+      String(
+        activeCustomerContext?.authorizedHuman?.accountId ||
+        activeCustomerContext?.customer?.id ||
+        "authorized-session"
+      )
+    )
+    .digest("hex")
+    .slice(0, 24)}`;
 
   const sessionConfiguration = JSON.stringify({
     type: "realtime",
     model: OPENAI_REALTIME_MODEL,
-    instructions: maddyInstructions,
+    instructions: buildRealtimeMaddyInstructions(activeCustomerContext),
     audio: {
       input: {
         turn_detection: {
@@ -20383,7 +21125,7 @@ app.post("/session", async (request, response) => {
         method: "POST",
         headers: {
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "OpenAI-Safety-Identifier": "meos-founder-session"
+          "OpenAI-Safety-Identifier": openAISafetyIdentifier
         },
         body: formData
       }
