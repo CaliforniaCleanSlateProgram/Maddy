@@ -1,7 +1,7 @@
 /**
  * MEOS — Maddy Speech Engine
  *
- * File Version: 2.0.1
+ * File Version: 2.0.2
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -19,9 +19,9 @@
 (function initializeMaddySpeech(global) {
   "use strict";
 
-  const VERSION = "2.0.1";
+  const VERSION = "2.0.2";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE201-MADDY-SPEECH-20260730-A";
+  const BUILD_ID = "VE202-FOUNDER-TTS-SAME-ORIGIN-AUTH-20260919-A";
   const DEFAULT_TTS_ENDPOINT = "https://maddy-yy8o.onrender.com/tts";
   const MAX_COMPLETED_RESPONSE_IDS = 250;
   const MAX_TEXT_LENGTH = 12000;
@@ -379,7 +379,10 @@
       }),
       signal,
       cache: "no-store",
-      credentials: "omit"
+      // /tts is a protected same-origin Maddy capability route. Preserve the
+      // authenticated founder/customer session so server-owned admission can
+      // distinguish Founder Office authority from customer entitlement.
+      credentials: "same-origin"
     });
 
     if (!response.ok) {
