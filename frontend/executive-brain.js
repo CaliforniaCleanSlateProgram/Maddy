@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.27.0
- * Build: EB1270-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-20260919-A
+ * Version: 1.27.1
+ * Build: EB1271-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-20260919-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.27.0";
-  const BUILD_ID = "EB1270-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-20260919-A";
+  const VERSION = "1.27.1";
+  const BUILD_ID = "EB1271-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-20260919-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -3891,13 +3891,21 @@
         }
       }
 
-      if ((quiesced || removedTestArtifacts) && options.persist !== false) {
+      const curiosityTransferHygiene = this.reconcileCuriosityTransferLineageState({ persist: false });
+
+      if ((
+        quiesced ||
+        removedTestArtifacts ||
+        curiosityTransferHygiene.collapsedSubjects > 0 ||
+        curiosityTransferHygiene.absorbedDuplicateIntentions > 0
+      ) && options.persist !== false) {
         this.persist();
       }
       return {
         success: true,
         quiesced,
         removedTestArtifacts,
+        curiosityTransferHygiene,
         remainingIntentions: this.cognitiveIntentions.length
       };
     },
@@ -21128,6 +21136,106 @@
     },
 
     /*
+     * Commission 006.036B — Curiosity Transfer Lineage Hygiene
+     *
+     * Continuous Curiosity may create a legitimate transfer intention such as
+     * "Test learning transfer: evidence provenance reasoning". That derived
+     * intention is a hypothesis about transfer, not a fresh world subject. If
+     * it is allowed to become the target of another transfer hypothesis, the
+     * label can recursively amplify across durable cycles and consume novelty
+     * budget without adding new information.
+     *
+     * This reconciliation preserves the underlying subject and historical
+     * evidence while preventing wrapper-on-wrapper amplification. It changes
+     * no external, economic, provider, or autonomy authority.
+     */
+    parseCuriosityTransferSubject(value = "") {
+      const raw = String(value || "").trim();
+      let baseSubject = raw;
+      let depth = 0;
+      const prefix = /^test\s+learning\s+transfer\s*:\s*/i;
+      while (baseSubject && prefix.test(baseSubject) && depth < 16) {
+        baseSubject = baseSubject.replace(prefix, "").trim();
+        depth += 1;
+      }
+      if (!baseSubject) baseSubject = raw;
+      return {
+        raw,
+        baseSubject,
+        depth,
+        derived: depth > 0,
+        recursivelyWrapped: depth > 1,
+        canonicalSubject: depth > 0
+          ? `Test learning transfer: ${baseSubject}`
+          : raw
+      };
+    },
+
+    isDerivedCuriosityTransferIntention(intention = {}) {
+      const parsed = this.parseCuriosityTransferSubject(intention?.subject || intention?.key || "");
+      const triggerDerived = (intention?.triggers || []).some(trigger =>
+        String(trigger?.event || "") === "cross-domain-transfer-hypothesis" ||
+        String(trigger?.source || "") === "executive-brain-curiosity-circle"
+      );
+      return (
+        parsed.derived === true ||
+        String(intention?.temporal?.kind || "") === "cross-domain-learning-transfer" ||
+        triggerDerived
+      );
+    },
+
+    reconcileCuriosityTransferLineageState(options = {}) {
+      const before = Array.isArray(this.cognitiveIntentions)
+        ? this.cognitiveIntentions.length
+        : 0;
+      let collapsedSubjects = 0;
+      const reconciled = (this.cognitiveIntentions || []).map(item => {
+        if (!item || typeof item !== "object") return item;
+        const parsed = this.parseCuriosityTransferSubject(item.subject || item.key || "");
+        if (!parsed.recursivelyWrapped) return item;
+        collapsedSubjects += 1;
+        return {
+          ...item,
+          subject: parsed.canonicalSubject,
+          key: this.normalize(parsed.canonicalSubject),
+          lineageHygiene: {
+            schema: "meos.maddy.curiosity-transfer-lineage-hygiene.v1",
+            commission: "006.036B",
+            originalSubject: parsed.raw,
+            canonicalSubject: parsed.canonicalSubject,
+            collapsedWrapperDepth: parsed.depth,
+            reconciledAt: new Date().toISOString(),
+            principle: "derived-transfer-wrapper-is-not-new-world-novelty"
+          }
+        };
+      });
+
+      const convergence = this.convergeCognitiveIntentions(reconciled, {
+        reason: "006.036B-curiosity-transfer-lineage-hygiene",
+        recordHealing: true
+      });
+      this.cognitiveIntentions = convergence.intentions;
+
+      const result = {
+        schema: "meos.maddy.curiosity-transfer-lineage-hygiene-result.v1",
+        commission: "006.036B",
+        collapsedSubjects,
+        absorbedDuplicateIntentions: Number(convergence.absorbedRecords || 0),
+        inputIntentions: before,
+        outputIntentions: this.cognitiveIntentions.length,
+        historyRewritten: false,
+        authorityChanged: false,
+        principle: "preserve-learning-lineage-without-recursive-subject-amplification"
+      };
+
+      if ((collapsedSubjects > 0 || Number(convergence.absorbedRecords || 0) > 0)) {
+        this.record("cognition.curiosity-transfer-lineage-reconciled", result);
+        if (options.persist !== false) this.persist();
+      }
+      return result;
+    },
+
+    /*
      * Commission 006.034A — Continuous Curiosity Circle
      *
      * Research execution is not the end of curiosity. The same Executive Brain
@@ -21198,7 +21306,10 @@
         consequence:Number(goal.impact ?? goal.motivation ?? .65),
         gap:Number(goal.ambition?.gap ?? (1-Number(goal.ambition?.demonstrated ?? .5)))
       }));
-      (this.cognitiveIntentions || []).filter(x=>x?.status!=="completed"&&x?.status!=="quiescent").slice(0,32).forEach(intention=>addTarget({
+      (this.cognitiveIntentions || [])
+        .filter(x=>x?.status!=="completed"&&x?.status!=="quiescent")
+        .filter(x=>!this.isDerivedCuriosityTransferIntention(x))
+        .slice(0,32).forEach(intention=>addTarget({
         subject:intention.subject,
         targetType:"cognitive-intention",
         reason:intention.temporal?.kind || "unresolved cognition",
@@ -21310,8 +21421,9 @@
       const transfers=this.discoverCuriosityTransferCandidates(learning,options);
       const promoted=[];
       transfers.slice(0,3).forEach(transfer=>{
+        const transferSubject=this.parseCuriosityTransferSubject(transfer.subject).baseSubject;
         const intention=this.upsertCognitiveIntention(
-          `Test learning transfer: ${transfer.subject}`,
+          `Test learning transfer: ${transferSubject}`,
           [{source:"executive-brain-curiosity-circle",event:"cross-domain-transfer-hypothesis",sourceLearningSubject:subject,sharedConcepts:this.clone(transfer.sharedConcepts),score:transfer.score,unknowns:[transfer.question],externalActionAuthorized:false}],
           {status:"pending",kind:"cross-domain-learning-transfer",sourceId:episode?.episodeId || null,persist:false}
         );
@@ -21401,6 +21513,131 @@
         this.curiosityCircleHistory=original.circles; this.curiosityCircleCount=original.circleCount; this.lastCuriosityCircle=original.lastCircle;
         this.learningStrategyState=original.strategy; this.lastProductiveIdleAction=original.lastIdle;
         this.crossTimePatternHistory=original.patterns; this.crossTimePatternSynthesisCount=original.patternCount;
+      }
+    },
+
+    runCuriosityTransferLineageHygieneAcceptanceTest() {
+      const original = {
+        goals: this.clone(this.developmentalGoals),
+        intentions: this.clone(this.cognitiveIntentions),
+        autobiography: this.clone(this.autobiographicalMemory),
+        curiosityHistory: this.clone(this.curiosityCircleHistory),
+        lastCircle: this.clone(this.lastCuriosityCircle),
+        lastIdle: this.clone(this.lastProductiveIdleAction),
+        patterns: this.clone(this.crossTimePatternHistory),
+        patternCount: this.crossTimePatternSynthesisCount,
+        strategy: this.clone(this.learningStrategyState)
+      };
+      try {
+        this.developmentalGoals = [];
+        this.autobiographicalMemory = [];
+        this.curiosityCircleHistory = [];
+        this.lastCuriosityCircle = null;
+        this.crossTimePatternHistory = [];
+        this.crossTimePatternSynthesisCount = 0;
+        this.learningStrategyState = null;
+        this.cognitiveIntentions = [
+          {
+            intentionId: "nested-transfer-fixture",
+            key: this.normalize("Test learning transfer: Test learning transfer: evidence provenance reasoning"),
+            subject: "Test learning transfer: Test learning transfer: evidence provenance reasoning",
+            status: "pending",
+            attempts: 0,
+            triggers: [{source:"executive-brain-curiosity-circle",event:"cross-domain-transfer-hypothesis"}],
+            temporal: {kind:"cross-domain-learning-transfer"},
+            createdAt: "2026-09-19T00:00:00.000Z",
+            updatedAt: "2026-09-19T00:00:00.000Z"
+          },
+          {
+            intentionId: "legitimate-fixture",
+            key: this.normalize("Evidence provenance audit quality"),
+            subject: "Evidence provenance audit quality",
+            status: "pending",
+            attempts: 0,
+            triggers: [{source:"human-direction",event:"explicit-question"}],
+            temporal: {kind:"cognitive-intention"},
+            createdAt: "2026-09-19T00:00:01.000Z",
+            updatedAt: "2026-09-19T00:00:01.000Z"
+          }
+        ];
+
+        const historyBefore = {
+          autobiography: this.autobiographicalMemory.length,
+          curiosity: this.curiosityCircleHistory.length
+        };
+        const reconciliation = this.reconcileCuriosityTransferLineageState({persist:false});
+        const nestedAfter = this.cognitiveIntentions.find(item => item.intentionId === "nested-transfer-fixture") || null;
+        const transfers = this.discoverCuriosityTransferCandidates({
+          subject: "evidence provenance",
+          supportedFacts: ["Evidence provenance improves audit quality"],
+          inferences: [],
+          unknowns: []
+        },{limit:8});
+
+        this.developmentalGoals = [{
+          id:"goal-provenance",
+          capability:"evidence provenance reasoning",
+          status:"active",
+          impact:.9,
+          ambition:{demonstrated:.4,required:.9,gap:.5},
+          developmentalQuestion:"How can provenance improve evidence reasoning?"
+        }];
+        this.lastProductiveIdleAction = {
+          subject:"primary-source evidence provenance",
+          origin:"self-directed-world-learning",
+          expectedValue:.8,
+          unknowns:[]
+        };
+        const circle = this.completeAutonomousCuriosityCircle({
+          subject:"primary-source evidence provenance",
+          success:true,
+          evidence:[{source:"acceptance://primary",authority:"authoritative",summary:"Provenance improves traceability."}],
+          synthesis:{
+            evidenceQuality:"strong",
+            supportedFacts:["Primary-source provenance improves evidence traceability."],
+            inferences:[],unknowns:[],authoritativeSourceCount:1,directSubjectMatchCount:1,requiresFurtherInvestigation:false
+          },
+          researchLoop:{closure:{passesExecuted:1,stopReason:"evidence-sufficient-for-bounded-closure",evidenceQuality:"strong",requiresFurtherInvestigation:false}},
+          durableLearning:{persisted:true,record:{id:"acceptance-learning-hygiene"}}
+        },{persist:false});
+        const promotedSubjects = (circle?.circle?.transfer?.promoted || []).map(item=>String(item?.subject || ""));
+        const snapshot = this.buildPersistenceSnapshot();
+        const nestedSnapshotSubjects = (snapshot?.cognitiveIntentions || []).filter(item=>this.parseCuriosityTransferSubject(item?.subject || "").recursivelyWrapped);
+
+        const checks = [
+          {name:"Nested transfer wrappers collapse to one canonical transfer subject",passed:reconciliation.collapsedSubjects===1&&nestedAfter?.subject==="Test learning transfer: evidence provenance reasoning"},
+          {name:"Derived transfer intentions are not recycled as fresh transfer targets",passed:transfers.some(item=>item.subject==="Evidence provenance audit quality")===true&&transfers.some(item=>String(item.subject||"").startsWith("Test learning transfer:"))===false},
+          {name:"Legitimate non-derived unresolved cognition remains eligible for transfer reasoning",passed:transfers.some(item=>item.subject==="Evidence provenance audit quality")===true},
+          {name:"New curiosity-circle promotions never stack transfer wrappers",passed:promotedSubjects.length>0&&promotedSubjects.every(subject=>this.parseCuriosityTransferSubject(subject).depth===1)},
+          {name:"Lineage hygiene preserves historical autobiography and curiosity records rather than deleting evidence",passed:historyBefore.autobiography===0&&historyBefore.curiosity===0&&reconciliation.historyRewritten===false},
+          {name:"The sovereign persistence snapshot contains no recursively wrapped active transfer subject",passed:nestedSnapshotSubjects.length===0},
+          {name:"Hydration migration invokes transfer-lineage reconciliation before future cognition",passed:/reconcileCuriosityTransferLineageState/.test(this.migrateCognitiveEconomicsState.toString())},
+          {name:"Curiosity lineage hygiene changes no spend provider autonomy or external-action authority",passed:reconciliation.authorityChanged===false&&circle?.circle?.authority?.paidSpendAuthorized===false&&circle?.circle?.authority?.externalActionAuthorized===false},
+          {name:"The existing Continuous Curiosity Circle remains the learning loop rather than a replacement subsystem",passed:typeof this.completeAutonomousCuriosityCircle==="function"&&typeof this.discoverCuriosityTransferCandidates==="function"},
+          {name:"Historical subject text is preserved in reconciliation provenance when an active wrapper is collapsed",passed:nestedAfter?.lineageHygiene?.originalSubject==="Test learning transfer: Test learning transfer: evidence provenance reasoning"}
+        ];
+        const passed = checks.filter(item=>item.passed).length;
+        return {
+          commission:"006.036B",
+          version:this.version,
+          buildId:this.buildId,
+          passed,
+          total:checks.length,
+          success:passed===checks.length,
+          checks,
+          reconciliation,
+          promotedSubjects
+        };
+      } finally {
+        this.developmentalGoals = original.goals;
+        this.cognitiveIntentions = original.intentions;
+        this.autobiographicalMemory = original.autobiography;
+        this.curiosityCircleHistory = original.curiosityHistory;
+        this.lastCuriosityCircle = original.lastCircle;
+        this.lastProductiveIdleAction = original.lastIdle;
+        this.crossTimePatternHistory = original.patterns;
+        this.crossTimePatternSynthesisCount = original.patternCount;
+        this.learningStrategyState = original.strategy;
       }
     },
 
