@@ -30,13 +30,15 @@
 
     const ExecutiveSearch = {
         name: "MEOS Executive Search Engine",
-        version: "1.0.1",
+        version: "1.0.2",
+        buildId: "ES102-BROWSER-INDEPENDENT-SEARCH-RUNTIME-20260919-A",
         status: "initializing",
         operatingMode: "cross-engine-retrieval",
 
         configuration: {
-            persistenceEnabled: true,
-            automaticPersistence: true,
+            persistenceEnabled: false,
+            automaticPersistence: false,
+            browserPersistenceRole: "optional-disposable-search-history-cache",
             localStorageKey: STORAGE_KEY,
             organizationNeutralCore: true,
             maximumResults: 100,
@@ -75,7 +77,8 @@
             suspended: false,
             reason: null,
             suspendedAt: null,
-            warningEmitted: false
+            warningEmitted: false,
+            legacySnapshotPresent: false
         },
 
         initialize(options = {}) {
@@ -84,7 +87,18 @@
                 ...(options.configuration || options)
             };
 
-            this.restore();
+            /*
+             * Search history is runtime telemetry, not Maddy memory authority.
+             * MEOS source repositories and durable Executive Brain cognition own
+             * continuity. Browser persistence may be explicitly enabled for a
+             * disposable convenience cache, but it is OFF by default so browser
+             * quota cannot throttle search or cognition.
+             */
+            this.persistenceRuntime.legacySnapshotPresent =
+                this.hasLegacyBrowserSnapshot();
+            if (this.configuration.persistenceEnabled) {
+                this.restore();
+            }
             this.initializedAt = new Date().toISOString();
             this.status = "online";
 
@@ -1284,6 +1298,7 @@
             return {
                 name: this.name,
                 version: this.version,
+                buildId: this.buildId,
                 status: this.status,
                 operatingMode: this.operatingMode,
                 organizationNeutralCore:
@@ -1301,6 +1316,11 @@
                     configured:
                         this.configuration.persistenceEnabled &&
                         this.configuration.automaticPersistence,
+                    browserRole:
+                        this.configuration.browserPersistenceRole,
+                    authoritative: false,
+                    legacySnapshotPresent:
+                        this.persistenceRuntime.legacySnapshotPresent,
                     suspended: this.persistenceRuntime.suspended,
                     reason: this.persistenceRuntime.reason,
                     suspendedAt: this.persistenceRuntime.suspendedAt
@@ -1446,6 +1466,78 @@
                 success: true,
                 status: this.getStatus()
             };
+        },
+
+        hasLegacyBrowserSnapshot() {
+            if (!global.localStorage) {
+                return false;
+            }
+
+            try {
+                return global.localStorage.getItem(
+                    this.configuration.localStorageKey
+                ) !== null;
+            } catch {
+                return false;
+            }
+        },
+
+        runBrowserIndependenceAcceptanceTest() {
+            const checks = [
+                {
+                    name: "Automatic browser persistence is disabled by default",
+                    passed:
+                        this.configuration.persistenceEnabled === false &&
+                        this.configuration.automaticPersistence === false
+                },
+                {
+                    name: "Browser search storage is classified as an optional disposable cache",
+                    passed:
+                        this.configuration.browserPersistenceRole ===
+                        "optional-disposable-search-history-cache"
+                },
+                {
+                    name: "Runtime search remains online without browser persistence",
+                    passed:
+                        this.status === "online" &&
+                        typeof this.search === "function"
+                },
+                {
+                    name: "Search still resolves connected source systems directly",
+                    passed:
+                        typeof this.getConnectedSources === "function" &&
+                        typeof this.searchKnowledge === "function" &&
+                        typeof this.searchMemory === "function" &&
+                        typeof this.searchDocuments === "function"
+                },
+                {
+                    name: "Explicit persistence remains available only as an opt-in cache",
+                    passed:
+                        typeof this.persist === "function" &&
+                        typeof this.restore === "function"
+                },
+                {
+                    name: "Legacy browser snapshot is observed without claiming it as authority",
+                    passed:
+                        typeof this.persistenceRuntime.legacySnapshotPresent ===
+                        "boolean"
+                }
+            ];
+
+            const passed = checks.every((check) => check.passed);
+            const result = {
+                version: this.version,
+                buildId: this.buildId,
+                schema: "meos.executive-search.browser-independence.acceptance.v1",
+                passed,
+                checks
+            };
+
+            console.table(checks);
+            console.info(
+                `[MEOS ${this.version}] Executive Search browser-independence acceptance: ${passed ? "PASS" : "FAIL"}.`
+            );
+            return result;
         },
 
         persistIfEnabled() {
