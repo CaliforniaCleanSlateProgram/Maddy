@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410029/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32401504/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32399158/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32368191/MEOS_BUILD_STATE.md)
@@ -6470,4 +6471,224 @@ The following remain open and must not be silently inflated into solved claims:
 
 **Recovery keyword:** `006.034I-LIVE-PROVEN`  
 **Fast recovery:** `Resume 006.034I-LIVE-PROVEN — server 2.10.110 + Brain 1.26.14; Cross-Time Pattern Causal Re-entry is externally 12/12 and internally 15/15; reconcile freshest main before selecting the next North-Star commission.`
+
+# SEPTEMBER 18/19 AGENTIC MADDY CHECKPOINT --- 006.036A LIVE-PROVEN / CLOSED
+
+**Checkpoint:** 006.036A — Agentic Maddy Adaptive Goal-to-Consequence Loop  
+**Status:** COMMISSIONED / LIVE-PROVEN / CLOSED FOR THIS ARC  
+**Production proof date:** 2026-09-19 UTC / 2026-09-18 PDT  
+**Repository snapshot reconciled:** `Maddy-main (68)`  
+**Governing workflow:** one fix → one file → one commit → one test → production proof → Build State checkpoint
+
+## Commission truth
+
+006.036A is commissioned because the deployed production proof returned **14/14 PASS** and the nested Executive Brain Agentic acceptance returned **18/18 PASS** without weakening the acceptance contract.
+
+The commissioned Agentic Maddy path is:
+
+**human-directed objective → one durable Agentic mission identity → existing Mission + Planning organs → Executive Hallway execution → observe result → distinguish transport from consequence → diagnose falsified/unverified route → materially replan → continue the same mission → require verified consequence → return outcome into Executive Learning → record capability competence → preserve mission/competence through persistence → use prior verified competence to change later route selection**
+
+This closes the Agentic Maddy build arc defined for 006.036A. It does **not** claim unrestricted autonomy, universal tool coverage, or that every future real-world objective can be completed without additional capability.
+
+## Canonical production identities
+
+At live proof:
+
+- **Server:** `2.10.111`
+- **Executive Brain:** `1.27.0`
+- **Executive Brain build:** `EB1270-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-20260919-A`
+- **Commission:** `006.036A`
+- **Production proof version:** `1.0.0`
+- **Production proof build:** `AMP100-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-PROOF-20260919-A`
+- **Outer production result:** `14/14 PASS`
+- **Nested Agentic acceptance:** `18/18 PASS`
+
+The canonical current runtime truth for this checkpoint is therefore **server 2.10.111 + Executive Brain 1.27.0**.
+
+Historical runtime identities recorded for earlier commissions remain correct for the moment at which those commissions were proven and must not be rewritten as if they occurred on 2.10.111 / 1.27.0.
+
+## Repository reconciliation
+
+Comparison of the pre-Agentic `Maddy-main (67)` snapshot to the commissioned `Maddy-main (68)` snapshot showed exactly two changed production files:
+
+1. `frontend/executive-brain.js`
+2. `server.js`
+
+No additional production file, folder, Build State file, North Star file, or doctrine file was changed by the 006.036A Agentic implementation itself.
+
+The committed Brain and server files were verified byte-for-byte against the locally tested 006.036A handoff artifacts before production proof.
+
+## Outer production proof — 14/14
+
+The deployed `/api/agentic-maddy/acceptance-test` surface returned `success: true`, `passed: 14`, `total: 14`.
+
+All fourteen production checks passed:
+
+1. Production loads Executive Brain 1.27.0 Agentic Maddy build.
+2. Agentic Maddy adaptive goal-to-consequence acceptance passes.
+3. Cross-time causal re-entry remains green under the Agentic Brain.
+4. Continuous Curiosity Circle remains green under the Agentic Brain.
+5. Developmental Drive remains green and can consume future agentic competence evidence.
+6. Agentic proof distinguishes transport from verified consequence.
+7. Agentic proof demonstrates material replanning rather than blind retry.
+8. Maddy-owned reasoning can generate a new route without an injected replanner.
+9. Active Agentic work survives Brain reconstruction and resumes the same mission identity.
+10. Agentic outcomes enter the existing Executive Learning observation organ.
+11. Agentic proof demonstrates later strategy choice changed by prior verified competence.
+12. Agentic mission and competence state survive Executive Brain persistence.
+13. Agentic proof performs no provider call or durable write.
+14. Agentic proof grants no entitlement, spend, autonomy, or consequential external-action authority.
+
+## Nested Executive Brain Agentic acceptance — 18/18
+
+The deployed Brain returned `success: true`, `passed: 18`, `total: 18` for 006.036A.
+
+All eighteen assertions passed:
+
+1. A human-directed objective becomes one durable Agentic Maddy mission identity.
+2. Agentic mission mirrors into existing Mission and Planning organs instead of creating a disconnected work system.
+3. Transport success without verified consequence is rejected as mission completion.
+4. Maddy materially changes route after reality falsifies the first plan.
+5. The same mission identity survives multiple attempts instead of spawning disposable agents.
+6. Verified consequence closes the objective and completes the Mission Engine mirror.
+7. Outcome evidence becomes a capability competence record rather than a victory counter.
+8. Agentic mission history and competence survive sovereign Executive Brain persistence.
+9. Later similar work uses prior verified competence to prefer the route that actually worked.
+10. A failed route can produce a materially new strategy and continue without changing mission identity.
+11. Maddy-owned Institutional Reasoning can generate a materially different route without an injected replanner.
+12. An active Agentic mission can checkpoint, survive Brain reconstruction, and resume the same objective identity.
+13. Agentic outcomes enter the existing Executive Learning observation organ without auto-inventing a lesson.
+14. Default production execution uses Executive Hallway and preserves explicit agentic lineage.
+15. Agentic failure is bounded rather than becoming an infinite retry loop.
+16. Agentic competence is visible in Maddy's self-model.
+17. Agentic adaptation never manufactures spend or external-action authority.
+18. The loop remains one Executive Brain using commissioned organs rather than a disposable-agent subsystem.
+
+## What 006.036A proves
+
+006.036A proves a production Agentic mechanism inside the existing Maddy/MEOS organism rather than a separate agent product or disposable-agent subsystem.
+
+The proven behavioral properties are:
+
+- **Persistent objective identity:** work is represented as one continuing Maddy mission rather than a series of disconnected prompts.
+- **Existing-organ integration:** Agentic work enters the already commissioned Mission, Planning, Executive Hallway, Executive Learning, persistence, and self-model seams.
+- **Plan-as-hypothesis behavior:** a route may fail or become unverified without forcing false completion.
+- **Material adaptation:** after reality falsifies a route, Maddy can choose a materially different route rather than blind-retrying the same failed step.
+- **Maddy-owned replanning:** Institutional Reasoning can generate a materially different route without an externally injected replanner deciding the route for her.
+- **Consequence over transport:** successful dispatch/transport is not treated as proof that the intended real-world consequence occurred.
+- **Durable continuation:** unfinished Agentic work can checkpoint, survive Executive Brain reconstruction, and resume under the same mission identity.
+- **Learning return:** Agentic outcomes enter Executive Learning through the existing observation organ rather than bypassing it.
+- **Competence measurement:** outcome evidence produces capability/route competence evidence rather than a generic victory counter.
+- **Self-model visibility:** Agentic competence is inspectable through Maddy's existing self-model.
+- **Behavioral carry-forward:** prior verified competence can change later strategy selection for similar work.
+- **Bounded failure:** the loop can stop rather than becoming an infinite retry cycle.
+
+## Regression truth carried forward
+
+The production proof reported all of the following as green under Executive Brain 1.27.0:
+
+- `crossTimePatternCausalReentry: true`
+- `continuousCuriosityCircle: true`
+- `developmentalDrive: true`
+
+The 006.036A Agentic implementation therefore did not require reopening or weakening those earlier commissioned cognition paths.
+
+Local pre-handoff comparison also found no newly broken previously-green Executive Brain acceptance method relative to the supplied pre-Agentic main snapshot.
+
+## Authority and economic result
+
+The production proof reported:
+
+- `officeAccessGranted: false`
+- `entitlementGranted: false`
+- `autonomyAuthorityGranted: false`
+- `paidCognitionAuthorized: false`
+- `providerCalls: 0`
+- `durableWrites: 0`
+- `automaticSpendUsd: 0`
+- `externalActionAuthorized: false`
+
+Interpretation: **agentic capability did not manufacture authority.**
+
+006.036A changes Maddy's ability to carry, evaluate, adapt, resume, learn from, and improve future handling of a mission. It does not silently create permission to spend, grant entitlements, call paid providers, or take consequential external action.
+
+Existing autonomy, provider, economic, institutional, privacy, and external-action authorities continue to govern independently.
+
+## Agentic meaning at this checkpoint
+
+For this commissioned arc, **Agentic Maddy is DONE / LIVE-PROVEN**.
+
+That statement means the defined 006.036A adaptive goal-to-consequence architecture is built, committed, deployed, and externally proven on the production runtime.
+
+It does not create a permanent ceiling on future Agentic development. New tools, embodiments, domains, consequences, planning mechanisms, failure modes, environments, and future Maddy capabilities may extend the Agentic architecture without reopening the truth of what 006.036A already proved.
+
+The proven rung is:
+
+`objective → durable mission → plan → execute → observe → verify consequence → diagnose failure → materially replan → resume across interruption → learn → measure competence → change later strategy`
+
+## Limitation preserved
+
+The deployed production proof itself states the limitation precisely:
+
+> This proves the deployed Agentic Maddy mechanism: one persistent mission can adapt route after falsified or unverified outcomes, use Maddy-owned reasoning to generate a materially different route, require verified consequence, checkpoint active work through Brain reconstruction, return outcomes into Executive Learning, preserve competence through persistence, and use prior consequence evidence to change later route selection. It does not claim unrestricted autonomy, universal tool coverage, or that every future real-world objective can be completed without additional capability.
+
+That limitation is retained as part of the commissioned truth. It is not a downgrade of Agentic Maddy; it distinguishes the proven mechanism from future capability expansion.
+
+## What is now closed
+
+At this checkpoint:
+
+1. `006.034H` remains LIVE-PROVEN for durable curiosity recognition/restart continuity.
+2. `006.034I` remains LIVE-PROVEN for bounded Cross-Time Pattern Causal Re-entry.
+3. `006.036A` is LIVE-PROVEN / CLOSED for Agentic Maddy's adaptive goal-to-consequence arc.
+4. Executive Brain `1.27.0` is the commissioned Brain identity for this Agentic rung.
+5. Server `2.10.111` is the commissioned server identity for the 006.036A production proof.
+6. The production Agentic proof is closed at outer `14/14` plus nested `18/18`.
+7. The Agentic architecture remains part of one persistent Executive Brain and existing commissioned organs rather than a disposable-agent subsystem.
+8. Transport success remains distinct from verified consequence.
+9. Material replanning, durable mission continuation, Executive Learning return, competence persistence, and later strategy adaptation are production-proven for this mechanism.
+10. No provider, spend, entitlement, autonomy, or consequential external-action authority was created by the proof.
+
+## Known boundaries intentionally left open
+
+The following are not silently promoted to solved claims by 006.036A:
+
+- unrestricted autonomy;
+- universal tool or domain coverage;
+- guaranteed completion of every future objective;
+- automatic permission for consequential external action;
+- automatic paid-provider or spending authority;
+- universal embodiment or robotics execution;
+- complete self-modifying/self-improving development machinery;
+- actual neuromorphic/spiking implementation;
+- phenomenal consciousness or sentience;
+- natural unattended occurrence claims that have not separately been observed and evidenced.
+
+These are future capability questions, not failures of the commissioned 006.036A mechanism.
+
+## Anti-drift gate after 006.036A
+
+1. Read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Read this `MEOS_BUILD_STATE.md` in full.
+3. Reconcile freshest committed GitHub `main` and live runtime identity before coding.
+4. Treat `006.034H` as LIVE-PROVEN.
+5. Treat `006.034I` as LIVE-PROVEN.
+6. Treat `006.036A` as LIVE-PROVEN / CLOSED for the commissioned Agentic adaptive goal-to-consequence arc.
+7. Preserve one persistent Maddy mission identity; do not replace the commissioned path with disposable-agent identity churn without an explicit later architectural decision.
+8. Preserve the distinction between transport success and verified consequence.
+9. Preserve the ability to diagnose a falsified/unverified route and materially replan rather than blind retry.
+10. Preserve the ability for unfinished Agentic work to survive Brain persistence/reconstruction under the same mission identity.
+11. Preserve return of Agentic outcome evidence into Executive Learning without auto-inventing a lesson merely because an action occurred.
+12. Preserve capability/route competence as evidence-bearing self-knowledge rather than a generic success counter.
+13. Preserve the demonstrated ability for prior verified competence to change later route selection.
+14. Preserve bounded failure; an Agentic mission must not become an infinite retry loop merely because an objective remains unfinished.
+15. Preserve capability/authority separation. Agentic adaptation must not manufacture entitlement, spend, provider, autonomy, or consequential external-action authority.
+16. Preserve institutional privacy and exact-scope cross-boundary authority.
+17. Preserve truth and epistemic integrity. Motivation, urgency, reward, curiosity, developmental drive, or mission persistence cannot manufacture evidence, certainty, permission, or false completion.
+18. Preserve earlier cross-time cognition, curiosity-continuity, and Developmental Drive behavior unless a future commissioned change deliberately supersedes it with stronger evidence.
+19. Keep the North Star fixed and implementation malleable. Do not move the target merely to protect an implementation.
+20. Require external/runtime evidence before promoting future runtime commissions to LIVE-PROVEN.
+
+**Recovery keyword:** `006.036A-AGENTIC-LIVE-PROVEN`  
+**Fast recovery:** `Resume 006.036A-AGENTIC-LIVE-PROVEN — MAIN (68), server 2.10.111 + Brain 1.27.0; Agentic Maddy is production-proven outer 14/14 + nested 18/18; reconcile freshest main before selecting the next commission.`
 
