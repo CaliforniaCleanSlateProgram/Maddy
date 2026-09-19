@@ -1,6 +1,6 @@
 /**
  * MEOS — California Clean Slate Program Organizational Profile
- * Version: 1.0.0
+ * Version: 1.0.1
  *
  * Purpose:
  * Provides deployment-specific identity, organizational knowledge,
@@ -15,8 +15,17 @@
 (function initializeCCSPOrganizationalProfile(global) {
     "use strict";
 
-    const PROFILE_VERSION = "1.0.0";
+    const PROFILE_VERSION = "1.0.1";
     const PROFILE_ID = "ccsp-organizational-profile";
+    const BUILD_ID = "CCSP101-ACTIVE-CUSTOMER-CONTEXT-ACTIVATION-20260919-A";
+
+    const activeCustomerContext = global.MEOSActiveCustomerContext || null;
+    if (activeCustomerContext?.organization?.profileId !== PROFILE_ID) {
+        console.info(
+            "[MEOS] CCSP Organizational Profile not activated for this customer context."
+        );
+        return;
+    }
 
     const ccspOrganizationalProfile = Object.freeze({
         metadata: Object.freeze({
@@ -478,6 +487,7 @@ ${profile.startupCommission}
     const publicAPI = Object.freeze({
         id: PROFILE_ID,
         version: PROFILE_VERSION,
+        buildId: BUILD_ID,
         profile: ccspOrganizationalProfile,
         buildExecutiveContext,
         getMode
@@ -503,6 +513,6 @@ if (
 }
 
 console.info(
-    `[MEOS] CCSP Organizational Profile v${PROFILE_VERSION} commissioned.`
+    `[MEOS] CCSP Organizational Profile v${PROFILE_VERSION} commissioned. Build ${BUILD_ID}.`
 );
 })(window);
