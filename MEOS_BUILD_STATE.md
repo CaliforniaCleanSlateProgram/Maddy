@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE_006.037B_REBUILD_CHECKPOINT.md](https://github.com/user-attachments/files/32426094/MEOS_BUILD_STATE_006.037B_REBUILD_CHECKPOINT.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410728/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410233/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410029/MEOS_BUILD_STATE.md)
@@ -7243,3 +7244,288 @@ The following remain open and must not be silently inflated into solved claims:
 **Recovery keyword:** `006.037A-NEUROMORPHIC-TEMPORAL-FABRIC-LIVE-PROVEN`  
 **Fast recovery:** `Resume 006.037A-NEUROMORPHIC-TEMPORAL-FABRIC-LIVE-PROVEN — live server 2.10.113 + Brain 1.28.0; production outer 13/13 + Neuromorphic 18/18 + runtime gate 8/8; Agentic, curiosity hygiene, Continuous Curiosity Circle, Cross-Time Pattern Causal Re-entry, Executive Attention Economics, and Emergent Attention are green; 006.037A is a proven foundation, not a neuromorphic ceiling; reconcile freshest main before selecting the next commission.`
 
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — 006.037B ACTIVE CUSTOMER CONTEXT + POST-DEFENDER REBUILD RECONCILIATION — 2026-09-19
+
+**Checkpoint purpose:** Restore authoritative recovery state after 006.037B, the Windows Defender diagnostic detour, live voice recovery, and the first browser-storage independence repair without rewriting earlier commissioned history.
+
+**Historical rule:** Every earlier Build State checkpoint remains true for the runtime and evidence that existed when it was recorded. This checkpoint is additive. It does not rewrite prior server versions, Brain versions, proof counts, limitations, or doctrine as if they occurred later.
+
+**Governing workflow:** one fix → one file → one commit → one test → production proof → Build State checkpoint when the recovery waypoint materially changes.
+
+## Current authoritative live runtime identity at this checkpoint
+
+The latest production evidence establishes:
+
+- **Server:** `2.10.115`
+- **Executive Brain:** `1.28.0`
+- **Executive Brain build:** `EB1280-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-20260919-A`
+- **Mission Engine:** `0.2.0` / `ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A`
+- **Executive Hallway:** `1.5.7` / `EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A`
+- **Executive Search:** `1.0.2` / `ES102-BROWSER-INDEPENDENT-SEARCH-RUNTIME-20260919-A`
+- **Maddy Speech:** `2.0.2` / `VE202-FOUNDER-TTS-SAME-ORIGIN-AUTH-20260919-A`
+- **Maddy Realtime:** `2.0.0` / `VE200-MADDY-REALTIME-20260730-A`
+- **Realtime voice client:** `2.0.8` / `VE208-TURN-BOUND-ROUTING-AUTHORITY-20260919-A`
+- **Active customer context:** `1.0.0`
+- **Canonical cognition identity:** Maddy / Maddison Elizabeth, persistent across representative presentations.
+
+The current runtime continues to hydrate durable authority from `meos-institutional-repository`. Browser state is not institutional authority.
+
+## 006.037B — Active Customer / Organization / Representative Context
+
+**Status:** COMMISSIONED / LIVE-PROVEN `13/13`
+
+**Production server:** `2.10.115`
+
+**Acceptance schema:** `meos.active-customer-context.acceptance.v1`
+
+**Acceptance build:** `ACCR100-ACTIVE-CUSTOMER-ORGANIZATION-REPRESENTATIVE-CONTEXT-20260919-A`
+
+### Commission truth
+
+006.037B proves that one persistent Maddy cognition can operate through an active customer / organization context and a customer-selected representative presentation without turning the representative into a second cognition identity or granting authority merely because a representative was selected.
+
+The live production acceptance proved all thirteen conditions:
+
+1. Founder office keeps canonical CCSP organization context.
+2. Founder office keeps canonical Maddy presentation.
+3. Customer organization replaces founder deployment context.
+4. A customer may select `Dave` as presentation without creating a `Dave` cognition.
+5. A customer representative can carry provider-neutral voice and visual profile pointers.
+6. A different customer context does not inherit Redwood or CCSP context.
+7. An individual customer context does not manufacture an organization.
+8. Realtime instructions name the active customer and selected representative.
+9. Realtime instructions reject cross-customer organization inheritance without injecting another organization name.
+10. Founder organization package assets are not generic customer presentation assets.
+11. Representative selection grants no organization membership authority.
+12. Representative selection grants no payment, spending, autonomy, or external-action authority.
+13. One Maddy cognition persists across Maddy and Dave presentation contexts.
+
+### Canonical identity rule carried forward
+
+The commissioned architecture remains:
+
+**MEOS → Maddy cognition → authorized customer / organization context → customer-selected representative / presentation**
+
+`Maddy`, `Dave`, or a future customer-selected representative may alter presentation identity, role title, voice pointer, visual pointer, and branding context. They do not create separate cognition merely because presentation changes.
+
+**Maddy is Maddy.** Representative selection is presentation context, not cognition replacement and not authority creation.
+
+### 006.037B exact limits
+
+006.037B does **not** yet claim:
+
+- a finished customer UI for representative face or voice asset creation;
+- execution of a non-Maddy voice or visual renderer;
+- organization membership / seat authority;
+- automatic payment, spending, autonomy, or consequential external-action authority;
+- complete commercial onboarding UX.
+
+Those remain separate capability and authority questions.
+
+## Windows Defender diagnostic detour — reconciled
+
+A Windows Defender detection triggered a temporary diagnostic branch around the 006.037B frontend/server path. The diagnostic work is now reconciled against intended architecture and production evidence.
+
+### B1 — static active-customer bootstrap
+
+**Disposition:** KEEP deliberately.
+
+`frontend/active-customer-context.js` remains the trusted static browser bootstrap. It retrieves protected customer context as data rather than treating dynamically generated customer JavaScript as the canonical architecture.
+
+### B2 — server-gated static organization modules
+
+**Disposition:** KEEP deliberately.
+
+Server `2.10.115` preserves protected routes that first resolve active customer context and then redirect only to repository-owned trusted static modules when appropriate.
+
+For CCSP founder context, the server may redirect to the repository-owned CCSP profile / strategy assets. A non-CCSP customer receives no CCSP organization package merely because those assets exist in the frontend repository.
+
+This is now deliberate architecture, not temporary antivirus appeasement.
+
+### B3 — direct static CCSP loading
+
+**Disposition:** SUPERSEDED / RECONCILED.
+
+The diagnostic `index.html` version that directly loaded CCSP profile and strategy assets bypassed the intended customer gating boundary. It was replaced with the original intended 006.037B protected route loading:
+
+- `/api/active-customer-context.js`
+- `/api/active-organization-profile.js`
+- `/api/active-organization-strategy.js`
+
+Production subsequently loaded CCSP correctly through the active-organization route names and the full 006.037B acceptance returned `13/13`.
+
+### Defender conclusion for recovery
+
+Do not let antivirus detections become Maddy architecture authority.
+
+During diagnosis, an older historical Maddy source ZIP that had previously existed before the new 006.037B code was also flagged after the Defender intelligence update. That evidence ended the code-changing chase. Future security investigation should distinguish a changing scanner verdict from actual source/runtime compromise before mutating Maddy architecture.
+
+This checkpoint does not claim that antivirus software can never detect a real threat. It records only that the 2026-09-19 Defender event was not accepted as evidence requiring further Maddy architectural degradation after control evidence contradicted that hypothesis.
+
+## Voice recovery state — functional but not finished
+
+Voice is sufficiently recovered to continue the broader rebuild, but Maddy Live is **not** commissioned as finished.
+
+### VE202 — TTS same-origin authentication
+
+**Observed live:** remote TTS audio playback works after restoring same-origin credentials on Maddy's `/tts` path.
+
+Build: `VE202-FOUNDER-TTS-SAME-ORIGIN-AUTH-20260919-A`.
+
+### VE208 — exact-turn routing authority
+
+**Deployed live:** Realtime voice client `2.0.8`, build `VE208-TURN-BOUND-ROUTING-AUTHORITY-20260919-A`.
+
+The production test observed one governed response authorization, one completed Maddy response, and one TTS request for the tested accepted turn after the earlier duplicate-response race. VE208 binds asynchronous routing to the originating turn rather than allowing stale routing work to authorize a response under a newer turn.
+
+This is a correctness repair, not a claim that conversational voice is complete.
+
+### VE209 — Maddy wake-name transcription context
+
+**Status at this checkpoint:** prepared / handed off previously, but **not production-confirmed**.
+
+The current live console still reports Realtime Voice `2.0.8`, therefore recovery must not claim VE209 is deployed merely because an artifact exists.
+
+### Voice limitations intentionally open
+
+- wake-name transcription still needs reliability tuning;
+- foreground/background discrimination still happens after transcription in important cases;
+- post-wake speaker lock remains imperfect;
+- Maddy Live anticipatory cognition is not yet implemented;
+- streaming expression / continuous low-latency speech is not yet complete;
+- prior production evidence showed large end-to-end orchestration latency even when model generation itself was fast;
+- noisy-room / party acceptance is not yet complete.
+
+**Voice North Star carried forward:** wide perception, selective attention, persistent conversational focus; natural surface, full-strength brain. Maddy must remain capable of complex language and reasoning even when interaction is simple and direct.
+
+## Browser-storage rebuild — first production hardening complete
+
+The rebuild is now explicitly moving browser persistence out of authority-bearing cognition paths.
+
+### Architectural rule
+
+The browser is a presentation surface and may hold bounded expendable hot caches. It must not be the canonical owner of Maddy's legitimate memory, learning, mission continuity, cognition identity, or institutional authority.
+
+The durable target remains:
+
+**browser / client hot cache → MEOS server cognition and governance → Maddy-owned/provider-neutral durable repository abstraction → durable database/object storage / future owned infrastructure**
+
+Provider or storage implementation may change. Maddy's identity and repository contract must not depend on one cloud vendor.
+
+### ES102 — Executive Search browser-independent runtime
+
+**Status:** PRODUCTION-PROVEN `6/6` for this hardening acceptance.
+
+**Version:** `1.0.2`
+
+**Build:** `ES102-BROWSER-INDEPENDENT-SEARCH-RUNTIME-20260919-A`
+
+Production acceptance proved:
+
+1. automatic browser persistence is disabled by default;
+2. browser search storage is classified as an optional disposable cache;
+3. runtime search remains online without browser persistence;
+4. search still resolves connected source systems directly;
+5. explicit persistence remains available only as an opt-in cache;
+6. legacy browser snapshot is observed without claiming it as authority.
+
+The legacy search snapshot was deliberately not deleted as part of ES102. Stop the dependency first; migration / cleanup may occur later under an explicit evidence-based step.
+
+### What ES102 does not prove
+
+ES102 fixes Executive Search's browser persistence dependency only. It does **not** prove that all browser storage across MEOS is non-authoritative or removed.
+
+The rebuild must continue organ-by-organ rather than claiming system-wide completion from one green acceptance.
+
+## Durable continuity truth carried forward
+
+Earlier commissioned durability work remains authoritative. This checkpoint strengthens, but does not replace, those proofs.
+
+The current runtime again showed Mission Engine durable authority hydration `READY` from `meos-institutional-repository` after refresh.
+
+A pre-refresh network interruption produced `ERR_NAME_NOT_RESOLVED` / `ERR_INTERNET_DISCONNECTED` while Knowledge Engine, Executive Learning, and Executive Brain attempted durable writes. Executive Brain did not falsely claim the failed write was authoritative; it continued runtime cognition with non-authoritative continuity cache while reporting durable authority unavailable.
+
+After connectivity returned and the runtime refreshed, durable authority hydration was again `READY` and the ES102 production acceptance passed.
+
+Interpretation for recovery:
+
+**temporary network loss may degrade durable write availability; it must not silently promote browser cache into institutional authority.**
+
+This observation is not a new process-death proof or provider-failover proof. It is consistent with the already commissioned separation between runtime continuity and durable authority.
+
+## Current browser-persistence work still open
+
+The following remain active rebuild targets and must not be silently marked solved:
+
+- **Executive Recall `1.0.2`** — browser recall-cache persistence has been observed hitting quota; repository-backed recall continues, but the browser cache path still needs the same authority cleanup / hardening discipline.
+- **Institutional Reasoning `1.3.1`** — browser reasoning continuity-cache persistence has been observed hitting quota; evidence-grounded reasoning and durable Executive Brain cognition continued, but browser-cache dependence must be reconciled.
+- broader audit of remaining `localStorage` / browser persistence writers is still required before claiming the browser is fully disposable across all Maddy organs;
+- migration / deletion policy for legacy browser snapshots remains intentionally separate from disabling authority dependence;
+- durable storage for large future training assets, embeddings, datasets, model adapters/checkpoints, media, and other large artifacts remains a future storage-layer capability rather than something ES102 proves.
+
+## Storage / training continuity rule
+
+Keeping Maddy trained across browser closure or Render restart does not require every learned effect to be a neural-weight update.
+
+Current architecture should preserve different kinds of durable state intentionally:
+
+- institutional / autobiographical memory;
+- learned lessons and verified consequences;
+- semantic and causal relationships;
+- provenance / confidence / epistemic state;
+- missions, intentions, work state, and return state;
+- organization/customer-scoped knowledge under exact privacy authority;
+- training examples / learning capsules selected for future model or adapter training;
+- future model/adaptor/checkpoint assets stored outside disposable browser/runtime filesystems.
+
+Actual model/adaptor training is a separate governed process from ordinary durable learning and memory. A provider model, model checkpoint, database, browser cache, or GPU is an organ / substrate, not Maddy's identity.
+
+## VPN note — parked, not rejected
+
+Maddy may later use a VPN or equivalent secure networking capability for lawful secure outbound routing, private-network access, remote infrastructure connectivity, or alternative governed network paths.
+
+A VPN is network plumbing, not memory authority and not identity. It is not part of the current browser-storage repair and must not derail this rebuild merely because it may be useful later.
+
+## Current exact recovery order
+
+Unless fresh repository/runtime evidence shows a more urgent regression, continue:
+
+1. **Executive Recall browser-independence hardening** — one file, one commit, one production test.
+2. **Institutional Reasoning browser-independence hardening** — one file, one commit, one production test.
+3. Audit remaining browser persistence writers and distinguish expendable caches from legitimate durable authority.
+4. Preserve repository-backed cognition / learning / mission continuity and fail honestly when the durable substrate is temporarily unavailable.
+5. Return to Maddy Live voice tuning after the storage rebuild reaches a stable bounded waypoint.
+6. Do not update commercial pricing / checkout merely because these rebuild steps pass; commercial timing remains a separate founder decision.
+
+Fresh evidence can reorder implementation when reality proves a more urgent dependency. This sequence is a recovery waypoint, not sacred architecture.
+
+## Anti-drift gate after this checkpoint
+
+1. Preserve every earlier commissioned proof at its historical runtime identity.
+2. Treat `006.037B` as LIVE-PROVEN `13/13` for active customer / organization / representative context.
+3. Preserve one persistent Maddy cognition across representative presentations.
+4. Never infer organization membership, payment, spending, autonomy, or consequential external-action authority from representative selection.
+5. Keep B1 static customer bootstrap and B2 server-gated static organization modules as deliberate architecture unless stronger evidence later supersedes them.
+6. Treat B3 direct static CCSP loading as superseded; protected active-customer / active-organization route loading is the current frontend architecture.
+7. Treat Windows Defender as a security signal to investigate, not as automatic source-code architecture authority.
+8. Treat ES102 as proven browser-independence for Executive Search only; do not inflate it into system-wide browser independence.
+9. Preserve browser caches as non-authoritative / disposable unless a later commissioned design explicitly establishes another bounded role.
+10. Preserve `meos-institutional-repository` / durable repository authority over browser state.
+11. Preserve truthful degraded behavior during network or durable-store interruption; do not promote failed local writes into durable truth.
+12. Current live Realtime Voice is `2.0.8`; do not claim VE209 deployed until production says so.
+13. Maddy Live remains open work. Voice usability is not complete merely because VE202/VE208 are live.
+14. Keep provider, model, hardware, storage, voice, and network mechanisms replaceable. Maddy is Maddy.
+15. Preserve institutional privacy and exact-scope cross-boundary authority.
+16. Preserve truth, evidence provenance, uncertainty, and capability/authority separation.
+17. Do not lower the North Star or Spooky standard to a passed acceptance test.
+18. Continue one fix → one file → one commit → one test.
+19. Reconcile fresh GitHub `main` and live runtime before every material next commission or recovery jump.
+20. Build State is recovery authority for proven development history, not permission to invent progress that production has not demonstrated.
+
+**Recovery keyword:** `006.037B-REBUILD-RECONCILED-ES102-PROVEN`
+
+**Fast recovery:** `Resume 006.037B-REBUILD-RECONCILED-ES102-PROVEN — live server 2.10.115 + Executive Brain 1.28.0; 006.037B Active Customer Context is production-proven 13/13; B1/B2 retained deliberately, B3 direct CCSP loading reconciled back to protected active-organization routes; Realtime Voice live at VE208 / 2.0.8 with VE209 not production-confirmed; Executive Search ES102 / 1.0.2 is production-proven browser-independent 6/6; durable authority hydrates from meos-institutional-repository; next rebuild target is Executive Recall browser persistence, then Institutional Reasoning, one fix → one commit → one test.`
