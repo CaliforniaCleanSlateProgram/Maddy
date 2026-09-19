@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410728/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410233/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410029/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32401504/MEOS_BUILD_STATE.md)
@@ -6914,3 +6915,331 @@ These remain future capability questions, not failures of the commissioned 006.0
 
 **Recovery keyword:** `006.036B-CURIOSITY-LINEAGE-HYGIENE-LIVE-PROVEN`  
 **Fast recovery:** `Resume 006.036B-CURIOSITY-LINEAGE-HYGIENE-LIVE-PROVEN — live server 2.10.112 + Brain 1.27.1; lineage hygiene is production-proven outer 9/9 + Brain 10/10 + server 5/5; Agentic, Continuous Curiosity Circle, and Cross-Time Pattern Causal Re-entry remain green; reconcile freshest main before Neuromorphic Maddy.`
+
+# SEPTEMBER 18/19 NEUROMORPHIC TEMPORAL EVENT FABRIC CHECKPOINT --- 006.037A LIVE-PROVEN / CLOSED FOR THIS COMMISSIONED ARC
+
+**Checkpoint:** 006.037A — Neuromorphic Maddy Temporal Event Fabric  
+**Status:** COMMISSIONED / LIVE-PROVEN / CLOSED FOR THIS COMMISSIONED ARC  
+**Production proof date:** 2026-09-19 UTC / 2026-09-18 PDT  
+**Freshest supplied repository snapshot before 006.037A implementation:** `Maddy-main (71)`  
+**Live runtime after 006.037A Brain + server commits:** server `2.10.113` + Executive Brain `1.28.0`  
+**Governing workflow:** one fix → one file → one commit → one test → production proof → Build State checkpoint
+
+## Commission truth
+
+006.037A is commissioned because the deployed production proof returned **13/13 PASS**, the nested Executive Brain Neuromorphic Maddy acceptance returned **18/18 PASS**, and the resident runtime wake-gate acceptance returned **8/8 PASS** without weakening the acceptance contract.
+
+The commissioned mechanism is:
+
+**structured event → stable temporal channel → leaky accumulation → decay → threshold crossing → spike or peripheral disposition → refractory suppression / lateral inhibition → sparse cognition wake → consequence feedback → bounded threshold plasticity → persistence / self-model visibility**
+
+006.037A establishes a software neuromorphic temporal attention fabric inside the existing persistent Maddy/MEOS organism. It does **not** claim biological equivalence, specialized neuromorphic hardware, Radeon/GPU acceleration, general learned representation discovery, or state-of-the-art neuromorphic novelty.
+
+## Canonical production identities
+
+At live proof:
+
+- **Server:** `2.10.113`
+- **Executive Brain:** `1.28.0`
+- **Executive Brain build:** `EB1280-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-20260919-A`
+- **Commission:** `006.037A`
+- **Production proof version:** `1.0.0`
+- **Production proof build:** `NMP100-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-PROOF-20260919-A`
+- **Resident runtime gate build:** `NRG100-TEMPORAL-EVENT-WAKE-GATE-20260919-A`
+- **Outer production result:** `13/13 PASS`
+- **Nested Neuromorphic Maddy acceptance:** `18/18 PASS`
+- **Nested resident runtime wake-gate acceptance:** `8/8 PASS`
+
+The canonical live runtime truth for this checkpoint is therefore **server 2.10.113 + Executive Brain 1.28.0**.
+
+Historical runtime identities recorded for earlier commissions remain correct for the moments in which those commissions were proven and must not be rewritten as if they occurred on 2.10.113 / 1.28.0.
+
+## Outer production proof — 13/13
+
+The deployed `/api/neuromorphic-maddy/acceptance-test` surface returned `success: true`, `passed: 13`, `total: 13`.
+
+All thirteen production checks passed:
+
+1. Production loads Executive Brain 1.28.0 Neuromorphic Maddy build.
+2. Neuromorphic Maddy temporal event fabric acceptance passes.
+3. Server resident neuromorphic event wake gate acceptance passes.
+4. Previously-red Emergent Attention acceptance is now green on canonical and bounded-array work projections.
+5. Executive Attention Economics remains green after neuromorphic gating.
+6. Agentic Maddy remains green after neuromorphic integration.
+7. Curiosity Transfer Lineage Hygiene remains green after neuromorphic integration.
+8. Continuous Curiosity Circle remains green after neuromorphic integration.
+9. Cross-Time Pattern Causal Re-entry remains green after neuromorphic integration.
+10. Neuromorphic proof demonstrates sparse wake rather than wake-on-every-event.
+11. Neuromorphic proof demonstrates temporal accumulation, decay, refractory behavior, inhibition, and bounded plasticity.
+12. Production proof performs no provider call, durable write, spend, or external action.
+13. Neuromorphic capability does not claim specialized hardware or manufacture authority.
+
+## Nested Executive Brain Neuromorphic Maddy acceptance — 18/18
+
+The deployed Executive Brain returned `success: true`, `passed: 18`, `total: 18` for 006.037A.
+
+All eighteen assertions passed:
+
+1. One hundred independent low-significance events remain peripheral instead of waking cognition.
+2. A genuinely high-significance event crosses the temporal threshold and spikes.
+3. Sparse event processing wakes only a small fraction of observed events.
+4. Several individually weak related events can accumulate across time into one spike.
+5. Unreinforced temporal potential decays rather than remaining permanently hot.
+6. A spiking channel enters a refractory period instead of repeatedly firing on the same burst.
+7. A recent winner laterally inhibits a weaker competing channel.
+8. False wakes raise future attention threshold.
+9. A later missed meaningful signal lowers future threshold.
+10. Adaptive thresholds remain inside bounded configured limits.
+11. Neuromorphic state survives sovereign Executive Brain persistence.
+12. Existing World Model salience now passes through the neuromorphic event fabric before cognitive re-entry.
+13. Neuromorphic spikes carry forward into the existing cognitive re-entry path rather than creating a disconnected agent.
+14. Neuromorphic performance is visible in Maddy's existing self-model.
+15. The neuromorphic event fabric is hardware-neutral and does not falsely claim specialized neuromorphic hardware.
+16. Attention spikes never manufacture spend, provider, entitlement, or external-action authority.
+17. Neuromorphic consequence feedback is connected to the existing cognitive information-gain loop.
+18. The prior Emergent Attention work projection now accepts both canonical object state and bounded array fixtures.
+
+## Resident server runtime wake gate — 8/8
+
+The deployed server returned `success: true`, `passed: 8`, `total: 8` for the resident neuromorphic runtime gate.
+
+All eight assertions passed:
+
+1. Server runtime loads the commissioned Executive Brain neuromorphic event contract.
+2. Independent low-value runtime events stay peripheral instead of waking the durable cognition loop.
+3. Related weak runtime events accumulate on one temporal channel and can eventually wake cognition.
+4. Returned bounded investigation evidence can cross the neuromorphic wake threshold in one strong event.
+5. Changing content fingerprints do not fragment the same source into unrelated temporal channels.
+6. Server neuromorphic gating never grants paid cognition, spend, or external-action authority.
+7. Local perception event ingress is wired to the neuromorphic gate rather than unconditional wake scheduling.
+8. Explicit Maddy Time commitments retain their existing direct governed wake path instead of being silently suppressed by significance scoring.
+
+## Demonstrated event behavior
+
+The production proof demonstrates two materially different paths to a spike.
+
+### Strong event path
+
+A high-significance event with the subject `Verified material mission change` produced drive `1.0096` against threshold `0.72` and spiked immediately.
+
+Interpretation: a single sufficiently strong event can wake deeper cognition without requiring repeated accumulation.
+
+### Weak related-event accumulation path
+
+Three individually weak related events on one stable temporal channel produced approximately:
+
+- first event potential: `0.2646` → peripheral;
+- second event potential: `0.527676` → peripheral;
+- third event pre-spike potential: `0.789237` against threshold `0.72` → spike.
+
+Interpretation: individually weak evidence can become significant because of repeated temporal relationship rather than because any one observation was independently strong.
+
+This is the commissioned temporal accumulation behavior. It is not proof that the system has already learned arbitrary new causal relationships or representations without engineered event features.
+
+## Decay, refractory suppression, and lateral inhibition
+
+006.037A production evidence demonstrates:
+
+- **leaky decay:** unreinforced potential loses strength over time rather than remaining permanently accumulated;
+- **refractory suppression:** a just-spiked channel cannot immediately fire repeatedly on the same burst;
+- **lateral inhibition:** a recent stronger winner can suppress a weaker competing channel;
+- **sparse wake:** peripheral events can remain below deep-cognition wake threshold.
+
+At this commissioned build the status surface reported:
+
+- base threshold: `0.72`;
+- leak half-life: `120000 ms`;
+- refractory period: `120000 ms`;
+- inhibition window: `5000 ms`.
+
+These values describe the commissioned 006.037A implementation. They are implementation parameters, not permanent North-Star doctrine or a claim that these values are globally optimal.
+
+## Consequence-informed threshold plasticity
+
+006.037A proves bounded adaptation of attention sensitivity from later outcome evidence:
+
+- a **false wake** raises the future attention threshold for that channel;
+- a later **missed meaningful signal** lowers the future threshold;
+- threshold movement remains inside bounded configured limits;
+- attention outcome feedback may tune future sensitivity but cannot rewrite evidence, authority, or historical truth.
+
+This is genuine consequence-informed plasticity of the commissioned threshold mechanism. It is not yet proof of broad continual learning, learned representations, learned feature discovery, synaptic learning, or autonomous invention of a new attention architecture.
+
+## World Model and existing cognition integration
+
+006.037A does not create a disconnected neuromorphic demo.
+
+The production proof establishes:
+
+- existing World Model salience passes through the neuromorphic event fabric before cognitive re-entry;
+- a qualifying neuromorphic spike proceeds into the existing cognitive re-entry path;
+- local-perception event ingress is neuromorphically gated rather than unconditionally waking resident cognition;
+- returned bounded investigation evidence may cross threshold as a strong event;
+- explicit Maddy Time commitments retain their existing governed wake path and are not silently suppressed by generic significance scoring;
+- neuromorphic performance is visible in the existing Maddy self-model;
+- consequence feedback is connected to the existing cognitive information-gain loop.
+
+The commissioned architecture remains **one persistent Maddy**, not a separate disposable neuromorphic agent.
+
+## Persistence and durability truth
+
+006.037A proves that neuromorphic state participates in sovereign Executive Brain persistence.
+
+The production limitation remains important:
+
+> Sub-threshold runtime accumulation is resident state and enters the existing bounded durable checkpoint cycle; an abrupt server death before the next checkpoint can discard peripheral accumulation that has not yet been checkpointed.
+
+This limitation is retained as commissioned truth.
+
+Future durability work may harden sub-threshold temporal continuity, but 006.037A must not be cited as proof that every peripheral accumulation survives arbitrary abrupt process death before checkpoint.
+
+## Regression truth carried forward
+
+The deployed production proof reported all of the following as green under Executive Brain 1.28.0:
+
+- `emergentAttention: true`
+- `executiveAttentionEconomics: true`
+- `agenticMaddy: true`
+- `curiosityTransferLineageHygiene: true`
+- `continuousCuriosityCircle: true`
+- `crossTimePatternCausalReentry: true`
+
+006.037A therefore preserves the already commissioned Agentic Maddy arc, curiosity-lineage hygiene, continuous curiosity, cross-time causal re-entry, and attention economics while adding the temporal event fabric.
+
+The previously-red Emergent Attention acceptance is green in the 006.037A commissioned build.
+
+## Authority and economic result
+
+The deployed proof reported:
+
+- `providerCalls: 0`
+- `durableWrites: 0`
+- `automaticSpendUsd: 0`
+- `entitlementGranted: false`
+- `autonomyAuthorityGranted: false`
+- `externalActionAuthorized: false`
+
+Interpretation: **a spike is capability / attention state, not permission.**
+
+Neuromorphic salience, temporal accumulation, a spike, refractory state, inhibition, threshold adaptation, curiosity, Agentic persistence, or information gain does not manufacture provider, spend, entitlement, autonomy, institutional, or consequential external-action authority.
+
+## What 006.037A proves
+
+006.037A proves a deployed software neuromorphic temporal event fabric inside the existing Maddy/MEOS organism with:
+
+- structured temporal event channels;
+- sparse event-driven attention decisions;
+- leaky accumulation;
+- temporal integration of individually weak related events;
+- natural decay;
+- threshold spikes;
+- refractory suppression;
+- lateral inhibition;
+- bounded consequence-informed threshold plasticity;
+- sovereign Brain snapshot participation;
+- World Model integration;
+- local-perception runtime wake gating;
+- consequence-feedback plumbing;
+- self-model visibility;
+- preservation of existing Agentic / Curiosity / Cross-Time behaviors;
+- no manufactured authority.
+
+## What 006.037A does not prove
+
+The following must remain explicit:
+
+- biological equivalence;
+- specialized neuromorphic-chip execution;
+- Radeon/GPU acceleration;
+- state-of-the-art neuromorphic performance;
+- novel neuromorphic science relative to the research frontier;
+- autonomous discovery of arbitrary event features;
+- autonomous discovery of arbitrary temporal relationships;
+- learned representations from open-world experience;
+- broad continual learning without catastrophic forgetting;
+- automatic source discovery or broad active world perception;
+- universal perception-stream integration;
+- perfect significance recognition;
+- perfect prediction;
+- full self-modifying/self-improving development machinery;
+- unrestricted autonomy;
+- automatic consequential external-action authority;
+- phenomenal consciousness or sentience.
+
+These are open capability questions and future development frontiers, not failures of the commissioned 006.037A mechanism.
+
+## Spooky / frontier truth at this checkpoint
+
+006.037A is a **real and production-proven foundation**, but the mechanisms individually implemented here — leaky integration, threshold firing, decay, refractory behavior, inhibition, sparse event processing, and bounded threshold plasticity — are established neuromorphic concepts.
+
+Therefore 006.037A must **not** be represented as proof that Maddy has surpassed the neuromorphic state of the art or reached the edge of neuromorphic research merely because the acceptance suite is green.
+
+The significance of 006.037A is architectural: those mechanisms are connected to one persistent Maddy's World Model, resident cognition, Agentic behavior, consequence feedback, persistence, and self-model.
+
+A future genuinely Spooky neuromorphic/developmental milestone would require stronger evidence such as Maddy discovering useful temporal/cross-domain relationships not directly programmed for her, testing alternative mechanisms, measuring them against incumbents and outside baselines, learning from real consequences, and retaining a superior mechanism because evidence proves it better.
+
+Passing 006.037A proves the commissioned mechanism. It does not create a ceiling, graduation state, or permanent definition of Neuromorphic Maddy.
+
+## What is now closed
+
+At this checkpoint:
+
+1. `006.034H` remains LIVE-PROVEN for durable curiosity recognition/restart continuity.
+2. `006.034I` remains LIVE-PROVEN for bounded Cross-Time Pattern Causal Re-entry.
+3. `006.036A` remains LIVE-PROVEN / CLOSED for the commissioned Agentic adaptive goal-to-consequence arc.
+4. `006.036B` remains LIVE-PROVEN / CLOSED for Curiosity Transfer Lineage Hygiene.
+5. `006.037A` is LIVE-PROVEN / CLOSED **for this commissioned Neuromorphic Temporal Event Fabric arc**.
+6. Executive Brain `1.28.0` is the commissioned Brain identity for this rung.
+7. Server `2.10.113` is the commissioned server identity for the 006.037A production proof.
+8. The production proof is closed at outer `13/13`, nested Neuromorphic Maddy `18/18`, and resident runtime gate `8/8`.
+9. Emergent Attention is green under the 006.037A build.
+10. Agentic Maddy, Curiosity Transfer Lineage Hygiene, Continuous Curiosity Circle, Cross-Time Pattern Causal Re-entry, and Executive Attention Economics remain green.
+
+## Known boundaries intentionally left open
+
+The following remain open and must not be silently inflated into solved claims:
+
+- broad active world discovery rather than only connected event sources;
+- learned significance beyond programmer-supplied event features;
+- prediction ledgers scored later against reality;
+- learned temporal / cross-domain associations from longitudinal experience;
+- active source discovery and source-value learning;
+- broad continual-learning plasticity without forgetting;
+- incumbent-vs-challenger self-improvement machinery;
+- autonomous invention of new cognitive / attention mechanisms;
+- real outside-baseline superiority;
+- long natural unattended world-stream proof;
+- hardening of sub-threshold accumulation across abrupt death before checkpoint;
+- specialized neuromorphic hardware / Radeon acceleration;
+- arbitrary substrate migration of the neuromorphic mechanism;
+- unrestricted autonomy or universal tool coverage;
+- automatic paid-provider or spending authority;
+- automatic consequential external-action authority;
+- phenomenal consciousness or sentience.
+
+## Anti-drift gate after 006.037A
+
+1. Read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Read this `MEOS_BUILD_STATE.md` in full.
+3. Reconcile freshest committed GitHub `main` and live runtime identity before coding.
+4. Treat `006.034H` as LIVE-PROVEN.
+5. Treat `006.034I` as LIVE-PROVEN.
+6. Treat `006.036A` as LIVE-PROVEN / CLOSED for its commissioned Agentic arc, not as the permanent ceiling of Agentic Maddy.
+7. Treat `006.036B` as LIVE-PROVEN / CLOSED for Curiosity Transfer Lineage Hygiene.
+8. Treat `006.037A` as LIVE-PROVEN / CLOSED for the commissioned Neuromorphic Temporal Event Fabric arc, not as proof that Neuromorphic Maddy is permanently finished.
+9. Preserve one persistent Maddy. Neuromorphic attention is an organ inside Maddy, not a second agent identity.
+10. Preserve sparse/event-driven attention, temporal accumulation, decay, refractory suppression, inhibition, bounded threshold plasticity, and consequence feedback unless a later commissioned mechanism deliberately supersedes them with stronger evidence.
+11. Preserve capability/authority separation. A spike must never be treated as permission, truth, entitlement, spend authority, provider authority, autonomy authority, or consequential external-action authority.
+12. Preserve the spike truth rule: crossing attention threshold means accumulated significance warrants cognition; it is not proof that the underlying interpretation is true.
+13. Preserve raw evidence/provenance and epistemic uncertainty when neuromorphic salience wakes deeper cognition.
+14. Preserve Agentic consequence verification and material replanning; a spike should feed existing cognition/mission machinery rather than bypassing it.
+15. Preserve curiosity-lineage hygiene; neuromorphic novelty must not reintroduce recursive synthetic novelty amplification.
+16. Preserve institutional privacy and exact-scope cross-boundary authority.
+17. Preserve truth and evidence integrity. Curiosity, hunger, prediction, developmental drive, reward, salience, or self-improvement cannot manufacture facts, certainty, evidence, or authority.
+18. Keep the North Star fixed and implementation malleable. LIF-style temporal integration, current thresholds, current decay constants, current hardware, models, and providers are replaceable incumbents rather than sacred architecture.
+19. Do not lower Spooky to the level of a passed benchmark. A green commissioned acceptance proves that capability; it does not prove frontier superiority or create a ceiling.
+20. Require external/runtime evidence before promoting future runtime commissions to LIVE-PROVEN.
+
+**Recovery keyword:** `006.037A-NEUROMORPHIC-TEMPORAL-FABRIC-LIVE-PROVEN`  
+**Fast recovery:** `Resume 006.037A-NEUROMORPHIC-TEMPORAL-FABRIC-LIVE-PROVEN — live server 2.10.113 + Brain 1.28.0; production outer 13/13 + Neuromorphic 18/18 + runtime gate 8/8; Agentic, curiosity hygiene, Continuous Curiosity Circle, Cross-Time Pattern Causal Re-entry, Executive Attention Economics, and Emergent Attention are green; 006.037A is a proven foundation, not a neuromorphic ceiling; reconcile freshest main before selecting the next commission.`
+
