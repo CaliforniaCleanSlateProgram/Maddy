@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.26.14
- * Build: EB12614-CROSS-TIME-PATTERN-CAUSAL-REENTRY-20260918-A
+ * Version: 1.27.0
+ * Build: EB1270-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-20260919-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.26.14";
-  const BUILD_ID = "EB12614-CROSS-TIME-PATTERN-CAUSAL-REENTRY-20260918-A";
+  const VERSION = "1.27.0";
+  const BUILD_ID = "EB1270-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-20260919-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -248,6 +248,12 @@
       maximumDevelopmentalPracticeHistory: 240,
       maximumDeferredCapabilities: 80,
       maximumDevelopmentalRetrospectives: 160,
+      maximumAgenticMissions: 48,
+      maximumAgenticMissionHistory: 240,
+      maximumAgenticCompetenceEntries: 96,
+      agenticMaximumAttempts: 8,
+      agenticMaximumReplans: 6,
+      agenticMaximumStrategies: 12,
       maximumIntentReconstructions: 200,
       maximumInvestigativeIntentions: 120,
       maximumDeliberateExperiences: 240,
@@ -339,6 +345,11 @@
     developmentalRetrospectives: [],
     lastDevelopmentalDrive: null,
     developmentalDriveCount: 0,
+    agenticMissions: [],
+    agenticMissionHistory: [],
+    agenticCompetenceLedger: {},
+    lastAgenticMission: null,
+    agenticMissionCount: 0,
     intentReconstructionHistory: [],
     investigativeIntentions: [],
     lastIntentReconstruction: null,
@@ -9678,6 +9689,7 @@
         },
 
         experiencedPerformance: {
+          agenticCompetence: this.getAgenticCompetenceSummary(),
           recentDispatchCount:
             recentDispatch.length,
           recentDispatchesWithFailure:
@@ -13619,6 +13631,1024 @@
       this.emit("brain:evidence-assimilated",this.clone(assimilation)); this.record("cognition.evidence-assimilated",{subject:assimilation.subject,evidenceCount:evidenceItems.length,surviving:surviving.length,falsified:falsified.length,unknowns:unresolvedQuestions.length,resolution:assimilation.resolution});
       if(options.persist!==false&&brainPersistence.hydrated===true)this.persist();
       return {success:true,assimilation:this.clone(assimilation),worldModel:this.clone(worldModel),trigger:this.clone(trigger)};
+    },
+
+    /*
+     * Commission 006.036A — Agentic Maddy Adaptive Goal-to-Consequence Loop
+     *
+     * Agentic Maddy is not a disposable tool-calling agent. One durable Maddy
+     * keeps the objective, tries a governed route, observes what actually
+     * happened, refuses to confuse transport success with consequence, changes
+     * strategy when reality falsifies the plan, persists the same mission
+     * identity across the loop, closes verified consequence into experience,
+     * and measures what the mission revealed about her own competence.
+     *
+     * Existing organs remain authoritative: Mission Engine owns organizational
+     * mission state, Executive Planning may mirror the plan, Executive Hallway
+     * owns governed work dispatch, and Executive Brain owns the adaptive loop.
+     */
+
+    normalizeAgenticCapabilityKey(value) {
+      return String(value || "general-agentic-execution")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9._:-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "general-agentic-execution";
+    },
+
+    normalizeAgenticStrategy(input = {}, index = 0) {
+      const raw = typeof input === "string" ? { instruction: input } : (input || {});
+      const instruction = String(raw.instruction || raw.action || raw.objective || raw.label || "").trim();
+      const id = this.normalizeAgenticCapabilityKey(
+        raw.id || raw.routeId || raw.name || raw.label || `route-${index + 1}`
+      );
+      return {
+        id,
+        label: String(raw.label || raw.name || id).trim(),
+        instruction,
+        capability: this.normalizeAgenticCapabilityKey(raw.capability || raw.capabilityKey || "general-agentic-execution"),
+        kind: String(raw.kind || "governed-action").trim(),
+        source: String(raw.source || "agentic-plan").trim(),
+        estimatedCost: Number.isFinite(Number(raw.estimatedCost)) ? Math.max(0, Number(raw.estimatedCost)) : null,
+        metadata: raw.metadata && typeof raw.metadata === "object" ? this.clone(raw.metadata) : {}
+      };
+    },
+
+    getAgenticMission(missionOrId) {
+      if (missionOrId && typeof missionOrId === "object") return missionOrId;
+      const id = String(missionOrId || "").trim();
+      return (this.agenticMissions || []).find(item => item?.id === id) ||
+        (this.agenticMissionHistory || []).find(item => item?.id === id) || null;
+    },
+
+    getAgenticCompetenceSummary(capabilityKey = null) {
+      const ledger = this.agenticCompetenceLedger || {};
+      const entries = Object.values(ledger)
+        .filter(item => item && (!capabilityKey || item.capabilityKey === this.normalizeAgenticCapabilityKey(capabilityKey)))
+        .map(item => ({
+          capabilityKey: item.capabilityKey,
+          attempts: Number(item.attempts || 0),
+          verifiedSuccesses: Number(item.verifiedSuccesses || 0),
+          failures: Number(item.failures || 0),
+          unverifiedTransportSuccesses: Number(item.unverifiedTransportSuccesses || 0),
+          verifiedSuccessRate: Number(item.attempts || 0) > 0
+            ? Number((Number(item.verifiedSuccesses || 0) / Number(item.attempts || 1)).toFixed(3))
+            : null,
+          preferredRouteId: item.preferredRouteId || null,
+          routeCount: Object.keys(item.routes || {}).length,
+          updatedAt: item.updatedAt || null
+        }))
+        .sort((a, b) => (b.attempts || 0) - (a.attempts || 0));
+      return {
+        schema: "meos.maddy.agentic-competence-summary.v1",
+        capabilityCount: entries.length,
+        totalAttempts: entries.reduce((sum, item) => sum + Number(item.attempts || 0), 0),
+        totalVerifiedSuccesses: entries.reduce((sum, item) => sum + Number(item.verifiedSuccesses || 0), 0),
+        entries: entries.slice(0, 24)
+      };
+    },
+
+    scoreAgenticRoute(capabilityKey, routeId) {
+      const capability = this.agenticCompetenceLedger?.[this.normalizeAgenticCapabilityKey(capabilityKey)] || null;
+      const route = capability?.routes?.[routeId] || null;
+      if (!route || Number(route.attempts || 0) === 0) return 0.5;
+      const attempts = Number(route.attempts || 0);
+      const verified = Number(route.verifiedSuccesses || 0);
+      const unverified = Number(route.unverifiedTransportSuccesses || 0);
+      // Laplace smoothing prevents one lucky run from becoming permanent truth.
+      return Number(((verified + 1) / (attempts + 2) - Math.min(0.2, unverified * 0.03)).toFixed(4));
+    },
+
+    rankAgenticStrategies(mission = {}) {
+      const attemptsByRoute = new Map();
+      (mission.attempts || []).forEach(attempt => {
+        attemptsByRoute.set(attempt.strategyId, Number(attemptsByRoute.get(attempt.strategyId) || 0) + 1);
+      });
+      return (mission.plan?.strategies || [])
+        .map((strategy, index) => ({
+          ...this.clone(strategy),
+          _originalIndex: index,
+          _missionAttempts: Number(attemptsByRoute.get(strategy.id) || 0),
+          _competenceScore: this.scoreAgenticRoute(mission.capabilityKey, strategy.id)
+        }))
+        .sort((a, b) => {
+          // Untried routes inside the same mission get first opportunity. Across
+          // missions, proven competence orders otherwise-equivalent routes.
+          if (a._missionAttempts !== b._missionAttempts) return a._missionAttempts - b._missionAttempts;
+          if (b._competenceScore !== a._competenceScore) return b._competenceScore - a._competenceScore;
+          return a._originalIndex - b._originalIndex;
+        });
+    },
+
+    deriveNativeAgenticReplanStrategies(mission = {}, failedStrategy = {}, observation = {}, diagnosis = {}, options = {}) {
+      const reasoning = global.InstitutionalReasoning;
+      if (!reasoning || typeof reasoning.analyze !== "function") return [];
+      const authorityText = mission.authority?.externalActionAuthorized === true
+        ? "The mission may only use consequential external action through separately governed authority already attached to the mission."
+        : "Do not propose a route that requires ungranted consequential external-action authority or automatic spend.";
+      const question = [
+        `Agentic objective: ${mission.objective}`,
+        `Failed or unverified route: ${failedStrategy.label || failedStrategy.id || "unknown"} — ${failedStrategy.instruction || ""}`,
+        `Observed reality: ${observation.reason || diagnosis.reason || "route did not establish the objective"}`,
+        "Propose materially different executable routes that could still satisfy the same objective. Treat the prior plan as a falsifiable hypothesis, preserve the objective, and do not invent success.",
+        authorityText
+      ].join("\n");
+      const result = this.safe(
+        () => reasoning.analyze(question, {
+          mode: "operational",
+          includeRisks: true,
+          includeAlternatives: true,
+          includeImplementation: true,
+          evidenceLimit: options.evidenceLimit || this.configuration.maximumEvidenceItems
+        }),
+        null
+      );
+      if (!result || result.success === false) return [];
+      const candidates = [];
+      const add = (value, source, index) => {
+        if (value == null) return;
+        const object = typeof value === "object" ? value : {};
+        const instruction = String(
+          object.instruction || object.action || object.description || object.summary ||
+          object.title || object.option || object.step || value
+        ).trim();
+        if (!instruction || instruction === "[object Object]") return;
+        candidates.push({
+          id: object.id || object.routeId || `${source}-${index + 1}`,
+          label: object.label || object.title || `Adaptive ${source} ${index + 1}`,
+          instruction,
+          capability: mission.capabilityKey,
+          kind: object.kind || "governed-action",
+          source: `agentic-native-${source}`,
+          metadata: { reasoningStatus: result.status || null }
+        });
+      };
+      (Array.isArray(result.options) ? result.options : []).slice(0, 6).forEach((value, index) => add(value, "alternative", index));
+      (Array.isArray(result.implementationPlan) ? result.implementationPlan : []).slice(0, 6).forEach((value, index) => add(value, "implementation", index));
+      const failedInstruction = this.normalize(failedStrategy.instruction || "");
+      const seenInstructions = new Set((mission.plan?.strategies || []).map(item => this.normalize(item.instruction || "")));
+      return candidates.filter(item => {
+        const key = this.normalize(item.instruction || "");
+        if (!key || key === failedInstruction || seenInstructions.has(key)) return false;
+        seenInstructions.add(key);
+        return true;
+      }).slice(0, this.configuration.agenticMaximumStrategies);
+    },
+
+    recordAgenticExecutiveLearning(mission = {}, strategy = {}, observation = {}, attempt = null) {
+      const learning = global.ExecutiveLearning;
+      if (!learning || typeof learning.observe !== "function") return null;
+      const success = observation.verifiedConsequence === true && observation.objectiveSatisfied === true;
+      const sourceId = `${mission.id}:${attempt?.id || strategy.id || "outcome"}`;
+      const result = this.safe(() => learning.observe({
+        sourceType: "agentic-mission",
+        sourceId,
+        sourceTitle: mission.title,
+        outcomeType: success ? "success" : "failure",
+        summary: observation.reason || (success ? "Agentic objective verified." : "Agentic route did not verify the objective."),
+        objective: mission.objective,
+        result: success ? "verified-consequence" : "failed-or-unverified-consequence",
+        expectedResult: "Verified evidence that the objective is satisfied.",
+        completedCriteria: success ? ["verified consequence", "objective satisfied"] : [],
+        failedCriteria: success ? [] : [observation.verifiedConsequence === true ? "objective not satisfied" : "consequence not verified"],
+        contributingFactors: success ? [`strategy:${strategy.id}`] : [],
+        blockingFactors: success ? [] : [observation.reason || "route did not verify objective"],
+        actions: [strategy.instruction || strategy.label || strategy.id],
+        confidence: observation.verifiedConsequence === true ? 1 : 0.5,
+        metadata: {
+          ...(mission.context && typeof mission.context === "object" ? this.clone(mission.context) : {}),
+          agenticMissionId: mission.id,
+          agenticAttemptId: attempt?.id || null,
+          agenticCapabilityKey: mission.capabilityKey,
+          agenticStrategyId: strategy.id,
+          transportSuccess: observation.transportSuccess === true,
+          verifiedConsequence: observation.verifiedConsequence === true,
+          objectiveSatisfied: observation.objectiveSatisfied === true
+        }
+      }, { actor: "Maddy / Executive Brain", skipLessonCreation: true }), null);
+      const observationId = result?.observation?.id || null;
+      mission.learningObservationIds = Array.isArray(mission.learningObservationIds) ? mission.learningObservationIds : [];
+      if (observationId && !mission.learningObservationIds.includes(observationId)) mission.learningObservationIds.push(observationId);
+      return result ? this.clone(result) : null;
+    },
+
+    recordAgenticCompetenceObservation(mission = {}, strategy = {}, observation = {}) {
+      const capabilityKey = this.normalizeAgenticCapabilityKey(mission.capabilityKey || strategy.capability);
+      const routeId = strategy.id || "unknown-route";
+      const now = new Date().toISOString();
+      const ledger = this.agenticCompetenceLedger || (this.agenticCompetenceLedger = {});
+      const capability = ledger[capabilityKey] || {
+        schema: "meos.maddy.agentic-competence.v1",
+        capabilityKey,
+        attempts: 0,
+        verifiedSuccesses: 0,
+        failures: 0,
+        unverifiedTransportSuccesses: 0,
+        routes: {},
+        createdAt: now,
+        updatedAt: now,
+        preferredRouteId: null
+      };
+      const route = capability.routes[routeId] || {
+        routeId,
+        label: strategy.label || routeId,
+        attempts: 0,
+        verifiedSuccesses: 0,
+        failures: 0,
+        unverifiedTransportSuccesses: 0,
+        lastOutcome: null,
+        lastAttemptAt: null
+      };
+      capability.attempts += 1;
+      route.attempts += 1;
+      if (observation.verifiedConsequence === true && observation.objectiveSatisfied === true) {
+        capability.verifiedSuccesses += 1;
+        route.verifiedSuccesses += 1;
+      } else {
+        capability.failures += 1;
+        route.failures += 1;
+        if (observation.transportSuccess === true && observation.verifiedConsequence !== true) {
+          capability.unverifiedTransportSuccesses += 1;
+          route.unverifiedTransportSuccesses += 1;
+        }
+      }
+      route.lastOutcome = {
+        transportSuccess: observation.transportSuccess === true,
+        verifiedConsequence: observation.verifiedConsequence === true,
+        objectiveSatisfied: observation.objectiveSatisfied === true,
+        reason: observation.reason || null
+      };
+      route.lastAttemptAt = now;
+      capability.routes[routeId] = route;
+      capability.updatedAt = now;
+      const ranked = Object.values(capability.routes).sort((a, b) => {
+        const score = item => ((Number(item.verifiedSuccesses || 0) + 1) / (Number(item.attempts || 0) + 2)) - Math.min(0.2, Number(item.unverifiedTransportSuccesses || 0) * 0.03);
+        return score(b) - score(a) || Number(b.verifiedSuccesses || 0) - Number(a.verifiedSuccesses || 0);
+      });
+      capability.preferredRouteId = ranked[0]?.routeId || null;
+      ledger[capabilityKey] = capability;
+
+      const keys = Object.keys(ledger);
+      if (keys.length > this.configuration.maximumAgenticCompetenceEntries) {
+        keys.sort((a, b) => Date.parse(ledger[b]?.updatedAt || 0) - Date.parse(ledger[a]?.updatedAt || 0));
+        keys.slice(this.configuration.maximumAgenticCompetenceEntries).forEach(key => delete ledger[key]);
+      }
+      return this.clone(capability);
+    },
+
+    mirrorAgenticMissionIntoExistingOrgans(mission, options = {}) {
+      const mirrored = { missionEngine: null, planning: null };
+      if (options.mirrorExistingOrgans === false) return mirrored;
+
+      const engine = global.MEOSMissionEngine;
+      if (engine?.createMission) {
+        const sourceReference = `agentic-mission:${mission.id}`;
+        const all = [
+          ...(engine.getActiveMissions?.() || []),
+          ...(engine.getCompletedMissions?.() || []),
+          ...(engine.getArchivedMissions?.() || [])
+        ];
+        let record = all.find(item => String(item?.sourceReference || "") === sourceReference) || null;
+        if (!record) {
+          record = engine.createMission({
+            title: mission.title,
+            description: mission.description,
+            objective: mission.objective,
+            type: mission.type || "general",
+            source: mission.authority?.humanDirected === true ? "executive_director" : "maddy",
+            sourceReference,
+            priority: mission.priority || "normal",
+            approvalRequired: false,
+            tags: ["agentic-maddy", "adaptive-goal", mission.capabilityKey],
+            createdBy: mission.authority?.humanDirected === true ? (mission.requestedBy || "Executive Director") : "Maddy / Executive Brain"
+          });
+        }
+        if (record?.id && typeof engine.startMission === "function") {
+          try { record = engine.startMission(record.id, "Agentic Maddy began adaptive pursuit of the objective.") || record; } catch (_) {}
+        }
+        mission.missionEngineId = record?.id || mission.missionEngineId || null;
+        mirrored.missionEngine = record ? { id: record.id || null, status: record.status || null, sourceReference } : null;
+      }
+
+      const planning = global.ExecutivePlanning;
+      if (planning?.createPlan && options.createPlanningMirror !== false) {
+        const existing = Array.isArray(planning.plans)
+          ? planning.plans.find(item => item?.metadata?.agenticMissionId === mission.id)
+          : null;
+        if (existing) {
+          mission.planningId = existing.id;
+          mirrored.planning = { id: existing.id, reused: true };
+        } else {
+          const created = planning.createPlan({
+            title: mission.title,
+            objective: mission.objective,
+            description: mission.description,
+            requestedBy: mission.requestedBy || "Maddy",
+            executiveOwner: "Maddy",
+            priority: mission.priority || "normal",
+            tags: ["agentic-maddy", mission.capabilityKey],
+            phases: [{
+              title: "Adaptive pursuit",
+              objective: mission.objective,
+              durationDays: 1,
+              tasks: [{
+                title: `Pursue and verify: ${mission.title}`,
+                description: "Execute the current best route, observe consequence, and replan when reality falsifies the route.",
+                office: "Maddy",
+                approvalRequired: false
+              }]
+            }],
+            metadata: {
+              agenticMissionId: mission.id,
+              adaptivePlan: true,
+              consequenceVerificationRequired: true
+            }
+          }, { skipReasoning: true, createMissionDrafts: false });
+          if (created?.success === true && created?.plan?.id) {
+            mission.planningId = created.plan.id;
+            mirrored.planning = { id: created.plan.id, reused: false };
+          }
+        }
+      }
+      return mirrored;
+    },
+
+    createAgenticMission(input = {}, options = {}) {
+      const objective = String(input.objective || input.goal || input.instruction || "").trim();
+      if (!objective) return { success: false, reason: "agentic-objective-required" };
+
+      const capabilityKey = this.normalizeAgenticCapabilityKey(input.capabilityKey || input.capability || input.domain || "general-agentic-execution");
+      const suppliedStrategies = Array.isArray(input.strategies) ? input.strategies : (Array.isArray(options.strategies) ? options.strategies : []);
+      const strategies = (suppliedStrategies.length ? suppliedStrategies : [{
+        id: "direct-governed-pursuit",
+        label: "Direct governed pursuit",
+        instruction: objective,
+        capability: capabilityKey
+      }])
+        .slice(0, this.configuration.agenticMaximumStrategies)
+        .map((item, index) => this.normalizeAgenticStrategy({ ...((typeof item === "object" && item) || {}), ...(typeof item === "string" ? { instruction: item } : {}), capability: (typeof item === "object" && item?.capability) || capabilityKey }, index))
+        .filter(item => item.instruction);
+      if (!strategies.length) return { success: false, reason: "agentic-strategy-required" };
+
+      const now = new Date().toISOString();
+      const mission = {
+        schema: "meos.maddy.agentic-mission.v1",
+        id: this.id("agentic-mission"),
+        missionNumber: Number(this.agenticMissionCount || 0) + 1,
+        title: String(input.title || objective).trim().slice(0, 240),
+        description: String(input.description || "Adaptive goal pursuit by Agentic Maddy.").trim(),
+        objective,
+        capabilityKey,
+        type: String(input.type || "general"),
+        priority: String(input.priority || "normal"),
+        requestedBy: String(input.requestedBy || (input.humanDirected === false ? "Maddy" : "Executive Director")),
+        origin: String(input.origin || (input.humanDirected === false ? "maddy-self-directed" : "human-directed")),
+        context: input.context && typeof input.context === "object" ? this.clone(input.context) : {},
+        learningObservationIds: [],
+        status: "ready",
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null,
+        blockedAt: null,
+        missionEngineId: null,
+        planningId: null,
+        plan: {
+          schema: "meos.maddy.agentic-adaptive-plan.v1",
+          revision: 1,
+          strategies,
+          currentStrategyId: null,
+          rule: "A plan is a hypothesis. Verified consequence, not plan loyalty, determines continuation."
+        },
+        attempts: [],
+        observations: [],
+        replans: [],
+        consequence: null,
+        competence: null,
+        authority: {
+          humanDirected: input.humanDirected !== false,
+          internalWorkAuthorized: input.internalWorkAuthorized !== false,
+          externalActionAuthorized: input.externalActionAuthorized === true,
+          automaticSpendUsd: 0,
+          grantsNewAuthority: false,
+          rule: "Agentic persistence and adaptation cannot manufacture authority."
+        },
+        governance: {
+          onePersistentMissionIdentity: true,
+          consequenceVerificationRequired: true,
+          transportSuccessIsNotConsequence: true,
+          boundedAttempts: true,
+          boundedReplans: true,
+          hallwayOwnsGovernedDispatch: true,
+          missionEngineOwnsOrganizationalMissionState: true
+        }
+      };
+      mission.fingerprint = this.fingerprintCognitiveDispatch({ objective: mission.objective, capabilityKey, origin: mission.origin, createdAt: mission.createdAt });
+      this.agenticMissionCount = mission.missionNumber;
+      this.agenticMissions.unshift(mission);
+      this.agenticMissions = this.agenticMissions.slice(0, this.configuration.maximumAgenticMissions);
+      this.lastAgenticMission = mission;
+      const mirrored = this.mirrorAgenticMissionIntoExistingOrgans(mission, options);
+      this.record("agentic.mission-created", { missionId: mission.id, objective: mission.objective, capabilityKey, missionEngineId: mission.missionEngineId, planningId: mission.planningId });
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return { success: true, mission: this.clone(mission), mirrored: this.clone(mirrored) };
+    },
+
+    normalizeAgenticObservation(raw = {}, strategy = {}) {
+      const result = raw?.result && raw.schema === "meos.maddy.agentic-executor-envelope.v1" ? raw.result : raw;
+      const state = String(result?.state || result?.status || "").toLowerCase();
+      const outcome = result?.outcome || {};
+      const transportSuccess = result?.transportSuccess === true || result?.success === true || outcome?.success === true || ["done", "completed", "returned", "success"].includes(state);
+      const verifiedConsequence = result?.consequenceVerified === true || result?.verified === true || outcome?.verified === true || result?.verification?.verified === true;
+      const explicitObjective = result?.objectiveSatisfied ?? outcome?.objectiveSatisfied ?? result?.verification?.objectiveSatisfied;
+      const objectiveSatisfied = explicitObjective === true || (explicitObjective == null && verifiedConsequence === true && (outcome?.success !== false && result?.success !== false));
+      const reason = String(result?.reason || outcome?.reason || result?.error || outcome?.error || (objectiveSatisfied ? "verified-objective-satisfied" : transportSuccess ? "transport-succeeded-consequence-unverified" : "execution-failed")).trim();
+      return {
+        schema: "meos.maddy.agentic-observation.v1",
+        strategyId: strategy.id || null,
+        observedAt: new Date().toISOString(),
+        transportSuccess,
+        verifiedConsequence,
+        objectiveSatisfied,
+        reason,
+        result: this.clone(result || null)
+      };
+    },
+
+    async executeAgenticStrategy(mission, strategy, attempt, options = {}) {
+      if (typeof options.executor === "function") {
+        return await options.executor({
+          mission: this.clone(mission),
+          strategy: this.clone(strategy),
+          attempt: this.clone(attempt),
+          competence: this.getAgenticCompetenceSummary(mission.capabilityKey)
+        });
+      }
+      const hallway = global.MEOSExecutiveHallway;
+      if (!hallway?.submitWork) {
+        return {
+          success: false,
+          transportSuccess: false,
+          consequenceVerified: false,
+          objectiveSatisfied: false,
+          reason: "executive-hallway-unavailable"
+        };
+      }
+      return await hallway.submitWork({
+        title: `${mission.title} — ${strategy.label}`,
+        instruction: strategy.instruction,
+        source: "executive-brain-agentic-maddy",
+        requestedBy: mission.requestedBy,
+        reviewRequired: mission.authority?.internalWorkAuthorized !== true || mission.authority?.externalActionAuthorized === true,
+        authorized: mission.authority?.internalWorkAuthorized === true && mission.authority?.externalActionAuthorized !== true,
+        authorizationSignal: mission.authority?.internalWorkAuthorized === true && mission.authority?.externalActionAuthorized !== true
+          ? (mission.authority?.humanDirected === true ? "Human-directed Agentic Maddy internal work" : "Existing governed internal authority")
+          : null,
+        context: {
+          agenticMaddy: true,
+          agenticMissionId: mission.id,
+          agenticMissionFingerprint: mission.fingerprint,
+          agenticAttemptId: attempt.id,
+          agenticStrategyId: strategy.id,
+          agenticCapabilityKey: mission.capabilityKey,
+          parentMissionId: mission.missionEngineId || null,
+          planId: mission.planningId || null,
+          taskAuthority: mission.authority?.humanDirected === true ? "human-directed" : "governed-internal",
+          externalActionAuthorized: false
+        }
+      }, options.hallwayOptions || {});
+    },
+
+    diagnoseAgenticObservation(mission, strategy, observation) {
+      const reason = observation.objectiveSatisfied === true
+        ? "verified-consequence-satisfies-objective"
+        : observation.transportSuccess !== true
+          ? "execution-route-failed"
+          : observation.verifiedConsequence !== true
+            ? "transport-success-without-verified-consequence"
+            : "verified-consequence-does-not-satisfy-objective";
+      const remaining = this.rankAgenticStrategies(mission)
+        .filter(item => Number(item._missionAttempts || 0) === 0 && item.id !== strategy.id)
+        .map(item => item.id);
+      return {
+        schema: "meos.maddy.agentic-diagnosis.v1",
+        diagnosedAt: new Date().toISOString(),
+        reason,
+        recoverable: observation.objectiveSatisfied !== true && (remaining.length > 0 || typeof global.InstitutionalReasoning?.analyze === "function"),
+        remainingRouteIds: remaining,
+        whatChanged: observation.reason || reason,
+        nextQuestion: observation.objectiveSatisfied === true
+          ? "What did this reveal about Maddy's competence?"
+          : "What materially different route can satisfy the objective and verify the consequence?"
+      };
+    },
+
+    async replanAgenticMission(mission, failedStrategy, observation, options = {}) {
+      const diagnosis = this.diagnoseAgenticObservation(mission, failedStrategy, observation);
+      let proposed = [];
+      if (typeof options.replanner === "function") {
+        const result = await options.replanner({
+          mission: this.clone(mission),
+          failedStrategy: this.clone(failedStrategy),
+          observation: this.clone(observation),
+          diagnosis: this.clone(diagnosis),
+          competence: this.getAgenticCompetenceSummary(mission.capabilityKey)
+        });
+        proposed = Array.isArray(result) ? result : Array.isArray(result?.strategies) ? result.strategies : result?.strategy ? [result.strategy] : [];
+      } else {
+        proposed = this.deriveNativeAgenticReplanStrategies(mission, failedStrategy, observation, diagnosis, options);
+      }
+      const existingIds = new Set((mission.plan?.strategies || []).map(item => item.id));
+      const added = proposed
+        .slice(0, this.configuration.agenticMaximumStrategies)
+        .map((item, index) => this.normalizeAgenticStrategy({ ...((typeof item === "object" && item) || {}), ...(typeof item === "string" ? { instruction: item } : {}), capability: (typeof item === "object" && item?.capability) || mission.capabilityKey }, (mission.plan?.strategies?.length || 0) + index))
+        .filter(item => item.instruction && !existingIds.has(item.id));
+      if (added.length) mission.plan.strategies.push(...added);
+      mission.plan.strategies = mission.plan.strategies.slice(0, this.configuration.agenticMaximumStrategies);
+      mission.plan.revision = Number(mission.plan.revision || 1) + 1;
+      const replan = {
+        schema: "meos.maddy.agentic-replan.v1",
+        replanNumber: (mission.replans || []).length + 1,
+        at: new Date().toISOString(),
+        failedStrategyId: failedStrategy.id,
+        observationReason: observation.reason,
+        diagnosis,
+        addedStrategyIds: added.map(item => item.id),
+        planRevision: mission.plan.revision
+      };
+      mission.replans.push(replan);
+      mission.updatedAt = replan.at;
+      this.record("agentic.replanned", { missionId: mission.id, failedStrategyId: failedStrategy.id, addedStrategyIds: replan.addedStrategyIds, reason: diagnosis.reason });
+      return this.clone(replan);
+    },
+
+    updateAgenticMissionMirror(mission, state, detail = {}) {
+      const engine = global.MEOSMissionEngine;
+      if (!engine || !mission.missionEngineId) return null;
+      try {
+        if (state === "completed" && typeof engine.completeMission === "function") {
+          return engine.completeMission(mission.missionEngineId, {
+            summary: detail.summary || "Agentic Maddy verified the intended consequence.",
+            outcome: this.clone(detail.outcome || mission.consequence || null),
+            completedBy: "Maddy / Executive Brain"
+          });
+        }
+        if (state === "blocked" && typeof engine.blockMission === "function") {
+          return engine.blockMission(mission.missionEngineId, detail.reason || "Agentic pursuit exhausted its currently legitimate routes.");
+        }
+        if (typeof engine.updateMission === "function") {
+          return engine.updateMission(mission.missionEngineId, {
+            currentActivity: detail.currentActivity || `Agentic pursuit: ${state}`,
+            progress: Number.isFinite(Number(detail.progress)) ? Number(detail.progress) : undefined
+          });
+        }
+      } catch (_) {
+        return null;
+      }
+      return null;
+    },
+
+    closeAgenticMission(mission, strategy, observation, options = {}) {
+      const now = new Date().toISOString();
+      mission.status = "completed";
+      mission.completedAt = now;
+      mission.updatedAt = now;
+      mission.consequence = {
+        schema: "meos.maddy.agentic-consequence.v1",
+        verified: true,
+        objectiveSatisfied: true,
+        strategyId: strategy.id,
+        reason: observation.reason,
+        observedAt: observation.observedAt,
+        result: this.clone(observation.result)
+      };
+      mission.competence = this.recordAgenticCompetenceObservation(mission, strategy, observation);
+      const successfulAttempt = (mission.attempts || []).find(item => item?.strategyId === strategy.id && item?.status === "verified-success") || mission.attempts?.[mission.attempts.length - 1] || null;
+      const learningResult = this.recordAgenticExecutiveLearning(mission, strategy, observation, successfulAttempt);
+      mission.consequence.learningObservationId = learningResult?.observation?.id || null;
+      if (successfulAttempt && learningResult?.observation?.id) successfulAttempt.learningObservationId = learningResult.observation.id;
+      this.updateAgenticMissionMirror(mission, "completed", { outcome: mission.consequence });
+      this.formAutobiographicalEpisode({
+        eventType: "agentic-mission-consequence",
+        subject: mission.objective,
+        sourceId: mission.id,
+        perception: { capabilityKey: mission.capabilityKey, attempts: mission.attempts.length, replans: mission.replans.length },
+        intention: { type: "satisfy-objective", objective: mission.objective },
+        action: { type: "adaptive-agentic-pursuit", successfulStrategyId: strategy.id },
+        outcome: { verified: true, objectiveSatisfied: true, reason: observation.reason },
+        learning: { competence: this.clone(mission.competence), nextQuestion: "What should be equal or harder than what Maddy just proved?" }
+      });
+      this.agenticMissions = (this.agenticMissions || []).filter(item => item.id !== mission.id);
+      this.agenticMissionHistory.unshift(this.clone(mission));
+      this.agenticMissionHistory = this.agenticMissionHistory.slice(0, this.configuration.maximumAgenticMissionHistory);
+      this.lastAgenticMission = this.clone(mission);
+      this.projectSelfModel({ reason: "agentic-mission-completed", persist: false, refreshAwareness: false });
+      this.record("agentic.mission-completed", { missionId: mission.id, strategyId: strategy.id, attempts: mission.attempts.length, replans: mission.replans.length });
+      this.emit("brain:agentic-mission-completed", this.clone(mission));
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return this.clone(mission);
+    },
+
+    blockAgenticMission(mission, reason, options = {}) {
+      const now = new Date().toISOString();
+      mission.status = "blocked";
+      mission.blockedAt = now;
+      mission.updatedAt = now;
+      mission.blockedReason = String(reason || "agentic-routes-exhausted");
+      this.updateAgenticMissionMirror(mission, "blocked", { reason: mission.blockedReason });
+      this.lastAgenticMission = this.clone(mission);
+      this.record("agentic.mission-blocked", { missionId: mission.id, reason: mission.blockedReason, attempts: mission.attempts.length });
+      this.emit("brain:agentic-mission-blocked", this.clone(mission));
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return this.clone(mission);
+    },
+
+    async runAgenticMission(missionOrId, options = {}) {
+      const mission = this.getAgenticMission(missionOrId);
+      if (!mission) return { success: false, reason: "agentic-mission-not-found" };
+      if (mission.status === "completed") return { success: true, completed: true, mission: this.clone(mission) };
+      if (mission.status === "blocked" && options.resumeBlocked !== true) return { success: false, blocked: true, reason: mission.blockedReason || "agentic-mission-blocked", mission: this.clone(mission) };
+
+      mission.status = "executing";
+      mission.updatedAt = new Date().toISOString();
+      const maxAttempts = Math.max(1, Math.min(Number(options.maxAttempts || this.configuration.agenticMaximumAttempts), this.configuration.agenticMaximumAttempts));
+      const maxReplans = Math.max(0, Math.min(Number(options.maxReplans ?? this.configuration.agenticMaximumReplans), this.configuration.agenticMaximumReplans));
+      const attemptBudget = Math.max(1, Math.min(Number(options.attemptBudget || maxAttempts), maxAttempts));
+      const attemptsAtStart = mission.attempts.length;
+      this.updateAgenticMissionMirror(mission, "executing", { currentActivity: "Agentic Maddy is pursuing the objective and verifying consequence.", progress: Math.min(95, Math.round((mission.attempts.length / maxAttempts) * 100)) });
+
+      while (mission.attempts.length < maxAttempts && (mission.attempts.length - attemptsAtStart) < attemptBudget) {
+        const ranked = this.rankAgenticStrategies(mission);
+        let strategy = ranked.find(item => Number(item._missionAttempts || 0) === 0) || null;
+        if (!strategy && mission.replans.length < maxReplans) {
+          const syntheticObservation = {
+            transportSuccess: false,
+            verifiedConsequence: false,
+            objectiveSatisfied: false,
+            reason: "all-current-routes-exhausted",
+            observedAt: new Date().toISOString()
+          };
+          const fallback = ranked[0] || this.normalizeAgenticStrategy({ id: "exhausted-route", instruction: mission.objective }, 0);
+          await this.replanAgenticMission(mission, fallback, syntheticObservation, options);
+          strategy = this.rankAgenticStrategies(mission).find(item => Number(item._missionAttempts || 0) === 0) || null;
+        }
+        if (!strategy) {
+          const blocked = this.blockAgenticMission(mission, "no-untried-legitimate-route-remains", options);
+          return { success: false, blocked: true, mission: blocked };
+        }
+
+        mission.plan.currentStrategyId = strategy.id;
+        const attempt = {
+          schema: "meos.maddy.agentic-attempt.v1",
+          id: this.id("agentic-attempt"),
+          number: mission.attempts.length + 1,
+          missionId: mission.id,
+          strategyId: strategy.id,
+          strategyLabel: strategy.label,
+          instruction: strategy.instruction,
+          startedAt: new Date().toISOString(),
+          completedAt: null,
+          status: "running",
+          observation: null,
+          diagnosis: null
+        };
+        mission.attempts.push(attempt);
+        mission.updatedAt = attempt.startedAt;
+        let raw;
+        try {
+          raw = await this.executeAgenticStrategy(mission, strategy, attempt, options);
+        } catch (error) {
+          raw = { success: false, transportSuccess: false, consequenceVerified: false, objectiveSatisfied: false, reason: error?.message || String(error), error: error?.message || String(error) };
+        }
+
+        let observation = this.normalizeAgenticObservation(raw, strategy);
+        if (typeof options.consequenceVerifier === "function") {
+          const verified = await options.consequenceVerifier({ mission: this.clone(mission), strategy: this.clone(strategy), attempt: this.clone(attempt), raw: this.clone(raw), observation: this.clone(observation) });
+          if (verified && typeof verified === "object") {
+            observation = this.normalizeAgenticObservation({ ...raw, ...verified }, strategy);
+          }
+        }
+        attempt.completedAt = new Date().toISOString();
+        attempt.observation = this.clone(observation);
+        attempt.status = observation.objectiveSatisfied === true ? "verified-success" : "failed-or-unverified";
+        mission.observations.push(this.clone(observation));
+
+        if (observation.objectiveSatisfied === true && observation.verifiedConsequence === true) {
+          const completed = this.closeAgenticMission(mission, strategy, observation, options);
+          return { success: true, completed: true, mission: completed, observation: this.clone(observation) };
+        }
+
+        mission.competence = this.recordAgenticCompetenceObservation(mission, strategy, observation);
+        const diagnosis = this.diagnoseAgenticObservation(mission, strategy, observation);
+        attempt.diagnosis = this.clone(diagnosis);
+        const learningResult = this.recordAgenticExecutiveLearning(mission, strategy, observation, attempt);
+        if (learningResult?.observation?.id) attempt.learningObservationId = learningResult.observation.id;
+        this.record("agentic.attempt-observed", { missionId: mission.id, attemptId: attempt.id, strategyId: strategy.id, transportSuccess: observation.transportSuccess, verifiedConsequence: observation.verifiedConsequence, objectiveSatisfied: observation.objectiveSatisfied, reason: observation.reason });
+
+        let untried = this.rankAgenticStrategies(mission).some(item => Number(item._missionAttempts || 0) === 0);
+        if (!untried && mission.replans.length < maxReplans) {
+          await this.replanAgenticMission(mission, strategy, observation, options);
+          untried = this.rankAgenticStrategies(mission).some(item => Number(item._missionAttempts || 0) === 0);
+        }
+        if (!untried) {
+          const blocked = this.blockAgenticMission(mission, "agentic-routes-exhausted-without-verified-consequence", options);
+          return { success: false, blocked: true, mission: blocked, observation: this.clone(observation) };
+        }
+        if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      }
+
+      if (mission.attempts.length >= maxAttempts) {
+        const blocked = this.blockAgenticMission(mission, "agentic-attempt-budget-exhausted", options);
+        return { success: false, blocked: true, mission: blocked };
+      }
+      mission.status = "paused";
+      mission.pauseReason = "agentic-cycle-budget-yield";
+      mission.updatedAt = new Date().toISOString();
+      this.updateAgenticMissionMirror(mission, "paused", { currentActivity: "Agentic Maddy checkpointed the mission for durable continuation.", progress: Math.min(95, Math.round((mission.attempts.length / maxAttempts) * 100)) });
+      this.lastAgenticMission = this.clone(mission);
+      this.record("agentic.mission-paused", { missionId: mission.id, attempts: mission.attempts.length, remainingAttemptBudget: Math.max(0, maxAttempts - mission.attempts.length) });
+      if (brainPersistence.hydrated === true && options.persist !== false) this.persist();
+      return { success: true, paused: true, mission: this.clone(mission) };
+    },
+
+    async runAgenticMaddyAcceptanceTest() {
+      const original = {
+        missions: this.clone(this.agenticMissions || []),
+        history: this.clone(this.agenticMissionHistory || []),
+        competence: this.clone(this.agenticCompetenceLedger || {}),
+        last: this.clone(this.lastAgenticMission),
+        count: this.agenticMissionCount,
+        autobiography: this.clone(this.autobiographicalMemory || []),
+        selfModel: this.clone(this.selfModel),
+        selfModelHistory: this.clone(this.selfModelHistory || []),
+        selfModelCount: this.selfModelProjectionCount,
+        missionEngine: global.MEOSMissionEngine,
+        planning: global.ExecutivePlanning,
+        hallway: global.MEOSExecutiveHallway,
+        learning: global.ExecutiveLearning,
+        reasoning: global.InstitutionalReasoning
+      };
+      const priorHydrated = brainPersistence.hydrated;
+      brainPersistence.hydrated = false;
+      try {
+        this.agenticMissions = [];
+        this.agenticMissionHistory = [];
+        this.agenticCompetenceLedger = {};
+        this.lastAgenticMission = null;
+        this.agenticMissionCount = 0;
+
+        const missionEvents = [];
+        let missionCounter = 0;
+        global.MEOSMissionEngine = {
+          getActiveMissions: () => [], getCompletedMissions: () => [], getArchivedMissions: () => [],
+          createMission: input => { missionCounter += 1; missionEvents.push(["create", input.sourceReference]); return { id: `fixture-mission-${missionCounter}`, status: "queued", ...input }; },
+          startMission: id => { missionEvents.push(["start", id]); return { id, status: "in_progress" }; },
+          updateMission: (id, update) => { missionEvents.push(["update", id, update.currentActivity || null]); return { id, status: "in_progress", ...update }; },
+          completeMission: (id, completion) => { missionEvents.push(["complete", id]); return { id, status: "completed", completion }; },
+          blockMission: (id, reason) => { missionEvents.push(["block", id]); return { id, status: "blocked", reason }; }
+        };
+        global.ExecutivePlanning = {
+          plans: [],
+          createPlan: input => {
+            const plan = { id: `fixture-plan-${global.ExecutivePlanning.plans.length + 1}`, status: "draft", metadata: input.metadata || {} };
+            global.ExecutivePlanning.plans.push(plan);
+            return { success: true, plan };
+          }
+        };
+        const learningObservations = [];
+        global.ExecutiveLearning = {
+          observe: input => {
+            const observation = { id: `learning-fixture-${learningObservations.length + 1}`, ...this.clone(input) };
+            learningObservations.push(observation);
+            return { success: true, observation, lessons: [] };
+          }
+        };
+
+        const firstCreated = this.createAgenticMission({
+          title: "Adaptive fixture",
+          objective: "Produce a verified useful result despite a misleading first route.",
+          capabilityKey: "adaptive-research",
+          humanDirected: true,
+          strategies: [
+            { id: "obvious-route", label: "Obvious route", instruction: "Use the obvious route." },
+            { id: "alternate-route", label: "Alternate route", instruction: "Use a materially different route." }
+          ]
+        }, { persist: false });
+        const firstCalls = [];
+        const firstRun = await this.runAgenticMission(firstCreated.mission.id, {
+          persist: false,
+          executor: async ({ strategy }) => {
+            firstCalls.push(strategy.id);
+            if (strategy.id === "obvious-route") {
+              return { success: true, transportSuccess: true, consequenceVerified: false, objectiveSatisfied: false, reason: "transport worked but objective did not" };
+            }
+            return { success: true, transportSuccess: true, consequenceVerified: true, objectiveSatisfied: true, reason: "alternate route produced verified consequence" };
+          }
+        });
+        const firstFinal = firstRun.mission;
+        const snapshot = this.buildPersistenceSnapshot();
+        const competenceBeforeRestore = this.getAgenticCompetenceSummary("adaptive-research");
+
+        this.agenticMissions = [];
+        this.agenticMissionHistory = [];
+        this.agenticCompetenceLedger = {};
+        this.lastAgenticMission = null;
+        this.agenticMissionCount = 0;
+        const restored = this.applyPersistenceSnapshot(snapshot);
+        const restoredFirst = this.getAgenticMission(firstFinal.id);
+
+        const secondCreated = this.createAgenticMission({
+          title: "Adaptive fixture second pass",
+          objective: "Produce the same class of verified result efficiently.",
+          capabilityKey: "adaptive-research",
+          humanDirected: true,
+          strategies: [
+            { id: "obvious-route", label: "Obvious route", instruction: "Use the obvious route." },
+            { id: "alternate-route", label: "Alternate route", instruction: "Use a materially different route." }
+          ]
+        }, { persist: false });
+        const secondCalls = [];
+        const secondRun = await this.runAgenticMission(secondCreated.mission.id, {
+          persist: false,
+          executor: async ({ strategy }) => {
+            secondCalls.push(strategy.id);
+            return { success: true, transportSuccess: true, consequenceVerified: true, objectiveSatisfied: true, reason: "verified on first selected route" };
+          }
+        });
+
+        const replanCreated = this.createAgenticMission({
+          title: "Replan fixture",
+          objective: "Recover when the only initial route is falsified.",
+          capabilityKey: "adaptive-replan",
+          humanDirected: true,
+          strategies: [{ id: "route-a", instruction: "Attempt route A." }]
+        }, { persist: false });
+        const replanCalls = [];
+        const replanRun = await this.runAgenticMission(replanCreated.mission.id, {
+          persist: false,
+          maxAttempts: 3,
+          maxReplans: 2,
+          executor: async ({ strategy }) => {
+            replanCalls.push(strategy.id);
+            return strategy.id === "route-b"
+              ? { success: true, consequenceVerified: true, objectiveSatisfied: true, reason: "new route verified" }
+              : { success: false, consequenceVerified: false, objectiveSatisfied: false, reason: "route falsified" };
+          },
+          replanner: async ({ failedStrategy }) => failedStrategy.id === "route-a"
+            ? [{ id: "route-b", label: "Different mechanism", instruction: "Use route B, a different mechanism." }]
+            : []
+        });
+
+        const nativeReplanCalls = [];
+        global.InstitutionalReasoning = {
+          analyze: () => ({
+            success: true,
+            status: "fixture-operational-reasoning",
+            options: [{ id: "native-route-b", title: "Different native route", description: "Use the independently reasoned route B." }],
+            implementationPlan: []
+          })
+        };
+        const nativeCreated = this.createAgenticMission({
+          title: "Native replan fixture",
+          objective: "Recover without an injected replanner.",
+          capabilityKey: "native-adaptation",
+          humanDirected: true,
+          strategies: [{ id: "native-route-a", instruction: "Try route A." }]
+        }, { persist: false });
+        const nativeRun = await this.runAgenticMission(nativeCreated.mission.id, {
+          persist: false,
+          maxAttempts: 3,
+          maxReplans: 2,
+          executor: async ({ strategy }) => {
+            nativeReplanCalls.push(strategy.id);
+            return strategy.id === "native-route-b"
+              ? { success: true, consequenceVerified: true, objectiveSatisfied: true, reason: "native alternative verified" }
+              : { success: false, consequenceVerified: false, objectiveSatisfied: false, reason: "native first route falsified" };
+          }
+        });
+
+        const continuityCreated = this.createAgenticMission({
+          title: "Durable active mission fixture",
+          objective: "Continue the same adaptive objective after cognitive reconstruction.",
+          capabilityKey: "durable-agentic-continuity",
+          humanDirected: true,
+          strategies: [
+            { id: "continuity-route-a", instruction: "Try continuity route A." },
+            { id: "continuity-route-b", instruction: "Try continuity route B." }
+          ]
+        }, { persist: false });
+        const continuityMissionId = continuityCreated.mission.id;
+        const continuityFirst = await this.runAgenticMission(continuityMissionId, {
+          persist: false,
+          maxAttempts: 4,
+          attemptBudget: 1,
+          executor: async () => ({ success: false, consequenceVerified: false, objectiveSatisfied: false, reason: "first continuity route falsified" })
+        });
+        const continuitySnapshot = this.buildPersistenceSnapshot();
+        this.agenticMissions = [];
+        this.agenticMissionHistory = [];
+        this.agenticCompetenceLedger = {};
+        this.lastAgenticMission = null;
+        const continuityRestored = this.applyPersistenceSnapshot(continuitySnapshot);
+        const continuityResumeCalls = [];
+        const continuitySecond = await this.runAgenticMission(continuityMissionId, {
+          persist: false,
+          maxAttempts: 4,
+          executor: async ({ strategy }) => {
+            continuityResumeCalls.push(strategy.id);
+            return { success: true, consequenceVerified: true, objectiveSatisfied: true, reason: "continued mission verified after restore" };
+          }
+        });
+
+        const hallwayCalls = [];
+        global.MEOSExecutiveHallway = {
+          submitWork: async input => {
+            hallwayCalls.push(this.clone(input));
+            return { id: "hallway-fixture", state: "done", outcome: { success: true, verified: true, objectiveSatisfied: true, reason: "hallway verified consequence" } };
+          }
+        };
+        const hallwayCreated = this.createAgenticMission({
+          title: "Existing organ integration fixture",
+          objective: "Use the commissioned Hallway path.",
+          capabilityKey: "hallway-integration",
+          humanDirected: true,
+          strategies: [{ id: "hallway-route", instruction: "Execute through Hallway." }]
+        }, { persist: false });
+        const hallwayRun = await this.runAgenticMission(hallwayCreated.mission.id, { persist: false, maxAttempts: 1 });
+
+        const boundedCreated = this.createAgenticMission({
+          title: "Bounded failure fixture",
+          objective: "Do not loop forever when no route works.",
+          capabilityKey: "bounded-failure",
+          humanDirected: true,
+          strategies: [{ id: "dead-end", instruction: "Try the dead end." }]
+        }, { persist: false });
+        const boundedRun = await this.runAgenticMission(boundedCreated.mission.id, {
+          persist: false,
+          maxAttempts: 2,
+          maxReplans: 0,
+          executor: async () => ({ success: false, consequenceVerified: false, objectiveSatisfied: false, reason: "still blocked" })
+        });
+
+        const selfProjection = this.buildSelfModelProjection({ reason: "agentic-acceptance" });
+        const checks = [
+          { name: "A human-directed objective becomes one durable Agentic Maddy mission identity", passed: firstCreated.success === true && Boolean(firstCreated.mission?.id) && firstCreated.mission?.authority?.humanDirected === true },
+          { name: "Agentic mission mirrors into existing Mission and Planning organs instead of creating a disconnected work system", passed: Boolean(firstCreated.mission?.missionEngineId) && Boolean(firstCreated.mission?.planningId) && missionEvents.some(item => item[0] === "create") },
+          { name: "Transport success without verified consequence is rejected as mission completion", passed: firstFinal?.attempts?.[0]?.observation?.transportSuccess === true && firstFinal?.attempts?.[0]?.observation?.verifiedConsequence === false && firstFinal?.attempts?.[0]?.status === "failed-or-unverified" },
+          { name: "Maddy materially changes route after reality falsifies the first plan", passed: firstCalls.join(",") === "obvious-route,alternate-route" && firstFinal?.attempts?.[0]?.strategyId !== firstFinal?.attempts?.[1]?.strategyId },
+          { name: "The same mission identity survives multiple attempts instead of spawning disposable agents", passed: firstFinal?.attempts?.length === 2 && firstFinal.attempts.every(item => item.missionId === firstFinal.id) },
+          { name: "Verified consequence closes the objective and completes the Mission Engine mirror", passed: firstRun.success === true && firstFinal?.status === "completed" && firstFinal?.consequence?.verified === true && missionEvents.some(item => item[0] === "complete" && item[1] === firstFinal.missionEngineId) },
+          { name: "Outcome evidence becomes a capability competence record rather than a victory counter", passed: competenceBeforeRestore?.entries?.[0]?.attempts === 2 && competenceBeforeRestore?.entries?.[0]?.verifiedSuccesses === 1 && competenceBeforeRestore?.entries?.[0]?.unverifiedTransportSuccesses === 1 },
+          { name: "Agentic mission history and competence survive sovereign Executive Brain persistence", passed: restored === true && restoredFirst?.status === "completed" && this.getAgenticCompetenceSummary("adaptive-research")?.entries?.[0]?.attempts >= 2 },
+          { name: "Later similar work uses prior verified competence to prefer the route that actually worked", passed: secondRun.success === true && secondCalls[0] === "alternate-route" },
+          { name: "A failed route can produce a materially new strategy and continue without changing mission identity", passed: replanRun.success === true && replanCalls.join(",") === "route-a,route-b" && replanRun.mission?.replans?.some(item => item.addedStrategyIds?.includes("route-b")) === true },
+          { name: "Maddy-owned Institutional Reasoning can generate a materially different route without an injected replanner", passed: nativeRun.success === true && nativeReplanCalls.join(",") === "native-route-a,native-route-b" && nativeRun.mission?.replans?.some(item => item.addedStrategyIds?.includes("native-route-b")) === true },
+          { name: "An active Agentic mission can checkpoint, survive Brain reconstruction, and resume the same objective identity", passed: continuityFirst.paused === true && continuityRestored === true && continuitySecond.success === true && continuitySecond.mission?.id === continuityMissionId && continuityResumeCalls[0] === "continuity-route-b" },
+          { name: "Agentic outcomes enter the existing Executive Learning observation organ without auto-inventing a lesson", passed: learningObservations.length >= 4 && learningObservations.some(item => item.metadata?.agenticMissionId === firstFinal?.id && item.metadata?.verifiedConsequence === true) },
+          { name: "Default production execution uses Executive Hallway and preserves explicit agentic lineage", passed: hallwayRun.success === true && hallwayCalls.length === 1 && hallwayCalls[0]?.context?.agenticMissionId === hallwayCreated.mission.id && Boolean(hallwayCalls[0]?.context?.agenticAttemptId) },
+          { name: "Agentic failure is bounded rather than becoming an infinite retry loop", passed: boundedRun.blocked === true && boundedRun.mission?.attempts?.length === 1 && ["agentic-routes-exhausted-without-verified-consequence", "no-untried-legitimate-route-remains"].includes(boundedRun.mission?.blockedReason) },
+          { name: "Agentic competence is visible in Maddy's self-model", passed: selfProjection?.experiencedPerformance?.agenticCompetence?.totalAttempts >= 1 },
+          { name: "Agentic adaptation never manufactures spend or external-action authority", passed: [firstFinal, secondRun.mission, replanRun.mission, hallwayRun.mission, boundedRun.mission].every(item => item?.authority?.automaticSpendUsd === 0 && item?.authority?.grantsNewAuthority === false) },
+          { name: "The loop remains one Executive Brain using commissioned organs rather than a disposable-agent subsystem", passed: typeof this.runAgenticMission === "function" && typeof this.formAutobiographicalEpisode === "function" && typeof this.projectSelfModel === "function" }
+        ];
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks.map(item => ({ name: item.name, passed: item.passed })));
+        console.info(`[MEOS ${this.version}] Commission 006.036A Agentic Maddy adaptive goal-to-consequence: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+        return {
+          success: passed === checks.length,
+          commission: "006.036A",
+          schema: "meos.maddy.agentic-maddy-acceptance.v1",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          total: checks.length,
+          checks,
+          samples: {
+            firstMission: this.clone(firstFinal),
+            secondMission: this.clone(secondRun.mission),
+            replannedMission: this.clone(replanRun.mission),
+            nativeReplannedMission: this.clone(nativeRun.mission),
+            durableResumedMission: this.clone(continuitySecond.mission),
+            boundedMission: this.clone(boundedRun.mission),
+            competence: this.getAgenticCompetenceSummary()
+          }
+        };
+      } finally {
+        brainPersistence.hydrated = priorHydrated;
+        this.agenticMissions = original.missions;
+        this.agenticMissionHistory = original.history;
+        this.agenticCompetenceLedger = original.competence;
+        this.lastAgenticMission = original.last;
+        this.agenticMissionCount = original.count;
+        this.autobiographicalMemory = original.autobiography;
+        this.selfModel = original.selfModel;
+        this.selfModelHistory = original.selfModelHistory;
+        this.selfModelProjectionCount = original.selfModelCount;
+        if (original.missionEngine === undefined) delete global.MEOSMissionEngine; else global.MEOSMissionEngine = original.missionEngine;
+        if (original.planning === undefined) delete global.ExecutivePlanning; else global.ExecutivePlanning = original.planning;
+        if (original.hallway === undefined) delete global.MEOSExecutiveHallway; else global.MEOSExecutiveHallway = original.hallway;
+        if (original.learning === undefined) delete global.ExecutiveLearning; else global.ExecutiveLearning = original.learning;
+        if (original.reasoning === undefined) delete global.InstitutionalReasoning; else global.InstitutionalReasoning = original.reasoning;
+      }
     },
 
     /*
@@ -23503,6 +24533,11 @@
         developmentalRetrospectives: this.developmentalRetrospectives.slice(0, this.configuration.maximumDevelopmentalRetrospectives),
         lastDevelopmentalDrive: this.lastDevelopmentalDrive ? this.clone(this.lastDevelopmentalDrive) : null,
         developmentalDriveCount: Number(this.developmentalDriveCount || 0),
+        agenticMissions: this.agenticMissions.slice(0, this.configuration.maximumAgenticMissions),
+        agenticMissionHistory: this.agenticMissionHistory.slice(0, this.configuration.maximumAgenticMissionHistory),
+        agenticCompetenceLedger: this.clone(this.agenticCompetenceLedger || {}),
+        lastAgenticMission: this.lastAgenticMission ? this.clone(this.lastAgenticMission) : null,
+        agenticMissionCount: Number(this.agenticMissionCount || 0),
         intentReconstructionHistory: this.intentReconstructionHistory.slice(0, this.configuration.maximumIntentReconstructions),
         investigativeIntentions: this.investigativeIntentions.slice(0, this.configuration.maximumInvestigativeIntentions),
         lastIntentReconstruction: this.lastIntentReconstruction ? this.clone(this.lastIntentReconstruction) : null,
@@ -23686,6 +24721,11 @@
       this.developmentalRetrospectives = Array.isArray(saved.developmentalRetrospectives) ? saved.developmentalRetrospectives.slice(0, this.configuration.maximumDevelopmentalRetrospectives) : [];
       this.lastDevelopmentalDrive = saved.lastDevelopmentalDrive && typeof saved.lastDevelopmentalDrive === "object" ? this.clone(saved.lastDevelopmentalDrive) : null;
       this.developmentalDriveCount = Math.max(Number(saved.developmentalDriveCount || 0), Number(this.lastDevelopmentalDrive?.driveNumber || 0));
+      this.agenticMissions = Array.isArray(saved.agenticMissions) ? saved.agenticMissions.slice(0, this.configuration.maximumAgenticMissions) : [];
+      this.agenticMissionHistory = Array.isArray(saved.agenticMissionHistory) ? saved.agenticMissionHistory.slice(0, this.configuration.maximumAgenticMissionHistory) : [];
+      this.agenticCompetenceLedger = saved.agenticCompetenceLedger && typeof saved.agenticCompetenceLedger === "object" && !Array.isArray(saved.agenticCompetenceLedger) ? this.clone(saved.agenticCompetenceLedger) : {};
+      this.lastAgenticMission = saved.lastAgenticMission && typeof saved.lastAgenticMission === "object" ? this.clone(saved.lastAgenticMission) : (this.agenticMissions[0] ? this.clone(this.agenticMissions[0]) : null);
+      this.agenticMissionCount = Math.max(Number(saved.agenticMissionCount || 0), Number(this.lastAgenticMission?.missionNumber || 0));
       this.intentReconstructionHistory = Array.isArray(saved.intentReconstructionHistory) ? saved.intentReconstructionHistory.slice(0, this.configuration.maximumIntentReconstructions) : [];
       this.investigativeIntentions = Array.isArray(saved.investigativeIntentions) ? saved.investigativeIntentions.slice(0, this.configuration.maximumInvestigativeIntentions) : [];
       this.lastIntentReconstruction = saved.lastIntentReconstruction && typeof saved.lastIntentReconstruction === "object" ? this.clone(saved.lastIntentReconstruction) : null;
