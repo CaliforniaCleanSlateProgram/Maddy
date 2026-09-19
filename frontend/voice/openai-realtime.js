@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.6
+ * File Version: 2.0.7
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -9,7 +9,9 @@
  * - Establish one secure OpenAI Realtime WebRTC session.
  * - Maintain one microphone stream and one data channel.
  * - Use server VAD as a provisional speech sensor, not as automatic user-turn authority.
- * - Wake foreground conversation on "Maddy" / "Maddison" and preserve natural follow-up turns.
+ * - Wake foreground conversation on Maddy/Madison phonetic variants and preserve natural follow-up turns.
+ * - Preserve the leading wake word with a longer server-VAD prefix window in noisy rooms.
+ * - Never reuse stale acoustic samples as proof that a later speaker is the foreground user.
  * - Keep background office speech from stealing conversational control or interrupting Maddy.
  * - Authorize no more than one OpenAI response per user turn.
  * - Accept and publish each OpenAI response only once.
@@ -20,9 +22,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.6";
+  const VERSION = "2.0.7";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE206-FOREGROUND-CONVERSATION-ATTENTION-GATE-20260919-A";
+  const BUILD_ID = "VE207-WAKE-CAPTURE-ROBUSTNESS-20260919-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -37,7 +39,7 @@
    * interrupt Maddy or create a user turn. A transcript must first pass this
    * foreground-attention gate.
    */
-  const WAKE_WORD_PATTERN = /\b(?:maddy|maddie|maddison|madison)\b/i;
+  const WAKE_WORD_PATTERN = /\b(?:maddy|maddie|madi|matty|mattie|maddison|madison)\b/i;
   const ATTENTION_LEASE_MS = 60_000;
   const FOLLOW_UP_GRACE_MS = 15_000;
   const CANDIDATE_TRANSCRIPT_TIMEOUT_MS = 4_000;
@@ -547,13 +549,17 @@
 
     candidate.stoppedAt = now();
     candidate.audioEndMs = message.audio_end_ms ?? null;
+    // Acoustic proof belongs to this candidate only. If the analyser did not
+    // sample while this VAD segment was active (for example after a reconnect
+    // or while requestAnimationFrame was throttled), do not borrow the last
+    // room sample and accidentally make a later/background speaker look like
+    // the foreground user.
     candidate.avgRms = candidate.sampleCount > 0
       ? candidate.rmsSum / candidate.sampleCount
-      : Number(state.currentRms) || 0;
-    candidate.peakRms = Math.max(
-      candidate.peakRms,
-      Number(state.currentPeak) || 0
-    );
+      : 0;
+    candidate.peakRms = candidate.sampleCount > 0
+      ? candidate.peakRms
+      : 0;
 
     state.activeSpeechCandidate = null;
     state.pendingSpeechCandidates.push(candidate);
@@ -585,6 +591,7 @@
       audioEndMs: candidate.audioEndMs,
       avgRms: candidate.avgRms,
       peakRms: candidate.peakRms,
+      sampleCount: candidate.sampleCount,
       noiseFloorRms: candidate.noiseFloorAtStart
     });
 
@@ -884,7 +891,11 @@
             turn_detection: {
               type: "server_vad",
               threshold: 0.72,
-              prefix_padding_ms: 300,
+              // Preserve short leading wake words ("Maddy", "Madison") before
+              // the utterance body. 300 ms proved too brittle in the live noisy
+              // office test, where the transcriber sometimes received
+              // "Are you there?" after the spoken wake word was clipped.
+              prefix_padding_ms: 900,
               silence_duration_ms: 420,
 
               /**
