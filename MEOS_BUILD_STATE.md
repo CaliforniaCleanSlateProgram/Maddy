@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410233/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410029/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32401504/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32399158/MEOS_BUILD_STATE.md)
@@ -6692,3 +6693,224 @@ These are future capability questions, not failures of the commissioned 006.036A
 **Recovery keyword:** `006.036A-AGENTIC-LIVE-PROVEN`  
 **Fast recovery:** `Resume 006.036A-AGENTIC-LIVE-PROVEN — MAIN (68), server 2.10.111 + Brain 1.27.0; Agentic Maddy is production-proven outer 14/14 + nested 18/18; reconcile freshest main before selecting the next commission.`
 
+
+# SEPTEMBER 18/19 CURIOSITY TRANSFER LINEAGE HYGIENE CHECKPOINT --- 006.036B LIVE-PROVEN / CLOSED
+
+**Checkpoint:** 006.036B — Curiosity Transfer Lineage Hygiene  
+**Status:** COMMISSIONED / LIVE-PROVEN / CLOSED  
+**Production proof date:** 2026-09-19 UTC / 2026-09-18 PDT  
+**Freshest supplied repository snapshot before 006.036B implementation:** `Maddy-main (70)`  
+**Live runtime after 006.036B commits:** server `2.10.112` + Executive Brain `1.27.1`  
+**Governing workflow:** one fix → one file → one commit → one test → production proof → Build State checkpoint
+
+## Commission truth
+
+006.036B is commissioned because the deployed production proof returned **9/9 PASS**, the nested Executive Brain lineage-hygiene acceptance returned **10/10 PASS**, and the nested server hygiene acceptance returned **5/5 PASS** without weakening the acceptance contract.
+
+The commissioned correction is:
+
+**preserve historical curiosity/learning evidence → recognize recursive `Test learning transfer:` wrapper lineage → canonicalize active subject identity → prevent wrapper-on-wrapper novelty amplification → keep legitimate unresolved cognition eligible → preserve raw subject provenance → maintain existing Continuous Curiosity Circle → keep authority unchanged**
+
+006.036B repairs a specific contamination mode in active curiosity/learning lineage. It does **not** claim that general semantic novelty, all future low-quality learning subjects, or every possible curiosity-quality problem is solved.
+
+## Canonical production identities
+
+At live proof:
+
+- **Server:** `2.10.112`
+- **Executive Brain:** `1.27.1`
+- **Executive Brain build:** `EB1271-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-20260919-A`
+- **Commission:** `006.036B`
+- **Production proof version:** `1.0.0`
+- **Production proof build:** `CTHP100-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-PROOF-20260919-A`
+- **Outer production result:** `9/9 PASS`
+- **Nested Brain hygiene acceptance:** `10/10 PASS`
+- **Nested server hygiene acceptance:** `5/5 PASS`
+
+The canonical current runtime truth for this checkpoint is therefore **server 2.10.112 + Executive Brain 1.27.1**.
+
+Historical runtime identities recorded for earlier commissions remain correct for the moment at which those commissions were proven and must not be rewritten as if they occurred on 2.10.112 / 1.27.1.
+
+## Outer production proof — 9/9
+
+The deployed `/api/curiosity-transfer-lineage-hygiene/acceptance-test` surface returned `success: true`, `passed: 9`, `total: 9`.
+
+All nine production checks passed:
+
+1. Production loads Executive Brain 1.27.1 curiosity-lineage hygiene build.
+2. Executive Brain curiosity transfer lineage hygiene passes.
+3. Server autonomous-learning recognition canonicalizes recursive transfer wrappers.
+4. Continuous Curiosity Circle remains green after lineage hygiene.
+5. Agentic Maddy remains green after lineage hygiene.
+6. Cross-Time Pattern Causal Re-entry remains green after lineage hygiene.
+7. Proof preserves historical evidence while preventing wrapper-on-wrapper novelty amplification.
+8. Proof performs no provider call or durable write.
+9. Proof grants no entitlement, spend, autonomy, or consequential external-action authority.
+
+## Nested Executive Brain lineage hygiene — 10/10
+
+The deployed Brain returned `success: true`, `passed: 10`, `total: 10` for 006.036B.
+
+All ten assertions passed:
+
+1. Nested transfer wrappers collapse to one canonical transfer subject.
+2. Derived transfer intentions are not recycled as fresh transfer targets.
+3. Legitimate non-derived unresolved cognition remains eligible for transfer reasoning.
+4. New curiosity-circle promotions never stack transfer wrappers.
+5. Lineage hygiene preserves historical autobiography and curiosity records rather than deleting evidence.
+6. The sovereign persistence snapshot contains no recursively wrapped active transfer subject.
+7. Hydration migration invokes transfer-lineage reconciliation before future cognition.
+8. Curiosity lineage hygiene changes no spend, provider, autonomy, or external-action authority.
+9. The existing Continuous Curiosity Circle remains the learning loop rather than a replacement subsystem.
+10. Historical subject text is preserved in reconciliation provenance when an active wrapper is collapsed.
+
+## Nested server recognition hygiene — 5/5
+
+The deployed server returned `success: true`, `passed: 5`, `total: 5` for the 006.036B server hygiene contract.
+
+All five assertions passed:
+
+1. Recursive transfer wrappers canonicalize to one network-recognition subject.
+2. Recursive wrapper variants consume one recent-subject slot instead of artificial novelty budget.
+3. A recursively wrapped subject is recognized as the same recently researched subject.
+4. Health continuity exposes canonical last subject while preserving raw durable provenance.
+5. Recognition hygiene changes no provider spend or external-action authority.
+
+The proof hydration fixture restored one canonical recent subject and one canonical daily-novel subject from the synthetic recursive lineage, demonstrating that wrapper depth no longer multiplies subject identity.
+
+## Reconciliation result
+
+The deployed proof reported:
+
+- `collapsedSubjects: 1`
+- `absorbedDuplicateIntentions: 0`
+- `inputIntentions: 2`
+- `outputIntentions: 2`
+- `historyRewritten: false`
+- `authorityChanged: false`
+- principle: `preserve-learning-lineage-without-recursive-subject-amplification`
+
+Interpretation: the active recursive wrapper was collapsed for future cognition while the underlying historical evidence remained intact. 006.036B is a lineage reconciliation, not a history erasure.
+
+## Live resident runtime observation after proof
+
+Post-deployment `/health` telemetry provided additional production evidence beyond the synthetic acceptance fixture:
+
+- autonomous learning was enabled under the existing Continuous Curiosity Circle;
+- the current subject was canonicalized to `Is Knowledge Memory currently available?`;
+- the durable raw provenance still retained the historical recursively wrapped `Test learning transfer: ...` subject;
+- the canonical durable subject was exposed separately as `Is Knowledge Memory currently available?`;
+- recent-subject count was `4` and daily-novel-subject count was `4` rather than the pre-repair near-saturated recursive-wrapper state;
+- one duplicate learning subject was suppressed by cooldown instead of being executed as fresh novelty;
+- `lastStopReason` was `duplicate-learning-subject-cooldown`;
+- the resident loop reported zero failed wakes and no autonomous-learning error.
+
+This observation supports that the commissioned canonicalization is operating in the live resident cognition path, not only inside the acceptance fixture. It does not expand the commission into a claim of general semantic-novelty understanding.
+
+## Regression truth carried forward
+
+The production proof reported all of the following as green under Executive Brain 1.27.1:
+
+- `continuousCuriosityCircle: true`
+- `agenticMaddy: true`
+- `crossTimePatternCausalReentry: true`
+
+006.036B therefore preserves the already commissioned Agentic Maddy arc, durable curiosity loop, and Cross-Time Pattern Causal Re-entry while correcting the transfer-lineage contamination mode.
+
+## Authority and economic result
+
+The production proof reported:
+
+- `providerCalls: 0`
+- `durableWrites: 0`
+- `automaticSpendUsd: 0`
+- `entitlementGranted: false`
+- `autonomyAuthorityGranted: false`
+- `externalActionAuthorized: false`
+
+Interpretation: **curiosity-lineage hygiene did not manufacture authority.**
+
+006.036B changes how active learning subjects are canonicalized and recognized. It does not silently create provider, spend, entitlement, autonomy, institutional, or consequential external-action permission.
+
+## What 006.036B proves
+
+006.036B proves a production hygiene mechanism inside the existing Maddy/MEOS organism:
+
+- recursive `Test learning transfer:` wrappers are recognized as derived lineage rather than independent novelty;
+- active recursive wrapper chains collapse to one canonical transfer subject;
+- derived transfer intentions are not recycled as new transfer targets;
+- legitimate non-derived unresolved cognition remains eligible for future transfer reasoning;
+- new Continuous Curiosity Circle promotions do not stack transfer wrappers;
+- sovereign persistence is reconciled before future cognition proceeds;
+- raw historical subject text remains available as provenance;
+- runtime recognition fingerprints canonical subject identity rather than wrapper depth;
+- wrapper variants no longer multiply recent-subject or daily-novelty accounting;
+- the existing Continuous Curiosity Circle remains the learning loop;
+- no historical autobiography or curiosity evidence is deleted merely to make the active state look clean.
+
+## Limitation preserved
+
+The deployed production proof states the limitation precisely:
+
+> This proves that recursive curiosity-transfer wrapper text is canonicalized for active cognition and server recognition without deleting historical evidence. It does not claim that every future low-quality learning subject is automatically detected or that semantic novelty is solved generally.
+
+That limitation is retained as part of the commissioned truth. Future semantic retrieval, novelty judgment, neuromorphic attention, continual learning, and self-improvement work must not cite 006.036B as proof of capabilities it did not establish.
+
+## What is now closed
+
+At this checkpoint:
+
+1. `006.034H` remains LIVE-PROVEN for durable curiosity recognition/restart continuity.
+2. `006.034I` remains LIVE-PROVEN for bounded Cross-Time Pattern Causal Re-entry.
+3. `006.036A` remains LIVE-PROVEN / CLOSED for Agentic Maddy's adaptive goal-to-consequence arc.
+4. `006.036B` is LIVE-PROVEN / CLOSED for Curiosity Transfer Lineage Hygiene.
+5. Executive Brain `1.27.1` is the commissioned Brain identity for this hygiene rung.
+6. Server `2.10.112` is the commissioned server identity for the 006.036B production proof.
+7. The production proof is closed at outer `9/9`, nested Brain hygiene `10/10`, and nested server hygiene `5/5`.
+8. Recursive transfer-wrapper depth no longer manufactures active novelty identity.
+9. Historical evidence remains preserved while active cognition uses canonical subject identity.
+10. Agentic Maddy, Continuous Curiosity Circle, and Cross-Time Pattern Causal Re-entry remain green.
+
+## Known boundaries intentionally left open
+
+The following remain open and must not be silently inflated into solved claims:
+
+- general semantic novelty detection;
+- automatic detection of every possible low-quality learning subject;
+- general semantic retrieval/paraphrase understanding;
+- actual neuromorphic/spiking implementation;
+- adaptive learned attention thresholds based on long-run consequence;
+- broad continual-learning plasticity without forgetting;
+- self-modifying/self-improving development machinery;
+- unrestricted autonomy or universal tool coverage;
+- automatic paid-provider or spending authority;
+- automatic consequential external-action authority;
+- phenomenal consciousness or sentience.
+
+These remain future capability questions, not failures of the commissioned 006.036B correction.
+
+## Anti-drift gate after 006.036B
+
+1. Read `PROJECT_MADDY_NORTH_STAR.md` in full.
+2. Read this `MEOS_BUILD_STATE.md` in full.
+3. Reconcile freshest committed GitHub `main` and live runtime identity before coding.
+4. Treat `006.034H` as LIVE-PROVEN.
+5. Treat `006.034I` as LIVE-PROVEN.
+6. Treat `006.036A` as LIVE-PROVEN / CLOSED for the commissioned Agentic adaptive goal-to-consequence arc.
+7. Treat `006.036B` as LIVE-PROVEN / CLOSED for Curiosity Transfer Lineage Hygiene.
+8. Preserve historical evidence while canonicalizing derived active subject lineage; do not erase history merely to sanitize active state.
+9. Preserve the distinction between raw provenance subject and canonical active/recognition subject.
+10. Do not recycle derived transfer intentions as fresh transfer targets.
+11. Do not allow recursive wrapper depth to manufacture novelty budget, recent-subject identity, or repeated network research.
+12. Keep legitimate non-derived unresolved cognition eligible for future learning and transfer reasoning.
+13. Preserve the existing Continuous Curiosity Circle unless a later commissioned architecture deliberately supersedes it with stronger evidence.
+14. Preserve Agentic Maddy's persistent mission identity, consequence verification, material replanning, persistence, learning return, and competence behavior.
+15. Preserve Cross-Time Pattern Causal Re-entry and earlier curiosity-continuity behavior unless explicitly superseded by a proven later mechanism.
+16. Preserve capability/authority separation. Learning hygiene, curiosity, motivation, developmental drive, salience, or future neuromorphic mechanisms must not manufacture entitlement, spend, provider, autonomy, or consequential external-action authority.
+17. Preserve institutional privacy and exact-scope cross-boundary authority.
+18. Preserve truth and epistemic integrity. Canonicalization must never silently rewrite evidence into a materially different historical claim.
+19. Keep the North Star fixed and implementation malleable. Future neuromorphic, continual-learning, and self-improvement mechanisms may replace implementation details when stronger evidence proves them.
+20. Require external/runtime evidence before promoting future runtime commissions to LIVE-PROVEN.
+
+**Recovery keyword:** `006.036B-CURIOSITY-LINEAGE-HYGIENE-LIVE-PROVEN`  
+**Fast recovery:** `Resume 006.036B-CURIOSITY-LINEAGE-HYGIENE-LIVE-PROVEN — live server 2.10.112 + Brain 1.27.1; lineage hygiene is production-proven outer 9/9 + Brain 10/10 + server 5/5; Agentic, Continuous Curiosity Circle, and Cross-Time Pattern Causal Re-entry remain green; reconcile freshest main before Neuromorphic Maddy.`
