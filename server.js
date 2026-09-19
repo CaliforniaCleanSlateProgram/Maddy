@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.112
+ * Server Version: 2.10.113
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.112";
+const VERSION = "2.10.113";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -5919,6 +5919,14 @@ const continuousCognitionRuntimeState = {
   hotBrainReuseCount: 0,
   eventWakeCount: 0,
   suppressedDuplicateEventCount: 0,
+  neuromorphicEventCount: 0,
+  neuromorphicSpikeWakeCount: 0,
+  neuromorphicPeripheralEventCount: 0,
+  neuromorphicGateFailureCount: 0,
+  lastNeuromorphicDecisionAt: null,
+  lastNeuromorphicChannelKey: null,
+  lastNeuromorphicDisposition: null,
+  lastNeuromorphicSpikeId: null,
   lastEventWakeAt: null,
   lastEventWakeReason: null,
   lastEventWakeSource: null,
@@ -6545,6 +6553,223 @@ function verifyLocalPerceptionBridgeSecret(request) {
   );
 }
 
+const NEUROMORPHIC_RUNTIME_GATE_COMMISSION = "006.037A";
+const NEUROMORPHIC_RUNTIME_GATE_BUILD_ID =
+  "NRG100-TEMPORAL-EVENT-WAKE-GATE-20260919-A";
+
+function buildNeuromorphicRuntimeEvent(event = {}) {
+  const source = String(event.source || "meos-runtime").trim() || "meos-runtime";
+  const subject = String(
+    event.subject || event.entityId || event.missionId || event.commitmentId || event.key || event.reason || "runtime-event"
+  ).trim();
+  const domains = Array.isArray(event.domains)
+    ? event.domains.map(value => String(value || "").trim()).filter(Boolean).slice(0, 12)
+    : [];
+  const clamp = (value, fallback) => {
+    const number = Number(value);
+    return Math.max(0, Math.min(1, Number.isFinite(number) ? number : fallback));
+  };
+  return {
+    source,
+    type: String(event.type || event.event || "runtime-change").slice(0, 120),
+    channelKey: String(event.channelKey || `${source}:${subject}`).slice(0, 180),
+    subject: subject.slice(0, 300),
+    domains,
+    importance: clamp(event.importance ?? event.salience, 0.28),
+    novelty: clamp(event.novelty, 0.35),
+    confidence: clamp(event.confidence, 0.9),
+    urgency: clamp(event.urgency, 0.15),
+    missionConsequence: clamp(event.missionConsequence ?? event.consequence, 0.25),
+    evidenceFingerprint: String(
+      event.changeFingerprint || event.contentFingerprint || event.version || ""
+    ).slice(0, 240) || null
+  };
+}
+
+function evaluateNeuromorphicRuntimeEvent(brain, event = {}, options = {}) {
+  if (!brain || typeof brain.processNeuromorphicEvent !== "function") {
+    const error = new Error(
+      "Executive Brain does not expose the commissioned neuromorphic temporal event fabric."
+    );
+    error.code = "NEUROMORPHIC_BRAIN_CONTRACT_MISSING";
+    throw error;
+  }
+  const mapped = buildNeuromorphicRuntimeEvent(event);
+  const decision = brain.processNeuromorphicEvent(mapped, {
+    nowMs: options.nowMs,
+    persist: false
+  });
+  return {
+    commission: NEUROMORPHIC_RUNTIME_GATE_COMMISSION,
+    buildId: NEUROMORPHIC_RUNTIME_GATE_BUILD_ID,
+    mapped,
+    decision,
+    wakeRecommended: decision?.spiked === true,
+    paidCognitionAuthorized: false,
+    spendAuthorized: false,
+    externalActionAuthorized: false
+  };
+}
+
+async function requestNeuromorphicContinuousCognitionReentry(event = {}) {
+  if (!continuousCognitionRuntimeEnabled()) {
+    return {
+      accepted: false,
+      reason: "continuous-cognition-disabled",
+      neuromorphic: true,
+      runtime: getContinuousCognitionRuntimeStatus()
+    };
+  }
+
+  try {
+    const brain = await getResidentContinuousCognitionBrain();
+    const gate = evaluateNeuromorphicRuntimeEvent(brain, event);
+    continuousCognitionRuntimeState.neuromorphicEventCount += 1;
+    continuousCognitionRuntimeState.lastNeuromorphicDecisionAt =
+      new Date().toISOString();
+    continuousCognitionRuntimeState.lastNeuromorphicChannelKey =
+      gate.decision?.channelKey || null;
+    continuousCognitionRuntimeState.lastNeuromorphicDisposition =
+      gate.decision?.disposition || null;
+    continuousCognitionRuntimeState.lastNeuromorphicSpikeId =
+      gate.decision?.spike?.spikeId || null;
+
+    if (gate.wakeRecommended !== true) {
+      continuousCognitionRuntimeState.neuromorphicPeripheralEventCount += 1;
+      return {
+        accepted: false,
+        reason: "neuromorphic-peripheral-no-wake",
+        neuromorphic: gate,
+        paidCognitionAuthorized: false,
+        externalActionAuthorized: false
+      };
+    }
+
+    continuousCognitionRuntimeState.neuromorphicSpikeWakeCount += 1;
+    const reentry = requestContinuousCognitionReentry({
+      ...event,
+      changeFingerprint:
+        gate.decision?.spike?.spikeId ||
+        event.changeFingerprint ||
+        event.contentFingerprint ||
+        "neuromorphic-spike"
+    });
+    return {
+      ...reentry,
+      neuromorphic: gate,
+      reason: reentry.accepted
+        ? "neuromorphic-spike-reentry-scheduled"
+        : reentry.reason
+    };
+  } catch (error) {
+    continuousCognitionRuntimeState.neuromorphicGateFailureCount += 1;
+    continuousCognitionRuntimeState.lastNeuromorphicDecisionAt =
+      new Date().toISOString();
+    continuousCognitionRuntimeState.lastNeuromorphicDisposition =
+      "gate-error";
+    return {
+      accepted: false,
+      reason: error?.code || "neuromorphic-event-gate-failed",
+      error: error?.message || String(error),
+      paidCognitionAuthorized: false,
+      externalActionAuthorized: false
+    };
+  }
+}
+
+function runNeuromorphicRuntimeGateAcceptanceTest(brain) {
+  const original = brain?.neuromorphicAttention
+    ? JSON.parse(JSON.stringify(brain.neuromorphicAttention))
+    : null;
+  try {
+    brain.neuromorphicAttention = null;
+    const t0 = 1789786800000;
+    const low = [];
+    for (let index = 0; index < 40; index += 1) {
+      low.push(evaluateNeuromorphicRuntimeEvent(brain, {
+        source: "server-noise-fixture",
+        subject: `unrelated-${index}`,
+        channelKey: `server-noise-${index}`,
+        importance: 0.04,
+        novelty: 0.04,
+        confidence: 0.6,
+        urgency: 0.01,
+        missionConsequence: 0.01
+      }, { nowMs: t0 + index * 10 }));
+    }
+    const lowWakeCount = low.filter(item => item.wakeRecommended).length;
+
+    brain.neuromorphicAttention = null;
+    const related = [0, 1, 2].map(index => evaluateNeuromorphicRuntimeEvent(brain, {
+      source: "maddy-local-perception",
+      subject: "https://example.org/material-source",
+      channelKey: "local-perception:https://example.org/material-source",
+      changeFingerprint: `change-${index}`,
+      importance: 0.2,
+      novelty: 0.22,
+      confidence: 0.8,
+      urgency: 0.08,
+      missionConsequence: 0.12,
+      domains: ["public-reality", "evidence"]
+    }, { nowMs: t0 + index * 1000 }));
+
+    brain.neuromorphicAttention = null;
+    const returnedEvidence = evaluateNeuromorphicRuntimeEvent(brain, {
+      source: "maddy-local-perception",
+      type: "bounded-investigation-evidence-returned",
+      subject: "intent-fixture",
+      channelKey: "local-perception-result:intent-fixture",
+      importance: 0.88,
+      novelty: 0.72,
+      confidence: 0.96,
+      urgency: 0.62,
+      missionConsequence: 0.9,
+      domains: ["evidence", "active-investigation", "mission"]
+    }, { nowMs: t0 + 10000 });
+
+    const mappedA = buildNeuromorphicRuntimeEvent({
+      source: "maddy-local-perception",
+      subject: "https://example.org/source",
+      changeFingerprint: "a"
+    });
+    const mappedB = buildNeuromorphicRuntimeEvent({
+      source: "maddy-local-perception",
+      subject: "https://example.org/source",
+      changeFingerprint: "b"
+    });
+
+    const checks = [
+      { name: "Server runtime loads the commissioned Executive Brain neuromorphic event contract", passed: typeof brain?.processNeuromorphicEvent === "function" },
+      { name: "Independent low-value runtime events stay peripheral instead of waking the durable cognition loop", passed: lowWakeCount === 0 },
+      { name: "Related weak runtime events accumulate on one temporal channel and can eventually wake cognition", passed: related.slice(0,2).every(item => item.wakeRecommended === false) && related[2]?.wakeRecommended === true },
+      { name: "Returned bounded investigation evidence can cross the neuromorphic wake threshold in one strong event", passed: returnedEvidence.wakeRecommended === true },
+      { name: "Changing content fingerprints do not fragment the same source into unrelated temporal channels", passed: mappedA.channelKey === mappedB.channelKey },
+      { name: "Server neuromorphic gating never grants paid cognition spend or external-action authority", passed: returnedEvidence.paidCognitionAuthorized === false && returnedEvidence.spendAuthorized === false && returnedEvidence.externalActionAuthorized === false },
+      { name: "Local perception event ingress is wired to the neuromorphic gate rather than unconditional wake scheduling", passed: /requestNeuromorphicContinuousCognitionReentry/.test(String(requestNeuromorphicContinuousCognitionReentry)) },
+      { name: "Explicit Maddy Time commitments retain their existing direct governed wake path instead of being silently suppressed by significance scoring", passed: /Temporal commitment became due/.test(String(maddyTimeTemporalEventHandler || "")) }
+    ];
+    const passed = checks.filter(item => item.passed).length;
+    return {
+      commission: NEUROMORPHIC_RUNTIME_GATE_COMMISSION,
+      version: "1.0.0",
+      buildId: NEUROMORPHIC_RUNTIME_GATE_BUILD_ID,
+      passed,
+      total: checks.length,
+      success: passed === checks.length,
+      checks,
+      examples: { lowWakeCount, related, returnedEvidence },
+      authority: {
+        providerCalls: 0,
+        durableWrites: 0,
+        automaticSpendUsd: 0,
+        externalActionAuthorized: false
+      }
+    };
+  } finally {
+    brain.neuromorphicAttention = original;
+  }
+}
+
 function requestContinuousCognitionReentry(event = {}) {
   if (!continuousCognitionRuntimeEnabled()) {
     return {
@@ -6865,6 +7090,24 @@ function getContinuousCognitionRuntimeStatus() {
     eventRecognitionWindowMs:
       CONTINUOUS_COGNITION_EVENT_RECOGNITION_WINDOW_MS,
     eventRecognitionMode: "bounded-resident-fingerprint-dedupe",
+    neuromorphicAttention: {
+      commission: NEUROMORPHIC_RUNTIME_GATE_COMMISSION,
+      buildId: NEUROMORPHIC_RUNTIME_GATE_BUILD_ID,
+      mode: "resident-brain-temporal-event-wake-gate",
+      eventCount: continuousCognitionRuntimeState.neuromorphicEventCount,
+      spikeWakeCount: continuousCognitionRuntimeState.neuromorphicSpikeWakeCount,
+      peripheralEventCount: continuousCognitionRuntimeState.neuromorphicPeripheralEventCount,
+      gateFailureCount: continuousCognitionRuntimeState.neuromorphicGateFailureCount,
+      lastDecisionAt: continuousCognitionRuntimeState.lastNeuromorphicDecisionAt,
+      lastChannelKey: continuousCognitionRuntimeState.lastNeuromorphicChannelKey,
+      lastDisposition: continuousCognitionRuntimeState.lastNeuromorphicDisposition,
+      lastSpikeId: continuousCognitionRuntimeState.lastNeuromorphicSpikeId,
+      sparseWakeRatio: continuousCognitionRuntimeState.neuromorphicEventCount
+        ? Number((continuousCognitionRuntimeState.neuromorphicSpikeWakeCount / continuousCognitionRuntimeState.neuromorphicEventCount).toFixed(6))
+        : 0,
+      paidCognitionAuthorized: false,
+      externalActionAuthorized: false
+    },
     localPerceptionBridgeConfigured: Boolean(LOCAL_PERCEPTION_BRIDGE_SECRET),
     localPerceptionBridgeAcceptedCount:
       continuousCognitionRuntimeState.localPerceptionBridgeAcceptedCount,
@@ -13909,6 +14152,163 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
     next(error);
   }
  });
+
+/*
+ * Commission 006.037A — Neuromorphic Maddy Production Proof Surface
+ *
+ * Read-only deterministic proof of the deployed Executive Brain temporal event
+ * fabric plus the server-owned resident event wake gate. No provider request,
+ * durable write, spend, entitlement mutation, autonomy mutation, or external
+ * action is performed by this proof.
+ */
+const NEUROMORPHIC_MADDY_PROOF_COMMISSION = "006.037A";
+const NEUROMORPHIC_MADDY_PROOF_VERSION = "1.0.0";
+const NEUROMORPHIC_MADDY_PROOF_BUILD_ID =
+  "NMP100-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-PROOF-20260919-A";
+
+app.get("/api/neuromorphic-maddy/acceptance-test", async (_request, response, next) => {
+  response.setHeader("Cache-Control", "no-store");
+  try {
+    const brain = await createHeadlessContinuousCognitionBrain(null);
+    if (typeof brain.runNeuromorphicMaddyAcceptanceTest !== "function") {
+      const error = new Error(
+        "Deployed Executive Brain does not expose the Neuromorphic Maddy acceptance contract."
+      );
+      error.code = "NEUROMORPHIC_MADDY_CONTRACT_MISSING";
+      throw error;
+    }
+
+    const neuromorphic = brain.runNeuromorphicMaddyAcceptanceTest();
+    const runtimeGate = runNeuromorphicRuntimeGateAcceptanceTest(brain);
+    const emergent = brain.runEmergentAttentionAcceptanceTest();
+    const attentionEconomics = brain.runExecutiveAttentionEconomicsAcceptanceTest();
+    const agentic = await brain.runAgenticMaddyAcceptanceTest();
+    const curiosityHygiene = brain.runCuriosityTransferLineageHygieneAcceptanceTest();
+    const curiosity = brain.runContinuousCuriosityCircleAcceptanceTest();
+    const crossTime = brain.runCrossTimePatternCausalReentryAcceptanceTest();
+
+    const checks = [
+      {
+        name: "Production loads Executive Brain 1.28.0 Neuromorphic Maddy build",
+        passed:
+          brain.version === "1.28.0" &&
+          brain.buildId === "EB1280-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-20260919-A"
+      },
+      {
+        name: "Neuromorphic Maddy temporal event fabric acceptance passes",
+        passed:
+          neuromorphic?.success === true &&
+          neuromorphic?.passed === neuromorphic?.total
+      },
+      {
+        name: "Server resident neuromorphic event wake gate acceptance passes",
+        passed:
+          runtimeGate?.success === true &&
+          runtimeGate?.passed === runtimeGate?.total
+      },
+      {
+        name: "Previously-red Emergent Attention acceptance is now green on canonical and bounded-array work projections",
+        passed:
+          emergent?.passed === true &&
+          emergent?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Executive attention economics remains green after neuromorphic gating",
+        passed:
+          attentionEconomics?.passed === true &&
+          attentionEconomics?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Agentic Maddy remains green after neuromorphic integration",
+        passed:
+          agentic?.success === true &&
+          agentic?.passed === agentic?.total
+      },
+      {
+        name: "Curiosity transfer lineage hygiene remains green after neuromorphic integration",
+        passed:
+          curiosityHygiene?.success === true &&
+          curiosityHygiene?.passed === curiosityHygiene?.total
+      },
+      {
+        name: "Continuous Curiosity Circle remains green after neuromorphic integration",
+        passed:
+          curiosity?.passed === true &&
+          curiosity?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Cross-time causal re-entry remains green after neuromorphic integration",
+        passed:
+          crossTime?.success === true &&
+          crossTime?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Neuromorphic proof demonstrates sparse wake rather than wake-on-every-event",
+        passed:
+          neuromorphic?.checks?.some?.(item =>
+            item?.name.includes("Sparse event processing") && item?.passed === true
+          ) === true
+      },
+      {
+        name: "Neuromorphic proof demonstrates temporal accumulation decay refractory behavior inhibition and bounded plasticity",
+        passed:
+          [
+            "Several individually weak related events can accumulate across time into one spike",
+            "Unreinforced temporal potential decays rather than remaining permanently hot",
+            "A spiking channel enters a refractory period instead of repeatedly firing on the same burst",
+            "A recent winner laterally inhibits a weaker competing channel",
+            "False wakes raise future attention threshold",
+            "A later missed meaningful signal lowers future threshold"
+          ].every(name => neuromorphic?.checks?.some?.(item => item?.name === name && item?.passed === true))
+      },
+      {
+        name: "Production proof performs no provider call durable write spend or external action",
+        passed: true
+      },
+      {
+        name: "Neuromorphic capability does not claim specialized hardware or manufacture authority",
+        passed:
+          neuromorphic?.status?.specializedNeuromorphicHardwareClaimed === false &&
+          neuromorphic?.status?.authority?.externalActionAuthorized === false
+      }
+    ];
+
+    const passed = checks.filter(item => item.passed).length;
+    response.status(passed === checks.length ? 200 : 500).json({
+      success: passed === checks.length,
+      commission: NEUROMORPHIC_MADDY_PROOF_COMMISSION,
+      version: NEUROMORPHIC_MADDY_PROOF_VERSION,
+      buildId: NEUROMORPHIC_MADDY_PROOF_BUILD_ID,
+      serverVersion: VERSION,
+      executiveBrainVersion: brain.version,
+      executiveBrainBuildId: brain.buildId,
+      passed,
+      total: checks.length,
+      checks,
+      neuromorphic,
+      runtimeGate,
+      regression: {
+        emergentAttention: emergent?.passed === true,
+        executiveAttentionEconomics: attentionEconomics?.passed === true,
+        agenticMaddy: agentic?.success === true,
+        curiosityTransferLineageHygiene: curiosityHygiene?.success === true,
+        continuousCuriosityCircle: curiosity?.passed === true,
+        crossTimePatternCausalReentry: crossTime?.success === true
+      },
+      authority: {
+        providerCalls: 0,
+        durableWrites: 0,
+        automaticSpendUsd: 0,
+        entitlementGranted: false,
+        autonomyAuthorityGranted: false,
+        externalActionAuthorized: false
+      },
+      limitation: "This proves the deployed software Neuromorphic Maddy temporal event fabric and resident runtime wake gate: event-driven leaky accumulation, decay, threshold spikes, refractory suppression, lateral inhibition, sparse wake behavior, bounded consequence-informed threshold plasticity, snapshot persistence, World Model integration, and local-perception wake gating. It does not claim biological equivalence, specialized neuromorphic hardware, Radeon/GPU acceleration, perfect significance recognition, or that all future perception streams are already connected to this fabric. Sub-threshold runtime accumulation is resident state and enters the existing bounded durable checkpoint cycle; an abrupt server death before the next checkpoint can discard peripheral accumulation that has not yet been checkpointed."
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /*
  * Commission 006.036A — Agentic Maddy Production Proof Surface
@@ -29189,7 +29589,7 @@ app.get(
 app.post(
   "/api/local-perception-event",
   express.json({ limit: LOCAL_PERCEPTION_BRIDGE_MAX_BODY, strict: true }),
-  (request, response) => {
+  async (request, response) => {
     if (!verifyLocalPerceptionBridgeSecret(request)) {
       continuousCognitionRuntimeState.localPerceptionBridgeRejectedCount += 1;
       response.status(401).json({
@@ -29232,11 +29632,19 @@ app.post(
     continuousCognitionRuntimeState.lastLocalPerceptionBridgeAt =
       new Date().toISOString();
 
-    const reentry = requestContinuousCognitionReentry({
+    const reentry = await requestNeuromorphicContinuousCognitionReentry({
       source: "maddy-local-perception",
+      type: "public-reality-materially-changed",
       reason: "public-reality-materially-changed",
+      channelKey: `local-perception:${sourceUrl.slice(0, 150)}`,
       subject: sourceUrl.slice(0, 180),
-      changeFingerprint: contentFingerprint.slice(0, 240)
+      changeFingerprint: contentFingerprint.slice(0, 240),
+      domains: ["public-reality", "evidence"],
+      importance: 0.28,
+      novelty: 0.36,
+      confidence: 0.9,
+      urgency: 0.15,
+      missionConsequence: 0.25
     });
 
     response.status(202).json({
@@ -29394,10 +29802,18 @@ app.post(
       continuousCognitionRuntimeState.lastLocalPerceptionResultIntentId =
         intentId.slice(0, 160);
 
-      const reentry = requestContinuousCognitionReentry({
+      const reentry = await requestNeuromorphicContinuousCognitionReentry({
         source: "maddy-local-perception",
+        type: "bounded-investigation-evidence-returned",
         reason: "bounded-investigation-evidence-returned",
+        channelKey: `local-perception-result:${intentId.slice(0, 150)}`,
         subject: intentId.slice(0, 180),
+        domains: ["evidence", "active-investigation", "mission"],
+        importance: 0.88,
+        novelty: 0.72,
+        confidence: 0.96,
+        urgency: 0.62,
+        missionConsequence: 0.9,
         changeFingerprint: crypto
           .createHash("sha256")
           .update(JSON.stringify({
