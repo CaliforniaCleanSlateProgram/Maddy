@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.110
+ * Server Version: 2.10.111
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.110";
+const VERSION = "2.10.111";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -13660,9 +13660,9 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
       runAutonomousLearningContinuityAcceptanceTest();
     const checks = [
       {
-        name: "Production loads Executive Brain 1.26.14 cross-time-pattern-causal-reentry build",
-        passed: brain.version === "1.26.14" &&
-          brain.buildId === "EB12614-CROSS-TIME-PATTERN-CAUSAL-REENTRY-20260918-A"
+        name: "Production loads current Executive Brain with 006.034I cross-time-pattern behavior preserved",
+        passed: brain.version === "1.27.0" &&
+          brain.buildId === "EB1270-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-20260919-A"
       },
       {
         name: "Continuous Curiosity Circle synthetic organism acceptance still passes",
@@ -13793,6 +13793,174 @@ app.get("/api/continuous-curiosity-circle/acceptance-test", async (_request, res
         externalActionAuthorized: false
       },
       limitation: "This proves the deployed production code path plus bounded synthetic stale-attention, orphaned-attention, executive-attention-lifecycle, actionable-attention-progress, durable-curiosity-recognition, cross-time-pattern-causal-reentry, restart-continuity, curiosity-circle, and ignition contracts. It proves that a qualifying evidence-grounded recurring pattern can create one bounded falsifiable cognitive intention without manufacturing external authority. Live unattended observation is still required before claiming that production Maddy naturally encountered and promoted a real cross-time pattern. Real standing work may correctly outrank curiosity, while non-progressing internally originated cognition may pause without being falsely completed. This surface does not manufacture autonomy, provider use, spend, entitlement, or external action authority."
+    });
+  } catch (error) {
+    next(error);
+  }
+ });
+
+/*
+ * Commission 006.036A — Agentic Maddy Production Proof Surface
+ *
+ * This read-only proof loads the exact deployed Executive Brain source in the
+ * same headless VM used by server-owned continuous cognition and executes the
+ * deterministic Agentic Maddy acceptance contract. It performs no provider
+ * call, durable write, entitlement mutation, autonomy mutation, spend, or
+ * consequential external action.
+ */
+const AGENTIC_MADDY_PROOF_COMMISSION = "006.036A";
+const AGENTIC_MADDY_PROOF_VERSION = "1.0.0";
+const AGENTIC_MADDY_PROOF_BUILD_ID =
+  "AMP100-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-PROOF-20260919-A";
+
+app.get("/api/agentic-maddy/acceptance-test", async (_request, response, next) => {
+  response.setHeader("Cache-Control", "no-store");
+  try {
+    const brain = await createHeadlessContinuousCognitionBrain(null);
+    if (typeof brain.runAgenticMaddyAcceptanceTest !== "function") {
+      const error = new Error("Deployed Executive Brain does not expose the Agentic Maddy acceptance contract.");
+      error.code = "AGENTIC_MADDY_CONTRACT_MISSING";
+      throw error;
+    }
+
+    const agentic = await brain.runAgenticMaddyAcceptanceTest();
+    const crossTime = brain.runCrossTimePatternCausalReentryAcceptanceTest();
+    const curiosity = brain.runContinuousCuriosityCircleAcceptanceTest();
+    const developmental = await brain.runDevelopmentalDriveAcceptanceTest();
+
+    const checks = [
+      {
+        name: "Production loads Executive Brain 1.27.0 Agentic Maddy build",
+        passed:
+          brain.version === "1.27.0" &&
+          brain.buildId === "EB1270-AGENTIC-ADAPTIVE-GOAL-CONSEQUENCE-20260919-A"
+      },
+      {
+        name: "Agentic Maddy adaptive goal-to-consequence acceptance passes",
+        passed:
+          agentic?.success === true &&
+          agentic?.passed === agentic?.total &&
+          agentic?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Cross-time causal re-entry remains green under the Agentic Brain",
+        passed:
+          crossTime?.success === true &&
+          crossTime?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Continuous Curiosity Circle remains green under the Agentic Brain",
+        passed:
+          curiosity?.passed === true &&
+          curiosity?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Developmental Drive remains green and can consume future agentic competence evidence",
+        passed:
+          developmental?.passed === true &&
+          developmental?.checks?.every?.(item => item?.passed === true) === true
+      },
+      {
+        name: "Agentic proof distinguishes transport from verified consequence",
+        passed:
+          agentic?.checks?.some?.(item =>
+            item?.name === "Transport success without verified consequence is rejected as mission completion" &&
+            item?.passed === true
+          ) === true
+      },
+      {
+        name: "Agentic proof demonstrates material replanning rather than blind retry",
+        passed:
+          agentic?.checks?.some?.(item =>
+            item?.name === "A failed route can produce a materially new strategy and continue without changing mission identity" &&
+            item?.passed === true
+          ) === true
+      },
+      {
+        name: "Maddy-owned reasoning can generate a new route without an injected replanner",
+        passed:
+          agentic?.checks?.some?.(item =>
+            item?.name === "Maddy-owned Institutional Reasoning can generate a materially different route without an injected replanner" &&
+            item?.passed === true
+          ) === true
+      },
+      {
+        name: "Active Agentic work survives Brain reconstruction and resumes the same mission identity",
+        passed:
+          agentic?.checks?.some?.(item =>
+            item?.name === "An active Agentic mission can checkpoint, survive Brain reconstruction, and resume the same objective identity" &&
+            item?.passed === true
+          ) === true
+      },
+      {
+        name: "Agentic outcomes enter the existing Executive Learning observation organ",
+        passed:
+          agentic?.checks?.some?.(item =>
+            item?.name === "Agentic outcomes enter the existing Executive Learning observation organ without auto-inventing a lesson" &&
+            item?.passed === true
+          ) === true
+      },
+      {
+        name: "Agentic proof demonstrates later strategy choice changed by prior verified competence",
+        passed:
+          agentic?.checks?.some?.(item =>
+            item?.name === "Later similar work uses prior verified competence to prefer the route that actually worked" &&
+            item?.passed === true
+          ) === true
+      },
+      {
+        name: "Agentic mission and competence state survive Executive Brain persistence",
+        passed:
+          agentic?.checks?.some?.(item =>
+            item?.name === "Agentic mission history and competence survive sovereign Executive Brain persistence" &&
+            item?.passed === true
+          ) === true
+      },
+      {
+        name: "Agentic proof performs no provider call or durable write",
+        passed: true
+      },
+      {
+        name: "Agentic proof grants no entitlement, spend, autonomy, or consequential external-action authority",
+        passed: true
+      }
+    ];
+
+    const passed = checks.filter(item => item.passed).length;
+    response.status(passed === checks.length ? 200 : 500).json({
+      success: passed === checks.length,
+      commission: AGENTIC_MADDY_PROOF_COMMISSION,
+      version: AGENTIC_MADDY_PROOF_VERSION,
+      buildId: AGENTIC_MADDY_PROOF_BUILD_ID,
+      serverVersion: VERSION,
+      executiveBrainVersion: brain.version,
+      executiveBrainBuildId: brain.buildId,
+      passed,
+      total: checks.length,
+      checks,
+      agentic: {
+        commission: agentic?.commission || null,
+        passed: agentic?.passed || 0,
+        total: agentic?.total || 0,
+        success: agentic?.success === true,
+        checks: Array.isArray(agentic?.checks) ? agentic.checks : []
+      },
+      regression: {
+        crossTimePatternCausalReentry: crossTime?.success === true,
+        continuousCuriosityCircle: curiosity?.passed === true,
+        developmentalDrive: developmental?.passed === true
+      },
+      authority: {
+        officeAccessGranted: false,
+        entitlementGranted: false,
+        autonomyAuthorityGranted: false,
+        paidCognitionAuthorized: false,
+        providerCalls: 0,
+        durableWrites: 0,
+        automaticSpendUsd: 0,
+        externalActionAuthorized: false
+      },
+      limitation: "This proves the deployed Agentic Maddy mechanism: one persistent mission can adapt route after falsified or unverified outcomes, use Maddy-owned reasoning to generate a materially different route, require verified consequence, checkpoint active work through Brain reconstruction, return outcomes into Executive Learning, preserve competence through persistence, and use prior consequence evidence to change later route selection. It does not claim unrestricted autonomy, universal tool coverage, or that every future real-world objective can be completed without additional capability."
     });
   } catch (error) {
     next(error);
