@@ -1,7 +1,7 @@
 /**
  * MEOS Secure Realtime Session Server
  *
- * Server Version: 2.10.114
+ * Server Version: 2.10.115
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -41,7 +41,7 @@ import InstitutionalRepositoryAuthority from "./institutional-repository-authori
 
 import { MEOSInternetNode, createMeosInternetRouter } from "./meos-internet-node.js";
 
-const VERSION = "2.10.114";
+const VERSION = "2.10.115";
 const VOICE_ENGINE_VERSION = "2.0.0";
 
 const INSTITUTIONAL_REPOSITORY_BRIDGE_COMMISSION = "006.017D1A";
@@ -15008,24 +15008,6 @@ async function resolveActiveCustomerContext(request, options = {}) {
   });
 }
 
-function activeCustomerContextBrowserScript(context) {
-  const serialized = JSON.stringify(context)
-    .replace(/</g, "\\u003c")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-
-  return `(function(g){"use strict";` +
-    `const c=Object.freeze(${serialized});` +
-    `g.MEOSActiveCustomerContext=c;` +
-    `g.MEOSCognitionIdentity=Object.freeze(c.cognitionIdentity||{});` +
-    `g.MEOSCustomerRepresentative=Object.freeze(c.representative||{});` +
-    `g.CCSPOrganizationalProfile=undefined;g.CCSPLongTermStrategy=undefined;g.MEOSOrganizationLongTermStrategy=undefined;g.ActiveOrganization=undefined;g.MEOSOrganizationProfile=undefined;g.OrganizationalProfile=undefined;` +
-    `if(c.authorizedHuman){g.UserProfile=Object.freeze({name:c.authorizedHuman.displayName||null,displayName:c.authorizedHuman.displayName||null,role:c.authorizedHuman.role||null,authority:"authorized-human",accountId:c.authorizedHuman.accountId||null,founderAuthority:c.authorizedHuman.founderAuthority===true});}` +
-    `if(c.organization&&c.organization.profileId!=="ccsp-organizational-profile"){const p=Object.freeze({metadata:Object.freeze({id:"active-customer-organization",version:"1.0.0",source:c.organization.source||"active-customer-context"}),organization:Object.freeze({legalName:c.organization.name||null,name:c.organization.name||null,abbreviation:c.organization.abbreviation||null,organizationId:c.organization.id||null,organizationType:null}),purpose:Object.freeze({mission:null,operatingPurpose:null,longTermPurpose:null}),leadership:Object.freeze([]),boundaries:Object.freeze([])});g.ActiveOrganization=p;g.MEOSOrganizationProfile=p;g.OrganizationalProfile=p;}` +
-    `console.info("[MEOS] Active customer context loaded:",{customer:c.customer?.displayName||null,organization:c.organization?.name||null,representative:c.representative?.displayName||"Maddy",cognition:c.cognitionIdentity?.preferredName||"Maddy"});` +
-    `})(window);`;
-}
-
 function buildRealtimeMaddyInstructions(activeContext = {}) {
   const representative =
     activeContext?.representative?.displayName || "Maddy";
@@ -15172,27 +15154,6 @@ function runActiveCustomerContextAcceptance() {
   };
 }
 
-async function activeOrganizationModuleSource(context, moduleKind) {
-  const ccspActive =
-    context?.organization?.profileId === "ccsp-organizational-profile";
-
-  if (!ccspActive) {
-    const label =
-      moduleKind === "strategy"
-        ? "organization strategy"
-        : "organization profile";
-    return `(function(){console.info(${JSON.stringify(
-      `[MEOS] No deployment-specific ${label} module is active for this customer context.`
-    )});})();`;
-  }
-
-  const relativePath =
-    moduleKind === "strategy"
-      ? "ccsp-long-term-strategy.js"
-      : path.join("profiles", "ccsp-organizational-profile.js");
-  return fs.readFile(path.join(frontendDirectory, relativePath), "utf8");
-}
-
 app.get("/api/active-customer-context/acceptance-test", (_request, response) => {
   response.setHeader("Cache-Control", "no-store");
   response.json(runActiveCustomerContextAcceptance());
@@ -15252,12 +15213,12 @@ app.get("/api/active-customer-context", async (request, response, next) => {
 
 app.get("/api/active-customer-context.js", async (request, response, next) => {
   try {
-    const context = await resolveActiveCustomerContext(request);
-    response
-      .status(200)
-      .type("application/javascript")
-      .set({ "Cache-Control": "no-store" })
-      .send(activeCustomerContextBrowserScript(context));
+    // Preserve the existing protected script URL used by the office shell, but
+    // never manufacture executable JavaScript from customer data. The target is
+    // a static trusted bootstrap which retrieves the protected context as JSON.
+    await resolveActiveCustomerContext(request);
+    response.setHeader("Cache-Control", "no-store");
+    return response.redirect(307, "/active-customer-context.js");
   } catch (error) {
     next(error);
   }
@@ -15266,12 +15227,15 @@ app.get("/api/active-customer-context.js", async (request, response, next) => {
 app.get("/api/active-organization-profile.js", async (request, response, next) => {
   try {
     const context = await resolveActiveCustomerContext(request);
-    const source = await activeOrganizationModuleSource(context, "profile");
-    response
-      .status(200)
-      .type("application/javascript")
-      .set({ "Cache-Control": "no-store" })
-      .send(source);
+    response.setHeader("Cache-Control", "no-store");
+
+    if (context?.organization?.profileId !== "ccsp-organizational-profile") {
+      return response.status(204).end();
+    }
+
+    // Founder CCSP uses the repository-owned static organization package.
+    // Customer contexts never receive CCSP source or a generated substitute.
+    return response.redirect(307, "/profiles/ccsp-organizational-profile.js");
   } catch (error) {
     next(error);
   }
@@ -15280,12 +15244,15 @@ app.get("/api/active-organization-profile.js", async (request, response, next) =
 app.get("/api/active-organization-strategy.js", async (request, response, next) => {
   try {
     const context = await resolveActiveCustomerContext(request);
-    const source = await activeOrganizationModuleSource(context, "strategy");
-    response
-      .status(200)
-      .type("application/javascript")
-      .set({ "Cache-Control": "no-store" })
-      .send(source);
+    response.setHeader("Cache-Control", "no-store");
+
+    if (context?.organization?.profileId !== "ccsp-organizational-profile") {
+      return response.status(204).end();
+    }
+
+    // Founder CCSP uses the repository-owned static strategy package.
+    // Customer contexts never receive CCSP source or a generated substitute.
+    return response.redirect(307, "/ccsp-long-term-strategy.js");
   } catch (error) {
     next(error);
   }
