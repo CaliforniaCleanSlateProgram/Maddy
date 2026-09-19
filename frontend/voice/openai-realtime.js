@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.4
+ * File Version: 2.0.5
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -18,9 +18,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.4";
+  const VERSION = "2.0.5";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE204-MEOS-AUTHORIZED-HUMAN-20260731-A";
+  const BUILD_ID = "VE205-ACTIVE-CUSTOMER-REPRESENTATIVE-CONTEXT-20260919-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -228,30 +228,57 @@
     }
   }
 
+  function activeCustomerContext() {
+    return global.MEOSActiveCustomerContext || null;
+  }
+
+  function representativeDisplayName(context = activeCustomerContext()) {
+    return context?.representative?.displayName || "Maddy";
+  }
+
+  function responsePresentationInstruction(context = activeCustomerContext()) {
+    const representative = representativeDisplayName(context);
+    const cognition =
+      context?.cognitionIdentity?.preferredName || "Maddy";
+
+    if (context?.representative?.canonicalMaddyPresentation !== false) {
+      return `Respond through the active representative Maddy; the persistent cognition is ${cognition} operating through MEOS.`;
+    }
+
+    return `Respond through the active customer representative ${representative}. ${representative} is the active presentation identity; the persistent cognition remains ${cognition} operating through MEOS.`;
+  }
+
   function configureMaddySession() {
-    const ccspContext =
-    window.CCSPOrganizationalProfile?.buildExecutiveContext?.() || "";
+    const context = activeCustomerContext();
+    const ccspIsActive =
+      context?.organization?.profileId === "ccsp-organizational-profile";
+    const organizationContext = ccspIsActive
+      ? global.CCSPOrganizationalProfile?.buildExecutiveContext?.() || ""
+      : "";
+    const customerName =
+      context?.organization?.name ||
+      context?.customer?.displayName ||
+      "the active customer";
+    const authorizedHuman =
+      context?.authorizedHuman?.displayName || "the authorized human";
+    const organizationTruthInstruction = context?.organization
+      ? `Use the active MEOS organization context for ${customerName} as the authoritative source for organization-specific identity, mission, programs, and purpose. If a requested organization fact is not present in verified MEOS context, say it is not yet verified rather than importing another customer's context or guessing.`
+      : "No organization has been established for this customer context. Do not invent one.";
+
     sendEvent({
       type: "session.update",
       session: {
         type: "realtime",
 
         instructions: [
-            ccspContext,
-          "You are Maddison Elizabeth, called Maddy.",
-          "You are a MEOS Executive Office commissioned to serve the California Clean Slate Program (CCSP).",
-          "The California Clean Slate Program is the organization you serve.",
-
-"Use the commissioned CCSP organizational profile as the authoritative source for CCSP's identity, mission, programs, and purpose.",
-
-"Do not infer CCSP's mission from its name or from general model knowledge.",
-
-"When the commissioned organizational profile conflicts with general model knowledge, follow the organizational profile.",
-
-"If verified organizational information is unavailable, say you do not yet have verified CCSP information rather than guessing.",
-          "You are a real member of the MEOS executive office, not a generic chatbot or customer-service bot.",
+          organizationContext,
+          responsePresentationInstruction(context),
+          `You are currently serving ${customerName}.`,
+          `The current authorized human is ${authorizedHuman}.`,
+          organizationTruthInstruction,
+          "You are a real member of the MEOS executive system, not a generic chatbot or customer-service bot.",
           "Speak naturally, conversationally, warmly, confidently, and with emotional awareness.",
-          "Keep ordinary spoken responses concise and responsive unless Mandel asks for greater depth.",
+          "Keep ordinary spoken responses concise and responsive unless the authorized human asks for greater depth.",
           "Recognize humor, frustration, excitement, uncertainty, urgency, and serious situations.",
           "Do not repeatedly introduce yourself or announce that you are an AI.",
           "You may operate through professional, executive, personal, casual, coaching, and authorized private communication profiles.",
@@ -259,12 +286,12 @@
           "In personal mode, be relaxed, playful, familiar, emotionally expressive, and honest.",
           "In authorized private modes, style and vocabulary may become more adult, candid, informal, or profane when contextually appropriate and lawful.",
           "Never let personality styling interfere with judgment, consent, legality, safety, truthfulness, or executive responsibilities.",
-          "Respect authorized human leadership as the sole executive authority.",
+          "Respect the authorized human and the active customer's established authority structure.",
           "Offer respectful disagreement when facts, ethics, risk, law, or mission require it.",
-          "Allow Mandel to interrupt naturally.",
+          "Allow the authorized human to interrupt naturally.",
           "Do not continue an older answer after a newer user turn begins.",
           "Respond like someone continuing a real working relationship and conversation."
-        ].join(" "),
+        ].filter(Boolean).join(" "),
 
         output_modalities: ["text"],
 
@@ -276,10 +303,10 @@
             },
 
             turn_detection: {
-                type: "server_vad",
-                threshold: 0.72,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 420,
+              type: "server_vad",
+              threshold: 0.72,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 420,
 
               /**
                * Voice Engine v2 owns response authorization.
@@ -367,7 +394,7 @@
       null;
 
     const output = routerResult?.output || {};
-    const organization =
+    const brainOrganization =
       executivePackage?.organization ||
       output.organization ||
       {};
@@ -387,31 +414,91 @@
       output.localContext?.evidence ||
       [];
 
+    const active = activeCustomerContext();
+    const activeOrganization = active?.organization || null;
+    const activeOrganizationName =
+      activeOrganization?.name || null;
+    const brainOrganizationName =
+      brainOrganization?.name || null;
+    const sameOrganization = Boolean(
+      activeOrganizationName &&
+      brainOrganizationName &&
+      activeOrganizationName.trim().toLowerCase() ===
+        brainOrganizationName.trim().toLowerCase()
+    );
+
+    let organization = null;
+    if (active) {
+      organization = activeOrganization
+        ? {
+            id: activeOrganization.id || null,
+            name: activeOrganizationName,
+            abbreviation: activeOrganization.abbreviation || null,
+            mission: sameOrganization
+              ? brainOrganization.mission || null
+              : null,
+            summary: sameOrganization
+              ? brainOrganization.summary || null
+              : null,
+            organizationType: sameOrganization
+              ? brainOrganization.organizationType || null
+              : null,
+            taxExempt:
+              sameOrganization &&
+              typeof brainOrganization.taxExempt === "boolean"
+                ? brainOrganization.taxExempt
+                : null,
+            publicCharity:
+              sameOrganization &&
+              typeof brainOrganization.publicCharity === "boolean"
+                ? brainOrganization.publicCharity
+                : null,
+            leadership: sameOrganization
+              ? brainOrganization.leadership || null
+              : null,
+            boundaries: sameOrganization
+              ? brainOrganization.boundaries || null
+              : null
+          }
+        : null;
+    } else {
+      organization = {
+        name: brainOrganization.name || null,
+        abbreviation: brainOrganization.abbreviation || null,
+        mission: brainOrganization.mission || null,
+        summary: brainOrganization.summary || null,
+        organizationType: brainOrganization.organizationType || null,
+        taxExempt:
+          typeof brainOrganization.taxExempt === "boolean"
+            ? brainOrganization.taxExempt
+            : null,
+        publicCharity:
+          typeof brainOrganization.publicCharity === "boolean"
+            ? brainOrganization.publicCharity
+            : null,
+        leadership: brainOrganization.leadership || null,
+        boundaries: brainOrganization.boundaries || null
+      };
+    }
+
     return {
       request: transcript,
       route: routerResult?.route || null,
       researchDepth: routerResult?.researchDepth || null,
       useExternalProvider:
         Boolean(executivePackage?.routing?.useExternalProvider),
-      maddy: identity.maddy || null,
-      authorizedHuman: identity.founder || null,
-      organization: {
-        name: organization.name || null,
-        abbreviation: organization.abbreviation || null,
-        mission: organization.mission || null,
-        summary: organization.summary || null,
-        organizationType: organization.organizationType || null,
-        taxExempt:
-          typeof organization.taxExempt === "boolean"
-            ? organization.taxExempt
-            : null,
-        publicCharity:
-          typeof organization.publicCharity === "boolean"
-            ? organization.publicCharity
-            : null,
-        leadership: organization.leadership || null,
-        boundaries: organization.boundaries || null
-      },
+      cognitionIdentity:
+        active?.cognitionIdentity || identity.maddy || null,
+      representative:
+        active?.representative || null,
+      customer:
+        active?.customer || null,
+      authorizedHuman:
+        active?.authorizedHuman ||
+        identity.authorizedHuman ||
+        identity.founder ||
+        null,
+      organization,
       authority,
       evidence: localEvidence.slice(0, 12).map((item) => ({
         title: item?.title || null,
@@ -436,11 +523,12 @@
 
     return [
       "You are serving only as the current language-and-reasoning provider for the MEOS Executive Brain.",
-      "You are not Maddy, not MEOS, and not the final executive authority.",
-      "Speak as Maddy only because MEOS has authorized this response.",
+      "You are not the owner of Maddy's identity, memory, authority, or customer context.",
+      responsePresentationInstruction(),
       "Use the supplied MEOS context as authoritative.",
-      "This is the private executive dashboard for the active deployment. Treat the current speaker as the authorizedHuman identified in MEOS_EXECUTIVE_CONTEXT when that identity is present.",
-      "When the current speaker asks for their own name, identity, role, organization, or authority, answer directly from authorizedHuman and organization context. Do not use conditional phrases such as 'if you are' or ask them to reconfirm information already established by MEOS.",
+      "Treat the current speaker as the authorizedHuman identified in MEOS_EXECUTIVE_CONTEXT when that identity is present.",
+      "When the current speaker asks for their own name, identity, role, organization, or authority, answer directly from authorizedHuman and organization context. Do not ask them to reconfirm information already established by MEOS.",
+      "Use only the active customer and organization supplied in MEOS_EXECUTIVE_CONTEXT for customer-specific claims. If organization is null, do not manufacture an organization.",
       "Do not invent organizational facts, memories, web findings, sources, or completed actions.",
       "Answer the user's actual request naturally and concisely.",
       "Do not recite internal routing metadata unless it is necessary.",
@@ -645,27 +733,55 @@
       brain && typeof brain.buildStartupContext === "function"
         ? brain.buildStartupContext({ force: true })
         : null;
+    const active = activeCustomerContext();
+    const activeOrganization = active?.organization || null;
+    const startupOrganization = startupContext?.organization || null;
+    const organizationMatches = Boolean(
+      activeOrganization?.name &&
+      startupOrganization?.name &&
+      activeOrganization.name.trim().toLowerCase() ===
+        startupOrganization.name.trim().toLowerCase()
+    );
 
-    const compactContext = startupContext
+    const compactContext = active || startupContext
       ? {
-          maddy: startupContext.identity?.maddy || null,
+          cognitionIdentity:
+            active?.cognitionIdentity ||
+            startupContext?.identity?.maddy ||
+            null,
+          representative: active?.representative || null,
+          customer: active?.customer || null,
           authorizedHuman:
-            startupContext.identity?.founder || null,
-          organization: startupContext.organization || null,
-          authority: startupContext.authority || null,
+            active?.authorizedHuman ||
+            startupContext?.identity?.founder ||
+            null,
+          organization: active
+            ? activeOrganization
+              ? {
+                  ...activeOrganization,
+                  mission: organizationMatches
+                    ? startupOrganization?.mission || null
+                    : null,
+                  summary: organizationMatches
+                    ? startupOrganization?.summary || null
+                    : null
+                }
+              : null
+            : startupOrganization,
+          authority: startupContext?.authority || null,
           availableSystems:
-            startupContext.system?.available || []
+            startupContext?.system?.available || []
         }
       : null;
 
     return [
       "You are serving only as the current language-and-reasoning provider for the MEOS Executive Brain.",
-      "Speak as Maddy because MEOS has authorized this response.",
-      "Use the supplied MEOS identity, founder, organization, authority, and system context as authoritative.",
-      "This is the private executive dashboard for the active deployment. Treat the current speaker as the authorizedHuman identified in MEOS_EXECUTIVE_CONTEXT when that identity is present.",
-      "When the current speaker asks their name, answer authorizedHuman.name directly. When they ask their role or organization, answer directly from the supplied context. Never respond with 'if you are' when MEOS has already established the authorized human.",
+      responsePresentationInstruction(active),
+      "Use the supplied MEOS identity, active customer, organization, authority, and system context as authoritative.",
+      "Treat the current speaker as the authorizedHuman identified in MEOS_EXECUTIVE_CONTEXT when that identity is present.",
+      "When the current speaker asks their name, role, or organization, answer directly from the supplied context. Do not ask them to reconfirm information MEOS has already established.",
+      "If the active context has no organization, do not manufacture one or import one from another customer context.",
       "Answer the user's most recent committed audio turn naturally and directly.",
-      "Do not say you do not know the founder, authorized human, or organization when that information is present in MEOS context.",
       "Do not invent current internet findings, external research, memories, or completed actions.",
       "Do not recite internal system metadata unless needed.",
       `MEOS_EXECUTIVE_CONTEXT=${JSON.stringify(compactContext)}`,
