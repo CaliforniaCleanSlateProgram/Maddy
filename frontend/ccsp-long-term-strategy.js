@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * CCSP Long-Term Strategy Package
  *
- * Version: 1.1.1
- * Build: CCLTS111-FRONTLINE-FELLOWSHIP-MIGRATION-20260807-A
+ * Version: 1.1.2
+ * Build: CCLTS112-ACTIVE-CUSTOMER-CONTEXT-ACTIVATION-20260919-A
  *
  * Purpose:
  * - Preserve CCSP's long-term strategy as structured, queryable organizational data.
@@ -27,11 +27,22 @@
     "use strict";
 
     const NAME = "CCSP Long-Term Strategy";
-    const VERSION = "1.1.1";
-    const BUILD_ID = "CCLTS111-FRONTLINE-FELLOWSHIP-MIGRATION-20260807-A";
+    const VERSION = "1.1.2";
+    const BUILD_ID = "CCLTS112-ACTIVE-CUSTOMER-CONTEXT-ACTIVATION-20260919-A";
     const SCHEMA = "meos.organization.long-term-strategy.v1";
     const ORGANIZATION_ID = "california-clean-slate-program";
     const STORAGE_KEY = "meos.ccsp.long-term-strategy.v1";
+
+    const activeCustomerContext = global.MEOSActiveCustomerContext || null;
+    if (
+        activeCustomerContext?.organization?.profileId !==
+        "ccsp-organizational-profile"
+    ) {
+        console.info(
+            "[MEOS] CCSP Long-Term Strategy not activated for this customer context."
+        );
+        return;
+    }
 
     const MILESTONE_STATUS = Object.freeze({
         PLANNED: "planned",
