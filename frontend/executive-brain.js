@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.27.1
- * Build: EB1271-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-20260919-A
+ * Version: 1.28.0
+ * Build: EB1280-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-20260919-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.27.1";
-  const BUILD_ID = "EB1271-CURIOSITY-TRANSFER-LINEAGE-HYGIENE-20260919-A";
+  const VERSION = "1.28.0";
+  const BUILD_ID = "EB1280-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-20260919-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -239,6 +239,20 @@
       maximumSalienceHistory: 180,
       salienceAttentionThreshold: 0.58,
       salienceInvestigationThreshold: 0.72,
+      neuromorphicAttentionEnabled: true,
+      neuromorphicBaseThreshold: 0.72,
+      neuromorphicMinimumThreshold: 0.46,
+      neuromorphicMaximumThreshold: 0.94,
+      neuromorphicLeakHalfLifeMs: 120000,
+      neuromorphicRefractoryMs: 120000,
+      neuromorphicGlobalInhibitionMs: 5000,
+      neuromorphicInhibitionStrength: 0.18,
+      neuromorphicResetPotential: 0.08,
+      neuromorphicOutcomeLearningRate: 0.04,
+      maximumNeuromorphicChannels: 128,
+      maximumNeuromorphicEventHistory: 320,
+      maximumNeuromorphicSpikeHistory: 160,
+      maximumNeuromorphicOutcomeHistory: 160,
       maximumCausalInvestigationHistory: 120,
       maximumCompetingHypotheses: 6,
       maximumAutonomousInvestigationHistory: 120,
@@ -329,6 +343,29 @@
     salienceHistory: [],
     lastSalienceAssessment: null,
     salienceAssessmentCount: 0,
+    neuromorphicAttention: {
+      schema: "meos.maddy.neuromorphic-attention-state.v1",
+      commission: "006.037A",
+      mode: "leaky-integrate-and-fire-temporal-event-fabric",
+      substrate: "software-event-driven-hardware-neutral",
+      channels: {},
+      eventHistory: [],
+      spikeHistory: [],
+      outcomeHistory: [],
+      eventCount: 0,
+      spikeCount: 0,
+      peripheralCount: 0,
+      refractorySuppressionCount: 0,
+      inhibitionSuppressionCount: 0,
+      usefulWakeCount: 0,
+      falseWakeCount: 0,
+      missedSignalCount: 0,
+      globalInhibitionUntilMs: 0,
+      lastWinnerChannel: null,
+      lastEvent: null,
+      lastSpike: null,
+      lastOutcome: null
+    },
     causalInvestigationHistory: [],
     lastCausalInvestigation: null,
     causalInvestigationCount: 0,
@@ -4487,10 +4524,15 @@
           }
         );
 
-        this.applyCognitiveInformationGain(
+        const informationGain = this.applyCognitiveInformationGain(
           intention,
           result || {},
           entry
+        );
+        this.settleNeuromorphicCognitiveTriggers(
+          triggers,
+          informationGain,
+          result || {}
         );
         this.resolveCognitiveIntention(subject, result || {});
         return result;
@@ -4514,10 +4556,15 @@
           "brain:cognitive-reentry-failed",
           this.clone(entry)
         );
-        this.applyCognitiveInformationGain(
+        const informationGain = this.applyCognitiveInformationGain(
           intention,
           { success: false, error: entry.error },
           entry
+        );
+        this.settleNeuromorphicCognitiveTriggers(
+          triggers,
+          informationGain,
+          { success: false, error: entry.error }
         );
         this.resolveCognitiveIntention(subject, { success: false, error: entry.error });
 
@@ -9698,6 +9745,7 @@
 
         experiencedPerformance: {
           agenticCompetence: this.getAgenticCompetenceSummary(),
+          neuromorphicAttention: this.getNeuromorphicAttentionStatus(),
           recentDispatchCount:
             recentDispatch.length,
           recentDispatchesWithFailure:
@@ -11956,6 +12004,9 @@
     },
 
     buildCognitiveWorkSalienceProjection(currentWork = {}) {
+      if (Array.isArray(currentWork)) {
+        currentWork = { activeMissions: currentWork };
+      }
       const project = items =>
         (Array.isArray(items) ? items : [])
           .filter(item =>
@@ -11995,6 +12046,465 @@
           salientPlanCount: activePlans.length,
           pendingApprovalCount: pendingApprovals.length
         }
+      };
+    },
+
+    /*
+     * Commission 006.037A — Neuromorphic Maddy Temporal Event Fabric
+     *
+     * This is a software neuromorphic attention layer inside the existing
+     * Executive Brain. It uses bounded leaky integration, threshold spikes,
+     * refractory periods, lateral inhibition, temporal accumulation, sparse
+     * wake decisions, and consequence-informed threshold plasticity. It does
+     * not claim biological equivalence, specialized neuromorphic hardware, or
+     * phenomenal consciousness. Hardware is a replaceable substrate.
+     */
+    ensureNeuromorphicAttentionState() {
+      const prior = this.neuromorphicAttention;
+      if (
+        !prior ||
+        prior.schema !== "meos.maddy.neuromorphic-attention-state.v1" ||
+        typeof prior !== "object"
+      ) {
+        this.neuromorphicAttention = {
+          schema: "meos.maddy.neuromorphic-attention-state.v1",
+          commission: "006.037A",
+          mode: "leaky-integrate-and-fire-temporal-event-fabric",
+          substrate: "software-event-driven-hardware-neutral",
+          channels: {},
+          eventHistory: [],
+          spikeHistory: [],
+          outcomeHistory: [],
+          eventCount: 0,
+          spikeCount: 0,
+          peripheralCount: 0,
+          refractorySuppressionCount: 0,
+          inhibitionSuppressionCount: 0,
+          usefulWakeCount: 0,
+          falseWakeCount: 0,
+          missedSignalCount: 0,
+          globalInhibitionUntilMs: 0,
+          lastWinnerChannel: null,
+          lastEvent: null,
+          lastSpike: null,
+          lastOutcome: null
+        };
+      }
+      const state = this.neuromorphicAttention;
+      if (!state.channels || typeof state.channels !== "object" || Array.isArray(state.channels)) state.channels = {};
+      if (!Array.isArray(state.eventHistory)) state.eventHistory = [];
+      if (!Array.isArray(state.spikeHistory)) state.spikeHistory = [];
+      if (!Array.isArray(state.outcomeHistory)) state.outcomeHistory = [];
+      for (const key of [
+        "eventCount", "spikeCount", "peripheralCount",
+        "refractorySuppressionCount", "inhibitionSuppressionCount",
+        "usefulWakeCount", "falseWakeCount", "missedSignalCount",
+        "globalInhibitionUntilMs"
+      ]) state[key] = Math.max(0, Number(state[key] || 0));
+      return state;
+    },
+
+    neuromorphicClamp(value, fallback = 0) {
+      const number = Number(value);
+      return Math.max(0, Math.min(1, Number.isFinite(number) ? number : fallback));
+    },
+
+    normalizeNeuromorphicChannelKey(event = {}) {
+      const explicit = String(event.channelKey || event.lineageId || "").trim();
+      if (explicit) return this.normalize(explicit).slice(0, 180);
+      const domains = (Array.isArray(event.domains) ? event.domains : [])
+        .map(value => this.normalize(value))
+        .filter(Boolean)
+        .sort()
+        .slice(0, 6);
+      const subject = this.normalize(event.subject || event.entityId || event.type || event.reason || "event");
+      return [this.normalize(event.source || "meos"), ...domains, subject]
+        .filter(Boolean)
+        .join("|")
+        .slice(0, 180) || "meos|event";
+    },
+
+    buildNeuromorphicEvent(input = {}, options = {}) {
+      const nowMs = Number.isFinite(Number(options.nowMs))
+        ? Number(options.nowMs)
+        : Number.isFinite(Number(input.atMs))
+          ? Number(input.atMs)
+          : Date.now();
+      const domains = [...new Set((Array.isArray(input.domains) ? input.domains : [])
+        .map(value => String(value || "").trim())
+        .filter(Boolean))].slice(0, 12);
+      const event = {
+        schema: "meos.maddy.neuromorphic-event.v1",
+        eventId: String(input.eventId || this.id("neuromorphic-event")),
+        observedAt: new Date(nowMs).toISOString(),
+        atMs: nowMs,
+        source: String(input.source || "executive-brain").slice(0, 120),
+        type: String(input.type || input.event || "signal").slice(0, 120),
+        subject: String(input.subject || input.reason || "Observed signal").slice(0, 300),
+        domains,
+        importance: this.neuromorphicClamp(input.importance ?? input.salience ?? input.score, 0.2),
+        novelty: this.neuromorphicClamp(input.novelty, 0.25),
+        confidence: this.neuromorphicClamp(input.confidence, 0.7),
+        urgency: this.neuromorphicClamp(input.urgency, 0.15),
+        missionConsequence: this.neuromorphicClamp(input.missionConsequence ?? input.consequence, 0.2),
+        evidenceFingerprint: String(input.evidenceFingerprint || input.changeFingerprint || "").slice(0, 240) || null,
+        authority: {
+          paidCognitionAuthorized: false,
+          spendAuthorized: false,
+          entitlementGranted: false,
+          externalActionAuthorized: false,
+          consequenceAuthorityManufactured: false
+        }
+      };
+      event.channelKey = this.normalizeNeuromorphicChannelKey({ ...input, ...event });
+      return event;
+    },
+
+    neuromorphicEventDrive(event = {}) {
+      const crossDomainBonus = Math.min(0.12, Math.max(0, (event.domains?.length || 0) - 1) * 0.025);
+      const drive =
+        this.neuromorphicClamp(event.importance) * 0.48 +
+        this.neuromorphicClamp(event.novelty) * 0.18 +
+        this.neuromorphicClamp(event.confidence) * 0.10 +
+        this.neuromorphicClamp(event.urgency) * 0.12 +
+        this.neuromorphicClamp(event.missionConsequence) * 0.12 +
+        crossDomainBonus;
+      return Number(Math.max(0, Math.min(1.15, drive)).toFixed(6));
+    },
+
+    neuromorphicThresholdForChannel(channel = {}) {
+      const base = Number(channel.baseThreshold ?? this.configuration.neuromorphicBaseThreshold ?? 0.72);
+      const bias = Number(channel.thresholdBias || 0);
+      const minimum = Number(this.configuration.neuromorphicMinimumThreshold || 0.46);
+      const maximum = Number(this.configuration.neuromorphicMaximumThreshold || 0.94);
+      return Number(Math.max(minimum, Math.min(maximum, base + bias)).toFixed(6));
+    },
+
+    projectNeuromorphicChannelState(channelKey, nowMs = Date.now()) {
+      const state = this.ensureNeuromorphicAttentionState();
+      const key = this.normalizeNeuromorphicChannelKey({ channelKey });
+      const channel = state.channels[key];
+      if (!channel) return null;
+      const halfLife = Math.max(1, Number(this.configuration.neuromorphicLeakHalfLifeMs || 120000));
+      const elapsed = Math.max(0, Number(nowMs) - Number(channel.lastIntegratedAtMs || nowMs));
+      const decay = Math.pow(0.5, elapsed / halfLife);
+      return {
+        ...this.clone(channel),
+        potential: Number((Number(channel.potential || 0) * decay).toFixed(6)),
+        threshold: this.neuromorphicThresholdForChannel(channel),
+        elapsedMs: elapsed,
+        decayFactor: Number(decay.toFixed(6))
+      };
+    },
+
+    processNeuromorphicEvent(input = {}, options = {}) {
+      const state = this.ensureNeuromorphicAttentionState();
+      const event = this.buildNeuromorphicEvent(input, options);
+      const nowMs = event.atMs;
+      const key = event.channelKey;
+      const existing = state.channels[key] || {
+        schema: "meos.maddy.neuromorphic-channel.v1",
+        channelKey: key,
+        baseThreshold: Number(this.configuration.neuromorphicBaseThreshold || 0.72),
+        thresholdBias: 0,
+        potential: 0,
+        createdAt: event.observedAt,
+        lastIntegratedAtMs: nowMs,
+        lastIntegratedAt: event.observedAt,
+        lastSpikeAtMs: 0,
+        lastSpikeAt: null,
+        refractoryUntilMs: 0,
+        spikeCount: 0,
+        eventCount: 0,
+        usefulWakeCount: 0,
+        falseWakeCount: 0,
+        missedSignalCount: 0
+      };
+      const projected = this.projectNeuromorphicChannelState(key, nowMs) || existing;
+      let potential = Number(projected.potential || existing.potential || 0);
+      const drive = this.neuromorphicEventDrive(event);
+      const threshold = this.neuromorphicThresholdForChannel(existing);
+      const refractory = nowMs < Number(existing.refractoryUntilMs || 0);
+      const inhibitedByWinner =
+        nowMs < Number(state.globalInhibitionUntilMs || 0) &&
+        Boolean(state.lastWinnerChannel) &&
+        state.lastWinnerChannel !== key;
+      const inhibitionPenalty = inhibitedByWinner
+        ? Number(this.configuration.neuromorphicInhibitionStrength || 0.18)
+        : 0;
+
+      let disposition = "peripheral";
+      let spiked = false;
+      let spike = null;
+
+      if (this.configuration.neuromorphicAttentionEnabled !== true) {
+        potential = Number(Math.min(1.5, potential + drive).toFixed(6));
+        disposition = "disabled-observe-only";
+      } else if (refractory) {
+        potential = Number(Math.min(threshold * 0.5, potential + drive * 0.1).toFixed(6));
+        disposition = "refractory-suppressed";
+        state.refractorySuppressionCount += 1;
+      } else {
+        potential = Number(Math.max(0, potential + drive - inhibitionPenalty).toFixed(6));
+        const effectiveThreshold = Number(Math.min(
+          this.configuration.neuromorphicMaximumThreshold || 0.94,
+          threshold + inhibitionPenalty
+        ).toFixed(6));
+        if (potential >= effectiveThreshold) {
+          spiked = true;
+          disposition = "spike";
+          const spikeId = this.id("neuromorphic-spike");
+          spike = {
+            schema: "meos.maddy.neuromorphic-spike.v1",
+            spikeId,
+            channelKey: key,
+            generatedAt: event.observedAt,
+            atMs: nowMs,
+            eventId: event.eventId,
+            potential: Number(potential.toFixed(6)),
+            threshold: effectiveThreshold,
+            drive,
+            subject: event.subject,
+            source: event.source,
+            domains: this.clone(event.domains),
+            authority: this.clone(event.authority),
+            truthRule: "A spike means accumulated significance crossed a cognitive-attention threshold; it is not proof that the underlying interpretation is true."
+          };
+          existing.lastSpikeAtMs = nowMs;
+          existing.lastSpikeAt = event.observedAt;
+          existing.refractoryUntilMs = nowMs + Math.max(0, Number(this.configuration.neuromorphicRefractoryMs || 0));
+          existing.spikeCount = Number(existing.spikeCount || 0) + 1;
+          state.spikeCount += 1;
+          state.lastSpike = this.clone(spike);
+          state.lastWinnerChannel = key;
+          state.globalInhibitionUntilMs = nowMs + Math.max(0, Number(this.configuration.neuromorphicGlobalInhibitionMs || 0));
+          state.spikeHistory.unshift(this.clone(spike));
+          state.spikeHistory = state.spikeHistory.slice(0, this.configuration.maximumNeuromorphicSpikeHistory);
+          potential = Number(this.configuration.neuromorphicResetPotential || 0.08);
+        } else if (inhibitedByWinner) {
+          disposition = "inhibited-peripheral";
+          state.inhibitionSuppressionCount += 1;
+        }
+      }
+
+      existing.potential = potential;
+      existing.lastIntegratedAtMs = nowMs;
+      existing.lastIntegratedAt = event.observedAt;
+      existing.lastDrive = drive;
+      existing.lastEventId = event.eventId;
+      existing.eventCount = Number(existing.eventCount || 0) + 1;
+      existing.threshold = this.neuromorphicThresholdForChannel(existing);
+      state.channels[key] = existing;
+
+      const channelEntries = Object.values(state.channels).sort((a, b) =>
+        Number(b.lastIntegratedAtMs || 0) - Number(a.lastIntegratedAtMs || 0)
+      );
+      if (channelEntries.length > this.configuration.maximumNeuromorphicChannels) {
+        state.channels = Object.fromEntries(
+          channelEntries.slice(0, this.configuration.maximumNeuromorphicChannels).map(channel => [channel.channelKey, channel])
+        );
+      }
+
+      state.eventCount += 1;
+      if (!spiked) state.peripheralCount += 1;
+      state.lastEvent = this.clone(event);
+      const eventRecord = {
+        ...this.clone(event),
+        drive,
+        disposition,
+        spiked,
+        potentialAfter: potential,
+        threshold: this.neuromorphicThresholdForChannel(existing),
+        inhibitedByWinner,
+        refractory
+      };
+      state.eventHistory.unshift(eventRecord);
+      state.eventHistory = state.eventHistory.slice(0, this.configuration.maximumNeuromorphicEventHistory);
+
+      const result = {
+        success: true,
+        commission: "006.037A",
+        schema: "meos.maddy.neuromorphic-attention-decision.v1",
+        event: this.clone(event),
+        channelKey: key,
+        drive,
+        threshold: this.neuromorphicThresholdForChannel(existing),
+        potential,
+        disposition,
+        spiked,
+        spike: this.clone(spike),
+        inhibitedByWinner,
+        refractory,
+        sparseWake: spiked === true,
+        authority: this.clone(event.authority)
+      };
+
+      this.emit("brain:neuromorphic-event", this.clone(result));
+      if (spiked) this.emit("brain:neuromorphic-spike", this.clone(spike));
+      if (options.persist === true) this.persist();
+      return result;
+    },
+
+    recordNeuromorphicAttentionOutcome(input = {}, options = {}) {
+      const state = this.ensureNeuromorphicAttentionState();
+      const key = this.normalizeNeuromorphicChannelKey({ channelKey: input.channelKey || input.lineageId || input.subject || "unknown" });
+      const channel = state.channels[key];
+      if (!channel) {
+        return { success: false, recorded: false, reason: "neuromorphic-channel-not-found", channelKey: key };
+      }
+      const rate = Math.max(0.001, Number(this.configuration.neuromorphicOutcomeLearningRate || 0.04));
+      const priorThreshold = this.neuromorphicThresholdForChannel(channel);
+      const usefulWake = input.usefulWake === true || input.useful === true;
+      const falseWake = input.falseWake === true;
+      const missedSignal = input.missedSignal === true;
+      let delta = 0;
+      if (falseWake) delta += rate;
+      if (missedSignal) delta -= rate * 1.5;
+      if (usefulWake) delta -= rate * 0.25;
+      channel.thresholdBias = Number((Number(channel.thresholdBias || 0) + delta).toFixed(6));
+      const adjustedThreshold = this.neuromorphicThresholdForChannel(channel);
+      channel.thresholdBias = Number((adjustedThreshold - Number(channel.baseThreshold || this.configuration.neuromorphicBaseThreshold || 0.72)).toFixed(6));
+      if (usefulWake) {
+        channel.usefulWakeCount = Number(channel.usefulWakeCount || 0) + 1;
+        state.usefulWakeCount += 1;
+      }
+      if (falseWake) {
+        channel.falseWakeCount = Number(channel.falseWakeCount || 0) + 1;
+        state.falseWakeCount += 1;
+      }
+      if (missedSignal) {
+        channel.missedSignalCount = Number(channel.missedSignalCount || 0) + 1;
+        state.missedSignalCount += 1;
+      }
+      const outcome = {
+        schema: "meos.maddy.neuromorphic-attention-outcome.v1",
+        outcomeId: this.id("neuromorphic-outcome"),
+        recordedAt: new Date(Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : Date.now()).toISOString(),
+        channelKey: key,
+        spikeId: input.spikeId || null,
+        usefulWake,
+        falseWake,
+        missedSignal,
+        priorThreshold,
+        adjustedThreshold,
+        thresholdDelta: Number((adjustedThreshold - priorThreshold).toFixed(6)),
+        evidence: this.clone(input.evidence || null),
+        authority: {
+          spendAuthorized: false,
+          paidCognitionAuthorized: false,
+          externalActionAuthorized: false
+        },
+        truthRule: "Outcome feedback may tune future attention sensitivity; it cannot rewrite evidence, authority, or historical truth."
+      };
+      state.lastOutcome = this.clone(outcome);
+      state.outcomeHistory.unshift(this.clone(outcome));
+      state.outcomeHistory = state.outcomeHistory.slice(0, this.configuration.maximumNeuromorphicOutcomeHistory);
+      this.emit("brain:neuromorphic-outcome", this.clone(outcome));
+      if (options.persist === true) this.persist();
+      return { success: true, recorded: true, outcome, channel: this.clone(channel) };
+    },
+
+    settleNeuromorphicCognitiveTriggers(triggers = [], informationGain = null, result = {}) {
+      const neuromorphic = (Array.isArray(triggers) ? triggers : [])
+        .map(trigger => trigger?.neuromorphic || null)
+        .filter(item => item?.channelKey);
+      if (!neuromorphic.length) return { success: true, settled: 0, outcomes: [] };
+      const unique = new Map();
+      neuromorphic.forEach(item => unique.set(item.channelKey, item));
+      const outcomes = [];
+      unique.forEach(item => {
+        const quiescent = informationGain?.economics?.state === "quiescent";
+        const useful = informationGain?.gained === true;
+        if (!quiescent && !useful) return;
+        const feedback = this.recordNeuromorphicAttentionOutcome({
+          channelKey: item.channelKey,
+          spikeId: item.spikeId || null,
+          usefulWake: useful,
+          falseWake: quiescent && !useful,
+          evidence: {
+            cognitiveSuccess: result?.success === true,
+            informationGain: useful,
+            quiescent
+          }
+        }, { persist: false });
+        if (feedback?.recorded) outcomes.push(feedback.outcome);
+      });
+      return { success: true, settled: outcomes.length, outcomes };
+    },
+
+    getNeuromorphicAttentionStatus(options = {}) {
+      const state = this.ensureNeuromorphicAttentionState();
+      const channels = Object.values(state.channels || {});
+      const eventCount = Number(state.eventCount || 0);
+      const spikeCount = Number(state.spikeCount || 0);
+      const status = {
+        schema: "meos.maddy.neuromorphic-attention-status.v1",
+        commission: "006.037A",
+        enabled: this.configuration.neuromorphicAttentionEnabled === true,
+        mode: state.mode,
+        substrate: state.substrate,
+        hardwareAccelerationRequired: false,
+        specializedNeuromorphicHardwareClaimed: false,
+        channelCount: channels.length,
+        eventCount,
+        spikeCount,
+        peripheralCount: Number(state.peripheralCount || 0),
+        refractorySuppressionCount: Number(state.refractorySuppressionCount || 0),
+        inhibitionSuppressionCount: Number(state.inhibitionSuppressionCount || 0),
+        usefulWakeCount: Number(state.usefulWakeCount || 0),
+        falseWakeCount: Number(state.falseWakeCount || 0),
+        missedSignalCount: Number(state.missedSignalCount || 0),
+        sparseWakeRatio: eventCount ? Number((spikeCount / eventCount).toFixed(6)) : 0,
+        baseThreshold: Number(this.configuration.neuromorphicBaseThreshold || 0.72),
+        leakHalfLifeMs: Number(this.configuration.neuromorphicLeakHalfLifeMs || 0),
+        refractoryMs: Number(this.configuration.neuromorphicRefractoryMs || 0),
+        inhibitionMs: Number(this.configuration.neuromorphicGlobalInhibitionMs || 0),
+        lastWinnerChannel: state.lastWinnerChannel || null,
+        lastSpike: state.lastSpike ? this.clone(state.lastSpike) : null,
+        authority: {
+          spendAuthorized: false,
+          providerAuthorityChanged: false,
+          externalActionAuthorized: false,
+          capabilityIsNotPermission: true
+        }
+      };
+      if (options.includeChannels === true) {
+        status.channels = channels
+          .sort((a, b) => Number(b.lastIntegratedAtMs || 0) - Number(a.lastIntegratedAtMs || 0))
+          .slice(0, Math.max(1, Math.min(32, Number(options.limit || 12))))
+          .map(channel => ({
+            channelKey: channel.channelKey,
+            potential: Number(channel.potential || 0),
+            threshold: this.neuromorphicThresholdForChannel(channel),
+            spikeCount: Number(channel.spikeCount || 0),
+            eventCount: Number(channel.eventCount || 0),
+            usefulWakeCount: Number(channel.usefulWakeCount || 0),
+            falseWakeCount: Number(channel.falseWakeCount || 0),
+            missedSignalCount: Number(channel.missedSignalCount || 0),
+            refractoryUntilMs: Number(channel.refractoryUntilMs || 0)
+          }));
+      }
+      return status;
+    },
+
+    neuromorphicEventFromSalience(assessment = {}) {
+      const signals = Array.isArray(assessment.signals) ? assessment.signals : [];
+      const domains = Array.isArray(assessment.affectedDomains) ? assessment.affectedDomains : [];
+      const monitoring = signals.some(item => item?.type === "monitoring-state-changed");
+      const work = signals.some(item => item?.type === "work-state-changed" || item?.type === "new-intention");
+      const novelty = Math.min(1, 0.25 + signals.length * 0.055 + (assessment.connections?.length || 0) * 0.08);
+      return {
+        source: "executive-brain-world-model",
+        type: "world-model-salience",
+        channelKey: `world-model:${this.normalize(assessment.subject || assessment.strongestSignal || "meaningful-change")}`,
+        subject: assessment.subject || "Meaningful world-model change",
+        domains,
+        importance: Number(assessment.score || 0),
+        novelty,
+        confidence: 0.86,
+        urgency: monitoring ? 0.68 : 0.25,
+        missionConsequence: work ? 0.72 : 0.35,
+        evidenceFingerprint: assessment.currentWorldFingerprint || null
       };
     },
 
@@ -12444,6 +12954,30 @@
         };
       }
 
+      const neuromorphic = this.processNeuromorphicEvent(
+        this.neuromorphicEventFromSalience(assessment),
+        { nowMs: options.nowMs, persist: false }
+      );
+
+      if (neuromorphic.spiked !== true) {
+        this.record("cognition.neuromorphic-peripheral", {
+          subject: assessment.subject,
+          score: assessment.score,
+          channelKey: neuromorphic.channelKey,
+          potential: neuromorphic.potential,
+          threshold: neuromorphic.threshold,
+          disposition: neuromorphic.disposition
+        });
+        return {
+          success: true,
+          attended: false,
+          economical: true,
+          neuromorphicPeripheral: true,
+          neuromorphic,
+          assessment
+        };
+      }
+
       /*
        * PRE-SPEND FIREWALL
        *
@@ -12460,6 +12994,15 @@
         signals: this.clone(assessment.signals.slice(0, 8)),
         connections: this.clone(assessment.connections.slice(0, 6)),
         questions: this.clone(assessment.questions.slice(0, 8)),
+        neuromorphic: {
+          commission: "006.037A",
+          channelKey: neuromorphic.channelKey,
+          spikeId: neuromorphic.spike?.spikeId || null,
+          drive: neuromorphic.drive,
+          potential: neuromorphic.spike?.potential ?? neuromorphic.potential,
+          threshold: neuromorphic.spike?.threshold ?? neuromorphic.threshold,
+          disposition: neuromorphic.disposition
+        },
         worldState: {
           work:
             this.buildCognitiveWorkSalienceProjection(
@@ -12506,6 +13049,7 @@
           attended: false,
           economical: true,
           preSpend,
+          neuromorphic,
           assessment
         };
       }
@@ -12601,6 +13145,7 @@
         success: true,
         attended:
           scheduled?.scheduled === true,
+        neuromorphic,
         assessment,
         scheduled
       };
@@ -24224,6 +24769,255 @@
       };
     },
 
+    runNeuromorphicMaddyAcceptanceTest() {
+      const original = {
+        neuromorphic: this.clone(this.ensureNeuromorphicAttentionState()),
+        worldModel: this.worldModel ? this.clone(this.worldModel) : null,
+        worldHistory: this.clone(this.worldModelHistory),
+        worldCount: this.worldModelProjectionCount,
+        intentions: this.clone(this.cognitiveIntentions),
+        salienceHistory: this.clone(this.salienceHistory),
+        salienceLast: this.clone(this.lastSalienceAssessment),
+        salienceCount: this.salienceAssessmentCount,
+        selfModel: this.selfModel ? this.clone(this.selfModel) : null,
+        selfHistory: this.clone(this.selfModelHistory),
+        selfCount: this.selfModelProjectionCount
+      };
+      const fresh = () => {
+        this.neuromorphicAttention = null;
+        return this.ensureNeuromorphicAttentionState();
+      };
+      try {
+        const t0 = 1789783200000;
+        fresh();
+        const noise = [];
+        for (let index = 0; index < 100; index += 1) {
+          noise.push(this.processNeuromorphicEvent({
+            source: "006.037A-noise",
+            type: "low-value-background",
+            channelKey: `noise-${index}`,
+            subject: `Background signal ${index}`,
+            importance: 0.04,
+            novelty: 0.04,
+            confidence: 0.6,
+            urgency: 0.01,
+            missionConsequence: 0.01
+          }, { nowMs: t0 + index * 10, persist: false }));
+        }
+        const noiseSpikes = noise.filter(item => item.spiked === true).length;
+        const high = this.processNeuromorphicEvent({
+          source: "006.037A-critical",
+          type: "verified-material-change",
+          channelKey: "critical-signal",
+          subject: "Verified material mission change",
+          domains: ["mission", "monitoring", "evidence"],
+          importance: 0.98,
+          novelty: 0.94,
+          confidence: 0.98,
+          urgency: 0.9,
+          missionConsequence: 0.95
+        }, { nowMs: t0 + 2000, persist: false });
+        const sparseStatus = this.getNeuromorphicAttentionStatus();
+
+        fresh();
+        const related = [0, 1, 2].map(index => this.processNeuromorphicEvent({
+          source: "006.037A-related",
+          type: "weak-related-change",
+          channelKey: "related-pattern",
+          subject: "Several weak related changes",
+          domains: ["evidence", "future"],
+          importance: 0.2,
+          novelty: 0.22,
+          confidence: 0.8,
+          urgency: 0.08,
+          missionConsequence: 0.12
+        }, { nowMs: t0 + index * 1000, persist: false }));
+        const relatedSpike = related.find(item => item.spiked === true) || null;
+
+        fresh();
+        const decayStart = this.processNeuromorphicEvent({
+          channelKey: "decay-channel",
+          source: "006.037A-decay",
+          importance: 0.2,
+          novelty: 0.2,
+          confidence: 0.8,
+          urgency: 0.05,
+          missionConsequence: 0.1
+        }, { nowMs: t0, persist: false });
+        const decayProjection = this.projectNeuromorphicChannelState(
+          "decay-channel",
+          t0 + Number(this.configuration.neuromorphicLeakHalfLifeMs)
+        );
+
+        fresh();
+        const winner = this.processNeuromorphicEvent({
+          channelKey: "winner",
+          source: "006.037A-inhibition",
+          importance: 1,
+          novelty: 1,
+          confidence: 1,
+          urgency: 1,
+          missionConsequence: 1
+        }, { nowMs: t0, persist: false });
+        const refractory = this.processNeuromorphicEvent({
+          channelKey: "winner",
+          source: "006.037A-inhibition",
+          importance: 1,
+          novelty: 1,
+          confidence: 1,
+          urgency: 1,
+          missionConsequence: 1
+        }, { nowMs: t0 + 1000, persist: false });
+        const challenger = this.processNeuromorphicEvent({
+          channelKey: "challenger",
+          source: "006.037A-inhibition",
+          importance: 0.7,
+          novelty: 0.7,
+          confidence: 0.9,
+          urgency: 0.5,
+          missionConsequence: 0.6
+        }, { nowMs: t0 + 100, persist: false });
+
+        fresh();
+        this.processNeuromorphicEvent({
+          channelKey: "plasticity",
+          source: "006.037A-plasticity",
+          importance: 0.2,
+          novelty: 0.2,
+          confidence: 0.8,
+          urgency: 0.1,
+          missionConsequence: 0.1
+        }, { nowMs: t0, persist: false });
+        const thresholdBefore = this.neuromorphicThresholdForChannel(this.neuromorphicAttention.channels.plasticity);
+        const falseWake = this.recordNeuromorphicAttentionOutcome({
+          channelKey: "plasticity",
+          falseWake: true,
+          evidence: { reason: "no-material-information-gain" }
+        }, { nowMs: t0 + 1000, persist: false });
+        const thresholdAfterFalseWake = falseWake.outcome.adjustedThreshold;
+        const missed = this.recordNeuromorphicAttentionOutcome({
+          channelKey: "plasticity",
+          missedSignal: true,
+          evidence: { reason: "later-consequence-showed-signal-mattered" }
+        }, { nowMs: t0 + 2000, persist: false });
+        const thresholdAfterMiss = missed.outcome.adjustedThreshold;
+
+        fresh();
+        this.processNeuromorphicEvent({
+          channelKey: "durable-neuromorphic",
+          source: "006.037A-persistence",
+          importance: 0.4,
+          novelty: 0.4,
+          confidence: 0.8,
+          urgency: 0.2,
+          missionConsequence: 0.3
+        }, { nowMs: t0, persist: false });
+        const snapshot = this.buildPersistenceSnapshot();
+        this.neuromorphicAttention = null;
+        const restored = this.applyPersistenceSnapshot(snapshot);
+        const durableState = this.getNeuromorphicAttentionStatus({ includeChannels: true });
+
+        fresh();
+        const base = this.projectWorldModel({
+          reason: "006.037A-world-baseline",
+          persist: false,
+          attend: false
+        });
+        const changed = this.clone(base);
+        changed.fingerprint = `${base.fingerprint}-neuromorphic-change`;
+        changed.unknowns = [...(base.unknowns || []), {
+          domain: "funding",
+          question: "What changed enough to alter future positioning?",
+          reason: "neuromorphic-acceptance"
+        }];
+        changed.intentions = [...(base.intentions || []), {
+          intentionId: "006.037A-intention",
+          subject: "Future positioning",
+          status: "pending"
+        }];
+        changed.world = {
+          ...(base.world || {}),
+          currentWork: {
+            ...(base?.world?.currentWork || {}),
+            activeMissions: [
+              ...((base?.world?.currentWork?.activeMissions || [])),
+              { id: "006.037A-work", status: "active", sourceReference: "neuromorphic-acceptance" }
+            ]
+          },
+          monitoring: [
+            ...((Array.isArray(base?.world?.monitoring) ? base.world.monitoring : [])),
+            { id: "006.037A-monitor", significance: "critical" }
+          ]
+        };
+        changed.relationships = [...(base.relationships || []), {
+          schema: "meos.maddy.relationship-model.v1",
+          personKey: "006.037A-partner",
+          fingerprint: "006.037A-partner-change",
+          governance: { trustMustBeEarnedFromEvidence: true }
+        }];
+        const originalSchedule = this.scheduleCognitiveReentry;
+        let captured = null;
+        this.scheduleCognitiveReentry = (subject, trigger, options) => {
+          captured = { subject, trigger: this.clone(trigger), options: this.clone(options) };
+          return { success: true, scheduled: true, subject };
+        };
+        const attention = this.attendToWorldModelChange(base, changed, {
+          reason: "006.037A-neuromorphic-world-attention",
+          nowMs: t0 + 10000
+        });
+        this.scheduleCognitiveReentry = originalSchedule;
+        const selfProjection = this.buildSelfModelProjection({ reason: "006.037A-self-model" });
+
+        const checks = [
+          { name: "One hundred independent low-significance events remain peripheral instead of waking cognition", passed: noiseSpikes === 0 },
+          { name: "A genuinely high-significance event crosses the temporal threshold and spikes", passed: high.spiked === true && high.spike?.schema === "meos.maddy.neuromorphic-spike.v1" },
+          { name: "Sparse event processing wakes only a small fraction of observed events", passed: sparseStatus.eventCount === 101 && sparseStatus.spikeCount === 1 && sparseStatus.sparseWakeRatio < 0.02 },
+          { name: "Several individually weak related events can accumulate across time into one spike", passed: related.slice(0,2).every(item => item.spiked === false) && relatedSpike?.spiked === true },
+          { name: "Unreinforced temporal potential decays rather than remaining permanently hot", passed: decayProjection?.potential < decayStart.potential && Math.abs(decayProjection?.potential - decayStart.potential * 0.5) < 0.01 },
+          { name: "A spiking channel enters a refractory period instead of repeatedly firing on the same burst", passed: winner.spiked === true && refractory.spiked === false && refractory.disposition === "refractory-suppressed" },
+          { name: "A recent winner laterally inhibits a weaker competing channel", passed: challenger.spiked === false && challenger.inhibitedByWinner === true && challenger.disposition === "inhibited-peripheral" },
+          { name: "False wakes raise future attention threshold", passed: thresholdAfterFalseWake > thresholdBefore },
+          { name: "A later missed meaningful signal lowers future threshold", passed: thresholdAfterMiss < thresholdAfterFalseWake },
+          { name: "Adaptive thresholds remain inside bounded configured limits", passed: thresholdAfterMiss >= this.configuration.neuromorphicMinimumThreshold && thresholdAfterFalseWake <= this.configuration.neuromorphicMaximumThreshold },
+          { name: "Neuromorphic state survives sovereign Executive Brain persistence", passed: restored === true && durableState.channels?.some?.(item => item.channelKey === "durable-neuromorphic") === true },
+          { name: "Existing World Model salience now passes through the neuromorphic event fabric before cognitive re-entry", passed: attention?.attended === true && attention?.neuromorphic?.spiked === true && captured?.trigger?.neuromorphic?.commission === "006.037A" },
+          { name: "Neuromorphic spikes carry forward into the existing cognitive re-entry path rather than creating a disconnected agent", passed: captured?.trigger?.event === "emergent-meaningful-change" && typeof this.scheduleCognitiveReentry === "function" && typeof this.runContinuousCognitionCycle === "function" },
+          { name: "Neuromorphic performance is visible in Maddy's existing self-model", passed: selfProjection?.experiencedPerformance?.neuromorphicAttention?.commission === "006.037A" },
+          { name: "The neuromorphic event fabric is hardware-neutral and does not falsely claim specialized neuromorphic hardware", passed: selfProjection?.experiencedPerformance?.neuromorphicAttention?.substrate === "software-event-driven-hardware-neutral" && selfProjection?.experiencedPerformance?.neuromorphicAttention?.specializedNeuromorphicHardwareClaimed === false },
+          { name: "Attention spikes never manufacture spend provider entitlement or external-action authority", passed: high?.authority?.spendAuthorized === false && high?.authority?.paidCognitionAuthorized === false && high?.authority?.entitlementGranted === false && high?.authority?.externalActionAuthorized === false },
+          { name: "Neuromorphic consequence feedback is connected to the existing cognitive information-gain loop", passed: /settleNeuromorphicCognitiveTriggers/.test(this.executeCognitiveReentry.toString()) && typeof this.recordNeuromorphicAttentionOutcome === "function" },
+          { name: "The prior emergent-attention work projection now accepts both canonical object state and bounded array fixtures", passed: this.buildCognitiveWorkSalienceProjection([{ id: "work", status: "active" }]).summary.salientMissionCount === 1 }
+        ];
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks.map(item => ({ name: item.name, passed: item.passed })));
+        console.info(`[MEOS ${this.version}] Commission 006.037A Neuromorphic Maddy Temporal Event Fabric: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+        return {
+          commission: "006.037A",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          total: checks.length,
+          success: passed === checks.length,
+          checks,
+          examples: { high, related, decayProjection, winner, refractory, challenger, falseWake, missed, attention },
+          status: this.getNeuromorphicAttentionStatus({ includeChannels: true }),
+          limitation: "This proves a software neuromorphic temporal event fabric inside the Executive Brain: leaky accumulation, decay, threshold spikes, refractory behavior, lateral inhibition, sparse wake decisions, bounded plasticity, persistence, World Model integration, and consequence-feedback plumbing. It does not claim biological equivalence, specialized neuromorphic hardware, Radeon acceleration, or that every future meaningful signal will be recognized correctly."
+        };
+      } finally {
+        this.neuromorphicAttention = original.neuromorphic;
+        this.worldModel = original.worldModel;
+        this.worldModelHistory = original.worldHistory;
+        this.worldModelProjectionCount = original.worldCount;
+        this.cognitiveIntentions = original.intentions;
+        this.salienceHistory = original.salienceHistory;
+        this.lastSalienceAssessment = original.salienceLast;
+        this.salienceAssessmentCount = original.salienceCount;
+        this.selfModel = original.selfModel;
+        this.selfModelHistory = original.selfHistory;
+        this.selfModelProjectionCount = original.selfCount;
+      }
+    },
+
     runEmergentAttentionAcceptanceTest() {
       const originalWorld =
         this.worldModel
@@ -24754,6 +25548,7 @@
         salienceHistory: this.salienceHistory.slice(0, this.configuration.maximumSalienceHistory),
         lastSalienceAssessment: this.lastSalienceAssessment ? this.clone(this.lastSalienceAssessment) : null,
         salienceAssessmentCount: Number(this.salienceAssessmentCount || 0),
+        neuromorphicAttention: this.clone(this.ensureNeuromorphicAttentionState()),
         causalInvestigationHistory: this.causalInvestigationHistory.slice(0, this.configuration.maximumCausalInvestigationHistory),
         lastCausalInvestigation: this.lastCausalInvestigation ? this.clone(this.lastCausalInvestigation) : null,
         causalInvestigationCount: Number(this.causalInvestigationCount || 0),
@@ -24916,6 +25711,10 @@
         Number(saved.salienceAssessmentCount || 0),
         Number(this.lastSalienceAssessment?.assessmentNumber || 0)
       );
+      this.neuromorphicAttention = saved.neuromorphicAttention && typeof saved.neuromorphicAttention === "object"
+        ? this.clone(saved.neuromorphicAttention)
+        : null;
+      this.ensureNeuromorphicAttentionState();
       this.causalInvestigationHistory =
         Array.isArray(saved.causalInvestigationHistory)
           ? saved.causalInvestigationHistory.slice(
