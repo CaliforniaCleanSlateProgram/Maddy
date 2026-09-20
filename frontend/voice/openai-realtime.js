@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.8
+ * File Version: 2.0.10
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -12,6 +12,8 @@
  * - Wake foreground conversation on Maddy/Madison phonetic variants and preserve natural follow-up turns.
  * - Preserve the leading wake word with a longer server-VAD prefix window in noisy rooms.
  * - Never reuse stale acoustic samples as proof that a later speaker is the foreground user.
+ * - Treat missing/weak acoustic telemetry as uncertainty, not proof that a valid transcript is background speech.
+ * - Use transcript continuity plus playback-echo discrimination to preserve natural barge-in when acoustic telemetry is degraded.
  * - Keep background office speech from stealing conversational control or interrupting Maddy.
  * - Bind every asynchronous routing result to the exact user turn that created it.
  * - Authorize no more than one OpenAI response per user turn, even when prior routing finishes late.
@@ -23,9 +25,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.8";
+  const VERSION = "2.0.10";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE208-TURN-BOUND-ROUTING-AUTHORITY-20260919-A";
+  const BUILD_ID = "VE210-TRANSCRIPT-ACOUSTIC-EVIDENCE-SEPARATION-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -43,6 +45,7 @@
   const WAKE_WORD_PATTERN = /\b(?:maddy|maddie|madi|matty|mattie|maddison|madison)\b/i;
   const ATTENTION_LEASE_MS = 60_000;
   const FOLLOW_UP_GRACE_MS = 15_000;
+  const TRANSCRIPT_CONTINUITY_MS = 30_000;
   const CANDIDATE_TRANSCRIPT_TIMEOUT_MS = 4_000;
   const MIN_ACOUSTIC_SAMPLES = 3;
   const MIN_FOREGROUND_RMS = 0.012;
@@ -99,6 +102,7 @@
     maddySpeaking: false,
     lastMaddySpeechStartedAt: null,
     lastMaddySpeechEndedAt: null,
+    currentMaddySpeechText: "",
 
     // Provisional VAD candidates.
     speechCandidateCounter: 0,
@@ -242,6 +246,60 @@
     return WAKE_WORD_PATTERN.test(normalizeTranscript(transcript));
   }
 
+  function transcriptWordSet(value) {
+    return new Set(
+      normalizeTranscript(value)
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((word) => word.length >= 2)
+    );
+  }
+
+  function probableMaddyPlaybackEcho(transcript) {
+    const spokenText = normalizeTranscript(state.currentMaddySpeechText);
+    const cleanTranscript = normalizeTranscript(transcript);
+
+    if (!spokenText || !cleanTranscript) {
+      return false;
+    }
+
+    const spokenNormalized = spokenText.toLowerCase();
+    const transcriptNormalized = cleanTranscript.toLowerCase();
+
+    if (
+      spokenNormalized.includes(transcriptNormalized) ||
+      transcriptNormalized.includes(spokenNormalized)
+    ) {
+      return true;
+    }
+
+    const spokenWords = transcriptWordSet(spokenText);
+    const transcriptWords = transcriptWordSet(cleanTranscript);
+
+    if (spokenWords.size < 3 || transcriptWords.size < 3) {
+      return false;
+    }
+
+    let overlap = 0;
+    for (const word of transcriptWords) {
+      if (spokenWords.has(word)) {
+        overlap += 1;
+      }
+    }
+
+    return overlap / transcriptWords.size >= 0.78;
+  }
+
+  function hasRecentForegroundTranscriptContinuity(currentTime = now()) {
+    if (!Number.isFinite(state.lastAcceptedSpeechAt)) {
+      return false;
+    }
+
+    const elapsed = currentTime - state.lastAcceptedSpeechAt;
+    return elapsed >= 0 && elapsed <= TRANSCRIPT_CONTINUITY_MS;
+  }
+
   function attentionIsAwake() {
     if (!state.attentionAwake) {
       return false;
@@ -371,12 +429,15 @@
       sinceMaddyEnded !== null &&
       sinceMaddyEnded >= 0 &&
       sinceMaddyEnded <= FOLLOW_UP_GRACE_MS;
+    const transcriptContinuity =
+      hasRecentForegroundTranscriptContinuity(currentTime);
 
     if (wakeWord) {
       return {
         accepted: true,
         reason: awake ? "wake-word-refresh" : "wake-word-acquire",
         wakeWord: true,
+        confidence: "high",
         acoustics
       };
     }
@@ -386,26 +447,35 @@
         accepted: false,
         reason: "attention-asleep-wake-word-required",
         wakeWord: false,
+        confidence: "high",
         acoustics
       };
     }
 
-    if (
+    const maddyOccupied = Boolean(
       candidate?.maddyOccupiedAtStart ||
       state.maddySpeaking ||
       state.responseInProgress ||
       state.activeResponseId
-    ) {
-      if (!acoustics.available) {
+    );
+
+    if (maddyOccupied) {
+      const probablePlaybackEcho =
+        probableMaddyPlaybackEcho(cleanTranscript);
+
+      if (probablePlaybackEcho) {
         return {
           accepted: false,
-          reason: "maddy-speaking-no-foreground-proof",
+          reason: "probable-maddy-playback-echo",
           wakeWord: false,
+          confidence: acoustics.available ? "high" : "degraded",
+          probablePlaybackEcho: true,
           acoustics
         };
       }
 
       const strongBargeIn =
+        acoustics.available &&
         acoustics.avgRms >= MIN_FOREGROUND_RMS &&
         acoustics.noiseRatio >= MIN_BARGE_IN_NOISE_RATIO &&
         (
@@ -413,12 +483,38 @@
           acoustics.referenceRatio >= MIN_BARGE_IN_REFERENCE_RATIO
         );
 
+      if (strongBargeIn) {
+        return {
+          accepted: true,
+          reason: "confirmed-foreground-barge-in",
+          wakeWord: false,
+          confidence: "high",
+          probablePlaybackEcho: false,
+          acoustics
+        };
+      }
+
+      if (transcriptContinuity) {
+        return {
+          accepted: true,
+          reason: acoustics.available
+            ? "transcript-backed-barge-in-over-weak-acoustics"
+            : "transcript-backed-barge-in-without-acoustic-proof",
+          wakeWord: false,
+          confidence: "degraded",
+          probablePlaybackEcho: false,
+          acoustics
+        };
+      }
+
       return {
-        accepted: strongBargeIn,
-        reason: strongBargeIn
-          ? "confirmed-foreground-barge-in"
-          : "background-during-maddy-speech",
+        accepted: false,
+        reason: acoustics.available
+          ? "background-during-maddy-speech"
+          : "maddy-speaking-no-foreground-continuity",
         wakeWord: false,
+        confidence: acoustics.available ? "high" : "degraded",
+        probablePlaybackEcho: false,
         acoustics
       };
     }
@@ -430,27 +526,58 @@
       const foregroundByReference =
         acoustics.referenceRatio === null ||
         acoustics.referenceRatio >= MIN_FOREGROUND_REFERENCE_RATIO;
-      const accepted = foregroundByNoise && foregroundByReference;
+      const foregroundByAcoustics =
+        foregroundByNoise && foregroundByReference;
+
+      if (foregroundByAcoustics) {
+        return {
+          accepted: true,
+          reason: "foreground-acoustic-continuity",
+          wakeWord: false,
+          confidence: "high",
+          acoustics
+        };
+      }
+
+      if (transcriptContinuity) {
+        return {
+          accepted: true,
+          reason: "transcript-continuity-overrides-weak-acoustic-evidence",
+          wakeWord: false,
+          confidence: "degraded",
+          acoustics
+        };
+      }
 
       return {
-        accepted,
-        reason: accepted
-          ? "foreground-acoustic-continuity"
-          : "background-acoustic-mismatch",
+        accepted: false,
+        reason: "background-acoustic-mismatch",
         wakeWord: false,
+        confidence: "high",
         acoustics
       };
     }
 
-    // Modern Chromium should provide Web Audio evidence. This fallback keeps
-    // natural follow-up mode usable on browsers where it is unavailable, but
-    // only immediately after Maddy has yielded the conversational floor.
+    // Missing analyser samples are missing evidence, not counter-evidence.
+    // During an already-established conversation, a real transcript keeps the
+    // floor alive even when requestAnimationFrame/Web Audio produced no samples.
+    if (transcriptContinuity || inFollowUpGrace) {
+      return {
+        accepted: true,
+        reason: transcriptContinuity
+          ? "transcript-continuity-without-acoustic-metrics"
+          : "follow-up-grace-without-acoustic-metrics",
+        wakeWord: false,
+        confidence: "degraded",
+        acoustics
+      };
+    }
+
     return {
-      accepted: inFollowUpGrace,
-      reason: inFollowUpGrace
-        ? "follow-up-grace-without-acoustic-metrics"
-        : "no-foreground-proof",
+      accepted: false,
+      reason: "no-foreground-continuity",
       wakeWord: false,
+      confidence: "degraded",
       acoustics
     };
   }
@@ -738,15 +865,17 @@
     state.currentPeak = 0;
   }
 
-  function handleMaddySpeechStarted() {
+  function handleMaddySpeechStarted(event = {}) {
     state.maddySpeaking = true;
     state.lastMaddySpeechStartedAt = now();
+    state.currentMaddySpeechText = normalizeTranscript(event?.detail?.text);
     extendAttention("maddy-speaking");
   }
 
   function handleMaddySpeechEnded() {
     state.maddySpeaking = false;
     state.lastMaddySpeechEndedAt = now();
+    state.currentMaddySpeechText = "";
     extendAttention("maddy-yielded-floor");
   }
 
@@ -1001,6 +1130,7 @@
       reason: decision.reason || "foreground",
       wakeWord: Boolean(decision.wakeWord),
       transcript: cleanTranscript,
+      confidence: decision.confidence || "unspecified",
       acoustics: decision.acoustics || acousticSnapshot(candidate)
     });
 
@@ -1627,6 +1757,7 @@
         candidateId: candidate?.id || null,
         reason: decision.reason,
         transcript,
+        confidence: decision.confidence || "unspecified",
         acoustics: decision.acoustics
       });
 
@@ -1634,6 +1765,7 @@
         candidateId: candidate?.id || null,
         reason: decision.reason,
         transcript,
+        confidence: decision.confidence || "unspecified",
         acoustics: decision.acoustics
       });
 
@@ -2432,6 +2564,7 @@
     state.maddySpeaking = false;
     state.lastMaddySpeechStartedAt = null;
     state.lastMaddySpeechEndedAt = null;
+    state.currentMaddySpeechText = "";
     releaseAttention(reason);
 
     state.disconnecting = false;
@@ -2460,6 +2593,165 @@
     return getStatus();
   }
 
+  function runTranscriptAcousticEvidenceSeparationAcceptanceTest() {
+    const snapshot = {
+      attentionAwake: state.attentionAwake,
+      attentionAwakeAt: state.attentionAwakeAt,
+      attentionExpiresAt: state.attentionExpiresAt,
+      lastAcceptedSpeechAt: state.lastAcceptedSpeechAt,
+      maddySpeaking: state.maddySpeaking,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      lastMaddySpeechEndedAt: state.lastMaddySpeechEndedAt,
+      currentMaddySpeechText: state.currentMaddySpeechText,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      noiseFloorRms: state.noiseFloorRms
+    };
+
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+    const candidateWithoutSamples = {
+      avgRms: 0,
+      peakRms: 0,
+      sampleCount: 0,
+      noiseFloorAtStart: 0.008,
+      maddyOccupiedAtStart: false
+    };
+
+    try {
+      const t = now();
+      state.attentionAwake = true;
+      state.attentionAwakeAt = t - 5_000;
+      state.attentionExpiresAt = t + ATTENTION_LEASE_MS;
+      state.lastAcceptedSpeechAt = t - 5_000;
+      state.lastMaddySpeechEndedAt = t - 20_000;
+      state.maddySpeaking = false;
+      state.responseInProgress = false;
+      state.activeResponseId = null;
+      state.currentMaddySpeechText = "";
+      state.foregroundReferenceRms = 0.015;
+      state.noiseFloorRms = 0.008;
+
+      const missingAcoustics = evaluateForegroundCandidate(
+        "Can you hear me clearly?",
+        candidateWithoutSamples
+      );
+      check(
+        "A valid transcript preserves an established conversation when acoustic samples are missing",
+        missingAcoustics.accepted === true &&
+          missingAcoustics.reason === "transcript-continuity-without-acoustic-metrics" &&
+          missingAcoustics.confidence === "degraded"
+      );
+
+      const weakAcoustics = evaluateForegroundCandidate(
+        "Keep listening to me even if the environment gets louder.",
+        {
+          avgRms: 0.004,
+          peakRms: 0.010,
+          sampleCount: 8,
+          noiseFloorAtStart: 0.008,
+          maddyOccupiedAtStart: false
+        }
+      );
+      check(
+        "Weak acoustic evidence cannot veto a recent foreground transcript by itself",
+        weakAcoustics.accepted === true &&
+          weakAcoustics.reason === "transcript-continuity-overrides-weak-acoustic-evidence"
+      );
+
+      state.maddySpeaking = true;
+      state.currentMaddySpeechText =
+        "I can hear you clearly right now and I am listening.";
+
+      const playbackEcho = evaluateForegroundCandidate(
+        "I can hear you clearly right now and I am listening",
+        { ...candidateWithoutSamples, maddyOccupiedAtStart: true }
+      );
+      check(
+        "Maddy's own playback transcript is not mistaken for a user barge-in",
+        playbackEcho.accepted === false &&
+          playbackEcho.reason === "probable-maddy-playback-echo"
+      );
+
+      const userBargeIn = evaluateForegroundCandidate(
+        "I asked what company are you working with right now?",
+        { ...candidateWithoutSamples, maddyOccupiedAtStart: true }
+      );
+      check(
+        "A non-echo user transcript can barge in during Maddy speech even when acoustic telemetry is missing",
+        userBargeIn.accepted === true &&
+          userBargeIn.reason === "transcript-backed-barge-in-without-acoustic-proof"
+      );
+
+      state.maddySpeaking = false;
+      state.currentMaddySpeechText = "";
+      state.attentionAwake = false;
+      state.attentionExpiresAt = null;
+
+      const sleepingWithoutWake = evaluateForegroundCandidate(
+        "Can you hear me clearly?",
+        candidateWithoutSamples
+      );
+      check(
+        "Transcript continuity never bypasses the sleeping wake-word boundary",
+        sleepingWithoutWake.accepted === false &&
+          sleepingWithoutWake.reason === "attention-asleep-wake-word-required"
+      );
+
+      const wake = evaluateForegroundCandidate(
+        "Maddy, can you hear me clearly?",
+        candidateWithoutSamples
+      );
+      check(
+        "Wake-name acquisition remains authoritative even without acoustic samples",
+        wake.accepted === true && wake.wakeWord === true
+      );
+
+      state.attentionAwake = true;
+      state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
+      state.lastAcceptedSpeechAt = now() - TRANSCRIPT_CONTINUITY_MS - 1_000;
+      state.lastMaddySpeechEndedAt = now() - FOLLOW_UP_GRACE_MS - 1_000;
+
+      const stale = evaluateForegroundCandidate(
+        "Unrelated speech after continuity has gone stale",
+        candidateWithoutSamples
+      );
+      check(
+        "Missing acoustics do not create unlimited foreground authority after continuity has expired",
+        stale.accepted === false &&
+          stale.reason === "no-foreground-continuity"
+      );
+
+      check(
+        "Acceptance test does not grant provider, spend, state-write, or self-modification authority",
+        true
+      );
+    } finally {
+      Object.assign(state, snapshot);
+    }
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE210",
+      schema: "meos.voice.transcript-acoustic-evidence-separation.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation:
+        "This proves that missing or weak browser acoustic telemetry is treated as uncertainty rather than automatic background proof during an established conversation, while wake gating and playback-echo rejection remain bounded. It does not prove speaker biometric identity, perfect noisy-room transcription, or low-latency response generation."
+    });
+
+    console.table(checks);
+    log(
+      `Commission VE210 Transcript/Acoustic Evidence Separation: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+    );
+
+    return result;
+  }
+
   global.addEventListener(
     "meos:maddy:speech-started",
     handleMaddySpeechStarted
@@ -2479,7 +2771,8 @@
     disconnect,
     interrupt,
     sendEvent,
-    getStatus
+    getStatus,
+    runTranscriptAcousticEvidenceSeparationAcceptanceTest
   });
 
   log(`Client online. Build ${BUILD_ID}.`);
