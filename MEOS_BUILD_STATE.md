@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32436603/MEOS_BUILD_STATE.md)
+[Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32429903/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32427810/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -8737,3 +8737,150 @@ Production gets the vote.
 10. Do not broaden the next brick into TTS, payments, companionship, durable investigation, or unrelated cognition.
 
 **Recovery keyword:** `POST-038C-VOICE-LIVE-LATENCY-AND-MULTISPEAKER-FAILURE-RECONCILED`
+
+# POST-VE212 PRODUCTION VALIDATION RECONCILIATION — WAKE / ASR SEMANTIC FAILURE
+
+Date: 2026-09-20
+
+## Runtime deployment status
+
+Production loaded:
+
+- Voice `2.0.12`;
+- build `VE212-FOREGROUND-INTERRUPTION-AUTHORITY-GATE-20260920-A`;
+- Executive Brain remained `1.31.1 / EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A`.
+
+Therefore VE212 deployment itself is **production-confirmed**.
+
+VE212's intended behavioral claim — degraded transcript continuity no longer possessing enough authority by itself to cancel an active Maddy response — is **NOT production-proven by this run**, because the run failed earlier at wake recognition and speech transcription/intended-meaning preservation.
+
+Do not mark VE212 PASS or FAIL on its narrow interruption-authority behavior from this session. Its production status is: **DEPLOYED / NOT CLEANLY TESTED**.
+
+## Wake acquisition — FAIL
+
+Before Maddy finally acquired foreground attention, the session produced ten rejected candidates while asleep. Transcripts included unrelated or implausible outputs such as:
+
+- `Al-Farida`
+- `uff.`
+- `花り`
+- `I agree.`
+- `No, thank you.`
+- `Howdy.`
+- `Marry.`
+- Arabic-script output
+- `Can you hear me?`
+
+Only the later transcript:
+
+`Madison, can you hear me?`
+
+acquired the wake boundary.
+
+This confirms wake recognition remains unreliable in ordinary founder speech.
+
+## Intended California question — ASR semantic preservation FAIL
+
+Founder ground truth for the intended question was a California-beach/coast question: in substance, asking how much of California is beaches/coastline.
+
+The accepted transcript instead became:
+
+`I'd give the Norway I'm being`
+
+with `confidence: degraded`, and the system nevertheless authorized that transcript as a real user turn on:
+
+`local-recall-plus-provider-reasoning`.
+
+That is not a small spelling error. The intended semantic request was lost before cognition.
+
+## Unrelated airline request — ASR semantic substitution FAIL
+
+The same session later accepted:
+
+`I want you to search the internet to tell me how much a flight from New York City to Atlanta cost.`
+
+Founder explicitly states this was **not** the intended request; the founder had asked the California-beach question. Treat the founder correction as ground truth for evaluating transcription fidelity.
+
+The system routed the airline transcript through:
+
+`local-recall-plus-provider-reasoning`
+
+rather than a real internet/research route.
+
+Therefore this run demonstrates two failures at once:
+
+1. ASR can substitute a materially unrelated semantic request for ordinary founder speech;
+2. even an accepted transcript explicitly containing `search the internet` can still remain on local/provider reasoning rather than real research.
+
+Do not treat the generated airline answer as evidence of successful understanding or internet use.
+
+## New production truth
+
+Current voice truth after VE212 deployment is:
+
+- VE212 deployed: **YES**;
+- VE212 interruption-authority behavior: **NOT CLEANLY TESTED**;
+- wake recognition: **FAIL**;
+- raw ASR fidelity on ordinary founder speech: **HARD FAIL** in this run;
+- intended-meaning preservation: **FAIL**;
+- nonsense/degraded transcript can still receive full user-turn authority: **FAIL**;
+- unrelated semantic request can be accepted as if spoken: **FAIL**;
+- explicit `search the internet` transcript can still route to local/provider reasoning: **FAIL / research distinction remains open**;
+- actual live internet/search execution: **NOT PROVEN**.
+
+## Immediate development decision
+
+Do **not** spend additional paid voice tests trying to prove VE212 floor ownership while ASR is corrupting the founder's intended request strongly enough to change its meaning. That would produce ambiguous evidence and waste spend.
+
+The next runtime brick moves the immediate blocker forward to **intended-speech reconstruction / transcript sanity gating**.
+
+Before code, inspect the freshest current `main` and canonical Build State. The likely first seam remains `frontend/voice/openai-realtime.js`, but the exact edit location must be re-proven from fresh main.
+
+The next brick must implement the principle:
+
+**raw transcript is evidence, not authority.**
+
+At minimum, it must separate:
+
+1. raw ASR transcript;
+2. transcript quality / coherence evidence;
+3. known conversational and organizational context;
+4. plausible intended-utterance hypotheses;
+5. confidence in the interpreted meaning;
+6. authority to send the interpretation into Brain / research / external work.
+
+The brick must not become a hard-coded correction dictionary. Do not encode brittle pairs such as `FAQP = CCSP`, `movie = moon`, or `center = Saturn`.
+
+Behavioral contract:
+
+- high-confidence intended meaning -> use the interpreted utterance while preserving raw transcript provenance;
+- material ambiguity -> ask one concise clarification;
+- incoherent / low-confidence / semantically unstable transcript -> do not search, spend, or fabricate a confident request;
+- user correction -> treat the correction as new speech-learning evidence;
+- no new external-action authority;
+- no provider lock-in;
+- no cross-customer leakage.
+
+## Next acceptance set
+
+After the intended-speech reconstruction brick is committed and deployed, test a bounded set before returning to VE212 multi-speaker validation:
+
+1. `CCSP`;
+2. `California Clean Slate Program`;
+3. the California beaches/coastline question from this failed run;
+4. `What is the interesting moon around Saturn?`;
+5. one uncommon/long word such as `supercalifragilisticexpialidocious`;
+6. one concise correction such as `No, I said CCSP.`
+
+Pass requires that Maddy either preserves/reconstructs the intended meaning or asks a concise clarification. A semantically unrelated confident answer is a FAIL.
+
+Once this speech-meaning layer passes, re-run the VE212 multi-speaker interruption test to determine whether the floor-authority gate itself is production-proven.
+
+## Workflow lock
+
+Continue:
+
+**one fix -> one file -> one commit -> one production test -> Build State reconciliation**
+
+Production gets the vote.
+
+**Recovery keyword:** `POST-VE212-WAKE-ASR-SEMANTIC-FAILURE-RECONCILED`
