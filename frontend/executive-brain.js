@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.29.0
- * Build: EB1290-NO-PICTURE-SELF-TOPOLOGY-20260919-A
+ * Version: 1.30.0
+ * Build: EB1300-SEMANTIC-CONTINUITY-AUTHORITY-RECONSTRUCTION-20260920-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.29.0";
-  const BUILD_ID = "EB1290-NO-PICTURE-SELF-TOPOLOGY-20260919-A";
+  const VERSION = "1.30.0";
+  const BUILD_ID = "EB1300-SEMANTIC-CONTINUITY-AUTHORITY-RECONSTRUCTION-20260920-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -258,6 +258,9 @@
       maximumArchitecturalTopologyMethodsPerCandidate: 96,
       maximumArchitecturalTopologyEdges: 640,
       maximumArchitecturalTopologyFindings: 320,
+      semanticContinuityReconstructionEnabled: true,
+      maximumSemanticContinuityEvaluations: 160,
+      maximumSemanticContinuityHistory: 80,
       maximumCausalInvestigationHistory: 120,
       maximumCompetingHypotheses: 6,
       maximumAutonomousInvestigationHistory: 120,
@@ -351,6 +354,9 @@
     architecturalTopology: null,
     architecturalTopologyHistory: [],
     architecturalTopologyDiscoveryCount: 0,
+    semanticContinuityReconstruction: null,
+    semanticContinuityHistory: [],
+    semanticContinuityReconstructionCount: 0,
     neuromorphicAttention: {
       schema: "meos.maddy.neuromorphic-attention-state.v1",
       commission: "006.037A",
@@ -545,6 +551,12 @@
         this.discoverArchitecturalTopology({
           reason: `brain-refresh:${options.reason || "manual"}`
         });
+        if (this.configuration.semanticContinuityReconstructionEnabled === true) {
+          this.reconstructSemanticContinuityAuthority({
+            reason: `brain-refresh:${options.reason || "manual"}`,
+            refreshTopology: false
+          });
+        }
       }
       this.startupCache = this.buildStartupContext({ force: true });
       this.startupCachedAt = Date.now();
@@ -642,6 +654,68 @@
         .replace(/^cognitive-/, "topology-");
     },
 
+    collectArchitecturalScalarState(value, options = {}) {
+      const maximumEntries = Math.max(16, Number(options.maximumEntries || 180));
+      const maximumDepth = Math.max(0, Math.min(3, Number(options.maximumDepth ?? 2)));
+      const output = {};
+      const seen = new Set();
+
+      const visit = (current, prefix = "", depth = 0) => {
+        if (!current || typeof current !== "object") return;
+        if (current === global || current === global.window || current === global.document) return;
+        if (seen.has(current)) return;
+        seen.add(current);
+
+        const descriptors = this.safe(
+          () => Object.getOwnPropertyDescriptors(current),
+          {}
+        ) || {};
+
+        for (const key of Object.keys(descriptors).sort()) {
+          if (Object.keys(output).length >= maximumEntries) break;
+          const descriptor = descriptors[key];
+          if (!descriptor || !("value" in descriptor)) continue;
+          const item = descriptor.value;
+          const path = prefix ? `${prefix}.${key}` : key;
+          const normalizedKey = String(key).toLowerCase();
+
+          /*
+           * Self-observation products must not recursively become evidence
+           * about the structure that produced them. Histories/caches and
+           * projected self/world models are consequences of cognition, not
+           * continuity contracts. Excluding them keeps repeated observation
+           * convergent while preserving explicit configuration/persistence
+           * state as semantic evidence.
+           */
+          const recursiveObservationProduct =
+            /(architecturaltopology|semanticcontinuityreconstruction|selfmodel|workingawareness|worldmodel)/.test(normalizedKey) ||
+            /(history|listeners|subscriptions|timers|cache)$/.test(normalizedKey);
+
+          if (["string", "number", "boolean"].includes(typeof item)) {
+            const text = String(item);
+            if (text.length <= 360) output[path] = item;
+            continue;
+          }
+
+          if (
+            !recursiveObservationProduct &&
+            depth < maximumDepth &&
+            item &&
+            typeof item === "object" &&
+            !Array.isArray(item) &&
+            item !== global &&
+            item !== global.window &&
+            item !== global.document
+          ) {
+            visit(item, path, depth + 1);
+          }
+        }
+      };
+
+      visit(value);
+      return output;
+    },
+
     architecturalCandidateEvidence(globalName, value) {
       if (!value || !["object", "function"].includes(typeof value)) return null;
       if (value === global || value === global.window || value === global.document) return null;
@@ -661,6 +735,11 @@
           const text = String(item);
           if (text.length <= 240) scalarEvidence[key] = item;
         }
+      });
+
+      const stateEvidence = this.collectArchitecturalScalarState(value, {
+        maximumEntries: 180,
+        maximumDepth: 2
       });
 
       const label = String(
@@ -693,7 +772,8 @@
         score,
         traits: [...new Set(traits)].sort(),
         methods: methods.slice(0, this.configuration.maximumArchitecturalTopologyMethodsPerCandidate),
-        scalarEvidence
+        scalarEvidence,
+        stateEvidence
       };
     },
 
@@ -704,6 +784,8 @@
         {}
       ) || {};
       const methodNames = Array.isArray(candidate.methods) ? candidate.methods : [];
+      const stateEvidence = candidate.stateEvidence || {};
+      const stateEntries = Object.entries(stateEvidence);
       const signals = {
         browserRead: false,
         browserWrite: false,
@@ -715,18 +797,48 @@
         repositoryLanguage: false,
         persistenceNamedMethod: false,
         hydrationNamedMethod: false,
-        authorityLanguage: false
+        authorityLanguage: false,
+        explicitPersistenceDisabled: false,
+        explicitPersistenceEnabled: false,
+        explicitAutomaticPersistenceDisabled: false,
+        explicitAutomaticPersistenceEnabled: false,
+        explicitBrowserAuthorityFalse: false,
+        explicitBrowserAuthorityTrue: false,
+        explicitAutomaticBrowserHydrationFalse: false,
+        explicitAutomaticBrowserHydrationTrue: false,
+        explicitSourceReconstructionEnabled: false,
+        disposableBrowserLanguage: false,
+        durableAuthorityLanguage: false,
+        ephemeralSessionLanguage: false,
+        legacyObservationLanguage: false
       };
       const methodEvidence = [];
       const referenced = new Map();
 
       const scalarCorpus = JSON.stringify(candidate.scalarEvidence || {}).toLowerCase();
-      if (/institutional[-_ ]repository|durable[-_ ]authority|authoritative[-_ ]storage|durable/.test(scalarCorpus)) {
+      const stateCorpus = JSON.stringify(stateEvidence || {}).toLowerCase();
+      const combinedStateCorpus = `${scalarCorpus} ${stateCorpus}`;
+      if (/institutional[-_ ]repository|durable[-_ ]authority|authoritative[-_ ]storage|durable/.test(combinedStateCorpus)) {
         signals.repositoryLanguage = true;
       }
-      if (/authority|authoritative|permission|entitlement/.test(scalarCorpus)) {
+      if (/authority|authoritative|permission|entitlement/.test(combinedStateCorpus)) {
         signals.authorityLanguage = true;
       }
+      signals.disposableBrowserLanguage = /optional[-_ ]disposable|disposable[-_ ](?:browser|workspace|cache)|browser[^\"]{0,80}(?:cache|workspace)|ephemeral[-_ ]until/.test(combinedStateCorpus);
+      signals.durableAuthorityLanguage = /institutional[-_ ]repository|durable[-_ ]authority|authoritative[-_ ]storage|repository[-_ ]backed|durable[-_ ]executive/.test(combinedStateCorpus);
+      signals.ephemeralSessionLanguage = /session[-_ ]only|ephemeral[-_ ]until|sessionstate(?:durability)?[^\"]{0,80}ephemeral/.test(combinedStateCorpus);
+      signals.legacyObservationLanguage = /legacy[^\"]{0,80}(?:observed|snapshot|compat)|observe[-_ ]legacy/.test(combinedStateCorpus);
+
+      const pathBoolean = (pattern, expected) => stateEntries.some(([path, value]) => pattern.test(path) && value === expected);
+      signals.explicitPersistenceDisabled = pathBoolean(/(?:^|\.)persistenceEnabled$/i, false);
+      signals.explicitPersistenceEnabled = pathBoolean(/(?:^|\.)persistenceEnabled$/i, true);
+      signals.explicitAutomaticPersistenceDisabled = pathBoolean(/(?:^|\.)automaticPersistence$/i, false);
+      signals.explicitAutomaticPersistenceEnabled = pathBoolean(/(?:^|\.)automaticPersistence$/i, true);
+      signals.explicitBrowserAuthorityFalse = pathBoolean(/(?:^|\.)browserAuthority$/i, false);
+      signals.explicitBrowserAuthorityTrue = pathBoolean(/(?:^|\.)browserAuthority$/i, true);
+      signals.explicitAutomaticBrowserHydrationFalse = pathBoolean(/(?:^|\.)automaticBrowserHydration$/i, false);
+      signals.explicitAutomaticBrowserHydrationTrue = pathBoolean(/(?:^|\.)automaticBrowserHydration$/i, true);
+      signals.explicitSourceReconstructionEnabled = pathBoolean(/(?:^|\.)sourceReconstructionEnabled$/i, true);
 
       methodNames.forEach(methodName => {
         const fn = descriptors[methodName]?.value;
@@ -738,22 +850,58 @@
         if (!source) return;
 
         const lower = source.toLowerCase();
+        const browserRead = /localstorage(?:\?\.|\.)getitem/i.test(source);
+        const browserWrite = /localstorage(?:\?\.|\.)setitem/i.test(source) || /localstorage(?:\?\.|\.)removeitem/i.test(source);
+        const sessionRead = /sessionstorage(?:\?\.|\.)getitem/i.test(source);
+        const sessionWrite = /sessionstorage(?:\?\.|\.)setitem/i.test(source) || /sessionstorage(?:\?\.|\.)removeitem/i.test(source);
+        const indexedDb = /indexeddb|objectstore|idb/i.test(source);
+        const networkFetch = /\bfetch\s*\(|\.fetch\s*\(/i.test(source);
+        const durableEndpoint = /\/api\//i.test(source);
+        const repositoryLanguage = /institutional[-_ ]repository|durable[-_ ]authority|authoritative[-_ ]storage|meos-institutional-repository/i.test(lower);
+        const testLike = /test|acceptance|fixture|diagnostic/i.test(methodName);
+        const legacyLike = /legacy|compat|migrat/i.test(methodName) || /legacy snapshot|compatibility/i.test(lower);
+        const lifecycleLike = /^(initialize|init|boot|startup|start|refresh)$/i.test(methodName);
+        const persistenceLike = /persist|save|checkpoint|write|store/i.test(methodName);
+        const hydrationLike = /hydrate|restore|resume|load|read/i.test(methodName);
+        const localCalls = [];
+
+        methodNames.forEach(otherName => {
+          if (!otherName || otherName === methodName) return;
+          const escaped = String(otherName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const pattern = new RegExp(`\\bthis\\.${escaped}\\s*\\(`);
+          if (pattern.test(source)) localCalls.push(otherName);
+        });
+
         const evidence = {
           method: methodName,
-          sourceFingerprint: this.architecturalTopologyFingerprint(source)
+          sourceFingerprint: this.architecturalTopologyFingerprint(source),
+          browserRead,
+          browserWrite,
+          sessionRead,
+          sessionWrite,
+          indexedDb,
+          networkFetch,
+          durableEndpoint,
+          repositoryLanguage,
+          testLike,
+          legacyLike,
+          lifecycleLike,
+          persistenceLike,
+          hydrationLike,
+          localCalls: [...new Set(localCalls)].sort()
         };
 
-        if (/localstorage(?:\?\.|\.)getitem/i.test(source)) signals.browserRead = true;
-        if (/localstorage(?:\?\.|\.)setitem/i.test(source) || /localstorage(?:\?\.|\.)removeitem/i.test(source)) signals.browserWrite = true;
-        if (/sessionstorage(?:\?\.|\.)getitem/i.test(source)) signals.sessionRead = true;
-        if (/sessionstorage(?:\?\.|\.)setitem/i.test(source) || /sessionstorage(?:\?\.|\.)removeitem/i.test(source)) signals.sessionWrite = true;
-        if (/indexeddb|objectstore|idb/i.test(source)) signals.indexedDb = true;
-        if (/\bfetch\s*\(|\.fetch\s*\(/i.test(source)) signals.networkFetch = true;
-        if (/\/api\//i.test(source)) signals.durableEndpoint = true;
-        if (/institutional[-_ ]repository|durable[-_ ]authority|authoritative[-_ ]storage|meos-institutional-repository/i.test(lower)) signals.repositoryLanguage = true;
+        if (browserRead) signals.browserRead = true;
+        if (browserWrite) signals.browserWrite = true;
+        if (sessionRead) signals.sessionRead = true;
+        if (sessionWrite) signals.sessionWrite = true;
+        if (indexedDb) signals.indexedDb = true;
+        if (networkFetch) signals.networkFetch = true;
+        if (durableEndpoint) signals.durableEndpoint = true;
+        if (repositoryLanguage) signals.repositoryLanguage = true;
         if (/authority|authoritative|permission|entitlement/i.test(lower)) signals.authorityLanguage = true;
-        if (/persist|save|checkpoint|write|store/i.test(methodName)) signals.persistenceNamedMethod = true;
-        if (/hydrate|restore|resume|load|read/i.test(methodName)) signals.hydrationNamedMethod = true;
+        if (persistenceLike) signals.persistenceNamedMethod = true;
+        if (hydrationLike) signals.hydrationNamedMethod = true;
 
         allCandidateNames.forEach(otherName => {
           if (!otherName || otherName === candidate.globalName) return;
@@ -770,11 +918,11 @@
       });
 
       let continuityClassification = "runtime-organ";
-      if (signals.browserWrite && (signals.durableEndpoint || signals.repositoryLanguage)) {
+      if (signals.browserWrite && (signals.durableEndpoint || signals.repositoryLanguage || signals.durableAuthorityLanguage)) {
         continuityClassification = "mixed-browser-and-durable-continuity-review";
       } else if (signals.browserWrite || signals.sessionWrite) {
         continuityClassification = "browser-persistence-candidate";
-      } else if (signals.durableEndpoint || signals.repositoryLanguage) {
+      } else if (signals.durableEndpoint || signals.repositoryLanguage || signals.durableAuthorityLanguage) {
         continuityClassification = "durable-continuity-candidate";
       } else if (signals.indexedDb) {
         continuityClassification = "browser-local-database-candidate";
@@ -793,6 +941,7 @@
         methodCount: methodNames.length,
         methods: methodNames,
         methodEvidence,
+        stateEvidence,
         signals,
         continuityClassification,
         referencedGlobals: [...referenced.entries()]
@@ -989,22 +1138,485 @@
         refresh: options.refresh === true,
         reason: options.reason || "self-model-architecture-observation"
       });
+      const semantic = this.getSemanticContinuityAuthority({
+        topology,
+        refresh: options.refreshSemantic === true,
+        reason: options.reason || "self-model-continuity-semantics"
+      });
       return {
-        schema: "meos.maddy.architectural-self-awareness.v1",
-        commission: "006.038A",
+        schema: "meos.maddy.architectural-self-awareness.v2",
+        commission: "006.038B",
         topologyFingerprint: topology?.fingerprint || null,
+        semanticContinuityFingerprint: semantic?.fingerprint || null,
         discoveryMode: topology?.discoveryMode || null,
+        semanticMode: semantic?.mode || null,
         registeredPictureCount: Number(topology?.declaredPicture?.registeredComponents || 0),
         discoveredComponentCount: Number(topology?.discovered?.components || 0),
         discoveredDependencyEdges: Number(topology?.discovered?.dependencyEdges || 0),
         outsideDeclaredPicture: Number(topology?.discovered?.outsideDeclaredPicture || 0),
         browserPersistenceCandidates: Number(topology?.discovered?.browserPersistenceCandidates || 0),
         mixedContinuityCandidates: Number(topology?.discovered?.mixedContinuityCandidates || 0),
+        semanticContinuity: this.clone(semantic?.summary || null),
         pictureMayBeIncomplete: Number(topology?.discovered?.outsideDeclaredPicture || 0) > 0,
         noPicturePrinciple: "reconstruct-architecture-from-runtime-evidence-not-only-a-maintained-list",
-        epistemicBoundary: this.clone(topology?.epistemicBoundary || null),
-        authority: this.clone(topology?.authority || null)
+        semanticPrinciple: "persistence-surface-is-a-clue-not-an-authority-verdict; reconstruct-role-from-state-call-path-and-competing-hypotheses",
+        epistemicBoundary: {
+          ...(this.clone(topology?.epistemicBoundary || {})),
+          semanticInferenceIsNotExecutionProof: true,
+          explicitRuntimeStateOutweighsKeywordPresence: true,
+          unresolvedSemanticsRequireDiscriminatingEvidence: true
+        },
+        authority: this.clone(semantic?.authority || topology?.authority || null)
       };
+    },
+
+    /*
+     * Commission 006.038B — Semantic Continuity Authority Reconstruction
+     *
+     * 038A taught Maddy to reconstruct the shape of a runtime she was not
+     * handed as a complete picture. 038B asks the harder question: what does a
+     * persistence surface mean? A localStorage token is not automatically
+     * memory authority; a repository token is not automatically proof of
+     * durable correctness. Maddy now combines explicit runtime state, method
+     * roles, intra-organ call paths, startup/normal reachability, competing
+     * hypotheses, and falsifying experiments before assigning a bounded
+     * continuity interpretation.
+     */
+    buildArchitecturalMethodReachability(node = {}) {
+      const evidence = Array.isArray(node.methodEvidence) ? node.methodEvidence : [];
+      const byName = new Map(evidence.map(item => [item.method, item]));
+      const lifecycleRoots = evidence
+        .filter(item => item.lifecycleLike === true)
+        .map(item => item.method)
+        .sort();
+      const operationalRoots = evidence
+        .filter(item =>
+          item.testLike !== true &&
+          item.legacyLike !== true &&
+          item.persistenceLike !== true &&
+          item.hydrationLike !== true &&
+          !/^(get|on|emit|normalize|clone|safe|id|fingerprint|register)/i.test(item.method)
+        )
+        .map(item => item.method)
+        .sort();
+
+      const walk = roots => {
+        const visited = new Set();
+        const queue = [...roots];
+        while (queue.length > 0) {
+          const name = queue.shift();
+          if (!name || visited.has(name)) continue;
+          visited.add(name);
+          const item = byName.get(name);
+          (item?.localCalls || []).forEach(next => {
+            if (!visited.has(next)) queue.push(next);
+          });
+        }
+        return visited;
+      };
+
+      const startupReachable = walk(lifecycleRoots);
+      const operationalReachable = walk(operationalRoots);
+      const browserEvidence = evidence.filter(item => item.browserRead || item.browserWrite || item.sessionRead || item.sessionWrite);
+      const nonTestLegacyBrowser = browserEvidence.filter(item => item.testLike !== true && item.legacyLike !== true);
+
+      const anyReachable = (set, predicate) => evidence.some(item => set.has(item.method) && predicate(item));
+
+      return {
+        lifecycleRoots,
+        operationalRoots: operationalRoots.slice(0, 48),
+        startupReachableMethods: [...startupReachable].sort(),
+        operationalReachableMethods: [...operationalReachable].sort(),
+        browserAccessMethods: browserEvidence.map(item => ({
+          method: item.method,
+          read: item.browserRead || item.sessionRead,
+          write: item.browserWrite || item.sessionWrite,
+          testLike: item.testLike,
+          legacyLike: item.legacyLike,
+          startupReachable: startupReachable.has(item.method),
+          operationalReachable: operationalReachable.has(item.method)
+        })),
+        startupBrowserReadReachable: anyReachable(startupReachable, item => item.browserRead || item.sessionRead),
+        startupBrowserWriteReachable: anyReachable(startupReachable, item => item.browserWrite || item.sessionWrite),
+        operationalBrowserReadReachable: anyReachable(operationalReachable, item => item.browserRead || item.sessionRead),
+        operationalBrowserWriteReachable: anyReachable(operationalReachable, item => item.browserWrite || item.sessionWrite),
+        browserOnlyInTestOrLegacy: browserEvidence.length > 0 && nonTestLegacyBrowser.length === 0
+      };
+    },
+
+    continuitySemanticHypotheses(node = {}, reachability = {}) {
+      const signals = node.signals || {};
+      const browserPresent = Boolean(signals.browserRead || signals.browserWrite || signals.sessionRead || signals.sessionWrite);
+      const durablePresent = Boolean(signals.durableEndpoint || signals.repositoryLanguage || signals.durableAuthorityLanguage);
+      const evidenceFor = (condition, statement) => condition ? [statement] : [];
+      const score = value => Number(Math.max(0, Math.min(0.99, value)).toFixed(3));
+
+      let browserAuthority = 0.08;
+      browserAuthority += signals.explicitBrowserAuthorityTrue ? 0.34 : 0;
+      browserAuthority += signals.explicitPersistenceEnabled ? 0.18 : 0;
+      browserAuthority += signals.explicitAutomaticPersistenceEnabled ? 0.14 : 0;
+      browserAuthority += signals.explicitAutomaticBrowserHydrationTrue ? 0.16 : 0;
+      browserAuthority += reachability.startupBrowserReadReachable ? 0.14 : 0;
+      browserAuthority += reachability.operationalBrowserWriteReachable ? 0.10 : 0;
+      browserAuthority -= signals.explicitBrowserAuthorityFalse ? 0.30 : 0;
+      browserAuthority -= signals.explicitPersistenceDisabled ? 0.14 : 0;
+      browserAuthority -= signals.explicitAutomaticPersistenceDisabled ? 0.10 : 0;
+      browserAuthority -= signals.explicitSourceReconstructionEnabled ? 0.12 : 0;
+      browserAuthority -= signals.disposableBrowserLanguage ? 0.10 : 0;
+      browserAuthority -= reachability.browserOnlyInTestOrLegacy ? 0.22 : 0;
+
+      let disposable = 0.08;
+      disposable += signals.explicitBrowserAuthorityFalse ? 0.24 : 0;
+      disposable += signals.explicitPersistenceDisabled ? 0.20 : 0;
+      disposable += signals.explicitAutomaticPersistenceDisabled ? 0.14 : 0;
+      disposable += signals.explicitAutomaticBrowserHydrationFalse ? 0.12 : 0;
+      disposable += signals.disposableBrowserLanguage ? 0.18 : 0;
+      disposable += signals.explicitSourceReconstructionEnabled ? 0.16 : 0;
+      disposable += durablePresent ? 0.08 : 0;
+      disposable -= signals.explicitBrowserAuthorityTrue ? 0.34 : 0;
+      disposable -= signals.explicitPersistenceEnabled && signals.explicitAutomaticPersistenceEnabled ? 0.14 : 0;
+
+      let residue = 0.06;
+      residue += reachability.browserOnlyInTestOrLegacy ? 0.58 : 0;
+      residue += signals.legacyObservationLanguage ? 0.14 : 0;
+      residue += browserPresent && !reachability.operationalBrowserWriteReachable && !reachability.startupBrowserWriteReachable ? 0.08 : 0;
+      residue -= signals.explicitBrowserAuthorityTrue ? 0.30 : 0;
+
+      let mixed = 0.08;
+      mixed += browserPresent && durablePresent ? 0.28 : 0;
+      mixed += reachability.startupBrowserReadReachable && durablePresent ? 0.12 : 0;
+      mixed += !signals.explicitBrowserAuthorityFalse && !signals.explicitBrowserAuthorityTrue && browserPresent ? 0.14 : 0;
+      mixed += !signals.explicitPersistenceDisabled && !signals.explicitPersistenceEnabled && browserPresent ? 0.10 : 0;
+      mixed -= signals.disposableBrowserLanguage && signals.explicitPersistenceDisabled ? 0.18 : 0;
+
+      const hypotheses = [
+        {
+          hypothesisId: "browser-is-continuity-authority",
+          claim: "Browser persistence participates materially in authoritative continuity.",
+          score: score(browserAuthority),
+          supportingEvidence: [
+            ...evidenceFor(signals.explicitBrowserAuthorityTrue, "Runtime state explicitly marks browserAuthority=true."),
+            ...evidenceFor(signals.explicitPersistenceEnabled, "Browser persistence is enabled by runtime configuration."),
+            ...evidenceFor(signals.explicitAutomaticPersistenceEnabled, "Automatic persistence is enabled."),
+            ...evidenceFor(reachability.startupBrowserReadReachable, "A browser read is reachable from a lifecycle/startup method."),
+            ...evidenceFor(reachability.operationalBrowserWriteReachable, "A browser write is reachable from ordinary operational methods.")
+          ],
+          contradictingEvidence: [
+            ...evidenceFor(signals.explicitBrowserAuthorityFalse, "Runtime state explicitly marks browserAuthority=false."),
+            ...evidenceFor(signals.explicitPersistenceDisabled, "Persistence is disabled by default."),
+            ...evidenceFor(signals.explicitSourceReconstructionEnabled, "Source reconstruction is explicitly enabled."),
+            ...evidenceFor(reachability.browserOnlyInTestOrLegacy, "Observed browser access is confined to test/legacy method surfaces.")
+          ],
+          falsifier: "Authoritative state reconstructs equivalently after browser storage is removed or unavailable."
+        },
+        {
+          hypothesisId: "browser-is-disposable-workspace-or-cache",
+          claim: "Browser persistence is optional workspace/cache state rather than continuity authority.",
+          score: score(disposable),
+          supportingEvidence: [
+            ...evidenceFor(signals.explicitBrowserAuthorityFalse, "Runtime state explicitly denies browser authority."),
+            ...evidenceFor(signals.explicitPersistenceDisabled, "Browser persistence is disabled by default."),
+            ...evidenceFor(signals.explicitAutomaticPersistenceDisabled, "Automatic browser writes are disabled."),
+            ...evidenceFor(signals.disposableBrowserLanguage, "Observed runtime state describes browser state as disposable/cache/workspace."),
+            ...evidenceFor(signals.explicitSourceReconstructionEnabled, "Reconstruction from source authority is explicitly enabled."),
+            ...evidenceFor(durablePresent, "Durable/repository evidence is also present.")
+          ],
+          contradictingEvidence: [
+            ...evidenceFor(signals.explicitBrowserAuthorityTrue, "Runtime state explicitly marks browser authority true."),
+            ...evidenceFor(signals.explicitPersistenceEnabled && signals.explicitAutomaticPersistenceEnabled, "Automatic browser persistence is enabled.")
+          ],
+          falsifier: "Removing browser state causes loss of authoritative continuity that cannot be reconstructed from non-browser sources."
+        },
+        {
+          hypothesisId: "browser-surface-is-test-legacy-or-compatibility-residue",
+          claim: "Browser persistence evidence exists but is not reachable from normal runtime behavior except test/legacy compatibility paths.",
+          score: score(residue),
+          supportingEvidence: [
+            ...evidenceFor(reachability.browserOnlyInTestOrLegacy, "All browser-accessing methods are test-like or legacy-like."),
+            ...evidenceFor(signals.legacyObservationLanguage, "Runtime state/source includes legacy observation language.")
+          ],
+          contradictingEvidence: [
+            ...evidenceFor(reachability.operationalBrowserWriteReachable, "A browser writer is reachable from ordinary operational methods."),
+            ...evidenceFor(reachability.startupBrowserReadReachable && !signals.legacyObservationLanguage, "A browser read is reachable from startup without clear legacy-only evidence.")
+          ],
+          falsifier: "A non-test, non-legacy normal-operation call path reaches the browser persistence surface and changes authoritative behavior."
+        },
+        {
+          hypothesisId: "mixed-continuity-role-remains-unresolved",
+          claim: "Browser and durable/repository surfaces coexist, but current structural evidence is insufficient to prove which owns continuity.",
+          score: score(mixed),
+          supportingEvidence: [
+            ...evidenceFor(browserPresent && durablePresent, "The same organ exposes browser and durable/repository evidence."),
+            ...evidenceFor(!signals.explicitBrowserAuthorityFalse && !signals.explicitBrowserAuthorityTrue && browserPresent, "No explicit browser authority declaration was observed."),
+            ...evidenceFor(reachability.startupBrowserReadReachable, "Browser hydration is reachable from startup/lifecycle code.")
+          ],
+          contradictingEvidence: [
+            ...evidenceFor(signals.explicitBrowserAuthorityFalse && signals.explicitPersistenceDisabled, "Runtime state explicitly denies browser authority and disables persistence."),
+            ...evidenceFor(reachability.browserOnlyInTestOrLegacy, "Browser access is confined to test/legacy surfaces.")
+          ],
+          falsifier: "A controlled browser-loss reconstruction test or explicit governed authority contract establishes one continuity owner."
+        }
+      ];
+
+      return hypotheses.sort((a, b) => b.score - a.score);
+    },
+
+    reconstructNodeContinuitySemantics(node = {}) {
+      const signals = node.signals || {};
+      const reachability = this.buildArchitecturalMethodReachability(node);
+      const hypotheses = this.continuitySemanticHypotheses(node, reachability);
+      const browserPresent = Boolean(signals.browserRead || signals.browserWrite || signals.sessionRead || signals.sessionWrite);
+      const durablePresent = Boolean(signals.durableEndpoint || signals.repositoryLanguage || signals.durableAuthorityLanguage);
+      let classification = "no-browser-continuity-surface-observed";
+      let epistemicStatus = "bounded-semantic-inference";
+      let predictedBrowserLossConsequence = "No browser continuity consequence inferred from current runtime source evidence.";
+
+      if (browserPresent) {
+        if (
+          reachability.browserOnlyInTestOrLegacy &&
+          signals.explicitBrowserAuthorityTrue !== true
+        ) {
+          classification = "test-or-legacy-browser-residue";
+          predictedBrowserLossConsequence = "Normal runtime continuity should remain unchanged if the observed browser surface is truly confined to test/legacy paths.";
+        } else if (
+          signals.explicitBrowserAuthorityTrue ||
+          (
+            signals.explicitPersistenceEnabled &&
+            signals.explicitAutomaticPersistenceEnabled &&
+            reachability.startupBrowserReadReachable
+          )
+        ) {
+          classification = "active-browser-continuity-risk";
+          predictedBrowserLossConsequence = "Browser loss is predicted to change restored or persisted state unless a separate authoritative reconstruction path is proven.";
+        } else if (
+          signals.explicitBrowserAuthorityFalse &&
+          signals.explicitPersistenceDisabled &&
+          signals.explicitAutomaticPersistenceDisabled &&
+          signals.explicitSourceReconstructionEnabled
+        ) {
+          classification = "browser-disposable-reconstructive";
+          predictedBrowserLossConsequence = "Authoritative continuity should reconstruct without browser state; only disposable workspace/history may be lost.";
+        } else if (
+          signals.explicitPersistenceDisabled &&
+          signals.explicitAutomaticPersistenceDisabled &&
+          signals.disposableBrowserLanguage
+        ) {
+          classification = "optional-disposable-browser-cache";
+          predictedBrowserLossConsequence = "Authoritative behavior should remain available; optional browser cache/history may be absent.";
+        } else if (browserPresent && durablePresent) {
+          classification = "mixed-continuity-unresolved";
+          epistemicStatus = "requires-discriminating-evidence";
+          predictedBrowserLossConsequence = "Unknown: browser and durable surfaces coexist, so controlled evidence is required before claiming browser disposability or authority.";
+        } else {
+          classification = "browser-persistence-role-unresolved";
+          epistemicStatus = "requires-discriminating-evidence";
+          predictedBrowserLossConsequence = "Unknown: a browser surface exists without enough semantic evidence to establish its role.";
+        }
+      } else if (durablePresent) {
+        classification = "durable-continuity-candidate-no-browser-surface";
+      }
+
+      const discriminatingEvidence = [];
+      if (browserPresent) {
+        discriminatingEvidence.push({
+          test: "browser-loss-reconstruction-equivalence",
+          question: "With browser storage absent in an isolated acceptance environment, does the organ reconstruct the same authoritative outcome from governed non-browser sources?",
+          informationGain: "high",
+          execution: "not-executed-by-semantic-reconstruction"
+        });
+        discriminatingEvidence.push({
+          test: "normal-operation-writer-reachability",
+          question: "Does a non-test, non-legacy normal operation actually reach the browser writer under default runtime configuration?",
+          informationGain: "high",
+          execution: "static-call-path-inference-only-until-instrumented-test"
+        });
+      }
+      if (browserPresent && durablePresent) {
+        discriminatingEvidence.push({
+          test: "continuity-owner-conflict",
+          question: "When browser and durable state disagree, which source controls reconstruction and downstream cognition?",
+          informationGain: "very-high",
+          execution: "requires-bounded-future-experiment"
+        });
+      }
+      if (!signals.explicitBrowserAuthorityFalse && !signals.explicitBrowserAuthorityTrue && browserPresent) {
+        discriminatingEvidence.push({
+          test: "authority-contract-evidence",
+          question: "Is there an explicit governed runtime contract identifying whether browser state may own continuity?",
+          informationGain: "medium",
+          execution: "evidence-review-only"
+        });
+      }
+
+      const strongest = hypotheses[0] || null;
+      return {
+        component: node.globalName,
+        label: node.label,
+        topologyClassification: node.continuityClassification,
+        classification,
+        epistemicStatus,
+        confidence: Number(strongest?.score || 0),
+        strongestHypothesis: strongest?.hypothesisId || null,
+        hypotheses,
+        reachability,
+        explicitStateEvidence: {
+          persistenceDisabled: signals.explicitPersistenceDisabled,
+          persistenceEnabled: signals.explicitPersistenceEnabled,
+          automaticPersistenceDisabled: signals.explicitAutomaticPersistenceDisabled,
+          automaticPersistenceEnabled: signals.explicitAutomaticPersistenceEnabled,
+          browserAuthorityFalse: signals.explicitBrowserAuthorityFalse,
+          browserAuthorityTrue: signals.explicitBrowserAuthorityTrue,
+          automaticBrowserHydrationFalse: signals.explicitAutomaticBrowserHydrationFalse,
+          automaticBrowserHydrationTrue: signals.explicitAutomaticBrowserHydrationTrue,
+          sourceReconstructionEnabled: signals.explicitSourceReconstructionEnabled,
+          disposableBrowserLanguage: signals.disposableBrowserLanguage,
+          durableAuthorityLanguage: signals.durableAuthorityLanguage
+        },
+        observedSurfaces: {
+          browserPresent,
+          durablePresent,
+          browserRead: signals.browserRead,
+          browserWrite: signals.browserWrite,
+          sessionRead: signals.sessionRead,
+          sessionWrite: signals.sessionWrite,
+          indexedDb: signals.indexedDb,
+          durableEndpoint: signals.durableEndpoint,
+          repositoryLanguage: signals.repositoryLanguage
+        },
+        predictedBrowserLossConsequence,
+        discriminatingEvidence,
+        authorityVerdict: "no-authority-granted-by-inference"
+      };
+    },
+
+    reconstructSemanticContinuityAuthority(options = {}) {
+      if (this.configuration.semanticContinuityReconstructionEnabled !== true) {
+        return {
+          schema: "meos.maddy.semantic-continuity-authority-reconstruction.v1",
+          commission: "006.038B",
+          enabled: false,
+          reason: "semantic-continuity-reconstruction-disabled"
+        };
+      }
+
+      const topology = options.topology || this.getArchitecturalTopology({
+        refresh: options.refreshTopology === true,
+        reason: options.reason || "semantic-continuity-reconstruction"
+      });
+      const evaluations = (topology?.nodes || [])
+        .filter(node =>
+          node?.signals?.browserRead ||
+          node?.signals?.browserWrite ||
+          node?.signals?.sessionRead ||
+          node?.signals?.sessionWrite ||
+          node?.signals?.indexedDb ||
+          node?.signals?.durableEndpoint ||
+          node?.signals?.repositoryLanguage ||
+          node?.signals?.durableAuthorityLanguage
+        )
+        .slice(0, this.configuration.maximumSemanticContinuityEvaluations)
+        .map(node => this.reconstructNodeContinuitySemantics(node))
+        .sort((a, b) => a.component.localeCompare(b.component));
+
+      const summary = {
+        evaluated: evaluations.length,
+        activeBrowserContinuityRisks: evaluations.filter(item => item.classification === "active-browser-continuity-risk").length,
+        reconstructiveBrowserDisposable: evaluations.filter(item => item.classification === "browser-disposable-reconstructive").length,
+        optionalDisposableBrowserCaches: evaluations.filter(item => item.classification === "optional-disposable-browser-cache").length,
+        testOrLegacyResidue: evaluations.filter(item => item.classification === "test-or-legacy-browser-residue").length,
+        mixedContinuityUnresolved: evaluations.filter(item => item.classification === "mixed-continuity-unresolved").length,
+        browserPersistenceRoleUnresolved: evaluations.filter(item => item.classification === "browser-persistence-role-unresolved").length,
+        durableCandidatesWithoutBrowser: evaluations.filter(item => item.classification === "durable-continuity-candidate-no-browser-surface").length,
+        requiresDiscriminatingEvidence: evaluations.filter(item => item.epistemicStatus === "requires-discriminating-evidence").length
+      };
+      const stableBasis = {
+        schema: "meos.maddy.semantic-continuity-authority-reconstruction.v1",
+        topologyFingerprint: topology?.fingerprint || null,
+        evaluations: evaluations.map(item => ({
+          component: item.component,
+          classification: item.classification,
+          epistemicStatus: item.epistemicStatus,
+          confidence: item.confidence,
+          strongestHypothesis: item.strongestHypothesis,
+          explicitStateEvidence: item.explicitStateEvidence,
+          observedSurfaces: item.observedSurfaces,
+          reachability: item.reachability,
+          hypotheses: item.hypotheses,
+          predictedBrowserLossConsequence: item.predictedBrowserLossConsequence,
+          discriminatingEvidence: item.discriminatingEvidence
+        })),
+        summary
+      };
+      const fingerprint = this.architecturalTopologyFingerprint(stableBasis).replace(/^topology-/, "continuity-");
+      const prior = this.semanticContinuityReconstruction;
+      const result = {
+        schema: "meos.maddy.semantic-continuity-authority-reconstruction.v1",
+        version: "1.0.0",
+        commission: "006.038B",
+        buildId: this.buildId,
+        generatedAt: new Date().toISOString(),
+        reason: options.reason || "semantic-continuity-authority-reconstruction",
+        mode: "no-picture-semantic-causal-reconstruction",
+        topologyFingerprint: topology?.fingerprint || null,
+        fingerprint,
+        changedFromPrior: Boolean(prior?.fingerprint && prior.fingerprint !== fingerprint),
+        priorFingerprint: prior?.fingerprint || null,
+        summary,
+        evaluations,
+        epistemicBoundary: {
+          structuralEvidenceIsNotSemanticTruth: true,
+          browserApiPresenceIsNotAuthorityProof: true,
+          repositoryLanguageIsNotDurabilityProof: true,
+          explicitRuntimeStateIsEvidenceNotInfallibleTruth: true,
+          staticReachabilityIsNotExecutionProof: true,
+          competingHypothesesMustRemainVisible: true,
+          unresolvedSemanticsRequireDiscriminatingEvidence: true
+        },
+        authority: {
+          discoveredMethodsExecuted: false,
+          browserStateMutated: false,
+          durableStateMutated: false,
+          stateWritesAuthorized: false,
+          externalActionsAuthorized: false,
+          providerCallsAuthorized: false,
+          selfModificationAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+
+      this.semanticContinuityReconstructionCount = Number(this.semanticContinuityReconstructionCount || 0) + 1;
+      if (!prior || prior.fingerprint !== fingerprint) {
+        this.semanticContinuityHistory.unshift({
+          fingerprint,
+          priorFingerprint: prior?.fingerprint || null,
+          topologyFingerprint: result.topologyFingerprint,
+          generatedAt: result.generatedAt,
+          reason: result.reason,
+          summary: this.clone(summary)
+        });
+        this.semanticContinuityHistory = this.semanticContinuityHistory.slice(0, this.configuration.maximumSemanticContinuityHistory);
+      }
+      this.semanticContinuityReconstruction = result;
+      return this.clone(result);
+    },
+
+    getSemanticContinuityAuthority(options = {}) {
+      const topology = options.topology || this.getArchitecturalTopology({
+        refresh: options.refreshTopology === true,
+        reason: options.reason || "semantic-continuity-read"
+      });
+      if (
+        options.refresh === true ||
+        !this.semanticContinuityReconstruction ||
+        this.semanticContinuityReconstruction.topologyFingerprint !== topology?.fingerprint
+      ) {
+        return this.reconstructSemanticContinuityAuthority({
+          topology,
+          reason: options.reason || "semantic-continuity-read",
+          refreshTopology: false
+        });
+      }
+      return this.clone(this.semanticContinuityReconstruction);
     },
 
     getRuntimeCapabilityGaps(manifest = this.getSystemManifest()) {
@@ -10211,6 +10823,10 @@
             Boolean(architecturalSelfAwareness?.topologyFingerprint),
           reconstructsArchitectureBeyondDeclaredPicture:
             architecturalSelfAwareness?.discoveryMode === "no-picture-runtime-reconstruction",
+          interpretsOwnContinuitySemantics:
+            Boolean(architecturalSelfAwareness?.semanticContinuityFingerprint),
+          distinguishesPersistenceSurfaceFromAuthority:
+            architecturalSelfAwareness?.semanticPrinciple?.includes("persistence-surface-is-a-clue") === true,
           previousProjectionFingerprint:
             prior?.fingerprint || null,
           previousRevision:
@@ -27687,6 +28303,203 @@
           authority: this.clone(liveTopology?.authority || null)
         },
         limitation: "This proves bounded runtime architectural reconstruction from observed objects, method surfaces, persistence signals, and inferred references without executing discovered methods or granting authority. It does not prove complete source-code understanding, semantic correctness of every inferred dependency, static-file coverage for code not loaded in the runtime, or autonomous self-modification. Those require later evidence and governed commissions."
+      };
+    },
+
+    runSemanticContinuityAuthorityReconstructionAcceptanceTest() {
+      const disposableName = "__ContinuityFixtureReconstructive";
+      const authorityName = "__ContinuityFixtureBrowserAuthority";
+      const residueName = "__ContinuityFixtureTestResidue";
+      const mixedName = "__ContinuityFixtureAmbiguousMixed";
+      const counterName = "__ContinuityFixtureExecutionCount";
+      const originals = {
+        disposable: global[disposableName],
+        authority: global[authorityName],
+        residue: global[residueName],
+        mixed: global[mixedName],
+        counter: global[counterName],
+        topology: this.architecturalTopology,
+        topologyHistory: this.clone(this.architecturalTopologyHistory || []),
+        topologyCount: this.architecturalTopologyDiscoveryCount,
+        semantic: this.semanticContinuityReconstruction,
+        semanticHistory: this.clone(this.semanticContinuityHistory || []),
+        semanticCount: this.semanticContinuityReconstructionCount
+      };
+
+      let first = null;
+      let second = null;
+      let changed = null;
+      let checks = [];
+      let liveSemanticContinuity = null;
+
+      try {
+        global[counterName] = 0;
+        global[disposableName] = {
+          name: "Fixture Reconstructive Continuity Organ",
+          version: "1.0.0",
+          buildId: "FIXTURE-RECONSTRUCTIVE",
+          status: "online",
+          configuration: {
+            persistenceEnabled: false,
+            automaticPersistence: false
+          },
+          persistenceState: {
+            authority: "repository-backed-source-authority",
+            browserRole: "optional-disposable-workspace",
+            browserAuthority: false,
+            automaticBrowserHydration: false,
+            sourceReconstructionEnabled: true,
+            legacySnapshotObserved: true
+          },
+          initialize() { this.observeLegacyBrowserSnapshot(); return true; },
+          observeLegacyBrowserSnapshot() { global[counterName] += 1; return global.localStorage?.getItem("fixture-reconstructive") || null; },
+          persistIfEnabled() { if (this.configuration.persistenceEnabled && this.configuration.automaticPersistence) return this.persist(); return { persisted: false }; },
+          persist() { global[counterName] += 1; global.localStorage?.setItem("fixture-reconstructive", "cache"); return true; },
+          reconstructFromAuthority() { global[counterName] += 1; return global.fetch?.("/api/fixture-reconstructive-authority"); },
+          runBrowserIndependenceAcceptanceTest() { global[counterName] += 1; global.localStorage?.setItem("fixture-test", "1"); return true; },
+          getStatus() { return { status: this.status, version: this.version }; }
+        };
+
+        global[authorityName] = {
+          name: "Fixture Browser Authority Organ",
+          version: "1.0.0",
+          buildId: "FIXTURE-BROWSER-AUTHORITY",
+          status: "online",
+          configuration: {
+            persistenceEnabled: true,
+            automaticPersistence: true
+          },
+          persistenceState: {
+            browserAuthority: true,
+            automaticBrowserHydration: true
+          },
+          initialize() { this.restore(); return true; },
+          mutate() { return this.persist(); },
+          restore() { global[counterName] += 1; return global.localStorage?.getItem("fixture-authority"); },
+          persist() { global[counterName] += 1; global.localStorage?.setItem("fixture-authority", "state"); return true; },
+          getStatus() { return { status: this.status, version: this.version }; }
+        };
+
+        global[residueName] = {
+          name: "Fixture Test Residue Organ",
+          version: "1.0.0",
+          buildId: "FIXTURE-TEST-RESIDUE",
+          status: "online",
+          initialize() { return true; },
+          calculate() { return 42; },
+          runPersistenceAcceptanceTest() { global[counterName] += 1; global.localStorage?.setItem("fixture-residue", "test"); return global.localStorage?.getItem("fixture-residue"); },
+          getStatus() { return { status: this.status, version: this.version }; }
+        };
+
+        global[mixedName] = {
+          name: "Fixture Ambiguous Mixed Continuity Organ",
+          version: "1.0.0",
+          buildId: "FIXTURE-MIXED",
+          status: "online",
+          initialize() { this.restore(); return true; },
+          operate() { return this.persist(); },
+          restore() { global[counterName] += 1; return global.localStorage?.getItem("fixture-mixed"); },
+          persist() { global[counterName] += 1; global.localStorage?.setItem("fixture-mixed", "state"); return true; },
+          checkpointDurable() { global[counterName] += 1; return global.fetch?.("/api/fixture-mixed-state", { method: "POST" }); },
+          getStatus() { return { status: this.status, version: this.version }; }
+        };
+
+        this.architecturalTopology = null;
+        this.semanticContinuityReconstruction = null;
+        const topology = this.discoverArchitecturalTopology({ reason: "006.038B-acceptance-first" });
+        first = this.reconstructSemanticContinuityAuthority({ topology, reason: "006.038B-acceptance-first" });
+        second = this.reconstructSemanticContinuityAuthority({ topology, reason: "006.038B-acceptance-repeat" });
+
+        const byComponent = new Map((first?.evaluations || []).map(item => [item.component, item]));
+        const disposable = byComponent.get(disposableName);
+        const authority = byComponent.get(authorityName);
+        const residue = byComponent.get(residueName);
+        const mixed = byComponent.get(mixedName);
+
+        const searchSemantic = byComponent.get("ExecutiveSearch") || null;
+        const recallSemantic = byComponent.get("ExecutiveRecall") || null;
+        const reasoningSemantic = byComponent.get("InstitutionalReasoning") || null;
+
+        global[mixedName].persistenceState = {
+          browserAuthority: false,
+          automaticBrowserHydration: false,
+          sourceReconstructionEnabled: true,
+          browserRole: "optional-disposable-workspace"
+        };
+        global[mixedName].configuration = {
+          persistenceEnabled: false,
+          automaticPersistence: false
+        };
+        const changedTopology = this.discoverArchitecturalTopology({ reason: "006.038B-acceptance-structural-change" });
+        changed = this.reconstructSemanticContinuityAuthority({ topology: changedTopology, reason: "006.038B-acceptance-structural-change" });
+        const changedMixed = (changed?.evaluations || []).find(item => item.component === mixedName);
+
+        const selfProjection = this.buildSelfModelProjection({
+          reason: "006.038B-semantic-self-awareness-acceptance"
+        });
+
+        checks = [
+          { name: "Semantic reconstruction classifies reconstructive browser workspace without a component-name whitelist", passed: disposable?.classification === "browser-disposable-reconstructive" },
+          { name: "Explicit browser authority plus automatic startup hydration is identified as an active continuity risk", passed: authority?.classification === "active-browser-continuity-risk" },
+          { name: "Browser APIs confined to an acceptance/test surface are separated from normal continuity", passed: residue?.classification === "test-or-legacy-browser-residue" && residue?.reachability?.browserOnlyInTestOrLegacy === true },
+          { name: "Browser plus durable evidence without a governing semantic boundary remains unresolved instead of being guessed", passed: mixed?.classification === "mixed-continuity-unresolved" && mixed?.epistemicStatus === "requires-discriminating-evidence" },
+          { name: "Maddy preserves competing continuity hypotheses rather than collapsing a keyword into one verdict", passed: Array.isArray(mixed?.hypotheses) && mixed.hypotheses.length >= 4 && mixed.hypotheses.some(item => item.hypothesisId === "browser-is-continuity-authority") && mixed.hypotheses.some(item => item.hypothesisId === "browser-is-disposable-workspace-or-cache") },
+          { name: "Unresolved mixed continuity produces explicit discriminating evidence questions", passed: mixed?.discriminatingEvidence?.some(item => item.test === "continuity-owner-conflict") === true },
+          { name: "Method-level call reconstruction distinguishes startup hydration from test-only storage references", passed: authority?.reachability?.startupBrowserReadReachable === true && residue?.reachability?.startupBrowserReadReachable === false },
+          { name: "Semantic inspection never executes discovered fixture methods", passed: global[counterName] === 0 },
+          { name: "Unchanged architectural evidence converges on the same semantic continuity fingerprint", passed: Boolean(first?.fingerprint) && first.fingerprint === second?.fingerprint },
+          { name: "Changing the hidden continuity contract changes semantic reconstruction", passed: Boolean(changed?.fingerprint) && changed.fingerprint !== first?.fingerprint && changedMixed?.classification === "browser-disposable-reconstructive" },
+          { name: "Semantic continuity understanding is projected into Maddy's persistent self-model", passed: selfProjection?.architecture?.semanticContinuityFingerprint === changed?.fingerprint && selfProjection?.recursiveAwareness?.interpretsOwnContinuitySemantics === true && selfProjection?.recursiveAwareness?.distinguishesPersistenceSurfaceFromAuthority === true },
+          { name: "Executive Search is understood as optional disposable browser cache when the real organ is present", passed: !searchSemantic || searchSemantic.classification === "optional-disposable-browser-cache" },
+          { name: "Executive Recall is understood as reconstructive browser-disposable continuity when the real organ is present", passed: !recallSemantic || recallSemantic.classification === "browser-disposable-reconstructive" },
+          { name: "Institutional Reasoning is understood as reconstructive browser-disposable continuity when the real organ is present", passed: !reasoningSemantic || reasoningSemantic.classification === "browser-disposable-reconstructive" },
+          { name: "Semantic reconstruction grants no write, provider, spend, external-action, or self-modification authority", passed: first?.authority?.stateWritesAuthorized === false && first?.authority?.providerCallsAuthorized === false && first?.authority?.externalActionsAuthorized === false && first?.authority?.selfModificationAuthorized === false && Number(first?.authority?.automaticSpendUsd || 0) === 0 }
+        ];
+      } finally {
+        if (originals.disposable === undefined) delete global[disposableName]; else global[disposableName] = originals.disposable;
+        if (originals.authority === undefined) delete global[authorityName]; else global[authorityName] = originals.authority;
+        if (originals.residue === undefined) delete global[residueName]; else global[residueName] = originals.residue;
+        if (originals.mixed === undefined) delete global[mixedName]; else global[mixedName] = originals.mixed;
+        if (originals.counter === undefined) delete global[counterName]; else global[counterName] = originals.counter;
+        this.architecturalTopology = originals.topology;
+        this.architecturalTopologyHistory = originals.topologyHistory;
+        this.architecturalTopologyDiscoveryCount = originals.topologyCount;
+        this.semanticContinuityReconstruction = originals.semantic;
+        this.semanticContinuityHistory = originals.semanticHistory;
+        this.semanticContinuityReconstructionCount = originals.semanticCount;
+        const liveTopology = this.discoverArchitecturalTopology({ reason: "006.038B-post-acceptance-live-runtime" });
+        liveSemanticContinuity = this.reconstructSemanticContinuityAuthority({ topology: liveTopology, reason: "006.038B-post-acceptance-live-runtime" });
+      }
+
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      console.info(`[MEOS ${this.version}] Commission 006.038B Semantic Continuity Authority Reconstruction: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+      return {
+        success: passed === checks.length,
+        commission: "006.038B",
+        schema: "meos.maddy.semantic-continuity-authority-reconstruction.acceptance.v1",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        total: checks.length,
+        checks,
+        liveSemanticContinuity: {
+          fingerprint: liveSemanticContinuity?.fingerprint || null,
+          topologyFingerprint: liveSemanticContinuity?.topologyFingerprint || null,
+          summary: this.clone(liveSemanticContinuity?.summary || null),
+          priorityFindings: this.clone(
+            (liveSemanticContinuity?.evaluations || [])
+              .filter(item => ["active-browser-continuity-risk", "mixed-continuity-unresolved", "browser-persistence-role-unresolved"].includes(item.classification))
+              .slice(0, 24)
+          ),
+          resolvedExamples: this.clone(
+            (liveSemanticContinuity?.evaluations || [])
+              .filter(item => ["browser-disposable-reconstructive", "optional-disposable-browser-cache", "test-or-legacy-browser-residue"].includes(item.classification))
+              .slice(0, 24)
+          ),
+          authority: this.clone(liveSemanticContinuity?.authority || null)
+        },
+        limitation: "This proves bounded semantic continuity reconstruction from runtime state evidence, method roles, static intra-organ call paths, competing hypotheses, and discriminating evidence plans. It does not prove full program semantics, actual runtime branch execution, source files that are not loaded, or autonomous migration. Unresolved classifications remain hypotheses until bounded experiments or stronger authority evidence discriminate them."
       };
     },
 
