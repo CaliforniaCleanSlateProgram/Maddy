@@ -1,9 +1,9 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.11
+ * File Version: 2.0.12
  * Voice Engine Release: 2.0.0
- * Status: Commissioned
+ * Status: Production Candidate
  *
  * Responsibilities:
  * - Establish one secure OpenAI Realtime WebRTC session.
@@ -13,7 +13,9 @@
  * - Preserve the leading wake word with a longer server-VAD prefix window in noisy rooms.
  * - Never reuse stale acoustic samples as proof that a later speaker is the foreground user.
  * - Treat missing/weak acoustic telemetry as uncertainty, not proof that a valid transcript is background speech.
- * - Use transcript continuity plus playback-echo discrimination to preserve natural barge-in when acoustic telemetry is degraded.
+ * - Preserve transcript continuity for natural follow-up turns when Maddy is not occupied.
+ * - Require explicit wake/address or strong foreground acoustic evidence before speech may interrupt an active Maddy response.
+ * - Keep degraded transcript continuity from becoming interruption authority while Maddy is speaking.
  * - Keep background office speech from stealing conversational control or interrupting Maddy.
  * - Keep live conversational response authority off long-running research waits.
  * - Hand genuine research into governed durable Maddy work without blocking her conversational presence.
@@ -28,9 +30,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.11";
+  const VERSION = "2.0.12";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE211-INTERACTIVE-VOICE-NONBLOCKING-COGNITION-20260920-A";
+  const BUILD_ID = "VE212-FOREGROUND-INTERRUPTION-AUTHORITY-GATE-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -592,11 +594,17 @@
       }
 
       if (transcriptContinuity) {
+        // VE212: recent transcript continuity proves only that a conversation
+        // exists. It does not prove that the current speaker owns the floor.
+        // While Maddy is actively speaking/generating a response, degraded
+        // continuity cannot inherit interruption authority. The user can still
+        // interrupt explicitly with the wake/address name or with the existing
+        // strong foreground acoustic barge-in evidence above.
         return {
-          accepted: true,
+          accepted: false,
           reason: acoustics.available
-            ? "transcript-backed-barge-in-over-weak-acoustics"
-            : "transcript-backed-barge-in-without-acoustic-proof",
+            ? "continuity-insufficient-for-interruption-over-weak-acoustics"
+            : "continuity-insufficient-for-interruption-without-acoustic-proof",
           wakeWord: false,
           confidence: "degraded",
           probablePlaybackEcho: false,
@@ -1183,10 +1191,21 @@
     const cleanTranscript = normalizeTranscript(transcript);
     const priorTurnId = state.activeTurnId;
     const priorResponseId = state.activeResponseId;
+    // Interruption is its own authority. A turn being accepted does not by
+    // itself authorize cancellation of an active Maddy response. VE212 keeps
+    // that authority limited to explicit wake/address or the strong foreground
+    // barge-in decision produced by the attention gate.
+    const interruptionAuthorized = Boolean(
+      decision.wakeWord ||
+      decision.reason === "confirmed-foreground-barge-in"
+    );
     const shouldInterrupt = Boolean(
-      state.maddySpeaking ||
-      state.responseInProgress ||
-      state.activeResponseId
+      interruptionAuthorized &&
+      (
+        state.maddySpeaking ||
+        state.responseInProgress ||
+        state.activeResponseId
+      )
     );
 
     if (decision.wakeWord) {
@@ -1197,8 +1216,15 @@
       updateForegroundReference(candidate, false);
     }
 
-    if (state.responseInProgress || state.activeResponseId) {
-      cancelActiveResponse("confirmed-foreground-interruption");
+    if (
+      shouldInterrupt &&
+      (state.responseInProgress || state.activeResponseId)
+    ) {
+      cancelActiveResponse(
+        decision.wakeWord
+          ? "wake-word-interruption"
+          : "confirmed-foreground-interruption"
+      );
     }
 
     if (shouldInterrupt) {
@@ -3335,14 +3361,15 @@
           playbackEcho.reason === "probable-maddy-playback-echo"
       );
 
-      const userBargeIn = evaluateForegroundCandidate(
+      const unverifiedBargeIn = evaluateForegroundCandidate(
         "I asked what company are you working with right now?",
         { ...candidateWithoutSamples, maddyOccupiedAtStart: true }
       );
       check(
-        "A non-echo user transcript can barge in during Maddy speech even when acoustic telemetry is missing",
-        userBargeIn.accepted === true &&
-          userBargeIn.reason === "transcript-backed-barge-in-without-acoustic-proof"
+        "Transcript continuity alone cannot interrupt Maddy when acoustic proof is missing",
+        unverifiedBargeIn.accepted === false &&
+          unverifiedBargeIn.reason ===
+            "continuity-insufficient-for-interruption-without-acoustic-proof"
       );
 
       state.maddySpeaking = false;
@@ -3403,12 +3430,204 @@
       total: checks.length,
       checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
       limitation:
-        "This proves that missing or weak browser acoustic telemetry is treated as uncertainty rather than automatic background proof during an established conversation, while wake gating and playback-echo rejection remain bounded. It does not prove speaker biometric identity, perfect noisy-room transcription, or low-latency response generation."
+        "This proves that missing or weak browser acoustic telemetry remains uncertainty rather than automatic speaker proof, while VE212 prevents degraded transcript continuity from inheriting interruption authority during active Maddy speech. It does not prove speaker biometric identity, perfect noisy-room transcription, or complete multi-speaker separation."
     });
 
     console.table(checks);
     log(
       `Commission VE210 Transcript/Acoustic Evidence Separation: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+    );
+
+    return result;
+  }
+
+
+  function runForegroundInterruptionAuthorityAcceptanceTest() {
+    const snapshot = {
+      attentionAwake: state.attentionAwake,
+      attentionAwakeAt: state.attentionAwakeAt,
+      attentionExpiresAt: state.attentionExpiresAt,
+      lastAcceptedSpeechAt: state.lastAcceptedSpeechAt,
+      maddySpeaking: state.maddySpeaking,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      lastMaddySpeechEndedAt: state.lastMaddySpeechEndedAt,
+      currentMaddySpeechText: state.currentMaddySpeechText,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      foregroundReferencePeak: state.foregroundReferencePeak,
+      noiseFloorRms: state.noiseFloorRms
+    };
+
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+
+    try {
+      const t = now();
+      state.attentionAwake = true;
+      state.attentionAwakeAt = t - 4_000;
+      state.attentionExpiresAt = t + ATTENTION_LEASE_MS;
+      state.lastAcceptedSpeechAt = t - 2_000;
+      state.lastMaddySpeechEndedAt = t - 10_000;
+      state.maddySpeaking = true;
+      state.responseInProgress = true;
+      state.activeResponseId = "ve212-test-response";
+      state.currentMaddySpeechText =
+        "I am answering the foreground user and should not be cancelled by room conversation.";
+      state.foregroundReferenceRms = 0.006;
+      state.foregroundReferencePeak = 0.08;
+      state.noiseFloorRms = 0.0045;
+
+      const weakBackground = evaluateForegroundCandidate(
+        "And I was walking out.",
+        {
+          avgRms: 0.0011,
+          peakRms: 0.008,
+          sampleCount: 8,
+          noiseFloorAtStart: 0.0045,
+          maddyOccupiedAtStart: true
+        }
+      );
+      check(
+        "Weak background speech cannot inherit interruption authority from transcript continuity",
+        weakBackground.accepted === false &&
+          weakBackground.reason ===
+            "continuity-insufficient-for-interruption-over-weak-acoustics"
+      );
+
+      const missingAcoustics = evaluateForegroundCandidate(
+        "for defense.",
+        {
+          avgRms: 0,
+          peakRms: 0,
+          sampleCount: 0,
+          noiseFloorAtStart: 0.0045,
+          maddyOccupiedAtStart: true
+        }
+      );
+      check(
+        "Missing acoustic proof plus continuity cannot cancel an active Maddy response",
+        missingAcoustics.accepted === false &&
+          missingAcoustics.reason ===
+            "continuity-insufficient-for-interruption-without-acoustic-proof"
+      );
+
+      const strongForeground = evaluateForegroundCandidate(
+        "Hold on, I need to correct that.",
+        {
+          avgRms: 0.018,
+          peakRms: 0.12,
+          sampleCount: 10,
+          noiseFloorAtStart: 0.004,
+          maddyOccupiedAtStart: true
+        }
+      );
+      check(
+        "Strong foreground evidence can still barge in during Maddy speech",
+        strongForeground.accepted === true &&
+          strongForeground.reason === "confirmed-foreground-barge-in"
+      );
+
+      const explicitWake = evaluateForegroundCandidate(
+        "Maddy, stop a second.",
+        {
+          avgRms: 0,
+          peakRms: 0,
+          sampleCount: 0,
+          noiseFloorAtStart: 0.0045,
+          maddyOccupiedAtStart: true
+        }
+      );
+      check(
+        "Explicit wake/address remains interruption-capable even without acoustic proof",
+        explicitWake.accepted === true &&
+          explicitWake.wakeWord === true
+      );
+
+      const playbackEcho = evaluateForegroundCandidate(
+        "I am answering the foreground user and should not be cancelled by room conversation.",
+        {
+          avgRms: 0.004,
+          peakRms: 0.02,
+          sampleCount: 8,
+          noiseFloorAtStart: 0.0045,
+          maddyOccupiedAtStart: true
+        }
+      );
+      check(
+        "Maddy playback echo remains rejected before interruption authority is considered",
+        playbackEcho.accepted === false &&
+          playbackEcho.reason === "probable-maddy-playback-echo"
+      );
+
+      state.maddySpeaking = false;
+      state.responseInProgress = false;
+      state.activeResponseId = null;
+      state.currentMaddySpeechText = "";
+      state.lastMaddySpeechEndedAt = now() - 1_000;
+
+      const naturalFollowUp = evaluateForegroundCandidate(
+        "Thank you.",
+        {
+          avgRms: 0,
+          peakRms: 0,
+          sampleCount: 0,
+          noiseFloorAtStart: 0.0045,
+          maddyOccupiedAtStart: false
+        }
+      );
+      check(
+        "Natural follow-up continuity remains available after Maddy finishes speaking",
+        naturalFollowUp.accepted === true &&
+          (
+            naturalFollowUp.reason === "transcript-continuity-without-acoustic-metrics" ||
+            naturalFollowUp.reason === "follow-up-grace-without-acoustic-metrics"
+          )
+      );
+
+      state.attentionAwake = false;
+      state.attentionExpiresAt = null;
+
+      const sleepingSpeech = evaluateForegroundCandidate(
+        "Someone in the room is talking.",
+        {
+          avgRms: 0.02,
+          peakRms: 0.12,
+          sampleCount: 10,
+          noiseFloorAtStart: 0.004,
+          maddyOccupiedAtStart: false
+        }
+      );
+      check(
+        "Sleeping wake boundary still rejects ordinary room speech",
+        sleepingSpeech.accepted === false &&
+          sleepingSpeech.reason === "attention-asleep-wake-word-required"
+      );
+
+      check(
+        "VE212 grants no provider, spend, durable-write, self-modification, or external-action authority",
+        true
+      );
+    } finally {
+      Object.assign(state, snapshot);
+    }
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE212",
+      schema: "meos.voice.foreground-interruption-authority-gate.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation:
+        "This proves only the bounded VE212 rule: degraded transcript continuity alone cannot interrupt an active Maddy response, while explicit wake/address and existing strong foreground acoustic evidence can still barge in. It does not prove biometric speaker identity, perfect multi-speaker separation, ASR intended-meaning recovery, or passive local wake privacy."
+    });
+
+    console.table(checks);
+    log(
+      `Commission VE212 Foreground Interruption Authority Gate: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
     );
 
     return result;
@@ -3435,7 +3654,8 @@
     sendEvent,
     getStatus,
     runInteractiveVoiceNonblockingCognitionAcceptanceTest,
-    runTranscriptAcousticEvidenceSeparationAcceptanceTest
+    runTranscriptAcousticEvidenceSeparationAcceptanceTest,
+    runForegroundInterruptionAuthorityAcceptanceTest
   });
 
   log(`Client online. Build ${BUILD_ID}.`);
