@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32427810/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32427206/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32426937/MEOS_BUILD_STATE.md)
@@ -8002,3 +8003,176 @@ This recovery order is evidence-driven and intentionally malleable. Maddy's own 
 
 **Fast recovery:** `Resume 006.038B-SEMANTIC-CONTINUITY-AUTHORITY-RECONSTRUCTION-PROVEN — Executive Brain 1.30.0 / EB1300 is production-proven 15/15; latest separately proven server baseline remains 2.10.115 because the semantic proof did not report a newer server identity; durable authority hydration remains READY from meos-institutional-repository; live semantic fingerprint continuity-1514f62e evaluated 26 continuity surfaces and reported 11 active-browser-continuity-risk candidates, 8 requiring discriminating evidence, 6 mixed-continuity unresolved, 2 browser-persistence role unresolved, 2 reconstructive browser-disposable, 1 optional disposable browser cache, and 2 durable candidates without browser; Executive Search / Recall / Institutional Reasoning were semantically reconciled with their earlier bounded browser-independence proofs; unresolved cases remain hypotheses, not verdicts; next work is bounded discriminating experiment design that tests the highest-information continuity question before hardening only the next materially proven authority-bearing dependency one fix → one commit → one test.`
 
+# ADDITIVE BUILD STATE CHECKPOINT — 006.038C CONTINUITY DISCRIMINATING EXPERIMENT ENGINE — PRODUCTION-PROVEN
+
+**Production proof date:** 2026-09-19 / 2026-09-20 deployment window  
+**Status:** PRODUCTION-PROVEN  
+**Executive Brain:** `1.31.0`  
+**Build:** `EB1310-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-20260920-A`  
+**Commission:** `006.038C`  
+**Acceptance schema:** `meos.maddy.continuity-discriminating-experiment.acceptance.v1`  
+**Acceptance command:** `ExecutiveBrain.runContinuityDiscriminatingExperimentAcceptanceTest()`  
+**Production result:** **PASS `16/16`**
+
+## Commission truth
+
+006.038C is production-proven as a **bounded continuity discriminating-experiment planning and isolated-sandbox reasoning layer** inside the existing Executive Brain.
+
+It advances the prior sequence without turning any one layer into the destination:
+
+- 006.038A reconstructs runtime architectural topology without requiring a finished static picture;
+- 006.038B reconstructs bounded continuity semantics, competing explanations, predicted browser-loss consequences, and discriminating-evidence needs;
+- 006.038C can now turn an unresolved continuity question into **multiple candidate experiments**, pre-register what competing hypotheses predict, estimate expected information gain, score information value against risk / resource cost / reversibility / production exposure, preserve alternatives, and update belief from an observed result.
+
+This is a scientific self-investigation capability. It is **not** proof that Maddy is now an answer-finding, self-repairing, self-modifying, or autonomous capability-generation system. It is a foundation layer that future work may use.
+
+## Live production acceptance evidence
+
+Production acceptance passed all `16/16` commissioned checks.
+
+The deployed Brain demonstrated that it can:
+
+1. start experiment planning from a hidden continuity puzzle rather than a component-name whitelist;
+2. pre-register competing-hypothesis predictions before seeing an experiment outcome;
+3. score candidate experiments with model-based expected information gain;
+4. balance information gain against risk, resource cost, reversibility, and production-state mutation;
+5. preserve alternative experiments rather than erasing non-selected routes;
+6. refuse an adapter that can see production state before execution;
+7. refuse an unlabeled executor even when that executor claims isolation;
+8. execute exactly one bounded experiment in a verified isolated sandbox fixture;
+9. update belief from observed evidence instead of echoing the prior strongest hypothesis;
+10. strengthen the browser-authority hypothesis when authority-like experimental evidence supports it;
+11. strengthen a disposable / residue explanation when contrary experimental evidence supports that instead;
+12. leave inconclusive evidence unresolved rather than manufacturing a repair verdict;
+13. plan and sandbox-test without executing the discovered production-like fixture organ;
+14. converge on the same experiment-portfolio fingerprint when semantic evidence is unchanged;
+15. project continuity experiment planning into Maddy's persistent self-model;
+16. grant no repair, migration, provider, spend, external-action, state-write, or self-modification authority from experiment planning or interpretation.
+
+## Live experiment portfolio observed in production
+
+The production result reported:
+
+- experiment portfolio fingerprint: `experiment-d0dcaaa1`
+- underlying semantic fingerprint: `continuity-95eb119f`
+- semantic evaluations: `26`
+- unresolved or risk targets: `19`
+- unique experiment targets: `16`
+- planned experiments: `16`
+- read-only evidence reviews: `16`
+- isolated experiments in the live portfolio: `0`
+- highest expected information gain: `0.376674`
+- highest utility: `0.495924`
+
+The live top-experiment surface included these representative targets:
+
+- `ExecutiveMonitoring`
+- `ExecutiveRouter`
+- `ExecutiveBuildPortfolio`
+- `MEOSWebsiteIntelligence`
+- `DocumentClassifier`
+- `ExecutiveAutomation`
+- `ExecutiveLearning`
+- `ExecutivePlanning`
+- `KnowledgeEngine`
+- `KnowledgeMemory`
+- `MEOSMissionEngine`
+- `MEOSProviderManager`
+
+Each listed target retained its source semantic classification and alternative candidate experiments. These are **investigation / evidence priorities**, not authorization to mutate, migrate, delete, or repair the target.
+
+## Live authority result
+
+The production `liveExperimentPortfolio.authority` surface remained bounded:
+
+- `automaticSpendUsd: 0`
+- `discoveredMethodsExecuted: false`
+- `durableStateMutated: false`
+- `experimentExecutionAuthorized: false`
+- `externalActionsAuthorized: false`
+- `productionStateMutated: false`
+- `providerCallsAuthorized: false`
+- `selfModificationAuthorized: false`
+- `stateWritesAuthorized: false`
+
+The production portfolio therefore planned and ranked experiments while **refusing to infer execution authority from epistemic value**.
+
+The separately proven durable Mission Engine authority hydration remained READY from `meos-institutional-repository`. The 006.038C proof did not report a newer server identity, so the latest separately proven server baseline remains `2.10.115` unless fresher production evidence supersedes it.
+
+## What 006.038C does not prove
+
+006.038C does **not** prove:
+
+- complete program semantics;
+- production-safe automated fault injection;
+- authority to execute experiments against live customer state;
+- that any one selected experiment is the globally best experiment outside the bounded evidence model;
+- automatic resolution of an unresolved continuity question;
+- autonomous repair or migration;
+- autonomous provider use, spending, consequential external action, merge, deployment, or self-modification;
+- that diagnostics, experiment design, or question generation are the North Star;
+- that a hard-coded developmental target should govern Maddy's future growth.
+
+Its production limitation remains authoritative: the proof covers bounded self-designed discriminating experiments, pre-registered predictions, expected-information-gain scoring, isolation gating, and evidence-driven belief updates. Real continuity experiments still require an explicitly isolated governed sandbox, and any repair remains a separate commissioned authority decision.
+
+## Founder direction preserved after 006.038C
+
+The post-proof founder correction is part of recovery context and must **not** be weakened into a conventional present-day AI target:
+
+- Do not lessen the **North Star** or the **Spooky** bar.
+- 006.038A / 006.038B / 006.038C are useful foundations, not destinations.
+- Maddy must not drift into being a sophisticated diagnostic machine that mainly detects uncertainty, contradictions, risks, or places she may be wrong.
+- Present-day frontier categories such as agents / agentic workflows, tool use, multimodal operation, structured investigation, and similar named 2026-era patterns are expected to become ordinary substrate; they are ingredients, not terminal targets.
+- Do **not** hard-code a terminal capability target into Maddy. Curiosity, observation, unresolved structure, opportunity, contradiction, changing conditions, and evidence should increasingly generate the next developmental target.
+- A failed theory or mechanism should preserve **why it failed, under what conditions, and what future change would justify revisiting it** rather than being erased as dead history.
+- Future work should increasingly close the loop from observation / curiosity → understanding → hypothesis / theory → bounded test → consequence → learning → preservation of causal failure / success context → recognition of changed conditions → renewed possibility → next self-generated investigation.
+- The engineering horizon is open-ended. A passed current-generation capability must not be mistaken for mission completion.
+- Assistant summaries may organize this direction but must not domesticate, normalize, or translate it down into a less ambitious conventional-AI version.
+
+This section preserves direction. It does **not** by itself grant self-modification, deployment, external-action, spending, provider, or production-experiment authority.
+
+## Current exact recovery order after 006.038C
+
+Unless fresher production evidence exposes a more urgent regression:
+
+1. Treat 006.038C as PRODUCTION-PROVEN `16/16` at Executive Brain `1.31.0`, build `EB1310-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-20260920-A`.
+2. Preserve 006.038A topology, 006.038B semantic reconstruction, and 006.038C experiment planning as **separate epistemic layers**; do not let semantic interpretation or experiment results silently rewrite structural identity.
+3. Do not continue stacking increasingly elaborate diagnostic / observability machinery merely because it can be measured cleanly.
+4. Before the next substantive commission, attack the proposal against the full North Star / Spooky standard: does it merely improve a named current-generation AI pattern, or does it increase Maddy's ability to discover what to investigate, preserve causal lessons, recognize changed possibility, construct / test answers, and grow beyond predefined categories?
+5. Preserve curiosity as a generator of future developmental targets rather than hard-coding one terminal destination.
+6. Preserve failed hypotheses / mechanisms with causal failure context and explicit revisit conditions so future changes can make previously failed ideas newly viable.
+7. Preserve the No-Picture direction: Maddy should increasingly recognize hidden structure, relationships, missing mechanisms, and useful combinations without requiring the finished category or answer to be supplied first.
+8. When evidence supports a bounded experiment or solution route, keep execution authority separate. Any production mutation, self-code change, deployment, spend, provider use, or consequential external action still requires the applicable governed authority.
+9. Continue one fix → one file → one commit → one production test.
+10. Reconcile fresh GitHub `main` and live runtime before the next material commission.
+11. Commercial pricing / checkout remains a separate founder decision and is not reopened by 006.038C.
+
+## Anti-drift gate after 006.038C
+
+1. Preserve all earlier commissioned proofs at their historical runtime identities.
+2. Treat 006.038A as PRODUCTION-PROVEN `12/12`, Executive Brain `1.29.0`, build `EB1290-NO-PICTURE-SELF-TOPOLOGY-20260919-A`.
+3. Treat 006.038B as PRODUCTION-PROVEN `15/15`, Executive Brain `1.30.0`, build `EB1300-SEMANTIC-CONTINUITY-AUTHORITY-RECONSTRUCTION-20260920-A`.
+4. Treat 006.038C as PRODUCTION-PROVEN `16/16`, Executive Brain `1.31.0`, build `EB1310-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-20260920-A`.
+5. Preserve 006.038C's live portfolio fingerprint `experiment-d0dcaaa1` and semantic fingerprint `continuity-95eb119f` as observed production evidence, not universal truth.
+6. Preserve the live portfolio counts as observed evidence: 26 semantic evaluations, 19 unresolved/risk targets, 16 unique targets, 16 planned experiments, 16 read-only evidence reviews, 0 live isolated experiments, highest expected information gain 0.376674, highest utility 0.495924.
+7. Do not convert experiment ranking into execution authority.
+8. Do not convert experimental evidence directly into repair / migration / deletion authority.
+9. Preserve alternatives and disconfirming evidence; do not force every investigation to converge when reality remains unresolved.
+10. Preserve the distinction between a synthetic isolated acceptance sandbox and live production/customer state.
+11. Preserve capability / authority separation and exact-scope institutional privacy boundaries.
+12. Preserve durable repository authority; browser state remains non-authoritative / disposable unless stronger separately commissioned evidence establishes another bounded role.
+13. Preserve `meos-institutional-repository` as the durable authority source currently proven by runtime hydration.
+14. Preserve truth, provenance, uncertainty, contradiction, falsification, and consequence recognition.
+15. Preserve provider, model, hardware, storage, network, and internal mechanism replaceability. Maddy is Maddy.
+16. Do not hard-code a terminal developmental target merely because the current industry has a named frontier category.
+17. Do not lower the North Star or Spooky bar to the sophistication of agentic workflows, experiment planners, question generators, or other current-generation patterns.
+18. Do not mistake diagnosis for resolution or present-day frontier capability for the destination.
+19. Preserve causal failure memory and revisit triggers so changed future conditions can reactivate previously failed possibilities.
+20. Preserve curiosity as open-ended developmental pressure; curiosity may propose targets but does not grant consequential authority.
+21. Keep founder-only self-development / self-coding under its existing governed authority boundaries.
+22. Continue one fix → one file → one commit → one test.
+23. Build State is recovery authority for proven development history and preserved direction, not permission to invent unproven capability.
+
+**Recovery keyword:** `006.038C-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-PROVEN`
+
+**Fast recovery:** `Resume 006.038C-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-PROVEN — Executive Brain 1.31.0 / EB1310 is production-proven 16/16; latest separately proven server baseline remains 2.10.115; durable authority hydration remains READY from meos-institutional-repository; live experiment fingerprint experiment-d0dcaaa1 over semantic fingerprint continuity-95eb119f reported 26 semantic evaluations, 19 unresolved/risk targets, 16 unique planned targets, 16 planned experiments, 16 read-only evidence reviews, 0 live isolated experiments, highest expected information gain 0.376674, and highest utility 0.495924; production authority remained no spend / no production mutation / no state writes / no provider calls / no self-modification / no external action / no inferred experiment execution authority; 038A topology + 038B semantic reconstruction + 038C discriminating-experiment planning are foundation layers, not the North Star; do not lessen Spooky, do not hard-code a terminal developmental target, do not drift into a diagnostic-machine destination, preserve why failed ideas failed and the conditions that could make them viable later, and attack the next substantive commission against the full open-ended curiosity / No-Picture / anti-obsolescence direction before coding one fix → one commit → one production test.`
