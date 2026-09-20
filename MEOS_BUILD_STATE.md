@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32426937/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32426380/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE_006.037B_REBUILD_CHECKPOINT.md](https://github.com/user-attachments/files/32426094/MEOS_BUILD_STATE_006.037B_REBUILD_CHECKPOINT.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32410728/MEOS_BUILD_STATE.md)
@@ -7251,7 +7252,7 @@ The following remain open and must not be silently inflated into solved claims:
 
 # ADDITIVE BUILD STATE CHECKPOINT — 006.037B ACTIVE CUSTOMER CONTEXT + POST-DEFENDER REBUILD RECONCILIATION — 2026-09-19
 
-**Checkpoint purpose:** Restore authoritative recovery state after 006.037B, the Windows Defender diagnostic detour, live voice recovery, and the first browser-storage independence repair without rewriting earlier commissioned history.
+**Checkpoint purpose:** Restore authoritative recovery state after 006.037B, the Windows Defender diagnostic detour, live voice recovery, and three production-proven browser-storage independence repairs without rewriting earlier commissioned history.
 
 **Historical rule:** Every earlier Build State checkpoint remains true for the runtime and evidence that existed when it was recorded. This checkpoint is additive. It does not rewrite prior server versions, Brain versions, proof counts, limitations, or doctrine as if they occurred later.
 
@@ -7267,6 +7268,8 @@ The latest production evidence establishes:
 - **Mission Engine:** `0.2.0` / `ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A`
 - **Executive Hallway:** `1.5.7` / `EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A`
 - **Executive Search:** `1.0.2` / `ES102-BROWSER-INDEPENDENT-SEARCH-RUNTIME-20260919-A`
+- **Executive Recall:** `1.0.3` / `ERCL103-RECONSTRUCTIVE-RECALL-WORKING-MEMORY-20260919-A`
+- **Institutional Reasoning:** `1.3.2` / `IR132-RECONSTRUCTIVE-REASONING-CONTINUITY-20260919-A`
 - **Maddy Speech:** `2.0.2` / `VE202-FOUNDER-TTS-SAME-ORIGIN-AUTH-20260919-A`
 - **Maddy Realtime:** `2.0.0` / `VE200-MADDY-REALTIME-20260730-A`
 - **Realtime voice client:** `2.0.8` / `VE208-TURN-BOUND-ROUTING-AUTHORITY-20260919-A`
@@ -7403,7 +7406,7 @@ The current live console still reports Realtime Voice `2.0.8`, therefore recover
 
 **Voice North Star carried forward:** wide perception, selective attention, persistent conversational focus; natural surface, full-strength brain. Maddy must remain capable of complex language and reasoning even when interaction is simple and direct.
 
-## Browser-storage rebuild — second production hardening complete
+## Browser-storage rebuild — third production hardening complete
 
 The rebuild is now explicitly moving browser persistence out of authority-bearing cognition paths.
 
@@ -7477,7 +7480,44 @@ Saved Recall lenses remain session-only at this checkpoint unless and until a cu
 
 ERCL103 fixes Executive Recall's browser persistence / hydration authority boundary only. It does **not** prove that all browser persistence across MEOS is eliminated or non-authoritative, and it does not create a durable cross-session Recall Lens Registry.
 
-Institutional Reasoning remains the next identified browser-persistence hardening target. The wider `localStorage` / browser persistence audit remains open.
+### IR132 — Institutional Reasoning reconstructive reasoning continuity
+
+**Status:** PRODUCTION-PROVEN `10/10` for this hardening acceptance.
+
+**Version:** `1.3.2`
+
+**Build:** `IR132-RECONSTRUCTIVE-REASONING-CONTINUITY-20260919-A`
+
+**Acceptance:** `InstitutionalReasoning.runBrowserIndependenceAcceptanceTest()`
+
+**Acceptance schema:** `meos.institutional-reasoning.browser-independence.acceptance.v1`
+
+Production acceptance proved:
+
+1. automatic browser persistence is disabled by default;
+2. current evidence plus durable Executive cognition remain reasoning authority rather than a browser reasoning snapshot;
+3. Institutional Reasoning reconstructs its working reasoning state from authoritative inputs instead of hydrating browser state as cognition;
+4. legacy browser reasoning state may be observed but is not automatically hydrated or promoted into authority;
+5. reasoning continuity exposes deterministic evidence-lineage, epistemic-lineage, and combined reasoning-basis fingerprints;
+6. an unchanged authoritative reasoning basis reproduces the same fingerprint while materially changed evidence changes the reasoning-basis fingerprint;
+7. normal Institutional Reasoning activity cannot trigger browser writes;
+8. saved analysis lenses are explicitly session-only until a governed durable scope is commissioned;
+9. continuity remains machine-readable through the reasoning evidence assessment rather than depending on an opaque browser snapshot;
+10. browser independence does not manufacture approval, execution, spend, cross-customer durability, or consequential external-action authority.
+
+The production runtime returned `passed:true`, version `1.3.2`, and build `IR132-RECONSTRUCTIVE-REASONING-CONTINUITY-20260919-A` with all ten acceptance checks true.
+
+IR132 changes Institutional Reasoning from a browser-restored continuity-cache model into reconstructive reasoning from current evidence plus durable Executive cognition. Continuity now carries explicit evidence, epistemic, and combined reasoning-basis lineage so Maddy can detect whether she is reasoning from the same authoritative basis or a materially changed one without treating a browser snapshot as identity or truth.
+
+Legacy Institutional Reasoning browser state may be observed for diagnosis but is not automatically imported or promoted into authority.
+
+Saved analysis lenses remain session-only at this checkpoint unless and until an explicitly governed customer / organization-scoped durable analysis-lens registry is commissioned. IR132 deliberately does not invent an unscoped durable reasoning store.
+
+### What IR132 does not prove
+
+IR132 fixes Institutional Reasoning's browser persistence / hydration authority boundary only. It does **not** prove system-wide browser independence, does not create a durable saved-analysis registry, and does not close the broader audit of remaining browser persistence writers.
+
+The wider `localStorage` / browser persistence audit remains open.
 
 ## Durable continuity truth carried forward
 
@@ -7499,11 +7539,12 @@ This observation is not a new process-death proof or provider-failover proof. It
 
 The following remain active rebuild targets and must not be silently marked solved:
 
-- **Institutional Reasoning `1.3.1`** — browser reasoning continuity-cache persistence has been observed hitting quota; evidence-grounded reasoning and durable Executive Brain cognition continued, but browser-cache dependence must be reconciled.
 - broader audit of remaining `localStorage` / browser persistence writers is still required before claiming the browser is fully disposable across all Maddy organs;
-- migration / deletion policy for legacy Executive Search / Executive Recall browser snapshots remains intentionally separate from disabling authority dependence;
+- remaining writers must be classified by actual role: expendable presentation/cache state, legitimate governed durable state, accidental authority, or obsolete legacy residue;
+- migration / deletion policy for legacy Executive Search / Executive Recall / Institutional Reasoning browser snapshots remains intentionally separate from disabling authority dependence;
 - a governed customer / organization-scoped durable Recall Lens Registry remains future work; ERCL103 intentionally leaves saved Recall lenses session-only rather than inventing unscoped persistence;
-- durable storage for large future training assets, embeddings, datasets, model adapters/checkpoints, media, and other large artifacts remains a future storage-layer capability rather than something ES102 or ERCL103 proves.
+- a governed customer / organization-scoped durable analysis-lens registry remains future work; IR132 intentionally leaves saved analysis lenses session-only rather than inventing unscoped persistence;
+- durable storage for large future training assets, embeddings, datasets, model adapters/checkpoints, media, and other large artifacts remains a future storage-layer capability rather than something ES102, ERCL103, or IR132 proves.
 
 ## Storage / training continuity rule
 
@@ -7532,10 +7573,10 @@ A VPN is network plumbing, not memory authority and not identity. It is not part
 
 Unless fresh repository/runtime evidence shows a more urgent regression, continue:
 
-1. **Institutional Reasoning browser-independence hardening** — one file, one commit, one production test.
-2. Audit remaining browser persistence writers and distinguish expendable caches from legitimate durable authority.
+1. **Audit remaining browser persistence writers** and distinguish expendable caches, legitimate governed durable state, accidental authority, and obsolete legacy residue.
+2. Use the audit to identify the smallest next authority-bearing dependency that materially blocks browser disposability; harden that dependency one file → one commit → one production test rather than mechanically rewriting every cache.
 3. Preserve repository-backed cognition / learning / mission continuity and fail honestly when the durable substrate is temporarily unavailable.
-4. Return to Maddy Live voice tuning after the storage rebuild reaches a stable bounded waypoint.
+4. Declare the browser-storage rebuild at a stable bounded waypoint only when evidence supports it; then return to Maddy Live voice / perception tuning.
 5. Do not update commercial pricing / checkout merely because these rebuild steps pass; commercial timing remains a separate founder decision.
 
 Fresh evidence can reorder implementation when reality proves a more urgent dependency. This sequence is a recovery waypoint, not sacred architecture.
@@ -7551,19 +7592,20 @@ Fresh evidence can reorder implementation when reality proves a more urgent depe
 7. Treat Windows Defender as a security signal to investigate, not as automatic source-code architecture authority.
 8. Treat ES102 as proven browser-independence for Executive Search only; do not inflate it into system-wide browser independence.
 9. Treat ERCL103 as production-proven `8/8` reconstructive Executive Recall with browser persistence disabled by default and browser state non-authoritative; do not inflate it into system-wide browser independence or claim a durable Recall Lens Registry.
-10. Preserve browser caches as non-authoritative / disposable unless a later commissioned design explicitly establishes another bounded role.
-11. Preserve `meos-institutional-repository` / durable repository authority over browser state.
-12. Preserve truthful degraded behavior during network or durable-store interruption; do not promote failed local writes into durable truth.
-13. Current live Realtime Voice is `2.0.8`; do not claim VE209 deployed until production says so.
-14. Maddy Live remains open work. Voice usability is not complete merely because VE202/VE208 are live.
-15. Keep provider, model, hardware, storage, voice, and network mechanisms replaceable. Maddy is Maddy.
-16. Preserve institutional privacy and exact-scope cross-boundary authority.
-17. Preserve truth, evidence provenance, uncertainty, and capability/authority separation.
-18. Do not lower the North Star or Spooky standard to a passed acceptance test.
-19. Continue one fix → one file → one commit → one test.
-20. Reconcile fresh GitHub `main` and live runtime before every material next commission or recovery jump.
-21. Build State is recovery authority for proven development history, not permission to invent progress that production has not demonstrated.
+10. Treat IR132 as production-proven `10/10` reconstructive Institutional Reasoning with browser persistence disabled by default, browser state non-authoritative, and explicit reasoning-basis lineage; do not inflate it into system-wide browser independence or claim a durable saved-analysis registry.
+11. Preserve browser caches as non-authoritative / disposable unless a later commissioned design explicitly establishes another bounded role.
+12. Preserve `meos-institutional-repository` / durable repository authority over browser state.
+13. Preserve truthful degraded behavior during network or durable-store interruption; do not promote failed local writes into durable truth.
+14. Current live Realtime Voice is `2.0.8`; do not claim VE209 deployed until production says so.
+15. Maddy Live remains open work. Voice usability is not complete merely because VE202/VE208 are live.
+16. Keep provider, model, hardware, storage, voice, and network mechanisms replaceable. Maddy is Maddy.
+17. Preserve institutional privacy and exact-scope cross-boundary authority.
+18. Preserve truth, evidence provenance, uncertainty, and capability/authority separation.
+19. Do not lower the North Star or Spooky standard to a passed acceptance test.
+20. Continue one fix → one file → one commit → one test.
+21. Reconcile fresh GitHub `main` and live runtime before every material next commission or recovery jump.
+22. Build State is recovery authority for proven development history, not permission to invent progress that production has not demonstrated.
 
-**Recovery keyword:** `006.037B-REBUILD-RECONCILED-ERCL103-PROVEN`
+**Recovery keyword:** `006.037B-REBUILD-RECONCILED-IR132-PROVEN`
 
-**Fast recovery:** `Resume 006.037B-REBUILD-RECONCILED-ERCL103-PROVEN — live server 2.10.115 + Executive Brain 1.28.0; 006.037B Active Customer Context is production-proven 13/13; B1/B2 retained deliberately, B3 direct CCSP loading reconciled back to protected active-organization routes; Realtime Voice live at VE208 / 2.0.8 with VE209 not production-confirmed; Executive Search ES102 / 1.0.2 is production-proven browser-independent 6/6; Executive Recall ERCL103 / 1.0.3 is production-proven reconstructive browser-independent 8/8; durable authority hydrates from meos-institutional-repository; next rebuild target is Institutional Reasoning browser persistence, then the remaining browser-persistence writer audit, one fix → one commit → one test.`
+**Fast recovery:** `Resume 006.037B-REBUILD-RECONCILED-IR132-PROVEN — live server 2.10.115 + Executive Brain 1.28.0; 006.037B Active Customer Context is production-proven 13/13; B1/B2 retained deliberately, B3 direct CCSP loading reconciled back to protected active-organization routes; Realtime Voice live at VE208 / 2.0.8 with VE209 not production-confirmed; Executive Search ES102 / 1.0.2 is production-proven browser-independent 6/6; Executive Recall ERCL103 / 1.0.3 is production-proven reconstructive browser-independent 8/8; Institutional Reasoning IR132 / 1.3.2 is production-proven reconstructive browser-independent 10/10 with explicit reasoning-basis lineage; durable authority hydrates from meos-institutional-repository; next rebuild step is the remaining browser-persistence writer audit, classify real authority versus expendable cache/legacy residue, then harden only the next material dependency one fix → one commit → one test.`
