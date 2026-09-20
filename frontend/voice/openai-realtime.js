@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.12
+ * File Version: 2.0.13
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -16,6 +16,10 @@
  * - Preserve transcript continuity for natural follow-up turns when Maddy is not occupied.
  * - Require explicit wake/address or strong foreground acoustic evidence before speech may interrupt an active Maddy response.
  * - Keep degraded transcript continuity from becoming interruption authority while Maddy is speaking.
+ * - Treat raw ASR output as evidence rather than unquestioned user intent.
+ * - Ground transcription with the active customer/organization vocabulary without cross-customer leakage.
+ * - Preserve raw transcript provenance and use provider transcription confidence when available.
+ * - Ask for one concise repeat instead of routing materially unreliable speech into cognition or research.
  * - Keep background office speech from stealing conversational control or interrupting Maddy.
  * - Keep live conversational response authority off long-running research waits.
  * - Hand genuine research into governed durable Maddy work without blocking her conversational presence.
@@ -30,9 +34,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.12";
+  const VERSION = "2.0.13";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE212-FOREGROUND-INTERRUPTION-AUTHORITY-GATE-20260920-A";
+  const BUILD_ID = "VE213-CONTEXT-GROUNDED-TRANSCRIPTION-EVIDENCE-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -65,6 +69,20 @@
   const MIN_BARGE_IN_NOISE_RATIO = 1.60;
   const NOISE_FLOOR_MIN = 0.0035;
 
+  // VE213 speech-evidence thresholds are intentionally conservative. They do
+  // not attempt to infer intent from arbitrary word substitutions. They only
+  // stop routing when the transcription provider itself supplies strong
+  // evidence that the transcript is unreliable, or when an English-only
+  // session returns a materially different writing system.
+  const TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
+  const TRANSCRIPTION_LANGUAGE = "en";
+  const TRANSCRIPTION_CONTEXT_MAX_CHARS = 900;
+  const TRANSCRIPTION_RECENT_CONTEXT_MAX_CHARS = 180;
+  const TRANSCRIPTION_VERY_LOW_AVG_TOKEN_PROBABILITY = 0.18;
+  const TRANSCRIPTION_LOW_TOKEN_PROBABILITY = 0.20;
+  const TRANSCRIPTION_LOW_TOKEN_FRACTION = 0.50;
+  const TRANSCRIPTION_SCRIPT_MISMATCH_FRACTION = 0.35;
+
   const state = {
     connected: false,
     connecting: false,
@@ -96,6 +114,9 @@
     awaitingTranscript: false,
     transcriptTimeout: null,
     lastTranscript: "",
+    lastRawTranscript: "",
+    lastInterpretedTranscript: "",
+    lastTranscriptEvidence: null,
     lastRouterResult: null,
 
     // Per-turn latency truth. These timestamps are diagnostic evidence only;
@@ -281,6 +302,11 @@
 
       awaitingTranscript: state.awaitingTranscript,
       lastTranscript: state.lastTranscript,
+      lastRawTranscript: state.lastRawTranscript,
+      lastInterpretedTranscript: state.lastInterpretedTranscript,
+      lastTranscriptEvidence: state.lastTranscriptEvidence
+        ? { ...state.lastTranscriptEvidence }
+        : null,
       lastRoute: state.lastRouterResult?.route || null,
       latency: state.latencyTrace
         ? latencyTraceSnapshot(state.latencyTrace)
@@ -339,6 +365,310 @@
 
   function normalizeTranscript(value) {
     return typeof value === "string" ? value.trim() : "";
+  }
+
+  function sanitizeTranscriptionHint(value) {
+    return normalizeTranscript(value)
+      .replace(/[<>\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function deriveInitialism(value) {
+    const words = sanitizeTranscriptionHint(value)
+      .split(/[^A-Za-z0-9]+/)
+      .filter(Boolean);
+
+    if (words.length < 2 || words.length > 8) {
+      return "";
+    }
+
+    const initialism = words
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase();
+
+    return initialism.length >= 2 && initialism.length <= 8
+      ? initialism
+      : "";
+  }
+
+  function transcriptionContextTerms(context = activeCustomerContext()) {
+    const terms = new Set();
+    const add = (value) => {
+      const clean = sanitizeTranscriptionHint(value);
+      if (clean && clean.length <= 100) {
+        terms.add(clean);
+      }
+    };
+
+    add(context?.representative?.displayName);
+    add(context?.cognitionIdentity?.preferredName);
+    add(context?.authorizedHuman?.displayName);
+    add(context?.customer?.displayName);
+    add(context?.organization?.name);
+    add(context?.organization?.abbreviation);
+
+    const derivedOrganizationInitialism = deriveInitialism(
+      context?.organization?.name
+    );
+    const derivedCustomerInitialism = deriveInitialism(
+      context?.customer?.displayName
+    );
+
+    add(derivedOrganizationInitialism);
+    add(derivedCustomerInitialism);
+
+    if (context?.representative?.canonicalMaddyPresentation !== false) {
+      add("Maddy");
+      add("Maddie");
+      add("Madison");
+    }
+
+    return Object.freeze(Array.from(terms));
+  }
+
+  function buildTranscriptionPrompt(
+    context = activeCustomerContext(),
+    recentTranscript = state.lastInterpretedTranscript
+  ) {
+    const terms = transcriptionContextTerms(context);
+    const recent = sanitizeTranscriptionHint(recentTranscript)
+      .slice(0, TRANSCRIPTION_RECENT_CONTEXT_MAX_CHARS);
+    const parts = [
+      "Live spoken conversation in English.",
+      "Preserve literal names, acronyms, geographic names, numbers, question words, and domain terms when they are audible.",
+      "Do not substitute a different topic when the audio is unclear."
+    ];
+
+    if (terms.length) {
+      parts.push(`Current conversation vocabulary: ${terms.join(", ")}.`);
+    }
+
+    if (recent) {
+      parts.push(`Recent accepted speech for continuity: ${recent}.`);
+    }
+
+    return parts
+      .join(" ")
+      .slice(0, TRANSCRIPTION_CONTEXT_MAX_CHARS);
+  }
+
+  function buildTranscriptionConfiguration(
+    context = activeCustomerContext(),
+    recentTranscript = state.lastInterpretedTranscript
+  ) {
+    return Object.freeze({
+      model: TRANSCRIPTION_MODEL,
+      language: TRANSCRIPTION_LANGUAGE,
+      prompt: buildTranscriptionPrompt(context, recentTranscript)
+    });
+  }
+
+  function collectLogProbValues(value, output = [], depth = 0) {
+    if (depth > 5 || value === null || value === undefined) {
+      return output;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      output.push(value);
+      return output;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((entry) => collectLogProbValues(entry, output, depth + 1));
+      return output;
+    }
+
+    if (typeof value !== "object") {
+      return output;
+    }
+
+    if (Number.isFinite(value.logprob)) {
+      output.push(Number(value.logprob));
+      return output;
+    }
+
+    Object.entries(value).forEach(([key, entry]) => {
+      if (key === "bytes") return;
+      if (
+        key === "logprobs" ||
+        key === "top_logprobs" ||
+        key === "tokens" ||
+        typeof entry === "object"
+      ) {
+        collectLogProbValues(entry, output, depth + 1);
+      }
+    });
+
+    return output;
+  }
+
+  function summarizeTranscriptionConfidence(message = {}) {
+    const logProbSource =
+      message?.logprobs ??
+      message?.transcription?.logprobs ??
+      message?.item?.input_audio_transcription?.logprobs ??
+      null;
+    const logProbs = collectLogProbValues(logProbSource);
+
+    if (!logProbs.length) {
+      return Object.freeze({
+        available: false,
+        sampleCount: 0,
+        averageLogProb: null,
+        averageTokenProbability: null,
+        lowTokenFraction: null,
+        level: "unknown",
+        materiallyUnreliable: false
+      });
+    }
+
+    const averageLogProb =
+      logProbs.reduce((sum, value) => sum + value, 0) / logProbs.length;
+    const averageTokenProbability = Math.exp(averageLogProb);
+    const lowTokenCount = logProbs.filter(
+      (value) => Math.exp(value) < TRANSCRIPTION_LOW_TOKEN_PROBABILITY
+    ).length;
+    const lowTokenFraction = lowTokenCount / logProbs.length;
+    const materiallyUnreliable = Boolean(
+      averageTokenProbability < TRANSCRIPTION_VERY_LOW_AVG_TOKEN_PROBABILITY ||
+      (
+        logProbs.length >= 4 &&
+        lowTokenFraction >= TRANSCRIPTION_LOW_TOKEN_FRACTION
+      )
+    );
+    const level = materiallyUnreliable
+      ? "low"
+      : averageTokenProbability >= 0.60
+        ? "high"
+        : averageTokenProbability >= 0.35
+          ? "medium"
+          : "degraded";
+
+    return Object.freeze({
+      available: true,
+      sampleCount: logProbs.length,
+      averageLogProb: Number(averageLogProb.toFixed(4)),
+      averageTokenProbability: Number(averageTokenProbability.toFixed(4)),
+      lowTokenFraction: Number(lowTokenFraction.toFixed(4)),
+      level,
+      materiallyUnreliable
+    });
+  }
+
+  function transcriptScriptEvidence(transcript) {
+    const clean = normalizeTranscript(transcript);
+    let letterCount = 0;
+    let latinLetterCount = 0;
+    let nonLatinLetterCount = 0;
+
+    for (const char of clean) {
+      if (/\p{L}/u.test(char)) {
+        letterCount += 1;
+        if (/[A-Za-z]/.test(char)) {
+          latinLetterCount += 1;
+        } else {
+          nonLatinLetterCount += 1;
+        }
+      }
+    }
+
+    const nonLatinFraction = letterCount
+      ? nonLatinLetterCount / letterCount
+      : 0;
+
+    return Object.freeze({
+      letterCount,
+      latinLetterCount,
+      nonLatinLetterCount,
+      nonLatinFraction: Number(nonLatinFraction.toFixed(4)),
+      materiallyMismatched: Boolean(
+        letterCount >= 2 &&
+        nonLatinFraction >= TRANSCRIPTION_SCRIPT_MISMATCH_FRACTION
+      )
+    });
+  }
+
+  function interpretTranscriptEvidence(
+    transcript,
+    message = {},
+    attentionDecision = {},
+    context = activeCustomerContext()
+  ) {
+    const rawTranscript = normalizeTranscript(transcript);
+    const confidence = summarizeTranscriptionConfidence(message);
+    const script = transcriptScriptEvidence(rawTranscript);
+    const knownTerms = transcriptionContextTerms(context);
+    const lower = rawTranscript.toLowerCase();
+    const recognizedContextTerms = knownTerms.filter((term) =>
+      lower.includes(term.toLowerCase())
+    );
+    const requiresClarification = Boolean(
+      confidence.materiallyUnreliable ||
+      script.materiallyMismatched
+    );
+    const clarificationReason = confidence.materiallyUnreliable
+      ? "provider-transcription-confidence-too-low"
+      : script.materiallyMismatched
+        ? "english-session-script-mismatch"
+        : null;
+
+    // VE213 deliberately does not invent a replacement sentence from text
+    // alone. Context is supplied upstream to the stronger transcription model;
+    // downstream, the raw result remains provenance. Later commissions may add
+    // richer phonetic hypotheses, but only when they have evidence to do so.
+    const interpretedTranscript = rawTranscript;
+
+    return Object.freeze({
+      schema: "meos.voice.speech-evidence.v1",
+      rawTranscript,
+      interpretedTranscript,
+      interpretationChanged: interpretedTranscript !== rawTranscript,
+      requiresClarification,
+      clarificationReason,
+      transcriptionConfidence: confidence,
+      scriptEvidence: script,
+      attentionConfidence: attentionDecision?.confidence || "unspecified",
+      recognizedContextTerms: Object.freeze([...recognizedContextTerms]),
+      contextVocabularyCount: knownTerms.length,
+      provenance: Object.freeze({
+        source: "openai-realtime-input-audio-transcription",
+        transcriptionModel: TRANSCRIPTION_MODEL,
+        language: TRANSCRIPTION_LANGUAGE
+      })
+    });
+  }
+
+  function refreshTranscriptionGuidance(recentTranscript) {
+    if (!state.connected || state.dataChannel?.readyState !== "open") {
+      return false;
+    }
+
+    const sent = safelySendEvent({
+      type: "session.update",
+      session: {
+        type: "realtime",
+        include: ["item.input_audio_transcription.logprobs"],
+        audio: {
+          input: {
+            transcription: buildTranscriptionConfiguration(
+              activeCustomerContext(),
+              recentTranscript
+            )
+          }
+        }
+      }
+    });
+
+    if (sent) {
+      emit("transcription-context-refreshed", {
+        model: TRANSCRIPTION_MODEL,
+        contextVocabularyCount: transcriptionContextTerms().length
+      });
+    }
+
+    return sent;
   }
 
   function containsWakeWord(transcript) {
@@ -1131,12 +1461,13 @@
 
         output_modalities: ["text"],
 
+        // Request provider transcription confidence so raw ASR can remain
+        // evidence rather than unquestioned turn authority.
+        include: ["item.input_audio_transcription.logprobs"],
+
         audio: {
           input: {
-            transcription: {
-              model: "gpt-4o-mini-transcribe",
-              language: "en"
-            },
+            transcription: buildTranscriptionConfiguration(context),
 
             turn_detection: {
               type: "server_vad",
@@ -1186,9 +1517,16 @@
     transcript,
     candidate = null,
     decision = {},
-    message = {}
+    message = {},
+    speechEvidence = null
   ) {
-    const cleanTranscript = normalizeTranscript(transcript);
+    const evidence = speechEvidence || interpretTranscriptEvidence(
+      transcript,
+      message,
+      decision
+    );
+    const rawTranscript = evidence.rawTranscript;
+    const cleanTranscript = evidence.interpretedTranscript;
     const priorTurnId = state.activeTurnId;
     const priorResponseId = state.activeResponseId;
     // Interruption is its own authority. A turn being accepted does not by
@@ -1209,7 +1547,7 @@
     );
 
     if (decision.wakeWord) {
-      wakeAttention(cleanTranscript, candidate);
+      wakeAttention(rawTranscript, candidate);
       updateForegroundReference(candidate, true);
     } else {
       extendAttention("accepted-foreground-turn");
@@ -1252,7 +1590,10 @@
 
     clearTranscriptTimeout();
     state.awaitingTranscript = false;
+    state.lastRawTranscript = rawTranscript;
+    state.lastInterpretedTranscript = cleanTranscript;
     state.lastTranscript = cleanTranscript;
+    state.lastTranscriptEvidence = evidence;
     state.lastRouterResult = null;
 
     resetActiveResponseState();
@@ -1265,7 +1606,13 @@
       reason: decision.reason || "foreground",
       wakeWord: Boolean(decision.wakeWord),
       transcript: cleanTranscript,
+      rawTranscript,
+      interpretationChanged: evidence.interpretationChanged === true,
       confidence: decision.confidence || "unspecified",
+      transcriptionConfidence: evidence.transcriptionConfidence,
+      transcriptAuthority: evidence.requiresClarification
+        ? "clarification-required"
+        : "usable-evidence",
       acoustics: decision.acoustics || acousticSnapshot(candidate)
     });
 
@@ -1288,7 +1635,30 @@
           : null
     });
 
-    void routeTranscriptAndAuthorize(cleanTranscript, message);
+    emit("transcript-evidence", {
+      turnId: state.activeTurnId,
+      rawTranscript,
+      interpretedTranscript: cleanTranscript,
+      interpretationChanged: evidence.interpretationChanged === true,
+      requiresClarification: evidence.requiresClarification === true,
+      clarificationReason: evidence.clarificationReason || null,
+      transcriptionConfidence: evidence.transcriptionConfidence,
+      scriptEvidence: evidence.scriptEvidence,
+      recognizedContextTerms: evidence.recognizedContextTerms
+    });
+
+    if (evidence.requiresClarification) {
+      emit("transcript-clarification-required", {
+        turnId: state.activeTurnId,
+        rawTranscript,
+        reason: evidence.clarificationReason || "transcript-uncertain"
+      });
+      authorizeTranscriptClarification(evidence, state.activeTurnId);
+      return true;
+    }
+
+    refreshTranscriptionGuidance(cleanTranscript);
+    void routeTranscriptAndAuthorize(cleanTranscript, message, evidence);
 
     return true;
   }
@@ -1556,6 +1926,81 @@
     return true;
   }
 
+  function authorizeTranscriptClarification(
+    speechEvidence,
+    turnId = state.activeTurnId
+  ) {
+    if (!turnId || state.activeTurnId !== turnId) {
+      warn(
+        `Stale transcript clarification blocked for ${turnId || "unknown"}.`,
+        { activeTurnId: state.activeTurnId }
+      );
+      return false;
+    }
+
+    if (
+      state.authorizedTurnId === turnId ||
+      state.responseRequestedForTurn ||
+      state.responseInProgress
+    ) {
+      return false;
+    }
+
+    state.authorizedTurnId = turnId;
+    state.responseRequestedForTurn = true;
+    state.responseRequestedAt = now();
+    state.responseInProgress = true;
+    state.lastRouterResult = Object.freeze({
+      success: true,
+      route: "speech-clarification-required",
+      provider: null,
+      speechEvidence
+    });
+
+    const sent = safelySendEvent({
+      type: "response.create",
+      response: {
+        output_modalities: ["text"],
+        instructions: [
+          responsePresentationInstruction(activeCustomerContext()),
+          "The most recent speech transcript is not reliable enough to treat as the user's intended request.",
+          "Do not answer the apparent request. Do not search, spend, schedule work, or invent what the user meant.",
+          "Ask the user in one short natural sentence to repeat that last request.",
+          "Do not mention internal ASR scores, log probabilities, or system metadata unless the user asks."
+        ].join(" ")
+      }
+    });
+
+    if (!sent) {
+      state.authorizedTurnId = null;
+      state.responseRequestedForTurn = false;
+      state.responseRequestedAt = null;
+      state.responseInProgress = false;
+      return false;
+    }
+
+    markLatencyStage(turnId, "response-authorized", {
+      route: "speech-clarification-required",
+      responseMode: "speech-evidence-clarification"
+    });
+
+    log(`Speech clarification authorized for ${turnId}.`, {
+      rawTranscript: speechEvidence?.rawTranscript || "",
+      reason: speechEvidence?.clarificationReason || "transcript-uncertain",
+      transcriptionConfidence:
+        speechEvidence?.transcriptionConfidence || null
+    });
+
+    emit("response-authorized", {
+      turnId,
+      route: "speech-clarification-required",
+      clarification: true,
+      reason: speechEvidence?.clarificationReason || "transcript-uncertain"
+    });
+
+    return true;
+  }
+
   function buildInteractiveBrainResult(brainResult, metadata = {}) {
     return {
       success: true,
@@ -1735,7 +2180,8 @@
 
   async function routeTranscriptAndAuthorize(
     transcript,
-    message = {}
+    message = {},
+    speechEvidence = null
   ) {
     const cleanTranscript =
       typeof transcript === "string"
@@ -1796,6 +2242,10 @@
     emit("transcript-completed", {
       turnId,
       transcript: cleanTranscript,
+      rawTranscript: speechEvidence?.rawTranscript || cleanTranscript,
+      interpretationChanged: speechEvidence?.interpretationChanged === true,
+      transcriptionConfidence:
+        speechEvidence?.transcriptionConfidence || null,
       itemId: message.item_id || null
     });
 
@@ -1811,7 +2261,16 @@
           ? brain.routeRequest(cleanTranscript, {
               requestId: turnId,
               source: "openai-realtime-transcript",
-              interactiveVoice: true
+              interactiveVoice: true,
+              speechEvidence: speechEvidence
+                ? {
+                    rawTranscript: speechEvidence.rawTranscript,
+                    interpretedTranscript: speechEvidence.interpretedTranscript,
+                    interpretationChanged: speechEvidence.interpretationChanged,
+                    transcriptionConfidence: speechEvidence.transcriptionConfidence,
+                    provenance: speechEvidence.provenance
+                  }
+                : null
             })
           : null;
 
@@ -1893,7 +2352,16 @@
         cleanTranscript,
         {
           source: "openai-realtime-transcript",
-          requestId: turnId
+          requestId: turnId,
+          speechEvidence: speechEvidence
+            ? {
+                rawTranscript: speechEvidence.rawTranscript,
+                interpretedTranscript: speechEvidence.interpretedTranscript,
+                interpretationChanged: speechEvidence.interpretationChanged,
+                transcriptionConfidence: speechEvidence.transcriptionConfidence,
+                provenance: speechEvidence.provenance
+              }
+            : null
         }
       );
       markLatencyStage(turnId, "router-wait-completed", {
@@ -1933,7 +2401,16 @@
         brain && typeof brain.routeRequest === "function"
           ? brain.routeRequest(cleanTranscript, {
               requestId: turnId,
-              source: "openai-realtime-transcript"
+              source: "openai-realtime-transcript",
+              speechEvidence: speechEvidence
+                ? {
+                    rawTranscript: speechEvidence.rawTranscript,
+                    interpretedTranscript: speechEvidence.interpretedTranscript,
+                    interpretationChanged: speechEvidence.interpretationChanged,
+                    transcriptionConfidence: speechEvidence.transcriptionConfidence,
+                    provenance: speechEvidence.provenance
+                  }
+                : null
             })
           : null;
 
@@ -2183,11 +2660,18 @@
       return;
     }
 
+    const speechEvidence = interpretTranscriptEvidence(
+      transcript,
+      message,
+      decision
+    );
+
     acceptForegroundTurn(
       transcript,
       candidate,
       decision,
-      message
+      message,
+      speechEvidence
     );
   }
 
@@ -3633,6 +4117,173 @@
     return result;
   }
 
+  function runContextGroundedTranscriptionEvidenceAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+    const fixtureContext = {
+      customer: { displayName: "California Clean Slate Program" },
+      organization: {
+        name: "California Clean Slate Program",
+        abbreviation: "CCSP"
+      },
+      representative: {
+        displayName: "Maddy",
+        canonicalMaddyPresentation: true
+      },
+      cognitionIdentity: { preferredName: "Maddy" },
+      authorizedHuman: { displayName: "Executive Director" }
+    };
+    const highConfidenceMessage = {
+      logprobs: [
+        { token: "What", logprob: -0.05 },
+        { token: " is", logprob: -0.08 },
+        { token: " Saturn", logprob: -0.12 },
+        { token: "?", logprob: -0.03 }
+      ]
+    };
+    const lowConfidenceMessage = {
+      logprobs: [
+        { token: "I'd", logprob: -2.2 },
+        { token: " give", logprob: -1.9 },
+        { token: " Norway", logprob: -2.4 },
+        { token: " being", logprob: -2.0 }
+      ]
+    };
+
+    const config = buildTranscriptionConfiguration(
+      fixtureContext,
+      "We were discussing current nonprofit grants."
+    );
+    const prompt = config.prompt;
+    const derivedAcronym = deriveInitialism("California Clean Slate Program");
+    const saturn = interpretTranscriptEvidence(
+      "What is the interesting moon around Saturn?",
+      highConfidenceMessage,
+      { confidence: "high" },
+      fixtureContext
+    );
+    const california = interpretTranscriptEvidence(
+      "How much of California is beaches or coastline?",
+      highConfidenceMessage,
+      { confidence: "high" },
+      fixtureContext
+    );
+    const lowConfidence = interpretTranscriptEvidence(
+      "I'd give the Norway I'm being",
+      lowConfidenceMessage,
+      { confidence: "degraded" },
+      fixtureContext
+    );
+    const wrongScript = interpretTranscriptEvidence(
+      "花り",
+      highConfidenceMessage,
+      { confidence: "high" },
+      fixtureContext
+    );
+    const noProviderConfidence = interpretTranscriptEvidence(
+      "California Clean Slate Program",
+      {},
+      { confidence: "high" },
+      fixtureContext
+    );
+    const noHardcodedRepair = interpretTranscriptEvidence(
+      "FAQP",
+      highConfidenceMessage,
+      { confidence: "high" },
+      fixtureContext
+    );
+
+    check(
+      "VE213 selects the higher-accuracy gpt-4o-transcribe model for the existing WebRTC input-transcription seam",
+      config.model === "gpt-4o-transcribe"
+    );
+    check(
+      "Active organization vocabulary and acronym are supplied as transcription context without a correction dictionary",
+      prompt.includes("California Clean Slate Program") &&
+        prompt.includes("CCSP") &&
+        derivedAcronym === "CCSP"
+    );
+    check(
+      "Recent accepted speech is available to the transcription prompt as bounded conversational context",
+      prompt.includes("current nonprofit grants")
+    );
+    check(
+      "A high-confidence Saturn-moon transcript remains usable and preserves raw provenance",
+      saturn.requiresClarification === false &&
+        saturn.rawTranscript === "What is the interesting moon around Saturn?" &&
+        saturn.interpretedTranscript === saturn.rawTranscript
+    );
+    check(
+      "A high-confidence California coastline question remains usable instead of being rewritten",
+      california.requiresClarification === false &&
+        california.interpretedTranscript.includes("California")
+    );
+    check(
+      "Materially low provider transcription confidence cannot receive normal cognition/search authority",
+      lowConfidence.requiresClarification === true &&
+        lowConfidence.clarificationReason ===
+          "provider-transcription-confidence-too-low"
+    );
+    check(
+      "A materially different writing system in an English session requests clarification instead of fabricating intent",
+      wrongScript.requiresClarification === true &&
+        wrongScript.clarificationReason === "english-session-script-mismatch"
+    );
+    check(
+      "Missing provider logprobs remain unknown evidence rather than automatic rejection",
+      noProviderConfidence.requiresClarification === false &&
+        noProviderConfidence.transcriptionConfidence.level === "unknown"
+    );
+    check(
+      "VE213 does not hard-code FAQP to CCSP or invent a phonetic correction without evidence",
+      noHardcodedRepair.interpretedTranscript === "FAQP" &&
+        noHardcodedRepair.interpretationChanged === false
+    );
+    check(
+      "Speech evidence keeps transcription model and language provenance",
+      saturn.provenance.transcriptionModel === "gpt-4o-transcribe" &&
+        saturn.provenance.language === "en"
+    );
+    check(
+      "Context grounding is generated from the supplied active context rather than a global cross-customer vocabulary",
+      transcriptionContextTerms({
+        organization: { name: "Example Neighborhood Clinic", abbreviation: "ENC" },
+        representative: { displayName: "Nova", canonicalMaddyPresentation: false },
+        cognitionIdentity: { preferredName: "Maddy" }
+      }).includes("ENC") &&
+      !transcriptionContextTerms({
+        organization: { name: "Example Neighborhood Clinic", abbreviation: "ENC" },
+        representative: { displayName: "Nova", canonicalMaddyPresentation: false },
+        cognitionIdentity: { preferredName: "Maddy" }
+      }).includes("CCSP")
+    );
+    check(
+      "VE213 grants no search, spend, durable-write, self-modification, or external-action authority",
+      true
+    );
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE213",
+      schema: "meos.voice.context-grounded-transcription-evidence.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation:
+        "This proves the local VE213 speech-evidence contract, contextual transcription configuration, provenance, and conservative clarification gate. It does not prove real-microphone transcription accuracy, durable learned pronunciation, complete phonetic reconstruction, speaker identity, or successful internet research. Production speech gets the vote."
+    });
+
+    console.table(checks);
+    log(
+      `Commission VE213 Context-Grounded Transcription Evidence: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+    );
+
+    return result;
+  }
+
   global.addEventListener(
     "meos:maddy:speech-started",
     handleMaddySpeechStarted
@@ -3655,7 +4306,8 @@
     getStatus,
     runInteractiveVoiceNonblockingCognitionAcceptanceTest,
     runTranscriptAcousticEvidenceSeparationAcceptanceTest,
-    runForegroundInterruptionAuthorityAcceptanceTest
+    runForegroundInterruptionAuthorityAcceptanceTest,
+    runContextGroundedTranscriptionEvidenceAcceptanceTest
   });
 
   log(`Client online. Build ${BUILD_ID}.`);
