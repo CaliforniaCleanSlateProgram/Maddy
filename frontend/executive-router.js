@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.5.2
- * Build: ER152-DURABLE-RESEARCH-RETURN-GOVERNANCE-20260914-A
+ * Version: 1.5.3
+ * Build: ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.5.2";
-  const BUILD_ID = "ER152-DURABLE-RESEARCH-RETURN-GOVERNANCE-20260914-A";
+  const VERSION = "1.5.3";
+  const BUILD_ID = "ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -822,28 +822,114 @@
         return { required: false, scope: "none", reason: "no-request-text" };
       }
 
-      const explicitPublicEvidence = /\b(?:public\s+(?:evidence|sources?|records?|information)|web\s+(?:evidence|sources?|research)|internet\s+(?:evidence|sources?|research)|online\s+(?:evidence|sources?|research)|use\s+(?:the\s+)?(?:public|web|internet|online)\b|search\s+(?:the\s+)?(?:web|internet|public))\b/i.test(text);
-      const researchAction = /\b(?:research|investigate|look\s+up|find\s+out|fact[- ]?check|verify)\b/i.test(text);
-      const internalOnly = /\b(?:internal(?:ly)?|our\s+(?:records?|files?|documents?|memory|knowledge|history)|meos\s+(?:records?|memory|knowledge)|organization(?:al)?\s+(?:records?|files?|documents?|memory|knowledge))\b/i.test(text) &&
-        !explicitPublicEvidence;
+      // ER153: treat research intent compositionally instead of requiring one
+      // magic phrase.  The surface (web/internet/online/public sources), the
+      // acquisition action (search/check/find/browse/research), freshness, and
+      // opportunity semantics are independent evidence channels.  This keeps
+      // ordinary questions local while allowing natural human phrasing such as
+      // “go online and find grants we can apply for” to reach Maddy's already
+      // commissioned public-research path.
+      const researchAction = /\b(?:research|investigate|look\s+up|find\s+out|fact[- ]?check|verify|search|browse|scan|check)\b/i.test(text);
+      const discoveryAction = /\b(?:find|show|list|locate|discover|identify|look|see|search|check|browse|scan|hunt)\b/i.test(text);
+      const publicSurface = /\b(?:web|internet|online|public\s+web|public\s+(?:sources?|records?|information)|websites?)\b/i.test(text);
+      const publicEvidenceNoun = /\b(?:public\s+(?:evidence|sources?|records?|information)|web\s+(?:evidence|sources?|research)|internet\s+(?:evidence|sources?|research)|online\s+(?:evidence|sources?|research))\b/i.test(text);
+      const explicitPublicEvidence = Boolean(
+        publicEvidenceNoun ||
+        (publicSurface && (researchAction || discoveryAction)) ||
+        /\buse\s+(?:the\s+)?(?:public\s+web|web|internet|online)\b/i.test(text) ||
+        /\b(?:go|look|check|search|browse|scan)\s+(?:on\s+)?(?:the\s+)?(?:web|internet|online)\b/i.test(text)
+      );
 
-      const required = explicitPublicEvidence || (researchAction && !internalOnly);
+      const freshnessSignal = /\b(?:latest|current|today|tonight|now|right\s+now|this\s+(?:week|month|year)|new|newly|open|available|accepting|deadline|recent|recently|up[- ]?to[- ]?date|still\s+open|currently)\b/i.test(text);
+      const opportunityTarget = /\b(?:grants?|funding|funders?|opportunit(?:y|ies)|rfps?|programs?|credits?|investors?|investment|partnerships?|contracts?|awards?|scholarships?|applications?)\b/i.test(text);
+      const eligibilitySignal = /\b(?:apply|applying|eligible|eligibility|qualif(?:y|ies|ied|ication)|accepting|deadline|open|available|for\s+us|we\s+can|can\s+we|fit|matches?)\b/i.test(text);
+      const questionDiscovery = /\b(?:which|what|any|are\s+there|what\s+are|what\s+is\s+open)\b/i.test(text);
+      const impliedFreshPublicResearch = Boolean(
+        opportunityTarget &&
+        (discoveryAction || questionDiscovery) &&
+        (freshnessSignal || eligibilitySignal)
+      );
+
+      const internalOnly = /\b(?:internal(?:ly)?|our\s+(?:records?|files?|documents?|memory|knowledge|history)|meos\s+(?:records?|memory|knowledge)|organization(?:al)?\s+(?:records?|files?|documents?|memory|knowledge))\b/i.test(text) &&
+        !explicitPublicEvidence &&
+        !impliedFreshPublicResearch;
+
+      const required = Boolean(
+        explicitPublicEvidence ||
+        impliedFreshPublicResearch ||
+        (researchAction && !internalOnly)
+      );
+
       return {
         required,
         scope: required ? "public-evidence" : internalOnly ? "internal-only" : "none",
         reason: explicitPublicEvidence
           ? "human-directed-public-evidence"
-          : required
-            ? "human-directed-research"
-            : internalOnly
-              ? "human-directed-internal-research"
-              : "no-public-research-obligation",
+          : impliedFreshPublicResearch
+            ? "fresh-opportunity-discovery-requires-public-evidence"
+            : required
+              ? "human-directed-research"
+              : internalOnly
+                ? "human-directed-internal-research"
+                : "no-public-research-obligation",
         explicitPublicEvidence,
+        impliedFreshPublicResearch,
         researchAction,
+        discoveryAction,
+        questionDiscovery,
+        publicSurface,
+        freshnessSignal,
+        opportunityTarget,
+        eligibilitySignal,
         internalOnly,
         authority: "human-directed-assignment",
         externalActionAuthorityGranted: false
       };
+    },
+
+    runNaturalPublicResearchIntentAcceptanceTest() {
+      const cases = [
+        ["Go online and find grants CCSP can apply for now.", true, "public-evidence"],
+        ["Search online for grants we qualify for.", true, "public-evidence"],
+        ["Look on the internet and see what funding is available.", true, "public-evidence"],
+        ["Check the web for current RFPs.", true, "public-evidence"],
+        ["Find open grant opportunities we can apply for.", true, "public-evidence"],
+        ["Which funding opportunities are accepting applications this month?", true, "public-evidence"],
+        ["Research current nonprofit funding opportunities.", true, "public-evidence"],
+        ["Research our internal records for last year's grant notes.", false, "internal-only"],
+        ["What is a grant?", false, "none"],
+        ["What can you tell me about CCSP?", false, "none"]
+      ];
+
+      const checks = cases.map(([text, required, scope]) => {
+        const result = this.researchIntentExecutionContract({ request: { text } });
+        return {
+          name: `Research intent: ${text}`,
+          passed: result.required === required && result.scope === scope,
+          observed: { required: result.required, scope: result.scope, reason: result.reason }
+        };
+      });
+
+      checks.push({
+        name: "Natural research classification grants no external-action authority",
+        passed: cases.every(([text]) =>
+          this.researchIntentExecutionContract({ request: { text } }).externalActionAuthorityGranted === false
+        )
+      });
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = {
+        success: passed === checks.length,
+        commission: "ER153",
+        schema: "meos.executive-router.natural-public-research-intent.acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        checks
+      };
+      console.table(checks.map(item => ({ name: item.name, passed: item.passed })));
+      return result;
     },
 
     meaningfulTerms(value) {
