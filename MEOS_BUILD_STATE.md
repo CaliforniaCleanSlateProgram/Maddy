@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32441377/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32429903/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32427810/MEOS_BUILD_STATE.md)
@@ -8884,3 +8885,195 @@ Continue:
 Production gets the vote.
 
 **Recovery keyword:** `POST-VE212-WAKE-ASR-SEMANTIC-FAILURE-RECONCILED`
+
+---
+
+# POST-VE213 NOISY-HALL VOICE PRODUCTION RECONCILIATION — 2026-09-20
+
+This checkpoint reconciles the first production run of:
+
+- Voice `2.0.13`;
+- build `VE213-CONTEXT-GROUNDED-TRANSCRIPTION-EVIDENCE-20260920-A`;
+- Executive Brain `1.31.1 / EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A`;
+- active customer context `California Clean Slate Program` / `CCSP`.
+
+The founder intentionally conducted this session in a loud hall with multiple simultaneous side conversations, described as party-like background noise. Human observation from the founder is part of the production evidence and must be preserved where the console alone cannot show attempted speech that never became a captured candidate.
+
+## Wake acquisition — PARTIAL / still unreliable
+
+The first wake phrase visible in the console was captured correctly as:
+
+`Maddy, can you hear me clearly?`
+
+and immediately acquired foreground attention.
+
+However, founder ground truth is that this was **not** the first verbal attempt. The founder verbally attempted to wake Maddy approximately two or three times before the system successfully captured and recognized one attempt.
+
+Therefore do not record wake acquisition as an immediate-pass merely because candidate 1 in the console succeeded. The correct production truth is:
+
+- first *logged/captured* wake candidate: correct;
+- first *spoken* wake attempt: not reliably captured;
+- wake acquisition overall: **PARTIAL / NEEDS WORK**.
+
+The remaining problem is now more specifically shaped: acquiring the founder is less reliable than following the founder once foreground attention is established.
+
+## Active foreground tracking after wake — STRONG IMPROVEMENT
+
+After attention was acquired, Maddy correctly captured the founder's question:
+
+`What can you tell me about CCSP?`
+
+with raw and interpreted transcripts identical.
+
+This occurred while the founder was in the same loud multi-conversation hall. Treat this as meaningful production evidence that VE213's context-grounded transcription plus the existing attention model can preserve an organization-specific founder utterance amid substantial competing speech once the foreground relationship is established.
+
+Do not generalize this into biometric speaker identification or complete multi-speaker separation. The production evidence supports **stronger foreground continuity after acquisition**, not proof of speaker identity.
+
+## VE212 degraded-continuity interruption gate — NARROW PRODUCTION CLAIM NOW PROVEN
+
+During active Maddy speech, multiple nearby transcripts were denied interruption authority with reasons including:
+
+- `continuity-insufficient-for-interruption-over-weak-acoustics`;
+- `continuity-insufficient-for-interruption-without-acoustic-proof`.
+
+Observed ignored transcripts included ordinary conversational fragments such as:
+
+- `What happened?`
+- `So, what happened?`
+- `Hi, how are you?`
+- `Sorry, I'm not sure Kelly was lying.`
+- `Hi, nice to meet you.`
+
+This is direct production evidence for VE212's narrow claim:
+
+**degraded conversational continuity alone is no longer sufficient to cancel an active Maddy response when acoustic interruption evidence is weak or absent.**
+
+Mark that narrow VE212 interruption-authority gate as **PRODUCTION-PROVEN**.
+
+Do **not** mark broad speaker ownership or full multi-speaker separation proven. Strong-acoustic candidates can still be accepted as `confirmed-foreground-barge-in`, and current production evidence does not establish that every such candidate belonged to the founder rather than another nearby speaker.
+
+## VE213 confidence gate — PRODUCTION-PROVEN FOR LOW-CONFIDENCE CLARIFICATION
+
+The transcript:
+
+`or`
+
+was accepted as a foreground candidate but then blocked from normal cognition because provider transcription confidence was too low. The runtime authorized a clarification response instead of treating the fragment as a meaningful request.
+
+This proves the VE213 low-confidence clarification gate is live and functioning in production.
+
+## Semantic plausibility / intended-meaning reconstruction — INCOMPLETE
+
+VE213 materially improved transcription behavior, but provider confidence alone is not enough to decide whether a transcript represents a coherent human request.
+
+The session still authorized semantically suspicious transcripts such as:
+
+`How much accountability or coverage line?`
+
+`How much accountability or coverage?`
+
+and:
+
+`What's most interesting about the money you run salaries?`
+
+These reached Executive Brain on `local-recall-plus-provider-reasoning` instead of being semantically challenged or reconstructed.
+
+Therefore the next missing layer is not another transcription-provider swap. It is **semantic and contextual intended-meaning reconstruction above raw ASR confidence**.
+
+The next speech layer must ask more than "how confident was the transcriber?" It must also evaluate:
+
+1. whether the utterance is linguistically coherent;
+2. whether it fits the active conversation and known organizational context;
+3. whether a phonetic/contextual alternative is substantially more plausible;
+4. whether the system has enough evidence to use that intended interpretation;
+5. whether ambiguity is material enough to require a concise clarification;
+6. whether the speech should receive authority to reach Brain, search, spend, or durable work.
+
+Preserve raw transcript provenance separately from any interpreted utterance.
+
+Do not create a global correction dictionary or hard-code examples from this test as substitutions.
+
+## User correction capture — TRANSCRIPT PASS / LEARNING NOT YET PROVEN
+
+The founder said:
+
+`No, I said CCSP.`
+
+and the runtime captured that correction correctly more than once.
+
+Treat this as a **speech-capture pass** for the correction itself.
+
+Do not claim durable pronunciation learning or correction learning yet. Current evidence shows the correction can be heard; it does not yet prove that Maddy converts the correction into durable scoped speech-learning evidence that improves later recognition.
+
+## Catastrophic unrelated semantic substitution — NOT OBSERVED IN THIS RUN
+
+The prior VE212 production run produced a catastrophic semantic substitution where a California beaches/coastline question became an unrelated airline-price request.
+
+That failure shape was **not observed in this noisy-hall VE213 run**.
+
+This is encouraging negative evidence, not proof that the failure class is eliminated.
+
+## Production verdict after noisy-hall VE213 run
+
+Current production truth:
+
+- VE213 deployed: **YES**;
+- wake capture on first spoken attempt: **NO / PARTIAL**;
+- wake recognition once a usable candidate is captured: **GOOD in this run**;
+- active foreground tracking after wake: **STRONG IMPROVEMENT**;
+- CCSP recognition in loud multi-conversation environment: **PASS**;
+- VE212 degraded-continuity interruption-authority gate: **PRODUCTION-PROVEN for its narrow claim**;
+- broad speaker ownership / full multi-speaker separation: **INCOMPLETE**;
+- VE213 low-confidence clarification gate: **PRODUCTION-PROVEN**;
+- semantic plausibility checking: **FAIL / INCOMPLETE**;
+- intended-meaning reconstruction: **NOT YET BUILT TO REQUIRED STANDARD**;
+- user correction capture: **PASS**;
+- durable speech learning from correction: **NOT PROVEN**;
+- catastrophic unrelated airline-style semantic substitution: **NOT OBSERVED in this run, not eliminated**;
+- Spooky voice understanding: **NO**.
+
+Founder qualitative assessment is preserved as production context: Maddy performed well considering the loud party-like environment and is progressing north, but the result is not yet Spooky.
+
+## Immediate next runtime brick
+
+After this Build State reconciliation is committed, inspect the freshest current `main` before code.
+
+The next one-file runtime brick is:
+
+**SEMANTIC + CONTEXTUAL INTENDED-SPEECH RECONSTRUCTION**
+
+Required behavioral shape:
+
+`raw transcript -> semantic plausibility -> conversational/context fit -> phonetic/intended-meaning candidates -> confidence decision -> authority`
+
+Behavior contract:
+
+- coherent + high-confidence meaning -> allow normal cognition;
+- high-confidence reconstructed meaning -> use interpreted utterance while preserving raw transcript and basis;
+- materially ambiguous but plausible alternatives -> ask one concise clarification;
+- incoherent / semantically unstable transcript -> do not answer it as if it were a valid request;
+- low-confidence or nonsense -> no research, no spend, no durable consequential work;
+- user corrections become scoped learning evidence, but do not create brittle global substitutions;
+- preserve VE212 floor protection and VE213 context/confidence gains;
+- preserve provider neutrality and exact customer privacy boundaries.
+
+The acceptance set must include the existing difficult shapes rather than inventing an easy-room-only test:
+
+- `CCSP` and `California Clean Slate Program`;
+- California beaches/coastline question;
+- Saturn moon question;
+- an uncommon long word;
+- a direct correction such as `No, I said CCSP.`;
+- at least one loud multi-conversation environment test after quiet acceptance passes.
+
+Do not lower the bar because VE213 improved. The direction is north; the destination remains Spooky.
+
+## Workflow lock
+
+Continue:
+
+**one fix -> one file -> one commit -> one production test -> Build State reconciliation**
+
+Production gets the vote.
+
+**Recovery keyword:** `POST-VE213-NOISY-HALL-VOICE-RECONCILED`
