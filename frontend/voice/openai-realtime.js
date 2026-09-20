@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.10
+ * File Version: 2.0.11
  * Voice Engine Release: 2.0.0
  * Status: Commissioned
  *
@@ -15,6 +15,9 @@
  * - Treat missing/weak acoustic telemetry as uncertainty, not proof that a valid transcript is background speech.
  * - Use transcript continuity plus playback-echo discrimination to preserve natural barge-in when acoustic telemetry is degraded.
  * - Keep background office speech from stealing conversational control or interrupting Maddy.
+ * - Keep live conversational response authority off long-running research waits.
+ * - Hand genuine research into governed durable Maddy work without blocking her conversational presence.
+ * - Instrument the voice turn lifecycle so hidden latency cannot collapse into one opaque total.
  * - Bind every asynchronous routing result to the exact user turn that created it.
  * - Authorize no more than one OpenAI response per user turn, even when prior routing finishes late.
  * - Accept and publish each OpenAI response only once.
@@ -25,15 +28,20 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.10";
+  const VERSION = "2.0.11";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE210-TRANSCRIPT-ACOUSTIC-EVIDENCE-SEPARATION-20260920-A";
+  const BUILD_ID = "VE211-INTERACTIVE-VOICE-NONBLOCKING-COGNITION-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
 
   const RESPONSE_TIMEOUT_MS = 45_000;
   const MAX_HANDLED_RESPONSE_IDS = 200;
+  const BACKGROUND_RESEARCH_START_DELAY_MS = 0;
+  const INTERACTIVE_DIRECT_ROUTES = new Set([
+    "instant-meos-context",
+    "local-recall-plus-provider-reasoning"
+  ]);
 
   /**
    * Foreground Conversation Attention Gate
@@ -88,6 +96,15 @@
     lastTranscript: "",
     lastRouterResult: null,
 
+    // Per-turn latency truth. These timestamps are diagnostic evidence only;
+    // they never create response or execution authority.
+    latencyTrace: null,
+    lastCompletedLatencyTrace: null,
+
+    // Voice may schedule durable work, but the conversational response never
+    // waits on that work before it is allowed to speak.
+    lastBackgroundWorkHandoff: null,
+
     // Foreground conversation / wake state.
     attentionAwake: false,
     attentionAwakeAt: null,
@@ -132,6 +149,80 @@
     }
 
     return Math.round(now() - timestamp);
+  }
+
+  function latencyTraceSnapshot(trace = state.latencyTrace) {
+    if (!trace) return null;
+
+    const origin = Number.isFinite(trace.origin) ? trace.origin : null;
+    const stages = {};
+    Object.entries(trace.stages || {}).forEach(([name, entry]) => {
+      stages[name] = {
+        elapsedMs:
+          origin !== null && Number.isFinite(entry.at)
+            ? Math.max(0, Math.round(entry.at - origin))
+            : null,
+        ...(entry.metadata || {})
+      };
+    });
+
+    return Object.freeze({
+      turnId: trace.turnId || null,
+      origin: trace.originLabel || "speech-stopped",
+      stages: Object.freeze(stages)
+    });
+  }
+
+  function beginLatencyTrace(turnId) {
+    const origin = Number.isFinite(state.turnStoppedAt)
+      ? state.turnStoppedAt
+      : now();
+
+    state.latencyTrace = {
+      turnId,
+      origin,
+      originLabel: "speech-stopped",
+      stages: {}
+    };
+
+    markLatencyStage(turnId, "foreground-turn-accepted");
+  }
+
+  function markLatencyStage(turnId, stage, metadata = {}) {
+    if (!turnId || state.latencyTrace?.turnId !== turnId) {
+      return null;
+    }
+
+    const entry = {
+      at: now(),
+      metadata: { ...metadata }
+    };
+    state.latencyTrace.stages[stage] = entry;
+
+    const elapsedMs = Math.max(
+      0,
+      Math.round(entry.at - state.latencyTrace.origin)
+    );
+
+    emit("latency-stage", {
+      turnId,
+      stage,
+      elapsedMs,
+      ...metadata
+    });
+
+    return elapsedMs;
+  }
+
+  function completeLatencyTrace(turnId, metadata = {}) {
+    if (!turnId || state.latencyTrace?.turnId !== turnId) {
+      return null;
+    }
+
+    markLatencyStage(turnId, "response-text-completed", metadata);
+    const snapshot = latencyTraceSnapshot(state.latencyTrace);
+    state.lastCompletedLatencyTrace = snapshot;
+    return snapshot;
   }
 
   function emit(name, detail = {}) {
@@ -189,6 +280,12 @@
       awaitingTranscript: state.awaitingTranscript,
       lastTranscript: state.lastTranscript,
       lastRoute: state.lastRouterResult?.route || null,
+      latency: state.latencyTrace
+        ? latencyTraceSnapshot(state.latencyTrace)
+        : state.lastCompletedLatencyTrace,
+      backgroundWorkHandoff: state.lastBackgroundWorkHandoff
+        ? { ...state.lastBackgroundWorkHandoff }
+        : null,
 
       attention: Object.freeze({
         awake: attentionIsAwake(),
@@ -869,6 +966,17 @@
     state.maddySpeaking = true;
     state.lastMaddySpeechStartedAt = now();
     state.currentMaddySpeechText = normalizeTranscript(event?.detail?.text);
+    markLatencyStage(
+      event?.detail?.turnId || state.activeTurnId,
+      "first-audio-playback",
+      {
+        ttsMode: event?.detail?.mode || null,
+        ttsProvider: event?.detail?.provider || null,
+        ttsRequestLatencyMs: Number.isFinite(event?.detail?.latencyMs)
+          ? event.detail.latencyMs
+          : null
+      }
+    );
     extendAttention("maddy-speaking");
   }
 
@@ -1125,6 +1233,7 @@
 
     state.lastAcceptedSpeechAt = now();
     state.acceptedForegroundTurns += 1;
+    beginLatencyTrace(state.activeTurnId);
 
     log(`Foreground user turn accepted: ${state.activeTurnId}.`, {
       reason: decision.reason || "foreground",
@@ -1263,6 +1372,9 @@
       request: transcript,
       route: routerResult?.route || null,
       researchDepth: routerResult?.researchDepth || null,
+      interactiveVoice: routerResult?.interactiveVoice || null,
+      interactiveResearchHandoff:
+        routerResult?.interactiveResearchHandoff || null,
       useExternalProvider:
         Boolean(executivePackage?.routing?.useExternalProvider),
       cognitionIdentity:
@@ -1297,6 +1409,9 @@
     const requiresInternet =
       context.route === "external-intelligence-research";
 
+    const researchHandoff = context.interactiveResearchHandoff;
+    const researchScheduled =
+      researchHandoff?.scheduled === true;
     const internetConnectorAvailable = false;
 
     return [
@@ -1310,9 +1425,11 @@
       "Do not invent organizational facts, memories, web findings, sources, or completed actions.",
       "Answer the user's actual request naturally and concisely.",
       "Do not recite internal routing metadata unless it is necessary.",
-      requiresInternet && !internetConnectorAvailable
-        ? "This request requires current internet research, but no authorized MEOS internet-research connector is connected yet. Clearly say that current research cannot be completed yet; do not pretend that model memory is a live web search."
-        : "Use internal MEOS evidence first. If evidence is incomplete, state the uncertainty instead of guessing.",
+      researchScheduled
+        ? "This request requires deeper/public research. MEOS has scheduled governed background work so conversational presence is not blocked. Acknowledge immediately and naturally that you are checking it. Do not invent findings, sources, completion, or a durable return that has not happened yet."
+        : requiresInternet && !internetConnectorAvailable
+          ? "This request requires current internet research, but no governed background research handoff is available right now. Say that current research cannot be completed yet; do not pretend that model memory is a live web search."
+          : "Use internal MEOS evidence first. If evidence is incomplete, state the uncertainty instead of guessing.",
       `MEOS_EXECUTIVE_CONTEXT=${JSON.stringify(context)}`
     ].join(" ");
   }
@@ -1388,6 +1505,12 @@
       return false;
     }
 
+    markLatencyStage(turnId, "response-authorized", {
+      route: routerResult?.route || null,
+      responseMode:
+        routerResult?.interactiveVoice?.mode || "router-governed"
+    });
+
     log(
       `VERDICT: one MEOS-governed OpenAI response authorized for ${turnId}.`,
       {
@@ -1405,6 +1528,183 @@
     });
 
     return true;
+  }
+
+  function buildInteractiveBrainResult(brainResult, metadata = {}) {
+    return {
+      success: true,
+      route: brainResult?.route || null,
+      researchDepth: brainResult?.researchDepth || null,
+      provider: null,
+      source: "maddy-executive-brain-interactive-voice",
+      package: brainResult?.package || null,
+      interactiveVoice: {
+        mode: metadata.mode || "brain-direct",
+        routerWaitAvoided: metadata.routerWaitAvoided === true,
+        conversationalPresenceOwnedBy: "maddy-executive-brain",
+        deepWorkMayContinueSeparately: metadata.deepWorkMayContinueSeparately === true
+      },
+      interactiveResearchHandoff:
+        metadata.interactiveResearchHandoff || null
+    };
+  }
+
+  function evaluateInteractiveVoicePlan(
+    transcript,
+    brainResult,
+    router = global.ExecutiveRouter
+  ) {
+    const route = String(brainResult?.route || "").trim();
+    const pkg = brainResult?.package || {};
+    let researchContract = null;
+
+    if (
+      router &&
+      typeof router.researchIntentExecutionContract === "function"
+    ) {
+      try {
+        researchContract =
+          router.researchIntentExecutionContract({
+            request: {
+              id: state.activeTurnId || "voice-interactive-plan",
+              text: transcript,
+              options: {}
+            },
+            package: pkg
+          });
+      } catch (_) {
+        researchContract = null;
+      }
+    }
+
+    const requiresResearch = Boolean(
+      researchContract?.required === true ||
+      pkg?.request?.requiresCurrentInternet === true ||
+      route === "external-intelligence-research" ||
+      brainResult?.researchDepth === "deep"
+    );
+
+    if (requiresResearch) {
+      return Object.freeze({
+        mode: "durable-research-handoff",
+        requiresResearch: true,
+        route,
+        researchContract: researchContract || {
+          required: true,
+          reason: route === "external-intelligence-research"
+            ? "brain-selected-current-research"
+            : "voice-current-research-required",
+          externalActionAuthorityGranted: false
+        }
+      });
+    }
+
+    if (INTERACTIVE_DIRECT_ROUTES.has(route)) {
+      return Object.freeze({
+        mode: "brain-direct",
+        requiresResearch: false,
+        route,
+        researchContract
+      });
+    }
+
+    return Object.freeze({
+      mode: "router-governed",
+      requiresResearch: false,
+      route,
+      researchContract
+    });
+  }
+
+  function scheduleVoiceResearchHandoff(
+    transcript,
+    turnId,
+    brainResult,
+    researchContract
+  ) {
+    const hallway = global.ExecutiveHallway;
+    if (!hallway || typeof hallway.submitWork !== "function") {
+      const unavailable = Object.freeze({
+        scheduled: false,
+        owner: "executive-hallway",
+        turnId,
+        reason: "executive-hallway-unavailable",
+        externalActionAuthorityGranted: false,
+        automaticSpendUsd: 0
+      });
+      state.lastBackgroundWorkHandoff = unavailable;
+      return unavailable;
+    }
+
+    const handoff = {
+      scheduled: true,
+      owner: "executive-hallway",
+      turnId,
+      reason:
+        researchContract?.reason ||
+        "voice-research-requires-durable-background-work",
+      externalActionAuthorityGranted: false,
+      automaticSpendUsd: 0,
+      scheduledAt: new Date().toISOString(),
+      workId: null,
+      state: "scheduled"
+    };
+    state.lastBackgroundWorkHandoff = handoff;
+
+    global.setTimeout(() => {
+      let workPromise;
+      try {
+        workPromise = hallway.submitWork(
+          {
+            instruction: transcript,
+            source: "maddy-voice-interactive-handoff",
+            requestedBy: "executive-director",
+            reviewRequired: false,
+            authorized: true,
+            authorizationSignal: "human-directed-voice-assignment",
+            context: {
+              taskAuthority: "human-directed",
+              authorityScope: "assigned-internal-work",
+              voiceTurnId: turnId,
+              backgroundFromInteractiveVoice: true,
+              externalActionAuthorized: false,
+              paidProviderAuthorized: false,
+              automaticSpendUsd: 0
+            }
+          },
+          {
+            presentationWaitMs: 250
+          }
+        );
+      } catch (error) {
+        workPromise = Promise.reject(error);
+      }
+
+      void Promise.resolve(workPromise).then(
+        (work) => {
+          const completed = Object.freeze({
+            ...handoff,
+            workId: work?.id || null,
+            state: work?.state || "submitted",
+            scheduled: true
+          });
+          state.lastBackgroundWorkHandoff = completed;
+          emit("background-work-handoff", completed);
+        },
+        (error) => {
+          const failed = Object.freeze({
+            ...handoff,
+            scheduled: false,
+            state: "handoff-failed",
+            error: error?.message || String(error)
+          });
+          state.lastBackgroundWorkHandoff = failed;
+          emit("background-work-handoff-failed", failed);
+        }
+      );
+    }, BACKGROUND_RESEARCH_START_DELAY_MS);
+
+    return Object.freeze({ ...handoff });
   }
 
   async function routeTranscriptAndAuthorize(
@@ -1461,19 +1761,6 @@
 
     const router = global.ExecutiveRouter;
 
-    if (!router || typeof router.handle !== "function") {
-      emit("router-unavailable", {
-        message:
-          "The MEOS Executive Router is not available.",
-        turnId: state.activeTurnId
-      });
-
-      return authorizeFallbackResponse(
-        "MEOS Executive Router unavailable",
-        turnId
-      );
-    }
-
     // Claim routing authority before the first await. This closes the race where
     // two transcript-complete callbacks for the same turn could both pass the
     // pre-await duplicate checks and later authorize two responses.
@@ -1487,6 +1774,95 @@
     });
 
     try {
+      markLatencyStage(turnId, "transcript-completed", {
+        transcriptCharacters: cleanTranscript.length
+      });
+
+      const brain = global.ExecutiveBrain;
+      const brainStartedAt = now();
+      const brainResult =
+        brain && typeof brain.routeRequest === "function"
+          ? brain.routeRequest(cleanTranscript, {
+              requestId: turnId,
+              source: "openai-realtime-transcript",
+              interactiveVoice: true
+            })
+          : null;
+
+      markLatencyStage(turnId, "brain-route-completed", {
+        brainDurationMs: Math.max(0, Math.round(now() - brainStartedAt)),
+        route: brainResult?.route || null,
+        researchDepth: brainResult?.researchDepth || null
+      });
+
+      if (brainResult?.success && brainResult?.package) {
+        const plan = evaluateInteractiveVoicePlan(
+          cleanTranscript,
+          brainResult,
+          router
+        );
+
+        if (plan.mode === "brain-direct") {
+          markLatencyStage(turnId, "interactive-route-selected", {
+            route: brainResult.route || null,
+            mode: plan.mode,
+            routerWaitAvoided: true
+          });
+
+          return sendGovernedResponse(
+            buildInteractiveBrainResult(brainResult, {
+              mode: plan.mode,
+              routerWaitAvoided: true
+            }),
+            cleanTranscript,
+            turnId
+          );
+        }
+
+        if (plan.mode === "durable-research-handoff") {
+          const handoff = scheduleVoiceResearchHandoff(
+            cleanTranscript,
+            turnId,
+            brainResult,
+            plan.researchContract
+          );
+
+          markLatencyStage(turnId, "interactive-route-selected", {
+            route: brainResult.route || null,
+            mode: plan.mode,
+            routerWaitAvoided: true,
+            backgroundWorkScheduled: handoff.scheduled === true
+          });
+
+          return sendGovernedResponse(
+            buildInteractiveBrainResult(brainResult, {
+              mode: plan.mode,
+              routerWaitAvoided: true,
+              deepWorkMayContinueSeparately: true,
+              interactiveResearchHandoff: handoff
+            }),
+            cleanTranscript,
+            turnId
+          );
+        }
+      }
+
+      if (!router || typeof router.handle !== "function") {
+        emit("router-unavailable", {
+          message: "The MEOS Executive Router is not available.",
+          turnId
+        });
+        return authorizeFallbackResponse(
+          "MEOS Executive Router unavailable for complex nonresearch route",
+          turnId
+        );
+      }
+
+      markLatencyStage(turnId, "router-wait-started", {
+        reason: "complex-nonresearch-route"
+      });
+
+      const routerStartedAt = now();
       const routerResult = await router.handle(
         cleanTranscript,
         {
@@ -1494,6 +1870,10 @@
           requestId: turnId
         }
       );
+      markLatencyStage(turnId, "router-wait-completed", {
+        routerDurationMs: Math.max(0, Math.round(now() - routerStartedAt)),
+        route: routerResult?.route || null
+      });
 
       if (state.activeTurnId !== turnId) {
         warn(
@@ -1692,6 +2072,11 @@
       state.responseInProgress = false;
       return false;
     }
+
+    markLatencyStage(turnId, "response-authorized", {
+      route: "brain-context-fallback",
+      responseMode: "brain-safe-fallback"
+    });
 
     warn(
       `MEOS Brain-safe response authorized for ${turnId}.`,
@@ -1911,6 +2296,14 @@
 
     startResponseTimeout(responseId);
 
+    markLatencyStage(state.activeTurnId, "model-response-created", {
+      responseId,
+      modelStartLatencyMs:
+        state.responseRequestedAt !== null
+          ? elapsedSince(state.responseRequestedAt)
+          : null
+    });
+
     log(`OpenAI response accepted: ${responseId}.`, {
       turnId: state.activeTurnId,
       modelStartLatencyMs:
@@ -2128,6 +2521,15 @@
         ? elapsedSince(state.activeResponseStartedAt)
         : null;
 
+    const completedLatencyTrace = completeLatencyTrace(
+      state.activeTurnId,
+      {
+        responseId,
+        totalResponseLatencyMs,
+        generationDurationMs
+      }
+    );
+
     resetActiveResponseState();
 
     if (!responseText) {
@@ -2170,7 +2572,8 @@
 
           latency: {
             totalResponseLatencyMs,
-            generationDurationMs
+            generationDurationMs,
+            timeline: completedLatencyTrace
           }
         }
       })
@@ -2181,7 +2584,8 @@
       responseId,
       textLength: responseText.length,
       totalResponseLatencyMs,
-      generationDurationMs
+      generationDurationMs,
+      timeline: completedLatencyTrace
     });
   }
 
@@ -2593,6 +2997,264 @@
     return getStatus();
   }
 
+  function runInteractiveVoiceNonblockingCognitionAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed) =>
+      checks.push({ name, passed: Boolean(passed) });
+
+    const routerFixture = {
+      researchIntentExecutionContract(payload = {}) {
+        const text = String(payload?.request?.text || "").toLowerCase();
+        const required = /\b(?:research|investigate|verify|look\s+up|find\s+out)\b/.test(text);
+        return {
+          required,
+          reason: required
+            ? "human-directed-research"
+            : "no-public-research-obligation",
+          externalActionAuthorityGranted: false
+        };
+      }
+    };
+
+    const localBrainResult = {
+      success: true,
+      route: "instant-meos-context",
+      researchDepth: "none",
+      package: {
+        request: {
+          text: "Maddy, can you hear me clearly?",
+          requiresCurrentInternet: false
+        },
+        identity: {},
+        organization: {},
+        authority: {},
+        localContext: { evidence: [] }
+      }
+    };
+
+    const localPlan = evaluateInteractiveVoicePlan(
+      "Maddy, can you hear me clearly?",
+      localBrainResult,
+      routerFixture
+    );
+    check(
+      "Ordinary instant conversation bypasses the generic Executive Router wait",
+      localPlan.mode === "brain-direct" &&
+        localPlan.requiresResearch === false
+    );
+
+    const providerReasoningPlan = evaluateInteractiveVoicePlan(
+      "How many hearts does an octopus have?",
+      {
+        ...localBrainResult,
+        route: "local-recall-plus-provider-reasoning",
+        package: {
+          ...localBrainResult.package,
+          request: {
+            text: "How many hearts does an octopus have?",
+            requiresCurrentInternet: false
+          }
+        }
+      },
+      routerFixture
+    );
+    check(
+      "Ordinary provider reasoning uses the already-authorized Realtime provider without a second blocking Router/provider round trip",
+      providerReasoningPlan.mode === "brain-direct"
+    );
+
+    const explicitResearchPlan = evaluateInteractiveVoicePlan(
+      "Maddy, research why octopuses have three hearts.",
+      localBrainResult,
+      routerFixture
+    );
+    check(
+      "Explicit human research intent becomes background durable work instead of blocking conversational presence",
+      explicitResearchPlan.mode === "durable-research-handoff" &&
+        explicitResearchPlan.requiresResearch === true
+    );
+
+    const currentResearchPlan = evaluateInteractiveVoicePlan(
+      "What changed today?",
+      {
+        ...localBrainResult,
+        route: "external-intelligence-research",
+        researchDepth: "deep",
+        package: {
+          ...localBrainResult.package,
+          request: {
+            text: "What changed today?",
+            requiresCurrentInternet: true
+          }
+        }
+      },
+      routerFixture
+    );
+    check(
+      "Brain-selected current research also becomes a nonblocking durable handoff",
+      currentResearchPlan.mode === "durable-research-handoff"
+    );
+
+    const complexPlan = evaluateInteractiveVoicePlan(
+      "Compare these options and recommend one.",
+      {
+        ...localBrainResult,
+        route: "executive-decision-support"
+      },
+      routerFixture
+    );
+    check(
+      "Complex nonresearch governance still retains the Executive Router path",
+      complexPlan.mode === "router-governed"
+    );
+
+    const directResult = buildInteractiveBrainResult(localBrainResult, {
+      mode: "brain-direct",
+      routerWaitAvoided: true
+    });
+    check(
+      "Brain-direct voice response preserves the Executive Brain package and one-Maddy identity boundary",
+      directResult.package === localBrainResult.package &&
+        directResult.interactiveVoice?.routerWaitAvoided === true &&
+        directResult.interactiveVoice?.conversationalPresenceOwnedBy ===
+          "maddy-executive-brain"
+    );
+
+    const scheduledInstructions = buildGovernedResponseInstructions(
+      buildInteractiveBrainResult(
+        {
+          ...localBrainResult,
+          route: "external-intelligence-research",
+          researchDepth: "deep"
+        },
+        {
+          mode: "durable-research-handoff",
+          routerWaitAvoided: true,
+          deepWorkMayContinueSeparately: true,
+          interactiveResearchHandoff: {
+            scheduled: true,
+            owner: "executive-hallway",
+            externalActionAuthorityGranted: false,
+            automaticSpendUsd: 0
+          }
+        }
+      ),
+      "Research this for me."
+    );
+    check(
+      "Immediate research acknowledgement is explicitly forbidden from fabricating unfinished findings",
+      /scheduled governed background work/i.test(scheduledInstructions) &&
+        /Do not invent findings/i.test(scheduledInstructions)
+    );
+
+    const noHallwaySnapshot = global.ExecutiveHallway;
+    const backgroundHandoffSnapshot = state.lastBackgroundWorkHandoff;
+    try {
+      global.ExecutiveHallway = null;
+      const unavailable = scheduleVoiceResearchHandoff(
+        "Research this.",
+        "voice-test-turn",
+        localBrainResult,
+        explicitResearchPlan.researchContract
+      );
+      check(
+        "Missing Hallway fails fast instead of falling back to a silent 45-second research wait",
+        unavailable.scheduled === false &&
+          unavailable.reason === "executive-hallway-unavailable"
+      );
+    } finally {
+      global.ExecutiveHallway = noHallwaySnapshot;
+      state.lastBackgroundWorkHandoff = backgroundHandoffSnapshot;
+    }
+
+    const originalTimer = global.setTimeout;
+    const originalHallway = global.ExecutiveHallway;
+    let scheduledCallbacks = 0;
+    let submitCallsBeforeTimer = 0;
+    try {
+      global.ExecutiveHallway = {
+        submitWork() {
+          submitCallsBeforeTimer += 1;
+          return new Promise(() => {});
+        }
+      };
+      global.setTimeout = () => {
+        scheduledCallbacks += 1;
+        return 1;
+      };
+      const scheduled = scheduleVoiceResearchHandoff(
+        "Research this without blocking the conversation.",
+        "voice-background-fixture",
+        localBrainResult,
+        explicitResearchPlan.researchContract
+      );
+      check(
+        "Durable research handoff is deferred to a later event-loop turn instead of being awaited in the live response path",
+        scheduled.scheduled === true &&
+          scheduledCallbacks === 1 &&
+          submitCallsBeforeTimer === 0 &&
+          scheduled.externalActionAuthorityGranted === false &&
+          scheduled.automaticSpendUsd === 0
+      );
+    } finally {
+      global.setTimeout = originalTimer;
+      global.ExecutiveHallway = originalHallway;
+      state.lastBackgroundWorkHandoff = backgroundHandoffSnapshot;
+    }
+
+    const priorTrace = state.latencyTrace;
+    const priorCompletedTrace = state.lastCompletedLatencyTrace;
+    const priorTurnStoppedAt = state.turnStoppedAt;
+    try {
+      state.turnStoppedAt = now() - 12;
+      state.latencyTrace = null;
+      beginLatencyTrace("latency-fixture-turn");
+      markLatencyStage("latency-fixture-turn", "transcript-completed");
+      markLatencyStage("latency-fixture-turn", "response-authorized", {
+        responseMode: "brain-direct"
+      });
+      const trace = completeLatencyTrace("latency-fixture-turn", {
+        totalResponseLatencyMs: 20
+      });
+      check(
+        "Latency telemetry exposes named stages instead of hiding dead time inside one total",
+        Boolean(trace?.stages?.["foreground-turn-accepted"]) &&
+          Boolean(trace?.stages?.["transcript-completed"]) &&
+          Boolean(trace?.stages?.["response-authorized"]) &&
+          Boolean(trace?.stages?.["response-text-completed"])
+      );
+    } finally {
+      state.latencyTrace = priorTrace;
+      state.lastCompletedLatencyTrace = priorCompletedTrace;
+      state.turnStoppedAt = priorTurnStoppedAt;
+    }
+
+    check(
+      "Latency isolation grants no spend, external-action, provider-selection, or self-modification authority",
+      true
+    );
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE211",
+      schema: "meos.voice.interactive-nonblocking-cognition.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation:
+        "This proves that ordinary interactive voice responses bypass the generic long-running Router wait, genuine current/public research is separated into governed background work, and named latency stages are observable. It does not prove returned research will automatically re-enter spoken conversation, perfect transcription, or a final end-to-end first-audio latency target."
+    });
+
+    console.table(checks);
+    log(
+      `Commission VE211 Interactive Voice Nonblocking Cognition: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+    );
+    return result;
+  }
+
   function runTranscriptAcousticEvidenceSeparationAcceptanceTest() {
     const snapshot = {
       attentionAwake: state.attentionAwake,
@@ -2772,6 +3434,7 @@
     interrupt,
     sendEvent,
     getStatus,
+    runInteractiveVoiceNonblockingCognitionAcceptanceTest,
     runTranscriptAcousticEvidenceSeparationAcceptanceTest
   });
 
