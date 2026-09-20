@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.30.0
- * Build: EB1300-SEMANTIC-CONTINUITY-AUTHORITY-RECONSTRUCTION-20260920-A
+ * Version: 1.31.0
+ * Build: EB1310-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-20260920-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.30.0";
-  const BUILD_ID = "EB1300-SEMANTIC-CONTINUITY-AUTHORITY-RECONSTRUCTION-20260920-A";
+  const VERSION = "1.31.0";
+  const BUILD_ID = "EB1310-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-20260920-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -261,6 +261,11 @@
       semanticContinuityReconstructionEnabled: true,
       maximumSemanticContinuityEvaluations: 160,
       maximumSemanticContinuityHistory: 80,
+      continuityDiscriminatingExperimentEnabled: true,
+      maximumContinuityExperimentPortfolio: 24,
+      maximumContinuityExperimentHistory: 80,
+      maximumContinuityExperimentRisk: 0.22,
+      minimumContinuityExperimentUtility: 0.01,
       maximumCausalInvestigationHistory: 120,
       maximumCompetingHypotheses: 6,
       maximumAutonomousInvestigationHistory: 120,
@@ -357,6 +362,9 @@
     semanticContinuityReconstruction: null,
     semanticContinuityHistory: [],
     semanticContinuityReconstructionCount: 0,
+    continuityExperimentPortfolio: null,
+    continuityExperimentHistory: [],
+    continuityExperimentPlanCount: 0,
     neuromorphicAttention: {
       schema: "meos.maddy.neuromorphic-attention-state.v1",
       commission: "006.037A",
@@ -1143,11 +1151,17 @@
         refresh: options.refreshSemantic === true,
         reason: options.reason || "self-model-continuity-semantics"
       });
+      const experimentPortfolio = this.getContinuityExperimentPortfolio({
+        semantic,
+        refresh: options.refreshExperiments === true,
+        reason: options.reason || "self-model-continuity-experiment-planning"
+      });
       return {
-        schema: "meos.maddy.architectural-self-awareness.v2",
-        commission: "006.038B",
+        schema: "meos.maddy.architectural-self-awareness.v3",
+        commission: "006.038C",
         topologyFingerprint: topology?.fingerprint || null,
         semanticContinuityFingerprint: semantic?.fingerprint || null,
+        continuityExperimentFingerprint: experimentPortfolio?.fingerprint || null,
         discoveryMode: topology?.discoveryMode || null,
         semanticMode: semantic?.mode || null,
         registeredPictureCount: Number(topology?.declaredPicture?.registeredComponents || 0),
@@ -1157,16 +1171,20 @@
         browserPersistenceCandidates: Number(topology?.discovered?.browserPersistenceCandidates || 0),
         mixedContinuityCandidates: Number(topology?.discovered?.mixedContinuityCandidates || 0),
         semanticContinuity: this.clone(semantic?.summary || null),
+        continuityExperimentation: this.clone(experimentPortfolio?.summary || null),
         pictureMayBeIncomplete: Number(topology?.discovered?.outsideDeclaredPicture || 0) > 0,
         noPicturePrinciple: "reconstruct-architecture-from-runtime-evidence-not-only-a-maintained-list",
         semanticPrinciple: "persistence-surface-is-a-clue-not-an-authority-verdict; reconstruct-role-from-state-call-path-and-competing-hypotheses",
+        experimentPrinciple: "when-continuity-meaning-is-unresolved-pre-register-competing-predictions-and-select-the-safest-highest-information-discriminating-test",
         epistemicBoundary: {
           ...(this.clone(topology?.epistemicBoundary || {})),
           semanticInferenceIsNotExecutionProof: true,
           explicitRuntimeStateOutweighsKeywordPresence: true,
-          unresolvedSemanticsRequireDiscriminatingEvidence: true
+          unresolvedSemanticsRequireDiscriminatingEvidence: true,
+          experimentOutcomeMustNotBeKnownBeforePrediction: true,
+          experimentPlanIsNotRepairAuthority: true
         },
-        authority: this.clone(semantic?.authority || topology?.authority || null)
+        authority: this.clone(experimentPortfolio?.authority || semantic?.authority || topology?.authority || null)
       };
     },
 
@@ -1617,6 +1635,472 @@
         });
       }
       return this.clone(this.semanticContinuityReconstruction);
+    },
+
+
+    /*
+     * Commission 006.038C — Continuity Discriminating Experiment Engine
+     *
+     * 038B can preserve multiple explanations for an ambiguous continuity
+     * surface and state what evidence would discriminate them. 038C turns
+     * that epistemic gap into a pre-registered, bounded experiment design.
+     * Maddy scores candidate tests by expected information gain, uncertainty,
+     * reversibility, cost, and risk; predicts outcomes before observation;
+     * and can interpret results with Bayesian-style evidence updates. No live
+     * organ is executed by planning. Experiment execution is refused unless a
+     * caller supplies an explicit isolated in-memory acceptance sandbox.
+     */
+    normalizeContinuityHypothesisDistribution(evaluation = {}) {
+      const hypotheses = Array.isArray(evaluation?.hypotheses) ? evaluation.hypotheses : [];
+      const weighted = hypotheses.map(item => ({
+        hypothesisId: item.hypothesisId,
+        claim: item.claim || null,
+        weight: Math.max(0.0001, Number(item.score || 0.0001))
+      }));
+      const total = weighted.reduce((sum, item) => sum + item.weight, 0) || 1;
+      return weighted.map(item => ({
+        hypothesisId: item.hypothesisId,
+        claim: item.claim,
+        probability: Number((item.weight / total).toFixed(6))
+      }));
+    },
+
+    continuityDistributionEntropy(distribution = []) {
+      return Number((distribution || []).reduce((sum, item) => {
+        const p = Math.max(0, Math.min(1, Number(item?.probability || 0)));
+        return p > 0 ? sum - (p * Math.log2(p)) : sum;
+      }, 0).toFixed(6));
+    },
+
+    continuityExperimentCatalog() {
+      return {
+        "browser-loss-reconstruction-equivalence": {
+          test: "browser-loss-reconstruction-equivalence",
+          executionMode: "isolated-browser-state-subtraction",
+          question: "With browser state absent, does authoritative state reconstruct equivalently from governed non-browser sources?",
+          riskScore: 0.07,
+          resourceCost: 0.10,
+          reversible: true,
+          requiresIsolation: true,
+          productionStateAllowed: false,
+          mutatesTargetProductionState: false,
+          outcomes: ["equivalent-reconstruction", "authoritative-state-changed", "inconclusive"],
+          likelihoods: {
+            "browser-is-continuity-authority": { "equivalent-reconstruction": 0.07, "authoritative-state-changed": 0.86, inconclusive: 0.07 },
+            "browser-is-disposable-workspace-or-cache": { "equivalent-reconstruction": 0.87, "authoritative-state-changed": 0.05, inconclusive: 0.08 },
+            "browser-surface-is-test-legacy-or-compatibility-residue": { "equivalent-reconstruction": 0.84, "authoritative-state-changed": 0.03, inconclusive: 0.13 },
+            "mixed-continuity-role-remains-unresolved": { "equivalent-reconstruction": 0.34, "authoritative-state-changed": 0.34, inconclusive: 0.32 }
+          }
+        },
+        "normal-operation-writer-reachability": {
+          test: "normal-operation-writer-reachability",
+          executionMode: "instrumented-no-write-call-trace",
+          question: "Can an ordinary non-test operation reach the browser writer under default configuration?",
+          riskScore: 0.035,
+          resourceCost: 0.07,
+          reversible: true,
+          requiresIsolation: true,
+          productionStateAllowed: false,
+          mutatesTargetProductionState: false,
+          outcomes: ["writer-reachable", "writer-not-reachable", "inconclusive"],
+          likelihoods: {
+            "browser-is-continuity-authority": { "writer-reachable": 0.78, "writer-not-reachable": 0.10, inconclusive: 0.12 },
+            "browser-is-disposable-workspace-or-cache": { "writer-reachable": 0.42, "writer-not-reachable": 0.42, inconclusive: 0.16 },
+            "browser-surface-is-test-legacy-or-compatibility-residue": { "writer-reachable": 0.05, "writer-not-reachable": 0.86, inconclusive: 0.09 },
+            "mixed-continuity-role-remains-unresolved": { "writer-reachable": 0.40, "writer-not-reachable": 0.35, inconclusive: 0.25 }
+          }
+        },
+        "continuity-owner-conflict": {
+          test: "continuity-owner-conflict",
+          executionMode: "isolated-divergent-state-challenge",
+          question: "When browser and durable state deliberately disagree in an isolated clone, which source controls reconstruction?",
+          riskScore: 0.14,
+          resourceCost: 0.16,
+          reversible: true,
+          requiresIsolation: true,
+          productionStateAllowed: false,
+          mutatesTargetProductionState: false,
+          outcomes: ["browser-wins", "durable-wins", "merge-or-conflict", "inconclusive"],
+          likelihoods: {
+            "browser-is-continuity-authority": { "browser-wins": 0.78, "durable-wins": 0.06, "merge-or-conflict": 0.10, inconclusive: 0.06 },
+            "browser-is-disposable-workspace-or-cache": { "browser-wins": 0.04, "durable-wins": 0.78, "merge-or-conflict": 0.10, inconclusive: 0.08 },
+            "browser-surface-is-test-legacy-or-compatibility-residue": { "browser-wins": 0.02, "durable-wins": 0.72, "merge-or-conflict": 0.08, inconclusive: 0.18 },
+            "mixed-continuity-role-remains-unresolved": { "browser-wins": 0.25, "durable-wins": 0.25, "merge-or-conflict": 0.34, inconclusive: 0.16 }
+          }
+        },
+        "authority-contract-evidence": {
+          test: "authority-contract-evidence",
+          executionMode: "read-only-governance-evidence-review",
+          question: "Does an explicit governed contract establish whether browser state may own continuity?",
+          riskScore: 0.005,
+          resourceCost: 0.025,
+          reversible: true,
+          requiresIsolation: false,
+          productionStateAllowed: true,
+          mutatesTargetProductionState: false,
+          outcomes: ["browser-authority-contract", "browser-non-authority-contract", "no-explicit-contract"],
+          likelihoods: {
+            "browser-is-continuity-authority": { "browser-authority-contract": 0.62, "browser-non-authority-contract": 0.05, "no-explicit-contract": 0.33 },
+            "browser-is-disposable-workspace-or-cache": { "browser-authority-contract": 0.04, "browser-non-authority-contract": 0.66, "no-explicit-contract": 0.30 },
+            "browser-surface-is-test-legacy-or-compatibility-residue": { "browser-authority-contract": 0.02, "browser-non-authority-contract": 0.48, "no-explicit-contract": 0.50 },
+            "mixed-continuity-role-remains-unresolved": { "browser-authority-contract": 0.10, "browser-non-authority-contract": 0.12, "no-explicit-contract": 0.78 }
+          }
+        }
+      };
+    },
+
+    scoreContinuityExperiment(evaluation = {}, definition = {}) {
+      const prior = this.normalizeContinuityHypothesisDistribution(evaluation);
+      const priorEntropy = this.continuityDistributionEntropy(prior);
+      const outcomes = Array.isArray(definition?.outcomes) ? definition.outcomes : [];
+      let expectedPosteriorEntropy = 0;
+      const outcomeForecast = [];
+
+      for (const outcome of outcomes) {
+        let outcomeProbability = 0;
+        const weighted = [];
+        for (const hypothesis of prior) {
+          const likelihood = Math.max(0.0001, Number(definition?.likelihoods?.[hypothesis.hypothesisId]?.[outcome] || 0.0001));
+          const joint = hypothesis.probability * likelihood;
+          outcomeProbability += joint;
+          weighted.push({ hypothesisId: hypothesis.hypothesisId, joint });
+        }
+        const posterior = weighted.map(item => ({
+          hypothesisId: item.hypothesisId,
+          probability: Number((item.joint / Math.max(outcomeProbability, 0.000001)).toFixed(6))
+        }));
+        const entropy = this.continuityDistributionEntropy(posterior);
+        expectedPosteriorEntropy += outcomeProbability * entropy;
+        outcomeForecast.push({
+          outcome,
+          probability: Number(outcomeProbability.toFixed(6)),
+          posteriorEntropy: entropy
+        });
+      }
+
+      const expectedInformationGain = Number(Math.max(0, priorEntropy - expectedPosteriorEntropy).toFixed(6));
+      const riskScore = Number(definition?.riskScore || 0);
+      const resourceCost = Number(definition?.resourceCost || 0);
+      const reversibilityBonus = definition?.reversible === true ? 0.08 : -0.18;
+      const isolationBonus = definition?.mutatesTargetProductionState === false ? 0.05 : -0.25;
+      const utility = Number((expectedInformationGain + reversibilityBonus + isolationBonus - (riskScore * 0.9) - (resourceCost * 0.25)).toFixed(6));
+      return {
+        priorEntropy,
+        expectedPosteriorEntropy: Number(expectedPosteriorEntropy.toFixed(6)),
+        expectedInformationGain,
+        riskScore,
+        resourceCost,
+        utility,
+        outcomeForecast
+      };
+    },
+
+    buildContinuityExperimentCandidates(evaluation = {}) {
+      const catalog = this.continuityExperimentCatalog();
+      const requestedTests = new Set((evaluation?.discriminatingEvidence || []).map(item => item?.test).filter(Boolean));
+      const candidates = [];
+      for (const test of requestedTests) {
+        const definition = catalog[test];
+        if (!definition) continue;
+        const score = this.scoreContinuityExperiment(evaluation, definition);
+        const prior = this.normalizeContinuityHypothesisDistribution(evaluation);
+        const predictions = prior.map(hypothesis => {
+          const likelihoods = definition?.likelihoods?.[hypothesis.hypothesisId] || {};
+          const ordered = Object.entries(likelihoods).sort((a, b) => Number(b[1]) - Number(a[1]));
+          return {
+            hypothesisId: hypothesis.hypothesisId,
+            priorProbability: hypothesis.probability,
+            predictedOutcome: ordered[0]?.[0] || "inconclusive",
+            predictedOutcomeLikelihood: Number(ordered[0]?.[1] || 0)
+          };
+        });
+        candidates.push({
+          experimentId: `${evaluation.component || "unknown-component"}:${test}`,
+          component: evaluation.component || null,
+          label: evaluation.label || evaluation.component || null,
+          sourceClassification: evaluation.classification || null,
+          epistemicStatus: evaluation.epistemicStatus || null,
+          question: definition.question,
+          test,
+          executionMode: definition.executionMode,
+          reversible: definition.reversible === true,
+          requiresIsolation: definition.requiresIsolation === true,
+          productionStateAllowed: definition.productionStateAllowed === true,
+          mutatesTargetProductionState: definition.mutatesTargetProductionState === true,
+          outcomes: this.clone(definition.outcomes),
+          predictions,
+          score,
+          authority: {
+            planOnlyByDefault: true,
+            executionRequiresExplicitIsolatedSandbox: definition.requiresIsolation === true,
+            productionMutationAuthorized: false,
+            durableMutationAuthorized: false,
+            externalActionAuthorized: false,
+            providerCallsAuthorized: false,
+            selfModificationAuthorized: false,
+            automaticSpendUsd: 0
+          }
+        });
+      }
+      return candidates.sort((a, b) => b.score.utility - a.score.utility || b.score.expectedInformationGain - a.score.expectedInformationGain || a.test.localeCompare(b.test));
+    },
+
+    planContinuityDiscriminatingExperiment(evaluation = {}, options = {}) {
+      const candidates = this.buildContinuityExperimentCandidates(evaluation);
+      const maxRisk = Number(options.maximumRisk ?? this.configuration.maximumContinuityExperimentRisk ?? 0.22);
+      const minimumUtility = Number(options.minimumUtility ?? this.configuration.minimumContinuityExperimentUtility ?? 0.01);
+      const eligible = candidates.filter(item =>
+        item.reversible === true &&
+        item.mutatesTargetProductionState !== true &&
+        Number(item.score?.riskScore || 0) <= maxRisk &&
+        Number(item.score?.utility || 0) >= minimumUtility
+      );
+      const selected = eligible[0] || null;
+      const prior = this.normalizeContinuityHypothesisDistribution(evaluation);
+      return {
+        schema: "meos.maddy.continuity-discriminating-experiment-plan.v1",
+        commission: "006.038C",
+        component: evaluation.component || null,
+        label: evaluation.label || evaluation.component || null,
+        sourceSemanticFingerprint: options.semanticFingerprint || null,
+        sourceClassification: evaluation.classification || null,
+        epistemicStatus: evaluation.epistemicStatus || null,
+        preRegisteredAt: new Date().toISOString(),
+        priorHypotheses: prior,
+        priorEntropy: this.continuityDistributionEntropy(prior),
+        selected: selected ? this.clone(selected) : null,
+        alternatives: this.clone(eligible.slice(1, 4)),
+        rejected: this.clone(candidates.filter(item => !eligible.some(eligibleItem => eligibleItem.experimentId === item.experimentId)).map(item => ({
+          experimentId: item.experimentId,
+          test: item.test,
+          riskScore: item.score?.riskScore || 0,
+          utility: item.score?.utility || 0,
+          reason: Number(item.score?.riskScore || 0) > maxRisk ? "risk-above-bounded-ceiling" : item.reversible !== true ? "not-reversible" : item.mutatesTargetProductionState === true ? "would-mutate-production-state" : "utility-below-floor"
+        }))),
+        selectionRule: "maximize-expected-information-gain-minus-risk-and-resource-cost-under-reversibility-and-authority-constraints",
+        authority: {
+          experimentExecutionAuthorized: false,
+          productionMutationAuthorized: false,
+          durableMutationAuthorized: false,
+          externalActionAuthorized: false,
+          providerCallsAuthorized: false,
+          selfModificationAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+    },
+
+    reconstructContinuityExperimentPortfolio(options = {}) {
+      if (this.configuration.continuityDiscriminatingExperimentEnabled !== true) {
+        return {
+          schema: "meos.maddy.continuity-discriminating-experiment-portfolio.v1",
+          commission: "006.038C",
+          enabled: false,
+          reason: "continuity-discriminating-experiment-disabled"
+        };
+      }
+      const semantic = options.semantic || this.getSemanticContinuityAuthority({
+        refresh: options.refreshSemantic === true,
+        reason: options.reason || "continuity-experiment-portfolio"
+      });
+      const targetClasses = new Set(["active-browser-continuity-risk", "mixed-continuity-unresolved", "browser-persistence-role-unresolved"]);
+      const candidateEvaluations = (semantic?.evaluations || []).filter(item => targetClasses.has(item.classification));
+      const deduped = [];
+      const seen = new Set();
+      for (const evaluation of candidateEvaluations) {
+        const key = String(evaluation.label || evaluation.component || "unknown").trim().toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(evaluation);
+      }
+      const plans = deduped.map(evaluation => this.planContinuityDiscriminatingExperiment(evaluation, {
+        semanticFingerprint: semantic?.fingerprint || null
+      })).filter(plan => plan.selected);
+      plans.sort((a, b) => Number(b.selected?.score?.utility || 0) - Number(a.selected?.score?.utility || 0) || Number(b.selected?.score?.expectedInformationGain || 0) - Number(a.selected?.score?.expectedInformationGain || 0) || String(a.component).localeCompare(String(b.component)));
+      const boundedPlans = plans.slice(0, this.configuration.maximumContinuityExperimentPortfolio);
+      const summary = {
+        semanticEvaluations: Number(semantic?.summary?.evaluated || 0),
+        unresolvedOrRiskTargets: candidateEvaluations.length,
+        uniqueTargets: deduped.length,
+        plannedExperiments: boundedPlans.length,
+        isolatedExperiments: boundedPlans.filter(item => item.selected?.requiresIsolation === true).length,
+        readOnlyEvidenceReviews: boundedPlans.filter(item => item.selected?.executionMode === "read-only-governance-evidence-review").length,
+        highestExpectedInformationGain: Number(boundedPlans[0]?.selected?.score?.expectedInformationGain || 0),
+        highestUtility: Number(boundedPlans[0]?.selected?.score?.utility || 0)
+      };
+      const stableBasis = {
+        schema: "meos.maddy.continuity-discriminating-experiment-portfolio.v1",
+        semanticFingerprint: semantic?.fingerprint || null,
+        plans: boundedPlans.map(plan => ({
+          component: plan.component,
+          sourceClassification: plan.sourceClassification,
+          priorHypotheses: plan.priorHypotheses,
+          selected: plan.selected ? {
+            test: plan.selected.test,
+            executionMode: plan.selected.executionMode,
+            predictions: plan.selected.predictions,
+            score: plan.selected.score
+          } : null
+        })),
+        summary
+      };
+      const fingerprint = this.architecturalTopologyFingerprint(stableBasis).replace(/^topology-/, "experiment-");
+      const prior = this.continuityExperimentPortfolio;
+      const result = {
+        schema: "meos.maddy.continuity-discriminating-experiment-portfolio.v1",
+        version: "1.0.0",
+        commission: "006.038C",
+        buildId: this.buildId,
+        generatedAt: new Date().toISOString(),
+        reason: options.reason || "continuity-discriminating-experiment-portfolio",
+        semanticFingerprint: semantic?.fingerprint || null,
+        fingerprint,
+        changedFromPrior: Boolean(prior?.fingerprint && prior.fingerprint !== fingerprint),
+        priorFingerprint: prior?.fingerprint || null,
+        summary,
+        plans: boundedPlans,
+        epistemicBoundary: {
+          planIsNotObservation: true,
+          predictionMustPrecedeOutcome: true,
+          expectedInformationGainIsModelBasedNotGuaranteed: true,
+          experimentResultCanContradictPriorBelief: true,
+          unresolvedOutcomeRemainsUnresolved: true,
+          repairRequiresSeparateAuthorityAndEvidence: true
+        },
+        authority: {
+          discoveredMethodsExecuted: false,
+          experimentExecutionAuthorized: false,
+          productionStateMutated: false,
+          durableStateMutated: false,
+          stateWritesAuthorized: false,
+          externalActionsAuthorized: false,
+          providerCallsAuthorized: false,
+          selfModificationAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+      this.continuityExperimentPlanCount = Number(this.continuityExperimentPlanCount || 0) + boundedPlans.length;
+      if (!prior || prior.fingerprint !== fingerprint) {
+        this.continuityExperimentHistory.unshift({
+          fingerprint,
+          priorFingerprint: prior?.fingerprint || null,
+          semanticFingerprint: result.semanticFingerprint,
+          generatedAt: result.generatedAt,
+          reason: result.reason,
+          summary: this.clone(summary)
+        });
+        this.continuityExperimentHistory = this.continuityExperimentHistory.slice(0, this.configuration.maximumContinuityExperimentHistory);
+      }
+      this.continuityExperimentPortfolio = result;
+      return this.clone(result);
+    },
+
+    getContinuityExperimentPortfolio(options = {}) {
+      const semantic = options.semantic || this.getSemanticContinuityAuthority({
+        refresh: options.refreshSemantic === true,
+        reason: options.reason || "continuity-experiment-read"
+      });
+      if (
+        options.refresh === true ||
+        !this.continuityExperimentPortfolio ||
+        this.continuityExperimentPortfolio.semanticFingerprint !== semantic?.fingerprint
+      ) {
+        return this.reconstructContinuityExperimentPortfolio({
+          semantic,
+          reason: options.reason || "continuity-experiment-read"
+        });
+      }
+      return this.clone(this.continuityExperimentPortfolio);
+    },
+
+    interpretContinuityExperimentObservation(plan = {}, observation = {}) {
+      const selected = plan?.selected;
+      if (!selected) return { success: false, reason: "no-selected-experiment" };
+      const catalog = this.continuityExperimentCatalog();
+      const definition = catalog[selected.test];
+      if (!definition) return { success: false, reason: "unknown-experiment-definition" };
+      const outcome = observation?.outcome;
+      if (!definition.outcomes.includes(outcome)) return { success: false, reason: "unsupported-observation-outcome", supportedOutcomes: this.clone(definition.outcomes) };
+      const prior = Array.isArray(plan?.priorHypotheses) ? plan.priorHypotheses : [];
+      const weighted = prior.map(item => {
+        const likelihood = Math.max(0.0001, Number(definition?.likelihoods?.[item.hypothesisId]?.[outcome] || 0.0001));
+        return { hypothesisId: item.hypothesisId, claim: item.claim || null, priorProbability: Number(item.probability || 0), likelihood, joint: Number(item.probability || 0) * likelihood };
+      });
+      const evidenceProbability = weighted.reduce((sum, item) => sum + item.joint, 0) || 0.000001;
+      const posterior = weighted.map(item => ({
+        hypothesisId: item.hypothesisId,
+        claim: item.claim,
+        priorProbability: item.priorProbability,
+        likelihood: item.likelihood,
+        probability: Number((item.joint / evidenceProbability).toFixed(6))
+      })).sort((a, b) => b.probability - a.probability);
+      const priorEntropy = this.continuityDistributionEntropy(prior);
+      const posteriorEntropy = this.continuityDistributionEntropy(posterior);
+      const strongest = posterior[0] || null;
+      const classificationSuggestion = strongest?.hypothesisId === "browser-is-continuity-authority"
+        ? "active-browser-continuity-risk"
+        : strongest?.hypothesisId === "browser-is-disposable-workspace-or-cache"
+          ? "browser-disposable-reconstructive"
+          : strongest?.hypothesisId === "browser-surface-is-test-legacy-or-compatibility-residue"
+            ? "test-or-legacy-browser-residue"
+            : "mixed-continuity-unresolved";
+      return {
+        success: true,
+        schema: "meos.maddy.continuity-discriminating-experiment-observation.v1",
+        commission: "006.038C",
+        component: plan.component || null,
+        experimentId: selected.experimentId || null,
+        test: selected.test,
+        observation: this.clone(observation),
+        predictionsWerePreRegistered: Array.isArray(selected.predictions) && selected.predictions.length > 0 && Boolean(plan.preRegisteredAt),
+        prior,
+        posterior,
+        priorEntropy,
+        posteriorEntropy,
+        observedInformationGain: Number(Math.max(0, priorEntropy - posteriorEntropy).toFixed(6)),
+        strongestPosteriorHypothesis: strongest?.hypothesisId || null,
+        strongestPosteriorProbability: Number(strongest?.probability || 0),
+        classificationSuggestion,
+        epistemicStatus: outcome === "inconclusive" || outcome === "merge-or-conflict" || outcome === "no-explicit-contract" ? "still-requires-discriminating-evidence" : "bounded-experimental-evidence",
+        authorityVerdict: "observation-updates-belief-not-repair-authority"
+      };
+    },
+
+    runContinuityExperimentInIsolatedSandbox(plan = {}, sandbox = {}) {
+      const selected = plan?.selected;
+      if (!selected) return { success: false, executed: false, reason: "no-selected-experiment" };
+      if (sandbox?.kind !== "meos-isolated-continuity-sandbox") return { success: false, executed: false, reason: "sandbox-contract-required" };
+      if (sandbox?.isolationVerified !== true || sandbox?.productionStateAccessible === true) return { success: false, executed: false, reason: "isolation-not-proven" };
+      if (selected.reversible !== true || selected.mutatesTargetProductionState === true) return { success: false, executed: false, reason: "experiment-not-reversible-or-production-mutating" };
+      if (Number(selected?.score?.riskScore || 0) > Number(this.configuration.maximumContinuityExperimentRisk || 0.22)) return { success: false, executed: false, reason: "experiment-risk-above-ceiling" };
+      if (typeof sandbox.execute !== "function") return { success: false, executed: false, reason: "sandbox-executor-missing" };
+      const rawObservation = sandbox.execute(this.clone({
+        experimentId: selected.experimentId,
+        component: plan.component,
+        test: selected.test,
+        executionMode: selected.executionMode,
+        question: selected.question,
+        outcomes: selected.outcomes,
+        predictions: selected.predictions
+      }));
+      if (rawObservation && typeof rawObservation.then === "function") return { success: false, executed: false, reason: "async-sandbox-not-supported-by-bounded-sync-commission" };
+      const interpretation = this.interpretContinuityExperimentObservation(plan, rawObservation || {});
+      return {
+        success: interpretation.success === true,
+        executed: true,
+        isolated: true,
+        productionStateAccessible: false,
+        observation: this.clone(rawObservation || null),
+        interpretation,
+        authority: {
+          productionMutationAuthorized: false,
+          durableMutationAuthorized: false,
+          externalActionAuthorized: false,
+          providerCallsAuthorized: false,
+          selfModificationAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
     },
 
     getRuntimeCapabilityGaps(manifest = this.getSystemManifest()) {
@@ -10827,6 +11311,10 @@
             Boolean(architecturalSelfAwareness?.semanticContinuityFingerprint),
           distinguishesPersistenceSurfaceFromAuthority:
             architecturalSelfAwareness?.semanticPrinciple?.includes("persistence-surface-is-a-clue") === true,
+          designsOwnDiscriminatingExperiments:
+            Boolean(architecturalSelfAwareness?.continuityExperimentFingerprint),
+          preRegistersPredictionsBeforeTesting:
+            architecturalSelfAwareness?.experimentPrinciple?.includes("pre-register") === true,
           previousProjectionFingerprint:
             prior?.fingerprint || null,
           previousRevision:
@@ -28500,6 +28988,155 @@
           authority: this.clone(liveSemanticContinuity?.authority || null)
         },
         limitation: "This proves bounded semantic continuity reconstruction from runtime state evidence, method roles, static intra-organ call paths, competing hypotheses, and discriminating evidence plans. It does not prove full program semantics, actual runtime branch execution, source files that are not loaded, or autonomous migration. Unresolved classifications remain hypotheses until bounded experiments or stronger authority evidence discriminate them."
+      };
+    },
+
+
+    runContinuityDiscriminatingExperimentAcceptanceTest() {
+      const fixtureName = `__NoPictureExperimentFixture_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const counterName = `__NoPictureExperimentCounter_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const originals = {
+        fixture: global[fixtureName],
+        counter: global[counterName],
+        topology: this.architecturalTopology,
+        topologyHistory: this.clone(this.architecturalTopologyHistory || []),
+        topologyCount: this.architecturalTopologyDiscoveryCount,
+        semantic: this.semanticContinuityReconstruction,
+        semanticHistory: this.clone(this.semanticContinuityHistory || []),
+        semanticCount: this.semanticContinuityReconstructionCount,
+        portfolio: this.continuityExperimentPortfolio,
+        experimentHistory: this.clone(this.continuityExperimentHistory || []),
+        experimentCount: this.continuityExperimentPlanCount
+      };
+      global[counterName] = 0;
+      global[fixtureName] = {
+        name: "Unnamed Continuity Puzzle",
+        version: "1.0.0",
+        configuration: { persistenceEnabled: true, automaticPersistenceEnabled: true },
+        initialize() { const raw = global.localStorage?.getItem?.("hidden-continuity"); return raw ? JSON.parse(raw) : null; },
+        work(value) { global[counterName] += 1; global.localStorage?.setItem?.("hidden-continuity", JSON.stringify(value)); return value; },
+        repositoryReturn() { return fetch("/api/institutional-repository/hidden-continuity"); }
+      };
+
+      let checks = [];
+      let livePortfolio = null;
+      try {
+        const topology = this.discoverArchitecturalTopology({ reason: "006.038C-acceptance-topology" });
+        const semantic = this.reconstructSemanticContinuityAuthority({ topology, reason: "006.038C-acceptance-semantics" });
+        const fixtureEvaluation = (semantic?.evaluations || []).find(item => item.component === fixtureName);
+        const portfolioA = this.reconstructContinuityExperimentPortfolio({ semantic, reason: "006.038C-acceptance-portfolio-a" });
+        const portfolioB = this.reconstructContinuityExperimentPortfolio({ semantic, reason: "006.038C-acceptance-portfolio-b" });
+        const plan = this.planContinuityDiscriminatingExperiment(fixtureEvaluation || {}, { semanticFingerprint: semantic?.fingerprint || null });
+        const candidates = this.buildContinuityExperimentCandidates(fixtureEvaluation || {});
+        const selected = plan?.selected;
+        const safestHighInformation = candidates.find(item => item.experimentId === selected?.experimentId) || null;
+        const fakeProductionAdapter = {
+          kind: "meos-isolated-continuity-sandbox",
+          isolationVerified: false,
+          productionStateAccessible: true,
+          execute() { global[counterName] += 100; return { outcome: "authoritative-state-changed" }; }
+        };
+        const blockedProduction = this.runContinuityExperimentInIsolatedSandbox(plan, fakeProductionAdapter);
+        const missingContract = this.runContinuityExperimentInIsolatedSandbox(plan, { isolationVerified: true, productionStateAccessible: false, execute() { return { outcome: "inconclusive" }; } });
+        let sandboxExecutions = 0;
+        const isolatedAuthoritySandbox = {
+          kind: "meos-isolated-continuity-sandbox",
+          isolationVerified: true,
+          productionStateAccessible: false,
+          execute(experiment) {
+            sandboxExecutions += 1;
+            if (experiment.test === "browser-loss-reconstruction-equivalence") return { outcome: "authoritative-state-changed", evidence: "isolated-browser-subtraction-changed-authoritative-state" };
+            if (experiment.test === "continuity-owner-conflict") return { outcome: "browser-wins", evidence: "isolated-conflict-browser-value-controlled-reconstruction" };
+            if (experiment.test === "normal-operation-writer-reachability") return { outcome: "writer-reachable", evidence: "instrumented-isolated-trace" };
+            return { outcome: "browser-authority-contract", evidence: "isolated-governance-fixture" };
+          }
+        };
+        const authorityResult = this.runContinuityExperimentInIsolatedSandbox(plan, isolatedAuthoritySandbox);
+        const disposableObservation = selected ? this.interpretContinuityExperimentObservation(plan, {
+          outcome: selected.test === "browser-loss-reconstruction-equivalence"
+            ? "equivalent-reconstruction"
+            : selected.test === "continuity-owner-conflict"
+              ? "durable-wins"
+              : selected.test === "normal-operation-writer-reachability"
+                ? "writer-not-reachable"
+                : "browser-non-authority-contract",
+          evidence: "counterfactual-isolated-disposable-result"
+        }) : null;
+        const unresolvedObservation = selected ? this.interpretContinuityExperimentObservation(plan, {
+          outcome: selected.outcomes.includes("inconclusive") ? "inconclusive" : selected.outcomes[selected.outcomes.length - 1]
+        }) : null;
+        const selfProjection = this.buildSelfModelProjection({ reason: "006.038C-acceptance-self-projection" });
+        const maxCandidateRisk = Math.max(0, ...candidates.map(item => Number(item.score?.riskScore || 0)));
+
+        checks = [
+          { name: "No-Picture experiment planning starts from a hidden runtime continuity puzzle rather than a component-name whitelist", passed: Boolean(fixtureEvaluation) && fixtureEvaluation.component === fixtureName && plan?.component === fixtureName },
+          { name: "Maddy pre-registers competing-hypothesis predictions before any experiment outcome is observed", passed: Boolean(plan?.preRegisteredAt) && Array.isArray(selected?.predictions) && selected.predictions.length >= 4 && selected.predictions.every(item => Boolean(item.predictedOutcome)) },
+          { name: "Candidate experiments are scored with model-based expected information gain", passed: candidates.length >= 2 && candidates.every(item => Number(item.score?.expectedInformationGain || 0) >= 0) && Number(safestHighInformation?.score?.expectedInformationGain || 0) > 0 },
+          { name: "Experiment selection balances information gain against risk, resource cost, reversibility, and production-state mutation", passed: Boolean(selected) && selected.reversible === true && selected.mutatesTargetProductionState === false && Number(selected.score?.riskScore || 1) <= Number(this.configuration.maximumContinuityExperimentRisk) && maxCandidateRisk > 0 },
+          { name: "Alternative experiments remain visible instead of being erased by the selected route", passed: Array.isArray(plan?.alternatives) && plan.alternatives.length >= 1 },
+          { name: "An adapter that can see production state is refused before execution", passed: blockedProduction?.executed === false && blockedProduction?.reason === "isolation-not-proven" && global[counterName] === 0 },
+          { name: "An unlabeled executor is refused even if it claims isolation", passed: missingContract?.executed === false && missingContract?.reason === "sandbox-contract-required" },
+          { name: "A verified isolated sandbox can execute exactly one bounded discriminating experiment", passed: authorityResult?.success === true && authorityResult?.executed === true && authorityResult?.isolated === true && sandboxExecutions === 1 },
+          { name: "Observed evidence updates belief rather than merely echoing the prior strongest hypothesis", passed: authorityResult?.interpretation?.predictionsWerePreRegistered === true && authorityResult?.interpretation?.posteriorEntropy < authorityResult?.interpretation?.priorEntropy && Number(authorityResult?.interpretation?.observedInformationGain || 0) > 0 },
+          { name: "Authority-like experimental evidence can strengthen the browser-authority hypothesis", passed: authorityResult?.interpretation?.strongestPosteriorHypothesis === "browser-is-continuity-authority" },
+          { name: "Contrary experimental evidence can instead strengthen a disposable or residue explanation", passed: ["browser-is-disposable-workspace-or-cache", "browser-surface-is-test-legacy-or-compatibility-residue"].includes(disposableObservation?.strongestPosteriorHypothesis) },
+          { name: "Inconclusive evidence remains unresolved rather than being promoted into a repair verdict", passed: unresolvedObservation?.epistemicStatus === "still-requires-discriminating-evidence" && unresolvedObservation?.authorityVerdict === "observation-updates-belief-not-repair-authority" },
+          { name: "Planning and sandbox experimentation never execute the discovered production-like fixture organ", passed: global[counterName] === 0 },
+          { name: "Unchanged semantic evidence converges on the same experiment-portfolio fingerprint", passed: Boolean(portfolioA?.fingerprint) && portfolioA.fingerprint === portfolioB?.fingerprint },
+          { name: "Continuity experiment planning is projected into Maddy's persistent self-model", passed: selfProjection?.architecture?.continuityExperimentFingerprint === portfolioB?.fingerprint && selfProjection?.recursiveAwareness?.designsOwnDiscriminatingExperiments === true && selfProjection?.recursiveAwareness?.preRegistersPredictionsBeforeTesting === true },
+          { name: "Experiment planning and interpretation grant no repair, provider, spend, external-action, or self-modification authority", passed: portfolioA?.authority?.stateWritesAuthorized === false && portfolioA?.authority?.providerCallsAuthorized === false && portfolioA?.authority?.externalActionsAuthorized === false && portfolioA?.authority?.selfModificationAuthorized === false && Number(portfolioA?.authority?.automaticSpendUsd || 0) === 0 && authorityResult?.authority?.productionMutationAuthorized === false }
+        ];
+      } finally {
+        if (originals.fixture === undefined) delete global[fixtureName]; else global[fixtureName] = originals.fixture;
+        if (originals.counter === undefined) delete global[counterName]; else global[counterName] = originals.counter;
+        this.architecturalTopology = originals.topology;
+        this.architecturalTopologyHistory = originals.topologyHistory;
+        this.architecturalTopologyDiscoveryCount = originals.topologyCount;
+        this.semanticContinuityReconstruction = originals.semantic;
+        this.semanticContinuityHistory = originals.semanticHistory;
+        this.semanticContinuityReconstructionCount = originals.semanticCount;
+        this.continuityExperimentPortfolio = originals.portfolio;
+        this.continuityExperimentHistory = originals.experimentHistory;
+        this.continuityExperimentPlanCount = originals.experimentCount;
+        const liveTopology = this.discoverArchitecturalTopology({ reason: "006.038C-post-acceptance-live-runtime" });
+        const liveSemantic = this.reconstructSemanticContinuityAuthority({ topology: liveTopology, reason: "006.038C-post-acceptance-live-runtime" });
+        livePortfolio = this.reconstructContinuityExperimentPortfolio({ semantic: liveSemantic, reason: "006.038C-post-acceptance-live-runtime" });
+      }
+
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      console.info(`[MEOS ${this.version}] Commission 006.038C Continuity Discriminating Experiment Engine: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+      return {
+        success: passed === checks.length,
+        commission: "006.038C",
+        schema: "meos.maddy.continuity-discriminating-experiment.acceptance.v1",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        total: checks.length,
+        checks,
+        liveExperimentPortfolio: {
+          fingerprint: livePortfolio?.fingerprint || null,
+          semanticFingerprint: livePortfolio?.semanticFingerprint || null,
+          summary: this.clone(livePortfolio?.summary || null),
+          topExperiments: this.clone((livePortfolio?.plans || []).slice(0, 12).map(plan => ({
+            component: plan.component,
+            sourceClassification: plan.sourceClassification,
+            selected: plan.selected ? {
+              test: plan.selected.test,
+              executionMode: plan.selected.executionMode,
+              question: plan.selected.question,
+              expectedInformationGain: plan.selected.score?.expectedInformationGain || 0,
+              riskScore: plan.selected.score?.riskScore || 0,
+              resourceCost: plan.selected.score?.resourceCost || 0,
+              utility: plan.selected.score?.utility || 0,
+              predictions: plan.selected.predictions
+            } : null,
+            alternatives: (plan.alternatives || []).map(item => ({ test: item.test, utility: item.score?.utility || 0, expectedInformationGain: item.score?.expectedInformationGain || 0 }))
+          }))),
+          authority: this.clone(livePortfolio?.authority || null)
+        },
+        limitation: "This proves bounded self-designed discriminating experiments, pre-registered predictions, expected-information-gain scoring, isolation gating, and evidence-driven belief updates. It does not prove complete program semantics, production-safe automated fault injection, autonomous repair, autonomous migration, or permission to execute experiments against live customer state. Real continuity experiments still require an explicitly isolated governed sandbox and any repair remains a separate commissioned authority decision."
       };
     },
 
