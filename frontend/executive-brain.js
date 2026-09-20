@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.31.0
- * Build: EB1310-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-20260920-A
+ * Version: 1.31.1
+ * Build: EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.31.0";
-  const BUILD_ID = "EB1310-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-20260920-A";
+  const VERSION = "1.31.1";
+  const BUILD_ID = "EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -2564,7 +2564,11 @@
      * request path.
      */
     routeRequest(input, options = {}) {
-      const prepared = this.prepareRequest(input, options);
+      const interactiveVoiceFastPath =
+        this.shouldUseInteractiveVoiceFastPath(input, options);
+      const prepared = interactiveVoiceFastPath
+        ? this.prepareInteractiveVoiceRequest(input, options)
+        : this.prepareRequest(input, options);
 
       if (!prepared.success) {
         return prepared;
@@ -2572,11 +2576,13 @@
 
       const cognition = options.skipCognition === true
         ? null
-        : this.runCognitionCycle(input, {
-            ...options,
-            preparedPackage: prepared,
-            force: false
-          });
+        : interactiveVoiceFastPath
+          ? this.runInteractiveVoiceCognition(prepared, options)
+          : this.runCognitionCycle(input, {
+              ...options,
+              preparedPackage: prepared,
+              force: false
+            });
 
       if (cognition && cognition.success !== true) {
         return {
@@ -2632,6 +2638,466 @@
       };
     },
 
+    /*
+     * Commission EB1311 — Interactive Cognition Latency Separation
+     *
+     * Live voice is a latency-critical human interaction surface.  A simple
+     * conversational stimulus must not synchronously execute the full
+     * institutional-reasoning / reconstructive-recall stack before Maddy can
+     * acknowledge the human.  That stack remains authoritative for decisions,
+     * recall, organizational reasoning, monitoring, current work, and other
+     * deliberative requests.
+     *
+     * The fast path is still Executive Brain cognition.  It owns the request,
+     * identity, continuity boundaries, truth constraints, and response
+     * semantics; it merely refuses to re-scan institutional memory when the
+     * current human turn does not require that work.  Current/public research
+     * may be classified immediately so the voice layer can hand it to durable
+     * governed work without blocking conversational presence.
+     */
+    shouldUseInteractiveVoiceFastPath(input, options = {}) {
+      if (options.interactiveVoice !== true) return false;
+
+      const text = this.requestText(input);
+      if (!text) return false;
+
+      const classification = this.classifyRequest(text, options);
+      if (classification.requiresCurrentInternet === true) return true;
+
+      return [
+        REQUEST_TYPES.GENERAL,
+        REQUEST_TYPES.IDENTITY,
+        REQUEST_TYPES.SELF,
+        REQUEST_TYPES.RESEARCH
+      ].includes(classification.type);
+    },
+
+    prepareInteractiveVoiceRequest(input, options = {}) {
+      const text = this.requestText(input);
+      if (!text) {
+        return {
+          success: false,
+          error: "A question, mission, or objective is required."
+        };
+      }
+
+      const started = this.now();
+      const classification = this.classifyRequest(text, options);
+      const startup = this.buildStartupContext();
+      let evidence = [];
+
+      if (classification.type === REQUEST_TYPES.IDENTITY) {
+        evidence = this.identityEvidence();
+      } else if (classification.type === REQUEST_TYPES.SELF) {
+        evidence = this.systemEvidence(text);
+      }
+
+      evidence = this.dedupe(evidence, item =>
+        [item.id, item.title, item.summary, item.source].join("|")
+      ).slice(0, this.configuration.maximumEvidenceItems);
+
+      const localContext = {
+        evidence,
+        confidence: this.evidenceConfidence(evidence),
+        answerableLocally:
+          !classification.requiresCurrentInternet &&
+          evidence.length > 0,
+        interactiveFastPath: true,
+        reconstructiveRecallExecuted: false,
+        rationale:
+          "Latency-critical live conversation uses already-resident identity/system context and does not synchronously rescan institutional memory."
+      };
+
+      const evidenceIntegrity = this.prepareEvidenceIntegrity(
+        text,
+        localContext,
+        {
+          ...options,
+          requestType: classification.type,
+          source: options.source || "interactive-voice-fast-path"
+        }
+      );
+      const governedLocalContext = this.applyIntegrityToLocalContext(
+        localContext,
+        evidenceIntegrity
+      );
+      governedLocalContext.interactiveFastPath = true;
+      governedLocalContext.reconstructiveRecallExecuted = false;
+
+      const routing = this.route(
+        classification,
+        governedLocalContext,
+        options
+      );
+
+      const prepared = {
+        success: true,
+        schema: "meos.executive-brain.request-package.v1",
+        request: {
+          id: options.requestId || this.id("brain-request"),
+          text,
+          type: classification.type,
+          confidence: classification.confidence,
+          requiresCurrentInternet: classification.requiresCurrentInternet,
+          requiresApproval: classification.requiresApproval,
+          requestedAt: new Date().toISOString()
+        },
+        identity: startup.identity,
+        organization: startup.organization,
+        authority: startup.authority,
+        currentWork: startup.currentWork,
+        selfModel: startup.selfModel,
+        workingAwareness: startup.workingAwareness,
+        autobiographicalMemory: startup.autobiographicalMemory,
+        temporalContinuity: startup.temporalContinuity,
+        autonomy: startup.autonomy,
+        worldModel: startup.worldModel,
+        system: {
+          available: startup.system.manifest.filter(item => item.available).map(item => item.label),
+          unavailable: startup.system.manifest.filter(item => !item.available).map(item => item.label)
+        },
+        localContext: governedLocalContext,
+        evidenceIntegrity,
+        routing,
+        providerInstructions: this.buildProviderInstructions({
+          text,
+          classification,
+          startup,
+          localContext: governedLocalContext,
+          evidenceIntegrity,
+          routing
+        }),
+        responseContract: {
+          requiredFields: [
+            "answer",
+            "basis",
+            "confidence",
+            "unknowns",
+            "recommendation",
+            "approvalRequired"
+          ],
+          decisionOptionsRequired: classification.type === REQUEST_TYPES.DECISION,
+          citationsRequired: classification.requiresCurrentInternet,
+          humanApprovalRequired: classification.requiresApproval
+        },
+        interactiveCognition: {
+          fastPath: true,
+          institutionalRecallDeferred: true,
+          institutionalReasoningDeferred: true,
+          sameExecutiveBrain: true,
+          externalAuthorityAdded: false
+        },
+        durationMs: Number((this.now() - started).toFixed(2))
+      };
+
+      this.record("request.prepared.interactive-voice", {
+        requestId: prepared.request.id,
+        type: prepared.request.type,
+        route: prepared.routing.primaryRoute,
+        requiresCurrentInternet: prepared.request.requiresCurrentInternet,
+        reconstructiveRecallExecuted: false,
+        durationMs: prepared.durationMs
+      });
+
+      this.emit("brain:interactive-voice-request-prepared", prepared);
+      return prepared;
+    },
+
+    runInteractiveVoiceCognition(prepared = {}, options = {}) {
+      const started = this.now();
+      const evidence = Array.isArray(prepared?.localContext?.evidence)
+        ? prepared.localContext.evidence
+        : [];
+      const researchPending =
+        prepared?.request?.requiresCurrentInternet === true ||
+        prepared?.routing?.researchDepth === "deep";
+
+      const findings = evidence.slice(0, 5).map((item, index) => ({
+        id: `interactive-evidence-${index + 1}`,
+        summary: item.summary || item.content || item.title || "",
+        authority: item.authority || item.evidenceClass || "unknown",
+        confidence: Number(item.confidence || 0),
+        source: item.source || null
+      })).filter(item => item.summary);
+
+      const unknowns = researchPending
+        ? [{
+            blocking: false,
+            text:
+              "Current/public evidence has not returned yet. Acknowledge the human now; do not fabricate findings while durable research proceeds.",
+            source: "interactive-voice-research-boundary"
+          }]
+        : [];
+
+      const result = {
+        success: true,
+        schema: "meos.executive-brain.interactive-voice-cognition.v1",
+        version: this.version,
+        buildId: this.buildId,
+        cognitionId: this.id("interactive-cognition"),
+        generatedAt: new Date().toISOString(),
+        request: this.clone(prepared.request),
+        identity: this.clone(prepared.identity),
+        organization: this.clone(prepared.organization),
+        authority: this.clone(prepared.authority),
+        perception: {
+          localContext: this.clone(prepared.localContext),
+          evidenceIntegrity: this.clone(prepared.evidenceIntegrity),
+          currentWork: this.clone(prepared.currentWork)
+        },
+        reasoning: {
+          success: true,
+          status: "interactive-voice-fast-cognition",
+          mode: "interactive",
+          recommendation: {
+            state: "proceed",
+            confidence: researchPending ? 0.7 : 0.9,
+            rationale: researchPending
+              ? "Respond immediately with an honest acknowledgement while required current/public research continues through governed durable work."
+              : "Respond directly to the current human utterance using the supplied Maddy identity, conversational objective, and any resident governed evidence without inventing institutional facts."
+          },
+          findings,
+          risks: [],
+          options: [],
+          dependencies: [],
+          openLoops: researchPending ? this.clone(unknowns) : [],
+          conflicts: this.clone(prepared?.evidenceIntegrity?.conflicts || []),
+          implementationPlan: [],
+          approvalRequired: prepared?.request?.requiresApproval === true,
+          generatedAt: new Date().toISOString(),
+          truthRule:
+            "Fast conversational cognition is Maddy-owned but does not manufacture facts, completion, authority, or research results."
+        },
+        planning: {
+          available: Boolean(global.ExecutivePlanning),
+          ready: false,
+          status: researchPending
+            ? "durable-research-handoff-required"
+            : "interactive-response-no-planning-required",
+          objective: prepared?.request?.text || "",
+          recommendationState: "proceed",
+          dependencies: [],
+          risks: [],
+          proposedWork: []
+        },
+        unknowns,
+        attention: {
+          level: "foreground",
+          reason: "current-human-interactive-voice-stimulus",
+          humanDirected: true
+        },
+        dispatchReadiness: {
+          ready: false,
+          hallwayRequired: researchPending,
+          proposedWorkCount: 0,
+          authorityRequired: prepared?.request?.requiresApproval === true,
+          note:
+            "Interactive cognition owns the immediate response boundary; VE211 may separately hand required research to governed durable work."
+        },
+        interactiveLatencyContract: {
+          reconstructiveRecallExecuted: false,
+          institutionalReasoningExecuted: false,
+          sameExecutiveBrain: true,
+          longRunningWorkMayBlockSpeech: false
+        },
+        durationMs: Number((this.now() - started).toFixed(2))
+      };
+
+      this.record("cognition.interactive-voice-fast", {
+        cognitionId: result.cognitionId,
+        requestId: result.request?.id || null,
+        route: prepared?.routing?.primaryRoute || null,
+        researchPending,
+        institutionalReasoningExecuted: false,
+        reconstructiveRecallExecuted: false,
+        durationMs: result.durationMs
+      });
+      this.emit("brain:interactive-voice-cognition-completed", result);
+      return this.clone(result);
+    },
+
+    runInteractiveCognitionLatencySeparationAcceptanceTest() {
+      const originalRecall = global.ExecutiveRecall;
+      const originalReasoning = global.InstitutionalReasoning;
+      let recallCalls = 0;
+      let reasoningCalls = 0;
+
+      global.ExecutiveRecall = {
+        recall: () => {
+          recallCalls += 1;
+          return {
+            success: true,
+            evidence: [],
+            citations: [],
+            decisions: [],
+            openLoops: [],
+            dependencies: [],
+            conflicts: [],
+            confidence: 0
+          };
+        }
+      };
+      global.InstitutionalReasoning = {
+        analyze: () => {
+          reasoningCalls += 1;
+          return {
+            success: true,
+            recommendation: { state: "proceed", confidence: 0.7, rationale: "acceptance fixture" },
+            findings: [], risks: [], options: [], dependencies: [], openLoops: [], conflicts: [], implementationPlan: [],
+            approvalRequired: false,
+            generatedAt: new Date().toISOString()
+          };
+        }
+      };
+
+      try {
+        const conversational = this.routeRequest(
+          "Can you hear me clearly?",
+          {
+            requestId: "eb1311-conversation",
+            source: "acceptance",
+            interactiveVoice: true
+          }
+        );
+        const afterConversationRecall = recallCalls;
+        const afterConversationReasoning = reasoningCalls;
+
+        const research = this.routeRequest(
+          "What changed today with this company?",
+          {
+            requestId: "eb1311-research",
+            source: "acceptance",
+            interactiveVoice: true
+          }
+        );
+        const afterResearchRecall = recallCalls;
+        const afterResearchReasoning = reasoningCalls;
+
+        const decision = this.routeRequest(
+          "Should we choose option A or option B?",
+          {
+            requestId: "eb1311-decision",
+            source: "acceptance",
+            interactiveVoice: true
+          }
+        );
+
+        const checks = [
+          {
+            name: "Ordinary interactive voice bypasses reconstructive Executive Recall",
+            passed: afterConversationRecall === 0
+          },
+          {
+            name: "Ordinary interactive voice bypasses full Institutional Reasoning",
+            passed: afterConversationReasoning === 0
+          },
+          {
+            name: "Ordinary conversational voice remains owned by Executive Brain cognition",
+            passed:
+              conversational?.success === true &&
+              conversational?.cognition?.reasoning?.status === "interactive-voice-fast-cognition" &&
+              conversational?.package?.interactiveCognition?.sameExecutiveBrain === true
+          },
+          {
+            name: "Ordinary conversational voice remains a direct provider-reasoning route rather than a fake local-evidence claim",
+            passed:
+              conversational?.route === "local-recall-plus-provider-reasoning" &&
+              conversational?.package?.localContext?.reconstructiveRecallExecuted === false
+          },
+          {
+            name: "Current/public research is recognized without blocking on institutional recall",
+            passed:
+              research?.success === true &&
+              research?.route === "external-intelligence-research" &&
+              research?.researchDepth === "deep" &&
+              afterResearchRecall === 0 &&
+              afterResearchReasoning === 0
+          },
+          {
+            name: "Interactive research cognition refuses to fabricate unfinished findings",
+            passed:
+              research?.cognition?.unknowns?.some(item =>
+                /do not fabricate findings/i.test(String(item?.text || ""))
+              ) === true
+          },
+          {
+            name: "Decision work does not silently inherit the lightweight conversational path",
+            passed:
+              decision?.success === true &&
+              recallCalls > afterResearchRecall &&
+              reasoningCalls > afterResearchReasoning
+          },
+          {
+            name: "Fast-path selection is scoped to live interactive voice rather than generic Brain calls",
+            passed:
+              this.shouldUseInteractiveVoiceFastPath(
+                "Can you hear me clearly?",
+                { interactiveVoice: false }
+              ) === false
+          },
+          {
+            name: "Fast conversational cognition adds no external-action or spend authority",
+            passed:
+              conversational?.package?.interactiveCognition?.externalAuthorityAdded === false &&
+              conversational?.package?.autonomy?.externalAuthority?.externalActionAuthorized !== true &&
+              Number(conversational?.package?.autonomy?.economicAuthority?.automaticSpendUsd || 0) === 0 &&
+              conversational?.package?.autonomy?.economicAuthority?.paidProviderSpendAuthorized !== true
+          },
+          {
+            name: "Provider instructions still identify the external model as adviser rather than Maddy",
+            passed:
+              /not Maddy/i.test(
+                String(conversational?.package?.providerInstructions?.role || "")
+              )
+          },
+          {
+            name: "The fast path preserves the exact human utterance as Maddy-owned objective semantics",
+            passed:
+              conversational?.package?.responseSemantics?.some(item =>
+                item?.kind === "objective" &&
+                /can you hear me clearly/i.test(String(item?.text || ""))
+              ) === true
+          },
+          {
+            name: "Latency separation contract explicitly forbids long-running cognition from blocking speech",
+            passed:
+              conversational?.cognition?.interactiveLatencyContract?.longRunningWorkMayBlockSpeech === false &&
+              conversational?.cognition?.interactiveLatencyContract?.institutionalReasoningExecuted === false
+          }
+        ];
+
+        const passed = checks.filter(item => item.passed).length;
+        console.table(checks.map(item => ({ name: item.name, passed: item.passed })));
+        console.info(
+          `[MEOS ${this.version}] Commission EB1311 Interactive Cognition Latency Separation: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+        );
+
+        return {
+          success: passed === checks.length,
+          commission: "EB1311",
+          schema: "meos.executive-brain.interactive-cognition-latency-separation.acceptance.v1",
+          version: this.version,
+          buildId: this.buildId,
+          passed,
+          total: checks.length,
+          checks,
+          observations: {
+            conversationalRoute: conversational?.route || null,
+            researchRoute: research?.route || null,
+            recallCallsAfterConversationalTurn: afterConversationRecall,
+            reasoningCallsAfterConversationalTurn: afterConversationReasoning,
+            finalRecallCalls: recallCalls,
+            finalReasoningCalls: reasoningCalls
+          },
+          limitation:
+            "This proves that latency-critical general/identity/self/current-research voice turns can remain inside the same Executive Brain while avoiding synchronous reconstructive recall and institutional reasoning. It does not yet optimize deliberative decision, organizational, current-work, monitoring, learning, or explicit recall turns, and it does not prove production wall-clock latency until deployed."
+        };
+      } finally {
+        global.ExecutiveRecall = originalRecall;
+        global.InstitutionalReasoning = originalReasoning;
+      }
+    },
+
     buildInteractiveCognitionContext(cognition = {}) {
       return {
         schema: "meos.maddy.interactive-cognition-context.v1",
@@ -2642,6 +3108,7 @@
         unknowns: this.clone(cognition.unknowns || []),
         attention: this.clone(cognition.attention || null),
         dispatchReadiness: this.clone(cognition.dispatchReadiness || null),
+        interactiveLatencyContract: this.clone(cognition.interactiveLatencyContract || null),
         truthRule:
           "This is Maddy-owned cognition. Provider output may advise it but cannot rewrite its evidence, capability state, uncertainty, or authority."
       };
