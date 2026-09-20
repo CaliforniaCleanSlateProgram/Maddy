@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.28.0
- * Build: EB1280-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-20260919-A
+ * Version: 1.29.0
+ * Build: EB1290-NO-PICTURE-SELF-TOPOLOGY-20260919-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.28.0";
-  const BUILD_ID = "EB1280-NEUROMORPHIC-TEMPORAL-EVENT-FABRIC-20260919-A";
+  const VERSION = "1.29.0";
+  const BUILD_ID = "EB1290-NO-PICTURE-SELF-TOPOLOGY-20260919-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -253,6 +253,11 @@
       maximumNeuromorphicEventHistory: 320,
       maximumNeuromorphicSpikeHistory: 160,
       maximumNeuromorphicOutcomeHistory: 160,
+      architecturalSelfTopologyEnabled: true,
+      maximumArchitecturalTopologyCandidates: 160,
+      maximumArchitecturalTopologyMethodsPerCandidate: 96,
+      maximumArchitecturalTopologyEdges: 640,
+      maximumArchitecturalTopologyFindings: 320,
       maximumCausalInvestigationHistory: 120,
       maximumCompetingHypotheses: 6,
       maximumAutonomousInvestigationHistory: 120,
@@ -343,6 +348,9 @@
     salienceHistory: [],
     lastSalienceAssessment: null,
     salienceAssessmentCount: 0,
+    architecturalTopology: null,
+    architecturalTopologyHistory: [],
+    architecturalTopologyDiscoveryCount: 0,
     neuromorphicAttention: {
       schema: "meos.maddy.neuromorphic-attention-state.v1",
       commission: "006.037A",
@@ -533,6 +541,11 @@
         this.resolveOrganizationProfile();
 
       this.refreshedAt = new Date().toISOString();
+      if (this.configuration.architecturalSelfTopologyEnabled === true) {
+        this.discoverArchitecturalTopology({
+          reason: `brain-refresh:${options.reason || "manual"}`
+        });
+      }
       this.startupCache = this.buildStartupContext({ force: true });
       this.startupCachedAt = Date.now();
 
@@ -612,6 +625,386 @@
           version: reported?.version || component?.version || null
         };
       });
+    },
+
+    /*
+     * Commission 006.038A — No-Picture Architectural Self-Topology
+     *
+     * The static COMPONENTS manifest is a useful declared picture, but it is
+     * not allowed to become Maddy's only picture of herself. This discovery
+     * path reconstructs a bounded topology from runtime evidence: global
+     * objects, method surfaces, persistence signals, and references among
+     * discovered organs. It does not invoke discovered methods, grant them
+     * authority, or treat source-pattern evidence as proof of semantic intent.
+     */
+    architecturalTopologyFingerprint(value = {}) {
+      return this.fingerprintCognitiveDispatch(value)
+        .replace(/^cognitive-/, "topology-");
+    },
+
+    architecturalCandidateEvidence(globalName, value) {
+      if (!value || !["object", "function"].includes(typeof value)) return null;
+      if (value === global || value === global.window || value === global.document) return null;
+
+      const descriptors = this.safe(
+        () => Object.getOwnPropertyDescriptors(value),
+        {}
+      ) || {};
+      const keys = Object.keys(descriptors).sort();
+      const methods = keys.filter(key => typeof descriptors[key]?.value === "function");
+      const scalarEvidence = {};
+
+      keys.slice(0, 160).forEach(key => {
+        const descriptor = descriptors[key];
+        const item = descriptor?.value;
+        if (["string", "number", "boolean"].includes(typeof item)) {
+          const text = String(item);
+          if (text.length <= 240) scalarEvidence[key] = item;
+        }
+      });
+
+      const label = String(
+        scalarEvidence.name || scalarEvidence.label || globalName || ""
+      );
+      const normalizedIdentity = `${globalName} ${label}`.toLowerCase();
+      let score = 0;
+      const traits = [];
+
+      if (typeof scalarEvidence.version === "string") { score += 3; traits.push("versioned"); }
+      if (typeof scalarEvidence.buildId === "string" || typeof scalarEvidence.buildID === "string") { score += 3; traits.push("build-identified"); }
+      if (typeof scalarEvidence.status === "string") { score += 2; traits.push("status-bearing"); }
+      if (methods.includes("getStatus")) { score += 2; traits.push("status-interface"); }
+      if (methods.includes("initialize")) { score += 2; traits.push("initializable"); }
+      if (methods.some(name => /^(persist|save|restore|hydrate|export|import|getSnapshot|run)/i.test(name))) {
+        score += 2;
+        traits.push("state-or-execution-interface");
+      }
+      if (/\b(meos|maddy|executive|institutional|knowledge|mission|reasoning|learning|monitoring|workflow|planning|decision|grant|document|intelligence)\b/i.test(normalizedIdentity)) {
+        score += 2;
+        traits.push("meos-semantic-identity");
+      }
+      if (methods.length >= 3) { score += 1; traits.push("multi-method-runtime-object"); }
+
+      if (score < 4) return null;
+
+      return {
+        globalName,
+        label: label || globalName,
+        score,
+        traits: [...new Set(traits)].sort(),
+        methods: methods.slice(0, this.configuration.maximumArchitecturalTopologyMethodsPerCandidate),
+        scalarEvidence
+      };
+    },
+
+    inspectArchitecturalCandidate(candidate, allCandidateNames = []) {
+      const value = global[candidate.globalName];
+      const descriptors = this.safe(
+        () => Object.getOwnPropertyDescriptors(value),
+        {}
+      ) || {};
+      const methodNames = Array.isArray(candidate.methods) ? candidate.methods : [];
+      const signals = {
+        browserRead: false,
+        browserWrite: false,
+        sessionRead: false,
+        sessionWrite: false,
+        indexedDb: false,
+        networkFetch: false,
+        durableEndpoint: false,
+        repositoryLanguage: false,
+        persistenceNamedMethod: false,
+        hydrationNamedMethod: false,
+        authorityLanguage: false
+      };
+      const methodEvidence = [];
+      const referenced = new Map();
+
+      const scalarCorpus = JSON.stringify(candidate.scalarEvidence || {}).toLowerCase();
+      if (/institutional[-_ ]repository|durable[-_ ]authority|authoritative[-_ ]storage|durable/.test(scalarCorpus)) {
+        signals.repositoryLanguage = true;
+      }
+      if (/authority|authoritative|permission|entitlement/.test(scalarCorpus)) {
+        signals.authorityLanguage = true;
+      }
+
+      methodNames.forEach(methodName => {
+        const fn = descriptors[methodName]?.value;
+        if (typeof fn !== "function") return;
+        const source = this.safe(
+          () => Function.prototype.toString.call(fn),
+          ""
+        ) || "";
+        if (!source) return;
+
+        const lower = source.toLowerCase();
+        const evidence = {
+          method: methodName,
+          sourceFingerprint: this.architecturalTopologyFingerprint(source)
+        };
+
+        if (/localstorage(?:\?\.|\.)getitem/i.test(source)) signals.browserRead = true;
+        if (/localstorage(?:\?\.|\.)setitem/i.test(source) || /localstorage(?:\?\.|\.)removeitem/i.test(source)) signals.browserWrite = true;
+        if (/sessionstorage(?:\?\.|\.)getitem/i.test(source)) signals.sessionRead = true;
+        if (/sessionstorage(?:\?\.|\.)setitem/i.test(source) || /sessionstorage(?:\?\.|\.)removeitem/i.test(source)) signals.sessionWrite = true;
+        if (/indexeddb|objectstore|idb/i.test(source)) signals.indexedDb = true;
+        if (/\bfetch\s*\(|\.fetch\s*\(/i.test(source)) signals.networkFetch = true;
+        if (/\/api\//i.test(source)) signals.durableEndpoint = true;
+        if (/institutional[-_ ]repository|durable[-_ ]authority|authoritative[-_ ]storage|meos-institutional-repository/i.test(lower)) signals.repositoryLanguage = true;
+        if (/authority|authoritative|permission|entitlement/i.test(lower)) signals.authorityLanguage = true;
+        if (/persist|save|checkpoint|write|store/i.test(methodName)) signals.persistenceNamedMethod = true;
+        if (/hydrate|restore|resume|load|read/i.test(methodName)) signals.hydrationNamedMethod = true;
+
+        allCandidateNames.forEach(otherName => {
+          if (!otherName || otherName === candidate.globalName) return;
+          const direct = `global.${otherName}`;
+          const bracketA = `global["${otherName}"]`;
+          const bracketB = `global['${otherName}']`;
+          if (source.includes(direct) || source.includes(bracketA) || source.includes(bracketB)) {
+            if (!referenced.has(otherName)) referenced.set(otherName, new Set());
+            referenced.get(otherName).add(methodName);
+          }
+        });
+
+        methodEvidence.push(evidence);
+      });
+
+      let continuityClassification = "runtime-organ";
+      if (signals.browserWrite && (signals.durableEndpoint || signals.repositoryLanguage)) {
+        continuityClassification = "mixed-browser-and-durable-continuity-review";
+      } else if (signals.browserWrite || signals.sessionWrite) {
+        continuityClassification = "browser-persistence-candidate";
+      } else if (signals.durableEndpoint || signals.repositoryLanguage) {
+        continuityClassification = "durable-continuity-candidate";
+      } else if (signals.indexedDb) {
+        continuityClassification = "browser-local-database-candidate";
+      } else if (signals.persistenceNamedMethod || signals.hydrationNamedMethod) {
+        continuityClassification = "stateful-runtime-candidate";
+      }
+
+      return {
+        globalName: candidate.globalName,
+        label: candidate.label,
+        discoveryScore: candidate.score,
+        discoveryTraits: candidate.traits,
+        version: candidate.scalarEvidence?.version || null,
+        buildId: candidate.scalarEvidence?.buildId || candidate.scalarEvidence?.buildID || null,
+        status: candidate.scalarEvidence?.status || null,
+        methodCount: methodNames.length,
+        methods: methodNames,
+        methodEvidence,
+        signals,
+        continuityClassification,
+        referencedGlobals: [...referenced.entries()]
+          .map(([globalName, methods]) => ({ globalName, methods: [...methods].sort() }))
+          .sort((a, b) => a.globalName.localeCompare(b.globalName))
+      };
+    },
+
+    discoverArchitecturalTopology(options = {}) {
+      if (this.configuration.architecturalSelfTopologyEnabled !== true) {
+        return {
+          schema: "meos.maddy.architectural-self-topology.v1",
+          commission: "006.038A",
+          enabled: false,
+          reason: "architectural-self-topology-disabled"
+        };
+      }
+
+      const observedAt = new Date().toISOString();
+      const declaredManifest = this.getSystemManifest();
+      const declaredNames = new Set(declaredManifest.map(item => item.globalName));
+      const globalNames = this.safe(
+        () => Object.getOwnPropertyNames(global).sort(),
+        []
+      ) || [];
+
+      const candidates = [];
+      for (const globalName of globalNames) {
+        if (candidates.length >= this.configuration.maximumArchitecturalTopologyCandidates) break;
+        const value = this.safe(() => global[globalName], null);
+        const evidence = this.architecturalCandidateEvidence(globalName, value);
+        if (evidence) candidates.push(evidence);
+      }
+
+      const candidateNames = candidates.map(item => item.globalName).sort();
+      const nodes = candidates
+        .map(candidate => this.inspectArchitecturalCandidate(candidate, candidateNames))
+        .sort((a, b) => a.globalName.localeCompare(b.globalName));
+
+      const nodeNames = new Set(nodes.map(item => item.globalName));
+      const edges = [];
+      nodes.forEach(node => {
+        node.referencedGlobals.forEach(reference => {
+          if (!nodeNames.has(reference.globalName)) return;
+          edges.push({
+            from: node.globalName,
+            to: reference.globalName,
+            evidenceMethods: reference.methods,
+            inferredFrom: "runtime-function-reference",
+            executesDependency: false
+          });
+        });
+      });
+      edges.sort((a, b) => `${a.from}|${a.to}`.localeCompare(`${b.from}|${b.to}`));
+      if (edges.length > this.configuration.maximumArchitecturalTopologyEdges) {
+        edges.length = this.configuration.maximumArchitecturalTopologyEdges;
+      }
+
+      const findings = [];
+      const addFinding = finding => {
+        if (findings.length >= this.configuration.maximumArchitecturalTopologyFindings) return;
+        findings.push(finding);
+      };
+
+      nodes.forEach(node => {
+        if (!declaredNames.has(node.globalName)) {
+          addFinding({
+            type: "runtime-organ-outside-declared-picture",
+            component: node.globalName,
+            statement: `${node.label} was discovered from runtime evidence but is not in the static COMPONENTS manifest.`,
+            epistemicStatus: "observed-runtime-structure"
+          });
+        }
+        if (node.signals.browserWrite || node.signals.sessionWrite) {
+          addFinding({
+            type: "browser-persistence-surface",
+            component: node.globalName,
+            classification: node.continuityClassification,
+            statement: "Runtime source evidence exposes a browser persistence write surface that requires role classification before browser disposability can be claimed.",
+            epistemicStatus: "source-observed-needs-semantic-classification"
+          });
+        }
+        if (node.continuityClassification === "mixed-browser-and-durable-continuity-review") {
+          addFinding({
+            type: "mixed-continuity-surface",
+            component: node.globalName,
+            statement: "The same discovered runtime organ exposes both browser persistence evidence and durable/repository evidence; cache-versus-authority semantics require explicit verification.",
+            epistemicStatus: "source-observed-needs-semantic-classification"
+          });
+        }
+      });
+
+      edges.forEach(edge => {
+        if (!declaredNames.has(edge.from) || !declaredNames.has(edge.to)) {
+          addFinding({
+            type: "dependency-outside-declared-picture",
+            from: edge.from,
+            to: edge.to,
+            statement: "A runtime dependency edge exists outside the complete static manifest picture.",
+            epistemicStatus: "inferred-from-runtime-source-reference"
+          });
+        }
+      });
+
+      const stableBasis = {
+        schema: "meos.maddy.architectural-self-topology.v1",
+        declaredManifest: declaredManifest
+          .map(item => ({ globalName: item.globalName, available: item.available, online: item.online, version: item.version || null }))
+          .sort((a, b) => a.globalName.localeCompare(b.globalName)),
+        nodes: nodes.map(node => ({
+          globalName: node.globalName,
+          label: node.label,
+          version: node.version,
+          buildId: node.buildId,
+          status: node.status,
+          methods: node.methods,
+          methodEvidence: node.methodEvidence,
+          signals: node.signals,
+          continuityClassification: node.continuityClassification
+        })),
+        edges,
+        findings: findings.map(item => ({ ...item }))
+      };
+      const fingerprint = this.architecturalTopologyFingerprint(stableBasis);
+      const prior = this.architecturalTopology;
+
+      const topology = {
+        schema: "meos.maddy.architectural-self-topology.v1",
+        version: "1.0.0",
+        commission: "006.038A",
+        buildId: this.buildId,
+        observedAt,
+        reason: options.reason || "runtime-self-topology-discovery",
+        discoveryMode: "no-picture-runtime-reconstruction",
+        fingerprint,
+        changedFromPrior: Boolean(prior?.fingerprint && prior.fingerprint !== fingerprint),
+        priorFingerprint: prior?.fingerprint || null,
+        declaredPicture: {
+          registeredComponents: declaredManifest.length,
+          availableRegisteredComponents: declaredManifest.filter(item => item.available).length
+        },
+        discovered: {
+          components: nodes.length,
+          dependencyEdges: edges.length,
+          outsideDeclaredPicture: nodes.filter(node => !declaredNames.has(node.globalName)).length,
+          browserPersistenceCandidates: nodes.filter(node => node.signals.browserWrite || node.signals.sessionWrite).length,
+          mixedContinuityCandidates: nodes.filter(node => node.continuityClassification === "mixed-browser-and-durable-continuity-review").length,
+          durableContinuityCandidates: nodes.filter(node => node.continuityClassification === "durable-continuity-candidate").length
+        },
+        nodes,
+        edges,
+        findings,
+        epistemicBoundary: {
+          runtimeSourceEvidenceIsNotSemanticIntent: true,
+          inferredDependencyIsNotExecutionProof: true,
+          persistenceSurfaceIsNotAuthorityProof: true,
+          absenceFromScanIsNotAbsenceFromSystem: true,
+          staticManifestIsNotCompleteReality: true
+        },
+        authority: {
+          discoveredMethodsExecuted: false,
+          stateWritesAuthorized: false,
+          externalActionsAuthorized: false,
+          providerCallsAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+
+      this.architecturalTopologyDiscoveryCount =
+        Number(this.architecturalTopologyDiscoveryCount || 0) + 1;
+      if (!prior || prior.fingerprint !== topology.fingerprint) {
+        this.architecturalTopologyHistory.unshift({
+          fingerprint: topology.fingerprint,
+          priorFingerprint: prior?.fingerprint || null,
+          observedAt,
+          reason: topology.reason,
+          discovered: this.clone(topology.discovered)
+        });
+        this.architecturalTopologyHistory = this.architecturalTopologyHistory.slice(0, 80);
+      }
+      this.architecturalTopology = topology;
+      return this.clone(topology);
+    },
+
+    getArchitecturalTopology(options = {}) {
+      if (options.refresh === true || !this.architecturalTopology) {
+        return this.discoverArchitecturalTopology(options);
+      }
+      return this.clone(this.architecturalTopology);
+    },
+
+    buildArchitecturalSelfAwareness(options = {}) {
+      const topology = this.getArchitecturalTopology({
+        refresh: options.refresh === true,
+        reason: options.reason || "self-model-architecture-observation"
+      });
+      return {
+        schema: "meos.maddy.architectural-self-awareness.v1",
+        commission: "006.038A",
+        topologyFingerprint: topology?.fingerprint || null,
+        discoveryMode: topology?.discoveryMode || null,
+        registeredPictureCount: Number(topology?.declaredPicture?.registeredComponents || 0),
+        discoveredComponentCount: Number(topology?.discovered?.components || 0),
+        discoveredDependencyEdges: Number(topology?.discovered?.dependencyEdges || 0),
+        outsideDeclaredPicture: Number(topology?.discovered?.outsideDeclaredPicture || 0),
+        browserPersistenceCandidates: Number(topology?.discovered?.browserPersistenceCandidates || 0),
+        mixedContinuityCandidates: Number(topology?.discovered?.mixedContinuityCandidates || 0),
+        pictureMayBeIncomplete: Number(topology?.discovered?.outsideDeclaredPicture || 0) > 0,
+        noPicturePrinciple: "reconstruct-architecture-from-runtime-evidence-not-only-a-maintained-list",
+        epistemicBoundary: this.clone(topology?.epistemicBoundary || null),
+        authority: this.clone(topology?.authority || null)
+      };
     },
 
     getRuntimeCapabilityGaps(manifest = this.getSystemManifest()) {
@@ -9505,6 +9898,10 @@
       const continuity = this.getContinuousCognitionStatus();
       const persistence = this.getPersistenceStatus();
       const capabilityAwareness = this.buildCapabilityAwareness();
+      const architecturalSelfAwareness = this.buildArchitecturalSelfAwareness({
+        refresh: options.refreshArchitecture === true,
+        reason: options.reason || "self-observation"
+      });
 
       const unresolvedIntentions = (this.cognitiveIntentions || [])
         .filter(item => item.status !== "completed")
@@ -9648,6 +10045,8 @@
         interactionContext: this.resolveMaddyInteractionContext(),
 
         capabilityAwareness,
+
+        architecture: architecturalSelfAwareness,
 
         continuity: {
           brainVersion: this.version,
@@ -9808,6 +10207,10 @@
             learning?.available === true,
           observesOwnContinuity:
             Boolean(this.cognitiveContinuity),
+          observesOwnArchitecture:
+            Boolean(architecturalSelfAwareness?.topologyFingerprint),
+          reconstructsArchitectureBeyondDeclaredPicture:
+            architecturalSelfAwareness?.discoveryMode === "no-picture-runtime-reconstruction",
           previousProjectionFingerprint:
             prior?.fingerprint || null,
           previousRevision:
@@ -27159,6 +27562,133 @@
       }
     },
 
+
+    runArchitecturalSelfTopologyAcceptanceTest() {
+      const alphaName = "__TopologyFixtureAlpha";
+      const betaName = "__TopologyFixtureBeta";
+      const counterName = "__TopologyFixtureExecutionCount";
+      const originals = {
+        alpha: global[alphaName],
+        beta: global[betaName],
+        counter: global[counterName],
+        topology: this.architecturalTopology,
+        topologyHistory: this.clone(this.architecturalTopologyHistory || []),
+        topologyCount: this.architecturalTopologyDiscoveryCount
+      };
+
+      let first = null;
+      let second = null;
+      let changed = null;
+      let checks = [];
+      let liveTopology = null;
+
+      try {
+        global[counterName] = 0;
+        global[betaName] = {
+          name: "Durable Continuity Fixture",
+          version: "9.9.2",
+          buildId: "TOPOLOGY-FIXTURE-B",
+          status: "online",
+          authoritativeStorage: "meos-institutional-repository",
+          receive(value) {
+            global[counterName] += 1;
+            return value;
+          },
+          writeDurable() {
+            global[counterName] += 1;
+            return global.fetch("/api/topology-fixture-durable");
+          },
+          getStatus() {
+            global[counterName] += 1;
+            return { status: "online" };
+          }
+        };
+        global[alphaName] = {
+          name: "Shadow Continuity Fixture",
+          version: "9.9.1",
+          buildId: "TOPOLOGY-FIXTURE-A",
+          status: "online",
+          persistBrowser() {
+            global[counterName] += 1;
+            global.localStorage?.setItem?.("meos.topology.fixture", "fixture");
+          },
+          restoreBrowser() {
+            global[counterName] += 1;
+            return global.localStorage?.getItem?.("meos.topology.fixture");
+          },
+          handoff() {
+            global[counterName] += 1;
+            return global.__TopologyFixtureBeta.receive("fixture");
+          }
+        };
+
+        this.architecturalTopology = null;
+        first = this.discoverArchitecturalTopology({ reason: "006.038A-fixture-first" });
+        second = this.discoverArchitecturalTopology({ reason: "006.038A-fixture-repeat" });
+
+        const firstAlpha = first.nodes.find(item => item.globalName === alphaName);
+        const firstBeta = first.nodes.find(item => item.globalName === betaName);
+        const firstEdge = first.edges.find(item => item.from === alphaName && item.to === betaName);
+        const firstUnregistered = first.findings.filter(item =>
+          item.type === "runtime-organ-outside-declared-picture" &&
+          [alphaName, betaName].includes(item.component)
+        );
+
+        global[alphaName].inferredMissingMechanism = function inferredMissingMechanism() {
+          global.__TopologyFixtureExecutionCount += 1;
+          return global.__TopologyFixtureBeta.receive("new-mechanism");
+        };
+        changed = this.discoverArchitecturalTopology({ reason: "006.038A-fixture-structural-change" });
+        const selfProjection = this.buildSelfModelProjection({
+          reason: "006.038A-self-model-acceptance"
+        });
+
+        checks = [
+          { name: "No-Picture discovery finds structurally credible runtime organs that were never named as MEOS and never added to the static COMPONENTS manifest", passed: Boolean(firstAlpha && firstBeta) && firstUnregistered.length === 2 && !firstAlpha?.discoveryTraits?.includes("meos-semantic-identity") && !firstBeta?.discoveryTraits?.includes("meos-semantic-identity") },
+          { name: "Architectural discovery inspects method evidence without executing discovered organ methods", passed: Number(global[counterName] || 0) === 0 && first?.authority?.discoveredMethodsExecuted === false },
+          { name: "Discovery identifies a hidden browser persistence write surface from runtime source evidence", passed: firstAlpha?.signals?.browserWrite === true && firstAlpha?.continuityClassification === "browser-persistence-candidate" },
+          { name: "Discovery identifies browser restoration/read evidence separately from browser writes", passed: firstAlpha?.signals?.browserRead === true && firstAlpha?.signals?.hydrationNamedMethod === true },
+          { name: "Discovery identifies durable repository/network evidence without calling the durable path", passed: firstBeta?.signals?.repositoryLanguage === true && firstBeta?.signals?.durableEndpoint === true && Number(global[counterName] || 0) === 0 },
+          { name: "Maddy infers an architectural dependency edge from runtime structure rather than a hand-authored dependency list", passed: Boolean(firstEdge) && firstEdge?.inferredFrom === "runtime-function-reference" },
+          { name: "The reconstructed topology explicitly exposes gaps between the declared picture and observed runtime", passed: Number(first?.discovered?.outsideDeclaredPicture || 0) >= 2 && first?.epistemicBoundary?.staticManifestIsNotCompleteReality === true },
+          { name: "Unchanged runtime architecture converges on the same deterministic topology fingerprint", passed: Boolean(first?.fingerprint) && first.fingerprint === second?.fingerprint },
+          { name: "A structural code-surface change changes the reconstructed architectural fingerprint", passed: Boolean(changed?.fingerprint) && changed.fingerprint !== second?.fingerprint },
+          { name: "Architectural self-awareness is integrated into Maddy's existing persistent self-model", passed: selfProjection?.architecture?.topologyFingerprint === changed?.fingerprint && selfProjection?.recursiveAwareness?.observesOwnArchitecture === true && selfProjection?.recursiveAwareness?.reconstructsArchitectureBeyondDeclaredPicture === true },
+          { name: "Persistence evidence remains evidence rather than being promoted into an authority claim", passed: changed?.epistemicBoundary?.persistenceSurfaceIsNotAuthorityProof === true && changed?.authority?.stateWritesAuthorized === false },
+          { name: "Self-topology discovery grants no provider, spend, or consequential external-action authority", passed: changed?.authority?.providerCallsAuthorized === false && changed?.authority?.externalActionsAuthorized === false && Number(changed?.authority?.automaticSpendUsd || 0) === 0 }
+        ];
+      } finally {
+        if (originals.alpha === undefined) delete global[alphaName]; else global[alphaName] = originals.alpha;
+        if (originals.beta === undefined) delete global[betaName]; else global[betaName] = originals.beta;
+        if (originals.counter === undefined) delete global[counterName]; else global[counterName] = originals.counter;
+        this.architecturalTopology = originals.topology;
+        this.architecturalTopologyHistory = originals.topologyHistory;
+        this.architecturalTopologyDiscoveryCount = originals.topologyCount;
+        liveTopology = this.discoverArchitecturalTopology({ reason: "006.038A-post-acceptance-live-runtime" });
+      }
+
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      console.info(`[MEOS ${this.version}] Commission 006.038A No-Picture Architectural Self-Topology: ${passed === checks.length ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+      return {
+        success: passed === checks.length,
+        commission: "006.038A",
+        schema: "meos.maddy.architectural-self-topology.acceptance.v1",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        total: checks.length,
+        checks,
+        liveTopology: {
+          fingerprint: liveTopology?.fingerprint || null,
+          declaredPicture: this.clone(liveTopology?.declaredPicture || null),
+          discovered: this.clone(liveTopology?.discovered || null),
+          findings: this.clone((liveTopology?.findings || []).slice(0, 40)),
+          authority: this.clone(liveTopology?.authority || null)
+        },
+        limitation: "This proves bounded runtime architectural reconstruction from observed objects, method surfaces, persistence signals, and inferred references without executing discovered methods or granting authority. It does not prove complete source-code understanding, semantic correctness of every inferred dependency, static-file coverage for code not loaded in the runtime, or autonomous self-modification. Those require later evidence and governed commissions."
+      };
+    },
 
     runGovernedAutonomyAwarenessAcceptanceTest() {
       const originalAuthority = global.MEOSAutonomyAuthority;
