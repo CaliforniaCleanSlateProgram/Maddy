@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32436603/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32429903/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32427810/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -8454,3 +8455,285 @@ Unless fresher production evidence changes the order:
 **Recovery keyword:** `POST-038C-VOICE-LATENCY-ATTENTION-RECOVERY-RECONCILED`
 
 **Fast recovery:** `Resume POST-038C-VOICE-LATENCY-ATTENTION-RECOVERY-RECONCILED — 006.038C remains historically production-proven 16/16 at Brain 1.31.0 / EB1310; VE210 is production-proven 8/8; VE211 / Voice 2.0.11 is deployed and live telemetry proved Router wait was avoided, but the tested pre-EB1311 turn spent 24,814 ms inside Executive Brain and 2,653 ms in remote TTS before first audio; EB1311 / Brain 1.31.1 is production-deployed and its Interactive Cognition Latency Separation acceptance passed 12/12, but a clean post-deploy spoken wall-clock turn has not yet been obtained because the attention layer failed first; real-world testing proved the started passive voice session can remain asleep while cloud transcription still produces and then rejects room speech; restored operating contract is OFF / local-only PASSIVE-ASLEEP / AWAKE-BY-BUTTON / AWAKE-BY-CONFIGURED-WAKE, with persistent conversational floor after wake; first commit this one-file Build State checkpoint, then inspect freshest main, obtain one EB1311 latency trace if possible, otherwise restore the voice state machine one file → one commit → one production test; no rabbit holes.`
+
+
+# POST-038C-VOICE-LIVE-LATENCY-AND-MULTISPEAKER-FAILURE-RECONCILED — 2026-09-20
+
+## Purpose
+
+Reconcile the canonical Build State with the first clean post-EB1311 spoken production evidence and the subsequent real-world wake / multi-speaker / attention failures observed on live VE211.
+
+This checkpoint is additive. It does not rewrite prior production history and does not promote unproven capability.
+
+## Fresh source/runtime anchor
+
+Current repository snapshot inspected before this reconciliation:
+
+- `Maddy-main (83).zip`
+- canonical `MEOS_BUILD_STATE.md` SHA-256 before this append:
+  `3c4b7c2458fda164c89ab3aa23b5d73c2114128cd5ea5a46f1a61175bc806e05`
+- `frontend/voice/openai-realtime.js`:
+  Voice `2.0.11`
+  / `VE211-INTERACTIVE-VOICE-NONBLOCKING-COGNITION-20260920-A`
+- `frontend/executive-brain.js`:
+  Executive Brain `1.31.1`
+  / `EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A`
+
+The prior recovery keyword
+`POST-038C-VOICE-LATENCY-ATTENTION-RECOVERY-RECONCILED`
+remains authoritative historical context.
+
+## EB1311 real spoken latency — LIVE IMPROVEMENT PROVEN
+
+A controlled production voice session was obtained outdoors next to the koi-pond / waterfall environment.
+
+Observed accepted spoken turns included:
+
+- `Maddie, can you hear me clearly?`
+- `How many hearts does an octopus have?`
+- `Thank you.`
+
+The wake-addressed first turn was accepted, the next two turns were accepted through live conversational continuity, and the old approximately `24,814 ms` Executive Brain stall did not recur in these turns.
+
+Observed OpenAI response-completion telemetry:
+
+- first turn: approximately `1,559 ms`;
+- octopus general-knowledge turn: approximately `1,565 ms`;
+- thank-you turn: approximately `1,217 ms`.
+
+Observed model-start latency was approximately `94–152 ms`.
+Observed generation duration was approximately `541–871 ms`.
+
+### Exact claim boundary
+
+This production evidence is sufficient to close the specific historical question:
+**EB1311 materially collapsed the previously observed ~24.8-second interactive Brain stall for this class of live conversational turn.**
+
+Do not rewrite that as:
+
+- “voice is Spooky-fast”;
+- “all voice latency is solved”;
+- “internet research is fast”;
+- “TTS latency is solved”;
+- “all Brain routes now complete in ~1–2 seconds.”
+
+The founder's human acceptance was:
+**dramatically better / approximately normal contemporary AI speed / good enough for now, but not Spooky.**
+
+General-knowledge latency is therefore intentionally deprioritized for the immediate next brick.
+
+## Octopus turn — general knowledge, not internet proof
+
+The spoken question `How many hearts does an octopus have?` was accepted and answered correctly.
+
+The live route was:
+`local-recall-plus-provider-reasoning`.
+
+This proves successful fast general-knowledge conversation for that turn.
+It does **not** prove live internet lookup and does **not** prove reconstructive autobiographical recall of the user's earlier octopus question.
+
+## White-shark question — correct answer, internet use NOT PROVEN
+
+In a later quiet-room attempt the user intentionally asked, in substance:
+
+`What month do the white sharks appear in the Monterey Bay area on the central coast?`
+
+The live transcript split the request across two accepted turns:
+
+- `Okay, so what month do the white sharks appear?`
+- `in the Monterey Bay area on the central coast.`
+
+Maddy answered the user's intended white-shark question correctly.
+
+The live route remained:
+`local-recall-plus-provider-reasoning`.
+
+Therefore:
+
+- question hearing / semantic completion: **PASS for this interaction**;
+- answer usefulness/correctness by human acceptance: **PASS**;
+- proof that Maddy actually used the internet: **NOT PROVEN**.
+
+Do not convert a correct current-looking answer into a claim of web research without route/evidence showing that research actually occurred.
+
+## Real-world multi-speaker conversation — FAIL
+
+A real-world test was conducted with the user near the laptop, another adult speaking in the surrounding environment, and normal room/background sound.
+
+Before wake, some unaddressed speech was ultimately rejected.
+However, that speech was still transcribed before rejection, so the passive/asleep privacy/cost architecture remains wrong.
+
+After the user successfully acquired Maddy, unrelated background conversation repeatedly inherited the active conversational floor.
+
+Examples of background transcripts that were incorrectly accepted as user turns included phrases such as:
+
+- `And I was walking out.`
+- `Walking out of the hotel...`
+- `I don't fucking got the fire on.`
+- `Yeah, with the fucking ninja.`
+- `Why the fuck would you carry around a BB gun? Because I was scared.`
+- `for defense.`
+
+These false turns were accepted under reasons including:
+
+- `transcript-backed-barge-in-over-weak-acoustics`;
+- `transcript-backed-barge-in-without-acoustic-proof`;
+- `transcript-continuity-overrides-weak-acoustic-evidence`.
+
+The false turns repeatedly caused:
+
+`confirmed-foreground-interruption`
+
+and cancelled or interrupted Maddy's active response.
+
+### Human acceptance
+
+**FAIL.**
+
+The founder reported that Maddy could not reliably decipher his voice from surrounding conversation, did not provide a coherent logical answer during the contaminated interaction, and stopped/cut off speech because continuing background conversation repeatedly interrupted her.
+
+### What this failure proves
+
+1. Conversation continuity is currently being used as a proxy for speaker ownership too aggressively.
+2. “Conversation is active” does not prove “the same human is speaking.”
+3. A transcript alone must not inherit the foreground user's interruption authority merely because it arrives inside a continuity window.
+4. Background speech must not be able to cancel Maddy's active answer without stronger evidence that the established foreground human is actually interrupting.
+5. RMS/loudness alone remains insufficient as identity proof.
+6. The next repair must not solve this by merely lowering or raising one microphone threshold for one room.
+
+## Wake / attention behavior — FAIL / unreliable
+
+A subsequent quiet-room sequence exposed additional wake/attention defects.
+
+Multiple spoken attempts intended to address Maddy were transcribed into unrelated or near-name variants and then rejected while attention remained asleep.
+
+Observed examples included transcripts such as:
+
+- `Maddesi.`
+- `Matthew, can you hear me currently?`
+- `Grazie.`
+- `Hey, Mari.`
+- `Ari, can you hear me clearly?`
+
+Eventually a standalone transcript:
+
+`Maddy.`
+
+was recognized as a wake word and acquired foreground attention.
+
+However, the standalone wake utterance was then treated as a complete conversational request and produced a normal answer rather than simply acquiring attention and waiting for the user's immediately following request.
+
+That wake-only response produced approximately:
+
+- model start: `104 ms`;
+- response completion: `4,953 ms`;
+- generation duration: `4,326 ms`;
+- response length: `220` characters.
+
+This confirms that the already-known **wake-only turn behavior remains broken**.
+
+## Foreground rejection / silence after the successful answer
+
+After the white-shark answer, later intended user speech was transcribed as materially different phrases such as:
+
+- `What is the interesting fact?`
+- `So what is the interesting movie on the center?`
+
+Those candidates were rejected as:
+
+`background-acoustic-mismatch`.
+
+Attention then expired and the system returned to:
+
+`attention-asleep-wake-word-required`.
+
+This explains the founder-observed silence: Maddy was not performing a hidden deep research operation; the attention layer had stopped treating the intended speaker as foreground.
+
+## Internet / deep-research voice proof remains OPEN
+
+No production interaction in this checkpoint proves the complete path:
+
+spoken current-information request
+→ accurate foreground ownership
+→ correct transcript / intended meaning
+→ current-information recognition
+→ internet/research route
+→ fresh evidence
+→ spoken answer.
+
+The white-shark answer was useful and correct but remained on
+`local-recall-plus-provider-reasoning`.
+
+The later “interesting moon around Saturn” intent was not preserved reliably enough to grade internet/research behavior.
+
+Therefore **internet-enabled voice research remains unproven** and should not be tested again until the immediate attention/floor failure is repaired enough to deliver a clean request.
+
+## Remote TTS 502 — observed resilience, separate issue
+
+One contaminated multi-speaker run produced:
+
+`POST /tts 502 (Bad Gateway)`
+
+The speech layer fell back to browser voice.
+
+This is useful resilience evidence but remains separate from the immediate voice-attention repair.
+Do not open a TTS rabbit hole from this checkpoint.
+
+## Immediate next runtime brick
+
+The next substantive code edit remains constrained to:
+
+`frontend/voice/openai-realtime.js`
+
+and should address one narrow production failure first:
+
+**degraded transcript continuity alone must not possess enough authority to cancel an active Maddy response or steal the established conversational floor.**
+
+In particular, while Maddy is speaking or a response is actively in progress, background/unverified transcripts must not trigger `confirmed-foreground-interruption` merely because a previous foreground turn occurred recently.
+
+The next repair should preserve:
+
+- genuine explicit wake/address authority;
+- clear/strong foreground interruption evidence when available;
+- Maddy's ability to be interrupted by the actual user;
+- existing provider neutrality;
+- raw transcript as evidence rather than truth;
+- no new spend / state-write / external-action authority;
+- no hard-coded one-room threshold;
+- no claim of biometric speaker identification unless such a mechanism is actually built and proven.
+
+This is **not yet a complete speaker-identification system**.
+It is the first bounded repair to stop the production-proven failure mode where unrelated background conversation repeatedly cancels Maddy's answer.
+
+After that production test passes, continue one defect at a time:
+speaker/floor ownership refinement, awake-by-button semantics, wake-only aggregation, passive local wake/privacy, ASR intended-meaning recovery, internet/research voice proof, then later latency/TTS polish.
+
+## Exact next production acceptance target
+
+After the next one-file runtime repair:
+
+1. user acquires Maddy;
+2. Maddy begins answering;
+3. another adult continues ordinary nearby conversation;
+4. unrelated background transcript does not cancel Maddy's active response;
+5. background transcript does not become a user turn solely through continuity;
+6. the actual user can still intentionally interrupt with sufficiently strong/explicit foreground evidence;
+7. Maddy finishes the intended answer;
+8. no authority escalation occurs.
+
+Production gets the vote.
+
+## Anti-drift update
+
+1. EB1311 live interactive latency improvement is now production-observed and materially better than the old ~24.8-second stall for the tested conversational turns.
+2. “Good enough for now” on simple conversational speed is not “Spooky complete.”
+3. Multi-speaker floor ownership is a current production blocker.
+4. Passive room speech still reaches cloud transcription before rejection; that privacy/cost architecture remains open and unacceptable as the final passive design.
+5. Internet/research voice capability is not yet production-proven by these tests.
+6. Do not conflate correct model knowledge with internet research.
+7. Do not conflate transcript continuity with speaker identity.
+8. Do not conflate wake-word recognition with a complete user request.
+9. Preserve the one-fix → one-file → one-commit → one-production-test → Build-State-reconciliation workflow.
+10. Do not broaden the next brick into TTS, payments, companionship, durable investigation, or unrelated cognition.
+
+**Recovery keyword:** `POST-038C-VOICE-LIVE-LATENCY-AND-MULTISPEAKER-FAILURE-RECONCILED`
