@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32429903/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32427810/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32427206/MEOS_BUILD_STATE.md)
@@ -8176,3 +8177,280 @@ Unless fresher production evidence exposes a more urgent regression:
 **Recovery keyword:** `006.038C-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-PROVEN`
 
 **Fast recovery:** `Resume 006.038C-CONTINUITY-DISCRIMINATING-EXPERIMENT-ENGINE-PROVEN — Executive Brain 1.31.0 / EB1310 is production-proven 16/16; latest separately proven server baseline remains 2.10.115; durable authority hydration remains READY from meos-institutional-repository; live experiment fingerprint experiment-d0dcaaa1 over semantic fingerprint continuity-95eb119f reported 26 semantic evaluations, 19 unresolved/risk targets, 16 unique planned targets, 16 planned experiments, 16 read-only evidence reviews, 0 live isolated experiments, highest expected information gain 0.376674, and highest utility 0.495924; production authority remained no spend / no production mutation / no state writes / no provider calls / no self-modification / no external action / no inferred experiment execution authority; 038A topology + 038B semantic reconstruction + 038C discriminating-experiment planning are foundation layers, not the North Star; do not lessen Spooky, do not hard-code a terminal developmental target, do not drift into a diagnostic-machine destination, preserve why failed ideas failed and the conditions that could make them viable later, and attack the next substantive commission against the full open-ended curiosity / No-Picture / anti-obsolescence direction before coding one fix → one commit → one production test.`
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — POST-006.038C INTERACTIVE VOICE LATENCY + ATTENTION RECOVERY — 2026-09-20
+
+**Checkpoint purpose:** Reconcile production evidence accumulated after 006.038C without rewriting earlier commissioned history, and restore an exact recovery waypoint before the next voice repair.
+
+**Checkpoint status:** BUILD STATE RECONCILED FROM MIXED PRODUCTION EVIDENCE. This is a recovery checkpoint, not a new commission and not a claim that Maddy Live voice is finished.
+
+**Historical rule:** Every earlier Build State checkpoint remains true for the runtime and evidence that existed when it was recorded. This checkpoint is additive.
+
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation before the next substantive code change.
+
+## Reconciliation provenance and freshness boundary
+
+The canonical Build State base used for this additive checkpoint is the `MEOS_BUILD_STATE.md` carried by the latest available repository snapshot used for recovery, `Maddy-main (81).zip`. That snapshot already contains the complete 006.038C checkpoint.
+
+The **code files inside that snapshot are not the current production runtime**: its voice client is VE210 / `2.0.10` and its Executive Brain is EB1310 / `1.31.0`. Fresher production console evidence proves that the live runtime subsequently advanced to VE211 / `2.0.11` and EB1311 / `1.31.1`.
+
+Therefore:
+
+- use the Main81 Build State only as the canonical historical document base for this reconciliation;
+- use the fresher production console as runtime authority for VE211 and EB1311 facts recorded below;
+- do **not** use Main81's older voice or Brain source files as rollback authority;
+- commit this checkpoint as `MEOS_BUILD_STATE.md` into the current GitHub `main` without replacing newer production source files.
+
+## Current authoritative runtime facts added by this checkpoint
+
+The latest production evidence establishes:
+
+- **Executive Brain:** `1.31.1`
+- **Executive Brain build:** `EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A`
+- **Realtime voice client:** `2.0.11`
+- **Realtime voice build:** `VE211-INTERACTIVE-VOICE-NONBLOCKING-COGNITION-20260920-A`
+- **Maddy Realtime:** `2.0.0` / `VE200-MADDY-REALTIME-20260730-A`
+- **Maddy Speech:** `2.0.2` / `VE202-FOUNDER-TTS-SAME-ORIGIN-AUTH-20260919-A`
+- **Executive Hallway:** `1.5.7` / `EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A`
+- **Mission Engine:** `0.2.0` / `ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A`
+- **Durable authority hydration:** READY from `meos-institutional-repository`
+
+The post-006.038C evidence did not report a newer server identity, so the latest separately proven server baseline remains `2.10.115` unless fresher production evidence supersedes it.
+
+## VE210 — Transcript / Acoustic Evidence Separation — PRODUCTION-PROVEN
+
+**Voice version:** `2.0.10`  
+**Build:** `VE210-TRANSCRIPT-ACOUSTIC-EVIDENCE-SEPARATION-20260920-A`  
+**Acceptance schema:** `meos.voice.transcript-acoustic-evidence-separation.acceptance.v1`  
+**Acceptance command:** `OpenAIRealtime.runTranscriptAcousticEvidenceSeparationAcceptanceTest()`  
+**Production result:** **PASS `8/8`**
+
+VE210 production-proved the bounded rule that missing or weak acoustic telemetry is uncertainty, not automatic evidence that a transcript came from background speech.
+
+The production acceptance proved:
+
+1. a valid transcript preserves an established conversation when acoustic samples are missing;
+2. weak acoustic evidence cannot veto a recent foreground transcript by itself;
+3. Maddy's own playback transcript is not mistaken for a user barge-in;
+4. a non-echo user transcript can barge in during Maddy speech when acoustic telemetry is missing;
+5. transcript continuity does not bypass the sleeping wake-word boundary;
+6. wake-name acquisition remains authoritative even without acoustic samples;
+7. missing acoustics do not create unlimited foreground authority after continuity expires;
+8. the acceptance grants no provider, spend, state-write, or self-modification authority.
+
+### VE210 exact limitation carried forward
+
+VE210 did **not** prove speaker biometric identity, perfect noisy-room transcription, a correct passive/asleep cloud-cost model, or low-latency response generation. Later live evidence showed that a legitimate follow-up could still be rejected by acoustic mismatch and that attention could expire too aggressively.
+
+## VE211 — Interactive Voice Nonblocking Cognition — DEPLOYED / PARTIALLY LIVE-PROVEN, NOT CLOSED
+
+**Voice version:** `2.0.11`  
+**Build:** `VE211-INTERACTIVE-VOICE-NONBLOCKING-COGNITION-20260920-A`
+
+VE211 is deployed in production. Its production telemetry materially improved diagnosis and proved that eligible interactive voice can bypass the older Executive Router wait.
+
+A live accepted turn reported:
+
+- foreground turn accepted: `2 ms` elapsed;
+- transcript completed: `2 ms` elapsed;
+- Executive Brain route completed: `24,816 ms` elapsed;
+- Executive Brain duration: `24,814 ms`;
+- route: `instant-meos-context`;
+- interactive route selected: `brain-direct`;
+- `routerWaitAvoided: true`;
+- model response created at `25,050 ms` with model-start latency `233 ms`;
+- response text completed at `25,812 ms` with generation duration `763 ms`;
+- first remote audio playback at `28,467 ms`;
+- remote TTS request latency: `2,653 ms`.
+
+### VE211 production conclusion
+
+The live trace proved that the older Router wait was **not** the dominant delay for the tested turn. The Executive Brain itself consumed approximately `24.814 s` before the provider response began. Model start and text generation were comparatively fast, while remote TTS contributed an additional approximately `2.653 s` before first audio.
+
+Therefore VE211 must **not** be recorded as a completed end-to-end low-latency voice success. Its production value at this waypoint is:
+
+- live latency-stage instrumentation works;
+- eligible interactive routing can avoid waiting on Executive Router;
+- the actual dominant pre-response bottleneck was localized to Executive Brain;
+- TTS remains a separate later latency component;
+- the production evidence justified the EB1311 Brain repair.
+
+Any earlier local VE211 acceptance result remains local evidence unless separately reproduced in production. Do not promote a local harness result into a production proof by implication.
+
+## EB1311 — Interactive Cognition Latency Separation — PRODUCTION ACCEPTANCE-PROVEN, WALL-CLOCK VOICE EFFECT STILL OPEN
+
+**Executive Brain version:** `1.31.1`  
+**Build:** `EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A`  
+**Acceptance schema:** `meos.executive-brain.interactive-cognition-latency-separation.acceptance.v1`  
+**Acceptance command:** `ExecutiveBrain.runInteractiveCognitionLatencySeparationAcceptanceTest()`  
+**Production acceptance result:** **PASS `12/12`**
+
+The production runtime loaded Executive Brain `1.31.1` / EB1311 and then passed all twelve commissioned acceptance checks.
+
+The acceptance proves, within its bounded harness, that latency-critical interactive voice can remain inside the same Executive Brain while avoiding synchronous reconstructive Executive Recall and full Institutional Reasoning for eligible conversational/current-research turns.
+
+Production acceptance specifically proved:
+
+1. ordinary interactive voice bypasses reconstructive Executive Recall;
+2. ordinary interactive voice bypasses full Institutional Reasoning;
+3. ordinary conversational voice remains owned by Executive Brain cognition;
+4. ordinary conversation remains a direct provider-reasoning route rather than a fake local-evidence claim;
+5. current/public research is recognized without blocking on institutional recall;
+6. interactive research cognition refuses to fabricate unfinished findings;
+7. decision work does not silently inherit the lightweight conversational path;
+8. the fast path is scoped to live interactive voice rather than generic Brain calls;
+9. fast conversational cognition adds no external-action or spend authority;
+10. provider instructions still identify the external model as adviser rather than Maddy;
+11. the exact human utterance remains Maddy-owned objective semantics;
+12. the latency-separation contract explicitly forbids long-running cognition from blocking speech.
+
+The production acceptance observations included:
+
+- conversational route: `local-recall-plus-provider-reasoning`;
+- research route: `external-intelligence-research`;
+- reconstructive recall calls after the conversational turn: `0`;
+- Institutional Reasoning calls after the conversational turn: `0`;
+- the deliberative decision path still exercised one recall and one reasoning call.
+
+### EB1311 exact limitation at this checkpoint
+
+**Do not claim the wall-clock voice latency problem is production-solved yet.**
+
+After EB1311 deployed and passed `12/12`, the subsequent real-world voice attempts did not produce a clean accepted foreground turn suitable for comparing `brain-route-completed` wall-clock timing against the prior `24,814 ms` Brain duration. The voice/attention layer failed before that measurement could be obtained.
+
+EB1311 is therefore:
+
+- production-deployed;
+- production acceptance-proven `12/12`;
+- architecturally proven to separate eligible interactive cognition from synchronous reconstructive recall/reasoning in the acceptance harness;
+- **not yet live-proven to reduce a real spoken turn's Brain wall-clock duration by the expected amount**.
+
+That distinction remains authoritative until a clean accepted spoken turn produces fresh latency telemetry.
+
+## Real-world voice attention test — FAIL / BLOCKING EVIDENCE
+
+The next production test used a normal real-world environment rather than a quiet-room demo. The user was near the laptop; another adult male was across the room on a phone call; the environment also includes steady koi-pond / small-waterfall background noise.
+
+The production session started and connected VE211 successfully, but the attention system remained asleep and repeatedly produced transcripts before rejecting them as unaddressed/background speech.
+
+Observed rejected transcripts included examples such as:
+
+- `OK, anyway.`
+- `Thank you very much.`
+- `Shut the fuck`
+- `That's the right one.`
+- `I have never recovered.`
+- `I forgot how I said that.`
+- `then then`
+- `Yeah.`
+
+The repeated reason was `attention-asleep-wake-word-required`.
+
+### What this production failure proves
+
+1. A started and connected VE211 session can still remain in sleeping attention state.
+2. Speech is currently being sent through transcription **before** the sleeping/background attention judgment rejects it.
+3. Therefore the current passive/asleep path does **not** satisfy the intended local-only wake-listening contract.
+4. Background/unaddressed room speech can reach cloud transcription even though MEOS ultimately discards it.
+5. The current attention architecture cannot be considered acceptable for ordinary TV, parties, nearby phone calls, or other real-world passive environments.
+6. The failed test does not disprove EB1311 because no clean foreground turn reached the Brain after EB1311 deployment.
+7. Loudness/RMS alone is not an adequate speaker-ownership model. A nearby intended user and a more distant background speaker cannot be reliably separated merely by assuming the intended user will always be louder.
+
+This production scenario is a legitimate failure and should be preserved as acceptance evidence for the next voice-state repair rather than tuned away as an inconvenient environment.
+
+## Previously exposed voice defects that remain separate open problems
+
+Do not collapse these into one generic “voice issue”:
+
+- **interactive Brain latency:** prior live turn localized approximately `24.814 s` to Executive Brain; EB1311 acceptance addresses the architectural cause, wall-clock production retest pending;
+- **remote TTS latency:** prior trace measured approximately `2.653 s` from TTS request to first playback after response text completion;
+- **wake-only turn behavior:** a standalone wake utterance such as `Maddie.` has been treated as a complete user turn and can trigger a response instead of merely acquiring attention for the immediately following request;
+- **conversational-floor continuity:** a valid follow-up was rejected as `background-acoustic-mismatch`, then attention expired and the wake word was required again;
+- **ASR corruption:** real user speech has produced materially wrong transcripts, including nonsensical or unexpected-language outputs; transcription output is evidence, not reality;
+- **passive/asleep cloud transcription:** ordinary room speech is currently transcribed before MEOS rejects it;
+- **speaker ownership:** post-wake ownership is not yet robust to another person speaking in the same room;
+- **noisy-room / party acceptance:** not yet proven;
+- **automatic durable-research return to spoken conversation:** still open;
+- **streaming expression / anticipatory cognition / mature speaker lock:** still open.
+
+## Restored voice operating contract — founder direction, not yet production capability
+
+The intended Maddy Voice operating model predates this checkpoint and is restored here as recovery direction. It is **not** a new September 2026 product idea and must not be weakened into the current VE211 implementation merely because that implementation exists.
+
+### Required state model
+
+**OFF**
+
+- microphone inactive.
+
+**PASSIVE / ASLEEP**
+
+- lightweight local/native wake detection only;
+- ordinary room speech, television, parties, nearby phone calls, and steady environmental sound are ignored locally;
+- ordinary background speech is not uploaded for paid/cloud transcription by default;
+- non-wake audio is not retained as durable conversation;
+- a small bounded local pre-roll may be used so a detected wake does not clip the beginning of the user's request.
+
+**AWAKE BY “TALK TO MADDY” BUTTON**
+
+- pressing the explicit Talk-to-Maddy control means Maddy is awake immediately;
+- natural conversation begins without requiring the wake name on every turn;
+- the session-start action must not merely turn on the microphone while leaving attention asleep.
+
+**AWAKE BY WAKE IDENTITY**
+
+- a local wake detector recognizes the configured wake identity;
+- after wake, cloud transcription/conversation processing may begin;
+- conversational-floor ownership persists across normal follow-ups until an explicit sleep/stop condition or a governed timeout;
+- another person beginning to speak in the room does not automatically steal the established conversational floor.
+
+### Configurable wake identity
+
+The wake identity must be customer/profile scoped rather than globally hard-coded to `Maddy`.
+
+A user may choose an assistant/wake name such as `Maddy`, `Dave`, or another appropriate name during setup. The configured name should populate the local wake detector and may later be changed through an authorized settings or confirmed voice flow.
+
+Representative/wake-name configuration changes presentation and attention vocabulary; it does not by itself create a second cognition, organization authority, spending authority, or consequential external-action authority.
+
+Do not claim that a configurable local wake detector is already implemented. This checkpoint records the required contract and the production evidence showing that the current implementation does not yet meet it.
+
+## Exact recovery order after this checkpoint
+
+Unless fresher production evidence changes the order:
+
+1. Commit this reconciled `MEOS_BUILD_STATE.md` to the current GitHub `main` as the one-file Build State checkpoint. Do not replace newer VE211 or EB1311 source with the older Main81 source snapshot used only as the historical document base.
+2. Reconcile/inspect the freshest current `main` before the next substantive code edit.
+3. Attempt one controlled real spoken turn under live EB1311 if the current attention path can produce a clean accepted foreground turn. Capture `OpenAIRealtime.getStatus().latency` immediately after the response.
+4. If a clean accepted turn is obtained, compare `brain-route-completed` / `brainDurationMs` against the prior `24,814 ms` baseline and record whether EB1311 actually collapses the Brain wall-clock delay.
+5. If the current session-start path again remains asleep or passive mode continues to transcribe background speech, do not spend repeated tests fighting the wrong state machine. Inspect the current production `frontend/voice/openai-realtime.js` seam and restore the intended OFF / PASSIVE-ASLEEP / AWAKE-BY-BUTTON / AWAKE-BY-WAKE state contract one fix → one file → one commit → one production test.
+6. The next voice production test should explicitly cover: button-awake conversation without a wake word; passive/asleep background speech producing no cloud transcript; wake-name acquisition; natural follow-up without repeated wake name; another adult speaking in the room without stealing the floor; steady koi-pond/waterfall noise; and fresh EB1311 latency telemetry.
+7. Keep ASR intended-meaning recovery, remote TTS optimization, wake-only aggregation, speaker ownership refinement, and deeper conversational polish as separate evidence-driven bricks. Do not bundle them into the state-machine repair merely because they are nearby.
+8. Preserve the broader North Star / Spooky direction. Fast conversational cognition is a different cognitive timescale inside Maddy, not a weaker assistant replacing full-strength cognition.
+9. Commercial pricing / checkout remains separate and is not reopened by this voice recovery work.
+
+## Anti-drift gate after this checkpoint
+
+1. Preserve 006.038C as PRODUCTION-PROVEN `16/16` at Executive Brain `1.31.0` / EB1310 for that historical commission.
+2. Preserve VE210 as PRODUCTION-PROVEN `8/8` at Voice `2.0.10` / `VE210-TRANSCRIPT-ACOUSTIC-EVIDENCE-SEPARATION-20260920-A`.
+3. Treat VE211 `2.0.11` as deployed with live instrumentation and Router-bypass evidence, but **not** as a closed end-to-end latency proof.
+4. Treat EB1311 `1.31.1` as production-deployed and production acceptance-proven `12/12`, while preserving the still-open requirement for a real spoken wall-clock latency proof.
+5. Do not rewrite the prior `24,814 ms` Executive Brain delay as if EB1311 had already erased it in production; measure it.
+6. Do not confuse background rejection after cloud transcription with local passive wake detection. Those are different architectures with different privacy, cost, and attention consequences.
+7. Do not solve speaker ownership by hard-coding one RMS threshold, one microphone sensitivity, one room, or one pond/waterfall profile.
+8. Preserve raw transcript as evidence and distinguish it from intended meaning. Sensor output is not reality.
+9. Do not let wake/attention heuristics create provider, spending, state-write, self-modification, or consequential external-action authority.
+10. Preserve one Maddy cognition across customer-selected representative/wake identities; naming is not cognition replacement.
+11. Preserve provider/model/hardware neutrality. A temporary external transcription provider is replaceable infrastructure, not Maddy's identity.
+12. Preserve private user boundaries. Passive room speech that is not an authorized Maddy interaction should not become durable institutional memory.
+13. Do not lower the North Star or Spooky standard to “works like Alexa.” Familiar wake/use ergonomics are the surface; Maddy's deeper cognition, continuity, investigation, execution, and open-ended development remain underneath.
+14. No companionship / emotional-attachment subsystem is opened by this checkpoint. That doctrine is preserved separately for the stage when the product actually reaches sustained relational maturity.
+15. Continue one fix → one file → one commit → one production test → Build State reconciliation.
+16. Reconcile fresh GitHub `main` and live runtime before every material next commission or recovery jump.
+17. Build State records proven history, exact limitations, and founder direction; it does not manufacture unproven capability.
+
+**Recovery keyword:** `POST-038C-VOICE-LATENCY-ATTENTION-RECOVERY-RECONCILED`
+
+**Fast recovery:** `Resume POST-038C-VOICE-LATENCY-ATTENTION-RECOVERY-RECONCILED — 006.038C remains historically production-proven 16/16 at Brain 1.31.0 / EB1310; VE210 is production-proven 8/8; VE211 / Voice 2.0.11 is deployed and live telemetry proved Router wait was avoided, but the tested pre-EB1311 turn spent 24,814 ms inside Executive Brain and 2,653 ms in remote TTS before first audio; EB1311 / Brain 1.31.1 is production-deployed and its Interactive Cognition Latency Separation acceptance passed 12/12, but a clean post-deploy spoken wall-clock turn has not yet been obtained because the attention layer failed first; real-world testing proved the started passive voice session can remain asleep while cloud transcription still produces and then rejects room speech; restored operating contract is OFF / local-only PASSIVE-ASLEEP / AWAKE-BY-BUTTON / AWAKE-BY-CONFIGURED-WAKE, with persistent conversational floor after wake; first commit this one-file Build State checkpoint, then inspect freshest main, obtain one EB1311 latency trace if possible, otherwise restore the voice state machine one file → one commit → one production test; no rabbit holes.`
