@@ -1,7 +1,7 @@
 /*
  * MEOS Institutional Reasoning Engine
- * Version: 1.3.1
- * Build: IR131-GROWTH-STRATEGY-SALES-PSYCHOLOGY-20260914-A
+ * Version: 1.3.2
+ * Build: IR132-RECONSTRUCTIVE-REASONING-CONTINUITY-20260919-A
  *
  * Mission:
  * Turn supported institutional evidence into explainable executive analysis,
@@ -41,14 +41,14 @@
 
     const InstitutionalReasoning = {
         name: "MEOS Institutional Reasoning Engine",
-        version: "1.3.1",
-        buildId: "IR131-GROWTH-STRATEGY-SALES-PSYCHOLOGY-20260914-A",
+        version: "1.3.2",
+        buildId: "IR132-RECONSTRUCTIVE-REASONING-CONTINUITY-20260919-A",
         status: "initializing",
         operatingMode: "evidence-grounded-reasoning",
 
         configuration: {
-            persistenceEnabled: true,
-            automaticPersistence: true,
+            persistenceEnabled: false,
+            automaticPersistence: false,
             localStorageKey: STORAGE_KEY,
             organizationNeutralCore: true,
             defaultMode: REASONING_MODES.EXECUTIVE,
@@ -80,11 +80,28 @@
         initializedAt: null,
         persistenceState: {
             authority: "evidence-sources-plus-durable-executive-cognition",
-            browserRole: "best-effort-reasoning-continuity-cache",
+            reasoningModel: "reconstructive-institutional-reasoning",
+            browserRole: "optional-disposable-reasoning-workspace",
+            browserAuthority: false,
+            automaticBrowserHydration: false,
+            sourceReconstructionEnabled: true,
+            sessionStateDurability: "ephemeral-until-governed-durable-scope",
+            durableSavedAnalysisScopeRequired: true,
+            reconstructionCount: 0,
+            lastReconstructionAt: null,
+            lastEvidenceLineageFingerprint: null,
+            lastEpistemicLineageFingerprint: null,
+            lastReasoningBasisFingerprint: null,
+            legacySnapshotObserved: false,
+            legacySnapshotBytes: 0,
+            legacySnapshotSchema: null,
+            legacySnapshotVersion: null,
+            legacySnapshotImported: false,
             browserPersistenceSuspended: false,
             suspensionReason: null,
             suspendedAt: null,
             lastPersistedAt: null,
+            lastRestoreAt: null,
             lastPersistenceError: null,
             failureCount: 0
         },
@@ -95,7 +112,7 @@
                 ...(options.configuration || options)
             };
 
-            this.restore();
+            this.observeLegacyBrowserSnapshot();
             this.initializedAt = new Date().toISOString();
             this.status = "online";
 
@@ -188,6 +205,28 @@
             evidenceAssessment.epistemicContinuity =
                 this.clone(epistemicContinuity);
 
+            /*
+             * IR132 — Reconstructive Reasoning Continuity
+             *
+             * A reasoning result is not durable because a browser snapshot remembers it.
+             * It is reconstructible because the current question, source evidence, and
+             * epistemic conditions that produced it remain inspectable. Carry a compact
+             * deterministic lineage fingerprint through evidenceAssessment so downstream
+             * Planning/Decision can retain the basis of the judgment without treating
+             * browser state as truth authority.
+             */
+            const reasoningContinuity =
+                this.buildReasoningContinuity({
+                    question,
+                    mode,
+                    evidence,
+                    epistemicContinuity,
+                    recall
+                });
+
+            evidenceAssessment.reasoningContinuity =
+                this.clone(reasoningContinuity);
+
             const findings = this.buildFindings({
                 question,
                 mode,
@@ -273,6 +312,8 @@
                 evidenceAssessment,
                 epistemicContinuity:
                     this.clone(epistemicContinuity),
+                reasoningContinuity:
+                    this.clone(reasoningContinuity),
                 findings,
                 options: optionsList,
                 risks,
@@ -2991,7 +3032,11 @@
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 runCount: 0,
-                lastRunAt: null
+                lastRunAt: null,
+                continuityRole: "reasoning-lens",
+                durability: this.configuration.persistenceEnabled
+                    ? "explicit-browser-cache-only"
+                    : "session-only-until-governed-durable-scope"
             };
 
             this.savedAnalyses.push(saved);
@@ -3047,6 +3092,12 @@
                     response.risks.length,
                 conflictCount:
                     response.conflicts.length,
+                evidenceLineageFingerprint:
+                    response.reasoningContinuity?.evidenceLineageFingerprint || null,
+                epistemicLineageFingerprint:
+                    response.reasoningContinuity?.epistemicLineageFingerprint || null,
+                reasoningBasisFingerprint:
+                    response.reasoningContinuity?.reasoningBasisFingerprint || null,
                 durationMs:
                     response.durationMs,
                 analyzedAt:
@@ -3359,6 +3410,178 @@
             return acceptance;
         },
 
+        canonicalizeFingerprintValue(value) {
+            if (Array.isArray(value)) {
+                return value.map((item) =>
+                    this.canonicalizeFingerprintValue(item)
+                );
+            }
+
+            if (
+                value &&
+                typeof value === "object"
+            ) {
+                return Object.keys(value)
+                    .sort()
+                    .reduce((result, key) => {
+                        const candidate = value[key];
+                        if (
+                            candidate !== undefined &&
+                            typeof candidate !== "function"
+                        ) {
+                            result[key] =
+                                this.canonicalizeFingerprintValue(candidate);
+                        }
+                        return result;
+                    }, {});
+            }
+
+            return value ?? null;
+        },
+
+        fingerprintValue(value, itemCount = null) {
+            const canonical = JSON.stringify(
+                this.canonicalizeFingerprintValue(value)
+            );
+
+            let hash = 2166136261;
+            for (let index = 0; index < canonical.length; index += 1) {
+                hash ^= canonical.charCodeAt(index);
+                hash = Math.imul(hash, 16777619);
+            }
+
+            const suffix = Number.isFinite(itemCount)
+                ? `:${itemCount}`
+                : "";
+
+            return `fnv1a32:${(hash >>> 0)
+                .toString(16)
+                .padStart(8, "0")}${suffix}`;
+        },
+
+        buildEvidenceLineageFingerprint(evidence = []) {
+            const lineage = (Array.isArray(evidence) ? evidence : [])
+                .map((item) => ({
+                    id:
+                        item?.id ||
+                        item?.recordId ||
+                        item?.sourceId ||
+                        null,
+                    sourceType:
+                        item?.sourceType ||
+                        item?.source ||
+                        null,
+                    title: item?.title || null,
+                    summary: item?.summary || null,
+                    content: item?.content || null,
+                    date:
+                        item?.date ||
+                        item?.updatedAt ||
+                        item?.createdAt ||
+                        null,
+                    authority: item?.authority || null,
+                    confidence:
+                        Number(item?.confidence || 0),
+                    citation: item?.citation || null,
+                    organizationId:
+                        item?.organizationId ||
+                        item?.raw?.organizationId ||
+                        null,
+                    knowledgeClass:
+                        item?.knowledgeClass ||
+                        item?.raw?.knowledgeClass ||
+                        null
+                }))
+                .sort((a, b) =>
+                    JSON.stringify(a).localeCompare(JSON.stringify(b))
+                );
+
+            return this.fingerprintValue(
+                lineage,
+                lineage.length
+            );
+        },
+
+        buildEpistemicLineageFingerprint(epistemicContinuity = {}) {
+            return this.fingerprintValue({
+                schema: epistemicContinuity?.schema || null,
+                preserved:
+                    epistemicContinuity?.preserved === true,
+                subject:
+                    epistemicContinuity?.subject || null,
+                epistemicClaims:
+                    epistemicContinuity?.epistemicClaims || [],
+                realityReconstruction:
+                    epistemicContinuity?.realityReconstruction || null,
+                counterpartyIntelligence:
+                    epistemicContinuity?.counterpartyIntelligence || null,
+                recalledExperience:
+                    epistemicContinuity?.recalledExperience || null,
+                limitations:
+                    epistemicContinuity?.limitations || [],
+                falsifiers:
+                    epistemicContinuity?.falsifiers || []
+            });
+        },
+
+        buildReasoningContinuity(context = {}) {
+            const evidence = Array.isArray(context.evidence)
+                ? context.evidence
+                : [];
+            const evidenceLineageFingerprint =
+                this.buildEvidenceLineageFingerprint(evidence);
+            const epistemicLineageFingerprint =
+                this.buildEpistemicLineageFingerprint(
+                    context.epistemicContinuity || {}
+                );
+            const reasoningBasisFingerprint =
+                this.fingerprintValue({
+                    question:
+                        this.normalizeText(context.question),
+                    mode:
+                        this.normalizeMode(context.mode),
+                    evidenceLineageFingerprint,
+                    epistemicLineageFingerprint
+                });
+
+            this.persistenceState.reconstructionCount += 1;
+            this.persistenceState.lastReconstructionAt =
+                new Date().toISOString();
+            this.persistenceState.lastEvidenceLineageFingerprint =
+                evidenceLineageFingerprint;
+            this.persistenceState.lastEpistemicLineageFingerprint =
+                epistemicLineageFingerprint;
+            this.persistenceState.lastReasoningBasisFingerprint =
+                reasoningBasisFingerprint;
+
+            return {
+                schema:
+                    "meos.institutional-reasoning.continuity.v1",
+                reasoningModel:
+                    this.persistenceState.reasoningModel,
+                authority:
+                    this.persistenceState.authority,
+                browserAuthority: false,
+                automaticBrowserHydration: false,
+                reconstructedFromCurrentEvidence: true,
+                sourceRecallSucceeded:
+                    context.recall?.success === true,
+                evidenceCount: evidence.length,
+                evidenceLineageFingerprint,
+                epistemicLineageFingerprint,
+                reasoningBasisFingerprint,
+                localWorkspaceRole:
+                    this.persistenceState.browserRole,
+                localWorkspaceDurable: false,
+                savedAnalysisLensesDurable:
+                    this.configuration.persistenceEnabled === true,
+                sessionStateDurability:
+                    this.persistenceState.sessionStateDurability,
+                durableSavedAnalysisScopeRequired:
+                    this.persistenceState.durableSavedAnalysisScopeRequired
+            };
+        },
+
         registerSystemKnowledge() {
             const engine = global.KnowledgeEngine;
 
@@ -3552,6 +3775,64 @@
             };
         },
 
+        observeLegacyBrowserSnapshot() {
+            this.persistenceState.legacySnapshotObserved = false;
+            this.persistenceState.legacySnapshotBytes = 0;
+            this.persistenceState.legacySnapshotSchema = null;
+            this.persistenceState.legacySnapshotVersion = null;
+            this.persistenceState.legacySnapshotImported = false;
+
+            if (!global.localStorage) {
+                return {
+                    success: true,
+                    observed: false,
+                    browserStorageAvailable: false
+                };
+            }
+
+            try {
+                const stored = global.localStorage.getItem(
+                    this.configuration.localStorageKey
+                );
+
+                if (!stored) {
+                    return {
+                        success: true,
+                        observed: false,
+                        browserStorageAvailable: true
+                    };
+                }
+
+                this.persistenceState.legacySnapshotObserved = true;
+                this.persistenceState.legacySnapshotBytes =
+                    typeof Blob === "function"
+                        ? new Blob([stored]).size
+                        : stored.length;
+
+                try {
+                    const parsed = JSON.parse(stored);
+                    this.persistenceState.legacySnapshotSchema =
+                        parsed?.schema || null;
+                    this.persistenceState.legacySnapshotVersion =
+                        parsed?.version || null;
+                } catch {}
+
+                return {
+                    success: true,
+                    observed: true,
+                    imported: false,
+                    authorityClaimed: false,
+                    bytes: this.persistenceState.legacySnapshotBytes
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    observed: false,
+                    error: error?.message || String(error)
+                };
+            }
+        },
+
         isQuotaExceededError(error) {
             return Boolean(
                 error &&
@@ -3578,7 +3859,7 @@
 
             if (!alreadySuspended) {
                 console.warn(
-                    "[MEOS Institutional Reasoning] Browser reasoning continuity-cache persistence suspended after storage quota exhaustion. Evidence-grounded reasoning and durable Executive Brain cognition remain operational; repeated local writes are suppressed until persistence is explicitly retried."
+                    "[MEOS Institutional Reasoning] Optional browser reasoning workspace persistence suspended after storage quota exhaustion. Evidence-grounded reconstructive reasoning remains operational from current source evidence; browser state is not reasoning authority."
                 );
             }
 
@@ -3686,21 +3967,29 @@
             }
         },
 
-        restore() {
-            if (
-                !this.configuration.persistenceEnabled ||
-                !global.localStorage
-            ) {
+        restore(options = {}) {
+            if (options.allowBrowserCacheImport !== true) {
                 return {
-                    success: false,
-                    restored: false
+                    success: true,
+                    restored: false,
+                    blocked: true,
+                    reason: "browser-cache-not-authority",
+                    authority: this.persistenceState.authority,
+                    browserRole: this.persistenceState.browserRole
                 };
             }
 
-            const stored =
-                global.localStorage.getItem(
-                    this.configuration.localStorageKey
-                );
+            if (!global.localStorage) {
+                return {
+                    success: false,
+                    restored: false,
+                    error: "Browser local storage is unavailable."
+                };
+            }
+
+            const stored = global.localStorage.getItem(
+                this.configuration.localStorageKey
+            );
 
             if (!stored) {
                 return {
@@ -3718,13 +4007,22 @@
                     }
                 );
 
+                if (result.success) {
+                    this.persistenceState.lastRestoreAt =
+                        new Date().toISOString();
+                    this.persistenceState.legacySnapshotImported = true;
+                }
+
                 return {
                     ...result,
-                    restored: result.success
+                    restored: result.success,
+                    explicitLegacyImport: true,
+                    authority: this.persistenceState.authority,
+                    browserRole: this.persistenceState.browserRole
                 };
             } catch (error) {
                 console.warn(
-                    "[MEOS Institutional Reasoning] Stored state could not be restored:",
+                    "[MEOS Institutional Reasoning] Explicit browser-cache import failed:",
                     error
                 );
 
@@ -3736,89 +4034,189 @@
             }
         },
 
-        runPersistenceAuthorityAcceptanceTest() {
-            const originalSuspended =
-                this.persistenceState.browserPersistenceSuspended;
-            const originalReason = this.persistenceState.suspensionReason;
-            const originalSuspendedAt = this.persistenceState.suspendedAt;
-            const originalError = this.persistenceState.lastPersistenceError;
-            const originalFailureCount = this.persistenceState.failureCount;
+        runBrowserIndependenceAcceptanceTest() {
+            const checks = [];
+            const originalConfiguration = this.clone(this.configuration);
+            const originalPersistenceState = this.clone(this.persistenceState);
+            const originalHistory = this.clone(this.reasoningHistory);
+            const originalSavedAnalyses = this.clone(this.savedAnalyses);
+            const originalAnalytics = this.clone(this.analytics);
 
-            const simulatedQuotaError = new Error(
-                "Simulated browser storage quota exhaustion"
-            );
-            simulatedQuotaError.name = "QuotaExceededError";
+            try {
+                checks.push({
+                    name: "Automatic browser persistence is disabled by default",
+                    passed:
+                        this.configuration.persistenceEnabled === false &&
+                        this.configuration.automaticPersistence === false
+                });
 
-            this.suspendBrowserPersistence(
-                simulatedQuotaError,
-                "acceptance-test-quota-exhaustion"
-            );
-
-            const suppressed = this.persist();
-            const checks = [
-                {
-                    name: "Institutional Reasoning declares evidence sources plus durable Executive Brain cognition as authority",
+                checks.push({
+                    name: "Current evidence sources plus durable Executive cognition remain reasoning authority",
                     passed:
                         this.persistenceState.authority ===
-                        "evidence-sources-plus-durable-executive-cognition"
-                },
-                {
-                    name: "Browser persistence is explicitly a best-effort reasoning continuity cache rather than institutional authority",
+                            "evidence-sources-plus-durable-executive-cognition" &&
+                        this.persistenceState.browserAuthority === false
+                });
+
+                checks.push({
+                    name: "Institutional Reasoning uses reconstructive reasoning rather than browser snapshot authority",
                     passed:
-                        this.persistenceState.browserRole ===
-                        "best-effort-reasoning-continuity-cache"
-                },
-                {
-                    name: "Quota exhaustion trips a fail-visible browser persistence circuit breaker",
+                        this.persistenceState.reasoningModel ===
+                            "reconstructive-institutional-reasoning" &&
+                        this.persistenceState.sourceReconstructionEnabled === true
+                });
+
+                const blockedRestore = this.restore();
+                checks.push({
+                    name: "Legacy browser reasoning state is never hydrated automatically",
                     passed:
-                        this.persistenceState.browserPersistenceSuspended === true &&
-                        this.persistenceState.suspensionReason ===
-                        "acceptance-test-quota-exhaustion"
-                },
-                {
-                    name: "Repeated reasoning-cache writes are suppressed after the first quota failure",
+                        blockedRestore?.blocked === true &&
+                        blockedRestore?.reason ===
+                            "browser-cache-not-authority"
+                });
+
+                const evidenceA = [{
+                    id: "acceptance-evidence-a",
+                    sourceType: "official",
+                    title: "Acceptance Evidence",
+                    content: "Current authoritative fact A",
+                    date: "2026-09-19T00:00:00.000Z",
+                    authority: "official",
+                    confidence: 1,
+                    citation: "acceptance://evidence-a"
+                }];
+                const epistemicA = {
+                    schema: EPISTEMIC_CONTINUITY_SCHEMA,
+                    preserved: true,
+                    subject: "browser-independent reasoning",
+                    epistemicClaims: [{
+                        id: "claim-a",
+                        status: "verified",
+                        confidence: 1
+                    }],
+                    realityReconstruction: {
+                        leadingHypothesis: "A",
+                        competingHypotheses: []
+                    }
+                };
+
+                const beforeCount =
+                    this.persistenceState.reconstructionCount;
+                const continuityA1 = this.buildReasoningContinuity({
+                    question: "What does the current evidence support?",
+                    mode: REASONING_MODES.EXECUTIVE,
+                    evidence: evidenceA,
+                    epistemicContinuity: epistemicA,
+                    recall: { success: true }
+                });
+                const continuityA2 = this.buildReasoningContinuity({
+                    question: "What does the current evidence support?",
+                    mode: REASONING_MODES.EXECUTIVE,
+                    evidence: this.clone(evidenceA),
+                    epistemicContinuity: this.clone(epistemicA),
+                    recall: { success: true }
+                });
+                const continuityB = this.buildReasoningContinuity({
+                    question: "What does the current evidence support?",
+                    mode: REASONING_MODES.EXECUTIVE,
+                    evidence: [{
+                        ...evidenceA[0],
+                        content: "Current authoritative fact B",
+                        date: "2026-09-19T01:00:00.000Z"
+                    }],
+                    epistemicContinuity: epistemicA,
+                    recall: { success: true }
+                });
+
+                checks.push({
+                    name: "Reasoning reconstruction emits evidence, epistemic, and combined basis lineage telemetry",
                     passed:
-                        suppressed?.persisted === false &&
-                        suppressed?.suspended === true
-                },
-                {
-                    name: "Institutional Reasoning remains online while its browser continuity cache is suspended",
-                    passed: this.status === "online"
-                },
-                {
-                    name: "Reasoning history and saved analyses remain in memory when browser persistence degrades",
+                        continuityA1?.evidenceLineageFingerprint?.startsWith("fnv1a32:") &&
+                        continuityA1?.epistemicLineageFingerprint?.startsWith("fnv1a32:") &&
+                        continuityA1?.reasoningBasisFingerprint?.startsWith("fnv1a32:") &&
+                        this.persistenceState.reconstructionCount ===
+                            beforeCount + 3
+                });
+
+                checks.push({
+                    name: "The same reasoning basis is deterministic while materially changed evidence changes the basis fingerprint",
                     passed:
-                        Array.isArray(this.reasoningHistory) &&
-                        Array.isArray(this.savedAnalyses)
-                },
-                {
-                    name: "Persistence degradation grants no approval or execution authority",
+                        continuityA1.reasoningBasisFingerprint ===
+                            continuityA2.reasoningBasisFingerprint &&
+                        continuityA1.reasoningBasisFingerprint !==
+                            continuityB.reasoningBasisFingerprint
+                });
+
+                const persistenceResult = this.persistIfEnabled();
+                checks.push({
+                    name: "Normal reasoning activity cannot trigger browser writes",
                     passed:
+                        persistenceResult?.persisted === false &&
+                        this.configuration.automaticPersistence === false
+                });
+
+                const saved = this.saveAnalysis(
+                    "acceptance lens",
+                    "browser-independent reasoning",
+                    { mode: REASONING_MODES.EXECUTIVE }
+                );
+                checks.push({
+                    name: "Saved analysis lenses are honest about session durability until governed durable scope exists",
+                    passed:
+                        saved?.success === true &&
+                        saved?.savedAnalysis?.durability ===
+                            "session-only-until-governed-durable-scope"
+                });
+
+                checks.push({
+                    name: "Reconstructive continuity is designed to remain machine-readable through evidenceAssessment",
+                    passed:
+                        continuityA1?.schema ===
+                            "meos.institutional-reasoning.continuity.v1" &&
+                        continuityA1?.browserAuthority === false &&
+                        continuityA1?.localWorkspaceDurable === false &&
+                        continuityA1?.durableSavedAnalysisScopeRequired === true
+                });
+
+                checks.push({
+                    name: "Browser independence grants no approval, execution, spend, or cross-customer durability authority",
+                    passed:
+                        this.configuration.organizationNeutralCore === true &&
                         this.configuration.requireExecutiveApproval === true &&
-                        this.operatingMode === "evidence-grounded-reasoning"
-                }
-            ];
+                        this.operatingMode === "evidence-grounded-reasoning" &&
+                        continuityA1?.browserAuthority === false &&
+                        continuityA1?.savedAnalysisLensesDurable === false
+                });
 
-            this.persistenceState.browserPersistenceSuspended = originalSuspended;
-            this.persistenceState.suspensionReason = originalReason;
-            this.persistenceState.suspendedAt = originalSuspendedAt;
-            this.persistenceState.lastPersistenceError = originalError;
-            this.persistenceState.failureCount = originalFailureCount;
+                const passed = checks.every((check) => check.passed);
+                console.table(checks);
+                console.info(
+                    `[MEOS ${this.version}] Institutional Reasoning reconstructive browser-independence acceptance: ${passed ? "PASS" : "FAIL"}.`
+                );
 
-            const result = {
-                commission: "006.017D4H2B",
-                version: this.version,
-                buildId: this.buildId,
-                passed: checks.every((check) => check.passed),
-                checks
-            };
-
-            console.table(checks);
-            console.info(
-                `[MEOS ${this.version}] Commission 006.017D4H2B Institutional Reasoning persistence authority convergence: ${result.passed ? "PASS" : "FAIL"}.`
-            );
-            return result;
+                return {
+                    commission: "REBUILD-REASONING-01",
+                    version: this.version,
+                    buildId: this.buildId,
+                    schema:
+                        "meos.institutional-reasoning.browser-independence.acceptance.v1",
+                    passed,
+                    checks,
+                    status: this.getStatus()
+                };
+            } finally {
+                this.configuration = originalConfiguration;
+                this.persistenceState = originalPersistenceState;
+                this.reasoningHistory = originalHistory;
+                this.savedAnalyses = originalSavedAnalyses;
+                this.analytics = originalAnalytics;
+            }
         },
+
+        runPersistenceAuthorityAcceptanceTest() {
+            return this.runBrowserIndependenceAcceptanceTest();
+        },
+
 
         clear(options = {}) {
             if (options.confirm !== true) {
