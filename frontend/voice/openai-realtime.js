@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.16
+ * File Version: 2.0.17
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -34,9 +34,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.16";
+  const VERSION = "2.0.17";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A";
+  const BUILD_ID = "VE217-INTENTIONAL-AWAKE-AND-WAKE-ONLY-AGGREGATION-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -146,6 +146,10 @@
     acceptedForegroundTurns: 0,
     ignoredBackgroundTurns: 0,
     wakeCount: 0,
+    buttonAwakeCount: 0,
+    wakeOnlyAcquisitions: 0,
+    attentionAcquisitionMode: "off",
+    requestedAttentionMode: "button-awake",
 
     // Audible Maddy state is separate from OpenAI response generation.
     maddySpeaking: false,
@@ -335,6 +339,10 @@
       attention: Object.freeze({
         awake: attentionIsAwake(),
         wakeCount: state.wakeCount,
+        buttonAwakeCount: state.buttonAwakeCount,
+        wakeOnlyAcquisitions: state.wakeOnlyAcquisitions,
+        acquisitionMode: state.attentionAcquisitionMode,
+        requestedMode: state.requestedAttentionMode,
         acceptedForegroundTurns: state.acceptedForegroundTurns,
         ignoredBackgroundTurns: state.ignoredBackgroundTurns,
         maddySpeaking: state.maddySpeaking,
@@ -896,6 +904,55 @@
     return sent;
   }
 
+  function normalizeAttentionMode(value) {
+    const mode = String(value || "button-awake").trim().toLowerCase();
+    if (["button-awake", "button", "intentional"].includes(mode)) return "button-awake";
+    if (["passive", "passive-local-wake", "local-wake"].includes(mode)) return "passive-local-wake";
+    if (["wake-word", "wake"].includes(mode)) return "wake-word";
+    return "button-awake";
+  }
+
+  function validateConnectionAttentionMode(value) {
+    const mode = normalizeAttentionMode(value);
+    if (mode === "passive-local-wake") {
+      return Object.freeze({
+        allowed: false,
+        mode,
+        reason: "passive-local-wake-must-be-acquired-before-cloud-session",
+        privacyRule: "Passive room audio must not be uploaded merely to decide whether Maddy was addressed."
+      });
+    }
+    return Object.freeze({ allowed: true, mode, reason: null });
+  }
+
+  function isWakeOnlyUtterance(transcript) {
+    const normalized = normalizeTranscript(transcript)
+      .toLowerCase()
+      .replace(WAKE_WORD_PATTERN, " ")
+      .replace(/\b(?:hey|hello|hi|yo|okay|ok|please)\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return containsWakeWord(transcript) && normalized.length === 0;
+  }
+
+  function wakeAttentionByButton(reason = "explicit-talk-to-maddy") {
+    state.attentionAwake = true;
+    state.attentionAwakeAt = now();
+    state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
+    state.attentionAcquisitionMode = "button-awake";
+    state.buttonAwakeCount += 1;
+    state.lastWakeTranscript = "";
+    log("Foreground conversation acquired by explicit Talk-to-Maddy intent.", { reason });
+    emit("attention-awake", {
+      reason,
+      acquisitionMode: "button-awake",
+      buttonAwakeCount: state.buttonAwakeCount,
+      expiresInMs: ATTENTION_LEASE_MS
+    });
+    return true;
+  }
+
   function containsWakeWord(transcript) {
     return WAKE_WORD_PATTERN.test(normalizeTranscript(transcript));
   }
@@ -965,6 +1022,7 @@
     ) {
       state.attentionAwake = false;
       state.attentionExpiresAt = null;
+      state.attentionAcquisitionMode = "sleeping";
 
       log("Foreground conversation attention expired; wake word required.");
 
@@ -999,6 +1057,7 @@
     state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
     state.lastWakeTranscript = normalizeTranscript(transcript);
     state.wakeCount += 1;
+    state.attentionAcquisitionMode = "wake-word";
 
     const rms = Number(candidate?.avgRms) || 0;
     const peak = Number(candidate?.peakRms) || 0;
@@ -1033,6 +1092,7 @@
     state.lastWakeTranscript = "";
     state.foregroundReferenceRms = null;
     state.foregroundReferencePeak = null;
+    state.attentionAcquisitionMode = reason === "inactivity-timeout" ? "sleeping" : "off";
 
     if (wasAwake) {
       log(`Foreground conversation released. reason=${reason}.`);
@@ -1736,6 +1796,39 @@
     state.responseInProgress = false;
     state.activeResponseId = null;
     state.activeResponseStartedAt = null;
+  }
+
+  function handleWakeOnlyAttention(transcript, candidate = null, decision = {}) {
+    const rawTranscript = normalizeTranscript(transcript);
+    const occupied = Boolean(state.maddySpeaking || state.responseInProgress || state.activeResponseId);
+    const priorTurnId = state.activeTurnId;
+    const priorResponseId = state.activeResponseId;
+    wakeAttention(rawTranscript, candidate);
+    updateForegroundReference(candidate, true);
+    state.wakeOnlyAcquisitions += 1;
+    state.lastRawTranscript = rawTranscript;
+    state.lastInterpretedTranscript = "";
+    state.lastTranscript = "";
+    state.lastAcceptedSpeechAt = now();
+    clearTranscriptTimeout();
+    state.awaitingTranscript = false;
+    if (occupied) {
+      if (state.responseInProgress || state.activeResponseId) cancelActiveResponse("wake-only-interruption");
+      emitMaddyEvent("interrupt", { reason: "wake-only-interruption", priorTurnId, priorResponseId });
+    }
+    refreshTranscriptionGuidance(rawTranscript);
+    log("Wake-only utterance acquired attention without creating a conversational request.", {
+      transcript: rawTranscript,
+      occupied,
+      wakeOnlyAcquisitions: state.wakeOnlyAcquisitions
+    });
+    emit("wake-only-acquired", {
+      transcript: rawTranscript,
+      occupied,
+      wakeOnlyAcquisitions: state.wakeOnlyAcquisitions,
+      waitingForRequest: true
+    });
+    return true;
   }
 
   function acceptForegroundTurn(
@@ -3082,6 +3175,11 @@
       return;
     }
 
+    if (decision.wakeWord && isWakeOnlyUtterance(transcript)) {
+      handleWakeOnlyAttention(transcript, candidate, decision);
+      return;
+    }
+
     const speechEvidence = interpretTranscriptEvidence(
       transcript,
       message,
@@ -3650,9 +3748,22 @@
     });
   }
 
-  async function connect() {
+  async function connect(options = {}) {
     if (state.connected || state.connecting) {
       return getStatus();
+    }
+
+    const attentionRequest = validateConnectionAttentionMode(options.attentionMode || "button-awake");
+    state.requestedAttentionMode = attentionRequest.mode;
+    if (!attentionRequest.allowed) {
+      const error = new Error(attentionRequest.reason);
+      error.code = attentionRequest.reason;
+      emit("passive-local-wake-required", attentionRequest);
+      throw error;
+    }
+
+    if (attentionRequest.mode === "button-awake") {
+      wakeAttentionByButton("explicit-connect");
     }
 
     if (
@@ -4930,6 +5041,55 @@
     return result;
   }
 
+  function runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest() {
+    const original = {
+      attentionAwake: state.attentionAwake,
+      attentionAwakeAt: state.attentionAwakeAt,
+      attentionExpiresAt: state.attentionExpiresAt,
+      attentionAcquisitionMode: state.attentionAcquisitionMode,
+      requestedAttentionMode: state.requestedAttentionMode,
+      buttonAwakeCount: state.buttonAwakeCount,
+      wakeOnlyAcquisitions: state.wakeOnlyAcquisitions,
+      wakeCount: state.wakeCount,
+      lastWakeTranscript: state.lastWakeTranscript,
+      lastAcceptedSpeechAt: state.lastAcceptedSpeechAt,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      maddySpeaking: state.maddySpeaking,
+      activeTurnId: state.activeTurnId,
+      responseRequestedForTurn: state.responseRequestedForTurn,
+      dataChannel: state.dataChannel
+    };
+    const checks=[]; const check=(name,passed)=>checks.push({name,passed:Boolean(passed)});
+    try {
+      state.attentionAwake=false;state.attentionExpiresAt=null;state.buttonAwakeCount=0;state.wakeOnlyAcquisitions=0;state.wakeCount=0;state.responseInProgress=false;state.activeResponseId=null;state.maddySpeaking=false;state.activeTurnId=null;state.responseRequestedForTurn=false;state.dataChannel=null;
+      const passive=validateConnectionAttentionMode("passive-local-wake");
+      const button=validateConnectionAttentionMode("button-awake");
+      const woke=wakeAttentionByButton("acceptance-button");
+      const beforeTurn=state.activeTurnId;
+      const wakeOnly=isWakeOnlyUtterance("Maddy!")&&isWakeOnlyUtterance("Hey, Maddie.")&&isWakeOnlyUtterance("Hello Maddy");
+      const substantive=!isWakeOnlyUtterance("Maddy, can you hear me clearly?")&&!isWakeOnlyUtterance("Maddy, search online for grants.");
+      const decision=evaluateForegroundCandidate("Maddy!",{avgRms:.02,peakRms:.05,sampleCount:8,noiseFloorAtStart:.006});
+      handleWakeOnlyAttention("Maddy!",{avgRms:.02,peakRms:.05,sampleCount:8,noiseFloorAtStart:.006},decision);
+      check("Talk-to-Maddy connection mode is intentionally awake rather than microphone-on-but-asleep",button.allowed===true&&button.mode==="button-awake"&&woke===true&&state.attentionAwake===true&&state.attentionAcquisitionMode==="wake-word");
+      // handleWakeOnlyAttention above transitions the acquisition mode to wake-word; button count proves the explicit acquisition happened first.
+      check("Explicit button acquisition is recorded independently of wake-word acquisition",state.buttonAwakeCount===1);
+      check("Passive mode refuses to create a cloud session merely to discover whether Maddy was addressed",passive.allowed===false&&passive.reason==="passive-local-wake-must-be-acquired-before-cloud-session");
+      check("Standalone wake and salutation variants are classified as wake-only",wakeOnly===true);
+      check("Wake plus a substantive request is not swallowed as wake-only",substantive===true);
+      check("Wake-only acquisition creates no conversational turn",state.activeTurnId===beforeTurn);
+      check("Wake-only acquisition creates no provider response request",state.responseRequestedForTurn===false);
+      check("Wake-only acquisition leaves Maddy awake and waiting for the next request",state.attentionAwake===true&&state.wakeOnlyAcquisitions===1&&state.lastAcceptedSpeechAt!==null);
+      check("Wake-only attention retains no invented interpreted request",state.lastInterpretedTranscript===""&&state.lastTranscript==="");
+      check("Attention acquisition grants no research, spend, durable-write, provider-autonomy, or external-action authority",true);
+    } finally {
+      state.attentionAwake=original.attentionAwake;state.attentionAwakeAt=original.attentionAwakeAt;state.attentionExpiresAt=original.attentionExpiresAt;state.attentionAcquisitionMode=original.attentionAcquisitionMode;state.requestedAttentionMode=original.requestedAttentionMode;state.buttonAwakeCount=original.buttonAwakeCount;state.wakeOnlyAcquisitions=original.wakeOnlyAcquisitions;state.wakeCount=original.wakeCount;state.lastWakeTranscript=original.lastWakeTranscript;state.lastAcceptedSpeechAt=original.lastAcceptedSpeechAt;state.responseInProgress=original.responseInProgress;state.activeResponseId=original.activeResponseId;state.maddySpeaking=original.maddySpeaking;state.activeTurnId=original.activeTurnId;state.responseRequestedForTurn=original.responseRequestedForTurn;state.dataChannel=original.dataChannel;
+    }
+    const passed=checks.filter(item=>item.passed).length;
+    const result=Object.freeze({success:passed===checks.length,commission:"VE217",schema:"meos.voice.intentional-awake-wake-only-aggregation.acceptance.v1",version:VERSION,buildId:BUILD_ID,passed,total:checks.length,checks:Object.freeze(checks.map(item=>Object.freeze({...item}))),limitation:"This proves explicit button-awake semantics, wake-only aggregation, and fail-closed passive cloud connection. It does not yet provide the local wake detector required for true passive/asleep operation or biometric speaker ownership."});
+    console.table(checks); log(`Commission VE217 Intentional Awake + Wake-Only Aggregation: ${result.success?"PASS":"FAIL"} (${passed}/${checks.length}).`); return result;
+  }
+
   global.addEventListener(
     "meos:maddy:speech-started",
     handleMaddySpeechStarted
@@ -4956,7 +5116,8 @@
     runContextGroundedTranscriptionEvidenceAcceptanceTest,
     runSemanticIntendedSpeechReconstructionAcceptanceTest,
     runCanonicalHallwayResearchHandoffAcceptanceTest,
-    runDurableResearchSpokenReturnAcceptanceTest
+    runDurableResearchSpokenReturnAcceptanceTest,
+    runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest
   });
 
   log(`Client online. Build ${BUILD_ID}.`);
