@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.23
+ * File Version: 2.0.24
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -24,6 +24,7 @@
  * - Treat intelligible room speech as heard evidence, not conversational authority.
  * - Reject Maddy playback echo before wake-word authority can interrupt her own speech.
  * - Once a local foreground voice reference exists, require that same local speaker continuity before wake/follow-up speech can own the floor.
+ * - Treat Talk-to-Maddy as an armed-but-unclaimed session until an acoustically credible Maddy address establishes foreground ownership.
  * - Keep live conversational response authority off long-running research waits.
  * - Hand genuine research into governed durable Maddy work without blocking her conversational presence.
  * - Instrument the voice turn lifecycle so hidden latency cannot collapse into one opaque total.
@@ -39,9 +40,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.23";
+  const VERSION = "2.0.24";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE223-PRODUCTION-CALIBRATED-SPEECH-REALITY-20260921-A";
+  const BUILD_ID = "VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-20260921-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -89,8 +90,6 @@
   const STRUCTURED_SPEECH_MIN_PEAK_NOISE_RATIO = 4.5;
   const STRUCTURED_SPEECH_MIN_PEAK_RMS = 0.018;
   const STRUCTURED_SPEECH_MIN_ENERGY_DENSITY = 0.125;
-  const BUTTON_BOOTSTRAP_MIN_AVG_RMS = 0.005;
-  const BUTTON_BOOTSTRAP_MIN_PEAK_RMS = 0.040;
   const SERVER_VAD_THRESHOLD = 0.60;
   const MIN_FOREGROUND_NOISE_RATIO = 1.35;
   const MIN_FOREGROUND_REFERENCE_RATIO = 0.58;
@@ -988,10 +987,11 @@
     state.attentionAcquisitionMode = "button-awake";
     state.buttonAwakeCount += 1;
     state.lastWakeTranscript = "";
-    log("Foreground conversation acquired by explicit Talk-to-Maddy intent.", { reason });
+    log("Talk-to-Maddy armed; foreground speaker ownership is not yet claimed.", { reason });
     emit("attention-awake", {
       reason,
       acquisitionMode: "button-awake",
+      speakerOwnership: "unclaimed",
       buttonAwakeCount: state.buttonAwakeCount,
       expiresInMs: ATTENTION_LEASE_MS
     });
@@ -1478,6 +1478,30 @@
       };
     }
 
+    // VE224: clicking Talk-to-Maddy arms the microphone and conversation, but
+    // it does not identify who owns the floor. Until an acoustically credible
+    // wake/address utterance claims the session and seeds the ephemeral local
+    // foreground voice reference, any non-wake speech remains unowned room
+    // speech. This prevents the first credible coworker in a loud/reverberant
+    // room from becoming the foreground user merely because they spoke first.
+    const buttonSessionUnclaimed = Boolean(
+      state.attentionAcquisitionMode === "button-awake" &&
+      !signatureReferenceAvailable
+    );
+
+    if (buttonSessionUnclaimed && !wakeWord) {
+      return {
+        accepted: false,
+        reason: "button-awake-unclaimed-speaker-address-required",
+        wakeWord: false,
+        confidence: speechReality.credible ? "high" : "degraded",
+        probablePlaybackEcho: false,
+        speakerOwnership: "unclaimed",
+        speechReality,
+        acoustics
+      };
+    }
+
     // VE220: once this session has a local foreground-speaker reference, a
     // different or acoustically unproven speaker cannot use the word "Maddy"
     // to seize the floor. Meaning/address is not speaker identity.
@@ -1597,33 +1621,6 @@
     }
 
     if (acoustics.available) {
-      const explicitTalkBootstrap = Boolean(
-        state.attentionAcquisitionMode === "button-awake" &&
-        !signatureReferenceAvailable &&
-        speechReality.credible &&
-        (
-          speechReality.structuredSpeech ||
-          acoustics.avgRms >= BUTTON_BOOTSTRAP_MIN_AVG_RMS ||
-          acoustics.peakRms >= BUTTON_BOOTSTRAP_MIN_PEAK_RMS
-        )
-      );
-
-      // VE222/VE223: clicking Talk-to-Maddy is itself intentional attention
-      // acquisition. The first real near-field utterance should not also need
-      // the much stronger established-speaker RMS threshold. Silence still
-      // cannot bootstrap because it failed the acoustic reality gate above.
-      if (explicitTalkBootstrap) {
-        return {
-          accepted: true,
-          reason: "explicit-talk-nearfield-bootstrap",
-          wakeWord: false,
-          confidence: "high",
-          speakerOwnership: "bootstrap",
-          speechReality,
-          acoustics
-        };
-      }
-
       const foregroundByNoise =
         acoustics.avgRms >= MIN_FOREGROUND_RMS &&
         acoustics.noiseRatio >= MIN_FOREGROUND_NOISE_RATIO;
@@ -5668,6 +5665,192 @@
     return result;
   }
 
+  function runExplicitSessionForegroundClaimAcceptanceTest() {
+    const original = {
+      attentionAwake: state.attentionAwake,
+      attentionAwakeAt: state.attentionAwakeAt,
+      attentionExpiresAt: state.attentionExpiresAt,
+      attentionAcquisitionMode: state.attentionAcquisitionMode,
+      buttonAwakeCount: state.buttonAwakeCount,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      foregroundReferencePeak: state.foregroundReferencePeak,
+      foregroundVoiceSignature: state.foregroundVoiceSignature ? state.foregroundVoiceSignature.slice() : null,
+      foregroundVoiceSignatureSamples: state.foregroundVoiceSignatureSamples,
+      lastAcceptedSpeechAt: state.lastAcceptedSpeechAt,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      maddySpeaking: state.maddySpeaking,
+      lastMaddySpeechText: state.lastMaddySpeechText,
+      currentMaddySpeechText: state.currentMaddySpeechText,
+      recentMaddySpeechLedger: state.recentMaddySpeechLedger,
+      noiseFloorRms: state.noiseFloorRms
+    };
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+
+    try {
+      const owner = normalizeVoiceSignature([0.74, 0.48, 0.34, 0.21, 0.12]);
+      const ownerClose = normalizeVoiceSignature([0.72, 0.50, 0.33, 0.22, 0.11]);
+      const other = normalizeVoiceSignature([0.09, 0.17, 0.25, 0.54, 0.78]);
+      const candidate = (signature, overrides = {}) => ({
+        startedAt: now(),
+        avgRms: 0.005934409882995179,
+        peakRms: 0.06491468846797943,
+        sampleCount: 52,
+        noiseFloorAtStart: 0.005202523307643124,
+        maddyOccupiedAtStart: false,
+        voiceSignature: signature,
+        signatureSampleCount: 10,
+        ...overrides
+      });
+
+      state.attentionAwake = false;
+      state.attentionAwakeAt = null;
+      state.attentionExpiresAt = null;
+      state.attentionAcquisitionMode = "off";
+      state.buttonAwakeCount = 0;
+      state.foregroundReferenceRms = null;
+      state.foregroundReferencePeak = null;
+      state.foregroundVoiceSignature = null;
+      state.foregroundVoiceSignatureSamples = 0;
+      state.lastAcceptedSpeechAt = null;
+      state.responseInProgress = false;
+      state.activeResponseId = null;
+      state.maddySpeaking = false;
+      state.lastMaddySpeechText = "";
+      state.currentMaddySpeechText = "";
+      state.recentMaddySpeechLedger = [];
+      state.noiseFloorRms = 0.0052;
+
+      wakeAttentionByButton("ve224-acceptance");
+      check(
+        "Talk-to-Maddy arms the session while leaving foreground speaker ownership unclaimed",
+        state.attentionAwake === true &&
+        state.attentionAcquisitionMode === "button-awake" &&
+        state.foregroundVoiceSignature === null
+      );
+
+      const hallwayOther = evaluateForegroundCandidate(
+        "They want you to live",
+        candidate(other)
+      );
+      check(
+        "The production-shaped loud hallway phrase cannot become the user merely because it is the first credible speech",
+        hallwayOther.accepted === false &&
+        hallwayOther.reason === "button-awake-unclaimed-speaker-address-required" &&
+        hallwayOther.speakerOwnership === "unclaimed"
+      );
+      check(
+        "Rejecting the first unaddressed speaker leaves the session owner reference empty",
+        state.foregroundVoiceSignature === null &&
+        state.foregroundReferenceRms === null
+      );
+
+      const phantomWake = evaluateForegroundCandidate(
+        "Maddy, can you hear me?",
+        candidate(owner, {
+          avgRms: 0.00021965379968402307,
+          peakRms: 0.0069238352589309216,
+          sampleCount: 28,
+          noiseFloorAtStart: 0.0037705880266115373
+        })
+      );
+      check(
+        "A transcript containing Maddy still cannot claim ownership when acoustic reality is absent",
+        phantomWake.accepted === false &&
+        phantomWake.reason === "phantom-asr-without-acoustic-speech"
+      );
+
+      const ownerWakeCandidate = candidate(owner, {
+        avgRms: 0.0033151090449506644,
+        peakRms: 0.024026645347476006,
+        sampleCount: 52,
+        noiseFloorAtStart: 0.004669149668258364
+      });
+      const ownerWake = evaluateForegroundCandidate(
+        "Maddy, can you hear me?",
+        ownerWakeCandidate
+      );
+      check(
+        "An acoustically credible explicit Maddy address can claim the unowned session",
+        ownerWake.accepted === true &&
+        ownerWake.wakeWord === true &&
+        ownerWake.speakerOwnership === "bootstrap"
+      );
+
+      wakeAttention("Maddy, can you hear me?", ownerWakeCandidate);
+      check(
+        "The successful ownership claim seeds the ephemeral foreground voice reference",
+        Array.isArray(state.foregroundVoiceSignature) &&
+        state.foregroundVoiceSignatureSamples === 10 &&
+        state.attentionAcquisitionMode === "wake-word"
+      );
+
+      const naturalFollowUp = evaluateForegroundCandidate(
+        "Can you hear me better now?",
+        candidate(ownerClose, {
+          avgRms: 0.0060,
+          peakRms: 0.040,
+          noiseFloorAtStart: 0.0050
+        })
+      );
+      check(
+        "After ownership is claimed the same foreground voice can continue without repeating Maddy",
+        naturalFollowUp.accepted === true &&
+        naturalFollowUp.speakerOwnership === "match"
+      );
+
+      const otherAfterClaim = evaluateForegroundCandidate(
+        "They want you to live",
+        candidate(other)
+      );
+      check(
+        "After ownership is claimed a different local voice cannot steal the conversational floor",
+        otherAfterClaim.accepted === false &&
+        otherAfterClaim.reason === "foreground-local-voice-signature-mismatch"
+      );
+
+      state.lastAcceptedSpeechAt = now();
+      state.attentionAcquisitionMode = "button-awake";
+      state.foregroundVoiceSignature = null;
+      state.foregroundVoiceSignatureSamples = 0;
+      state.foregroundReferenceRms = null;
+      state.foregroundReferencePeak = null;
+      const continuityAttack = evaluateForegroundCandidate(
+        "They want you to live",
+        candidate(other)
+      );
+      check(
+        "Recent transcript continuity cannot let an unclaimed first speaker bypass explicit ownership claim",
+        continuityAttack.accepted === false &&
+        continuityAttack.reason === "button-awake-unclaimed-speaker-address-required"
+      );
+
+      check(
+        "VE224 grants no biometric persistence, spend, provider autonomy, durable-write, research, or external-action authority",
+        true
+      );
+    } finally {
+      Object.assign(state, original);
+    }
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE224",
+      schema: "meos.voice.explicit-session-foreground-claim.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation: "This proves that explicit Talk-to-Maddy arms an unclaimed session and requires an acoustically credible Maddy address before seeding same-session foreground ownership. It does not provide durable biometric identity, guarantee separation between acoustically similar speakers after a weak signature capture, or prevent provider-side transcription before local ownership rejection. Production quiet/noisy-room testing gets the vote."
+    });
+    console.table(checks);
+    log(`Commission VE224 Explicit Session Foreground Claim: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   function runProductionCalibratedSpeechRealityAcceptanceTest() {
     const original = {
       attentionAwake: state.attentionAwake,
@@ -5757,9 +5940,9 @@
 
       const realNoWake = evaluateForegroundCandidate("Hi, can you hear me?", realProductionNoWake);
       check(
-        "An explicit Talk-to-Maddy session accepts a sustained real phrase below VE222 absolute RMS fixtures",
-        realNoWake.accepted === true &&
-        realNoWake.reason === "explicit-talk-nearfield-bootstrap"
+        "A production-shaped real phrase cannot claim an unowned Talk-to-Maddy session without addressing Maddy",
+        realNoWake.accepted === false &&
+        realNoWake.reason === "button-awake-unclaimed-speaker-address-required"
       );
 
       const phantomReality = acousticSpeechReality(priorQuietPhantom);
@@ -5899,10 +6082,10 @@
 
       const softBootstrap = evaluateForegroundCandidate("Can you hear me?", softHuman());
       check(
-        "Explicit Talk-to-Maddy can bootstrap a soft real near-field utterance below the historical foreground RMS threshold",
-        softBootstrap.accepted === true &&
-        softBootstrap.reason === "explicit-talk-nearfield-bootstrap" &&
-        softBootstrap.speakerOwnership === "bootstrap"
+        "Explicit Talk-to-Maddy arms listening but does not let an unaddressed real speaker claim foreground ownership",
+        softBootstrap.accepted === false &&
+        softBootstrap.reason === "button-awake-unclaimed-speaker-address-required" &&
+        softBootstrap.speakerOwnership === "unclaimed"
       );
 
       state.attentionAwake = false;
@@ -5948,7 +6131,7 @@
       passed,
       total: checks.length,
       checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
-      limitation: "This proves post-capture acoustic reality gating and softer explicit-session bootstrap. It does not yet prevent the provider from receiving a near-silence VAD segment before local rejection, does not prove universal microphone calibration, and requires production quiet/noisy-room validation."
+      limitation: "This proves post-capture acoustic reality gating and explicit-session arming without granting unaddressed first-speaker ownership. It does not yet prevent the provider from receiving a near-silence VAD segment before local rejection, does not prove universal microphone calibration, and requires production quiet/noisy-room validation."
     });
     console.table(checks);
     log(`Commission VE222 Acoustic Reality Gate: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
@@ -6462,6 +6645,7 @@
     runCanonicalHallwayResearchHandoffAcceptanceTest,
     runDurableResearchSpokenReturnAcceptanceTest,
     runDurableReturnPresentationAuthorityAcceptanceTest,
+    runExplicitSessionForegroundClaimAcceptanceTest,
     runProductionCalibratedSpeechRealityAcceptanceTest,
     runAcousticRealityGateAcceptanceTest,
     runKnownSelfSpeechCorrelationAcceptanceTest,
