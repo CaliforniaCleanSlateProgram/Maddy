@@ -1,4 +1,4 @@
-[Uploading MEOS_BUILD_STATE.md…]()
+[MEOS_BUILD_STATE_POST_ER153_RECONCILED (1).md](https://github.com/user-attachments/files/32447847/MEOS_BUILD_STATE_POST_ER153_RECONCILED.1.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32441377/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32429903/MEOS_BUILD_STATE.md)
@@ -9382,3 +9382,119 @@ The engineering horizon remains open-ended through 2030, 2050, and beyond. No cu
 12. Keep asking the standing frontier question: **what fundamental capability is absent from Maddy and from current AI generally, and what evidence would prove that a proposed mechanism actually closes that gap?**
 
 **Recovery keyword:** `EXTENSIBLE-ORGANISM-FUNDAMENTAL-GAP-DIRECTION-20260920`
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — ARC 001 / ER153 NATURAL PUBLIC RESEARCH INTENT — PRODUCTION-PROVEN; SPOKEN END-TO-END RESEARCH STILL OPEN
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive recovery reconciliation; not a claim that ARC 001 or verbal Internet research is complete  
+**Base authority:** Main88 + ratified Project Maddy North Star + immutable Spooky bar  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## Current authoritative runtime facts added by this checkpoint
+
+Production evidence now establishes:
+
+- **Executive Router:** `1.5.3`
+- **Executive Router build:** `ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`
+- **ER153 production acceptance:** **PASS `11/11`**
+- **Realtime Voice remains:** `2.0.13` / `VE213-CONTEXT-GROUNDED-TRANSCRIPTION-EVIDENCE-20260920-A`
+- **Executive Brain remains:** `1.31.1` / `EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A`
+- **Durable authority hydration remained:** `READY` from `meos-institutional-repository`
+- **Mission Dispatcher remained stopped by authority:** `office_dispatch_authority_not_effective`; this is not treated as a voice/research runtime failure.
+
+The production evidence in this checkpoint does not establish a newer server identity than the latest separately proven baseline already recorded in Build State.
+
+## ER153 — Natural Public Research Intent
+
+**Status:** PRODUCTION-PROVEN for its bounded classifier contract `11/11`.
+
+ER153 proves that Executive Router can semantically classify natural public-research requests without depending on one exact keyword string. Production acceptance passed examples including:
+
+- `Go online and find grants CCSP can apply for now.`
+- `Search online for grants we qualify for.`
+- `Look on the internet and see what funding is available.`
+- `Check the web for current RFPs.`
+- `Find open grant opportunities we can apply for.`
+- `Which funding opportunities are accepting applications this month?`
+- `Research current nonprofit funding opportunities.`
+
+The same acceptance preserved the distinction between public research, internal-record research, ordinary explanatory questions, and ordinary CCSP conversation. Classification itself grants no external-action authority.
+
+ER153 therefore closes only the **Executive Router natural public-research intent classification seam**. It does **not** prove that every Maddy interface actually reaches that classifier, that voice hands research into the Hallway, that server research executes, or that evidence returns into spoken conversation.
+
+## Real spoken research test — END-TO-END FAIL / HIGH-VALUE LOCALIZATION EVIDENCE
+
+A real production voice test in a loud environment captured the founder's intended request correctly as:
+
+`Go online and find me grants for CCSP that they can apply for.`
+
+The accepted foreground turn nevertheless received:
+
+`route: local-recall-plus-provider-reasoning`
+
+The founder reports that Maddy verbally stated she still could not go online while listing possible places/opportunities from local/provider reasoning. No production evidence in this test showed Hallway research handoff, Durable Execution research identity, headless public research, public-source evidence return, or a governed research result entering the spoken conversation.
+
+Therefore:
+
+1. **ER153 itself is green at its exact scope.**
+2. **The broader verbal Internet-research objective remains red/open.**
+3. The failed spoken turn localizes the next research defect beyond the Router classifier: the live voice / Brain routing path is still allowing a correctly transcribed explicit Internet-research request to remain on ordinary local/provider reasoning instead of consuming the governed public-research path.
+4. Maddy must not represent the provider adviser's lack of direct browsing as a categorical limitation of Maddy/MEOS when governed public research is available elsewhere in the organism.
+5. Correct-looking grant suggestions from that response are not evidence that Internet research occurred.
+
+## Noisy-environment attention / wake evidence carried forward
+
+This production session also produced useful sensory evidence and must not be simplified into "wake fixed" or "wake failed completely."
+
+Observed behavior included:
+
+- numerous background/unaddressed transcripts correctly ignored while attention was asleep;
+- a background/context phrase transcribed as `Maddy is the founder.` was treated as containing the wake name and **falsely acquired foreground conversation**;
+- a later deliberate `Madison, can you hear me?` correctly acquired the foreground conversation;
+- once awake, the explicit grant-research request was captured accurately enough that ASR corruption was **not** the cause of the research-routing failure in that turn.
+
+Interpretation:
+
+- wake acquisition is still unreliable in loud multi-speaker environments;
+- wake-name substring/context recognition can false-trigger on speech that mentions Maddy rather than addresses Maddy;
+- VE213 noisy-environment sensory integrity remains open work;
+- ER153 did not modify the voice attention/wake layer, so no wake improvement should be inferred from ER153.
+
+## ARC 001 candidate-pack truth at this checkpoint
+
+A staged ARC 001 candidate pack exists for later commits, but **only ER153 has production acceptance evidence at this checkpoint**. Later candidate builds remain local candidates until individually committed, deployed, and production-tested.
+
+Do not promote local candidate acceptance into production truth by implication.
+
+The currently planned next candidate sequence remains bounded and testable one file at a time. Because multiple later voice candidates modify the same `frontend/voice/openai-realtime.js` lineage, they must be applied in their staged order unless a fresh-main repair deliberately supersedes that sequence.
+
+## Exact recovery order after ER153
+
+Unless fresher production evidence requires a repair before the next staged candidate:
+
+1. Treat `ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A` as production-proven `11/11` **for Router classification only**.
+2. Preserve the real spoken grant test as a failed end-to-end research proof: exact intended request captured, but route remained `local-recall-plus-provider-reasoning`.
+3. Do not reopen ER153 merely because downstream voice research still fails unless new evidence shows the Router classifier itself regressed.
+4. Continue the staged voice lineage from current production VE213 with **VE214 intended-speech reconstruction** before later same-file candidates, because the later candidate artifacts were built cumulatively on that lineage.
+5. After VE214 is separately committed/deployed/proven, move to the candidate that connects spoken research to the canonical Hallway / durable research path; then require a real spoken research retest with evidence of actual research execution and governed return.
+6. Preserve the wake false-positive evidence (`Maddy is the founder.`) and deliberate wake success (`Madison, can you hear me?`) for later wake/speaker-ownership acceptance. Do not tune away the loud environment as invalid test conditions.
+7. Preserve the broader ARC 001 direction: World Window, living episodic memory, consolidation, learned representation/plasticity, scored imagination/world model, dream/idle synthesis, fundamental-gap discovery, Capability Foundry, governed organogenesis, growth-capital intelligence, Development Forge, challenger/proof, canonical digital-human embodiment, then a farther-out ARC 002.
+8. Production gets the vote. No later local candidate is commissioned until its own production evidence exists.
+9. Continue one fix → one file → one commit → one production test → Build State reconciliation.
+
+## Anti-drift rules added by this checkpoint
+
+1. A classifier passing does not prove the caller uses it.
+2. A provider-generated answer does not prove public research occurred.
+3. An explicit request containing `go online` that remains on `local-recall-plus-provider-reasoning` is a research-routing failure, not successful Internet execution.
+4. Correct ASR on a failed research turn separates research routing from speech-recognition causality for that turn.
+5. A transcript containing the wake name is not automatically proof the human was addressing Maddy; wake-name mention and wake-name address must increasingly be distinguished.
+6. Background rejection, wake acquisition, speaker ownership, semantic interpretation, research intent, execution authority, actual external research, and returned evidence are separate channels and must remain separately testable.
+7. Do not lower the North Star or Spooky bar merely because a staged candidate pack exists. ARC 001 remains a checkpoint on an indefinitely extending developmental path.
+
+**Recovery keyword:** `ARC001-ER153-ROUTER-PROVEN-SPOKEN-RESEARCH-STILL-OPEN-20260920`
+
+**Fast recovery:** `Resume ARC001-ER153-ROUTER-PROVEN-SPOKEN-RESEARCH-STILL-OPEN-20260920 — Main88 authority preserved; Executive Router 1.5.3 / ER153 is production-proven 11/11 for natural public-research intent classification; real loud-room voice test captured "Go online and find me grants for CCSP that they can apply for" correctly but still routed local-recall-plus-provider-reasoning and Maddy verbally denied direct online ability, so end-to-end verbal Internet research remains open downstream of Router classification; wake remains noisy-room imperfect and falsely acquired on "Maddy is the founder" while later deliberate "Madison, can you hear me?" acquired correctly; Voice remains VE213 and Brain remains EB1311; later ARC 001 builds remain local candidates only; continue staged same-file voice lineage with VE214 before later Hallway/research-return candidates, one file → one commit → one production test → Build State reconciliation.`
