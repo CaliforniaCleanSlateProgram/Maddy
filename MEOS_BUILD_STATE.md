@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920 (1).md](https://github.com/user-attachments/files/32448862/MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920.1.md)
 [MEOS_BUILD_STATE_POST_ER153_RECONCILED (1).md](https://github.com/user-attachments/files/32447847/MEOS_BUILD_STATE_POST_ER153_RECONCILED.1.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32441377/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -9498,3 +9499,157 @@ Unless fresher production evidence requires a repair before the next staged cand
 **Recovery keyword:** `ARC001-ER153-ROUTER-PROVEN-SPOKEN-RESEARCH-STILL-OPEN-20260920`
 
 **Fast recovery:** `Resume ARC001-ER153-ROUTER-PROVEN-SPOKEN-RESEARCH-STILL-OPEN-20260920 — Main88 authority preserved; Executive Router 1.5.3 / ER153 is production-proven 11/11 for natural public-research intent classification; real loud-room voice test captured "Go online and find me grants for CCSP that they can apply for" correctly but still routed local-recall-plus-provider-reasoning and Maddy verbally denied direct online ability, so end-to-end verbal Internet research remains open downstream of Router classification; wake remains noisy-room imperfect and falsely acquired on "Maddy is the founder" while later deliberate "Madison, can you hear me?" acquired correctly; Voice remains VE213 and Brain remains EB1311; later ARC 001 builds remain local candidates only; continue staged same-file voice lineage with VE214 before later Hallway/research-return candidates, one file → one commit → one production test → Build State reconciliation.`
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — POST-ER153 DURABLE CONTINUITY DEGRADATION / 502 INCIDENT RECONCILIATION
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive recovery reconciliation; not a new runtime commission  
+**Fresh repository authority inspected:** `Maddy-main (90).zip`  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## Purpose of this reconciliation
+
+This checkpoint preserves the production truth observed after the ER153 Router proof and after the failed spoken Internet-research attempt, while separating a later durable-continuity service degradation from the already-proven ER153 classifier contract.
+
+It does not rewrite earlier checkpoints. Earlier statements that durable authority hydration was READY remain historically true for the observations that produced them. Fresher evidence below establishes that the later runtime entered a **mixed durable-continuity state**: Mission Engine hydration was READY at boot while Executive Brain durable persistence and Executive Memory / Knowledge restore requests returned HTTP 502.
+
+## Current runtime identity preserved
+
+Fresh production logs continue to show:
+
+- **Executive Router:** `1.5.3`
+- **Executive Router build:** `ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`
+- **ER153 bounded production acceptance:** **PASS `11/11`**
+- **Realtime Voice:** `2.0.13` / `VE213-CONTEXT-GROUNDED-TRANSCRIPTION-EVIDENCE-20260920-A`
+- **Executive Brain:** `1.31.1` / `EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A`
+- **Mission Engine:** `0.2.0` / `ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A`
+- **Mission Dispatcher:** stopped because `office_dispatch_authority_not_effective`
+- **Mission Engine durable authority hydration:** observed `READY` from `meos-institutional-repository` during the same startup sequence.
+
+No fresher production evidence in this checkpoint establishes a newer server identity.
+
+## Fresh durability incident — real 502 evidence
+
+During the later startup / voice-session window, production emitted these independent durable-path failures:
+
+1. `PUT /api/executive-brain-state` → **HTTP 502 Bad Gateway**
+2. `GET /api/executive-memory/investigation-history` → **HTTP 502 Bad Gateway**
+3. `GET /api/executive-memory/investigation-history/knowledge-engine-manifest-v1` → **HTTP 502 Bad Gateway**
+
+Observed effects included:
+
+- Executive Brain reported:  
+  `Durable cognition authority unavailable. Runtime cognition continues with non-authoritative continuity cache.`
+- Knowledge Memory reported Executive Memory restore failure because Executive Memory returned HTTP 502.
+- Knowledge Engine reported Executive Memory restore failure because Executive Memory returned HTTP 502.
+
+## Correct interpretation of the durability incident
+
+The production evidence supports this bounded conclusion:
+
+**Mission Engine durable hydration was READY at boot, while Executive Brain durable write and Executive Memory / Knowledge restore paths later degraded with HTTP 502.**
+
+Therefore the system-wide state at that moment must be represented as **mixed durable availability**, not as either fully healthy durable continuity or total durable failure.
+
+The Executive Brain's degraded behavior was epistemically correct: it did **not** silently promote runtime/browser continuity cache into durable institutional authority after the durable write failed.
+
+This checkpoint does **not** yet prove the root cause of the 502s.
+
+Do not infer, without further evidence, that the cause was:
+
+- ER153;
+- the voice client;
+- a specific Executive Brain defect;
+- a specific Knowledge Memory defect;
+- a specific Knowledge Engine defect;
+- Render itself;
+- the durable repository provider;
+- authentication;
+- DNS;
+- network loss;
+- a transient upstream restart;
+- or permanent data loss.
+
+Because several durable endpoints failed in the same window, the incident should first be treated as a shared durable-path / upstream availability investigation rather than three unrelated organ defects.
+
+No code repair is authorized merely from the presence of the 502s.
+
+## ER153 truth remains unchanged
+
+ER153 remains production-proven `11/11` for its exact Router-classification scope.
+
+The durability 502 incident does not invalidate:
+
+- Router `1.5.3`;
+- build `ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`;
+- the natural public-research intent classifier contract;
+- the already-observed fact that the live spoken grant request still failed downstream by remaining on `local-recall-plus-provider-reasoning`.
+
+Do not roll back ER153 because of the later durability incident unless fresh evidence specifically ties ER153 to a regression.
+
+## Spoken Internet-research status remains OPEN
+
+No successful fresh end-to-end verbal Internet-research proof was obtained after the earlier failed spoken grant request.
+
+The latest authoritative spoken-research evidence therefore remains:
+
+- the intended grant request was transcribed correctly;
+- the turn still routed `local-recall-plus-provider-reasoning`;
+- Maddy verbally represented herself as unable to go online while producing locally/provider-reasoned suggestions;
+- no Hallway research handoff, durable research execution identity, public-source evidence return, or governed spoken research return was proven.
+
+The research defect therefore remains downstream of the now-proven Router classifier until fresher evidence says otherwise.
+
+## Fresh wake / interaction evidence
+
+A later voice attempt captured the standalone wake utterance:
+
+`Madison.`
+
+The system:
+
+- acquired foreground conversation;
+- accepted `Madison.` as a foreground user turn;
+- routed it `local-recall-plus-provider-reasoning`;
+- generated and spoke a full response.
+
+This reinforces an already-open interaction defect: **a standalone wake utterance can become a conversational request instead of merely acquiring attention for the immediately following request.**
+
+This behavior is not new authority and is not considered correct wake semantics.
+
+The planned later `VE217` candidate remains the staged build intended to address intentional-awake and wake-only behavior, but it remains a **local candidate only** until individually committed, deployed, and production-tested.
+
+## Exact recovery order after this reconciliation
+
+Unless fresher evidence exposes an urgent runtime regression:
+
+1. Preserve `ER153` as production-proven `11/11` for Router natural public-research intent classification.
+2. Preserve end-to-end spoken Internet research as **OPEN / FAILED at the currently observed voice-routing seam**.
+3. Preserve the later durable incident as **mixed durable continuity degradation**: Mission Engine hydration READY at boot, while Executive Brain durable write and Executive Memory / Knowledge restore requests returned 502.
+4. Do not infer a 502 root cause or mutate three independent organs without shared-path evidence.
+5. Do not roll back ER153 on the basis of the 502 incident.
+6. Continue the staged ARC 001 same-file voice sequence with **VE214** next.
+7. After VE214 is separately committed/deployed/proven, continue to the staged Hallway research-handoff candidate and require a real spoken Internet-research proof.
+8. Preserve `Madison.` wake-only full-response behavior as open evidence for later VE217 acceptance.
+9. Preserve all later ARC 001 builds as local candidates until their own production proof exists.
+10. Continue one fix → one file → one commit → one production test → Build State reconciliation.
+
+## Anti-drift rules added by this checkpoint
+
+1. `READY` on one durable organ does not prove every durable path is healthy.
+2. A later 502 does not erase an earlier successful durable hydration observation; preserve both with time/scope.
+3. Shared-time 502 failures across multiple durable endpoints should be investigated as a possible common-path degradation before independent organ rewrites.
+4. Runtime continuity cache is not durable authority.
+5. A correct degraded-mode warning is evidence of authority separation, not evidence that durable continuity is solved.
+6. ER153 classifier proof and downstream voice research failure remain separate facts.
+7. Wake acquisition and conversational-turn authorization are separate functions; saying only the wake name should not automatically imply a substantive user request.
+8. No local ARC 001 candidate becomes commissioned by being present in the candidate pack.
+9. Production gets the vote.
+10. The North Star / Spooky bar remain unchanged.
+
+**Recovery keyword:** `ARC001-ER153-PROVEN-MIXED-DURABILITY-502-VE214-NEXT-20260920`
+
+**Fast recovery:** `Resume ARC001-ER153-PROVEN-MIXED-DURABILITY-502-VE214-NEXT-20260920 — Main90 inspected; Router 1.5.3 / ER153 remains production-proven 11/11 for natural public-research classification; spoken Internet research remains open because the correctly transcribed grant request still routed local-recall-plus-provider-reasoning; later startup showed Mission Engine durable hydration READY while PUT /api/executive-brain-state and Executive Memory / Knowledge restore GETs returned HTTP 502, so durable state was mixed/degraded rather than globally READY or globally failed; Executive Brain correctly continued with non-authoritative continuity cache and did not promote cache into durable truth; 502 root cause is unproven and no rollback/organ rewrite is authorized from it; standalone "Madison." still became a full conversational turn, preserving wake-only behavior as open evidence; later ARC 001 builds remain local candidates; next staged code build is VE214, one file → one commit → one production test → Build State reconciliation.`
