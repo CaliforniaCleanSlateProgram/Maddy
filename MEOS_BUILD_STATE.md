@@ -1,5 +1,6 @@
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
+[Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449860/MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449290/MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920 (1).md](https://github.com/user-attachments/files/32448862/MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920.1.md)
@@ -10951,4 +10952,160 @@ Still open independently of VE218:
 **Recovery keyword:** `ARC001-SOURCE-SEQUENCE-PROVEN-END-TO-END-DEMO-NEXT-20260920`
 
 **Fast recovery:** `Resume ARC001-SOURCE-SEQUENCE-PROVEN-END-TO-END-DEMO-NEXT-20260920 — VE218 is production-proven 9/9 at Voice 2.0.18 / VE218-LOCAL-VOICE-SIGNATURE-CONTINUITY-20260920-A; all staged ARC 001 source builds ER153, VE214, VE215, VE216, DP210, EB1320, EB1330, EB1340, ERAE320, EB1350, EB1360, VE217, and VE218 are now separately production-proven at their bounded contracts; VE218 adds ephemeral local spectral-continuity evidence only and does not prove biometric or durable speaker identity; source-build completion is not end-to-end ARC completion; next action is a real spoken production research demonstration through intentional speech → intended meaning → research classification → canonical Hallway → exact durable execution → fresh public evidence/URLs → durable return → exactly one governed spoken Maddy answer; if that corridor fails, production evidence selects the next repair.`
+
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — ER154 PRODUCTION RECONCILIATION / ARC 001 LIVE-CORRIDOR REPAIR
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive production reconciliation; no new runtime authority created by this document  
+**Repository base reconciled:** `Maddy-main (98).zip` plus committed/deployed ER154 source  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## ER154 — Durable Return Provenance Bridge — PRODUCTION-PROVEN
+
+**Executive Router runtime:** `1.5.4`  
+**Build:** `ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A`  
+**Primary production acceptance:** **PASS `10/10`**
+
+Production acceptance established that:
+
+- Maddy-owned semantic wording retains MEOS durable-research evidence URLs;
+- evidence provenance survives without changing Maddy semantic ownership;
+- provider/adviser citations remain excluded from Maddy answer provenance;
+- only URL-shaped evidence is admitted through the provenance bridge;
+- browser continuity compaction preserves governed evidence URLs;
+- the bridge does not authorize raw-output presentation;
+- the bridge does not manufacture claim, execution, or outcome verification;
+- the bridge does not grant provider answer ownership;
+- the bridge does not grant spend or external-action authority;
+- the durable-return publication contract now has both owned speech and evidence URLs.
+
+### Production regressions — GREEN
+
+`006.031Q Durable Research Return Governance Adapter` — **PASS `10/10`**
+
+This regression confirms:
+
+- returned durable execution still normalizes into the existing MEOS public-research envelope;
+- evidence-bound answer facts, rather than raw evidence excerpts, become candidate research answer material;
+- Mission / cognition-intention / Hallway lineage remains attached;
+- no paid-provider execution is introduced;
+- only evidence URLs become research citations;
+- mismatched durable lineage fails closed;
+- running or queued executions cannot enter return governance;
+- return reintegration uses `collect()` governance and never re-dispatches research;
+- raw durable server output remains unauthorized for presentation;
+- no new external-action or provider authority is granted.
+
+`006.018L4 Executive Router Browser Cache Compaction` — **PASS `8/8`**
+
+This regression confirms:
+
+- browser Router cache remains explicitly non-authoritative;
+- browser Router history remains bounded independently of live history;
+- governed human-facing answer survives compaction;
+- supporting-source provenance survives compaction;
+- raw research payload is excluded from browser persistence;
+- Executive Brain request package is excluded from browser persistence;
+- compaction never clears unrelated storage keys;
+- no provider, paid-cognition, or external-action authority is added.
+
+## What ER154 closes
+
+The first real spoken ARC 001 production run proved that a natural spoken public-research request could reach:
+
+`voice`
+→ `external-intelligence-research route`
+→ `canonical MEOSExecutiveHallway`
+→ `durable execution`
+→ `return observer`
+→ `durable return reintegration path`
+
+Production then exposed a return-publication contract mismatch: when Maddy owned the semantic wording, evidence URLs could be lost before VE216's evidence-bound spoken-return gate.
+
+ER154 closes that bounded mismatch.
+
+Maddy keeps semantic ownership of the answer while governed MEOS research evidence URLs remain attached as provenance.
+
+Provider/adviser citations do not become Maddy evidence merely because a provider supplied language.
+
+## What ER154 does NOT close
+
+ER154 does **not** by itself prove the full spoken public-research corridor end to end.
+
+The following production evidence remains open:
+
+1. **Browser Router quota resilience.**  
+   The prior live corridor produced `QuotaExceededError` while `reintegrateDurableResearchResult()` attempted Router browser persistence. The 006.018L4 regression proves the compaction contract, but a fresh real production run has not yet proven that the actual quota failure cannot recur during durable-return reintegration.
+
+2. **False wake / floor theft while Maddy is already responding.**  
+   The prior live corridor treated the phrase `Maddy is the founder of the California Clean Slate Program.` as a wake-word interruption and cancelled the active research response. VE217/VE218 do not yet prove that arbitrary third-person mention of Maddy cannot steal the floor during an active response.
+
+3. **Executive Learning durability 502.**  
+   Production again emitted `PUT /api/executive-learning-state 502 (Bad Gateway)`. This is real durability evidence. It is independent of ER154 and remains without a proven permanent root cause.
+
+4. **Final spoken research return.**  
+   No fresh production run after ER154 has yet shown:
+   `fresh public evidence + URLs`
+   → `durable reintegration`
+   → `one governed final Maddy answer`
+   → `spoken return`.
+
+Do not inflate ER154 component success into ARC 001 end-to-end completion.
+
+## Current production identity
+
+Latest supplied production evidence establishes:
+
+- **Executive Router:** `1.5.4 / ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A`
+- **Realtime Voice:** `2.0.18 / VE218-LOCAL-VOICE-SIGNATURE-CONTINUITY-20260920-A`
+- **Executive Brain:** `1.36.0 / EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A`
+- **Executive Resource Acquisition Engine:** `3.2.0 / ERAE320-MADDY-GROWTH-CAPITAL-INTELLIGENCE-20260920-A`
+- **Developer Panel:** `2.1.0 / DP210-MADDY-WORLD-WINDOW-20260920-A`
+- **Executive Hallway:** `1.5.7 / EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A`
+- **Mission Engine durable authority hydration:** `READY`
+- **Institutional authority source:** `meos-institutional-repository`
+- **Mission Dispatcher:** still not running because `office_dispatch_authority_not_effective`
+
+## Exact next move
+
+Do **not** rerun the full spoken ARC 001 demonstration yet.
+
+First correct the next production-proven failure seam:
+
+**Executive Router browser-persistence quota resilience during durable research return reintegration.**
+
+The correction should preserve these invariants:
+
+- browser storage is presentation/continuity cache only, never institutional authority;
+- a browser `QuotaExceededError` must not block or repeatedly poison successful durable returned work;
+- governed answer text and supporting evidence URLs survive bounded browser persistence;
+- raw research payload and Executive Brain request packages remain excluded;
+- no unrelated storage keys are cleared;
+- durable repository identity remains authoritative;
+- no provider/spend/external-action/self-modification authority is added;
+- a persistence warning may degrade browser continuity but must not erase or invalidate an already governed durable return.
+
+After that correction is production-proven, reconcile Build State again and then repair the false third-person `Maddy is ...` wake/floor-steal seam before the next real spoken ARC 001 corridor test.
+
+Production remains the authority for sequencing.
+
+## Anti-drift rules carried forward
+
+1. Maddy owns semantic answer wording; evidence provenance remains independently inspectable.
+2. Provider/adviser citations cannot be promoted into Maddy evidence without MEOS evidence authority.
+3. Browser persistence is non-authoritative.
+4. Browser quota exhaustion must never become authority to discard a governed durable result.
+5. Compaction must remain bounded and must never delete unrelated storage.
+6. Third-person mention of Maddy is not automatically intentional address.
+7. A green component test is not a green end-to-end corridor.
+8. Production gets the vote.
+9. The North Star and Spooky bar remain unchanged.
+
+**Recovery keyword:** `ARC001-ER154-PROVEN-ROUTER-QUOTA-RESILIENCE-NEXT-20260920`
+
+**Fast recovery:** `Resume ARC001-ER154-PROVEN-ROUTER-QUOTA-RESILIENCE-NEXT-20260920 — Executive Router 1.5.4 / ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A is production-proven 10/10; 006.031Q durable-return governance regression is 10/10 and 006.018L4 browser-cache-compaction regression is 8/8; ER154 preserves MEOS evidence URLs when Maddy owns semantic wording without granting raw-output, provider, spend, or external-action authority; the prior real spoken corridor proved voice → external research route → canonical Hallway → durable execution → return observer → durable-return reintegration, but ARC 001 is not end-to-end complete; next correction is Executive Router browser-persistence quota resilience so QuotaExceededError cannot block or repeatedly poison a governed durable research return; after that, repair false third-person Maddy wake/floor theft, reconcile each fix separately, then rerun the real spoken corridor.`
 
