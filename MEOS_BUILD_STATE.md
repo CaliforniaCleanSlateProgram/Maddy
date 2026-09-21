@@ -1,4 +1,4 @@
-[Uploading MEOS_BUILD_STATE.md…]()
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32451749/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449860/MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md)
@@ -11108,4 +11108,259 @@ Production remains the authority for sequencing.
 **Recovery keyword:** `ARC001-ER154-PROVEN-ROUTER-QUOTA-RESILIENCE-NEXT-20260920`
 
 **Fast recovery:** `Resume ARC001-ER154-PROVEN-ROUTER-QUOTA-RESILIENCE-NEXT-20260920 — Executive Router 1.5.4 / ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A is production-proven 10/10; 006.031Q durable-return governance regression is 10/10 and 006.018L4 browser-cache-compaction regression is 8/8; ER154 preserves MEOS evidence URLs when Maddy owns semantic wording without granting raw-output, provider, spend, or external-action authority; the prior real spoken corridor proved voice → external research route → canonical Hallway → durable execution → return observer → durable-return reintegration, but ARC 001 is not end-to-end complete; next correction is Executive Router browser-persistence quota resilience so QuotaExceededError cannot block or repeatedly poison a governed durable research return; after that, repair false third-person Maddy wake/floor theft, reconcile each fix separately, then rerun the real spoken corridor.`
+
+
+
+-------------------------------------------------------------------------------
+
+# NIGHTLY BUILD STATE CHECKPOINT — ARC 001 / ER154 PROVEN / DURABILITY 502 EXPANDED
+
+**Local date:** 2026-09-20  
+**Checkpoint type:** additive end-of-session production evidence + recovery plan  
+**Authority basis:** committed post-ER154 Build State + latest production console evidence  
+**No new runtime capability is claimed by this checkpoint.**
+
+## Current production truth
+
+ER154 remains **PRODUCTION-PROVEN**:
+
+- **Executive Router:** `1.5.4`
+- **Build:** `ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A`
+- **ER154:** PASS `10/10`
+- **006.031Q Durable Research Return Governance:** PASS `10/10`
+- **006.018L4 Executive Router Browser Cache Compaction:** PASS `8/8`
+
+The production customer context remained the California Clean Slate Program.
+
+Mission Engine durable authority hydration reported:
+
+- `READY`
+- source = `meos-institutional-repository`
+- authority = `meos-institutional-repository`
+- organization readiness = `ready: true`
+- organization readiness = `degraded: false`
+
+Mission Dispatcher remained intentionally stopped because:
+
+`office_dispatch_authority_not_effective`
+
+This is an authority-state condition, not evidence of a new runtime failure.
+
+## New production evidence after the ER154 reconciliation
+
+The console was allowed to remain open after the ER154 proof. Two red durability failures appeared.
+
+### 1. Executive Learning durable state write — HTTP 502
+
+Production emitted:
+
+`PUT /api/executive-learning-state` → `502 Bad Gateway`
+
+The failing path was reached from Executive Learning durable persistence scheduling.
+
+This repeats prior evidence that Executive Learning durable persistence can fail in production.
+
+### 2. Knowledge Engine / Executive Memory persistence — HTTP 502
+
+Production later emitted:
+
+`GET /api/executive-memory/investigation-history/knowledge-engine-manifest-v1` → `502 Bad Gateway`
+
+The Knowledge Engine then reported:
+
+`Executive Memory persistence failed: Error: Executive Memory returned HTTP 502.`
+
+The stack shows this occurred while Knowledge Memory was synchronizing durable research learning.
+
+This is material ARC 001 evidence because public research is intended not merely to produce a spoken answer, but to become Maddy-owned scoped knowledge with provenance when governance allows it.
+
+## What the red blocks mean — bounded conclusion only
+
+The new evidence proves:
+
+- startup durable hydration can be READY while later durable persistence requests still fail;
+- more than one cognitive persistence path has now observed HTTP 502 in production;
+- Executive Learning durable state persistence is affected;
+- Knowledge Engine / Executive Memory persistence is affected;
+- the Knowledge Engine failure occurred in the durable-research-learning synchronization path.
+
+The evidence does **not** yet prove:
+
+- one shared root cause;
+- permanent repository corruption;
+- loss of already durable institutional state;
+- a Render-wide outage;
+- that the same server handler causes both failures;
+- that the current browser Router quota problem causes either 502;
+- that ARC 001 research execution itself failed because of these 502s.
+
+Do not collapse distinct failures into one diagnosis without source/runtime proof.
+
+## ARC 001 status at bedtime
+
+The live spoken production demonstration has already established this much:
+
+`spoken request`
+→ `external-intelligence-research route`
+→ `canonical MEOSExecutiveHallway`
+→ `durable execution identity`
+→ `active durable return observer`
+→ `durable return reaches reintegration path`
+
+ER154 then closed the evidence-provenance mismatch between Maddy-owned semantic wording and MEOS research URLs.
+
+ARC 001 is **not yet closed** because the following live seams remain:
+
+1. **Executive Router browser quota resilience**
+   - Prior production evidence: `QuotaExceededError` during `reintegrateDurableResearchResult()`.
+   - Requirement: browser-cache exhaustion may degrade browser continuity but must never block, erase, invalidate, or repeatedly poison an already governed durable return.
+
+2. **Durable cognition persistence 502 incident**
+   - Executive Learning state PUT has returned 502.
+   - Knowledge Engine Executive Memory GET/persistence has returned 502 during durable-research-learning synchronization.
+   - Root cause remains unproven.
+
+3. **False third-person wake / floor theft**
+   - Prior production evidence: `Maddy is the founder ...` was interpreted as a wake-word interruption and cancelled an active response.
+   - Requirement: mention of Maddy is not automatically intentional address.
+
+4. **Fresh full spoken return after corrections**
+   - Still required:
+     `fresh public evidence + URLs`
+     → `durable reintegration`
+     → `Maddy-owned governed answer`
+     → `one spoken return`
+     → `no duplicate publication`
+     → `no unauthorized spend/external action`
+     → `research learning retained when durable persistence is available`.
+
+## Tomorrow's execution plan
+
+Do not shotgun these repairs together.
+
+### Step 1 — Fresh authority
+Obtain the freshest repository snapshot containing:
+- ER154 source;
+- committed post-ER154 Build State;
+- this nightly checkpoint after it is committed.
+
+Read canonical Build State, North Star, and exact target source before coding.
+
+### Step 2 — Router browser-quota resilience
+Repair the production-proven Router browser-persistence failure first.
+
+Required invariants:
+
+- browser persistence remains non-authoritative;
+- governed durable return remains valid if browser persistence fails;
+- bounded answer text and supporting evidence URLs survive the best available cache path;
+- raw research payload remains excluded;
+- Executive Brain request package remains excluded;
+- no unrelated storage key is deleted;
+- no infinite or noisy reintegration retry loop;
+- no new provider, spend, external-action, or self-modification authority.
+
+Then:
+`one file → one commit → production acceptance → Build State reconciliation`.
+
+### Step 3 — Focused durability-502 investigation
+Before inventing a repair, reproduce/inspect the exact server persistence seams.
+
+Determine whether the Executive Learning 502 and Knowledge Engine / Executive Memory 502 share:
+- endpoint infrastructure,
+- repository adapter,
+- serialization/storage behavior,
+- timeout/failure handling,
+- Render service dependency,
+or are separate incidents.
+
+If a focused production test cannot reproduce the 502, preserve the incident as unresolved production debt rather than fabricating a fix.
+
+If reproduced, production evidence chooses the smallest correct repair.
+
+Then:
+`one fix → one file → one commit → production test → Build State reconciliation`.
+
+### Step 4 — Third-person wake/floor theft
+Repair the active-response interruption rule so third-person mention such as:
+
+`Maddy is ...`
+
+does not automatically gain interruption authority merely because the name appears.
+
+Preserve:
+- natural direct address;
+- genuine user interruption;
+- intentional wake;
+- VE218 local acoustic/spectral evidence;
+- fail-closed passive operation;
+- no biometric overclaim.
+
+Then production-test and reconcile.
+
+### Step 5 — Real ARC 001 spoken rerun
+Use a natural live request, preferably:
+
+`Maddy, go online and find current grants CCSP can apply for now.`
+
+Pass requires production evidence of:
+
+`intentional foreground speech`
+→ `raw transcript`
+→ `semantic reconstruction only if justified`
+→ `public-research classification`
+→ `canonical Hallway`
+→ `exact durable execution`
+→ `fresh public sources`
+→ `evidence URLs / provenance`
+→ `durable returned work`
+→ `one governed Maddy answer`
+→ `spoken return`
+→ `no duplicate publication`
+→ `no unauthorized spend/external action`
+→ `scoped research-learning retention when persistence authority is healthy`.
+
+Only then close ARC 001 at the bounded demonstrated contract.
+
+## Verified post-ARC hardening backlog
+
+Outside audit findings are inputs, not architecture authority. Keep the evidence-backed cash and discard generic/noisy conclusions.
+
+After ARC 001 is closed, revisit the verified hardening seams without turning Maddy into a basic SaaS template:
+
+- explicit authority gate for Internet Node public crawl/discovery/search surfaces;
+- protect acceptance/proof endpoints from anonymous public execution;
+- reduce exposure of proprietary cognition currently shipped as public frontend source;
+- establish correct trusted-proxy/client-identity behavior for Render and rate limiting;
+- make customer session durability appropriate for deploys/multi-instance operation;
+- harden prospect-tour paid-cognition economics and client identity enforcement;
+- add CI/regression automation as a complement to, not replacement for, production proof;
+- mechanically reduce oversized source files where extraction improves correctness/context without imposing a fixed architecture;
+- separate concise current recovery truth from historical Build State archive while preserving institutional history.
+
+Security objective:
+
+**Maddy becomes harder to cheat, rob, scrape, spoof, drain, cross organizational boundaries, or manipulate without reducing her capability, independence, learning, or open-ended development.**
+
+## Standing architecture rule
+
+Do not begin by forcing Maddy into a named contemporary category.
+
+Build capability.
+Follow production evidence.
+Let function discover anatomy.
+Push the envelope.
+Name what she became when the evidence earns the name.
+
+## Bedtime hold
+
+No additional code is required tonight.
+
+Preserve the console evidence.
+Commit this Build State checkpoint.
+Tomorrow resumes with a fresh repository snapshot and the Router browser-quota resilience correction.
+
+**Recovery keyword:** `ARC001-NIGHTLY-ER154-PROVEN-DURABILITY-502-EXPANDED-20260920`
+
+**Fast recovery:** `Resume ARC001-NIGHTLY-ER154-PROVEN-DURABILITY-502-EXPANDED-20260920 — ER154 Router 1.5.4 is production-proven 10/10 with 006.031Q 10/10 and 006.018L4 8/8; the real spoken corridor has proven speech → research route → canonical Hallway → durable execution → return observer → durable return reintegration path, but ARC001 remains open; post-proof console evidence shows Executive Learning PUT /api/executive-learning-state 502 and Knowledge Engine GET /api/executive-memory/investigation-history/knowledge-engine-manifest-v1 502 with Executive Memory persistence failure during durable-research-learning synchronization, while startup durable hydration still reports READY/degraded=false; do not assume one root cause; tomorrow first repair Router browser quota resilience, then focused 502 durability investigation if reproducible, then third-person Maddy wake/floor theft, then rerun the real spoken research corridor and close ARC001 only on bounded end-to-end production proof.`
 
