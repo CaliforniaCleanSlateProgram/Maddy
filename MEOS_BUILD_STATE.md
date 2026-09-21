@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32477062/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32478199/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -11742,3 +11742,219 @@ This is not currently attributed as the cause of the no-answer voice event becau
 **Recovery keyword:** `VE222-ACOUSTIC-REALITY-GATE-PRODUCTION-PENDING-20260921`
 
 **Fast recovery:** `Resume VE222-ACOUSTIC-REALITY-GATE-PRODUCTION-PENDING-20260921 — live main before the new commit was Voice v2.0.21 / VE221; production VE221 10/10 and VE220 12/12 acceptance passed, but a dead-quiet real retry hallucinated fluent ASR from near-silence and failed to acquire the intended human turn, so it was not a clean production voice pass; VE222 v2.0.22 is coded in frontend/voice/openai-realtime.js, locally PASS 8/8 with all 13 exported Voice suites PASS / 0 failures, adds acoustic reality before ASR authority, a softer explicit-session near-field bootstrap, and server VAD 0.60 while preserving VE220/VE221 protections; commit runtime first, Build State second, deploy, run VE222/221/220 acceptances, then perform one quiet near-field request plus 30 seconds of silence and require any phantom transcript to die as phantom-asr-without-acoustic-speech before any user turn/response/TTS; provider-side false-VAD transcription cost remains unproven eliminated; durable-execution status 404 remains separate evidence.`
+
+
+
+-------------------------------------------------------------------------------
+
+# BUILD STATE RECONCILIATION — VE223 PRODUCTION CALIBRATION + VE224 EXPLICIT SESSION FOREGROUND CLAIM
+
+**Date:** 2026-09-21  
+**Repository basis:** VE222-reconciled Build State + live production console evidence for VE223  
+**Runtime source target after ordered commits:** `Voice v2.0.24 / VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-20260921-A`
+
+## VE223 — Production-Calibrated Speech Reality
+
+**Voice version:** `2.0.23`  
+**Build:** `VE223-PRODUCTION-CALIBRATED-SPEECH-REALITY-20260921-A`  
+**File:** `frontend/voice/openai-realtime.js`  
+**State:** DEPLOYED / ACCEPTANCE-GREEN / REAL-SPEECH ACQUISITION IMPROVED / NOISY-ROOM OWNERSHIP FAILED
+
+VE223 corrected VE222's over-strict synthetic acoustic calibration using the actual September 21 production microphone evidence.
+
+### Production evidence before VE223
+
+VE222 had correctly rejected phantom ASR, but it also rejected the user's real speech. The real phrase `Maddy, can you hear me?` had approximately:
+
+- `avgRms = 0.0033151090`
+- `peakRms = 0.0240266453`
+- `noiseFloorRms = 0.0046691497`
+- `peak/noise ~= 5.1458`
+
+Provider ASR transcribed the phrase correctly, proving that the microphone and transcription path could hear the user, while the local VE222 speech-reality classifier was too strict for this laptop microphone.
+
+### VE223 change
+
+VE223 preserved the rule that ASR text cannot prove speech existed, while adding structured-speech evidence using:
+
+- segment/sample duration;
+- sustained average-to-peak energy density;
+- peak-to-room-noise contrast;
+- minimum acoustic peak evidence;
+- capture-start noise floor rather than a later room sample.
+
+The earlier dead-quiet fluent hallucination remained rejected while the real production-shaped phrase became acoustically credible.
+
+### VE223 local and deployed acceptance
+
+`OpenAIRealtime.runProductionCalibratedSpeechRealityAcceptanceTest()`
+
+**PASS 10/10**
+
+The production console confirmed:
+
+- `MEOS Voice v2.0.23`
+- build `VE223-PRODUCTION-CALIBRATED-SPEECH-REALITY-20260921-A`
+- VE223 acceptance **10/10 PASS**
+
+## Critical noisy-room production failure after VE223
+
+The user then tested VE223 in a loud hallway with reverberant/bouncing acoustics.
+
+Observed accepted transcripts included:
+
+- `They want you to live-`
+- `They want you to live`
+
+Both were accepted under:
+
+- `reason: explicit-talk-nearfield-bootstrap`
+- `wakeWord: false`
+
+and each authorized one model response and one TTS request.
+
+The user confirmed that these phrases were spoken by **a different background man with a deep voice similar to the user's**, not by the user. The hallway environment also produced strong acoustic reflections.
+
+Correct conclusion:
+
+**VE223 fixed real-speech-versus-phantom classification, but exposed a distinct ownership defect: explicit Talk-to-Maddy treated the first credible real speaker as the foreground user before any same-session speaker owner had been established.**
+
+This is not an acoustic-reality failure. A real human did speak. The failure was assigning that real speech to the wrong conversational owner.
+
+## VE224 — Explicit Session Foreground Claim
+
+**Voice version:** `2.0.24`  
+**Build:** `VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-20260921-A`  
+**File:** `frontend/voice/openai-realtime.js`  
+**State:** CODED / LOCAL-PROVEN / PRODUCTION PENDING
+
+VE224 changes the semantics of explicit Talk-to-Maddy:
+
+**Clicking Talk-to-Maddy arms the session. It does not identify the next person who speaks as the user.**
+
+### Runtime behavior
+
+Before a local foreground-speaker reference exists:
+
+1. Talk-to-Maddy sets the session to an intentional `button-awake` state.
+2. Speaker ownership remains explicitly `unclaimed`.
+3. Acoustically real but non-wake speech is rejected with:
+   - `button-awake-unclaimed-speaker-address-required`
+4. Transcript continuity cannot bypass this unclaimed state.
+5. A phantom transcript containing `Maddy` still dies first under VE222/VE223 acoustic reality.
+6. An acoustically credible explicit `Maddy...` address may claim the session.
+7. That accepted wake/address seeds the existing ephemeral VE218/VE220 local foreground voice reference.
+8. After ownership is established, the same local voice may continue naturally without repeating `Maddy` every turn.
+9. A sufficiently mismatched local voice remains subject to the existing VE218/VE220 rejection rules.
+
+### Telemetry correction
+
+The prior log:
+
+`Foreground conversation acquired by explicit Talk-to-Maddy intent.`
+
+was too strong because the button proved user intent to open Maddy, not physical speaker identity.
+
+VE224 now logs:
+
+`Talk-to-Maddy armed; foreground speaker ownership is not yet claimed.`
+
+and exposes `speakerOwnership: unclaimed` until the wake/address claim succeeds.
+
+### VE224 local acceptance
+
+`OpenAIRealtime.runExplicitSessionForegroundClaimAcceptanceTest()`
+
+**PASS 10/10**
+
+The VE224 fixture explicitly replays the production-shaped loud hallway phrase `They want you to live` as the first credible speaker and proves that it cannot acquire foreground ownership merely by speaking first.
+
+It also proves:
+
+- Talk-to-Maddy arms but leaves ownership unclaimed;
+- rejected unaddressed first speech leaves local foreground references empty;
+- phantom `Maddy` text cannot claim ownership without acoustic reality;
+- an acoustically credible `Maddy, can you hear me?` can claim the session;
+- the claim seeds the ephemeral local voice reference;
+- a matching same-session voice can continue without repeating the wake name;
+- a clearly mismatched local voice cannot steal the floor after ownership exists;
+- recent transcript continuity cannot bypass the initial ownership claim;
+- no biometric persistence, spend, provider autonomy, durable-write, research, or external-action authority is added.
+
+### Full Voice regression after VE224
+
+All exported Voice acceptance functions were executed with asynchronous VE216 properly awaited.
+
+**15 suites — 0 failures**
+
+- VE224 Explicit Session Foreground Claim — **10/10 PASS**
+- VE223 Production-Calibrated Speech Reality — **10/10 PASS**
+- VE222 Acoustic Reality Gate — **8/8 PASS**
+- VE221 Known Self Speech Correlation — **10/10 PASS**
+- VE220 Conversational Acoustic Ownership — **12/12 PASS**
+- VE219 Durable Return Presentation Authority — **10/10 PASS**
+- VE218 Local Voice Signature Continuity — **9/9 PASS**
+- VE217 Intentional Awake / Wake-Only Aggregation — **10/10 PASS**
+- VE216 Durable Research Spoken Return — **9/9 PASS**
+- VE215 Canonical Hallway Research Handoff — **7/7 PASS**
+- VE214 Semantic Intended-Speech Reconstruction — **11/11 PASS**
+- VE213 Context-Grounded Transcription Evidence — **12/12 PASS**
+- VE212 Foreground Interruption Authority Gate — **8/8 PASS**
+- VE210 Transcript / Acoustic Evidence Separation — **8/8 PASS**
+- VE211 Interactive Voice Nonblocking Cognition — **13/13 PASS**
+
+JavaScript syntax also passes under Node `--check`.
+
+## Important limitation — similar deep voices remain production-unproven
+
+VE224 closes the proven **first-speaker bootstrap** defect. It does not establish durable biometric identity and it does not prove that the existing coarse ephemeral spectral voice signature can always distinguish two people with similar deep voices in a reverberant hallway.
+
+The user's actual environment is therefore an important production test rather than something to simulate away.
+
+After the user's `Maddy...` address claims ownership, production must still prove that the similar deep-voiced background speaker cannot later satisfy the local same-speaker continuity threshold under hallway reflections.
+
+Do not mark noisy-room speaker separation production-proven until that test passes.
+
+## Cost/privacy seam still open
+
+VE224 remains post-transcription ownership governance. It does not prevent the already-open Realtime provider from receiving/transcribing a real background utterance before MEOS rejects its conversational authority.
+
+Therefore:
+
+- rejected background speech may still incur provider transcription work/cost;
+- pre-cloud local target-speaker / speech gating remains a future privacy/economics optimization seam;
+- rejecting a transcript locally is not the same thing as preventing upload/transcription.
+
+## Separate durable execution evidence carried forward
+
+The prior production `GET /api/durable-execution/status/<execution-id> -> 404` remains unresolved and separate from the voice ownership failure. Do not attribute it to VE224.
+
+## Ordered commit/test sequence from this checkpoint
+
+1. Commit only `frontend/voice/openai-realtime.js` as VE224.
+2. Allow production deploy to complete.
+3. Commit this `MEOS_BUILD_STATE.md` reconciliation as a separate one-file commit.
+4. In production run:
+   - `OpenAIRealtime.runExplicitSessionForegroundClaimAcceptanceTest()` -> expect **10/10 PASS**
+   - `OpenAIRealtime.runProductionCalibratedSpeechRealityAcceptanceTest()` -> expect **10/10 PASS**
+   - `OpenAIRealtime.runKnownSelfSpeechCorrelationAcceptanceTest()` -> expect **10/10 PASS**
+   - `OpenAIRealtime.runConversationalAcousticOwnershipAcceptanceTest()` -> expect **12/12 PASS**
+5. Quiet/control ownership test:
+   - click Talk-to-Maddy;
+   - say `Maddy, can you hear me?`;
+   - confirm one accepted wake/address turn and local foreground reference acquisition;
+   - ask one natural follow-up without saying `Maddy` and confirm same-speaker continuity.
+6. Noisy/reverberant production test:
+   - start a fresh Talk-to-Maddy session;
+   - before the user claims the session, allow ordinary background speech that does not address Maddy;
+   - require rejection as `button-awake-unclaimed-speaker-address-required` with zero model response/TTS;
+   - user then says `Maddy, can you hear me?` to claim ownership;
+   - after ownership is established, allow the similar deep-voiced background speaker to speak naturally without addressing Maddy;
+   - require that speaker not to acquire a user turn or interrupt Maddy.
+7. Production gets the vote before VE224 is marked production-proven.
+
+## Recovery
+
+**Recovery keyword:** `VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-PRODUCTION-PENDING-20260921`
+
+**Fast recovery:** `Resume VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-PRODUCTION-PENDING-20260921 — VE223 v2.0.23 deployed and acceptance passed 10/10, fixing the VE222 real-speech calibration problem, but a loud reverberant hallway run accepted a different deep-voiced man's phrase "They want you to live" twice as explicit-talk-nearfield-bootstrap with wakeWord false, proving that first credible speech could wrongly become the user; VE224 v2.0.24 is coded in frontend/voice/openai-realtime.js and locally PASS 10/10 with all 15 exported Voice suites PASS / 0 failures; Talk-to-Maddy now arms an unclaimed session, non-wake first speech is rejected as button-awake-unclaimed-speaker-address-required, and only acoustically credible Maddy-address speech can seed the ephemeral same-session foreground reference; production must still prove the existing coarse spectral signature can distinguish the user's deep voice from a similar deep background voice under hallway reflections; provider-side transcription of rejected room speech and the separate durable-execution status 404 remain open seams.`
