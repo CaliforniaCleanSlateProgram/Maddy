@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE_POST_EB1330_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449533/MEOS_BUILD_STATE_POST_EB1330_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449290/MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920 (1).md](https://github.com/user-attachments/files/32448862/MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920.1.md)
 [MEOS_BUILD_STATE_POST_ER153_RECONCILED (1).md](https://github.com/user-attachments/files/32447847/MEOS_BUILD_STATE_POST_ER153_RECONCILED.1.md)
@@ -9912,4 +9913,204 @@ A fresh real spoken Internet-research demonstration is still required as an end-
 **Recovery keyword:** `ARC001-VE216-PROVEN-DP210-NEXT-20260920`
 
 **Fast recovery:** `Resume ARC001-VE216-PROVEN-DP210-NEXT-20260920 — Main91 Build State is the reconciliation base; ER153 is production-proven 11/11, VE214 production-proven 11/11, VE215 production-proven 7/7, and VE216 production-proven 9/9; current voice runtime is 2.0.16 / VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A; bounded semantic speech, canonical Hallway handoff, exact durable research-return observation, evidence-URL preservation, duplicate suppression, and one-mouth governed spoken return are now production-proven at their exact scopes; a fresh real spoken Internet-research mission has not yet proven the complete chain to fresh public evidence and spoken return, so end-to-end research remains open; the earlier mixed 502 durability incident remains historical truth but did not reproduce in later production evidence, with Mission Engine durable hydration READY and degraded=false; wake-only and noisy-room speaker ownership remain open for later VE217; all remaining ARC 001 builds remain local candidates; next staged build is DP210, one file → one commit → one production test → Build State reconciliation.`
+
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — DP210 / EB1320 / EB1330 PRODUCTION RECONCILIATION
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive production reconciliation; no new runtime authority created by this document  
+**Repository base reconciled:** `Maddy-main (92).zip`  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## Purpose
+
+This checkpoint reconciles the three ARC 001 builds commissioned after the prior VE216 Build State reconciliation:
+
+- `DP210` — Maddy World Window observatory
+- `EB1320` — Living Episodic Consolidation
+- `EB1330` — Scored Imagination and Dream Synthesis
+
+All three are separately committed, deployed, and production-acceptance proven at their bounded contracts.
+
+## Current production runtime identity
+
+Latest supplied production evidence establishes:
+
+- **Developer Panel:** `2.1.0`
+- **Developer Panel build:** `DP210-MADDY-WORLD-WINDOW-20260920-A`
+- **Executive Brain:** `1.33.0`
+- **Executive Brain build:** `EB1330-SCORED-IMAGINATION-DREAM-SYNTHESIS-20260920-A`
+- **Executive Router:** `1.5.3`
+- **Router build:** `ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`
+- **Realtime Voice:** `2.0.16`
+- **Voice build:** `VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A`
+- **Executive Hallway:** `1.5.7`
+- **Mission Engine durable authority hydration:** `READY`
+- **Institutional authority source:** `meos-institutional-repository`
+- **Mission Dispatcher:** still not running because `office_dispatch_authority_not_effective`
+
+No later evidence in this checkpoint supersedes those identities.
+
+## DP210 — Maddy World Window Observatory — PRODUCTION-PROVEN
+
+**Runtime:** `2.1.0`  
+**Build:** `DP210-MADDY-WORLD-WINDOW-20260920-A`  
+**Production acceptance:** **PASS `8/8`**
+
+Bounded production proof established that the World Window:
+
+- observes the persistent self-model;
+- observes the world model;
+- observes autobiographical episodes;
+- observes active Hallway work;
+- exposes raw and interpreted speech as separate evidence;
+- is explicitly structured observability rather than chain-of-thought exposure;
+- grants no mutation, provider, spend, external-action, or self-modification authority;
+- collects snapshots without calling mutating fixture methods.
+
+### DP210 limitation preserved
+
+The World Window is an observatory, not cognition authority. It may surface structured state but must not become a hidden control plane, a substitute for Maddy's cognition, or a chain-of-thought disclosure surface.
+
+## EB1320 — Living Episodic Consolidation — PRODUCTION-PROVEN
+
+**Runtime:** `1.32.0`  
+**Build:** `EB1320-LIVING-EPISODIC-CONSOLIDATION-20260920-A`  
+**Production acceptance:** **PASS `11/11`**
+
+Bounded production proof established:
+
+- autobiographical episodes advance to the living v2 schema;
+- experience preserves environment, participants, goals, and expectations;
+- uncertainty and competing explanations remain part of the episode instead of being flattened into certainty;
+- prediction, consequence, validation, and learning lineage survive together;
+- salience is multidimensional;
+- related later experience forms explicit cross-episode links;
+- repeated experience strengthens recurrence without inventing duplicate episodes;
+- consolidation evaluates every episode but authorizes no destructive forgetting;
+- important consequence remains recommended at useful resolution;
+- apparently low-value experience is retained cheaply and can be revalued later;
+- memory formation and consolidation manufacture no truth, spend, or action authority.
+
+### EB1320 limitation preserved
+
+EB1320 proves structured living episodes, multidimensional salience, relationship linking, non-destructive consolidation recommendations, recurrence, and later revaluation.
+
+It does **not** yet prove:
+
+- learned latent representations;
+- destructive forgetting;
+- autonomous representation redesign;
+- causal proof that a new learned representation improves future cognition.
+
+## EB1330 — Scored Imagination and Dream Synthesis — PRODUCTION-PROVEN
+
+**Runtime:** `1.33.0`  
+**Build:** `EB1330-SCORED-IMAGINATION-DREAM-SYNTHESIS-20260920-A`  
+**Production acceptance:** **PASS `9/9`**
+
+Bounded production proof established:
+
+1. world prediction preregisters competing futures with normalized confidence;
+2. prediction preserves assumptions, hidden variables, and discriminating evidence before reality is known;
+3. prediction refuses to masquerade as fact or execution authority;
+4. only verified sourced reality can score a prediction;
+5. verified reality scores calibration and exposes prediction error;
+6. prediction error becomes autobiographical learning rather than disappearing;
+7. dream synthesis connects distinct real episodes with provenance;
+8. dream output is a falsifiable proposal, not mystical truth;
+9. dream synthesis creates no action, spend, or deployment authority.
+
+### EB1330 limitation preserved
+
+EB1330 proves scored prediction ledgers and provenance-bound idle synthesis.
+
+It does **not** yet prove:
+
+- high-fidelity learned world simulation;
+- autonomous experiment execution;
+- autonomous production mutation;
+- that dream output is true merely because it is novel or internally coherent.
+
+## ARC 001 state after this checkpoint
+
+Production-proven:
+
+- `ER153` — natural public-research intent — **PASS `11/11`**
+- `VE214` — semantic intended-speech reconstruction — **PASS `11/11`**
+- `VE215` — canonical Hallway research handoff — **PASS `7/7`**
+- `VE216` — durable research spoken return — **PASS `9/9`**
+- `DP210` — Maddy World Window observatory — **PASS `8/8`**
+- `EB1320` — living episodic consolidation — **PASS `11/11`**
+- `EB1330` — scored imagination and dream synthesis — **PASS `9/9`**
+
+Still staged/local candidates and **not** production-proven at this checkpoint:
+
+- `EB1340` — Fundamental-Gap Capability Foundry
+- `ERAE320` — Maddy growth-capital intelligence
+- `EB1350` — Governed Development Forge
+- `EB1360` — experience-driven representation plasticity
+- `VE217` — intentional awake and wake-only behavior
+- `VE218` — local voice-signature continuity evidence
+
+## Exact next move
+
+**Next staged code build: `EB1340` — Fundamental-Gap Capability Foundry.**
+
+Apply only:
+
+`stages/08_EB1340/executive-brain.js`
+→ `frontend/executive-brain.js`
+
+Then:
+
+1. one file → one commit;
+2. deploy;
+3. run `ExecutiveBrain.runFundamentalGapCapabilityFoundryAcceptanceTest()`;
+4. require production **PASS `10/10`**;
+5. reconcile Build State before advancing to `ERAE320`.
+
+## EB1340 truth boundary before commissioning
+
+EB1340 is intended to determine whether a recurring consequential limitation is merely an isolated failure or evidence of a persistent missing fundamental function; compare incumbent vs challenger mechanisms; require discriminating evidence and rollback; and propose new organogenesis only when existing organs fit poorly and specialized state/timing/representation is actually required.
+
+It must **not**:
+
+- assume novelty wins;
+- fabricate claims about frontier systems without supplied evidence;
+- create organs merely because a gap exists;
+- self-authorize sandbox execution, production mutation, incorporation, provider use, spend, or external action.
+
+A capability proposal is not yet a capability.
+
+## Existing open truths remain open
+
+Nothing in DP210, EB1320, or EB1330 closes these separate issues:
+
+- end-to-end spoken Internet research has not yet been freshly proven through the full live chain from speech to fresh public evidence to governed spoken return;
+- the earlier mixed 502 durability incident remains real historical evidence although it did not reproduce in later supplied startup captures;
+- wake-only / noisy-room speaker-ownership behavior remains open for later VE217;
+- learned representation plasticity remains a frontier gap for later EB1360.
+
+## Anti-drift rules carried forward
+
+1. Structured observability is not chain-of-thought exposure.
+2. Observability grants no mutation authority.
+3. Memory richness is not learned representation plasticity.
+4. A dream is a falsifiable proposal, not truth.
+5. Predictions are scored only against verified sourced reality.
+6. Prediction error must survive as learning evidence.
+7. Novel mechanisms must beat an incumbent under preregistered evidence.
+8. A persistent gap does not automatically justify a new organ.
+9. Function discovers anatomy; anatomy does not dictate function.
+10. Capability is not authority.
+11. Production gets the vote.
+12. The North Star and Spooky bar remain unchanged.
+
+**Recovery keyword:** `ARC001-EB1330-PROVEN-EB1340-NEXT-20260920`
+
+**Fast recovery:** `Resume ARC001-EB1330-PROVEN-EB1340-NEXT-20260920 — Main92 Build State is the reconciliation base; DP210 is production-proven 8/8, EB1320 production-proven 11/11, and EB1330 production-proven 9/9; current Executive Brain runtime is 1.33.0 / EB1330-SCORED-IMAGINATION-DREAM-SYNTHESIS-20260920-A; the World Window is a read-only structured observatory, living autobiographical episodes preserve context/uncertainty/lineage without destructive forgetting, and imagination/dream output is provenance-bound and scored against verified reality rather than treated as truth; no new spend, provider, deployment, external-action, or self-modification authority was created; end-to-end spoken Internet research, wake-only speaker ownership, destructive forgetting, learned representation plasticity, and permanent 502 root-cause resolution remain open; all later ARC 001 builds remain candidates until separately committed, deployed, and production-tested; next staged build is EB1340 Fundamental-Gap Capability Foundry, one file → one commit → one production test → Build State reconciliation.`
 
