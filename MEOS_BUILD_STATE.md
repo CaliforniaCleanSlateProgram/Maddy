@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32450395/MEOS_BUILD_STATE.md)
+[Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449860/MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449290/MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920 (1).md](https://github.com/user-attachments/files/32448862/MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920.1.md)
@@ -10665,4 +10665,128 @@ Nothing in EB1360 closes these independent gaps:
 **Recovery keyword:** `ARC001-EB1360-PROVEN-VE217-NEXT-20260920`
 
 **Fast recovery:** `Resume ARC001-EB1360-PROVEN-VE217-NEXT-20260920 — EB1360 is production-proven 10/10 at Executive Brain 1.36.0 / EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A; unverified outcomes cannot train representation, verified consequences can update exact-scope feature weights, learned weights remain normalized and bounded, organization-private learning stays inside organization scope, cross-organization updates are refused, historical episodes may be re-scored without erasing original salience, and later same-scope episodes automatically use the learned representation; this is genuine bounded representation plasticity but not open-ended latent feature discovery, neural-weight training, broad continual learning without forgetting, or autonomous recursive self-modification; next staged build is VE217 Intentional Awake and Wake-Only Behavior.`
+
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — VE217 PRODUCTION RECONCILIATION
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive production reconciliation; no new runtime authority created by this document  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## VE217 — Intentional Awake and Wake-Only Aggregation — PRODUCTION-PROVEN
+
+**Runtime:** `2.0.17`  
+**Build:** `VE217-INTENTIONAL-AWAKE-AND-WAKE-ONLY-AGGREGATION-20260920-A`  
+**Production acceptance:** **PASS `10/10`**
+
+Production acceptance established that:
+
+- Talk-to-Maddy connection mode is intentionally awake rather than microphone-on-but-asleep;
+- explicit button acquisition is recorded independently of wake-word acquisition;
+- passive mode refuses to create a cloud session merely to discover whether Maddy was addressed;
+- standalone wake and salutation variants are classified as wake-only;
+- wake plus a substantive request is not swallowed as wake-only;
+- wake-only acquisition creates no conversational turn;
+- wake-only acquisition creates no provider response request;
+- wake-only acquisition leaves Maddy awake and waiting for the next request;
+- wake-only attention retains no invented interpreted request;
+- attention acquisition grants no research, spend, durable-write, provider-autonomy, or external-action authority.
+
+Production logs also showed a wake-only utterance (`Maddy!`) acquiring attention without creating a conversational request.
+
+### Limitation preserved
+
+VE217 proves explicit button-awake semantics, wake-only aggregation, and fail-closed passive cloud connection.
+
+It does **not** yet provide:
+
+- the local wake detector required for true passive/asleep operation;
+- biometric speaker ownership;
+- durable speaker identity;
+- general ambient-room diarization.
+
+Those remain separate future capabilities.
+
+## Current production identity
+
+Latest supplied production evidence establishes:
+
+- **Realtime Voice:** `2.0.17`
+- **Voice build:** `VE217-INTENTIONAL-AWAKE-AND-WAKE-ONLY-AGGREGATION-20260920-A`
+- **Executive Brain:** `1.36.0 / EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A`
+- **Executive Resource Acquisition Engine:** `3.2.0 / ERAE320-MADDY-GROWTH-CAPITAL-INTELLIGENCE-20260920-A`
+- **Developer Panel:** `2.1.0 / DP210-MADDY-WORLD-WINDOW-20260920-A`
+- **Executive Router:** `1.5.3 / ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`
+- **Mission Engine durable authority hydration:** `READY`
+- **Institutional authority source:** `meos-institutional-repository`
+- **Mission Dispatcher:** still not running because `office_dispatch_authority_not_effective`
+
+## ARC 001 production sequence now proven
+
+- `ER153` — natural public-research intent — **11/11**
+- `VE214` — semantic intended-speech reconstruction — **11/11**
+- `VE215` — canonical Hallway research handoff — **7/7**
+- `VE216` — durable research spoken return — **9/9**
+- `DP210` — Maddy World Window observatory — **8/8**
+- `EB1320` — living episodic consolidation — **11/11**
+- `EB1330` — scored imagination and dream synthesis — **9/9**
+- `EB1340` — Fundamental-Gap Capability Foundry — **10/10**
+- `ERAE320` — Maddy Growth-Capital Intelligence — **10/10 + legacy 6/6**
+- `EB1350` — Governed Development Forge — **10/10**
+- `EB1360` — Experience-Driven Representation Plasticity — **10/10**
+- `VE217` — Intentional Awake and Wake-Only Aggregation — **10/10**
+
+Still staged/local and not production-proven:
+
+- `VE218` — Local Voice-Signature Continuity Evidence
+
+## Exact next move
+
+**Next staged build: `VE218` — Local Voice-Signature Continuity Evidence.**
+
+Apply only:
+
+`stages/13_VE218/openai-realtime.js`
+→ `frontend/voice/openai-realtime.js`
+
+VE218 is intended to add bounded, local, ephemeral voice-signature continuity evidence without turning acoustic similarity into biometric identity or durable cross-session speaker authority.
+
+Then:
+
+1. one file → one commit;
+2. deploy;
+3. run the exact VE218 production acceptance test;
+4. preserve all VE214–VE217 regressions;
+5. reconcile Build State;
+6. perform the ARC 001 end-to-end demonstration checkpoint.
+
+## Open truth carried forward
+
+Nothing in VE217 closes these independent gaps:
+
+- true passive/asleep operation still lacks a local wake detector;
+- biometric speaker ownership is not proven;
+- speaker continuity / local voice-signature evidence remains open for VE218;
+- end-to-end spoken Internet research still requires a fresh full-chain live demonstration;
+- high-fidelity learned world simulation remains open;
+- open-ended latent feature discovery remains beyond EB1360;
+- the earlier mixed durability 502 incident remains historical evidence without a proven permanent root cause.
+
+## Anti-drift rules carried forward
+
+1. Wake acquisition is not a substantive request.
+2. Mentioning Maddy is not automatically equivalent to intentional address.
+3. Wake-only speech creates no provider response request.
+4. Passive cloud connection is not a substitute for local wake authority.
+5. Attention acquisition grants no research, spend, durable-write, provider-autonomy, or external-action authority.
+6. Voice-signature continuity must not be inflated into biometric identity.
+7. Production gets the vote.
+8. The North Star and Spooky bar remain unchanged.
+
+**Recovery keyword:** `ARC001-VE217-PROVEN-VE218-NEXT-20260920`
+
+**Fast recovery:** `Resume ARC001-VE217-PROVEN-VE218-NEXT-20260920 — VE217 is production-proven 10/10 at Voice 2.0.17 / VE217-INTENTIONAL-AWAKE-AND-WAKE-ONLY-AGGREGATION-20260920-A; Talk-to-Maddy is intentionally awake, button-awake and wake-word acquisition are distinct, passive mode fails closed instead of opening cloud sessions to discover address, standalone wake/salutation is attention-only, wake plus substantive requests remain substantive, wake-only acquisition creates no conversational turn or provider response, and attention acquisition creates no research/spend/durable-write/provider-autonomy/external-action authority; VE217 does not provide a local passive wake detector or biometric speaker ownership; next staged build is VE218 Local Voice-Signature Continuity Evidence.`
 
