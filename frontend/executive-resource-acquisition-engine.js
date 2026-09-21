@@ -2,8 +2,8 @@
  * Maddy Executive Operating System (MEOS)
  * Executive Resource Acquisition Engine
  *
- * Version: 3.1.0
- * Build: ERAE310-FAST-TRACK-BANKABILITY-PORTFOLIO-20260815-A
+ * Version: 3.2.0
+ * Build: ERAE320-MADDY-GROWTH-CAPITAL-INTELLIGENCE-20260920-A
  *
  * Mission:
  * Make one authoritative executive decision for every grant or resource
@@ -16,8 +16,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Resource Acquisition Engine";
-  const VERSION = "3.1.0";
-  const BUILD_ID = "ERAE310-FAST-TRACK-BANKABILITY-PORTFOLIO-20260815-A";
+  const VERSION = "3.2.0";
+  const BUILD_ID = "ERAE320-MADDY-GROWTH-CAPITAL-INTELLIGENCE-20260920-A";
   const SCHEMA = "meos.executive-resource-decision.v2";
 
   const DECISIONS = Object.freeze({
@@ -728,6 +728,409 @@
     };
   }
 
+  const GROWTH_RESOURCE_CLASSES = Object.freeze([
+    "compute",
+    "storage",
+    "networking",
+    "people",
+    "data",
+    "legal",
+    "hardware",
+    "time",
+    "distribution",
+    "capital"
+  ]);
+
+  const GROWTH_FUNDING_TYPES = Object.freeze({
+    CUSTOMER_REVENUE: "customer-revenue",
+    GRANT: "grant-non-dilutive",
+    INFRASTRUCTURE_CREDIT: "infrastructure-credit",
+    RESEARCH_PROGRAM: "research-program",
+    STRATEGIC_PARTNERSHIP: "strategic-partnership",
+    LICENSING: "licensing",
+    GOVERNMENT: "government-program-or-contract",
+    ANGEL: "angel-investment",
+    VENTURE: "venture-capital",
+    CORPORATE: "corporate-investment",
+    JOINT_VENTURE: "joint-venture"
+  });
+
+  function bounded01(value, fallback = 0) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(1, n));
+  }
+
+  function optionalMoney(value) {
+    if (value === null || value === undefined || value === "") return null;
+    return parseMoney(value);
+  }
+
+  function growthResourceForecast(capabilityNeed = {}) {
+    const requirements = capabilityNeed.requirements && typeof capabilityNeed.requirements === "object"
+      ? capabilityNeed.requirements
+      : {};
+    const sourceEvidence = array(capabilityNeed.sourceEvidence || capabilityNeed.evidence)
+      .map(String)
+      .filter(Boolean);
+    const unknowns = [];
+    let totalKnownUsd = 0;
+    let pricedRequirementCount = 0;
+
+    const resources = GROWTH_RESOURCE_CLASSES.map(resourceClass => {
+      const raw = requirements[resourceClass];
+      const detail = raw && typeof raw === "object" ? raw : (raw === undefined ? {} : { need: raw });
+      const estimatedUsd = optionalMoney(
+        detail.estimatedUsd ?? detail.costUsd ?? detail.budgetUsd ?? null
+      );
+      if (estimatedUsd !== null && estimatedUsd >= 0) {
+        totalKnownUsd += estimatedUsd;
+        pricedRequirementCount += 1;
+      }
+      const needed = Boolean(
+        detail.needed === true ||
+        detail.need ||
+        detail.quantity ||
+        detail.description ||
+        (estimatedUsd !== null && estimatedUsd > 0)
+      );
+      if (needed && estimatedUsd === null) {
+        unknowns.push(`${resourceClass} requirement has no evidence-backed cost estimate.`);
+      }
+      return {
+        resourceClass,
+        needed,
+        description: detail.description || detail.need || null,
+        quantity: detail.quantity ?? null,
+        estimatedUsd,
+        timing: detail.timing || capabilityNeed.horizon || null,
+        evidence: array(detail.evidence).map(String).filter(Boolean)
+      };
+    });
+
+    return {
+      success: true,
+      schema: "meos.maddy.growth-resource-forecast.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      forecastAt: now(),
+      capability: capabilityNeed.name || capabilityNeed.capability || "unnamed-capability-need",
+      objective: capabilityNeed.objective || null,
+      horizon: capabilityNeed.horizon || null,
+      resources,
+      knownBudget: {
+        totalUsd: totalKnownUsd,
+        pricedRequirementCount,
+        complete: resources.filter(item => item.needed).every(item => item.estimatedUsd !== null)
+      },
+      sourceEvidence,
+      unknowns,
+      truthBoundary: "Missing resource cost is uncertainty, not permission to invent a budget."
+    };
+  }
+
+  function inferFundingType(route = {}) {
+    const explicit = normalize(route.fundingType || route.type || route.category);
+    const corpus = normalize([
+      explicit,
+      route.title,
+      route.description,
+      route.sourceType
+    ].filter(Boolean).join(" "));
+    const map = [
+      [GROWTH_FUNDING_TYPES.CUSTOMER_REVENUE, /customer revenue|contract revenue|paid customer|sales revenue/],
+      [GROWTH_FUNDING_TYPES.GRANT, /grant|non dilutive|foundation award/],
+      [GROWTH_FUNDING_TYPES.INFRASTRUCTURE_CREDIT, /cloud credit|hardware credit|infrastructure credit|compute credit/],
+      [GROWTH_FUNDING_TYPES.RESEARCH_PROGRAM, /research program|research award|research partnership|university program/],
+      [GROWTH_FUNDING_TYPES.STRATEGIC_PARTNERSHIP, /strategic partnership|strategic partner/],
+      [GROWTH_FUNDING_TYPES.LICENSING, /licensing|license revenue|royalty/],
+      [GROWTH_FUNDING_TYPES.GOVERNMENT, /government contract|government program|public contract/],
+      [GROWTH_FUNDING_TYPES.ANGEL, /angel investment|angel investor|angel capital/],
+      [GROWTH_FUNDING_TYPES.VENTURE, /venture capital|\bvc\b|venture investment/],
+      [GROWTH_FUNDING_TYPES.CORPORATE, /corporate investment|corporate venture/],
+      [GROWTH_FUNDING_TYPES.JOINT_VENTURE, /joint venture|\bjv\b/]
+    ];
+    for (const [type, pattern] of map) {
+      if (pattern.test(corpus)) return type;
+    }
+    return explicit || "other-or-unclassified";
+  }
+
+  function evaluateGrowthFundingRoute(route = {}, forecast = {}, constraints = {}) {
+    const evidence = array(route.sourceEvidence || route.evidence)
+      .map(String)
+      .filter(Boolean);
+    const fundingType = inferFundingType(route);
+    const amountUsd = optionalMoney(route.amountUsd ?? route.amount ?? route.value ?? null);
+    const timingDays = Number.isFinite(Number(route.timingDays)) ? Number(route.timingDays) : null;
+    const probability = route.probability === null || route.probability === undefined
+      ? null
+      : bounded01(route.probability);
+    const dilution = route.dilutionPercent === null || route.dilutionPercent === undefined
+      ? null
+      : Math.max(0, Number(route.dilutionPercent));
+    const controlCost = bounded01(route.controlCost, 0);
+    const restrictionCost = bounded01(route.restrictionCost, 0);
+    const executionCost = bounded01(route.executionCost, 0.25);
+    const risk = bounded01(route.risk, 0.25);
+    const nonDilutive = route.nonDilutive === true || [
+      GROWTH_FUNDING_TYPES.CUSTOMER_REVENUE,
+      GROWTH_FUNDING_TYPES.GRANT,
+      GROWTH_FUNDING_TYPES.INFRASTRUCTURE_CREDIT,
+      GROWTH_FUNDING_TYPES.LICENSING,
+      GROWTH_FUNDING_TYPES.GOVERNMENT
+    ].includes(fundingType);
+
+    const unknowns = [];
+    if (!evidence.length) unknowns.push("No source evidence verifies that this funding route currently exists or is available.");
+    if (amountUsd === null) unknowns.push("Available amount is not verified.");
+    if (timingDays === null) unknowns.push("Time-to-capital is not verified.");
+    if (probability === null) unknowns.push("Acquisition probability is not evidence-backed.");
+    if (!nonDilutive && dilution === null) unknowns.push("Dilution is not quantified.");
+
+    const knownNeed = Number(forecast?.knownBudget?.totalUsd || 0);
+    const coverage = amountUsd !== null && knownNeed > 0
+      ? Math.max(0, Math.min(1.5, amountUsd / knownNeed))
+      : null;
+    const urgencyFit = timingDays === null ? 0.5 : timingDays <= 30 ? 1 : timingDays <= 90 ? 0.75 : timingDays <= 180 ? 0.5 : 0.3;
+    const evidenceStrength = Math.min(1, evidence.length / 2);
+    const probabilityBasis = probability === null ? 0.35 : probability;
+    const coverageBasis = coverage === null ? 0.4 : Math.min(1, coverage);
+    const independenceFit = Math.max(0, 1 - (controlCost * 0.55 + restrictionCost * 0.25 + (nonDilutive ? 0 : Math.min(0.5, (dilution || 0) / 100))));
+    const rawFit = (
+      coverageBasis * 0.25 +
+      urgencyFit * 0.15 +
+      evidenceStrength * 0.2 +
+      probabilityBasis * 0.15 +
+      independenceFit * 0.15 +
+      (1 - risk) * 0.05 +
+      (1 - executionCost) * 0.05
+    );
+    const fitScore = Math.round(rawFit * 1000) / 10;
+
+    const maxDilution = constraints.maxDilutionPercent;
+    const dilutionConflict = Number.isFinite(Number(maxDilution)) && dilution !== null && dilution > Number(maxDilution);
+    const controlConflict = constraints.preserveFounderControl === true && controlCost >= 0.65;
+    const restrictionConflict = constraints.maxRestrictionCost !== undefined && restrictionCost > bounded01(constraints.maxRestrictionCost);
+    const conflicts = [
+      dilutionConflict ? `Dilution ${dilution}% exceeds configured maximum ${Number(maxDilution)}%.` : null,
+      controlConflict ? "Control cost conflicts with founder-control constraint." : null,
+      restrictionConflict ? "Restriction cost exceeds configured tolerance." : null
+    ].filter(Boolean);
+
+    return {
+      routeId: route.id || route.externalId || null,
+      title: route.title || "Unnamed funding route",
+      fundingType,
+      sourceUrl: route.sourceUrl || route.url || null,
+      evidence,
+      amountUsd,
+      timingDays,
+      probability,
+      nonDilutive,
+      dilutionPercent: dilution,
+      controlCost,
+      restrictionCost,
+      executionCost,
+      risk,
+      coverageOfKnownNeed: coverage,
+      fitScore,
+      conflicts,
+      unknowns,
+      status: conflicts.length
+        ? "constraint-conflict"
+        : evidence.length
+          ? "evidence-backed-candidate"
+          : "research-required",
+      authority: {
+        outreachAuthorized: false,
+        applicationAuthorized: false,
+        contractAuthorized: false,
+        equityAuthorized: false,
+        debtAuthorized: false,
+        spendingAuthorized: false
+      }
+    };
+  }
+
+  function rankGrowthFundingRoutes(routes = [], forecast = {}, constraints = {}) {
+    const evaluated = array(routes)
+      .map(route => evaluateGrowthFundingRoute(route, forecast, constraints))
+      .sort((a, b) => {
+        const statusRank = status => status === "evidence-backed-candidate" ? 2 : status === "research-required" ? 1 : 0;
+        const statusDelta = statusRank(b.status) - statusRank(a.status);
+        if (statusDelta) return statusDelta;
+        return b.fitScore - a.fitScore;
+      });
+    return {
+      success: true,
+      schema: "meos.maddy.growth-capital-route-portfolio.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      rankedAt: now(),
+      constraints: {
+        maxDilutionPercent: constraints.maxDilutionPercent ?? null,
+        preserveFounderControl: constraints.preserveFounderControl === true,
+        maxRestrictionCost: constraints.maxRestrictionCost ?? null
+      },
+      routes: evaluated,
+      truthBoundary: "A route ranking is strategy evidence, not proof that funding exists and not authority to contact, apply, contract, borrow, issue equity, or spend."
+    };
+  }
+
+  function validateCapitalNarrativeClaim(claim = {}) {
+    const statement = String(claim.statement || claim.claim || "").trim();
+    const kind = normalize(claim.kind || "factual");
+    const evidence = array(claim.evidence || claim.sourceEvidence).map(String).filter(Boolean);
+    const forwardLooking = /vision|goal|target|forecast|hypothesis|plan/.test(kind);
+    const explicitLabel = Boolean(claim.forwardLooking === true || claim.label === "forward-looking");
+    const factual = !forwardLooking && !explicitLabel;
+    const supported = !factual || evidence.length > 0;
+    return {
+      statement,
+      kind: factual ? "factual" : "forward-looking",
+      evidence,
+      accepted: Boolean(statement) && supported,
+      reason: !statement
+        ? "Empty claim."
+        : supported
+          ? (factual ? "Factual claim carries supporting evidence." : "Forward-looking claim is explicitly framed as such.")
+          : "Unsupported factual claim is excluded from the capital narrative.",
+      doctrine: "Maddy may persuade. Maddy may not deceive."
+    };
+  }
+
+  function buildGrowthCapitalStrategy(capabilityNeed = {}, routes = [], context = {}) {
+    const forecast = growthResourceForecast(capabilityNeed);
+    const routePortfolio = rankGrowthFundingRoutes(routes, forecast, context.constraints || {});
+    const claims = array(context.claims).map(validateCapitalNarrativeClaim);
+    const acceptedClaims = claims.filter(item => item.accepted);
+    const rejectedClaims = claims.filter(item => !item.accepted);
+    const evidenceBackedRoutes = routePortfolio.routes.filter(route => route.status === "evidence-backed-candidate");
+    const researchTargets = routePortfolio.routes.filter(route => route.status === "research-required");
+
+    return {
+      success: true,
+      schema: "meos.maddy.growth-capital-strategy.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      createdAt: now(),
+      capabilityNeed: {
+        capability: forecast.capability,
+        objective: forecast.objective,
+        horizon: forecast.horizon
+      },
+      resourceForecast: forecast,
+      fundingPortfolio: routePortfolio,
+      evidenceBackedRoutes,
+      researchTargets,
+      narrative: {
+        acceptedClaims,
+        rejectedClaims,
+        doctrine: "Maddy may persuade. Maddy may not deceive."
+      },
+      nextDecision: evidenceBackedRoutes.length
+        ? "Founder may review evidence-backed routes and separately authorize any outreach or transaction step."
+        : "Discover and verify candidate funding sources before proposing outreach.",
+      authority: {
+        founderDecisionRequired: true,
+        outreachAuthorized: false,
+        applicationsAuthorized: false,
+        contractsAuthorized: false,
+        equityIssuanceAuthorized: false,
+        debtAuthorized: false,
+        spendingAuthorized: false,
+        externalCommunicationAuthorized: false
+      }
+    };
+  }
+
+  function runGrowthCapitalIntelligenceAcceptanceTest() {
+    const need = {
+      name: "native-embodiment-r-and-d",
+      objective: "Fund a bounded next-stage digital-human experiment.",
+      horizon: "six-month",
+      sourceEvidence: ["capability-plan-001"],
+      requirements: {
+        compute: { description: "GPU experiment capacity", estimatedUsd: 12000, evidence: ["quote-compute-1"] },
+        storage: { description: "training artifact storage", estimatedUsd: 3000, evidence: ["quote-storage-1"] },
+        legal: { description: "IP review", evidence: ["scope-legal-1"] }
+      }
+    };
+    const forecast = growthResourceForecast(need);
+    const routes = [
+      {
+        id: "credit-1",
+        title: "Verified Infrastructure Credit",
+        fundingType: "infrastructure-credit",
+        amountUsd: 10000,
+        timingDays: 21,
+        probability: 0.7,
+        nonDilutive: true,
+        risk: 0.1,
+        restrictionCost: 0.15,
+        executionCost: 0.15,
+        sourceEvidence: ["program-page", "terms-page"]
+      },
+      {
+        id: "vc-1",
+        title: "Verified Venture Investment",
+        fundingType: "venture-capital",
+        amountUsd: 250000,
+        timingDays: 90,
+        probability: 0.25,
+        dilutionPercent: 25,
+        controlCost: 0.75,
+        risk: 0.45,
+        executionCost: 0.7,
+        sourceEvidence: ["investor-thesis"]
+      },
+      {
+        id: "rumor-1",
+        title: "Unverified Grant Rumor",
+        fundingType: "grant",
+        amountUsd: 100000
+      }
+    ];
+    const portfolio = rankGrowthFundingRoutes(routes, forecast, {
+      maxDilutionPercent: 15,
+      preserveFounderControl: true,
+      maxRestrictionCost: 0.7
+    });
+    const strategy = buildGrowthCapitalStrategy(need, routes, {
+      constraints: { maxDilutionPercent: 15, preserveFounderControl: true },
+      claims: [
+        { statement: "Production proof X passed.", kind: "factual", evidence: ["production-proof-x"] },
+        { statement: "We have ten paid customers.", kind: "factual" },
+        { statement: "Our goal is native embodiment.", kind: "vision" }
+      ]
+    });
+
+    const checks = [
+      { name: "Forecast sums only evidence-supplied numeric costs", passed: forecast.knownBudget.totalUsd === 15000 },
+      { name: "Unpriced required resource remains explicit uncertainty", passed: forecast.unknowns.some(item => item.includes("legal")) },
+      { name: "Verified non-dilutive infrastructure route remains a candidate", passed: portfolio.routes.find(item => item.routeId === "credit-1")?.status === "evidence-backed-candidate" },
+      { name: "High dilution/control venture route conflicts with founder constraints", passed: portfolio.routes.find(item => item.routeId === "vc-1")?.status === "constraint-conflict" },
+      { name: "Unverified funding rumor is research-required, not treated as available money", passed: portfolio.routes.find(item => item.routeId === "rumor-1")?.status === "research-required" },
+      { name: "Unsupported factual traction claim is rejected", passed: strategy.narrative.rejectedClaims.some(item => item.statement.includes("ten paid customers")) },
+      { name: "Evidence-backed factual claim is retained", passed: strategy.narrative.acceptedClaims.some(item => item.statement.includes("Production proof")) },
+      { name: "Explicit vision statement can remain as forward-looking rather than fact", passed: strategy.narrative.acceptedClaims.some(item => item.kind === "forward-looking") },
+      { name: "Capital intelligence never authorizes outreach or transactions", passed: strategy.authority.outreachAuthorized === false && strategy.authority.contractsAuthorized === false && strategy.authority.equityIssuanceAuthorized === false && strategy.authority.debtAuthorized === false },
+      { name: "Capital strategy preserves founder decision authority", passed: strategy.authority.founderDecisionRequired === true }
+    ];
+
+    return {
+      success: checks.every(check => check.passed),
+      schema: "meos.maddy.growth-capital-intelligence.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed: checks.filter(check => check.passed).length,
+      total: checks.length,
+      checks,
+      sample: { forecast, portfolio, strategy }
+    };
+  }
+
   function runAcceptanceTest() {
     const future = days => new Date(Date.now() + days * 86400000).toISOString();
     const nonprofit = {
@@ -833,6 +1236,12 @@
     decide,
     rankPortfolio,
     toGrantOfficeEvaluation,
+    growthResourceForecast,
+    evaluateGrowthFundingRoute,
+    rankGrowthFundingRoutes,
+    validateCapitalNarrativeClaim,
+    buildGrowthCapitalStrategy,
+    runGrowthCapitalIntelligenceAcceptanceTest,
     runAcceptanceTest
   });
 
