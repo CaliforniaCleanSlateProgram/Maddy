@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.18
+ * File Version: 2.0.19
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -28,15 +28,17 @@
  * - Authorize no more than one OpenAI response per user turn, even when prior routing finishes late.
  * - Accept and publish each OpenAI response only once.
  * - Preserve turn IDs and response IDs for downstream TTS control.
+ * - Keep completed durable work available to the Executive Hub even when live voice is disconnected.
+ * - Treat live voice connection as presentation authority: a disconnected return may not trigger TTS.
  * - Support interruption and complete session shutdown.
  */
 
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.18";
+  const VERSION = "2.0.19";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE218-LOCAL-VOICE-SIGNATURE-CONTINUITY-20260920-A";
+  const BUILD_ID = "VE219-DURABLE-RETURN-PRESENTATION-AUTHORITY-20260921-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -2606,6 +2608,15 @@
     return visit(work);
   }
 
+  function liveVoicePresentationAuthority() {
+    return Boolean(
+      state.connected === true &&
+      state.configured === true &&
+      state.disconnecting !== true &&
+      state.dataChannel?.readyState === "open"
+    );
+  }
+
   function publishGovernedResearchReturn(work, observer) {
     const executionId = String(observer?.executionId || work?.execution?.executionId || "").trim();
     if (!executionId || state.completedResearchReturnIds.has(executionId)) return false;
@@ -2614,6 +2625,7 @@
 
     const responseId = `research-return-${executionId}`;
     const turnId = String(observer?.turnId || `research-${executionId}`).trim();
+    const speechPresentationAuthorized = liveVoicePresentationAuthority();
     const returned = Object.freeze({
       executionId,
       workId: work?.id || observer?.workId || null,
@@ -2623,12 +2635,24 @@
       citations: governed.citations,
       finalSpeechAuthorized: true,
       oneMouth: true,
+      presentationMode: speechPresentationAuthorized
+        ? "live-voice-and-desk"
+        : "desk-only",
+      liveSpeechPresentationAuthorized: speechPresentationAuthorized,
+      speechPresented: speechPresentationAuthorized,
+      deferredSpeechReason: speechPresentationAuthorized
+        ? null
+        : "live-voice-presentation-not-active",
       rawServerOutputPresented: false,
       externalActionAuthorityGranted: false,
       automaticSpendUsd: 0,
       returnedAt: new Date().toISOString()
     });
 
+    // Publication identity belongs to the durable execution, not to a voice
+    // session. Once the governed return is accepted, reconnecting voice must
+    // not cause the observer to auto-publish it again. Explicit later read-
+    // aloud is a separate presentation action over the stored returned work.
     state.completedResearchReturnIds.add(executionId);
     if (state.completedResearchReturnIds.size > 100) {
       state.completedResearchReturnIds.delete(state.completedResearchReturnIds.values().next().value);
@@ -2636,7 +2660,16 @@
     state.lastResearchReturn = returned;
     state.researchReturnObservers.delete(executionId);
 
+    // The returned work remains available through the canonical Hallway /
+    // Executive Hub path regardless of voice state. This event is status and
+    // presentation metadata only; it grants no new work or speech authority.
     emit("research-return-ready", returned);
+
+    if (!speechPresentationAuthorized) {
+      emit("research-return-deferred-to-desk", returned);
+      return true;
+    }
+
     global.dispatchEvent(
       new CustomEvent("meos:maddy:response", {
         detail: {
@@ -2648,6 +2681,7 @@
           citations: governed.citations,
           finalSpeechAuthorized: true,
           oneMouth: true,
+          liveSpeechPresentationAuthorized: true,
           rawServerOutputPresented: false
         }
       })
@@ -4992,12 +5026,20 @@
     const priorObservers = state.researchReturnObservers;
     const priorCompleted = state.completedResearchReturnIds;
     const priorReturn = state.lastResearchReturn;
+    const priorConnected = state.connected;
+    const priorConfigured = state.configured;
+    const priorDisconnecting = state.disconnecting;
+    const priorDataChannel = state.dataChannel;
     const timers = [];
     const events = [];
     try {
       state.researchReturnObservers = new Map();
       state.completedResearchReturnIds = new Set();
       state.lastResearchReturn = null;
+      state.connected = true;
+      state.configured = true;
+      state.disconnecting = false;
+      state.dataChannel = { readyState: "open" };
       global.setTimeout = (fn) => { timers.push(fn); return timers.length; };
       global.dispatchEvent = (event) => { events.push(event); return true; };
 
@@ -5052,6 +5094,10 @@
       state.researchReturnObservers = priorObservers;
       state.completedResearchReturnIds = priorCompleted;
       state.lastResearchReturn = priorReturn;
+      state.connected = priorConnected;
+      state.configured = priorConfigured;
+      state.disconnecting = priorDisconnecting;
+      state.dataChannel = priorDataChannel;
     }
     const passed = checks.filter(item => item.passed).length;
     const result = Object.freeze({
@@ -5172,6 +5218,113 @@
     });
     console.table(checks);
     log(`Commission VE214 Semantic Intended-Speech Reconstruction: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
+  function runDurableReturnPresentationAuthorityAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+    const originalDispatch = global.dispatchEvent;
+    const prior = {
+      connected: state.connected,
+      configured: state.configured,
+      disconnecting: state.disconnecting,
+      dataChannel: state.dataChannel,
+      observers: state.researchReturnObservers,
+      completed: state.completedResearchReturnIds,
+      lastReturn: state.lastResearchReturn
+    };
+    const events = [];
+    const governedWork = (executionId, answer) => ({
+      id: `work-${executionId}`,
+      state: "done",
+      execution: { executionId, state: "returned" },
+      outcome: {
+        success: true,
+        result: {
+          governedAnswer: {
+            answer,
+            citations: ["https://example.org/returned-work"],
+            finalSpeechAuthorized: true,
+            oneMouth: true
+          },
+          rawServerOutput: "RAW OUTPUT MUST NEVER BECOME PRESENTATION"
+        }
+      }
+    });
+
+    try {
+      state.researchReturnObservers = new Map();
+      state.completedResearchReturnIds = new Set();
+      state.lastResearchReturn = null;
+      global.dispatchEvent = (event) => { events.push(event); return true; };
+
+      state.connected = false;
+      state.configured = false;
+      state.disconnecting = false;
+      state.dataChannel = null;
+
+      const disconnectedExecution = "execution-ve219-disconnected";
+      const disconnectedPublished = publishGovernedResearchReturn(
+        governedWork(disconnectedExecution, "The finished research is waiting on your desk."),
+        { executionId: disconnectedExecution, workId: `work-${disconnectedExecution}`, turnId: "voice-turn-original" }
+      );
+      const disconnectedReturn = state.lastResearchReturn;
+      const disconnectedSpeechEvents = events.filter((event) => event?.type === "meos:maddy:response");
+      const deferredEvents = events.filter((event) => event?.type === "meos:realtime:research-return-deferred-to-desk");
+
+      check("Governed durable work still completes when live voice is disconnected", disconnectedPublished === true && disconnectedReturn?.executionId === disconnectedExecution);
+      check("Disconnected durable return preserves the exact governed answer for the Desk", disconnectedReturn?.answer === "The finished research is waiting on your desk." && disconnectedReturn?.presentationMode === "desk-only");
+      check("Disconnected durable return preserves supporting-source provenance", disconnectedReturn?.citations?.[0] === "https://example.org/returned-work");
+      check("Disconnected durable return creates no Maddy response event and therefore no automatic TTS handoff", disconnectedSpeechEvents.length === 0 && disconnectedReturn?.speechPresented === false);
+      check("Disconnected durable return emits an explicit deferred-to-Desk presentation state", deferredEvents.length === 1 && deferredEvents[0]?.detail?.executionId === disconnectedExecution);
+      check("Accepted durable execution identity is closed even when speech is deferred", state.completedResearchReturnIds.has(disconnectedExecution));
+
+      state.connected = true;
+      state.configured = true;
+      state.disconnecting = false;
+      state.dataChannel = { readyState: "open" };
+      const duplicateAfterReconnect = publishGovernedResearchReturn(
+        governedWork(disconnectedExecution, "This must not auto-speak after reconnect."),
+        { executionId: disconnectedExecution, turnId: "voice-turn-original" }
+      );
+      check("Reconnect does not auto-speak an already accepted Desk-only return", duplicateAfterReconnect === false && events.filter((event) => event?.type === "meos:maddy:response").length === 0);
+
+      const liveExecution = "execution-ve219-live";
+      const livePublished = publishGovernedResearchReturn(
+        governedWork(liveExecution, "Live voice may present this exact governed return."),
+        { executionId: liveExecution, workId: `work-${liveExecution}`, turnId: "voice-turn-live" }
+      );
+      const liveSpeechEvents = events.filter((event) => event?.type === "meos:maddy:response");
+      const liveSpeech = liveSpeechEvents[0]?.detail || {};
+      check("Active live voice retains the existing one-mouth spoken-return path", livePublished === true && liveSpeechEvents.length === 1 && liveSpeech.text === "Live voice may present this exact governed return.");
+      check("Live spoken return preserves exact originating turn and execution lineage", liveSpeech.turnId === "voice-turn-live" && state.lastResearchReturn?.executionId === liveExecution && state.lastResearchReturn?.turnId === "voice-turn-live");
+      check("Presentation gating grants no spend, provider autonomy, raw-output, or external-action authority", state.lastResearchReturn?.automaticSpendUsd === 0 && state.lastResearchReturn?.externalActionAuthorityGranted === false && state.lastResearchReturn?.rawServerOutputPresented === false);
+    } finally {
+      global.dispatchEvent = originalDispatch;
+      state.connected = prior.connected;
+      state.configured = prior.configured;
+      state.disconnecting = prior.disconnecting;
+      state.dataChannel = prior.dataChannel;
+      state.researchReturnObservers = prior.observers;
+      state.completedResearchReturnIds = prior.completed;
+      state.lastResearchReturn = prior.lastReturn;
+    }
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE219",
+      schema: "meos.voice.durable-return-presentation-authority.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation: "This proves the local presentation-authority split between durable returned work and live TTS publication. It does not redesign the Executive Hub, create a new artifact store, or prove ElevenLabs billing behavior. Production gets the vote."
+    });
+    console.table(checks);
+    log(`Commission VE219 Durable Return Presentation Authority: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
     return result;
   }
 
@@ -5302,6 +5455,7 @@
     runSemanticIntendedSpeechReconstructionAcceptanceTest,
     runCanonicalHallwayResearchHandoffAcceptanceTest,
     runDurableResearchSpokenReturnAcceptanceTest,
+    runDurableReturnPresentationAuthorityAcceptanceTest,
     runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest,
     runLocalVoiceSignatureContinuityAcceptanceTest
   });
