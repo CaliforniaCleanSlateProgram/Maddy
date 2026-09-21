@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32490035/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32490261/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32478457/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -12299,3 +12299,89 @@ After that, continue with the real durable-research proof: accepted server execu
 **Recovery keyword:** `OD4137A-ACTIVITY-EVIDENCE-ACCEPTANCE-CORRECTION-PRODUCTION-PENDING-20260921`
 
 **Fast recovery:** `Resume OD4137A-ACTIVITY-EVIDENCE-ACCEPTANCE-CORRECTION-PRODUCTION-PENDING-20260921 — EH158 is deployed with T/O/R/S green; OD4136 is production-proven 8/8 with a real text command reaching canonical meos:maddy-request; OD4137 v4.13.7 deployed and production acceptance returned 18/19 because the nineteenth test used defective source-text introspection even though the direct runtime research gating checks passed; OD4137A v4.13.8 corrects only that acceptance assertion to behaviorally prove that headless-public-research without verified server ownership remains generic Working rather than claiming search/source activity; deploy frontend/office-dashboard.js, run the same acceptance function, expect 19/19, then continue the one real durable research disconnect/reconnect return proof; spoken local wake acknowledgments remain a later separate Voice commission.`
+
+---
+
+# 2026-09-21 OD4137A Production Proof Reconciliation
+
+## Runtime authority
+
+**Status:** LIVE-PROVEN / PRODUCTION-ACCEPTANCE GREEN 19/19  
+**Runtime observed:** `Executive Hub v4.13.8`  
+**Build observed:** `OD4137A-LIVE-MADDY-ACTIVITY-EVIDENCE-ACCEPTANCE-CORRECTION-20260921-A`
+
+Production browser evidence confirms OD4137A is deployed and the complete Live Maddy Cognitive & Work Activity acceptance suite passes **19/19**.
+
+The production acceptance proved all of the following together:
+
+- accepted Hallway cognition presents `Thinking…` instead of silent waiting;
+- server-owned `headless-public-research` may present `Searching public sources…`;
+- generic execution does not falsely claim web searching;
+- `Reviewing sources…` requires actual research execution evidence;
+- accepted foreground voice can present `Heard you` immediately;
+- wake interruption can acknowledge that Maddy is pausing and listening;
+- Talk-to-Maddy can present `Listening…` before foreground speaker ownership is established;
+- governed response authorization can present `Thinking…` before answer presentation;
+- authorized speech playback presents `Speaking…`;
+- offline durable state preserves the exact last-confirmed execution identity;
+- offline state does not claim unverified continued execution or completion;
+- reconnect waits for canonical confirmation rather than inventing progress;
+- text, wake, transcript, cognition, speech, and connectivity events are all wired into the same visible activity surface;
+- the live status surface remains above the Maddy input;
+- the activity surface creates no work, retry, provider call, spend authority, or external-action authority;
+- the corrected research truthfulness test proves that `headless-public-research` without verified server ownership remains generic `Working…` rather than falsely claiming search/source activity.
+
+## OD4137 / OD4137A disposition
+
+OD4137's original **18/19** production result is preserved as historical evidence of the defective nineteenth source-introspection assertion.
+
+OD4137A corrected only that acceptance assertion and build identity/version. Production now passes the corrected behavioral acceptance **19/19**.
+
+Therefore the current dashboard activity surface is promoted to:
+
+**OD4137A — DEPLOYED / LIVE-PROVEN / PRODUCTION-ACCEPTANCE GREEN 19/19**
+
+This promotion applies to the truthful visible activity-state contract. It does **not** prove the still-separate end-to-end durable public-research disconnect/reconnect return path.
+
+## Durable execution state after OD4137A
+
+EH158 remains deployed with the durable ownership/reintegration acceptance suites green:
+
+- `006.031T` Durable Execution Ownership Persistence — **13/13 PASS**
+- `006.031O` Durable Execution Spine Handoff — **8/8 PASS**
+- `006.031R` Durable Return Reintegration — **10/10 PASS**
+- `006.031S` Durable Return Reconciliation API — **8/8 PASS**
+
+OD4136 remains production-proven **8/8**, and production previously observed a real Executive Desk text command dispatch through canonical `meos:maddy-request`.
+
+The next required proof is one real bounded public-research job:
+
+**accepted request → durable server dispatch → exact accepted execution ID persisted → browser/network interruption → reconnect → same execution ID recovered → no replacement execution or duplicate spend → governed result re-enters Hallway/Router/Brain → Executive Desk receives finished work**
+
+A local connectivity loss must remain `unknown/deferred`, not evidence that the durable execution is missing.
+
+## Voice boundary remains unchanged
+
+Voice remains:
+
+`Voice v2.0.24 / VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-20260921-A`
+
+VE224 remains **DEPLOYED / ACCEPTANCE-GREEN / PRODUCTION-PARTIAL-PASS** for hostile similar-deep-voice separation. OD4137A adds truthful visible `Listening…`, `Heard you`, `Thinking…`, and `Speaking…` presentation from already-authorized events; it does not itself add spoken wake acknowledgments.
+
+A future separate Voice commission may add bounded low-latency acknowledgments such as `Hey`, `Yeah?`, `I'm here`, `Go ahead`, or context-aware `Hang tight` only after an accepted wake/foreground turn, without granting additional conversational or execution authority.
+
+## Next production sequence
+
+1. Reconcile this Build State as the current canonical checkpoint.
+2. Use the visible Executive Desk text path for one bounded current public-research request.
+3. Confirm the visible activity surface advances from request receipt into truthful cognition/work state.
+4. Capture the exact server-accepted durable execution ID.
+5. Allow a refresh or ordinary network interruption without creating a replacement dispatch.
+6. Reconnect and prove the same execution ID is recovered.
+7. Prove the completed governed result returns to Executive Desk.
+8. Only after that proof commission the durable end-to-end return path as live-proven.
+9. Spoken/local wake acknowledgment remains a later separate Voice brick.
+
+**Recovery keyword:** `OD4137A-LIVE-ACTIVITY-PROVEN-DURABLE-RETURN-NEXT-20260921`
+
+**Fast recovery:** `Resume OD4137A-LIVE-ACTIVITY-PROVEN-DURABLE-RETURN-NEXT-20260921 — Executive Hub v4.13.8 / OD4137A is deployed and production acceptance PASS 19/19, proving the truthful visible Maddy activity surface for Request received / Thinking / Planning / evidence-backed Searching public sources / Reviewing sources / Listening / Heard you / Responding / Speaking / offline/reconnect states without adding work, retry, provider, spend, TTS, or external-action authority; EH158 remains deployed with 006.031T 13/13, O 8/8, R 10/10, S 8/8; OD4136 remains production-proven 8/8 with real Executive Desk text dispatch through canonical meos:maddy-request; the next proof is one real bounded durable public-research execution surviving browser/network interruption and returning through Hallway → Router → Brain → Executive Desk with the exact same execution ID and no duplicate dispatch/spend; VE224 remains parked at production-partial-pass for hard similar-deep-voice separation; spoken low-latency wake acknowledgments remain a later separate Voice commission.`
