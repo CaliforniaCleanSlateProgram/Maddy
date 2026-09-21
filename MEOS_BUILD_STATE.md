@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32450204/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32450395/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449860/MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449290/MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920 (1).md](https://github.com/user-attachments/files/32448862/MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920.1.md)
@@ -10509,4 +10509,160 @@ Nothing in EB1350 closes these independent gaps:
 **Recovery keyword:** `ARC001-EB1350-PROVEN-EB1360-NEXT-20260920`
 
 **Fast recovery:** `Resume ARC001-EB1350-PROVEN-EB1360-NEXT-20260920 — EB1350 is production-proven 10/10 at Executive Brain 1.35.0 / EB1350-GOVERNED-DEVELOPMENT-FORGE-20260920-A; candidate generation requires exact base-source fingerprint, verified isolated sandbox, preregistered tests, provenance and rollback, challenger victory requires all tests/no regressions/measurable improvement, failures preserve causal history and revisit triggers, and success produces a proof package rather than merge/deploy authority; no production write, provider, spend, external-action, or autonomous self-modification authority was created; next staged build is EB1360 Experience-Driven Representation Plasticity at 1.36.0 / EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A.`
+
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — EB1360 PRODUCTION RECONCILIATION
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive production reconciliation; no new runtime authority created by this document  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## EB1360 — Experience-Driven Representation Plasticity — PRODUCTION-PROVEN
+
+**Runtime:** `1.36.0`  
+**Build:** `EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A`  
+**Production acceptance:** **PASS `10/10`**
+
+Production acceptance established that:
+
+- an unverified outcome cannot train Maddy's representation model;
+- a verified consequence can update a scoped representation model;
+- experience changes feature weighting rather than leaving the programmer seed permanently fixed;
+- learned weights remain normalized and bounded;
+- organization-private experience learns only inside its organization-scoped model;
+- cross-organization representation updates are refused;
+- a historical episode can be re-scored without erasing its initial salience;
+- later episodes in the same scope automatically use the learned representation;
+- representation learning retains evidence lineage and prediction error;
+- representation plasticity creates no truth, action, spend, or cross-scope authority.
+
+### What EB1360 legitimately proves
+
+EB1360 is genuine bounded representation plasticity:
+
+`verified consequence`
+→ `scoped feature-weight update`
+→ `bounded normalized learned representation`
+→ `historical re-scoring without erasing original salience`
+→ `future same-scope episodes automatically use the changed representation`
+
+This advances Maddy beyond merely remembering an experience or changing a single later judgment. Verified experience can now alter the bounded mechanism by which later experience is weighted within the exact knowledge scope.
+
+### Limitation preserved
+
+EB1360 does **not** prove:
+
+- open-ended latent feature discovery;
+- neural-weight training;
+- unrestricted recursive self-modification;
+- broad continual learning without forgetting;
+- universal cross-domain representation learning;
+- cross-organization learning authority.
+
+Do not inflate bounded explicit feature-weight plasticity into those stronger claims.
+
+## Privacy and epistemic boundaries preserved
+
+Representation learning remains:
+
+- evidence-linked;
+- consequence-driven;
+- exact-scope bounded;
+- organization-private where applicable;
+- non-authoritative outside its scope.
+
+A verified relationship, similarity, shared actor, geography, date, matter type, or inferred connection does not authorize cross-boundary representation transfer.
+
+Unverified outcomes cannot train the representation model.
+
+Learned weighting does not manufacture factual truth.
+
+## Current production identity
+
+Latest supplied production evidence establishes:
+
+- **Executive Brain:** `1.36.0`
+- **Executive Brain build:** `EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A`
+- **Executive Resource Acquisition Engine:** `3.2.0 / ERAE320-MADDY-GROWTH-CAPITAL-INTELLIGENCE-20260920-A`
+- **Developer Panel:** `2.1.0 / DP210-MADDY-WORLD-WINDOW-20260920-A`
+- **Realtime Voice:** `2.0.16 / VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A`
+- **Executive Router:** `1.5.3 / ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`
+- **Mission Engine durable authority hydration:** `READY`
+- **Institutional authority source:** `meos-institutional-repository`
+- **Mission Dispatcher:** still not running because `office_dispatch_authority_not_effective`
+
+## ARC 001 production sequence now proven
+
+- `ER153` — natural public-research intent — **11/11**
+- `VE214` — semantic intended-speech reconstruction — **11/11**
+- `VE215` — canonical Hallway research handoff — **7/7**
+- `VE216` — durable research spoken return — **9/9**
+- `DP210` — Maddy World Window observatory — **8/8**
+- `EB1320` — living episodic consolidation — **11/11**
+- `EB1330` — scored imagination and dream synthesis — **9/9**
+- `EB1340` — Fundamental-Gap Capability Foundry — **10/10**
+- `ERAE320` — Maddy Growth-Capital Intelligence — **10/10 + legacy 6/6**
+- `EB1350` — Governed Development Forge — **10/10**
+- `EB1360` — Experience-Driven Representation Plasticity — **10/10**
+
+Still staged/local and not production-proven:
+
+- `VE217` — Intentional Awake and Wake-Only Behavior
+- `VE218` — Local Voice-Signature Continuity Evidence
+
+## Exact next move
+
+**Next staged build: `VE217` — Intentional Awake and Wake-Only Behavior.**
+
+Apply only:
+
+`stages/12_VE217/openai-realtime.js`
+→ `frontend/voice/openai-realtime.js`
+
+VE217 is intended to address the still-open wake semantics demonstrated by noisy-room production evidence:
+
+- mere mention of Maddy must not automatically become intentional foreground address;
+- deliberate wake-address should acquire attention;
+- standalone wake/salutation should acquire attention only and must not become a substantive conversational turn;
+- passive cloud listening must not be treated as a substitute for local wake authority.
+
+Then:
+
+1. one file → one commit;
+2. deploy;
+3. run the exact VE217 production acceptance test;
+4. verify voice runtime identity;
+5. preserve all existing VE214–VE216 regressions;
+6. reconcile Build State before advancing to VE218.
+
+## Open truth carried forward
+
+Nothing in EB1360 closes these independent gaps:
+
+- wake-only / noisy-room intentional-address behavior remains open for VE217;
+- speaker continuity / voice-signature evidence remains open for VE218;
+- end-to-end spoken Internet research still requires a fresh full-chain live demonstration;
+- high-fidelity learned world simulation remains open;
+- open-ended latent feature discovery remains beyond EB1360;
+- the earlier mixed durability 502 incident remains historical evidence without a proven permanent root cause.
+
+## Anti-drift rules carried forward
+
+1. Unverified outcomes cannot train representation.
+2. Learned representations remain exactly scoped.
+3. Cross-organization representation transfer is refused absent particularized lawful authority.
+4. Historical re-scoring does not erase original salience.
+5. Learned weighting is not factual truth.
+6. Bounded explicit feature-weight plasticity is not open-ended latent learning.
+7. Representation plasticity grants no action, spend, provider, deployment, or self-modification authority.
+8. Wake acquisition, speaker continuity, semantic interpretation, research routing, durable execution, and spoken return remain independently testable.
+9. Production gets the vote.
+10. The North Star and Spooky bar remain unchanged.
+
+**Recovery keyword:** `ARC001-EB1360-PROVEN-VE217-NEXT-20260920`
+
+**Fast recovery:** `Resume ARC001-EB1360-PROVEN-VE217-NEXT-20260920 — EB1360 is production-proven 10/10 at Executive Brain 1.36.0 / EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A; unverified outcomes cannot train representation, verified consequences can update exact-scope feature weights, learned weights remain normalized and bounded, organization-private learning stays inside organization scope, cross-organization updates are refused, historical episodes may be re-scored without erasing original salience, and later same-scope episodes automatically use the learned representation; this is genuine bounded representation plasticity but not open-ended latent feature discovery, neural-weight training, broad continual learning without forgetting, or autonomous recursive self-modification; next staged build is VE217 Intentional Awake and Wake-Only Behavior.`
 
