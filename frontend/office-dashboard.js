@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.13.6
+ * Version: 4.13.7
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.6";
+  const DASHBOARD_VERSION = "4.13.7";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
@@ -29,6 +29,7 @@
   const COMMERCIAL_COMMAND_BUILD_ID = "OD4133-COMMERCIAL-COMMAND-DASHBOARD-20260914-A";
   const MADDY_ACTIVITY_SURFACE_BUILD_ID = "OD4135-CONVERSATIONAL-LIVE-MADDY-WORKSTREAM-20260915-A";
   const EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID = "OD4136-EXECUTIVE-DESK-TEXT-COMMAND-CONTINUITY-20260921-A";
+  const LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID = "OD4137-LIVE-MADDY-COGNITIVE-WORK-ACTIVITY-SURFACE-20260921-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -153,7 +154,17 @@
       expanded: false,
       lastRenderedAt: null,
       lastState: "idle",
-      firstVisibleAt: null
+      firstVisibleAt: null,
+      transient: null,
+      transientTimer: null,
+      lastRequest: null,
+      lastVoiceEvent: null,
+      recentEvents: [],
+      connectionOnline:
+        typeof navigator === "undefined"
+          ? true
+          : navigator.onLine !== false,
+      listenersInstalled: false
     },
     fundingIntelligence: {
       status: "idle",
@@ -6204,6 +6215,382 @@ document
     return panel;
   }
 
+  function recordMaddyLiveActivityEvent(message, kind = "status", metadata = {}) {
+    const text = String(message || "").trim();
+    if (!text) return null;
+    const item = {
+      at: new Date().toISOString(),
+      message: text,
+      kind: String(kind || "status"),
+      source: metadata.source || null,
+      turnId: metadata.turnId || null,
+      workId: metadata.workId || null,
+      executionId: metadata.executionId || null
+    };
+    state.maddyActivity.recentEvents.push(item);
+    if (state.maddyActivity.recentEvents.length > 12) {
+      state.maddyActivity.recentEvents.splice(0, state.maddyActivity.recentEvents.length - 12);
+    }
+    return item;
+  }
+
+  function buildMaddyActivityTransient(kind, detail = {}) {
+    const normalizedKind = String(kind || "status").trim().toLowerCase();
+    const executionId = String(detail.executionId || "").trim() || null;
+    const route = String(detail.route || "").trim() || null;
+    const occupied = detail.occupied === true;
+    const mappings = {
+      "request-received": {
+        state: "request-received",
+        label: "Request received",
+        detail: "Maddy has your request. Waiting for live MEOS work state."
+      },
+      listening: {
+        state: "listening",
+        label: "Listening…",
+        detail: detail.speakerOwnership === "unclaimed"
+          ? "Talk to Maddy is armed. Say Maddy to claim the foreground conversation."
+          : "I'm listening."
+      },
+      heard: {
+        state: "heard",
+        label: "Heard you",
+        detail: occupied
+          ? "I heard you. I'm pausing what I was saying and listening."
+          : detail.requiresClarification
+            ? "I heard you. I'm checking what I heard before I answer."
+            : "I heard you."
+      },
+      thinking: {
+        state: "thinking",
+        label: "Thinking…",
+        detail: route === "external-intelligence-research"
+          ? "Working out the governed research path before any web work is claimed."
+          : "Working out the next grounded step."
+      },
+      responding: {
+        state: "responding",
+        label: "Responding…",
+        detail: "The governed answer is ready for presentation."
+      },
+      speaking: {
+        state: "speaking",
+        label: "Speaking…",
+        detail: "Maddy is presenting the authorized response."
+      },
+      "connection-lost": {
+        state: "connection-lost",
+        label: "Connection interrupted",
+        detail: executionId
+          ? `Last confirmed server ownership: ${executionId}. Waiting to reconnect to the same work.`
+          : "The browser lost its connection. Waiting to reconnect before claiming any newer work state."
+      },
+      reconnected: {
+        state: "reconnected",
+        label: "Reconnected",
+        detail: executionId
+          ? `Connection is back. Waiting for MEOS to confirm ${executionId}.`
+          : "Connection is back. Waiting for MEOS to confirm the current work state."
+      },
+      error: {
+        state: "failed",
+        label: "Something stopped",
+        detail: String(detail.message || "Maddy hit a real runtime error.")
+      }
+    };
+    const selected = mappings[normalizedKind] || {
+      state: normalizedKind || "status",
+      label: String(detail.label || "Maddy is working…"),
+      detail: String(detail.detail || "MEOS recorded a live activity update.")
+    };
+    return Object.freeze({
+      kind: normalizedKind,
+      state: selected.state,
+      label: selected.label,
+      detail: selected.detail,
+      source: detail.source || null,
+      turnId: detail.turnId || null,
+      route,
+      executionId,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  function clearMaddyActivityTransient({ render = true } = {}) {
+    if (state.maddyActivity.transientTimer !== null) {
+      window.clearTimeout(state.maddyActivity.transientTimer);
+      state.maddyActivity.transientTimer = null;
+    }
+    state.maddyActivity.transient = null;
+    if (render) renderMaddyActivitySurface();
+  }
+
+  function setMaddyActivityTransient(kind, detail = {}, ttlMs = 0) {
+    if (state.maddyActivity.transientTimer !== null) {
+      window.clearTimeout(state.maddyActivity.transientTimer);
+      state.maddyActivity.transientTimer = null;
+    }
+    const transient = buildMaddyActivityTransient(kind, detail);
+    state.maddyActivity.transient = transient;
+    if (Number.isFinite(ttlMs) && ttlMs > 0) {
+      state.maddyActivity.transientTimer = window.setTimeout(() => {
+        state.maddyActivity.transientTimer = null;
+        state.maddyActivity.transient = null;
+        renderMaddyActivitySurface();
+      }, ttlMs);
+    }
+    renderMaddyActivitySurface();
+    return transient;
+  }
+
+  function durableExecutionPresentation(primary) {
+    const execution = primary?.execution || null;
+    if (!execution || execution.serverOwned !== true || !execution.executionId) {
+      return null;
+    }
+    return {
+      executionId: String(execution.executionId),
+      executor: String(execution.executor || "").trim() || null,
+      state: String(execution.state || "").trim() || null,
+      serverOwned: true
+    };
+  }
+
+  function deriveHallwayLiveActivity(primary, rawState, presentation) {
+    const durable = durableExecutionPresentation(primary);
+    const executor = String(durable?.executor || "").toLowerCase();
+    const explicitActivity = String(
+      primary?.activityLabel ||
+      primary?.currentActivity ||
+      primary?.activity ||
+      ""
+    ).trim();
+
+    if (rawState === "received" || rawState === "understanding") {
+      return { label: "Thinking…", detail: "I have your request and I'm understanding what you need." };
+    }
+    if (rawState === "planning") {
+      return { label: "Planning…", detail: "Choosing the next grounded step before acting." };
+    }
+    if (rawState === "awaiting-review") {
+      return { label: "Waiting for you", detail: "I reached a real authority boundary and need your approval." };
+    }
+    if (rawState === "authorized") {
+      return { label: "Starting…", detail: "Your authorization is bound to this work; execution is starting." };
+    }
+    if (rawState === "executing") {
+      if (explicitActivity) {
+        return { label: explicitActivity, detail: "This activity label comes from the live work record." };
+      }
+      if (durable?.serverOwned && executor === "headless-public-research") {
+        return {
+          label: "Searching public sources…",
+          detail: `Server-side research is running under ${durable.executionId}.`
+        };
+      }
+      return { label: "Working…", detail: presentation.detail || "Carrying out the authorized work." };
+    }
+    if (rawState === "verifying") {
+      if (durable?.serverOwned && executor === "headless-public-research") {
+        return { label: "Reviewing sources…", detail: "Checking the returned research before presenting an answer." };
+      }
+      return { label: "Checking work…", detail: "Verifying what happened before calling it done." };
+    }
+    if (rawState === "done") {
+      return { label: "Finished", detail: "The recorded work is complete and the governed result is ready." };
+    }
+    if (rawState === "blocked") {
+      return { label: "Needs attention", detail: "The work is blocked and Maddy is not inventing progress." };
+    }
+    if (rawState === "failed") {
+      return { label: "Something stopped", detail: "The work failed and is being shown as failed." };
+    }
+    if (rawState === "cancelled") {
+      return { label: "Stopped", detail: "This work was cancelled." };
+    }
+    return {
+      label: presentation.label || formatHallwayState(rawState),
+      detail: presentation.detail || "This status comes from recorded MEOS work state."
+    };
+  }
+
+  function bindLiveMaddyCognitiveActivityEvents() {
+    if (state.maddyActivity.listenersInstalled) return true;
+    state.maddyActivity.listenersInstalled = true;
+
+    window.addEventListener("meos:maddy-request", (event) => {
+      const message = String(event?.detail?.message || "").trim();
+      if (!message) return;
+      state.maddyActivity.lastRequest = {
+        message,
+        source: event?.detail?.source || null,
+        at: new Date().toISOString()
+      };
+      recordMaddyLiveActivityEvent("Request received by Maddy.", "request", {
+        source: event?.detail?.source || null
+      });
+      setMaddyActivityTransient("request-received", {
+        source: event?.detail?.source || null
+      }, 5000);
+    });
+
+    window.addEventListener("meos:realtime:attention-awake", (event) => {
+      const detail = event?.detail || {};
+      state.maddyActivity.lastVoiceEvent = {
+        type: "attention-awake",
+        at: new Date().toISOString(),
+        detail
+      };
+      if (detail.acquisitionMode === "button-awake" || detail.speakerOwnership === "unclaimed") {
+        recordMaddyLiveActivityEvent("Talk to Maddy armed; waiting for an accepted foreground address.", "voice", { source: "voice" });
+        setMaddyActivityTransient("listening", {
+          source: "voice",
+          speakerOwnership: "unclaimed"
+        }, 12000);
+        return;
+      }
+      if (detail.wakeTranscript) {
+        recordMaddyLiveActivityEvent("Wake address accepted from the foreground speaker.", "voice", { source: "voice" });
+        setMaddyActivityTransient("heard", { source: "voice" }, 12000);
+      }
+    });
+
+    window.addEventListener("meos:realtime:wake-only-acquired", (event) => {
+      const detail = event?.detail || {};
+      state.maddyActivity.lastVoiceEvent = {
+        type: "wake-only-acquired",
+        at: new Date().toISOString(),
+        detail
+      };
+      recordMaddyLiveActivityEvent("Accepted wake word; Maddy is listening for the request.", "voice", {
+        source: "voice"
+      });
+      setMaddyActivityTransient("heard", {
+        source: "voice",
+        occupied: detail.occupied === true
+      }, 12000);
+    });
+
+    window.addEventListener("meos:realtime:transcript-evidence", (event) => {
+      const detail = event?.detail || {};
+      recordMaddyLiveActivityEvent(
+        detail.requiresClarification
+          ? "Foreground speech accepted; transcript needs clarification."
+          : "Foreground speech accepted for Maddy's turn.",
+        "voice",
+        { source: "voice", turnId: detail.turnId || null }
+      );
+      setMaddyActivityTransient("heard", {
+        source: "voice",
+        turnId: detail.turnId || null,
+        requiresClarification: detail.requiresClarification === true
+      }, 1800);
+    });
+
+    window.addEventListener("meos:realtime:response-authorized", (event) => {
+      const detail = event?.detail || {};
+      recordMaddyLiveActivityEvent("Maddy cognition authorized one governed response.", "cognition", {
+        source: "voice",
+        turnId: detail.turnId || null
+      });
+      setMaddyActivityTransient("thinking", {
+        source: "voice",
+        turnId: detail.turnId || null,
+        route: detail.route || null
+      }, 10000);
+    });
+
+    window.addEventListener("meos:realtime:research-return-ready", (event) => {
+      const detail = event?.detail || {};
+      recordMaddyLiveActivityEvent("Durable research returned to Maddy governance.", "research", {
+        source: "durable-execution",
+        executionId: detail.executionId || null,
+        workId: detail.workId || null
+      });
+      setMaddyActivityTransient("thinking", {
+        source: "durable-execution",
+        executionId: detail.executionId || null,
+        route: "external-intelligence-research"
+      }, 5000);
+    });
+
+    window.addEventListener("meos:maddy:response", (event) => {
+      const detail = event?.detail || {};
+      recordMaddyLiveActivityEvent("Governed response prepared for presentation.", "response", {
+        source: detail.source || "maddy-response",
+        turnId: detail.turnId || null
+      });
+      setMaddyActivityTransient("responding", {
+        source: detail.source || "maddy-response",
+        turnId: detail.turnId || null
+      }, 6000);
+    });
+
+    window.addEventListener("meos:maddy:speech-started", (event) => {
+      const detail = event?.detail || {};
+      recordMaddyLiveActivityEvent("Maddy speech playback started.", "speech", {
+        source: "maddy-speech",
+        turnId: detail.turnId || null
+      });
+      setMaddyActivityTransient("speaking", {
+        source: "maddy-speech",
+        turnId: detail.turnId || null
+      }, 0);
+    });
+
+    window.addEventListener("meos:maddy:speech-ended", (event) => {
+      const detail = event?.detail || {};
+      recordMaddyLiveActivityEvent("Maddy speech playback ended.", "speech", {
+        source: "maddy-speech",
+        turnId: detail.turnId || null
+      });
+      clearMaddyActivityTransient({ render: true });
+    });
+
+    window.addEventListener("meos:maddy:interrupt", () => {
+      recordMaddyLiveActivityEvent("Maddy's current speech was interrupted by an authorized foreground turn.", "voice", { source: "voice" });
+      setMaddyActivityTransient("listening", { source: "voice" }, 12000);
+    });
+
+    window.addEventListener("offline", () => {
+      state.maddyActivity.connectionOnline = false;
+      const hallway = getHallwaySnapshot();
+      const activeWork = Array.isArray(hallway?.work)
+        ? hallway.work.find((item) => !["done", "failed", "cancelled"].includes(String(item?.state || "")))
+        : null;
+      const durable = durableExecutionPresentation(activeWork);
+      recordMaddyLiveActivityEvent("Browser connection interrupted.", "connection", {
+        source: "browser",
+        workId: activeWork?.id || null,
+        executionId: durable?.executionId || null
+      });
+      setMaddyActivityTransient("connection-lost", {
+        source: "browser",
+        executionId: durable?.executionId || null
+      }, 0);
+    });
+
+    window.addEventListener("online", () => {
+      state.maddyActivity.connectionOnline = true;
+      const hallway = getHallwaySnapshot();
+      const activeWork = Array.isArray(hallway?.work)
+        ? hallway.work.find((item) => !["done", "failed", "cancelled"].includes(String(item?.state || "")))
+        : null;
+      const durable = durableExecutionPresentation(activeWork);
+      recordMaddyLiveActivityEvent("Browser connection restored; waiting for canonical MEOS status confirmation.", "connection", {
+        source: "browser",
+        workId: activeWork?.id || null,
+        executionId: durable?.executionId || null
+      });
+      setMaddyActivityTransient("reconnected", {
+        source: "browser",
+        executionId: durable?.executionId || null
+      }, 5000);
+    });
+
+    return true;
+  }
+
   function getMaddyActivityModel(snapshot = null) {
     const hallway = snapshot?.hallway || getHallwaySnapshot();
     const work = Array.isArray(hallway?.work) ? hallway.work : [];
@@ -6213,16 +6600,15 @@ document
     const primary = active[0] || work[0] || null;
     const rawState = String(primary?.state || "idle");
     const presentation = getMaddyDispatchPresentation(primary);
-    const mapping = {
-      idle:["Ready","Maddy is ready when you are."], received:["Got it","I have your request."], understanding:["Understanding","Making sure I understand what you need."], planning:["Preparing","Choosing the best path before acting."], "awaiting-review":["I need your approval","I reached a real authority boundary."], authorized:["Approved","Your authorization is bound to this work."], executing:["Working","Carrying out the authorized work."], verifying:["Checking","Verifying what happened before calling it done."], done:["Done","I finished this work and the answer is ready."], blocked:["I need something","I cannot truthfully continue yet."], failed:["Something stopped","This work did not complete successfully."], cancelled:["Stopped","This work was cancelled."]
-    };
-    const [label, fallback] = mapping[rawState] || [presentation.label || formatHallwayState(rawState), presentation.detail];
+    const live = deriveHallwayLiveActivity(primary, rawState, presentation);
     const title = String(primary?.title || primary?.instruction || "").trim();
     const needsApproval = rawState === "awaiting-review";
-    const isTerminal = ["done","failed","cancelled"].includes(rawState);
     const isActive = Boolean(primary) && !["awaiting-review","done","blocked","failed","cancelled"].includes(rawState);
-    const visible = Boolean(primary);
-    const detail = title ? `${fallback} ${title}`.trim() : fallback;
+    const transient = state.maddyActivity.transient;
+    const visible = Boolean(primary || transient);
+    const detail = title && primary
+      ? `${live.detail} ${title}`.trim()
+      : live.detail;
     const stages = ["understanding","planning","awaiting-review","executing","verifying","done"];
     const normalizedStage = rawState === "received" ? "understanding" : rawState === "authorized" ? "executing" : rawState;
     const currentIndex = stages.indexOf(normalizedStage);
@@ -6230,19 +6616,62 @@ document
     const answerDeliverable = relatedDeliverables[0] || null;
     const answer = answerDeliverable ? (maddyDeliverableAnswerText(answerDeliverable) || decodeMaddyText(getMaddyDeliverablePresentation(answerDeliverable,0,relatedDeliverables.length).summary || "").trim()) : "";
     const sources = answerDeliverable ? strictGovernedSourceUrls(answerDeliverable).slice(0,8) : [];
-    const milestones = primary?.id ? history.filter((item)=>item?.workId===primary.id).slice(0,6).map((item)=>({at:item.createdAt||item.updatedAt||null,message:String(item.message||item.type||item.state||"Recorded MEOS work milestone")})) : [];
+    const hallwayMilestones = primary?.id ? history.filter((item)=>item?.workId===primary.id).slice(-6).map((item)=>({at:item.createdAt||item.updatedAt||null,message:String(item.message||item.type||item.state||"Recorded MEOS work milestone"),kind:"hallway"})) : [];
+    const recent = state.maddyActivity.recentEvents.slice(-6);
+    const milestones = [...hallwayMilestones, ...recent]
+      .sort((a,b)=>String(a?.at||"").localeCompare(String(b?.at||"")))
+      .slice(-8);
     const updatedAt = primary?.updatedAt || primary?.createdAt || null;
     const ageMs = updatedAt ? Math.max(0, Date.now()-new Date(updatedAt).getTime()) : null;
     const stale = isActive && Number.isFinite(ageMs) && ageMs > 30000;
+    const durable = durableExecutionPresentation(primary);
+    const displayLabel = transient?.label || live.label;
+    const displayDetail = transient?.detail || detail;
+    const displayState = transient?.state || rawState;
+    const displayActive = Boolean(transient) || isActive;
     return {
-      schema:MADDY_ACTIVITY_SCHEMA, buildId:MADDY_ACTIVITY_SURFACE_BUILD_ID,
-      visible, active:isActive, state:rawState, label, detail, title,
-      needsApproval, authority:primary?.authority||null, options:Array.isArray(primary?.options)?[...primary.options]:[],
-      workId:primary?.id||null, owner:primary?.owner||null, parallelCount:active.length,
-      stages:stages.map((stage,index)=>({stage,label:{understanding:"Understanding",planning:"Preparing","awaiting-review":"Approval",executing:"Acting",verifying:"Checking",done:"Done"}[stage],current:index===currentIndex,done:currentIndex>index||rawState==="done"})),
+      schema:MADDY_ACTIVITY_SCHEMA,
+      buildId:LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID,
+      foundationBuildId:MADDY_ACTIVITY_SURFACE_BUILD_ID,
+      visible,
+      active:displayActive,
+      state:displayState,
+      canonicalWorkState:rawState,
+      label:displayLabel,
+      detail:displayDetail,
+      title,
+      transient: transient ? { ...transient } : null,
+      connectionOnline:state.maddyActivity.connectionOnline,
+      needsApproval,
+      authority:primary?.authority||null,
+      options:Array.isArray(primary?.options)?[...primary.options]:[],
+      workId:primary?.id||null,
+      owner:primary?.owner||null,
+      parallelCount:active.length,
+      durableExecution:durable,
+      stages:stages.map((stage,index)=>({stage,label:{understanding:"Thinking",planning:"Planning","awaiting-review":"Approval",executing:"Working",verifying:"Checking",done:"Done"}[stage],current:index===currentIndex,done:currentIndex>index||rawState==="done"})),
       milestones, answer, answerDeliverable, sources, stale,
-      truth: needsApproval ? "Waiting for you — I will not cross this boundary on my own." : rawState==="blocked" ? "Blocked truthfully — no fake progress is being shown." : rawState==="failed" ? "Failed is shown as failed; I will not manufacture completion." : stale ? "No newer recorded MEOS milestone yet. I am not inventing a heartbeat or progress." : isActive ? "Live work — this comes from the actual Hallway work state." : rawState==="done" ? "Completed state and answer come from recorded Hallway work and its returned deliverable." : "This status is derived from recorded MEOS state.",
-      paidDisplayRequests:0, providerDisplayRequests:0
+      truth: transient?.state === "connection-lost" && durable?.executionId
+        ? `Last confirmed server ownership is ${durable.executionId}. The UI is waiting for reconnection and is not manufacturing a newer execution state.`
+        : needsApproval
+          ? "Waiting for you — I will not cross this boundary on my own."
+          : rawState==="blocked"
+            ? "Blocked truthfully — no fake progress is being shown."
+            : rawState==="failed"
+              ? "Failed is shown as failed; I will not manufacture completion."
+              : stale
+                ? "No newer recorded MEOS milestone yet. I am not inventing a heartbeat or progress."
+                : transient
+                  ? "This live presence state comes from a recorded request, voice, speech, response, or browser connection event."
+                  : isActive
+                    ? "Live work — this comes from the actual Hallway work state."
+                    : rawState==="done"
+                      ? "Completed state and answer come from recorded Hallway work and its returned deliverable."
+                      : "This status is derived from recorded MEOS state.",
+      paidDisplayRequests:0,
+      providerDisplayRequests:0,
+      externalActionAuthorityGranted:false,
+      automaticSpendUsd:0
     };
   }
 
@@ -6252,12 +6681,18 @@ document
     state.maddyActivity.lastState=model.state; state.maddyActivity.lastRenderedAt=new Date().toISOString();
     if(model.visible&&!state.maddyActivity.firstVisibleAt) state.maddyActivity.firstVisibleAt=state.maddyActivity.lastRenderedAt;
     state.maddyActivity.visible=model.visible;
-    panel.dataset.visible=String(model.visible); panel.dataset.active=String(model.active); panel.dataset.expanded=String(state.maddyActivity.expanded || model.needsApproval || Boolean(model.answer));
+    panel.dataset.visible=String(model.visible); panel.dataset.active=String(model.active); panel.dataset.activity=String(model.state || "idle"); panel.dataset.expanded=String(state.maddyActivity.expanded || model.needsApproval || Boolean(model.answer));
     panel.querySelector("#meosMaddyActivityLabel").textContent=model.label;
     panel.querySelector("#meosMaddyActivityDetail").textContent=model.detail;
     panel.querySelector("#meosMaddyActivitySteps").innerHTML=model.stages.map((item)=>`<span class="meos-live-activity-step" data-current="${item.current}" data-done="${item.done}">${escapeHtml(item.label)}</span>`).join("");
     panel.querySelector("#meosMaddyActivityTruth").innerHTML=`<b>${escapeHtml(model.label)}</b> · ${escapeHtml(model.truth)}`;
-    panel.querySelector("#meosMaddyActivityBranches").textContent=model.parallelCount>1?`I have ${model.parallelCount} live threads; this view stays focused on the current conversation.`:model.owner?`Working through ${model.owner}.`:"The machinery stays underneath the conversation.";
+    panel.querySelector("#meosMaddyActivityBranches").textContent=model.durableExecution?.executionId
+      ? `Server-owned execution · ${model.durableExecution.executionId}`
+      : model.parallelCount>1
+        ? `I have ${model.parallelCount} live threads; this view stays focused on the current conversation.`
+        : model.owner
+          ? `Working through ${model.owner}.`
+          : "The machinery stays underneath the conversation.";
     const events=panel.querySelector("#meosMaddyWorkstreamEvents");
     events.innerHTML=model.milestones.map((item)=>`<div class="meos-live-workstream-event">${escapeHtml(item.message)}</div>`).join("");
     const answerNode=panel.querySelector("#meosMaddyWorkstreamAnswer"); answerNode.innerHTML="";
@@ -6279,11 +6714,11 @@ document
     const stale=getMaddyActivityModel({hallway:staleFixture});
     const checks=[
       ["Conversational workstream contract is explicit and versioned",thinking.schema===MADDY_ACTIVITY_SCHEMA],
-      ["006.033B has a dedicated build identity",thinking.buildId===MADDY_ACTIVITY_SURFACE_BUILD_ID],
+      ["006.033B foundation build identity remains preserved",thinking.foundationBuildId===MADDY_ACTIVITY_SURFACE_BUILD_ID],
       ["Workstream is mounted inside Maddy Executive Desk",panel.parentElement?.classList?.contains("meos-maddy-desk")===true],
       ["Workstream sits directly above the Ask Maddy command row",panel.nextElementSibling?.classList?.contains("meos-maddy-desk-command")===true],
       ["Surface remains polite live-region feedback",panel.getAttribute("aria-live")==="polite"],
-      ["Ordinary understanding is human-readable",thinking.label==="Understanding"],
+      ["Ordinary understanding is human-readable",thinking.label==="Thinking…"],
       ["Approval boundary is explicit",approval.needsApproval===true && approval.label==="I need your approval"],
       ["Approval is not presented as execution",approval.active===false],
       ["Authorization option remains bound to real Hallway work",approval.options.includes("take-it") && approval.workId==="workstream-test"],
@@ -6310,6 +6745,108 @@ document
     const result={success:checks.every(c=>c.passed),commission:"006.033B",schema:"meos.dashboard.maddy-conversational-workstream-acceptance.v1",version:DASHBOARD_VERSION,buildId:MADDY_ACTIVITY_SURFACE_BUILD_ID,passed:checks.filter(c=>c.passed).length,total:checks.length,checks};
     console.table(checks);console.log(`[MEOS ${DASHBOARD_VERSION}] Commission 006.033B Conversational Live Maddy Workstream: ${result.success?"PASS":"FAIL"} (${result.passed}/${result.total}).`);return result;
   }
+  function runLiveMaddyCognitiveWorkActivityAcceptanceTest() {
+    const priorTransient = state.maddyActivity.transient;
+    const priorRecent = [...state.maddyActivity.recentEvents];
+    const priorOnline = state.maddyActivity.connectionOnline;
+    state.maddyActivity.transient = null;
+    state.maddyActivity.recentEvents = [];
+    state.maddyActivity.connectionOnline = true;
+
+    const fixture = (stateValue, extra = {}) => ({
+      work: [{
+        id: "od4137-work",
+        state: stateValue,
+        title: "Research current California mobile hygiene requirements",
+        owner: "Maddy",
+        updatedAt: new Date().toISOString(),
+        ...extra
+      }],
+      deliverables: [],
+      history: []
+    });
+
+    const thinking = getMaddyActivityModel({ hallway: fixture("understanding") });
+    const researching = getMaddyActivityModel({ hallway: fixture("executing", {
+      execution: {
+        executionId: "execution-od4137-research",
+        executor: "headless-public-research",
+        state: "running",
+        serverOwned: true
+      }
+    }) });
+    const genericWork = getMaddyActivityModel({ hallway: fixture("executing") });
+    const reviewing = getMaddyActivityModel({ hallway: fixture("verifying", {
+      execution: {
+        executionId: "execution-od4137-review",
+        executor: "headless-public-research",
+        state: "completed",
+        serverOwned: true
+      }
+    }) });
+    const heard = buildMaddyActivityTransient("heard", { occupied: false });
+    const interrupted = buildMaddyActivityTransient("heard", { occupied: true });
+    const listening = buildMaddyActivityTransient("listening", { speakerOwnership: "unclaimed" });
+    const voiceThinking = buildMaddyActivityTransient("thinking", { route: "external-intelligence-research" });
+    const speaking = buildMaddyActivityTransient("speaking", {});
+    const offline = buildMaddyActivityTransient("connection-lost", { executionId: "execution-od4137-research" });
+    const online = buildMaddyActivityTransient("reconnected", { executionId: "execution-od4137-research" });
+    const listenerSource = String(bindLiveMaddyCognitiveActivityEvents);
+    const modelSource = String(getMaddyActivityModel);
+    const panel = ensureMaddyActivitySurface();
+
+    const checks = [
+      ["OD4137 has a dedicated build identity", thinking.buildId === LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID],
+      ["OD4135 remains recorded as the foundation build", thinking.foundationBuildId === MADDY_ACTIVITY_SURFACE_BUILD_ID],
+      ["Accepted Hallway cognition presents Thinking instead of silent waiting", thinking.label === "Thinking…"],
+      ["Server-owned headless research truthfully presents public-source searching", researching.label === "Searching public sources…" && researching.durableExecution?.executionId === "execution-od4137-research"],
+      ["Generic execution does not falsely claim web searching", genericWork.label === "Working…" && !/search|website|source/i.test(genericWork.label)],
+      ["Research verification presents source review only after research execution exists", reviewing.label === "Reviewing sources…"],
+      ["Accepted foreground voice can present Heard you immediately", heard.label === "Heard you"],
+      ["Wake interruption can acknowledge that Maddy is pausing and listening", /pausing/i.test(interrupted.detail) && /listening/i.test(interrupted.detail)],
+      ["Talk-to-Maddy button arms Listening without falsely claiming speaker ownership", listening.label === "Listening…" && /armed/i.test(listening.detail)],
+      ["Governed response authorization presents Thinking before answer presentation", voiceThinking.label === "Thinking…"],
+      ["Authorized speech playback presents Speaking", speaking.label === "Speaking…"],
+      ["Offline durable state preserves exact last-confirmed execution identity", offline.label === "Connection interrupted" && offline.detail.includes("execution-od4137-research")],
+      ["Offline state does not claim unverified continued execution or completion", !/still running|finished|completed successfully/i.test(offline.detail)],
+      ["Reconnect state waits for canonical confirmation instead of inventing progress", online.label === "Reconnected" && /waiting for MEOS to confirm/i.test(online.detail)],
+      ["Text, wake, transcript, cognition, speech, and connectivity events are all wired", [
+        "meos:maddy-request",
+        "meos:realtime:attention-awake",
+        "meos:realtime:wake-only-acquired",
+        "meos:realtime:transcript-evidence",
+        "meos:realtime:response-authorized",
+        "meos:maddy:response",
+        "meos:maddy:speech-started",
+        "meos:maddy:speech-ended",
+        "offline",
+        "online"
+      ].every((name) => listenerSource.includes(name))],
+      ["Live status surface stays above the Maddy input", panel.parentElement?.classList?.contains("meos-maddy-desk") === true && panel.nextElementSibling?.classList?.contains("meos-maddy-desk-command") === true],
+      ["Activity status never creates work, retries, provider calls, or spend", !/submitWork|takeIt|fetch\(|response\.create|automaticSpendUsd\s*:\s*[1-9]/.test(listenerSource)],
+      ["Specific research wording requires recorded durable executor evidence", /headless-public-research/.test(modelSource) && /durableExecutionPresentation/.test(modelSource)],
+      ["Activity rendering grants no external action authority", thinking.externalActionAuthorityGranted === false && thinking.automaticSpendUsd === 0 && thinking.paidDisplayRequests === 0 && thinking.providerDisplayRequests === 0]
+    ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
+
+    state.maddyActivity.transient = priorTransient;
+    state.maddyActivity.recentEvents = priorRecent;
+    state.maddyActivity.connectionOnline = priorOnline;
+
+    const result = {
+      success: checks.every((check) => check.passed),
+      commission: "OD4137",
+      schema: "meos.dashboard.live-maddy-cognitive-work-activity.acceptance.v1",
+      version: DASHBOARD_VERSION,
+      buildId: LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID,
+      passed: checks.filter((check) => check.passed).length,
+      total: checks.length,
+      checks
+    };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4137 Live Maddy Cognitive & Work Activity Surface: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
   function formatHallwayState(value) {
     return String(value || "idle")
       .replace(/-/g, " ")
@@ -6388,6 +6925,9 @@ document
 
   function handleHallwayWorkUpdated(event) {
     const work = event?.detail || {};
+    if (state.maddyActivity.transient?.kind === "request-received") {
+      clearMaddyActivityTransient({ render: false });
+    }
     state.hallway.currentWorkId = work.id || state.hallway.currentWorkId;
     state.hallway.currentState = work.state || "received";
     state.hallway.currentTitle = work.title || work.instruction || state.hallway.currentTitle;
@@ -10053,6 +10593,7 @@ document
   function initialize() {
     createDashboardShell();
     ensureMaddyActivitySurface();
+    bindLiveMaddyCognitiveActivityEvents();
     bindRealtimeEvidenceTargets();
     connectPresenceEngine();
 
@@ -10073,7 +10614,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online.`
     );
   }
 
@@ -10117,16 +10658,19 @@ document
       runMaddyResponseSurfaceAcceptanceTest,
       runImagePanoramicExecutiveOfficeAcceptanceTest,
       runExecutiveDeskTextCommandContinuityAcceptanceTest,
+      runLiveMaddyCognitiveWorkActivityAcceptanceTest,
       runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
     }),
     activity: Object.freeze({
-      buildId: MADDY_ACTIVITY_SURFACE_BUILD_ID,
+      buildId: LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID,
+      foundationBuildId: MADDY_ACTIVITY_SURFACE_BUILD_ID,
       render: renderMaddyActivitySurface,
       getModel: getMaddyActivityModel,
       getState: () => ({ ...state.maddyActivity, model: getMaddyActivityModel() }),
-      runAcceptanceTest: runMaddyActivitySurfaceAcceptanceTest
+      runAcceptanceTest: runLiveMaddyCognitiveWorkActivityAcceptanceTest,
+      runFoundationAcceptanceTest: runMaddyActivitySurfaceAcceptanceTest
     }),
     commercial: Object.freeze({
       getModel: buildCommercialCommandModel,
