@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE_POST_EB1330_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449533/MEOS_BUILD_STATE_POST_EB1330_RECONCILED_20260920.md)
+[MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449860/MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449290/MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920 (1).md](https://github.com/user-attachments/files/32448862/MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920.1.md)
 [MEOS_BUILD_STATE_POST_ER153_RECONCILED (1).md](https://github.com/user-attachments/files/32447847/MEOS_BUILD_STATE_POST_ER153_RECONCILED.1.md)
@@ -10113,4 +10113,116 @@ Nothing in DP210, EB1320, or EB1330 closes these separate issues:
 **Recovery keyword:** `ARC001-EB1330-PROVEN-EB1340-NEXT-20260920`
 
 **Fast recovery:** `Resume ARC001-EB1330-PROVEN-EB1340-NEXT-20260920 — Main92 Build State is the reconciliation base; DP210 is production-proven 8/8, EB1320 production-proven 11/11, and EB1330 production-proven 9/9; current Executive Brain runtime is 1.33.0 / EB1330-SCORED-IMAGINATION-DREAM-SYNTHESIS-20260920-A; the World Window is a read-only structured observatory, living autobiographical episodes preserve context/uncertainty/lineage without destructive forgetting, and imagination/dream output is provenance-bound and scored against verified reality rather than treated as truth; no new spend, provider, deployment, external-action, or self-modification authority was created; end-to-end spoken Internet research, wake-only speaker ownership, destructive forgetting, learned representation plasticity, and permanent 502 root-cause resolution remain open; all later ARC 001 builds remain candidates until separately committed, deployed, and production-tested; next staged build is EB1340 Fundamental-Gap Capability Foundry, one file → one commit → one production test → Build State reconciliation.`
+
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — EB1340 PRODUCTION RECONCILIATION
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive production reconciliation; no new runtime authority created by this document  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## EB1340 — Fundamental-Gap Capability Foundry — PRODUCTION-PROVEN
+
+**Runtime:** `1.34.0`  
+**Build:** `EB1340-FUNDAMENTAL-GAP-CAPABILITY-FOUNDRY-20260920-A`  
+**Production acceptance:** **PASS `10/10`**
+
+Production acceptance established that:
+
+- a one-off failure remains a candidate gap rather than being inflated into a fundamental missing function;
+- recurring consequential evidence can identify a persistent fundamental-function gap;
+- frontier comparison is not fabricated when evidence was not supplied;
+- the incumbent remains a challenger baseline instead of assuming novelty wins;
+- candidate design may combine and mutate multiple mechanisms instead of copying one named technology;
+- experiments preregister metrics, predictions, evidence, and rollback before incorporation;
+- strong existing-organ fit blocks gratuitous organ creation;
+- persistent missing function plus poor existing-organ fit may justify a sandbox organ proposal;
+- organ proposals carry interface, acceptance, and rollback boundaries;
+- Capability Foundry and organogenesis do not self-authorize production mutation, spend, provider use, or external action.
+
+### Limitation preserved
+
+EB1340 proves evidence-grounded gap classification, incumbent-vs-challenger capability design, and governed organogenesis proposals.
+
+It does **not** execute experiments, write source code, or incorporate a candidate into production.
+
+A capability proposal is not yet a capability, and a gap is not authority.
+
+## Current production identity
+
+Latest supplied production evidence establishes:
+
+- **Executive Brain:** `1.34.0`
+- **Executive Brain build:** `EB1340-FUNDAMENTAL-GAP-CAPABILITY-FOUNDRY-20260920-A`
+- **Developer Panel:** `2.1.0 / DP210-MADDY-WORLD-WINDOW-20260920-A`
+- **Realtime Voice:** `2.0.16 / VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A`
+- **Executive Router:** `1.5.3 / ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`
+- **Mission Engine durable authority hydration:** `READY`
+- **Institutional authority source:** `meos-institutional-repository`
+- **Mission Dispatcher:** still not running because `office_dispatch_authority_not_effective`
+
+## ARC 001 production sequence now proven
+
+- `ER153` — natural public-research intent — **11/11**
+- `VE214` — semantic intended-speech reconstruction — **11/11**
+- `VE215` — canonical Hallway research handoff — **7/7**
+- `VE216` — durable research spoken return — **9/9**
+- `DP210` — Maddy World Window observatory — **8/8**
+- `EB1320` — living episodic consolidation — **11/11**
+- `EB1330` — scored imagination and dream synthesis — **9/9**
+- `EB1340` — Fundamental-Gap Capability Foundry — **10/10**
+
+Still staged/local and not production-proven:
+
+- `ERAE320` — Maddy Growth-Capital Intelligence
+- `EB1350` — Governed Development Forge
+- `EB1360` — Experience-Driven Representation Plasticity
+- `VE217` — Intentional Awake and Wake-Only Behavior
+- `VE218` — Local Voice-Signature Continuity Evidence
+
+## Exact next move
+
+**Next staged build: `ERAE320` — Maddy Growth-Capital Intelligence.**
+
+Apply only:
+
+`stages/09_ERAE320/executive-resource-acquisition-engine.js`
+→ `frontend/executive-resource-acquisition-engine.js`
+
+Then:
+
+1. one file → one commit;
+2. deploy;
+3. run `ExecutiveResourceAcquisitionEngine.runGrowthCapitalIntelligenceAcceptanceTest()`;
+4. require production **PASS `10/10`**;
+5. run the legacy acceptance test and require **PASS `6/6`**;
+6. reconcile Build State before advancing to `EB1350`.
+
+## Open truth carried forward
+
+Nothing in EB1340 closes these independent gaps:
+
+- end-to-end spoken Internet research still requires a fresh live full-chain demonstration;
+- wake-only / noisy-room speaker ownership remains open for VE217;
+- learned representation plasticity remains open for EB1360;
+- high-fidelity learned world simulation remains open;
+- the earlier mixed durability 502 incident remains historical evidence without a proven permanent root cause.
+
+## Anti-drift rules carried forward
+
+1. Persistent evidence is required before promoting a one-off failure into a fundamental gap.
+2. Incumbent mechanisms remain challengers; novelty does not win by default.
+3. Frontier claims require supplied evidence.
+4. New organs require poor fit to existing organs plus a persistent missing function.
+5. Organ proposals require explicit interfaces, acceptance, and rollback.
+6. Capability proposals grant no production authority.
+7. Production gets the vote.
+8. The North Star and Spooky bar remain unchanged.
+
+**Recovery keyword:** `ARC001-EB1340-PROVEN-ERAE320-NEXT-20260920`
+
+**Fast recovery:** `Resume ARC001-EB1340-PROVEN-ERAE320-NEXT-20260920 — EB1340 is production-proven 10/10 at Executive Brain 1.34.0 / EB1340-FUNDAMENTAL-GAP-CAPABILITY-FOUNDRY-20260920-A; the Capability Foundry now distinguishes one-off failures from recurring fundamental-function gaps, preserves the incumbent as challenger baseline, requires evidence rather than fabricated frontier comparison, preregisters experiment metrics/predictions/evidence/rollback, blocks gratuitous organ creation when existing-organ fit is strong, and may only propose sandbox organogenesis when a persistent gap and poor existing-organ fit justify it; it does not execute experiments, write source code, incorporate candidates, or self-authorize production mutation, spend, provider use, or external action; next staged build is ERAE320 Maddy Growth-Capital Intelligence.`
 
