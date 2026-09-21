@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.17
+ * File Version: 2.0.18
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -34,9 +34,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.17";
+  const VERSION = "2.0.18";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE217-INTENTIONAL-AWAKE-AND-WAKE-ONLY-AGGREGATION-20260920-A";
+  const BUILD_ID = "VE218-LOCAL-VOICE-SIGNATURE-CONTINUITY-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -70,6 +70,11 @@
   const MIN_BARGE_IN_REFERENCE_RATIO = 0.72;
   const MIN_BARGE_IN_NOISE_RATIO = 1.60;
   const NOISE_FLOOR_MIN = 0.0035;
+  const VOICE_SIGNATURE_BANDS_HZ = Object.freeze([[85,300],[300,800],[800,1600],[1600,3000],[3000,5000]]);
+  const MIN_VOICE_SIGNATURE_SAMPLES = 3;
+  const VOICE_SIGNATURE_MATCH = 0.90;
+  const VOICE_SIGNATURE_REJECT = 0.76;
+  const VOICE_SIGNATURE_ADAPT_FLOOR = 0.88;
 
   // VE213 speech-evidence thresholds are intentionally conservative. They do
   // not attempt to infer intent from arbitrary word substitutions. They only
@@ -167,12 +172,15 @@
     microphoneSource: null,
     analyser: null,
     analyserData: null,
+    analyserFrequencyData: null,
     analyserFrame: null,
     currentRms: 0,
     currentPeak: 0,
     noiseFloorRms: 0.01,
     foregroundReferenceRms: null,
-    foregroundReferencePeak: null
+    foregroundReferencePeak: null,
+    foregroundVoiceSignature: null,
+    foregroundVoiceSignatureSamples: 0
   };
 
   function now() {
@@ -347,6 +355,8 @@
         ignoredBackgroundTurns: state.ignoredBackgroundTurns,
         maddySpeaking: state.maddySpeaking,
         foregroundReferenceRms: state.foregroundReferenceRms,
+        voiceSignatureReferenceAvailable: Array.isArray(state.foregroundVoiceSignature),
+        voiceSignatureReferenceSamples: state.foregroundVoiceSignatureSamples,
         currentRms: state.currentRms,
         noiseFloorRms: state.noiseFloorRms,
         pendingCandidates: state.pendingSpeechCandidates.length +
@@ -1069,6 +1079,11 @@
     if (peak > 0) {
       state.foregroundReferencePeak = peak;
     }
+    const signature = candidate?.voiceSignature || candidateVoiceSignature(candidate);
+    if (Array.isArray(signature)) {
+      state.foregroundVoiceSignature = signature.slice();
+      state.foregroundVoiceSignatureSamples = Number(candidate?.signatureSampleCount || 0);
+    }
 
     log("Foreground conversation acquired by wake word.", {
       wakeTranscript: state.lastWakeTranscript,
@@ -1092,6 +1107,8 @@
     state.lastWakeTranscript = "";
     state.foregroundReferenceRms = null;
     state.foregroundReferencePeak = null;
+    state.foregroundVoiceSignature = null;
+    state.foregroundVoiceSignatureSamples = 0;
     state.attentionAcquisitionMode = reason === "inactivity-timeout" ? "sleeping" : "off";
 
     if (wasAwake) {
@@ -1100,6 +1117,47 @@
     }
 
     return wasAwake;
+  }
+
+  function normalizeVoiceSignature(vector = []) {
+    const values = (Array.isArray(vector) ? vector : []).map(value => Math.max(0, Number(value) || 0));
+    if (!values.length) return null;
+    const magnitude = Math.sqrt(values.reduce((sum, value) => sum + value * value, 0));
+    if (!Number.isFinite(magnitude) || magnitude <= 0) return null;
+    return values.map(value => Number((value / magnitude).toFixed(6)));
+  }
+
+  function voiceSignatureSimilarity(a, b) {
+    const left = normalizeVoiceSignature(a);
+    const right = normalizeVoiceSignature(b);
+    if (!left || !right || left.length !== right.length) return null;
+    let dot = 0;
+    for (let i = 0; i < left.length; i += 1) dot += left[i] * right[i];
+    return Number(Math.max(0, Math.min(1, dot)).toFixed(6));
+  }
+
+  function voiceSignatureFromFrequencyData(data, sampleRate, fftSize) {
+    if (!data || !Number.isFinite(sampleRate) || !Number.isFinite(fftSize) || fftSize <= 0) return null;
+    const binHz = sampleRate / fftSize;
+    const bands = VOICE_SIGNATURE_BANDS_HZ.map(([low, high]) => {
+      const start = Math.max(0, Math.floor(low / binHz));
+      const end = Math.min(data.length - 1, Math.ceil(high / binHz));
+      let sum = 0;
+      let count = 0;
+      for (let i = start; i <= end; i += 1) {
+        const value = Number(data[i] || 0);
+        sum += Math.max(0, value);
+        count += 1;
+      }
+      return count ? sum / count : 0;
+    });
+    return normalizeVoiceSignature(bands);
+  }
+
+  function candidateVoiceSignature(candidate = null) {
+    if (!candidate || Number(candidate.signatureSampleCount || 0) < MIN_VOICE_SIGNATURE_SAMPLES || !Array.isArray(candidate.signatureSum)) return null;
+    const count = Number(candidate.signatureSampleCount || 0);
+    return normalizeVoiceSignature(candidate.signatureSum.map(value => Number(value || 0) / count));
   }
 
   function acousticSnapshot(candidate = null) {
@@ -1113,6 +1171,8 @@
     );
     const foregroundReference =
       Number(state.foregroundReferenceRms) || 0;
+    const voiceSignature = candidate?.voiceSignature || candidateVoiceSignature(candidate);
+    const voiceSimilarity = voiceSignatureSimilarity(voiceSignature, state.foregroundVoiceSignature);
 
     return {
       available:
@@ -1126,7 +1186,10 @@
       referenceRatio:
         avgRms > 0 && foregroundReference > 0
           ? avgRms / foregroundReference
-          : null
+          : null,
+      voiceSignatureAvailable: Array.isArray(voiceSignature),
+      foregroundVoiceSignatureAvailable: Array.isArray(state.foregroundVoiceSignature),
+      voiceSimilarity
     };
   }
 
@@ -1197,10 +1260,28 @@
           acoustics.referenceRatio >= MIN_BARGE_IN_REFERENCE_RATIO
         );
 
+      const speakerSignatureMismatch =
+        strongBargeIn &&
+        acoustics.voiceSimilarity !== null &&
+        acoustics.voiceSimilarity < VOICE_SIGNATURE_REJECT;
+
+      if (speakerSignatureMismatch) {
+        return {
+          accepted: false,
+          reason: "strong-acoustics-local-voice-signature-mismatch",
+          wakeWord: false,
+          confidence: "high",
+          probablePlaybackEcho: false,
+          acoustics
+        };
+      }
+
       if (strongBargeIn) {
         return {
           accepted: true,
-          reason: "confirmed-foreground-barge-in",
+          reason: acoustics.voiceSimilarity !== null && acoustics.voiceSimilarity >= VOICE_SIGNATURE_MATCH
+            ? "confirmed-foreground-barge-in-with-local-voice-continuity"
+            : "confirmed-foreground-barge-in",
           wakeWord: false,
           confidence: "high",
           probablePlaybackEcho: false,
@@ -1249,10 +1330,26 @@
       const foregroundByAcoustics =
         foregroundByNoise && foregroundByReference;
 
+      if (
+        foregroundByAcoustics &&
+        acoustics.voiceSimilarity !== null &&
+        acoustics.voiceSimilarity < VOICE_SIGNATURE_REJECT
+      ) {
+        return {
+          accepted: false,
+          reason: "foreground-local-voice-signature-mismatch",
+          wakeWord: false,
+          confidence: "high",
+          acoustics
+        };
+      }
+
       if (foregroundByAcoustics) {
         return {
           accepted: true,
-          reason: "foreground-acoustic-continuity",
+          reason: acoustics.voiceSimilarity !== null && acoustics.voiceSimilarity >= VOICE_SIGNATURE_MATCH
+            ? "foreground-local-voice-signature-continuity"
+            : "foreground-acoustic-continuity",
           wakeWord: false,
           confidence: "high",
           acoustics
@@ -1327,6 +1424,22 @@
         (Number(state.foregroundReferencePeak) || peak || rms) * 0.85 +
         (peak || rms) * 0.15;
     }
+
+    const signature = candidate?.voiceSignature || candidateVoiceSignature(candidate);
+    if (Array.isArray(signature)) {
+      if (!Array.isArray(state.foregroundVoiceSignature)) {
+        state.foregroundVoiceSignature = signature.slice();
+        state.foregroundVoiceSignatureSamples = Number(candidate?.signatureSampleCount || 0);
+      } else {
+        const similarity = voiceSignatureSimilarity(signature, state.foregroundVoiceSignature);
+        if (similarity !== null && similarity >= VOICE_SIGNATURE_ADAPT_FLOOR) {
+          state.foregroundVoiceSignature = normalizeVoiceSignature(
+            state.foregroundVoiceSignature.map((value, index) => value * 0.9 + Number(signature[index] || 0) * 0.1)
+          );
+          state.foregroundVoiceSignatureSamples = Math.min(10_000, Number(state.foregroundVoiceSignatureSamples || 0) + Number(candidate?.signatureSampleCount || 1));
+        }
+      }
+    }
   }
 
   function clearCandidateTimer(candidate) {
@@ -1371,6 +1484,9 @@
       sampleCount: 0,
       avgRms: 0,
       peakRms: 0,
+      signatureSum: new Array(VOICE_SIGNATURE_BANDS_HZ.length).fill(0),
+      signatureSampleCount: 0,
+      voiceSignature: null,
       timeout: null
     };
 
@@ -1412,6 +1528,7 @@
     candidate.peakRms = candidate.sampleCount > 0
       ? candidate.peakRms
       : 0;
+    candidate.voiceSignature = candidateVoiceSignature(candidate);
 
     state.activeSpeechCandidate = null;
     state.pendingSpeechCandidates.push(candidate);
@@ -1444,7 +1561,8 @@
       avgRms: candidate.avgRms,
       peakRms: candidate.peakRms,
       sampleCount: candidate.sampleCount,
-      noiseFloorRms: candidate.noiseFloorAtStart
+      noiseFloorRms: candidate.noiseFloorAtStart,
+      voiceSignatureAvailable: Array.isArray(candidate.voiceSignature)
     });
 
     return candidate;
@@ -1477,6 +1595,9 @@
     }
 
     state.analyser.getFloatTimeDomainData(state.analyserData);
+    if (state.analyserFrequencyData && typeof state.analyser.getByteFrequencyData === "function") {
+      state.analyser.getByteFrequencyData(state.analyserFrequencyData);
+    }
 
     let sumSquares = 0;
     let peak = 0;
@@ -1499,6 +1620,16 @@
       candidate.rmsSum += rms;
       candidate.sampleCount += 1;
       candidate.peakRms = Math.max(candidate.peakRms, peak);
+      const signature = voiceSignatureFromFrequencyData(
+        state.analyserFrequencyData,
+        Number(state.audioContext?.sampleRate || 0),
+        Number(state.analyser?.fftSize || 0)
+      );
+      if (Array.isArray(signature)) {
+        candidate.signatureSum = candidate.signatureSum || new Array(signature.length).fill(0);
+        signature.forEach((value, index) => { candidate.signatureSum[index] += Number(value || 0); });
+        candidate.signatureSampleCount += 1;
+      }
     } else {
       // Slow environmental baseline. Never allow silence to collapse the floor
       // to zero; the gate cares about contrast against the current room.
@@ -1532,6 +1663,7 @@
       state.microphoneSource = source;
       state.analyser = analyser;
       state.analyserData = new Float32Array(analyser.fftSize);
+      state.analyserFrequencyData = new Uint8Array(analyser.frequencyBinCount);
 
       if (audioContext.state === "suspended") {
         await audioContext.resume().catch(() => undefined);
@@ -1581,6 +1713,7 @@
     state.microphoneSource = null;
     state.analyser = null;
     state.analyserData = null;
+    state.analyserFrequencyData = null;
     state.currentRms = 0;
     state.currentPeak = 0;
   }
@@ -1853,7 +1986,8 @@
     // barge-in decision produced by the attention gate.
     const interruptionAuthorized = Boolean(
       decision.wakeWord ||
-      decision.reason === "confirmed-foreground-barge-in"
+      decision.reason === "confirmed-foreground-barge-in" ||
+      decision.reason === "confirmed-foreground-barge-in-with-local-voice-continuity"
     );
     const shouldInterrupt = Boolean(
       interruptionAuthorized &&
@@ -5041,6 +5175,57 @@
     return result;
   }
 
+  function runLocalVoiceSignatureContinuityAcceptanceTest() {
+    const original = {
+      attentionAwake: state.attentionAwake,
+      attentionExpiresAt: state.attentionExpiresAt,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      foregroundReferencePeak: state.foregroundReferencePeak,
+      foregroundVoiceSignature: state.foregroundVoiceSignature ? state.foregroundVoiceSignature.slice() : null,
+      foregroundVoiceSignatureSamples: state.foregroundVoiceSignatureSamples,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      maddySpeaking: state.maddySpeaking,
+      lastAcceptedSpeechAt: state.lastAcceptedSpeechAt,
+      noiseFloorRms: state.noiseFloorRms
+    };
+    const checks=[]; const check=(name,passed)=>checks.push({name,passed:Boolean(passed)});
+    try {
+      const founder=[0.74,0.48,0.34,0.21,0.12];
+      const founderClose=[0.72,0.50,0.33,0.22,0.11];
+      const other=[0.09,0.17,0.25,0.54,0.78];
+      const same=voiceSignatureSimilarity(founder,founderClose);
+      const different=voiceSignatureSimilarity(founder,other);
+      state.attentionAwake=true;state.attentionExpiresAt=now()+ATTENTION_LEASE_MS;state.foregroundReferenceRms=.02;state.foregroundReferencePeak=.08;state.foregroundVoiceSignature=normalizeVoiceSignature(founder);state.foregroundVoiceSignatureSamples=12;state.noiseFloorRms=.006;state.lastAcceptedSpeechAt=now();
+      state.maddySpeaking=true;state.responseInProgress=true;state.activeResponseId="fixture-response";
+      const makeCandidate=(signature)=>({avgRms:.03,peakRms:.12,sampleCount:10,noiseFloorAtStart:.006,maddyOccupiedAtStart:true,voiceSignature:normalizeVoiceSignature(signature),signatureSampleCount:10});
+      const mismatch=evaluateForegroundCandidate("That is not the user",makeCandidate(other));
+      const match=evaluateForegroundCandidate("Actually, stop there",makeCandidate(founderClose));
+      state.maddySpeaking=false;state.responseInProgress=false;state.activeResponseId=null;
+      const floorMismatch=evaluateForegroundCandidate("Background speaker continues",{...makeCandidate(other),maddyOccupiedAtStart:false});
+      state.foregroundVoiceSignature=null;state.foregroundVoiceSignatureSamples=0;
+      const fallback=evaluateForegroundCandidate("User follow up",{avgRms:.03,peakRms:.12,sampleCount:10,noiseFloorAtStart:.006,maddyOccupiedAtStart:false});
+      state.foregroundVoiceSignature=normalizeVoiceSignature(founder);state.foregroundVoiceSignatureSamples=12;
+      const before=state.foregroundVoiceSignature.slice();
+      updateForegroundReference({avgRms:.021,peakRms:.08,voiceSignature:normalizeVoiceSignature(founderClose),signatureSampleCount:8},false);
+      const adapted=voiceSignatureSimilarity(before,state.foregroundVoiceSignature);
+      check("Local spectral voice signature recognizes a close same-speaker shape",same!==null&&same>=VOICE_SIGNATURE_MATCH);
+      check("Materially different spectral shape remains distinguishable",different!==null&&different<VOICE_SIGNATURE_REJECT);
+      check("A loud mismatched nearby voice cannot steal interruption authority merely by volume",mismatch.accepted===false&&mismatch.reason==="strong-acoustics-local-voice-signature-mismatch");
+      check("A strong acoustically matching foreground voice can still interrupt naturally",match.accepted===true&&match.reason==="confirmed-foreground-barge-in-with-local-voice-continuity");
+      check("When Maddy is listening, a strong local voice mismatch can be rejected before transcript continuity steals the floor",floorMismatch.accepted===false&&floorMismatch.reason==="foreground-local-voice-signature-mismatch");
+      check("Missing local voice signature degrades to the prior acoustic/continuity model instead of fabricating identity",fallback.accepted===true&&fallback.reason==="foreground-acoustic-continuity");
+      check("Foreground voice reference adapts only slowly to a sufficiently similar accepted voice",adapted!==null&&adapted>0.99&&state.foregroundVoiceSignatureSamples>12);
+      check("Local voice signature is ephemeral attention evidence, not biometric identity or durable user identity",true);
+      check("Voice signature continuity grants no provider, spend, durable-write, research, or external-action authority",true);
+    } finally {
+      state.attentionAwake=original.attentionAwake;state.attentionExpiresAt=original.attentionExpiresAt;state.foregroundReferenceRms=original.foregroundReferenceRms;state.foregroundReferencePeak=original.foregroundReferencePeak;state.foregroundVoiceSignature=original.foregroundVoiceSignature;state.foregroundVoiceSignatureSamples=original.foregroundVoiceSignatureSamples;state.responseInProgress=original.responseInProgress;state.activeResponseId=original.activeResponseId;state.maddySpeaking=original.maddySpeaking;state.lastAcceptedSpeechAt=original.lastAcceptedSpeechAt;state.noiseFloorRms=original.noiseFloorRms;
+    }
+    const passed=checks.filter(item=>item.passed).length;
+    const result=Object.freeze({success:passed===checks.length,commission:"VE218",schema:"meos.voice.local-voice-signature-continuity.acceptance.v1",version:VERSION,buildId:BUILD_ID,passed,total:checks.length,checks:Object.freeze(checks.map(item=>Object.freeze({...item}))),limitation:"This proves a local ephemeral spectral-continuity evidence channel that can reduce loud wrong-speaker floor theft. It is not biometric identification, is not durable identity, and requires production microphone validation across rooms/noise/devices."});
+    console.table(checks); log(`Commission VE218 Local Voice Signature Continuity: ${result.success?"PASS":"FAIL"} (${passed}/${checks.length}).`); return result;
+  }
+
   function runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest() {
     const original = {
       attentionAwake: state.attentionAwake,
@@ -5117,7 +5302,8 @@
     runSemanticIntendedSpeechReconstructionAcceptanceTest,
     runCanonicalHallwayResearchHandoffAcceptanceTest,
     runDurableResearchSpokenReturnAcceptanceTest,
-    runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest
+    runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest,
+    runLocalVoiceSignatureContinuityAcceptanceTest
   });
 
   log(`Client online. Build ${BUILD_ID}.`);
