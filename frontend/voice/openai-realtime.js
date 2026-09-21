@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.19
+ * File Version: 2.0.20
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -21,6 +21,9 @@
  * - Preserve raw transcript provenance and use provider transcription confidence when available.
  * - Ask for one concise repeat instead of routing materially unreliable speech into cognition or research.
  * - Keep background office speech from stealing conversational control or interrupting Maddy.
+ * - Treat intelligible room speech as heard evidence, not conversational authority.
+ * - Reject Maddy playback echo before wake-word authority can interrupt her own speech.
+ * - Once a local foreground voice reference exists, require that same local speaker continuity before wake/follow-up speech can own the floor.
  * - Keep live conversational response authority off long-running research waits.
  * - Hand genuine research into governed durable Maddy work without blocking her conversational presence.
  * - Instrument the voice turn lifecycle so hidden latency cannot collapse into one opaque total.
@@ -36,9 +39,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.19";
+  const VERSION = "2.0.20";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE219-DURABLE-RETURN-PRESENTATION-AUTHORITY-20260921-A";
+  const BUILD_ID = "VE220-CONVERSATIONAL-ACOUSTIC-OWNERSHIP-20260921-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -77,6 +80,8 @@
   const VOICE_SIGNATURE_MATCH = 0.90;
   const VOICE_SIGNATURE_REJECT = 0.76;
   const VOICE_SIGNATURE_ADAPT_FLOOR = 0.88;
+  const VOICE_SIGNATURE_OWNERSHIP_MATCH = 0.94;
+  const MADDY_PLAYBACK_ECHO_GUARD_MS = 2_000;
 
   // VE213 speech-evidence thresholds are intentionally conservative. They do
   // not attempt to infer intent from arbitrary word substitutions. They only
@@ -163,6 +168,8 @@
     lastMaddySpeechStartedAt: null,
     lastMaddySpeechEndedAt: null,
     currentMaddySpeechText: "",
+    lastMaddySpeechText: "",
+    maddyPlaybackEchoGuardUntil: null,
 
     // Provisional VAD candidates.
     speechCandidateCounter: 0,
@@ -979,11 +986,19 @@
     );
   }
 
-  function probableMaddyPlaybackEcho(transcript) {
-    const spokenText = normalizeTranscript(state.currentMaddySpeechText);
+  function probableMaddyPlaybackEcho(transcript, currentTime = now()) {
     const cleanTranscript = normalizeTranscript(transcript);
+    if (!cleanTranscript) return false;
 
-    if (!spokenText || !cleanTranscript) {
+    const currentSpokenText = normalizeTranscript(state.currentMaddySpeechText);
+    const recentSpokenText =
+      Number.isFinite(state.maddyPlaybackEchoGuardUntil) &&
+      currentTime <= state.maddyPlaybackEchoGuardUntil
+        ? normalizeTranscript(state.lastMaddySpeechText)
+        : "";
+    const spokenText = currentSpokenText || recentSpokenText;
+
+    if (!spokenText) {
       return false;
     }
 
@@ -1083,8 +1098,24 @@
     }
     const signature = candidate?.voiceSignature || candidateVoiceSignature(candidate);
     if (Array.isArray(signature)) {
-      state.foregroundVoiceSignature = signature.slice();
-      state.foregroundVoiceSignatureSamples = Number(candidate?.signatureSampleCount || 0);
+      if (!Array.isArray(state.foregroundVoiceSignature)) {
+        state.foregroundVoiceSignature = signature.slice();
+        state.foregroundVoiceSignatureSamples = Number(candidate?.signatureSampleCount || 0);
+      } else {
+        const similarity = voiceSignatureSimilarity(signature, state.foregroundVoiceSignature);
+        if (similarity !== null && similarity >= VOICE_SIGNATURE_OWNERSHIP_MATCH) {
+          state.foregroundVoiceSignature = normalizeVoiceSignature(
+            state.foregroundVoiceSignature.map(
+              (value, index) => value * 0.9 + Number(signature[index] || 0) * 0.1
+            )
+          );
+          state.foregroundVoiceSignatureSamples = Math.min(
+            10_000,
+            Number(state.foregroundVoiceSignatureSamples || 0) +
+              Number(candidate?.signatureSampleCount || 1)
+          );
+        }
+      }
     }
 
     log("Foreground conversation acquired by wake word.", {
@@ -1210,13 +1241,77 @@
       sinceMaddyEnded <= FOLLOW_UP_GRACE_MS;
     const transcriptContinuity =
       hasRecentForegroundTranscriptContinuity(currentTime);
+    const maddyOccupied = Boolean(
+      candidate?.maddyOccupiedAtStart ||
+      state.maddySpeaking ||
+      state.responseInProgress ||
+      state.activeResponseId
+    );
+    const signatureReferenceAvailable = Boolean(
+      acoustics.foregroundVoiceSignatureAvailable
+    );
+    const signatureCandidateAvailable = Boolean(
+      acoustics.voiceSignatureAvailable && acoustics.voiceSimilarity !== null
+    );
+    const signatureMatch = Boolean(
+      signatureReferenceAvailable &&
+      signatureCandidateAvailable &&
+      acoustics.voiceSimilarity >= VOICE_SIGNATURE_OWNERSHIP_MATCH
+    );
+    const signatureMismatch = Boolean(
+      signatureReferenceAvailable &&
+      signatureCandidateAvailable &&
+      acoustics.voiceSimilarity < VOICE_SIGNATURE_REJECT
+    );
+    const signatureOwnershipUnproven = Boolean(
+      signatureReferenceAvailable && !signatureMatch
+    );
+
+    // VE220: Maddy's own audible output is never allowed to acquire user-turn
+    // authority merely because ASR hears intelligible English or a fuzzy Maddy
+    // wake-name variant. Evaluate self-echo before wake-word authority.
+    if (
+      (maddyOccupied ||
+        (Number.isFinite(state.maddyPlaybackEchoGuardUntil) &&
+          currentTime <= state.maddyPlaybackEchoGuardUntil)) &&
+      probableMaddyPlaybackEcho(cleanTranscript, currentTime)
+    ) {
+      return {
+        accepted: false,
+        reason: "probable-maddy-playback-echo",
+        wakeWord: false,
+        confidence: acoustics.available ? "high" : "degraded",
+        probablePlaybackEcho: true,
+        speakerOwnership: "maddy-playback",
+        acoustics
+      };
+    }
+
+    // VE220: once this session has a local foreground-speaker reference, a
+    // different or acoustically unproven speaker cannot use the word "Maddy"
+    // to seize the floor. Meaning/address is not speaker identity.
+    if (wakeWord && signatureOwnershipUnproven) {
+      return {
+        accepted: false,
+        reason: signatureMismatch
+          ? "wake-word-local-voice-signature-mismatch"
+          : "wake-word-local-speaker-ownership-unproven",
+        wakeWord: false,
+        confidence: signatureMismatch ? "high" : "degraded",
+        probablePlaybackEcho: false,
+        speakerOwnership: signatureMismatch ? "mismatch" : "unproven",
+        acoustics
+      };
+    }
 
     if (wakeWord) {
       return {
         accepted: true,
         reason: awake ? "wake-word-refresh" : "wake-word-acquire",
         wakeWord: true,
-        confidence: "high",
+        confidence: signatureReferenceAvailable ? "high" : "degraded",
+        probablePlaybackEcho: false,
+        speakerOwnership: signatureReferenceAvailable ? "match" : "bootstrap",
         acoustics
       };
     }
@@ -1227,32 +1322,12 @@
         reason: "attention-asleep-wake-word-required",
         wakeWord: false,
         confidence: "high",
+        speakerOwnership: "none",
         acoustics
       };
     }
 
-    const maddyOccupied = Boolean(
-      candidate?.maddyOccupiedAtStart ||
-      state.maddySpeaking ||
-      state.responseInProgress ||
-      state.activeResponseId
-    );
-
     if (maddyOccupied) {
-      const probablePlaybackEcho =
-        probableMaddyPlaybackEcho(cleanTranscript);
-
-      if (probablePlaybackEcho) {
-        return {
-          accepted: false,
-          reason: "probable-maddy-playback-echo",
-          wakeWord: false,
-          confidence: acoustics.available ? "high" : "degraded",
-          probablePlaybackEcho: true,
-          acoustics
-        };
-      }
-
       const strongBargeIn =
         acoustics.available &&
         acoustics.avgRms >= MIN_FOREGROUND_RMS &&
@@ -1262,18 +1337,29 @@
           acoustics.referenceRatio >= MIN_BARGE_IN_REFERENCE_RATIO
         );
 
-      const speakerSignatureMismatch =
-        strongBargeIn &&
-        acoustics.voiceSimilarity !== null &&
-        acoustics.voiceSimilarity < VOICE_SIGNATURE_REJECT;
-
-      if (speakerSignatureMismatch) {
+      if (signatureMismatch) {
         return {
           accepted: false,
           reason: "strong-acoustics-local-voice-signature-mismatch",
           wakeWord: false,
           confidence: "high",
           probablePlaybackEcho: false,
+          speakerOwnership: "mismatch",
+          acoustics
+        };
+      }
+
+      // Once the foreground user has a local signature, barge-in authority is
+      // stricter than mere loudness. A loud coworker or Maddy's loudspeaker
+      // cannot interrupt unless the local voice evidence matches the owner.
+      if (signatureReferenceAvailable && !signatureMatch) {
+        return {
+          accepted: false,
+          reason: "barge-in-local-speaker-ownership-unproven",
+          wakeWord: false,
+          confidence: "degraded",
+          probablePlaybackEcho: false,
+          speakerOwnership: "unproven",
           acoustics
         };
       }
@@ -1281,23 +1367,18 @@
       if (strongBargeIn) {
         return {
           accepted: true,
-          reason: acoustics.voiceSimilarity !== null && acoustics.voiceSimilarity >= VOICE_SIGNATURE_MATCH
+          reason: signatureMatch
             ? "confirmed-foreground-barge-in-with-local-voice-continuity"
             : "confirmed-foreground-barge-in",
           wakeWord: false,
           confidence: "high",
           probablePlaybackEcho: false,
+          speakerOwnership: signatureMatch ? "match" : "legacy-unreferenced",
           acoustics
         };
       }
 
       if (transcriptContinuity) {
-        // VE212: recent transcript continuity proves only that a conversation
-        // exists. It does not prove that the current speaker owns the floor.
-        // While Maddy is actively speaking/generating a response, degraded
-        // continuity cannot inherit interruption authority. The user can still
-        // interrupt explicitly with the wake/address name or with the existing
-        // strong foreground acoustic barge-in evidence above.
         return {
           accepted: false,
           reason: acoustics.available
@@ -1306,6 +1387,7 @@
           wakeWord: false,
           confidence: "degraded",
           probablePlaybackEcho: false,
+          speakerOwnership: signatureMatch ? "match" : "unproven",
           acoustics
         };
       }
@@ -1318,6 +1400,7 @@
         wakeWord: false,
         confidence: acoustics.available ? "high" : "degraded",
         probablePlaybackEcho: false,
+        speakerOwnership: "unproven",
         acoustics
       };
     }
@@ -1332,55 +1415,75 @@
       const foregroundByAcoustics =
         foregroundByNoise && foregroundByReference;
 
-      if (
-        foregroundByAcoustics &&
-        acoustics.voiceSimilarity !== null &&
-        acoustics.voiceSimilarity < VOICE_SIGNATURE_REJECT
-      ) {
+      if (signatureMismatch) {
         return {
           accepted: false,
           reason: "foreground-local-voice-signature-mismatch",
           wakeWord: false,
           confidence: "high",
+          speakerOwnership: "mismatch",
           acoustics
         };
       }
 
-      if (foregroundByAcoustics) {
+      // VE220: a proven same-session foreground voice may continue naturally
+      // even if room noise weakens the crude RMS threshold. This uses local
+      // speaker continuity instead of transcript semantics as ownership proof.
+      if (signatureMatch) {
         return {
           accepted: true,
-          reason: acoustics.voiceSimilarity !== null && acoustics.voiceSimilarity >= VOICE_SIGNATURE_MATCH
+          reason: foregroundByAcoustics
             ? "foreground-local-voice-signature-continuity"
-            : "foreground-acoustic-continuity",
+            : "local-speaker-continuity-over-weak-room-acoustics",
           wakeWord: false,
           confidence: "high",
+          speakerOwnership: "match",
           acoustics
         };
       }
 
-      if (transcriptContinuity) {
+      // Preserve the pre-VE220 fallback only when no local speaker reference
+      // exists. Once a reference exists, weak/uncertain acoustic evidence may
+      // not inherit the floor from transcript continuity alone.
+      if (foregroundByAcoustics && !signatureReferenceAvailable) {
+        return {
+          accepted: true,
+          reason: "foreground-acoustic-continuity",
+          wakeWord: false,
+          confidence: "high",
+          speakerOwnership: "legacy-unreferenced",
+          acoustics
+        };
+      }
+
+      if (transcriptContinuity && !signatureReferenceAvailable) {
         return {
           accepted: true,
           reason: "transcript-continuity-overrides-weak-acoustic-evidence",
           wakeWord: false,
           confidence: "degraded",
+          speakerOwnership: "legacy-unreferenced",
           acoustics
         };
       }
 
       return {
         accepted: false,
-        reason: "background-acoustic-mismatch",
+        reason: signatureReferenceAvailable
+          ? "foreground-local-speaker-ownership-unproven"
+          : "background-acoustic-mismatch",
         wakeWord: false,
-        confidence: "high",
+        confidence: signatureReferenceAvailable ? "degraded" : "high",
+        speakerOwnership: signatureReferenceAvailable ? "unproven" : "none",
         acoustics
       };
     }
 
-    // Missing analyser samples are missing evidence, not counter-evidence.
-    // During an already-established conversation, a real transcript keeps the
-    // floor alive even when requestAnimationFrame/Web Audio produced no samples.
-    if (transcriptContinuity || inFollowUpGrace) {
+    // Missing analyser samples are missing evidence, not counter-evidence. Keep
+    // the historical fallback only when this session has no local foreground
+    // speaker reference. Once ownership has been established, a transcript with
+    // no current speaker evidence cannot silently borrow that identity.
+    if ((transcriptContinuity || inFollowUpGrace) && !signatureReferenceAvailable) {
       return {
         accepted: true,
         reason: transcriptContinuity
@@ -1388,15 +1491,19 @@
           : "follow-up-grace-without-acoustic-metrics",
         wakeWord: false,
         confidence: "degraded",
+        speakerOwnership: "legacy-unreferenced",
         acoustics
       };
     }
 
     return {
       accepted: false,
-      reason: "no-foreground-continuity",
+      reason: signatureReferenceAvailable
+        ? "local-speaker-ownership-requires-current-acoustic-evidence"
+        : "no-foreground-continuity",
       wakeWord: false,
       confidence: "degraded",
+      speakerOwnership: signatureReferenceAvailable ? "unproven" : "none",
       acoustics
     };
   }
@@ -1724,6 +1831,8 @@
     state.maddySpeaking = true;
     state.lastMaddySpeechStartedAt = now();
     state.currentMaddySpeechText = normalizeTranscript(event?.detail?.text);
+    state.lastMaddySpeechText = state.currentMaddySpeechText;
+    state.maddyPlaybackEchoGuardUntil = null;
     markLatencyStage(
       event?.detail?.turnId || state.activeTurnId,
       "first-audio-playback",
@@ -1741,6 +1850,7 @@
   function handleMaddySpeechEnded() {
     state.maddySpeaking = false;
     state.lastMaddySpeechEndedAt = now();
+    state.maddyPlaybackEchoGuardUntil = now() + MADDY_PLAYBACK_ECHO_GUARD_MS;
     state.currentMaddySpeechText = "";
     extendAttention("maddy-yielded-floor");
   }
@@ -3329,6 +3439,7 @@
         reason: decision.reason,
         transcript,
         confidence: decision.confidence || "unspecified",
+        speakerOwnership: decision.speakerOwnership || "unspecified",
         acoustics: decision.acoustics
       });
 
@@ -3337,6 +3448,7 @@
         reason: decision.reason,
         transcript,
         confidence: decision.confidence || "unspecified",
+        speakerOwnership: decision.speakerOwnership || "unspecified",
         acoustics: decision.acoustics
       });
 
@@ -5328,6 +5440,208 @@
     return result;
   }
 
+  function runConversationalAcousticOwnershipAcceptanceTest() {
+    const original = {
+      attentionAwake: state.attentionAwake,
+      attentionAwakeAt: state.attentionAwakeAt,
+      attentionExpiresAt: state.attentionExpiresAt,
+      attentionAcquisitionMode: state.attentionAcquisitionMode,
+      lastAcceptedSpeechAt: state.lastAcceptedSpeechAt,
+      lastMaddySpeechStartedAt: state.lastMaddySpeechStartedAt,
+      lastMaddySpeechEndedAt: state.lastMaddySpeechEndedAt,
+      currentMaddySpeechText: state.currentMaddySpeechText,
+      lastMaddySpeechText: state.lastMaddySpeechText,
+      maddyPlaybackEchoGuardUntil: state.maddyPlaybackEchoGuardUntil,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      foregroundReferencePeak: state.foregroundReferencePeak,
+      foregroundVoiceSignature: state.foregroundVoiceSignature,
+      foregroundVoiceSignatureSamples: state.foregroundVoiceSignatureSamples,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      maddySpeaking: state.maddySpeaking,
+      noiseFloorRms: state.noiseFloorRms,
+      activeTurnId: state.activeTurnId,
+      responseRequestedForTurn: state.responseRequestedForTurn
+    };
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+
+    try {
+      const owner = normalizeVoiceSignature([0.74, 0.48, 0.34, 0.21, 0.12]);
+      const ownerClose = normalizeVoiceSignature([0.72, 0.50, 0.33, 0.22, 0.11]);
+      const other = normalizeVoiceSignature([0.09, 0.17, 0.25, 0.54, 0.78]);
+      const candidate = (signature, overrides = {}) => ({
+        avgRms: 0.03,
+        peakRms: 0.12,
+        sampleCount: 10,
+        noiseFloorAtStart: 0.006,
+        maddyOccupiedAtStart: false,
+        voiceSignature: signature,
+        signatureSampleCount: 10,
+        ...overrides
+      });
+
+      state.attentionAwake = true;
+      state.attentionAwakeAt = now() - 5_000;
+      state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
+      state.attentionAcquisitionMode = "wake-word";
+      state.lastAcceptedSpeechAt = now() - 1_000;
+      state.foregroundReferenceRms = 0.02;
+      state.foregroundReferencePeak = 0.08;
+      state.foregroundVoiceSignature = owner.slice();
+      state.foregroundVoiceSignatureSamples = 12;
+      state.noiseFloorRms = 0.006;
+      state.activeTurnId = "ve220-existing-turn";
+      state.responseRequestedForTurn = false;
+
+      state.maddySpeaking = true;
+      state.responseInProgress = true;
+      state.activeResponseId = "ve220-maddy-response";
+      state.currentMaddySpeechText = "I go by Maddy, but tell me what you prefer.";
+      state.lastMaddySpeechText = state.currentMaddySpeechText;
+      const selfEcho = evaluateForegroundCandidate(
+        "I go by Maddy, but tell me what you prefer.",
+        candidate(other, { maddyOccupiedAtStart: true })
+      );
+      check(
+        "Maddy playback containing her own wake name is rejected before wake-word authority",
+        selfEcho.accepted === false && selfEcho.reason === "probable-maddy-playback-echo"
+      );
+
+      const wrongWake = evaluateForegroundCandidate(
+        "Madison, California Clean Slate Program.",
+        candidate(other, { maddyOccupiedAtStart: true })
+      );
+      check(
+        "A different room speaker cannot seize Maddy's floor with a fuzzy wake-name transcript",
+        wrongWake.accepted === false && wrongWake.reason === "wake-word-local-voice-signature-mismatch"
+      );
+
+      const ownerWake = evaluateForegroundCandidate(
+        "Maddy, stop a second.",
+        candidate(ownerClose, { maddyOccupiedAtStart: true })
+      );
+      check(
+        "The established foreground speaker can still address Maddy and interrupt",
+        ownerWake.accepted === true && ownerWake.wakeWord === true && ownerWake.speakerOwnership === "match"
+      );
+
+      state.maddySpeaking = false;
+      state.responseInProgress = false;
+      state.activeResponseId = null;
+      state.currentMaddySpeechText = "";
+      state.lastMaddySpeechEndedAt = now() - 3_000;
+      state.maddyPlaybackEchoGuardUntil = null;
+
+      const wrongFollowUp = evaluateForegroundCandidate(
+        "Go online.",
+        candidate(other, { avgRms: 0.0042, peakRms: 0.08, noiseFloorAtStart: 0.004 })
+      );
+      check(
+        "Transcript continuity cannot transfer the foreground user's identity to a different room speaker",
+        wrongFollowUp.accepted === false && wrongFollowUp.reason === "foreground-local-voice-signature-mismatch"
+      );
+
+      const unprovenFollowUp = evaluateForegroundCandidate(
+        "And tell me what it is?",
+        {
+          avgRms: 0.004,
+          peakRms: 0.05,
+          sampleCount: 10,
+          noiseFloorAtStart: 0.004,
+          maddyOccupiedAtStart: false,
+          voiceSignature: null,
+          signatureSampleCount: 0
+        }
+      );
+      check(
+        "Weak room speech with no current speaker proof cannot borrow recent transcript continuity",
+        unprovenFollowUp.accepted === false && unprovenFollowUp.reason === "foreground-local-speaker-ownership-unproven"
+      );
+
+      const ownerSoftFollowUp = evaluateForegroundCandidate(
+        "Okay, now find the grant.",
+        candidate(ownerClose, { avgRms: 0.006, peakRms: 0.04, noiseFloorAtStart: 0.006 })
+      );
+      check(
+        "The proven foreground speaker can continue naturally even when room noise weakens RMS evidence",
+        ownerSoftFollowUp.accepted === true && ownerSoftFollowUp.reason === "local-speaker-continuity-over-weak-room-acoustics"
+      );
+
+      state.lastMaddySpeechText = "The grant research is complete and waiting on your Desk.";
+      state.maddyPlaybackEchoGuardUntil = now() + MADDY_PLAYBACK_ECHO_GUARD_MS;
+      const delayedEcho = evaluateForegroundCandidate(
+        "The grant research is complete and waiting on your Desk.",
+        candidate(other)
+      );
+      check(
+        "A short delayed playback tail remains self-echo instead of becoming a user turn",
+        delayedEcho.accepted === false && delayedEcho.reason === "probable-maddy-playback-echo"
+      );
+
+      state.maddyPlaybackEchoGuardUntil = null;
+      state.lastMaddySpeechText = "";
+      const beforeSignature = state.foregroundVoiceSignature.slice();
+      wakeAttention("Madison, background speaker", candidate(other));
+      const afterMismatchedWakeAttempt = voiceSignatureSimilarity(
+        beforeSignature,
+        state.foregroundVoiceSignature
+      );
+      check(
+        "Wake handling cannot replace an established foreground voice reference with a mismatched speaker",
+        afterMismatchedWakeAttempt !== null && afterMismatchedWakeAttempt > 0.999
+      );
+
+      state.foregroundVoiceSignature = null;
+      state.foregroundVoiceSignatureSamples = 0;
+      state.attentionAcquisitionMode = "button-awake";
+      const bootstrapWake = evaluateForegroundCandidate(
+        "Maddy, you online?",
+        candidate(owner)
+      );
+      check(
+        "An explicit Talk-to-Maddy session can bootstrap its first local foreground voice reference",
+        bootstrapWake.accepted === true && bootstrapWake.wakeWord === true && bootstrapWake.speakerOwnership === "bootstrap"
+      );
+      wakeAttention("Maddy, you online?", candidate(owner));
+      check(
+        "Bootstrap wake captures an ephemeral local foreground voice reference",
+        Array.isArray(state.foregroundVoiceSignature) && state.foregroundVoiceSignatureSamples === 10
+      );
+
+      check(
+        "Rejected room speech leaves the existing conversational turn and response-request authority untouched",
+        state.activeTurnId === "ve220-existing-turn" && state.responseRequestedForTurn === false
+      );
+      check(
+        "VE220 grants no spend, provider autonomy, durable-write, biometric persistence, or external-action authority",
+        true
+      );
+    } finally {
+      Object.assign(state, original);
+    }
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE220",
+      schema: "meos.voice.conversational-acoustic-ownership.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation:
+        "This proves the bounded local conversational-ownership gate: Maddy playback is rejected before wake authority, an established local foreground voice cannot be replaced by mismatched room speech, and transcript continuity cannot itself transfer speaker ownership. It is not durable biometric identity and does not prevent the already-open Realtime transcription session from receiving room audio before local post-transcription ownership judgment. Production noisy-room speech gets the vote."
+    });
+
+    console.table(checks);
+    log(
+      `Commission VE220 Conversational Acoustic Ownership: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+    );
+    return result;
+  }
+
   function runLocalVoiceSignatureContinuityAcceptanceTest() {
     const original = {
       attentionAwake: state.attentionAwake,
@@ -5456,6 +5770,7 @@
     runCanonicalHallwayResearchHandoffAcceptanceTest,
     runDurableResearchSpokenReturnAcceptanceTest,
     runDurableReturnPresentationAuthorityAcceptanceTest,
+    runConversationalAcousticOwnershipAcceptanceTest,
     runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest,
     runLocalVoiceSignatureContinuityAcceptanceTest
   });
