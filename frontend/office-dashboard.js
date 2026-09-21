@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.13.5
+ * Version: 4.13.6
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.5";
+  const DASHBOARD_VERSION = "4.13.6";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
@@ -28,6 +28,7 @@
   const RETURNED_WORK_DISPOSITION_BUILD_ID = "OD4132-RETURNED-WORK-DISPOSITION-SURFACE-20260913-A";
   const COMMERCIAL_COMMAND_BUILD_ID = "OD4133-COMMERCIAL-COMMAND-DASHBOARD-20260914-A";
   const MADDY_ACTIVITY_SURFACE_BUILD_ID = "OD4135-CONVERSATIONAL-LIVE-MADDY-WORKSTREAM-20260915-A";
+  const EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID = "OD4136-EXECUTIVE-DESK-TEXT-COMMAND-CONTINUITY-20260921-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -4177,24 +4178,19 @@ document
 
     viewport.querySelector('#meosImageOfficeMaddyDock').appendChild(maddy);
 
-    /* The desk text surface is only a new office affordance. It delegates to the
-       already-commissioned Maddy Executive Command path instead of inventing a
-       second conversation transport. */
+    /* OD4136 — Executive Desk Text Command Continuity
+       The panoramic desk text surface is a first-class Maddy request surface.
+       It must dispatch directly into the already-commissioned canonical
+       meos:maddy-request event instead of proxying through hidden Hub controls
+       or falling back to an event that has no consumer. This preserves one
+       conversation transport while making the visible desk input reliable. */
     const deskTextForm = viewport.querySelector('#meosDeskMaddyText');
     const deskTextInput = viewport.querySelector('#meosDeskMaddyInput');
     deskTextForm?.addEventListener('submit', event => {
       event.preventDefault();
       const message = String(deskTextInput?.value || '').trim();
       if (!message) { deskTextInput?.focus(); return; }
-      const commandInput = document.getElementById('meosExecutiveHubInput') || document.getElementById('meosHubCommandInput');
-      const commandSend = document.getElementById('meosExecutiveHubSend') || document.getElementById('meosHubCommandSend');
-      if (!commandInput || !commandSend) {
-        dispatchMEOS('meos:executive-command-requested', { message, source:'executive-desk' });
-      } else {
-        commandInput.value = message;
-        commandInput.dispatchEvent(new Event('input', { bubbles:true }));
-        commandSend.click();
-      }
+      dispatchExecutiveDeskTextCommand(message);
       deskTextInput.value = '';
     });
 
@@ -4831,6 +4827,63 @@ document
     };
     console.table(checks);
     console.info(`[MEOS ${DASHBOARD_VERSION}] Commission 006.022C Lean Cabinet Navigation Reconciliation: ${result.success ? 'PASS' : 'FAIL'} (${passed}/${checks.length}).`);
+    return result;
+  }
+
+  function prepareExecutiveDeskTextCommand(message = "") {
+    const normalized = String(message || "").trim();
+    if (!normalized) return null;
+    return {
+      eventName: "meos:maddy-request",
+      detail: {
+        message: normalized,
+        source: "maddy-executive-desk",
+        costMode: state.costMode,
+        communicationMode: state.communicationMode
+      }
+    };
+  }
+
+  function dispatchExecutiveDeskTextCommand(message = "") {
+    const prepared = prepareExecutiveDeskTextCommand(message);
+    if (!prepared) return false;
+    dispatchMEOS(prepared.eventName, prepared.detail);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Executive Desk text command dispatched to canonical Maddy request path.`, {
+      source: prepared.detail.source,
+      characters: prepared.detail.message.length,
+      buildId: EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID
+    });
+    return true;
+  }
+
+  function runExecutiveDeskTextCommandContinuityAcceptanceTest() {
+    const exact = "Research current California mobile hygiene requirements from public web sources.";
+    const prepared = prepareExecutiveDeskTextCommand(`  ${exact}  `);
+    const blank = prepareExecutiveDeskTextCommand("   ");
+    const scene = document.getElementById("meosImagePanoramicOffice");
+    const checks = [
+      { name: "Executive Desk text uses the canonical Maddy request event", passed: prepared?.eventName === "meos:maddy-request" },
+      { name: "Executive Desk text preserves the human instruction exactly after outer whitespace normalization", passed: prepared?.detail?.message === exact },
+      { name: "Executive Desk text identifies the visible desk as its source", passed: prepared?.detail?.source === "maddy-executive-desk" },
+      { name: "Executive Desk text carries the current cost mode without creating new spend authority", passed: prepared?.detail?.costMode === state.costMode },
+      { name: "Executive Desk text carries the current communication mode", passed: prepared?.detail?.communicationMode === state.communicationMode },
+      { name: "Blank desk submissions fail closed", passed: blank === null },
+      { name: "Panoramic Executive Desk text form remains mounted", passed: Boolean(scene?.querySelector("#meosDeskMaddyText #meosDeskMaddyInput")) },
+      { name: "Desk command continuity uses no second conversation transport", passed: prepared?.eventName === "meos:maddy-request" }
+    ];
+    const passed = checks.filter(check => check.passed).length;
+    const result = {
+      success: passed === checks.length,
+      commission: "OD4136",
+      schema: "meos.dashboard.executive-desk-text-command-continuity.acceptance.v1",
+      version: DASHBOARD_VERSION,
+      buildId: EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4136 Executive Desk Text Command Continuity: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
     return result;
   }
 
@@ -10020,7 +10073,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online.`
     );
   }
 
@@ -10037,7 +10090,8 @@ document
     buildCommercialCommandModel,
     renderCommercialCommandSurface,
     runCommercialCommandDashboardAcceptanceTest,
-    runMaddyActivitySurfaceAcceptanceTest
+    runMaddyActivitySurfaceAcceptanceTest,
+    runExecutiveDeskTextCommandContinuityAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
@@ -10062,6 +10116,7 @@ document
       runIntegratedAnswerIntegrityAcceptanceTest,
       runMaddyResponseSurfaceAcceptanceTest,
       runImagePanoramicExecutiveOfficeAcceptanceTest,
+      runExecutiveDeskTextCommandContinuityAcceptanceTest,
       runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
