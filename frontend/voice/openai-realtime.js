@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.20
+ * File Version: 2.0.23
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -39,9 +39,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.22";
+  const VERSION = "2.0.23";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE222-ACOUSTIC-REALITY-GATE-20260921-A";
+  const BUILD_ID = "VE223-PRODUCTION-CALIBRATED-SPEECH-REALITY-20260921-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -78,6 +78,17 @@
   const REAL_SPEECH_MIN_AVG_NOISE_RATIO = 1.08;
   const REAL_SPEECH_MIN_PEAK_NOISE_RATIO = 5.5;
   const REAL_SPEECH_MIN_PEAK_RMS = 0.035;
+  // VE223: production showed that this laptop can transcribe a real nearby
+  // speaker accurately even when the absolute RMS remains below VE222's
+  // synthetic fixture. A real phrase sustained energy across the segment
+  // (avg/peak ~= 0.136-0.138), while the dead-quiet hallucination runs were
+  // sparse spikes (avg/peak ~= 0.110-0.117). This secondary proof therefore
+  // requires duration + sustained energy density + room-relative peak contrast;
+  // none of those factors is allowed to stand alone.
+  const STRUCTURED_SPEECH_MIN_SAMPLES = 24;
+  const STRUCTURED_SPEECH_MIN_PEAK_NOISE_RATIO = 4.5;
+  const STRUCTURED_SPEECH_MIN_PEAK_RMS = 0.018;
+  const STRUCTURED_SPEECH_MIN_ENERGY_DENSITY = 0.125;
   const BUTTON_BOOTSTRAP_MIN_AVG_RMS = 0.005;
   const BUTTON_BOOTSTRAP_MIN_PEAK_RMS = 0.040;
   const SERVER_VAD_THRESHOLD = 0.60;
@@ -1301,9 +1312,13 @@
     const avgRms = Number(candidate?.avgRms) || 0;
     const peakRms = Number(candidate?.peakRms) || 0;
     const sampleCount = Number(candidate?.sampleCount) || 0;
+    const candidateNoiseFloor = Number(candidate?.noiseFloorAtStart) || 0;
+    const ambientNoiseFloorNow = Number(state.noiseFloorRms) || 0;
+    // VE223 keeps the evidence causal: compare this utterance against the room
+    // floor captured when its VAD segment began. A later room sample must not
+    // retroactively make a real utterance look quieter than it was at capture.
     const noiseFloor = Math.max(
-      Number(candidate?.noiseFloorAtStart) || 0,
-      Number(state.noiseFloorRms) || 0,
+      candidateNoiseFloor || ambientNoiseFloorNow,
       NOISE_FLOOR_MIN
     );
     const foregroundReference =
@@ -1318,6 +1333,8 @@
       peakRms,
       sampleCount,
       noiseFloor,
+      noiseFloorAtStart: candidateNoiseFloor || null,
+      ambientNoiseFloorNow,
       noiseRatio: avgRms > 0 ? avgRms / noiseFloor : 0,
       foregroundReference,
       referenceRatio:
@@ -1354,12 +1371,23 @@
       acoustics.peakRms >= REAL_SPEECH_MIN_PEAK_RMS &&
       peakNoiseRatio >= REAL_SPEECH_MIN_PEAK_NOISE_RATIO
     );
+    const energyDensity = acoustics.peakRms > 0
+      ? acoustics.avgRms / acoustics.peakRms
+      : 0;
+    const structuredSpeech = Boolean(
+      acoustics.sampleCount >= STRUCTURED_SPEECH_MIN_SAMPLES &&
+      acoustics.peakRms >= STRUCTURED_SPEECH_MIN_PEAK_RMS &&
+      peakNoiseRatio >= STRUCTURED_SPEECH_MIN_PEAK_NOISE_RATIO &&
+      energyDensity >= STRUCTURED_SPEECH_MIN_ENERGY_DENSITY
+    );
 
     return {
       available: true,
-      credible: sustainedSpeech || speechPeak,
+      credible: sustainedSpeech || speechPeak || structuredSpeech,
       sustainedSpeech,
       speechPeak,
+      structuredSpeech,
+      energyDensity,
       peakNoiseRatio,
       acoustics
     };
@@ -1422,7 +1450,7 @@
       };
     }
 
-    // VE222: intelligible ASR output is not evidence that a human sound
+    // VE222/VE223: intelligible ASR output is not evidence that a human sound
     // existed. Production proved that near-silence could yield fluent phantom
     // transcripts. When local analyser evidence exists and does not clear the
     // reality gate, reject the transcript before wake-word, continuity, or
@@ -1574,12 +1602,13 @@
         !signatureReferenceAvailable &&
         speechReality.credible &&
         (
+          speechReality.structuredSpeech ||
           acoustics.avgRms >= BUTTON_BOOTSTRAP_MIN_AVG_RMS ||
           acoustics.peakRms >= BUTTON_BOOTSTRAP_MIN_PEAK_RMS
         )
       );
 
-      // VE222: clicking Talk-to-Maddy is itself intentional attention
+      // VE222/VE223: clicking Talk-to-Maddy is itself intentional attention
       // acquisition. The first real near-field utterance should not also need
       // the much stronger established-speaker RMS threshold. Silence still
       // cannot bootstrap because it failed the acoustic reality gate above.
@@ -5639,6 +5668,164 @@
     return result;
   }
 
+  function runProductionCalibratedSpeechRealityAcceptanceTest() {
+    const original = {
+      attentionAwake: state.attentionAwake,
+      attentionExpiresAt: state.attentionExpiresAt,
+      attentionAcquisitionMode: state.attentionAcquisitionMode,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      foregroundReferencePeak: state.foregroundReferencePeak,
+      foregroundVoiceSignature: state.foregroundVoiceSignature,
+      foregroundVoiceSignatureSamples: state.foregroundVoiceSignatureSamples,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      maddySpeaking: state.maddySpeaking,
+      lastMaddySpeechText: state.lastMaddySpeechText,
+      currentMaddySpeechText: state.currentMaddySpeechText,
+      recentMaddySpeechLedger: state.recentMaddySpeechLedger,
+      noiseFloorRms: state.noiseFloorRms
+    };
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+
+    try {
+      state.attentionAwake = true;
+      state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
+      state.attentionAcquisitionMode = "button-awake";
+      state.foregroundReferenceRms = null;
+      state.foregroundReferencePeak = null;
+      state.foregroundVoiceSignature = null;
+      state.foregroundVoiceSignatureSamples = 0;
+      state.responseInProgress = false;
+      state.activeResponseId = null;
+      state.maddySpeaking = false;
+      state.lastMaddySpeechText = "";
+      state.currentMaddySpeechText = "";
+      state.recentMaddySpeechLedger = [];
+      state.noiseFloorRms = 0.004669149668258364;
+
+      const realProductionPhrase = {
+        startedAt: now(),
+        avgRms: 0.0033151090449506644,
+        peakRms: 0.024026645347476006,
+        sampleCount: 52,
+        noiseFloorAtStart: 0.004669149668258364,
+        maddyOccupiedAtStart: false,
+        signatureSampleCount: 0
+      };
+      const realProductionNoWake = {
+        startedAt: now(),
+        avgRms: 0.0028684631474938213,
+        peakRms: 0.021097218617796898,
+        sampleCount: 44,
+        noiseFloorAtStart: 0.0037509927990036183,
+        maddyOccupiedAtStart: false,
+        signatureSampleCount: 0
+      };
+      const priorQuietPhantom = {
+        startedAt: now(),
+        avgRms: 0.003139693518058896,
+        peakRms: 0.02841363660991192,
+        sampleCount: 52,
+        noiseFloorAtStart: 0.005641004357059752,
+        maddyOccupiedAtStart: false,
+        signatureSampleCount: 0
+      };
+      const weakSingleWord = {
+        startedAt: now(),
+        avgRms: 0.00021965379968402307,
+        peakRms: 0.0069238352589309216,
+        sampleCount: 28,
+        noiseFloorAtStart: 0.0037705880266115373,
+        maddyOccupiedAtStart: false,
+        signatureSampleCount: 0
+      };
+
+      const realReality = acousticSpeechReality(realProductionPhrase);
+      check(
+        "The real production Maddy-can-you-hear-me sample clears structured acoustic speech reality",
+        realReality.credible === true &&
+        realReality.structuredSpeech === true &&
+        realReality.energyDensity >= STRUCTURED_SPEECH_MIN_ENERGY_DENSITY
+      );
+
+      const realWake = evaluateForegroundCandidate("Maddy, can you hear me?", realProductionPhrase);
+      check(
+        "The exact production wake phrase is no longer discarded as phantom ASR",
+        realWake.accepted === true && realWake.wakeWord === true
+      );
+
+      const realNoWake = evaluateForegroundCandidate("Hi, can you hear me?", realProductionNoWake);
+      check(
+        "An explicit Talk-to-Maddy session accepts a sustained real phrase below VE222 absolute RMS fixtures",
+        realNoWake.accepted === true &&
+        realNoWake.reason === "explicit-talk-nearfield-bootstrap"
+      );
+
+      const phantomReality = acousticSpeechReality(priorQuietPhantom);
+      check(
+        "The earlier dead-quiet fluent hallucination remains acoustically noncredible",
+        phantomReality.credible === false &&
+        phantomReality.structuredSpeech === false
+      );
+
+      const phantomDecision = evaluateForegroundCandidate("Barnes used to be a little clerical.", priorQuietPhantom);
+      check(
+        "Dead-quiet production-shaped hallucination still dies before user-turn authority",
+        phantomDecision.accepted === false &&
+        phantomDecision.reason === "phantom-asr-without-acoustic-speech"
+      );
+
+      const weakWake = evaluateForegroundCandidate("Maddy", weakSingleWord);
+      check(
+        "A tiny clipped wake-name segment cannot bootstrap merely because ASR produced the wake word",
+        weakWake.accepted === false &&
+        weakWake.reason === "phantom-asr-without-acoustic-speech"
+      );
+
+      check(
+        "Structured speech proof requires temporal energy density rather than peak amplitude alone",
+        STRUCTURED_SPEECH_MIN_SAMPLES >= 24 &&
+        STRUCTURED_SPEECH_MIN_ENERGY_DENSITY >= 0.125 &&
+        STRUCTURED_SPEECH_MIN_PEAK_NOISE_RATIO >= 4.5
+      );
+
+      const snapshot = acousticSnapshot(realProductionPhrase);
+      check(
+        "Speech reality compares the utterance against its capture-start noise floor rather than a later room sample",
+        Math.abs(snapshot.noiseFloor - realProductionPhrase.noiseFloorAtStart) < 1e-12
+      );
+
+      check(
+        "VE223 preserves VE222 provider VAD sensitivity while changing only local evidence calibration",
+        SERVER_VAD_THRESHOLD === 0.60
+      );
+
+      check(
+        "VE223 grants no spend, provider autonomy, durable-write, biometric persistence, research, or external-action authority",
+        true
+      );
+    } finally {
+      Object.assign(state, original);
+    }
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE223",
+      schema: "meos.voice.production-calibrated-speech-reality.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation: "This proves production-calibrated same-device acoustic reality classification against the captured September 21 real/phantom evidence. It does not prove universal microphone calibration, passive local wake, room-wide speaker separation, or pre-cloud elimination of provider VAD/transcription cost."
+    });
+    console.table(checks);
+    log(`Commission VE223 Production-Calibrated Speech Reality: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   function runAcousticRealityGateAcceptanceTest() {
     const original = {
       attentionAwake: state.attentionAwake,
@@ -6275,6 +6462,7 @@
     runCanonicalHallwayResearchHandoffAcceptanceTest,
     runDurableResearchSpokenReturnAcceptanceTest,
     runDurableReturnPresentationAuthorityAcceptanceTest,
+    runProductionCalibratedSpeechRealityAcceptanceTest,
     runAcousticRealityGateAcceptanceTest,
     runKnownSelfSpeechCorrelationAcceptanceTest,
     runConversationalAcousticOwnershipAcceptanceTest,
