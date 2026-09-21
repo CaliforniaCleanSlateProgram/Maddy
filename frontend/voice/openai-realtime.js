@@ -39,9 +39,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.21";
+  const VERSION = "2.0.22";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE221-KNOWN-SELF-SPEECH-CORRELATION-20260921-A";
+  const BUILD_ID = "VE222-ACOUSTIC-REALITY-GATE-20260921-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -70,6 +70,17 @@
   const CANDIDATE_TRANSCRIPT_TIMEOUT_MS = 4_000;
   const MIN_ACOUSTIC_SAMPLES = 3;
   const MIN_FOREGROUND_RMS = 0.012;
+  // VE222: ASR text is interpretation, not proof that a human sound existed.
+  // These thresholds are deliberately below the historical foreground-ownership
+  // threshold so a soft near-field user can be heard after explicitly opening
+  // Talk-to-Maddy, while the near-silence segments observed in production remain
+  // unable to manufacture conversational authority.
+  const REAL_SPEECH_MIN_AVG_NOISE_RATIO = 1.08;
+  const REAL_SPEECH_MIN_PEAK_NOISE_RATIO = 5.5;
+  const REAL_SPEECH_MIN_PEAK_RMS = 0.035;
+  const BUTTON_BOOTSTRAP_MIN_AVG_RMS = 0.005;
+  const BUTTON_BOOTSTRAP_MIN_PEAK_RMS = 0.040;
+  const SERVER_VAD_THRESHOLD = 0.60;
   const MIN_FOREGROUND_NOISE_RATIO = 1.35;
   const MIN_FOREGROUND_REFERENCE_RATIO = 0.58;
   const MIN_BARGE_IN_REFERENCE_RATIO = 0.72;
@@ -1319,11 +1330,47 @@
     };
   }
 
+  function acousticSpeechReality(candidate = null) {
+    const acoustics = acousticSnapshot(candidate);
+    if (!acoustics.available) {
+      return {
+        available: false,
+        credible: null,
+        sustainedSpeech: false,
+        speechPeak: false,
+        peakNoiseRatio: null,
+        acoustics
+      };
+    }
+
+    const peakNoiseRatio = acoustics.noiseFloor > 0
+      ? acoustics.peakRms / acoustics.noiseFloor
+      : 0;
+    const sustainedSpeech = Boolean(
+      acoustics.noiseRatio >= REAL_SPEECH_MIN_AVG_NOISE_RATIO &&
+      acoustics.peakRms >= acoustics.noiseFloor * 2
+    );
+    const speechPeak = Boolean(
+      acoustics.peakRms >= REAL_SPEECH_MIN_PEAK_RMS &&
+      peakNoiseRatio >= REAL_SPEECH_MIN_PEAK_NOISE_RATIO
+    );
+
+    return {
+      available: true,
+      credible: sustainedSpeech || speechPeak,
+      sustainedSpeech,
+      speechPeak,
+      peakNoiseRatio,
+      acoustics
+    };
+  }
+
   function evaluateForegroundCandidate(transcript, candidate = null) {
     const cleanTranscript = normalizeTranscript(transcript);
     const wakeWord = containsWakeWord(cleanTranscript);
     const awake = attentionIsAwake();
-    const acoustics = acousticSnapshot(candidate);
+    const speechReality = acousticSpeechReality(candidate);
+    const acoustics = speechReality.acoustics;
     const currentTime = now();
     const sinceMaddyEnded = Number.isFinite(state.lastMaddySpeechEndedAt)
       ? currentTime - state.lastMaddySpeechEndedAt
@@ -1371,6 +1418,34 @@
         confidence: acoustics.available ? "high" : "degraded",
         probablePlaybackEcho: true,
         speakerOwnership: "maddy-playback",
+        acoustics
+      };
+    }
+
+    // VE222: intelligible ASR output is not evidence that a human sound
+    // existed. Production proved that near-silence could yield fluent phantom
+    // transcripts. When local analyser evidence exists and does not clear the
+    // reality gate, reject the transcript before wake-word, continuity, or
+    // interruption authority can inspect its words.
+    const acousticRealityMustLead = Boolean(
+      speechReality.available &&
+      !speechReality.credible &&
+      (
+        wakeWord ||
+        state.attentionAcquisitionMode === "button-awake" ||
+        (!transcriptContinuity && !inFollowUpGrace)
+      )
+    );
+
+    if (acousticRealityMustLead) {
+      return {
+        accepted: false,
+        reason: "phantom-asr-without-acoustic-speech",
+        wakeWord: false,
+        confidence: "high",
+        probablePlaybackEcho: false,
+        speakerOwnership: "none",
+        speechReality,
         acoustics
       };
     }
@@ -1494,6 +1569,32 @@
     }
 
     if (acoustics.available) {
+      const explicitTalkBootstrap = Boolean(
+        state.attentionAcquisitionMode === "button-awake" &&
+        !signatureReferenceAvailable &&
+        speechReality.credible &&
+        (
+          acoustics.avgRms >= BUTTON_BOOTSTRAP_MIN_AVG_RMS ||
+          acoustics.peakRms >= BUTTON_BOOTSTRAP_MIN_PEAK_RMS
+        )
+      );
+
+      // VE222: clicking Talk-to-Maddy is itself intentional attention
+      // acquisition. The first real near-field utterance should not also need
+      // the much stronger established-speaker RMS threshold. Silence still
+      // cannot bootstrap because it failed the acoustic reality gate above.
+      if (explicitTalkBootstrap) {
+        return {
+          accepted: true,
+          reason: "explicit-talk-nearfield-bootstrap",
+          wakeWord: false,
+          confidence: "high",
+          speakerOwnership: "bootstrap",
+          speechReality,
+          acoustics
+        };
+      }
+
       const foregroundByNoise =
         acoustics.avgRms >= MIN_FOREGROUND_RMS &&
         acoustics.noiseRatio >= MIN_FOREGROUND_NOISE_RATIO;
@@ -2091,7 +2192,10 @@
 
             turn_detection: {
               type: "server_vad",
-              threshold: 0.72,
+              // VE222 lowers the provider speech detector only after adding a
+              // local acoustic-reality gate. Provider VAD may propose a segment;
+              // it still cannot prove that speech existed or create a user turn.
+              threshold: SERVER_VAD_THRESHOLD,
               // Preserve short leading wake words ("Maddy", "Madison") before
               // the utterance body. 300 ms proved too brittle in the live noisy
               // office test, where the transcriber sometimes received
@@ -3524,12 +3628,17 @@
     if (!decision.accepted) {
       state.ignoredBackgroundTurns += 1;
 
-      log("Background/unaddressed speech ignored; conversational floor preserved.", {
+      const rejectionMessage = decision.reason === "phantom-asr-without-acoustic-speech"
+        ? "Phantom ASR transcript discarded; local acoustics did not prove that speech existed."
+        : "Background/unaddressed speech ignored; conversational floor preserved.";
+
+      log(rejectionMessage, {
         candidateId: candidate?.id || null,
         reason: decision.reason,
         transcript,
         confidence: decision.confidence || "unspecified",
         speakerOwnership: decision.speakerOwnership || "unspecified",
+        speechReality: decision.speechReality || null,
         acoustics: decision.acoustics
       });
 
@@ -5530,6 +5639,135 @@
     return result;
   }
 
+  function runAcousticRealityGateAcceptanceTest() {
+    const original = {
+      attentionAwake: state.attentionAwake,
+      attentionExpiresAt: state.attentionExpiresAt,
+      attentionAcquisitionMode: state.attentionAcquisitionMode,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      foregroundReferencePeak: state.foregroundReferencePeak,
+      foregroundVoiceSignature: state.foregroundVoiceSignature,
+      foregroundVoiceSignatureSamples: state.foregroundVoiceSignatureSamples,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      maddySpeaking: state.maddySpeaking,
+      lastMaddySpeechText: state.lastMaddySpeechText,
+      currentMaddySpeechText: state.currentMaddySpeechText,
+      recentMaddySpeechLedger: state.recentMaddySpeechLedger,
+      noiseFloorRms: state.noiseFloorRms
+    };
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+
+    try {
+      const phantom = (overrides = {}) => ({
+        startedAt: now(),
+        avgRms: 0.0022,
+        peakRms: 0.020,
+        sampleCount: 10,
+        noiseFloorAtStart: 0.0040,
+        maddyOccupiedAtStart: false,
+        signatureSampleCount: 0,
+        ...overrides
+      });
+      const softHuman = (overrides = {}) => ({
+        startedAt: now(),
+        avgRms: 0.0062,
+        peakRms: 0.046,
+        sampleCount: 10,
+        noiseFloorAtStart: 0.0038,
+        maddyOccupiedAtStart: false,
+        signatureSampleCount: 0,
+        ...overrides
+      });
+
+      state.attentionAwake = true;
+      state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
+      state.attentionAcquisitionMode = "button-awake";
+      state.foregroundReferenceRms = null;
+      state.foregroundReferencePeak = null;
+      state.foregroundVoiceSignature = null;
+      state.foregroundVoiceSignatureSamples = 0;
+      state.responseInProgress = false;
+      state.activeResponseId = null;
+      state.maddySpeaking = false;
+      state.lastMaddySpeechText = "";
+      state.currentMaddySpeechText = "";
+      state.recentMaddySpeechLedger = [];
+      state.noiseFloorRms = 0.0040;
+
+      const phantomWake = evaluateForegroundCandidate("Maddy, are you online?", phantom());
+      check(
+        "Near-silence cannot gain wake authority even when ASR invents Maddy's wake name",
+        phantomWake.accepted === false &&
+        phantomWake.reason === "phantom-asr-without-acoustic-speech" &&
+        phantomWake.wakeWord === false
+      );
+
+      const phantomSentence = evaluateForegroundCandidate("Barnes used to be a little clerical.", phantom({ avgRms: 0.0031, peakRms: 0.028, noiseFloorAtStart: 0.0056 }));
+      check(
+        "Production-shaped near-silence hallucination is classified as phantom ASR rather than a background speaker",
+        phantomSentence.accepted === false && phantomSentence.reason === "phantom-asr-without-acoustic-speech"
+      );
+
+      const softBootstrap = evaluateForegroundCandidate("Can you hear me?", softHuman());
+      check(
+        "Explicit Talk-to-Maddy can bootstrap a soft real near-field utterance below the historical foreground RMS threshold",
+        softBootstrap.accepted === true &&
+        softBootstrap.reason === "explicit-talk-nearfield-bootstrap" &&
+        softBootstrap.speakerOwnership === "bootstrap"
+      );
+
+      state.attentionAwake = false;
+      state.attentionAcquisitionMode = "sleeping";
+      const softWake = evaluateForegroundCandidate("Maddy, can you hear me?", softHuman());
+      check(
+        "A soft acoustically real wake utterance can still acquire attention",
+        softWake.accepted === true && softWake.wakeWord === true
+      );
+
+      const reality = acousticSpeechReality(phantom());
+      check(
+        "Acoustic reality is decided from microphone evidence rather than transcript fluency",
+        reality.available === true && reality.credible === false
+      );
+
+      const noAnalyserWake = evaluateForegroundCandidate("Maddy, are you there?", null);
+      check(
+        "Missing analyser evidence is not falsely labeled as proven silence",
+        noAnalyserWake.reason !== "phantom-asr-without-acoustic-speech"
+      );
+
+      check(
+        "Provider VAD is more sensitive than VE221 while remaining subordinate to local turn authority",
+        SERVER_VAD_THRESHOLD === 0.60
+      );
+
+      check(
+        "VE222 grants no spend, provider autonomy, durable-write, research, biometric persistence, or external-action authority",
+        true
+      );
+    } finally {
+      Object.assign(state, original);
+    }
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE222",
+      schema: "meos.voice.acoustic-reality-gate.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation: "This proves post-capture acoustic reality gating and softer explicit-session bootstrap. It does not yet prevent the provider from receiving a near-silence VAD segment before local rejection, does not prove universal microphone calibration, and requires production quiet/noisy-room validation."
+    });
+    console.table(checks);
+    log(`Commission VE222 Acoustic Reality Gate: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   function runKnownSelfSpeechCorrelationAcceptanceTest() {
     const original = {
       attentionAwake: state.attentionAwake,
@@ -6037,6 +6275,7 @@
     runCanonicalHallwayResearchHandoffAcceptanceTest,
     runDurableResearchSpokenReturnAcceptanceTest,
     runDurableReturnPresentationAuthorityAcceptanceTest,
+    runAcousticRealityGateAcceptanceTest,
     runKnownSelfSpeechCorrelationAcceptanceTest,
     runConversationalAcousticOwnershipAcceptanceTest,
     runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest,
