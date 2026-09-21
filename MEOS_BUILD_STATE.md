@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32451749/MEOS_BUILD_STATE.md)
+[Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449860/MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md)
@@ -11364,3 +11364,176 @@ Tomorrow resumes with a fresh repository snapshot and the Router browser-quota r
 
 **Fast recovery:** `Resume ARC001-NIGHTLY-ER154-PROVEN-DURABILITY-502-EXPANDED-20260920 — ER154 Router 1.5.4 is production-proven 10/10 with 006.031Q 10/10 and 006.018L4 8/8; the real spoken corridor has proven speech → research route → canonical Hallway → durable execution → return observer → durable return reintegration path, but ARC001 remains open; post-proof console evidence shows Executive Learning PUT /api/executive-learning-state 502 and Knowledge Engine GET /api/executive-memory/investigation-history/knowledge-engine-manifest-v1 502 with Executive Memory persistence failure during durable-research-learning synchronization, while startup durable hydration still reports READY/degraded=false; do not assume one root cause; tomorrow first repair Router browser quota resilience, then focused 502 durability investigation if reproducible, then third-person Maddy wake/floor theft, then rerun the real spoken research corridor and close ARC001 only on bounded end-to-end production proof.`
 
+
+
+-------------------------------------------------------------------------------
+
+# BUILD STATE RECONCILIATION — VE219 DURABLE RETURN PRESENTATION AUTHORITY
+
+**Date:** 2026-09-21  
+**State:** PRODUCTION-PROVEN at bounded commission contract  
+**Commission:** VE219 Durable Return Presentation Authority  
+**Voice version:** `2.0.19`  
+**Build:** `VE219-DURABLE-RETURN-PRESENTATION-AUTHORITY-20260921-A`
+
+## Production proof
+
+Production startup identified:
+
+- `MEOS Voice v2.0.19`
+- build `VE219-DURABLE-RETURN-PRESENTATION-AUTHORITY-20260921-A`
+- Executive Brain `v1.36.0 / EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A`
+- Executive Router `v1.5.4 / ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A`
+- Executive Hallway `v1.5.7 / EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A`
+- Executive Hub `v4.13.5` with Returned Work Disposition Surface `OD4132`
+- CCSP active customer context
+- Mission Engine durable authority hydration `READY`
+- source / authority = `meos-institutional-repository`
+
+### VE219 acceptance
+
+`OpenAIRealtime.runDurableReturnPresentationAuthorityAcceptanceTest()`
+
+**PASS 10/10**
+
+Proven bounded contract:
+
+1. Governed durable work still completes when live voice is disconnected.
+2. Disconnected durable return preserves the exact governed answer for the Desk.
+3. Disconnected durable return preserves supporting-source provenance.
+4. Disconnected durable return creates no Maddy response event and therefore no automatic TTS handoff.
+5. Disconnected durable return emits an explicit deferred-to-Desk presentation state.
+6. Accepted durable execution identity is closed even when speech is deferred.
+7. Reconnect does not auto-speak an already accepted Desk-only return.
+8. Active live voice retains the existing one-mouth spoken-return path.
+9. Live spoken return preserves exact originating turn and execution lineage.
+10. Presentation gating grants no spend, provider autonomy, raw-output, or external-action authority.
+
+### VE216 regression
+
+`await OpenAIRealtime.runDurableResearchSpokenReturnAcceptanceTest()`
+
+**PASS 9/9**
+
+Preserved:
+
+- exact execution identity before observation;
+- nonblocking observer;
+- no fabricated answer for running work;
+- exactly one governed durable answer through Maddy's response mouth;
+- raw server synthesis excluded from speech;
+- evidence URLs preserved;
+- one-mouth/final-speech governance preserved;
+- no spend/external-action authority expansion;
+- duplicate publication blocked by durable execution identity.
+
+## Correct bounded conclusion
+
+VE219 closes the production-proven presentation-authority defect at its bounded contract:
+
+**Durable completion is no longer equivalent to permission to speak.**
+
+Maddy may continue authorized durable work while the live voice presentation surface is disconnected. When the returned work is accepted under a disconnected voice state, the exact governed answer and provenance are preserved as Desk-only returned work without dispatching a Maddy response event into the automatic TTS path.
+
+When live voice is active, the existing governed one-mouth spoken-return path remains available.
+
+The commission does **not** yet prove:
+
+- a redesigned Executive Hub or final Desk UI;
+- a new artifact/file store;
+- real ElevenLabs billing semantics;
+- a full live spoken request → disconnect → completed research → visible Desk item production demonstration;
+- cross-user / cross-Desk routing;
+- Workstation identity resolution;
+- Digital Human presentation;
+- universal captions.
+
+Production gets the vote on those later seams.
+
+## Product/UI direction locked by this proof
+
+Maddy produces one canonical governed response. Presentation surfaces consume that same response rather than regenerate it.
+
+Target presentation model:
+
+`Maddy cognition / durable work`
+→ `one canonical returned response`
+→ `Returned Work / Desk`
+→ optional simultaneous presentation through:
+- text;
+- live captions;
+- Maddy Speech when voice presentation authority is active;
+- Canonical Digital Human Maddy when embodiment presentation authority is active.
+
+The Desk / Returned Work surface is the durable landing place. Voice is a presentation channel, not storage.
+
+## Desk / Workstation doctrine
+
+Prefer human office language over SaaS "seat" language.
+
+- Each authorized company user has a **Desk** / **Workstation**.
+- Private personal/social conversation remains private to that user's Maddy relationship.
+- Work objects can be explicitly handed to another authorized Desk.
+- Sharing transfers the selected work object, not the sender's private conversation history.
+- Recipient resolution is organization-scoped.
+- One unambiguous recipient match may resolve directly.
+- Multiple same-organization matches require clarification.
+- No automatic global MEOS user search is authorized merely from a first name.
+- Cross-organization sharing requires separate explicit authority.
+
+Example:
+
+`Maddy, finish this and send it to Sherry.`
+
+means:
+
+current organization
+→ authorized Sherry candidates in that organization
+→ one match: handoff
+→ multiple matches: clarify
+→ no match: do not silently broaden beyond organization.
+
+## Presence / collaboration direction
+
+The mature user experience should feel like Maddy and the user work in the same office:
+
+- protected space for Canonical Digital Human Maddy;
+- conversation stream with exact canonical text;
+- live captions equal to the exact wording being spoken;
+- Returned Work / Desk;
+- files and artifacts;
+- workbench/shared visual context;
+- human-readable "what Maddy is doing" status;
+- voice optional per user, not required;
+- same persistent Maddy underneath text-only, voice-first, occasional voice, and Digital Human use.
+
+Private/social continuity may preserve user-specific conversational threads, but private content does not become organizational truth or cross-user memory merely because users share an employer.
+
+## Immediate next production objective
+
+Before redesigning the whole dashboard, prove the newly established contract with one real production corridor:
+
+1. Start a live voice session.
+2. Give Maddy a natural durable public-research request.
+3. Confirm canonical Hallway execution identity.
+4. Explicitly disconnect live voice while work continues.
+5. Allow durable execution to finish.
+6. Confirm no automatic Maddy Speech / TTS request is emitted after disconnect.
+7. Confirm the governed answer and source provenance remain available as Desk-only returned work.
+8. Inspect how existing Executive Hub / OD4132 exposes that returned work.
+9. Use that evidence to choose the smallest next commission for the visible Desk return surface.
+
+Do not redesign the entire Executive Hub before this live proof identifies the exact missing presentation seam.
+
+## Open production issues carried forward
+
+- Executive Learning durable persistence has repeatedly emitted HTTP 502 during otherwise healthy sessions; root cause remains unproven.
+- Network-loss errors observed during known Wi-Fi drops are not by themselves evidence of Maddy code failure.
+- Full ARC001 end-to-end close remains pending the real disconnected-return-to-Desk production demonstration and final bounded corridor proof.
+- Prior third-person wake/floor theft remains historical production evidence; a later VE218 run successfully preserved the floor against an unproven interruption, but broader environmental robustness is not yet universally established.
+
+## Recovery
+
+**Recovery keyword:** `ARC001-VE219-PROVEN-DESK-RETURN-LIVE-PROOF-NEXT-20260921`
+
+**Fast recovery:** `Resume ARC001-VE219-PROVEN-DESK-RETURN-LIVE-PROOF-NEXT-20260921 — production is on Voice v2.0.19 / VE219-DURABLE-RETURN-PRESENTATION-AUTHORITY-20260921-A; VE219 is production-proven 10/10 and VE216 regression is production-proven 9/9; durable completion is now separated from live speech authority, disconnected returns preserve exact answer/provenance for Desk-only presentation and create no automatic TTS handoff, active voice retains one-mouth spoken return, and reconnect does not auto-speak old Desk-only work; next perform one real spoken durable-research request, explicitly disconnect voice while it runs, prove there is no post-disconnect TTS call, prove the returned answer/provenance remains available to Executive Hub/OD4132, inspect the exact missing visible Desk surface, then choose the smallest next commission.`
