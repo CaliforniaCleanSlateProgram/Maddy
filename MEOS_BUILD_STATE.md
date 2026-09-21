@@ -1,4 +1,4 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32478199/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32478457/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -11958,3 +11958,139 @@ The prior production `GET /api/durable-execution/status/<execution-id> -> 404` r
 **Recovery keyword:** `VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-PRODUCTION-PENDING-20260921`
 
 **Fast recovery:** `Resume VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-PRODUCTION-PENDING-20260921 — VE223 v2.0.23 deployed and acceptance passed 10/10, fixing the VE222 real-speech calibration problem, but a loud reverberant hallway run accepted a different deep-voiced man's phrase "They want you to live" twice as explicit-talk-nearfield-bootstrap with wakeWord false, proving that first credible speech could wrongly become the user; VE224 v2.0.24 is coded in frontend/voice/openai-realtime.js and locally PASS 10/10 with all 15 exported Voice suites PASS / 0 failures; Talk-to-Maddy now arms an unclaimed session, non-wake first speech is rejected as button-awake-unclaimed-speaker-address-required, and only acoustically credible Maddy-address speech can seed the ephemeral same-session foreground reference; production must still prove the existing coarse spectral signature can distinguish the user's deep voice from a similar deep background voice under hallway reflections; provider-side transcription of rejected room speech and the separate durable-execution status 404 remain open seams.`
+
+---
+
+# 2026-09-21 — VE224 HARDER HALLWAY PRODUCTION EVIDENCE RECONCILIATION
+
+## Production environment
+
+VE224 was tested again after both the runtime and prior Build State commits were live.
+
+Environment: semi-noisy to noisy shared hallway / outdoor-adjacent area with waterfall noise, background conversation, and reverberant acoustics. The user's intent was to test whether Maddy could establish the user's foreground voice and preserve the conversation while other people spoke nearby.
+
+## Deployed authority confirmed
+
+Production console confirmed:
+
+- `MEOS Voice v2.0.24`
+- build `VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-20260921-A`
+- `OpenAIRealtime.runExplicitSessionForegroundClaimAcceptanceTest()` -> **PASS 10/10**
+
+VE224 therefore remained the live Voice authority during this production run.
+
+## Production evidence — foreground claim succeeded
+
+A fresh Talk-to-Maddy session began armed and unclaimed.
+
+The user's explicit address:
+
+`Maddy, can you hear me?`
+
+was captured with credible acoustics, acquired foreground conversation by wake word, and became an authorized user turn.
+
+Observed latency for that turn:
+
+- model start latency: **91 ms**
+- total response latency: **1503 ms**
+
+This is positive live evidence that VE224's armed-but-unclaimed flow can still let the intended user explicitly claim the session under noisy/reverberant conditions.
+
+## Production evidence — mixed post-claim speaker separation
+
+After foreground ownership had been established, several additional room utterances were processed.
+
+Observed post-claim events included:
+
+1. `You guys are working on.`
+   - accepted as a foreground user turn
+   - reason: `local-speaker-continuity-over-weak-room-acoustics`
+   - wake word: false
+   - one model response and one TTS request were authorized
+
+2. `That's good.`
+   - rejected
+   - reason: `foreground-local-speaker-ownership-unproven`
+   - speaker ownership: `unproven`
+   - no user-turn authority granted
+
+3. `Maddy, can you hear me?`
+   - accepted by explicit wake-word refresh
+
+4. `It's okay, Maddy.`
+   - accepted by explicit wake-word refresh
+
+5. `I'm a speaker.`
+   - rejected
+   - reason: `continuity-insufficient-for-interruption-over-weak-acoustics`
+   - no new user turn granted
+
+The user reported that Maddy appeared to find and follow the user's voice while other people talked. That observation is consistent with the rejected background/unproven candidates and the successful explicit user wake/address turns.
+
+However, the console alone does **not** establish who physically spoke the accepted non-wake phrase `You guys are working on.` The phrase was accepted under local speaker continuity despite weak room acoustics. Because the physical speaker identity of that utterance is not independently known from the log, it must remain **ambiguous evidence**, not be counted as either a confirmed user-continuity success or a confirmed wrong-speaker failure.
+
+## Current VE224 production status
+
+**State: DEPLOYED / ACCEPTANCE-GREEN / PRODUCTION-PARTIAL-PASS / HARD-SPEAKER-SEPARATION STILL UNPROVEN**
+
+What production now supports:
+
+- Talk-to-Maddy can arm an unclaimed session without automatically assigning the first speaker.
+- the intended user can explicitly claim foreground ownership with `Maddy...` under noisy/reverberant conditions;
+- after claim, at least some nearby/unproven utterances are rejected without acquiring user-turn authority;
+- explicit user wake/address refresh remains available when conditions are difficult;
+- conversational latency remained usable on the tested accepted turns.
+
+What production does **not** yet support as proven:
+
+- reliable separation of the user's deep voice from another acoustically similar deep voice after ownership has been claimed;
+- universal post-claim speaker continuity in reverberant hallway acoustics;
+- exact ASR fidelity under noise;
+- prevention of provider-side transcription/cost for room speech before local rejection.
+
+Therefore do **not** mark VE224 as fully LIVE-PROVEN for hostile/noisy speaker separation yet.
+
+## ASR fidelity remains a separate open seam
+
+Earlier production evidence in the same testing sequence showed that a user request equivalent to:
+
+`Find me a grant that CCSP can apply for today.`
+
+was transcribed as:
+
+`I'm reading grants that CCSP can apply for today.`
+
+The routing still reached `external-intelligence-research`, but the transcript was materially different from the user's actual wording.
+
+Speaker ownership and speech-content fidelity must therefore remain separate evaluation axes:
+
+- **WHO spoke?** -> foreground ownership / speaker separation
+- **WHAT was said?** -> ASR fidelity / intended-speech reconstruction
+
+A speaker-ownership pass does not excuse materially wrong transcription.
+
+## No runtime change from this reconciliation
+
+This checkpoint is evidence reconciliation only.
+
+Do not change `frontend/voice/openai-realtime.js` from VE224 based solely on this mixed run. The current runtime should remain stable until the next controlled comparison provides labeled physical-speaker evidence for each candidate.
+
+## Next production proof
+
+Run one labeled hostile-speaker sequence where the human tester notes exactly who spoke each phrase:
+
+1. fresh Talk-to-Maddy session;
+2. background speaker talks before ownership -> must be rejected;
+3. user says `Maddy, can you hear me?` -> must claim ownership;
+4. user says one non-wake follow-up -> must be accepted;
+5. similar deep-voiced background speaker says one known phrase -> must be rejected;
+6. user says another non-wake follow-up -> must be accepted;
+7. compare physical-speaker labels against every console candidate and reason.
+
+Only after that labeled sequence passes should VE224 be promoted to fully LIVE-PROVEN for noisy post-claim speaker separation.
+
+## Recovery
+
+**Recovery keyword:** `VE224-HARD-HALLWAY-PARTIAL-PRODUCTION-PASS-20260921`
+
+**Fast recovery:** `Resume VE224-HARD-HALLWAY-PARTIAL-PRODUCTION-PASS-20260921 — VE224 v2.0.24 is live and acceptance PASS 10/10. In the harder waterfall/hallway run the user successfully claimed foreground ownership with "Maddy, can you hear me?" and Maddy followed the conversation while rejecting at least two later room utterances as unproven/insufficient continuity. One non-wake phrase, "You guys are working on.", was accepted under local-speaker-continuity-over-weak-room-acoustics, but the log alone cannot establish whether the physical speaker was the user or another person, so hostile similar-deep-voice separation remains unproven rather than failed or passed. No runtime change is authorized from this mixed evidence. Build State should carry VE224 as DEPLOYED / ACCEPTANCE-GREEN / PRODUCTION-PARTIAL-PASS with a labeled hostile-speaker production sequence still required. ASR fidelity remains separately open because the user's grant request was previously materially mistranscribed even though routing was correct. Provider-side transcription cost/privacy and the separate durable-execution status 404 also remain open seams.`
