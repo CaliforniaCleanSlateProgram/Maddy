@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.32.0
- * Build: EB1320-LIVING-EPISODIC-CONSOLIDATION-20260920-A
+ * Version: 1.33.0
+ * Build: EB1330-SCORED-IMAGINATION-DREAM-SYNTHESIS-20260920-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.32.0";
-  const BUILD_ID = "EB1320-LIVING-EPISODIC-CONSOLIDATION-20260920-A";
+  const VERSION = "1.33.0";
+  const BUILD_ID = "EB1330-SCORED-IMAGINATION-DREAM-SYNTHESIS-20260920-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -286,6 +286,8 @@
       maximumDeliberateExperiences: 240,
       maximumCounterfactualSimulations: 240,
       maximumPreparednessInsights: 160,
+      maximumWorldPredictions: 240,
+      maximumDreamSyntheses: 160,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -420,6 +422,11 @@
     lastCounterfactualSimulation: null,
     deliberateExperienceCount: 0,
     counterfactualSimulationCount: 0,
+    worldPredictionLedger: [],
+    worldPredictionCount: 0,
+    dreamSynthesisHistory: [],
+    dreamSynthesisCount: 0,
+    lastDreamSynthesis: null,
     anticipatoryInitiatives: [],
     lastAnticipatorySweep: null,
     anticipatorySweepCount: 0,
@@ -20408,6 +20415,230 @@
       return {success:true,simulationId:simulation.id,branches:this.clone(ranked),preparedness:this.clone(insight)};
     },
 
+    createWorldPrediction(input = {}, options = {}) {
+      const subject = String(input.subject || "").trim();
+      const hypotheses = (Array.isArray(input.hypotheses) ? input.hypotheses : [])
+        .map((item, index) => ({
+          hypothesisId: String(item.hypothesisId || `hypothesis-${index + 1}`),
+          outcome: String(item.outcome || item.claim || "").trim(),
+          confidence: Math.max(0, Math.min(1, Number(item.confidence ?? item.probability ?? 0.5))),
+          rationale: this.clone(item.rationale || []),
+          falsifiers: this.clone(item.falsifiers || [])
+        }))
+        .filter(item => item.outcome);
+      if (!subject || !hypotheses.length) return { success: false, reason: "prediction-requires-subject-and-hypotheses" };
+      const confidenceTotal = hypotheses.reduce((sum, item) => sum + item.confidence, 0);
+      if (confidenceTotal <= 0) return { success: false, reason: "prediction-confidence-required" };
+      const normalized = hypotheses.map(item => ({ ...item, confidence: Number((item.confidence / confidenceTotal).toFixed(6)) }));
+      this.worldPredictionCount = Number(this.worldPredictionCount || 0) + 1;
+      const prediction = {
+        schema: "meos.maddy.world-prediction.v1",
+        predictionId: String(input.predictionId || this.id("world-prediction")),
+        predictionNumber: this.worldPredictionCount,
+        subject,
+        createdAt: new Date().toISOString(),
+        dueAt: input.dueAt || null,
+        horizon: input.horizon || null,
+        worldFingerprint: this.worldModel?.fingerprint || null,
+        hypotheses: normalized,
+        assumptions: this.clone(input.assumptions || []),
+        hiddenVariables: this.clone(input.hiddenVariables || []),
+        discriminatingEvidence: this.clone(input.discriminatingEvidence || []),
+        status: "open",
+        observation: null,
+        calibration: null,
+        governance: {
+          predictionIsNotFact: true,
+          simulationIsNotAuthority: true,
+          consequentialExecutionRequiresSeparateAuthority: true,
+          externalActionAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+      prediction.fingerprint = this.fingerprintCognitiveDispatch({
+        subject: prediction.subject,
+        hypotheses: prediction.hypotheses,
+        assumptions: prediction.assumptions,
+        hiddenVariables: prediction.hiddenVariables,
+        dueAt: prediction.dueAt,
+        horizon: prediction.horizon
+      });
+      this.worldPredictionLedger.unshift(prediction);
+      this.worldPredictionLedger = this.worldPredictionLedger.slice(0, this.configuration.maximumWorldPredictions);
+      if (options.persist === true) this.persist();
+      this.emit("brain:world-prediction-created", this.clone(prediction));
+      return { success: true, prediction: this.clone(prediction) };
+    },
+
+    getWorldPredictionLedger(options = {}) {
+      const limit = Math.max(1, Math.min(this.configuration.maximumWorldPredictions, Number(options.limit) || 24));
+      const status = String(options.status || "").trim().toLowerCase();
+      const items = status
+        ? this.worldPredictionLedger.filter(item => String(item.status || "").toLowerCase() === status)
+        : this.worldPredictionLedger;
+      return this.clone(items.slice(0, limit));
+    },
+
+    scoreWorldPrediction(predictionOrId, observation = {}, options = {}) {
+      const prediction = typeof predictionOrId === "string"
+        ? this.worldPredictionLedger.find(item => item.predictionId === predictionOrId)
+        : predictionOrId;
+      if (!prediction) return { success: false, reason: "prediction-not-found" };
+      if (observation.verified !== true || !observation.sourceEvidence) {
+        return { success: false, reason: "verified-observation-with-source-evidence-required" };
+      }
+      const actualOutcome = String(observation.outcome || "").trim();
+      if (!actualOutcome) return { success: false, reason: "observed-outcome-required" };
+      const normalizedActual = this.normalize(actualOutcome);
+      const scored = prediction.hypotheses.map(item => {
+        const actual = this.normalize(item.outcome) === normalizedActual ? 1 : 0;
+        const p = Number(item.confidence || 0);
+        return { hypothesisId: item.hypothesisId, outcome: item.outcome, confidence: p, actual, squaredError: Number(((p - actual) ** 2).toFixed(6)) };
+      });
+      const brierScore = Number((scored.reduce((sum, item) => sum + item.squaredError, 0) / scored.length).toFixed(6));
+      const winning = scored.find(item => item.actual === 1) || null;
+      const priorBest = [...prediction.hypotheses].sort((a,b) => b.confidence - a.confidence)[0] || null;
+      prediction.status = "scored";
+      prediction.observation = {
+        observedAt: observation.observedAt || new Date().toISOString(),
+        outcome: actualOutcome,
+        sourceEvidence: this.clone(observation.sourceEvidence),
+        verified: true
+      };
+      prediction.calibration = {
+        scoredAt: new Date().toISOString(),
+        brierScore,
+        priorTopHypothesisId: priorBest?.hypothesisId || null,
+        actualHypothesisId: winning?.hypothesisId || null,
+        topPredictionCorrect: Boolean(winning && priorBest && winning.hypothesisId === priorBest.hypothesisId),
+        predictionError: winning && priorBest ? winning.hypothesisId !== priorBest.hypothesisId : true
+      };
+      this.formAutobiographicalEpisode({
+        eventType: "prediction-scored",
+        subject: prediction.subject,
+        sourceId: prediction.predictionId,
+        predictionLineage: { predictionId: prediction.predictionId, predictionFingerprint: prediction.fingerprint },
+        expectations: { hypotheses: this.clone(prediction.hypotheses) },
+        perception: { sourceEvidence: this.clone(observation.sourceEvidence) },
+        outcome: { verified: true, observed: actualOutcome, predictionError: prediction.calibration.predictionError },
+        learning: { causal: true, calibration: this.clone(prediction.calibration), learned: "Prediction was scored against verified reality." },
+        futureRelevance: { predictedUseful: true }
+      }, { persist: false });
+      if (options.persist === true) this.persist();
+      this.emit("brain:world-prediction-scored", this.clone(prediction));
+      return { success: true, prediction: this.clone(prediction), calibration: this.clone(prediction.calibration), scoredHypotheses: scored };
+    },
+
+    runDreamSynthesis(options = {}) {
+      const sourceEpisodes = (this.autobiographicalMemory || [])
+        .filter(item => item && item.episodeId)
+        .sort((a,b) => Number(b.salience?.score || b.significance?.score || 0) - Number(a.salience?.score || a.significance?.score || 0))
+        .slice(0, Math.max(2, Math.min(12, Number(options.episodeLimit) || 8)));
+      if (sourceEpisodes.length < 2) return { success: false, reason: "dream-synthesis-requires-at-least-two-episodes" };
+
+      let bestPair = null;
+      for (let i = 0; i < sourceEpisodes.length; i += 1) {
+        for (let j = i + 1; j < sourceEpisodes.length; j += 1) {
+          const a = sourceEpisodes[i];
+          const b = sourceEpisodes[j];
+          const similarity = this.episodicSimilarity(
+            this.episodicTokenSet({subject:a.subject,goals:a.goals,learning:a.learning,outcome:a.outcome}),
+            this.episodicTokenSet({subject:b.subject,goals:b.goals,learning:b.learning,outcome:b.outcome})
+          );
+          const distance = 1 - similarity;
+          const salience = (Number(a.salience?.score || 0.4) + Number(b.salience?.score || 0.4)) / 2;
+          const score = distance * 0.55 + salience * 0.45;
+          if (!bestPair || score > bestPair.score) bestPair = { a, b, similarity, score };
+        }
+      }
+      if (!bestPair) return { success: false, reason: "dream-pair-unavailable" };
+
+      const aTokens = this.episodicTokenSet({goals:bestPair.a.goals,learning:bestPair.a.learning,outcome:bestPair.a.outcome});
+      const bTokens = this.episodicTokenSet({goals:bestPair.b.goals,learning:bestPair.b.learning,outcome:bestPair.b.outcome});
+      const shared = [...aTokens].filter(token => bTokens.has(token)).slice(0, 12);
+      this.dreamSynthesisCount = Number(this.dreamSynthesisCount || 0) + 1;
+      const synthesis = {
+        schema: "meos.maddy.dream-synthesis.v1",
+        dreamId: this.id("dream-synthesis"),
+        dreamNumber: this.dreamSynthesisCount,
+        createdAt: new Date().toISOString(),
+        mode: "idle-offline-synthesis",
+        sourceEpisodes: [bestPair.a, bestPair.b].map(item => ({
+          episodeId: item.episodeId,
+          experienceFingerprint: item.experienceFingerprint,
+          subject: item.subject,
+          salience: item.salience?.score ?? null
+        })),
+        connection: {
+          semanticSimilarity: Number(bestPair.similarity.toFixed(6)),
+          semanticDistance: Number((1 - bestPair.similarity).toFixed(6)),
+          sharedMechanismsOrTerms: shared,
+          reason: "Connect materially separated experiences and ask whether a transferable mechanism or hidden variable links them."
+        },
+        hypothesis: {
+          status: "proposal-not-fact",
+          statement: `A mechanism linking “${bestPair.a.subject}” and “${bestPair.b.subject}” may improve prediction or capability if the shared structure survives a discriminating test.`,
+          assumptions: ["The apparent relationship is not caused only by lexical overlap.", "A shared mechanism would predict evidence beyond the source episodes."],
+          falsifiers: ["A discriminating test finds no transfer beyond source-specific context.", "The apparent link disappears when provenance and confounds are controlled."],
+          nextQuestion: "What cheapest bounded experiment would distinguish real transferable structure from an interesting coincidence?"
+        },
+        governance: {
+          evidenceLineagePreserved: true,
+          dreamIsNotFact: true,
+          dreamCreatesActionAuthority: false,
+          dreamCreatesSpendAuthority: false,
+          dreamCreatesDeploymentAuthority: false,
+          automaticSpendUsd: 0
+        }
+      };
+      synthesis.fingerprint = this.fingerprintCognitiveDispatch(synthesis);
+      this.lastDreamSynthesis = synthesis;
+      this.dreamSynthesisHistory.unshift(this.clone(synthesis));
+      this.dreamSynthesisHistory = this.dreamSynthesisHistory.slice(0, this.configuration.maximumDreamSyntheses);
+      if (options.persist === true) this.persist();
+      this.emit("brain:dream-synthesis", this.clone(synthesis));
+      return { success: true, synthesis: this.clone(synthesis) };
+    },
+
+    runScoredImaginationDreamSynthesisAcceptanceTest() {
+      const original = {
+        predictions: this.clone(this.worldPredictionLedger || []),
+        predictionCount: Number(this.worldPredictionCount || 0),
+        dreams: this.clone(this.dreamSynthesisHistory || []),
+        dreamCount: Number(this.dreamSynthesisCount || 0),
+        lastDream: this.clone(this.lastDreamSynthesis),
+        memory: this.clone(this.autobiographicalMemory || []),
+        memoryCount: Number(this.autobiographicalEpisodeCount || 0),
+        self: this.clone(this.selfModel),
+        awareness: this.clone(this.workingAwareness)
+      };
+      const checks=[]; const check=(name,passed)=>checks.push({name,passed:Boolean(passed)});
+      try {
+        this.worldPredictionLedger=[]; this.worldPredictionCount=0; this.dreamSynthesisHistory=[]; this.dreamSynthesisCount=0; this.lastDreamSynthesis=null;
+        this.autobiographicalMemory=[]; this.autobiographicalEpisodeCount=0;
+        this.selfModel=this.selfModel||{revision:1,fingerprint:"self-eb1330",identity:{preferredName:"Maddy"},interactionContext:{mode:"professional"}};
+        this.workingAwareness=this.workingAwareness||{revision:1,fingerprint:"awareness-eb1330",primaryFocus:{subject:"imagination"},interactionContext:{mode:"professional"}};
+        this.formAutobiographicalEpisode({eventType:"verified-experience",subject:"Noisy hall speech ownership failure",sourceId:"eb1330-a",goals:{objective:"reliable perception"},outcome:{verified:true,success:false,changed:true},learning:{causal:true,learned:"acoustic strength alone can misassign ownership"},futureRelevance:{predictedUseful:true}},{persist:false});
+        this.formAutobiographicalEpisode({eventType:"verified-experience",subject:"Durable research returned after browser work moved server-side",sourceId:"eb1330-b",goals:{objective:"durable cognition"},outcome:{verified:true,success:true,changed:true},learning:{causal:true,learned:"separating ownership from presentation preserves continuity"},futureRelevance:{predictedUseful:true}},{persist:false});
+        const created=this.createWorldPrediction({subject:"Voice research return reliability",hypotheses:[{hypothesisId:"fast",outcome:"returns-under-10s",confidence:.7},{hypothesisId:"slow",outcome:"returns-over-10s",confidence:.3}],assumptions:["network available"],hiddenVariables:["source latency"],discriminatingEvidence:["verified completion timestamp"]},{persist:false});
+        const scored=this.scoreWorldPrediction(created.prediction.predictionId,{verified:true,outcome:"returns-over-10s",sourceEvidence:{source:"acceptance://eb1330",verified:true}},{persist:false});
+        const dream=this.runDreamSynthesis({persist:false});
+        check("World prediction preregisters competing futures with normalized confidence",created.success===true&&created.prediction.hypotheses.length===2&&Math.abs(created.prediction.hypotheses.reduce((sum,x)=>sum+x.confidence,0)-1)<0.00001);
+        check("Prediction preserves assumptions, hidden variables, and discriminating evidence before reality is known",created.prediction.assumptions.length===1&&created.prediction.hiddenVariables.length===1&&created.prediction.discriminatingEvidence.length===1);
+        check("Prediction refuses to masquerade as fact or execution authority",created.prediction.governance.predictionIsNotFact===true&&created.prediction.governance.consequentialExecutionRequiresSeparateAuthority===true&&created.prediction.governance.automaticSpendUsd===0);
+        check("Only verified sourced reality can score a prediction",this.scoreWorldPrediction(created.prediction.predictionId,{verified:false,outcome:"returns-under-10s"}).success===false);
+        check("Verified reality scores calibration and exposes prediction error",scored.success===true&&Number.isFinite(scored.calibration.brierScore)&&scored.calibration.predictionError===true);
+        check("Prediction error becomes autobiographical learning rather than disappearing",this.autobiographicalMemory.some(item=>item.eventType==="prediction-scored"&&item.sourceId===created.prediction.predictionId));
+        check("Dream synthesis connects distinct real episodes with provenance",dream.success===true&&dream.synthesis.sourceEpisodes.length===2&&dream.synthesis.sourceEpisodes.every(item=>item.episodeId));
+        check("Dream output is a falsifiable proposal, not mystical truth",dream.synthesis.hypothesis.status==="proposal-not-fact"&&dream.synthesis.hypothesis.falsifiers.length>=1&&dream.synthesis.hypothesis.nextQuestion.includes("experiment"));
+        check("Dream synthesis creates no action, spend, or deployment authority",dream.synthesis.governance.dreamCreatesActionAuthority===false&&dream.synthesis.governance.dreamCreatesSpendAuthority===false&&dream.synthesis.governance.dreamCreatesDeploymentAuthority===false&&dream.synthesis.governance.automaticSpendUsd===0);
+      } finally {
+        this.worldPredictionLedger=original.predictions; this.worldPredictionCount=original.predictionCount; this.dreamSynthesisHistory=original.dreams; this.dreamSynthesisCount=original.dreamCount; this.lastDreamSynthesis=original.lastDream; this.autobiographicalMemory=original.memory; this.autobiographicalEpisodeCount=original.memoryCount; this.selfModel=original.self; this.workingAwareness=original.awareness;
+      }
+      const passed=checks.filter(x=>x.passed).length; console.table(checks);
+      return {success:passed===checks.length,commission:"EB1330",schema:"meos.maddy.scored-imagination-dream-synthesis.acceptance.v1",version:this.version,buildId:this.buildId,passed,total:checks.length,checks,limitation:"This proves scored prediction ledgers and provenance-bound idle synthesis. It does not yet prove high-fidelity learned world simulation or autonomous experiment execution."};
+    },
+
     recordRealExperience(experience = {}, options = {}) {
       if (experience.occurred !== true || !experience.sourceEvidence) {
         return {success:false,reason:"real-experience-requires-occurred-true-and-source-evidence"};
@@ -26265,6 +26496,14 @@
           rule: "Natural language is evidence of intent, not the whole intent. Reconstruct probable meaning from utterance, conversational context, active mission, world state, relationship patterns, unresolved questions, and attention; preserve uncertainty and test material assumptions before consequential action."
         },
 
+        imaginationAndDreams: {
+          openPredictions: this.clone(this.worldPredictionLedger.filter(item => item.status === "open").slice(0, 12)),
+          scoredPredictions: this.clone(this.worldPredictionLedger.filter(item => item.status === "scored").slice(0, 12)),
+          latestDream: this.clone(this.lastDreamSynthesis),
+          recentDreams: this.clone(this.dreamSynthesisHistory.slice(0, 8)),
+          rule: "Possible futures must be preregistered, scored against verified reality, and recalibrated. Dream synthesis produces provenance-bound hypotheses, never facts or authority."
+        },
+
         deliberateExperience: {
           latest: this.clone(this.lastDeliberateExperience),
           recent: this.clone(this.deliberateExperienceHistory.slice(0, 8)),
@@ -26346,6 +26585,7 @@
           investigationEvidence: model.investigationEvidence,
           developmentalDrive: model.developmentalDrive,
           intentReconstruction: model.intentReconstruction,
+          imaginationAndDreams: model.imaginationAndDreams,
           deliberateExperience: model.deliberateExperience,
           anticipatoryInitiative: model.anticipatoryInitiative,
           executiveJudgment: model.executiveJudgment,
@@ -27892,6 +28132,11 @@
         lastCounterfactualSimulation: this.lastCounterfactualSimulation ? this.clone(this.lastCounterfactualSimulation) : null,
         deliberateExperienceCount: Number(this.deliberateExperienceCount || 0),
         counterfactualSimulationCount: Number(this.counterfactualSimulationCount || 0),
+        worldPredictionLedger: this.worldPredictionLedger.slice(0, this.configuration.maximumWorldPredictions),
+        worldPredictionCount: Number(this.worldPredictionCount || 0),
+        dreamSynthesisHistory: this.dreamSynthesisHistory.slice(0, this.configuration.maximumDreamSyntheses),
+        dreamSynthesisCount: Number(this.dreamSynthesisCount || 0),
+        lastDreamSynthesis: this.lastDreamSynthesis ? this.clone(this.lastDreamSynthesis) : null,
         anticipatoryInitiatives: this.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit),
         lastAnticipatorySweep: this.lastAnticipatorySweep ? this.clone(this.lastAnticipatorySweep) : null,
         anticipatorySweepCount: Number(this.anticipatorySweepCount || 0),
@@ -28084,6 +28329,11 @@
       this.lastCounterfactualSimulation = saved.lastCounterfactualSimulation && typeof saved.lastCounterfactualSimulation === "object" ? this.clone(saved.lastCounterfactualSimulation) : null;
       this.deliberateExperienceCount = Math.max(Number(saved.deliberateExperienceCount || 0), Number(this.lastDeliberateExperience?.experienceNumber || 0));
       this.counterfactualSimulationCount = Math.max(Number(saved.counterfactualSimulationCount || 0), Number(this.lastCounterfactualSimulation?.simulationNumber || 0));
+      this.worldPredictionLedger = Array.isArray(saved.worldPredictionLedger) ? saved.worldPredictionLedger.slice(0, this.configuration.maximumWorldPredictions) : [];
+      this.worldPredictionCount = Math.max(Number(saved.worldPredictionCount || 0), ...this.worldPredictionLedger.map(item => Number(item.predictionNumber || 0)), 0);
+      this.dreamSynthesisHistory = Array.isArray(saved.dreamSynthesisHistory) ? saved.dreamSynthesisHistory.slice(0, this.configuration.maximumDreamSyntheses) : [];
+      this.dreamSynthesisCount = Math.max(Number(saved.dreamSynthesisCount || 0), ...this.dreamSynthesisHistory.map(item => Number(item.dreamNumber || 0)), 0);
+      this.lastDreamSynthesis = saved.lastDreamSynthesis && typeof saved.lastDreamSynthesis === "object" ? this.clone(saved.lastDreamSynthesis) : (this.dreamSynthesisHistory[0] ? this.clone(this.dreamSynthesisHistory[0]) : null);
       this.anticipatoryInitiatives = Array.isArray(saved.anticipatoryInitiatives) ? saved.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit) : [];
       this.lastAnticipatorySweep = saved.lastAnticipatorySweep && typeof saved.lastAnticipatorySweep === "object" ? this.clone(saved.lastAnticipatorySweep) : null;
       this.anticipatorySweepCount = Math.max(Number(saved.anticipatorySweepCount || 0), Number(this.lastAnticipatorySweep?.sweepNumber || 0));
