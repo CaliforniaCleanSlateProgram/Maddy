@@ -1,3 +1,4 @@
+[Uploading MEOS_BUILD_STATE_POST_ERAE320_RECONCILED_20260920.md…]()
 [MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449860/MEOS_BUILD_STATE_POST_EB1340_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449290/MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920 (1).md](https://github.com/user-attachments/files/32448862/MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920.1.md)
@@ -10225,4 +10226,148 @@ Nothing in EB1340 closes these independent gaps:
 **Recovery keyword:** `ARC001-EB1340-PROVEN-ERAE320-NEXT-20260920`
 
 **Fast recovery:** `Resume ARC001-EB1340-PROVEN-ERAE320-NEXT-20260920 — EB1340 is production-proven 10/10 at Executive Brain 1.34.0 / EB1340-FUNDAMENTAL-GAP-CAPABILITY-FOUNDRY-20260920-A; the Capability Foundry now distinguishes one-off failures from recurring fundamental-function gaps, preserves the incumbent as challenger baseline, requires evidence rather than fabricated frontier comparison, preregisters experiment metrics/predictions/evidence/rollback, blocks gratuitous organ creation when existing-organ fit is strong, and may only propose sandbox organogenesis when a persistent gap and poor existing-organ fit justify it; it does not execute experiments, write source code, incorporate candidates, or self-authorize production mutation, spend, provider use, or external action; next staged build is ERAE320 Maddy Growth-Capital Intelligence.`
+
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — ERAE320 PRODUCTION RECONCILIATION
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive production reconciliation; no new runtime authority created by this document  
+**Repository base reconciled:** `Maddy-main (94).zip`  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## ERAE320 — Maddy Growth-Capital Intelligence — PRODUCTION-PROVEN
+
+**Runtime:** `3.2.0`  
+**Build:** `ERAE320-MADDY-GROWTH-CAPITAL-INTELLIGENCE-20260920-A`
+
+**Production acceptance:**
+- Growth-Capital Intelligence: **PASS `10/10`**
+- Legacy Resource Acquisition regression: **PASS `6/6`**
+
+Production evidence establishes that ERAE320:
+
+- sums only evidence-supplied numeric costs;
+- preserves unpriced required resources as explicit uncertainty;
+- keeps verified non-dilutive infrastructure routes as candidates;
+- identifies high dilution/control venture routes as conflicting with founder constraints when the supplied constraints say so;
+- treats unverified funding rumors as research-required rather than available money;
+- rejects unsupported factual traction claims;
+- retains evidence-backed factual claims;
+- permits explicit vision statements only as forward-looking statements rather than present fact;
+- grants no outreach or transaction authority;
+- preserves founder decision authority.
+
+Legacy acceptance also remained green:
+
+- nonprofit eligibility boundaries remain organization-specific;
+- for-profit opportunities do not inherit nonprofit eligibility;
+- matching businesses can still advance through the appropriate route;
+- missing organization profiles fail into research rather than customer assumptions;
+- Fast Track does not blindly prefer the largest headline award;
+- acquisition success remains defined by landed resources, not homework.
+
+## Truth and authority boundaries preserved
+
+ERAE320 may forecast resource needs, compare funding routes, identify restrictions, evaluate dilution/control/timing/risk, validate claims, rank evidence-backed routes, and surface research targets.
+
+ERAE320 does **not** prove that any funding route exists merely because it is ranked.
+
+ERAE320 does **not** authorize:
+
+- outreach;
+- applications;
+- contracts;
+- borrowing;
+- equity issuance;
+- spending;
+- provider use;
+- other external consequential action.
+
+Missing cost remains uncertainty, not permission to invent a budget.
+
+Unverified funding remains research-required, not money.
+
+Maddy may persuade. Maddy may not deceive.
+
+Founder decision authority remains intact.
+
+## Current production identity
+
+Latest supplied production evidence establishes:
+
+- **Executive Resource Acquisition Engine:** `3.2.0`
+- **Resource Acquisition build:** `ERAE320-MADDY-GROWTH-CAPITAL-INTELLIGENCE-20260920-A`
+- **Executive Brain:** `1.34.0 / EB1340-FUNDAMENTAL-GAP-CAPABILITY-FOUNDRY-20260920-A`
+- **Developer Panel:** `2.1.0 / DP210-MADDY-WORLD-WINDOW-20260920-A`
+- **Realtime Voice:** `2.0.16 / VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A`
+- **Executive Router:** `1.5.3 / ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`
+- **Mission Engine durable authority hydration:** `READY`
+- **Institutional authority source:** `meos-institutional-repository`
+- **Mission Dispatcher:** still not running because `office_dispatch_authority_not_effective`
+
+## ARC 001 production sequence now proven
+
+- `ER153` — natural public-research intent — **11/11**
+- `VE214` — semantic intended-speech reconstruction — **11/11**
+- `VE215` — canonical Hallway research handoff — **7/7**
+- `VE216` — durable research spoken return — **9/9**
+- `DP210` — Maddy World Window observatory — **8/8**
+- `EB1320` — living episodic consolidation — **11/11**
+- `EB1330` — scored imagination and dream synthesis — **9/9**
+- `EB1340` — Fundamental-Gap Capability Foundry — **10/10**
+- `ERAE320` — Maddy Growth-Capital Intelligence — **10/10 + legacy 6/6**
+
+Still staged/local and not production-proven:
+
+- `EB1350` — Governed Development Forge
+- `EB1360` — Experience-Driven Representation Plasticity
+- `VE217` — Intentional Awake and Wake-Only Behavior
+- `VE218` — Local Voice-Signature Continuity Evidence
+
+## Exact next move
+
+**Next staged build: `EB1350` — Governed Development Forge.**
+
+Apply only:
+
+`stages/10_EB1350/executive-brain.js`
+→ `frontend/executive-brain.js`
+
+Then:
+
+1. one file → one commit;
+2. deploy;
+3. run its production acceptance test;
+4. require the staged acceptance result to pass;
+5. preserve incumbent/challenger comparison, rollback, sandbox, authority, and production-mutation boundaries;
+6. reconcile Build State before advancing to `EB1360`.
+
+## Open truth carried forward
+
+Nothing in ERAE320 closes these independent gaps:
+
+- end-to-end spoken Internet research still requires a fresh full-chain live demonstration;
+- wake-only / noisy-room speaker ownership remains open for VE217;
+- learned representation plasticity remains open for EB1360;
+- high-fidelity learned world simulation remains open;
+- the earlier mixed durability 502 incident remains historical evidence without a proven permanent root cause.
+
+## Anti-drift rules carried forward
+
+1. Ranked funding is not confirmed funding.
+2. Missing cost is uncertainty, not permission to invent a budget.
+3. Forward-looking vision is not present factual traction.
+4. Evidence-backed claims and persuasive framing must remain distinguishable.
+5. Capital intelligence grants no transaction authority.
+6. Founder authority remains explicit.
+7. Resource acquisition success is landed resources, not activity.
+8. Production gets the vote.
+9. The North Star and Spooky bar remain unchanged.
+
+**Recovery keyword:** `ARC001-ERAE320-PROVEN-EB1350-NEXT-20260920`
+
+**Fast recovery:** `Resume ARC001-ERAE320-PROVEN-EB1350-NEXT-20260920 — ERAE320 is production-proven at 3.2.0 / ERAE320-MADDY-GROWTH-CAPITAL-INTELLIGENCE-20260920-A with Growth-Capital Intelligence PASS 10/10 and legacy Resource Acquisition PASS 6/6; evidence-supplied costs only are summed, unknown costs remain explicit uncertainty, verified non-dilutive routes may remain candidates, founder dilution/control constraints are preserved, unverified funding stays research-required, unsupported traction claims are rejected, evidence-backed claims survive, vision may remain forward-looking rather than factual, and no outreach/transaction authority is created; next staged build is EB1350 Governed Development Forge.`
 
