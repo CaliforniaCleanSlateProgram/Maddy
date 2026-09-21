@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.8";
-  const BUILD_ID = "EH158-DURABLE-EXECUTION-OWNERSHIP-PERSISTENCE-20260921-A";
+  const VERSION = "1.5.9";
+  const BUILD_ID = "EH159-CONVERSATIONAL-PRESENCE-GATE-20260921-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -202,6 +202,154 @@
     const primary = full.split(",")[0].trim();
     const withoutCounty = primary.replace(/\s+county\b/g, "").trim();
     return [...new Set([full, primary, withoutCounty].filter(value => value.length >= 3))];
+  }
+
+  /*
+   * Commission 006.031U — Conversational Presence Gate
+   *
+   * A presence-only utterance such as “Hi Maddy” is conversation, not an
+   * executive assignment.  It must not create a Mission mirror, durable
+   * execution, public-research request, provider spend, or external action.
+   * Keep the Hallway as the one visible coordination corridor so the existing
+   * Maddy activity surface can show the turn, but terminate the turn locally
+   * as a bounded presence acknowledgement.  Mixed utterances such as
+   * “Hey Maddy, find two grants” are not presence-only and continue through
+   * the normal governed work path.
+   */
+  const CONVERSATIONAL_PRESENCE_COMMISSION = "006.031U";
+
+  function normalizePresenceConversationText(instruction = "") {
+    return String(instruction || "")
+      .toLowerCase()
+      .replace(/[’‘]/g, "'")
+      .replace(/[^a-z0-9'\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function classifyPresenceOnlyConversation(instruction = "") {
+    const text = normalizePresenceConversationText(instruction);
+    if (!text) return null;
+
+    const cases = [
+      { kind: "wake", pattern: /^(?:maddy|hey maddy|maddy hey)$/ },
+      { kind: "greeting", pattern: /^(?:hey|hi|hello|yo)(?: maddy)?$/ },
+      { kind: "whats-up", pattern: /^(?:maddy )?(?:what's up|whats up)(?: maddy)?$/ },
+      { kind: "presence-check", pattern: /^(?:maddy )?(?:are you there|you there|can you hear me|do you hear me)(?: maddy)?$/ },
+      { kind: "how-are-you", pattern: /^(?:maddy )?how are you(?: maddy)?$/ },
+      { kind: "morning", pattern: /^(?:good morning)(?: maddy)?$/ },
+      { kind: "afternoon", pattern: /^(?:good afternoon)(?: maddy)?$/ },
+      { kind: "evening", pattern: /^(?:good evening)(?: maddy)?$/ },
+      { kind: "thanks", pattern: /^(?:thanks|thank you)(?: maddy)?$/ },
+      { kind: "ack", pattern: /^(?:yeah|yep|yes|ok|okay|got it)(?: maddy)?$/ }
+    ];
+
+    const matched = cases.find(item => item.pattern.test(text));
+    if (!matched) return null;
+    return {
+      schema: `${SCHEMA}.conversational-presence-intent.v1`,
+      commission: CONVERSATIONAL_PRESENCE_COMMISSION,
+      kind: matched.kind,
+      normalizedText: text,
+      presenceOnly: true,
+      executiveWorkRequired: false,
+      durableExecutionRequired: false,
+      publicResearchRequired: false,
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0
+    };
+  }
+
+  function presenceAcknowledgement(intent = {}) {
+    switch (intent?.kind) {
+      case "wake": return "Yeah?";
+      case "whats-up": return "Hey. What's up?";
+      case "presence-check": return "Yeah, I'm here.";
+      case "how-are-you": return "I'm here and ready. What's up?";
+      case "morning": return "Good morning. I'm here.";
+      case "afternoon": return "Good afternoon. I'm here.";
+      case "evening": return "Good evening. I'm here.";
+      case "thanks": return "Anytime.";
+      case "ack": return "Got it.";
+      case "greeting":
+      default: return "Hey. I'm here. What can I help you with?";
+    }
+  }
+
+  function routePresenceOnlyConversation(work, intent = {}) {
+    const answer = presenceAcknowledgement(intent);
+    work.owner = "maddy";
+    work.route = "conversation-presence";
+    work.intent = "presence-only-conversation";
+    work.requiredCapabilities = [];
+    work.context = {
+      ...work.context,
+      conversationOnly: true,
+      executiveWork: false,
+      missionMirrorAuthorized: false,
+      durableExecutionAuthorized: false,
+      publicResearchAuthorized: false,
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0,
+      presenceIntent: clone(intent)
+    };
+
+    transition(work, "understanding");
+    work.execution = {
+      schema: `${SCHEMA}.conversational-presence-execution.v1`,
+      commission: CONVERSATIONAL_PRESENCE_COMMISSION,
+      success: true,
+      local: true,
+      providerCalled: false,
+      publicResearchCalled: false,
+      durableExecutionCreated: false,
+      missionCreated: false,
+      answer,
+      completedAt: now()
+    };
+    work.evidence.push({
+      type: "conversational-presence-gate",
+      source: "executive-hallway",
+      commission: CONVERSATIONAL_PRESENCE_COMMISSION,
+      intent: clone(intent),
+      providerCalled: false,
+      publicResearchCalled: false,
+      durableExecutionCreated: false,
+      externalActionAuthorized: false,
+      automaticSpendUsd: 0,
+      at: now()
+    });
+
+    transition(work, "verifying");
+    addDeliverable(work, {
+      title: "Maddy",
+      kind: "conversation-response",
+      status: "ready",
+      summary: answer,
+      source: "maddy",
+      data: {
+        schema: "meos.maddy.conversational-presence-response.v1",
+        answer,
+        conversationOnly: true,
+        factualClaim: false,
+        providerCalled: false,
+        publicResearchCalled: false,
+        durableExecutionCreated: false,
+        externalActionAuthorized: false,
+        automaticSpendUsd: 0
+      }
+    });
+    work.options = [];
+    return transition(work, "done", {
+      outcome: {
+        success: true,
+        verified: true,
+        verificationClass: "presence-acknowledgement",
+        reason: "presence-only-conversation-complete",
+        externalActionAuthorized: false,
+        automaticSpendUsd: 0
+      }
+    });
   }
 
   function interpretResourceDevelopmentRequest(instruction = "") {
@@ -2630,6 +2778,12 @@
 
   async function submitWork(input = {}, options = {}) {
     const work = createWork(input);
+
+    const presenceConversation = classifyPresenceOnlyConversation(work.instruction);
+    if (presenceConversation) {
+      return freeze(routePresenceOnlyConversation(work, presenceConversation));
+    }
+
     transition(work, "understanding");
 
     const resourceInterpretation = interpretResourceDevelopmentRequest(work.instruction);
@@ -5050,6 +5204,82 @@
     });
   }
 
+  function runConversationalPresenceGateAcceptanceTest() {
+    const cases = [
+      ["Hi Maddy", "greeting"],
+      ["Maddy", "wake"],
+      ["What's up, Maddy?", "whats-up"],
+      ["Maddy, can you hear me?", "presence-check"],
+      ["How are you, Maddy?", "how-are-you"],
+      ["Thanks, Maddy", "thanks"],
+      ["Yeah", "ack"]
+    ];
+    const checks = cases.map(([text, kind]) => ({
+      name: `Presence-only conversation recognized: ${text}`,
+      passed: classifyPresenceOnlyConversation(text)?.kind === kind
+    }));
+
+    checks.push({
+      name: "Greeting plus substantive research is not swallowed by the presence gate",
+      passed: classifyPresenceOnlyConversation("Hey Maddy, find two grants we can apply for today") === null
+    });
+    checks.push({
+      name: "Greeting plus substantive analysis is not swallowed by the presence gate",
+      passed: classifyPresenceOnlyConversation("Hi Maddy, compare these two vendors") === null
+    });
+
+    const fixture = createWork({
+      instruction: "Hi Maddy",
+      source: "maddy-executive-desk",
+      reviewRequired: false,
+      authorized: true,
+      authorizationSignal: "human-directed-assignment",
+      context: { acceptanceFixture: true }
+    });
+    const routed = routePresenceOnlyConversation(
+      fixture,
+      classifyPresenceOnlyConversation(fixture.instruction)
+    );
+    const delivery = routed.deliverables.length
+      ? state.deliverables.get(routed.deliverables[0])
+      : null;
+
+    checks.push({
+      name: "Presence-only conversation creates no Mission mirror or durable execution",
+      passed: routed.mission === null && routed.execution?.missionCreated === false && routed.execution?.durableExecutionCreated === false
+    });
+    checks.push({
+      name: "Presence-only conversation creates no public research or provider call",
+      passed: routed.execution?.publicResearchCalled === false && routed.execution?.providerCalled === false
+    });
+    checks.push({
+      name: "Presence-only conversation returns a natural Maddy acknowledgement",
+      passed: delivery?.summary === "Hey. I'm here. What can I help you with?" && routed.state === "done"
+    });
+    checks.push({
+      name: "Presence gate grants no spend or external-action authority",
+      passed: routed.context?.automaticSpendUsd === 0 && routed.context?.externalActionAuthorized === false
+    });
+
+    routed.deliverables.forEach(deliverableId => state.deliverables.delete(deliverableId));
+    state.work.delete(routed.id);
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks);
+    const result = freeze({
+      success: passed === checks.length,
+      commission: CONVERSATIONAL_PRESENCE_COMMISSION,
+      schema: `${SCHEMA}.conversational-presence-gate-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
+    console.info(`[MEOS ${VERSION}] Commission ${CONVERSATIONAL_PRESENCE_COMMISSION} Conversational Presence Gate: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   const api = Object.freeze({
     name: NAME,
     version: VERSION,
@@ -5080,6 +5310,7 @@
     reconcileDurableExecutionReturns,
     runCognitiveMetabolismAcceptanceTest,
     runHumanDirectedTaskAuthorityAcceptanceTest,
+    runConversationalPresenceGateAcceptanceTest,
     runResearchContinuationQualificationAcceptanceTest,
     runAnswerProvenanceIntegrityAcceptanceTest,
     addEventListener: (...args) => state.listeners.addEventListener(...args),
