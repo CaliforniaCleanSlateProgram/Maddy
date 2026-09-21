@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.33.0
- * Build: EB1330-SCORED-IMAGINATION-DREAM-SYNTHESIS-20260920-A
+ * Version: 1.34.0
+ * Build: EB1340-FUNDAMENTAL-GAP-CAPABILITY-FOUNDRY-20260920-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.33.0";
-  const BUILD_ID = "EB1330-SCORED-IMAGINATION-DREAM-SYNTHESIS-20260920-A";
+  const VERSION = "1.34.0";
+  const BUILD_ID = "EB1340-FUNDAMENTAL-GAP-CAPABILITY-FOUNDRY-20260920-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -288,6 +288,8 @@
       maximumPreparednessInsights: 160,
       maximumWorldPredictions: 240,
       maximumDreamSyntheses: 160,
+      maximumCapabilityFoundryHistory: 160,
+      maximumOrganogenesisProposals: 96,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -427,6 +429,11 @@
     dreamSynthesisHistory: [],
     dreamSynthesisCount: 0,
     lastDreamSynthesis: null,
+    capabilityFoundryHistory: [],
+    capabilityFoundryCount: 0,
+    organogenesisProposals: [],
+    organogenesisProposalCount: 0,
+    lastCapabilityFoundryPlan: null,
     anticipatoryInitiatives: [],
     lastAnticipatorySweep: null,
     anticipatorySweepCount: 0,
@@ -20639,6 +20646,212 @@
       return {success:passed===checks.length,commission:"EB1330",schema:"meos.maddy.scored-imagination-dream-synthesis.acceptance.v1",version:this.version,buildId:this.buildId,passed,total:checks.length,checks,limitation:"This proves scored prediction ledgers and provenance-bound idle synthesis. It does not yet prove high-fidelity learned world simulation or autonomous experiment execution."};
     },
 
+    identifyFundamentalCapabilityGaps(input = {}) {
+      const limitations = (Array.isArray(input.observedLimitations) ? input.observedLimitations : [])
+        .map((item, index) => ({
+          limitationId: String(item.limitationId || `limitation-${index + 1}`),
+          function: String(item.function || item.capability || item.subject || "").trim(),
+          observedFailure: String(item.observedFailure || item.failure || item.description || "").trim(),
+          recurrence: Math.max(1, Number(item.recurrence || item.evidenceCount || 1)),
+          consequence: Math.max(0, Math.min(1, Number(item.consequence ?? item.impact ?? 0.5))),
+          evidence: this.clone(item.evidence || []),
+          existingOrgansTried: this.clone(item.existingOrgansTried || []),
+          missingFunction: String(item.missingFunction || item.function || item.capability || "").trim(),
+          frontierEvidence: this.clone(item.frontierEvidence || [])
+        }))
+        .filter(item => item.missingFunction && item.observedFailure);
+
+      const gaps = limitations.map(item => {
+        const recurring = item.recurrence >= 2;
+        const evidenceCount = Array.isArray(item.evidence) ? item.evidence.length : 0;
+        const fundamental = recurring && item.consequence >= 0.45;
+        return {
+          gapId: this.id("fundamental-gap"),
+          schema: "meos.maddy.fundamental-capability-gap.v1",
+          function: item.missingFunction,
+          observedFailure: item.observedFailure,
+          evidence: item.evidence,
+          evidenceCount,
+          recurrence: item.recurrence,
+          consequence: item.consequence,
+          existingOrgansTried: item.existingOrgansTried,
+          frontierEvidence: item.frontierEvidence,
+          classification: fundamental ? "persistent-fundamental-function-gap" : "candidate-gap-needs-more-evidence",
+          standingQuestion: `What mechanism would remove the underlying limitation in ${item.missingFunction} rather than merely patch this instance?`,
+          currentSystemsComparison: item.frontierEvidence.length
+            ? "frontier-comparison-evidence-supplied"
+            : "unknown-until-frontier-evidence-is-collected",
+          truthRule: "A recurring limitation is evidence of a gap, not proof that a new organ is required or that outside systems share the same limitation."
+        };
+      });
+      return {
+        success: true,
+        schema: "meos.maddy.fundamental-gap-scan.v1",
+        gaps,
+        fundamental: gaps.filter(item => item.classification === "persistent-fundamental-function-gap"),
+        authority: { researchAuthorizedByGap: false, selfModificationAuthorized: false, externalActionAuthorized: false, automaticSpendUsd: 0 }
+      };
+    },
+
+    designCapabilityFoundryCandidate(gap = {}, input = {}) {
+      if (!gap?.gapId || gap.classification !== "persistent-fundamental-function-gap") {
+        return { success: false, reason: "proven-persistent-gap-required" };
+      }
+      const incumbent = {
+        mechanismId: "incumbent",
+        label: String(input.incumbent?.label || "current-maddy-mechanism"),
+        architecture: this.clone(input.incumbent?.architecture || gap.existingOrgansTried || []),
+        knownStrengths: this.clone(input.incumbent?.knownStrengths || []),
+        knownFailures: this.clone(input.incumbent?.knownFailures || [gap.observedFailure])
+      };
+      const mechanisms = (Array.isArray(input.mechanisms) ? input.mechanisms : [])
+        .map((item, index) => ({
+          mechanismId: String(item.mechanismId || `mechanism-${index + 1}`),
+          label: String(item.label || item.name || `candidate-${index + 1}`),
+          sourceClass: String(item.sourceClass || "mechanism-hypothesis"),
+          principles: this.clone(item.principles || []),
+          limitations: this.clone(item.limitations || []),
+          assumptions: this.clone(item.assumptions || [])
+        }));
+      if (!mechanisms.length) return { success: false, reason: "candidate-mechanisms-required" };
+
+      const combination = {
+        mechanismId: this.id("capability-candidate"),
+        label: String(input.label || `Candidate mechanism for ${gap.function}`),
+        componentMechanisms: mechanisms.map(item => item.mechanismId),
+        architecture: this.clone(input.architecture || mechanisms.flatMap(item => item.principles).slice(0, 24)),
+        mutationBeyondSources: this.clone(input.mutations || []),
+        assumptions: this.clone([...mechanisms.flatMap(item => item.assumptions), ...(input.assumptions || [])]),
+        predictedAdvantages: this.clone(input.predictedAdvantages || []),
+        predictedFailureModes: this.clone(input.predictedFailureModes || mechanisms.flatMap(item => item.limitations)),
+        providerNeutral: true,
+        hardwareNeutralAtArchitecture: true
+      };
+
+      const experiment = {
+        schema: "meos.maddy.capability-foundry-experiment.v1",
+        experimentId: this.id("capability-experiment"),
+        gapId: gap.gapId,
+        incumbent: this.clone(incumbent),
+        challenger: this.clone(combination),
+        preregisteredAt: new Date().toISOString(),
+        metrics: this.clone(input.metrics || ["target-function-success", "error-rate", "resource-cost", "latency", "generalization", "regression-count"]),
+        predictions: {
+          incumbent: this.clone(input.incumbentPredictions || { targetFunctionSuccess: "baseline" }),
+          challenger: this.clone(input.challengerPredictions || { targetFunctionSuccess: "material-improvement" })
+        },
+        discriminatingEvidence: this.clone(input.discriminatingEvidence || ["same hidden test cases", "same resource budget", "real consequence where safe"]),
+        challengerMustBeatIncumbent: true,
+        rollbackRequired: true,
+        productionMutationAuthorized: false,
+        selfModificationAuthorized: false,
+        automaticSpendUsd: 0
+      };
+      experiment.fingerprint = this.fingerprintCognitiveDispatch(experiment);
+      return { success: true, gap: this.clone(gap), incumbent, mechanisms, candidate: combination, experiment };
+    },
+
+    proposeOrganogenesis(gap = {}, assessment = {}, options = {}) {
+      const persistent = gap?.classification === "persistent-fundamental-function-gap" && Number(gap?.recurrence || 0) >= 2;
+      const existingOrganFits = (Array.isArray(assessment.existingOrganFits) ? assessment.existingOrganFits : [])
+        .map(item => ({ organ: String(item.organ || item.name || "existing-organ"), fit: Math.max(0, Math.min(1, Number(item.fit ?? 0.5))), reason: String(item.reason || "") }));
+      const bestFit = existingOrganFits.reduce((best, item) => Math.max(best, item.fit), 0);
+      const specializedStateRequired = assessment.specializedStateRequired === true;
+      const specializedTimingRequired = assessment.specializedTimingRequired === true;
+      const specializedRepresentationRequired = assessment.specializedRepresentationRequired === true;
+      const justified = Boolean(persistent && bestFit < 0.55 && (specializedStateRequired || specializedTimingRequired || specializedRepresentationRequired));
+      const proposal = {
+        schema: "meos.maddy.governed-organogenesis-proposal.v1",
+        proposalId: this.id("organogenesis-proposal"),
+        createdAt: new Date().toISOString(),
+        gapId: gap?.gapId || null,
+        missingFunction: gap?.function || null,
+        status: justified ? "candidate-organ-justified-for-sandbox" : "evolve-existing-organ-or-gather-more-evidence",
+        justified,
+        existingOrganFits,
+        bestExistingOrganFit: bestFit,
+        specializedRequirements: { specializedStateRequired, specializedTimingRequired, specializedRepresentationRequired },
+        proposedOrgan: justified ? {
+          functionalName: String(assessment.functionalName || `${gap.function} organ`),
+          responsibility: String(assessment.responsibility || gap.function || "missing fundamental function"),
+          interfaces: this.clone(assessment.interfaces || []),
+          stateContract: this.clone(assessment.stateContract || {}),
+          sandboxBoundary: this.clone(assessment.sandboxBoundary || { productionMutation: false }),
+          acceptanceStandard: this.clone(assessment.acceptanceStandard || []),
+          privacyBoundary: this.clone(assessment.privacyBoundary || { exactScopeRequired: true }),
+          authorityBoundary: this.clone(assessment.authorityBoundary || { capabilityIsNotAuthority: true }),
+          resourceCost: this.clone(assessment.resourceCost || {}),
+          rollbackPath: this.clone(assessment.rollbackPath || { removableWithoutIdentityLoss: true })
+        } : null,
+        doctrine: {
+          noGratuitousOrgans: true,
+          noFixedAnatomy: true,
+          functionDiscoversAnatomy: true,
+          identityRemainsOneMaddy: true
+        },
+        authority: { incorporationAuthorized: false, productionMutationAuthorized: false, providerCallsAuthorized: false, externalActionAuthorized: false, automaticSpendUsd: 0 }
+      };
+      this.organogenesisProposalCount = Number(this.organogenesisProposalCount || 0) + 1;
+      proposal.proposalNumber = this.organogenesisProposalCount;
+      proposal.fingerprint = this.fingerprintCognitiveDispatch(proposal);
+      this.organogenesisProposals.unshift(this.clone(proposal));
+      this.organogenesisProposals = this.organogenesisProposals.slice(0, this.configuration.maximumOrganogenesisProposals);
+      if (options.persist === true) this.persist();
+      return this.clone(proposal);
+    },
+
+    buildCapabilityFoundryPlan(input = {}, options = {}) {
+      const scan = this.identifyFundamentalCapabilityGaps(input);
+      const gap = scan.fundamental[0] || null;
+      if (!gap) return { success: false, reason: "no-evidence-grounded-fundamental-gap", scan };
+      const candidate = this.designCapabilityFoundryCandidate(gap, input.candidate || {});
+      if (!candidate.success) return { success: false, reason: candidate.reason, gap, scan };
+      const organogenesis = this.proposeOrganogenesis(gap, input.organogenesis || {}, { persist: false });
+      this.capabilityFoundryCount = Number(this.capabilityFoundryCount || 0) + 1;
+      const plan = {
+        schema: "meos.maddy.capability-foundry-plan.v1",
+        planId: this.id("capability-foundry-plan"),
+        planNumber: this.capabilityFoundryCount,
+        createdAt: new Date().toISOString(),
+        gap: this.clone(gap),
+        candidate: this.clone(candidate),
+        organogenesis: this.clone(organogenesis),
+        lifecycle: ["fundamental-gap", "mechanism-search", "causal-understanding", "candidate-combination", "sandbox", "challenger-evaluation", "measured-consequence", "preserve-success-and-failure-causes", "governed-incorporation", "discover-next-gap"],
+        authority: { sandboxExecutionAuthorized: false, governedIncorporationRequired: true, productionMutationAuthorized: false, selfModificationAuthorized: false, automaticSpendUsd: 0 }
+      };
+      plan.fingerprint = this.fingerprintCognitiveDispatch(plan);
+      this.lastCapabilityFoundryPlan = plan;
+      this.capabilityFoundryHistory.unshift(this.clone(plan));
+      this.capabilityFoundryHistory = this.capabilityFoundryHistory.slice(0, this.configuration.maximumCapabilityFoundryHistory);
+      if (options.persist === true) this.persist();
+      this.emit("brain:capability-foundry-plan", this.clone(plan));
+      return { success: true, plan: this.clone(plan) };
+    },
+
+    runFundamentalGapCapabilityFoundryAcceptanceTest() {
+      const original={history:this.clone(this.capabilityFoundryHistory||[]),count:this.capabilityFoundryCount,organs:this.clone(this.organogenesisProposals||[]),organCount:this.organogenesisProposalCount,last:this.clone(this.lastCapabilityFoundryPlan)};
+      const checks=[]; const check=(name,passed)=>checks.push({name,passed:Boolean(passed)});
+      try {
+        this.capabilityFoundryHistory=[];this.capabilityFoundryCount=0;this.organogenesisProposals=[];this.organogenesisProposalCount=0;this.lastCapabilityFoundryPlan=null;
+        const weak=this.identifyFundamentalCapabilityGaps({observedLimitations:[{function:"semantic speech ownership",observedFailure:"one noisy transcript was wrong",recurrence:1,consequence:.9,evidence:["acceptance://one"]}]});
+        const scan=this.identifyFundamentalCapabilityGaps({observedLimitations:[{function:"learned representation from experience",observedFailure:"Maddy can retain episodes but current feature representations remain primarily programmer-supplied",recurrence:4,consequence:.95,evidence:["acceptance://a","acceptance://b","acceptance://c"],existingOrgansTried:["Autobiographical Memory","Neuromorphic Attention"],frontierEvidence:[{source:"research-review",claim:"continual representation learning remains an active frontier"}]}]});
+        const gap=scan.fundamental[0];
+        const plan=this.buildCapabilityFoundryPlan({observedLimitations:[{function:gap.function,observedFailure:gap.observedFailure,recurrence:gap.recurrence,consequence:gap.consequence,evidence:gap.evidence,existingOrgansTried:gap.existingOrgansTried,frontierEvidence:gap.frontierEvidence}],candidate:{incumbent:{label:"programmer-supplied episodic features",architecture:["episodic schema","salience vector"]},mechanisms:[{mechanismId:"contrastive",label:"experience-contrast learning",principles:["learn similarities and differences from episode outcomes"],limitations:["representation collapse"],assumptions:["episode evidence is scoped"]},{mechanismId:"predictive",label:"prediction-error representation learning",principles:["features that improve future prediction receive reinforcement"],limitations:["reward proxy drift"],assumptions:["verified outcomes exist"]}],mutations:["preserve provenance-conditioned feature lineage"],metrics:["held-out prediction accuracy","cross-context transfer","catastrophic-forgetting","resource-cost"],discriminatingEvidence:["same historical episodes","future verified consequences"]},organogenesis:{existingOrganFits:[{organ:"Executive Learning",fit:.78,reason:"learning already owns consequence-driven adaptation"}],specializedRepresentationRequired:true,functionalName:"Representation Learning Organ"}},{persist:false});
+        const forcedOrgan=this.proposeOrganogenesis(gap,{existingOrganFits:[{organ:"Executive Learning",fit:.25},{organ:"World Model",fit:.3}],specializedStateRequired:true,specializedRepresentationRequired:true,functionalName:"Adaptive Representation Organ",interfaces:["episodic-memory","world-model","learning"],acceptanceStandard:["beats incumbent on held-out consequence prediction"],rollbackPath:{removableWithoutIdentityLoss:true}},{persist:false});
+        check("One-off failure remains a candidate gap rather than being inflated into a fundamental missing function",weak.fundamental.length===0&&weak.gaps[0]?.classification==="candidate-gap-needs-more-evidence");
+        check("Recurring consequential evidence can identify a persistent fundamental function gap",gap?.classification==="persistent-fundamental-function-gap"&&gap.recurrence===4);
+        check("Frontier comparison is not fabricated when evidence was not supplied",weak.gaps[0]?.currentSystemsComparison==="unknown-until-frontier-evidence-is-collected");
+        check("Capability Foundry keeps the incumbent as a challenger baseline instead of assuming novelty wins",plan.success===true&&plan.plan.candidate.incumbent.mechanismId==="incumbent"&&plan.plan.candidate.experiment.challengerMustBeatIncumbent===true);
+        check("Candidate may combine and mutate multiple mechanisms rather than copy one named technology",plan.plan.candidate.candidate.componentMechanisms.length===2&&plan.plan.candidate.candidate.mutationBeyondSources.length===1);
+        check("Experiment preregisters metrics, predictions, evidence and rollback before incorporation",plan.plan.candidate.experiment.metrics.length>=4&&plan.plan.candidate.experiment.predictions.challenger&&plan.plan.candidate.experiment.discriminatingEvidence.length>=1&&plan.plan.candidate.experiment.rollbackRequired===true);
+        check("A strong existing-organ fit blocks gratuitous organ creation",plan.plan.organogenesis.justified===false&&plan.plan.organogenesis.status==="evolve-existing-organ-or-gather-more-evidence");
+        check("Persistent missing function plus poor existing-organ fit can justify a sandbox organ proposal",forcedOrgan.justified===true&&forcedOrgan.proposedOrgan.functionalName==="Adaptive Representation Organ"&&forcedOrgan.doctrine.noFixedAnatomy===true);
+        check("Organ proposal contains interface, acceptance and rollback boundaries",forcedOrgan.proposedOrgan.interfaces.length===3&&forcedOrgan.proposedOrgan.acceptanceStandard.length===1&&forcedOrgan.proposedOrgan.rollbackPath.removableWithoutIdentityLoss===true);
+        check("Capability Foundry and organogenesis never self-authorize incorporation, production mutation, spend, provider use, or external action",plan.plan.authority.productionMutationAuthorized===false&&plan.plan.authority.selfModificationAuthorized===false&&forcedOrgan.authority.incorporationAuthorized===false&&forcedOrgan.authority.automaticSpendUsd===0&&forcedOrgan.authority.externalActionAuthorized===false);
+      } finally {this.capabilityFoundryHistory=original.history;this.capabilityFoundryCount=original.count;this.organogenesisProposals=original.organs;this.organogenesisProposalCount=original.organCount;this.lastCapabilityFoundryPlan=original.last;}
+      const passed=checks.filter(x=>x.passed).length;console.table(checks);return{success:passed===checks.length,commission:"EB1340",schema:"meos.maddy.fundamental-gap-capability-foundry.acceptance.v1",version:this.version,buildId:this.buildId,passed,total:checks.length,checks,limitation:"This proves evidence-grounded gap classification, incumbent-vs-challenger capability design, and governed organogenesis proposals. It does not execute experiments, write source code, or incorporate a candidate into production."};
+    },
+
     recordRealExperience(experience = {}, options = {}) {
       if (experience.occurred !== true || !experience.sourceEvidence) {
         return {success:false,reason:"real-experience-requires-occurred-true-and-source-evidence"};
@@ -26496,6 +26709,13 @@
           rule: "Natural language is evidence of intent, not the whole intent. Reconstruct probable meaning from utterance, conversational context, active mission, world state, relationship patterns, unresolved questions, and attention; preserve uncertainty and test material assumptions before consequential action."
         },
 
+        capabilityFoundry: {
+          latestPlan: this.clone(this.lastCapabilityFoundryPlan),
+          recentPlans: this.clone(this.capabilityFoundryHistory.slice(0, 8)),
+          organogenesisProposals: this.clone(this.organogenesisProposals.slice(0, 8)),
+          rule: "A limitation becomes a development target only through evidence. New organs are proposed only when a persistent fundamental function does not fit an existing organ; candidates must beat incumbents under discriminating tests before governed incorporation."
+        },
+
         imaginationAndDreams: {
           openPredictions: this.clone(this.worldPredictionLedger.filter(item => item.status === "open").slice(0, 12)),
           scoredPredictions: this.clone(this.worldPredictionLedger.filter(item => item.status === "scored").slice(0, 12)),
@@ -26585,6 +26805,7 @@
           investigationEvidence: model.investigationEvidence,
           developmentalDrive: model.developmentalDrive,
           intentReconstruction: model.intentReconstruction,
+          capabilityFoundry: model.capabilityFoundry,
           imaginationAndDreams: model.imaginationAndDreams,
           deliberateExperience: model.deliberateExperience,
           anticipatoryInitiative: model.anticipatoryInitiative,
@@ -28137,6 +28358,11 @@
         dreamSynthesisHistory: this.dreamSynthesisHistory.slice(0, this.configuration.maximumDreamSyntheses),
         dreamSynthesisCount: Number(this.dreamSynthesisCount || 0),
         lastDreamSynthesis: this.lastDreamSynthesis ? this.clone(this.lastDreamSynthesis) : null,
+        capabilityFoundryHistory: this.capabilityFoundryHistory.slice(0, this.configuration.maximumCapabilityFoundryHistory),
+        capabilityFoundryCount: Number(this.capabilityFoundryCount || 0),
+        organogenesisProposals: this.organogenesisProposals.slice(0, this.configuration.maximumOrganogenesisProposals),
+        organogenesisProposalCount: Number(this.organogenesisProposalCount || 0),
+        lastCapabilityFoundryPlan: this.lastCapabilityFoundryPlan ? this.clone(this.lastCapabilityFoundryPlan) : null,
         anticipatoryInitiatives: this.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit),
         lastAnticipatorySweep: this.lastAnticipatorySweep ? this.clone(this.lastAnticipatorySweep) : null,
         anticipatorySweepCount: Number(this.anticipatorySweepCount || 0),
@@ -28334,6 +28560,11 @@
       this.dreamSynthesisHistory = Array.isArray(saved.dreamSynthesisHistory) ? saved.dreamSynthesisHistory.slice(0, this.configuration.maximumDreamSyntheses) : [];
       this.dreamSynthesisCount = Math.max(Number(saved.dreamSynthesisCount || 0), ...this.dreamSynthesisHistory.map(item => Number(item.dreamNumber || 0)), 0);
       this.lastDreamSynthesis = saved.lastDreamSynthesis && typeof saved.lastDreamSynthesis === "object" ? this.clone(saved.lastDreamSynthesis) : (this.dreamSynthesisHistory[0] ? this.clone(this.dreamSynthesisHistory[0]) : null);
+      this.capabilityFoundryHistory = Array.isArray(saved.capabilityFoundryHistory) ? saved.capabilityFoundryHistory.slice(0, this.configuration.maximumCapabilityFoundryHistory) : [];
+      this.capabilityFoundryCount = Math.max(Number(saved.capabilityFoundryCount || 0), ...this.capabilityFoundryHistory.map(item => Number(item.planNumber || 0)), 0);
+      this.organogenesisProposals = Array.isArray(saved.organogenesisProposals) ? saved.organogenesisProposals.slice(0, this.configuration.maximumOrganogenesisProposals) : [];
+      this.organogenesisProposalCount = Math.max(Number(saved.organogenesisProposalCount || 0), ...this.organogenesisProposals.map(item => Number(item.proposalNumber || 0)), 0);
+      this.lastCapabilityFoundryPlan = saved.lastCapabilityFoundryPlan && typeof saved.lastCapabilityFoundryPlan === "object" ? this.clone(saved.lastCapabilityFoundryPlan) : (this.capabilityFoundryHistory[0] ? this.clone(this.capabilityFoundryHistory[0]) : null);
       this.anticipatoryInitiatives = Array.isArray(saved.anticipatoryInitiatives) ? saved.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit) : [];
       this.lastAnticipatorySweep = saved.lastAnticipatorySweep && typeof saved.lastAnticipatorySweep === "object" ? this.clone(saved.lastAnticipatorySweep) : null;
       this.anticipatorySweepCount = Math.max(Number(saved.anticipatorySweepCount || 0), Number(this.lastAnticipatorySweep?.sweepNumber || 0));
