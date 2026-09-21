@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.15
+ * File Version: 2.0.16
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -34,9 +34,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.15";
+  const VERSION = "2.0.16";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE215-CANONICAL-HALLWAY-RESEARCH-HANDOFF-20260920-A";
+  const BUILD_ID = "VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -44,6 +44,8 @@
   const RESPONSE_TIMEOUT_MS = 45_000;
   const MAX_HANDLED_RESPONSE_IDS = 200;
   const BACKGROUND_RESEARCH_START_DELAY_MS = 0;
+  const DURABLE_RESEARCH_RETURN_POLL_MS = 1_500;
+  const DURABLE_RESEARCH_RETURN_MAX_POLLS = 80;
   const INTERACTIVE_DIRECT_ROUTES = new Set([
     "instant-meos-context",
     "local-recall-plus-provider-reasoning"
@@ -131,6 +133,9 @@
     // Voice may schedule durable work, but the conversational response never
     // waits on that work before it is allowed to speak.
     lastBackgroundWorkHandoff: null,
+    researchReturnObservers: new Map(),
+    completedResearchReturnIds: new Set(),
+    lastResearchReturn: null,
 
     // Foreground conversation / wake state.
     attentionAwake: false,
@@ -318,6 +323,10 @@
       backgroundWorkHandoff: state.lastBackgroundWorkHandoff
         ? { ...state.lastBackgroundWorkHandoff }
         : null,
+      researchReturn: state.lastResearchReturn
+        ? { ...state.lastResearchReturn }
+        : null,
+      researchReturnObserverCount: state.researchReturnObservers.size,
       speechLearning: Object.freeze({
         scopedCorrectionCount: state.scopedSpeechCorrections.length,
         durable: false
@@ -2326,6 +2335,174 @@
     return Object.freeze({ hallway: null, source: "unavailable" });
   }
 
+  function governedResearchAnswerFromWork(work) {
+    if (!work || String(work.state || "").toLowerCase() !== "done") return null;
+    if (work?.outcome?.success === false) return null;
+
+    const seen = new Set();
+    function visit(value, depth = 0) {
+      if (!value || typeof value !== "object" || depth > 8 || seen.has(value)) return null;
+      seen.add(value);
+
+      const candidate = value.governedAnswer;
+      if (candidate && typeof candidate === "object") {
+        const answer = String(candidate.answer || "").trim();
+        const citations = Array.isArray(candidate.citations)
+          ? [...new Set(candidate.citations.map(item => String(item || "").trim()).filter(item => /^https?:\/\//i.test(item)))].slice(0, 10)
+          : [];
+        if (
+          answer &&
+          candidate.finalSpeechAuthorized === true &&
+          candidate.oneMouth === true &&
+          citations.length > 0
+        ) {
+          return Object.freeze({ answer, citations: Object.freeze(citations) });
+        }
+      }
+
+      const preferredKeys = ["outcome", "result", "execution", "output", "data"];
+      for (const key of preferredKeys) {
+        if (Object.prototype.hasOwnProperty.call(value, key)) {
+          const found = visit(value[key], depth + 1);
+          if (found) return found;
+        }
+      }
+
+      if (Array.isArray(value.deliverables)) {
+        for (const item of value.deliverables) {
+          const found = visit(item, depth + 1);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    return visit(work);
+  }
+
+  function publishGovernedResearchReturn(work, observer) {
+    const executionId = String(observer?.executionId || work?.execution?.executionId || "").trim();
+    if (!executionId || state.completedResearchReturnIds.has(executionId)) return false;
+    const governed = governedResearchAnswerFromWork(work);
+    if (!governed) return false;
+
+    const responseId = `research-return-${executionId}`;
+    const turnId = String(observer?.turnId || `research-${executionId}`).trim();
+    const returned = Object.freeze({
+      executionId,
+      workId: work?.id || observer?.workId || null,
+      turnId,
+      responseId,
+      answer: governed.answer,
+      citations: governed.citations,
+      finalSpeechAuthorized: true,
+      oneMouth: true,
+      rawServerOutputPresented: false,
+      externalActionAuthorityGranted: false,
+      automaticSpendUsd: 0,
+      returnedAt: new Date().toISOString()
+    });
+
+    state.completedResearchReturnIds.add(executionId);
+    if (state.completedResearchReturnIds.size > 100) {
+      state.completedResearchReturnIds.delete(state.completedResearchReturnIds.values().next().value);
+    }
+    state.lastResearchReturn = returned;
+    state.researchReturnObservers.delete(executionId);
+
+    emit("research-return-ready", returned);
+    global.dispatchEvent(
+      new CustomEvent("meos:maddy:response", {
+        detail: {
+          text: governed.answer,
+          authorized: true,
+          turnId,
+          responseId,
+          source: "meos-governed-durable-research-return",
+          citations: governed.citations,
+          finalSpeechAuthorized: true,
+          oneMouth: true,
+          rawServerOutputPresented: false
+        }
+      })
+    );
+    return true;
+  }
+
+  function observeDurableResearchReturn(hallway, work, turnId) {
+    const executionId = String(work?.execution?.executionId || "").trim();
+    if (!executionId || typeof hallway?.reconcileDurableExecutionReturn !== "function") {
+      return Object.freeze({ observing: false, reason: "durable-return-reconciliation-unavailable", executionId: executionId || null });
+    }
+    if (state.completedResearchReturnIds.has(executionId)) {
+      return Object.freeze({ observing: false, reason: "already-returned", executionId });
+    }
+    if (state.researchReturnObservers.has(executionId)) {
+      return Object.freeze({ observing: true, reason: "already-observing", executionId });
+    }
+
+    const observer = {
+      executionId,
+      workId: work?.id || null,
+      turnId,
+      polls: 0,
+      startedAt: Date.now(),
+      lastState: String(work?.execution?.state || work?.state || "submitted")
+    };
+    state.researchReturnObservers.set(executionId, observer);
+
+    const poll = () => {
+      if (!state.researchReturnObservers.has(executionId)) return;
+      if (observer.polls >= DURABLE_RESEARCH_RETURN_MAX_POLLS) {
+        state.researchReturnObservers.delete(executionId);
+        const pending = Object.freeze({
+          executionId,
+          workId: observer.workId,
+          turnId,
+          state: "still-running",
+          reason: "voice-observer-window-expired-durable-work-continues",
+          rawServerOutputPresented: false,
+          externalActionAuthorityGranted: false,
+          automaticSpendUsd: 0
+        });
+        state.lastResearchReturn = pending;
+        emit("research-return-pending", pending);
+        return;
+      }
+
+      observer.polls += 1;
+      void Promise.resolve(hallway.reconcileDurableExecutionReturn(executionId)).then(
+        (reconciled) => {
+          observer.lastState = String(reconciled?.state || reconciled?.execution?.state || observer.lastState);
+          if (publishGovernedResearchReturn(reconciled, observer)) return;
+          if (String(reconciled?.state || "").toLowerCase() === "failed") {
+            state.researchReturnObservers.delete(executionId);
+            const failed = Object.freeze({
+              executionId,
+              workId: observer.workId,
+              turnId,
+              state: "failed",
+              reason: reconciled?.outcome?.reason || reconciled?.error || "durable-research-failed",
+              rawServerOutputPresented: false,
+              externalActionAuthorityGranted: false,
+              automaticSpendUsd: 0
+            });
+            state.lastResearchReturn = failed;
+            emit("research-return-failed", failed);
+            return;
+          }
+          global.setTimeout(poll, DURABLE_RESEARCH_RETURN_POLL_MS);
+        },
+        (error) => {
+          observer.lastError = error?.message || String(error);
+          global.setTimeout(poll, DURABLE_RESEARCH_RETURN_POLL_MS);
+        }
+      );
+    };
+
+    global.setTimeout(poll, DURABLE_RESEARCH_RETURN_POLL_MS);
+    return Object.freeze({ observing: true, reason: "durable-return-observer-started", executionId });
+  }
+
   function scheduleVoiceResearchHandoff(
     transcript,
     turnId,
@@ -2395,9 +2572,12 @@
 
       void Promise.resolve(workPromise).then(
         (work) => {
+          const returnObserver = observeDurableResearchReturn(hallway, work, turnId);
           const completed = Object.freeze({
             ...handoff,
             workId: work?.id || null,
+            executionId: work?.execution?.executionId || null,
+            returnObserver,
             state: work?.state || "submitted",
             scheduled: true
           });
@@ -4559,6 +4739,92 @@
     return result;
   }
 
+  async function runDurableResearchSpokenReturnAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+    const originalTimer = global.setTimeout;
+    const originalDispatch = global.dispatchEvent;
+    const priorObservers = state.researchReturnObservers;
+    const priorCompleted = state.completedResearchReturnIds;
+    const priorReturn = state.lastResearchReturn;
+    const timers = [];
+    const events = [];
+    try {
+      state.researchReturnObservers = new Map();
+      state.completedResearchReturnIds = new Set();
+      state.lastResearchReturn = null;
+      global.setTimeout = (fn) => { timers.push(fn); return timers.length; };
+      global.dispatchEvent = (event) => { events.push(event); return true; };
+
+      let reconciles = 0;
+      const executionId = "execution-ve216-fixture";
+      const hallway = {
+        async reconcileDurableExecutionReturn(requestedId) {
+          reconciles += 1;
+          if (requestedId !== executionId) throw new Error("wrong execution id");
+          if (reconciles === 1) return { id: "work-ve216", state: "executing", execution: { executionId, state: "running" } };
+          return {
+            id: "work-ve216",
+            state: "done",
+            execution: { executionId, state: "returned" },
+            outcome: {
+              success: true,
+              result: {
+                source: "meos-headless-public-research",
+                governedAnswer: {
+                  answer: "Current governed research found a qualified funding path.",
+                  citations: ["https://example.org/funding"],
+                  finalSpeechAuthorized: true,
+                  oneMouth: true
+                },
+                rawServerOutput: "THIS MUST NEVER BE SPOKEN"
+              }
+            }
+          };
+        }
+      };
+      const observation = observeDurableResearchReturn(hallway, { id: "work-ve216", execution: { executionId, state: "queued" } }, "voice-turn-ve216");
+      check("Durable return observation starts only from an exact execution identity", observation.observing === true && observation.executionId === executionId);
+      check("Observer does not synchronously block live conversation", reconciles === 0 && timers.length === 1);
+
+      await timers.shift()();
+      await Promise.resolve();
+      check("Running durable work stays pending without fabricated answer", reconciles === 1 && !events.some(event => event?.type === "meos:maddy:response"));
+      await timers.shift()();
+      await Promise.resolve();
+
+      const responseEvents = events.filter(event => event?.type === "meos:maddy:response");
+      const spoken = responseEvents[0]?.detail || {};
+      check("Exactly one governed durable answer is returned through the Maddy response mouth", responseEvents.length === 1 && spoken.text === "Current governed research found a qualified funding path." && spoken.authorized === true);
+      check("Raw server synthesis is never selected for speech", !String(spoken.text || "").includes("THIS MUST NEVER BE SPOKEN") && state.lastResearchReturn?.rawServerOutputPresented === false);
+      check("Spoken research return preserves evidence URLs", Array.isArray(spoken.citations) && spoken.citations[0] === "https://example.org/funding");
+      check("Return publication preserves one-mouth/final-speech governance", spoken.finalSpeechAuthorized === true && spoken.oneMouth === true);
+      check("Return observation grants no spend or external-action authority", state.lastResearchReturn?.automaticSpendUsd === 0 && state.lastResearchReturn?.externalActionAuthorityGranted === false);
+      check("Duplicate publication is blocked by durable execution identity", publishGovernedResearchReturn({ state: "done", outcome: { success: true, result: { governedAnswer: { answer: "duplicate", citations: ["https://example.org/duplicate"], finalSpeechAuthorized: true, oneMouth: true } } } }, { executionId, turnId: "voice-turn-ve216" }) === false && responseEvents.length === 1);
+    } finally {
+      global.setTimeout = originalTimer;
+      global.dispatchEvent = originalDispatch;
+      state.researchReturnObservers = priorObservers;
+      state.completedResearchReturnIds = priorCompleted;
+      state.lastResearchReturn = priorReturn;
+    }
+    const passed = checks.filter(item => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE216",
+      schema: "meos.voice.durable-research-spoken-return.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map(item => Object.freeze({ ...item }))),
+      limitation: "This proves the local bounded observer, exact execution lineage, governed-answer extraction, duplicate suppression, and one-mouth return path. It does not prove live server research completion, network reliability, or real TTS playback. Production gets the vote."
+    });
+    console.table(checks);
+    log(`Commission VE216 Durable Research Spoken Return: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   function runCanonicalHallwayResearchHandoffAcceptanceTest() {
     const checks = [];
     const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
@@ -4689,7 +4955,8 @@
     runForegroundInterruptionAuthorityAcceptanceTest,
     runContextGroundedTranscriptionEvidenceAcceptanceTest,
     runSemanticIntendedSpeechReconstructionAcceptanceTest,
-    runCanonicalHallwayResearchHandoffAcceptanceTest
+    runCanonicalHallwayResearchHandoffAcceptanceTest,
+    runDurableResearchSpokenReturnAcceptanceTest
   });
 
   log(`Client online. Build ${BUILD_ID}.`);
