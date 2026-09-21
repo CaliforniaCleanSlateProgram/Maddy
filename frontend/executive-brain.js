@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.35.0";
-  const BUILD_ID = "EB1350-GOVERNED-DEVELOPMENT-FORGE-20260920-A";
+  const VERSION = "1.36.0";
+  const BUILD_ID = "EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -293,6 +293,10 @@
       maximumDevelopmentForgeHistory: 160,
       maximumDevelopmentProofPackages: 96,
       maximumDevelopmentForgeRisk: 0.18,
+      maximumRepresentationLearningHistory: 200,
+      representationLearningRate: 0.08,
+      representationMinimumWeight: 0.015,
+      representationMaximumWeight: 0.34,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -442,6 +446,10 @@
     developmentProofPackages: [],
     developmentProofPackageCount: 0,
     lastDevelopmentProofPackage: null,
+    episodicRepresentationModels: {},
+    representationLearningHistory: [],
+    representationLearningCount: 0,
+    lastRepresentationLearning: null,
     anticipatoryInitiatives: [],
     lastAnticipatorySweep: null,
     anticipatorySweepCount: 0,
@@ -9119,6 +9127,82 @@
         .slice(0, Math.max(1, Math.min(20, Number(limit) || 8)));
     },
 
+    defaultEpisodicRepresentationWeights() {
+      return {
+        currentUsefulness: 0.12,
+        predictedFutureUsefulness: 0.16,
+        novelty: 0.11,
+        causalSignificance: 0.16,
+        recurrence: 0.08,
+        unresolvedness: 0.10,
+        relationshipSignificance: 0.07,
+        uniqueness: 0.06,
+        activeGoalRelation: 0.08,
+        uncertainty: 0.06
+      };
+    },
+
+    normalizeEpisodicRepresentationWeights(weights = {}) {
+      const defaults = this.defaultEpisodicRepresentationWeights();
+      const minimum = Number(this.configuration.representationMinimumWeight || 0.015);
+      const maximum = Number(this.configuration.representationMaximumWeight || 0.34);
+      const bounded = {};
+      for (const key of Object.keys(defaults)) {
+        const raw = Number(weights[key]);
+        bounded[key] = Math.max(minimum, Math.min(maximum, Number.isFinite(raw) ? raw : defaults[key]));
+      }
+      const total = Object.values(bounded).reduce((sum, value) => sum + value, 0) || 1;
+      const normalized = {};
+      for (const [key, value] of Object.entries(bounded)) normalized[key] = Number((value / total).toFixed(6));
+      return normalized;
+    },
+
+    episodicRepresentationScopeKey(scope = {}) {
+      const knowledgeClass = String(scope?.knowledgeClass || scope?.classification || "").trim().toLowerCase();
+      const organizationId = String(scope?.organizationId || scope?.organization || "").trim();
+      if (knowledgeClass === "general-transferable") return "general-transferable";
+      if (knowledgeClass === "organization-private" && organizationId) return `organization:${organizationId}`;
+      return null;
+    },
+
+    getEpisodicRepresentationModel(scope = {}, options = {}) {
+      const scopeKey = this.episodicRepresentationScopeKey(scope);
+      if (!scopeKey) return null;
+      let model = this.episodicRepresentationModels?.[scopeKey] || null;
+      if (!model && options.create === true) {
+        model = {
+          schema: "meos.maddy.episodic-representation-model.v1",
+          modelId: this.id("episodic-representation-model"),
+          scopeKey,
+          knowledgeScope: this.clone(scope),
+          revision: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          trainingCount: 0,
+          weights: this.normalizeEpisodicRepresentationWeights(this.defaultEpisodicRepresentationWeights()),
+          verifiedOutcomeCount: 0,
+          meanAbsolutePredictionError: null,
+          authority: { actionAuthorized: false, truthAuthorized: false, spendAuthorized: false, crossScopeTransferAuthorized: false }
+        };
+        this.episodicRepresentationModels = { ...(this.episodicRepresentationModels || {}), [scopeKey]: model };
+      }
+      return model ? this.clone(model) : null;
+    },
+
+    scoreEpisodicDimensionsWithRepresentation(dimensions = {}, scope = {}) {
+      const model = this.getEpisodicRepresentationModel(scope, { create: false });
+      const weights = model?.weights || this.defaultEpisodicRepresentationWeights();
+      const score = Object.entries(weights).reduce((sum, [key, weight]) => sum + Number(dimensions[key] || 0) * Number(weight || 0), 0);
+      return {
+        score: Number(Math.max(0, Math.min(1, score)).toFixed(6)),
+        representationModelId: model?.modelId || null,
+        representationModelRevision: model?.revision || 0,
+        representationScopeKey: model?.scopeKey || null,
+        weights: this.clone(weights),
+        learnedRepresentationApplied: Boolean(model)
+      };
+    },
+
     episodicSalienceVector(input = {}, semantic = {}) {
       const related = this.episodicRelationshipCandidates(semantic, 12);
       const strongestRelation = Number(related[0]?.relationScore || 0);
@@ -9158,26 +9242,19 @@
         activeGoalRelation,
         uncertainty
       };
-      const weights = {
-        currentUsefulness: 0.12,
-        predictedFutureUsefulness: 0.16,
-        novelty: 0.11,
-        causalSignificance: 0.16,
-        recurrence: 0.08,
-        unresolvedness: 0.10,
-        relationshipSignificance: 0.07,
-        uniqueness: 0.06,
-        activeGoalRelation: 0.08,
-        uncertainty: 0.06
-      };
-      const score = Object.entries(weights).reduce((sum, [key, weight]) => sum + Number(dimensions[key] || 0) * weight, 0);
+      const representation = this.scoreEpisodicDimensionsWithRepresentation(dimensions, semantic.knowledgeScope || input.knowledgeScope || {});
       return {
         schema: "meos.maddy.episodic-salience.v1",
-        score: Number(Math.max(0, Math.min(1, score)).toFixed(6)),
+        score: representation.score,
         dimensions,
         relatedEpisodeCount: related.length,
         strongestRelation: Number(strongestRelation.toFixed(6)),
-        learnedFromConsequenceTarget: true
+        learnedFromConsequenceTarget: true,
+        representationModelId: representation.representationModelId,
+        representationModelRevision: representation.representationModelRevision,
+        representationScopeKey: representation.representationScopeKey,
+        learnedRepresentationApplied: representation.learnedRepresentationApplied,
+        weightSnapshot: representation.weights
       };
     },
 
@@ -9208,6 +9285,7 @@
         predictionLineage: this.clone(input.predictionLineage || input.prediction || null),
         validation: this.clone(input.validation || {}),
         futureRelevance: this.clone(input.futureRelevance || {}),
+        knowledgeScope: this.clone(input.knowledgeScope || {}),
         perception: this.clone(input.perception || {}),
         beliefsBefore: this.clone(input.beliefsBefore || {}),
         intention: this.clone(input.intention || {}),
@@ -9283,6 +9361,7 @@
         predictionLineage: semantic.predictionLineage,
         outcome: semantic.outcome,
         validation: semantic.validation,
+        knowledgeScope: semantic.knowledgeScope,
         learning: semantic.learning,
         links: related.map(item => ({
           relation: "semantic-experiential",
@@ -9406,6 +9485,152 @@
         destructiveCompactionAuthorized: false,
         preservedEpisodeCount: episodes.length
       };
+    },
+
+    trainEpisodicRepresentationFromVerifiedConsequence(episodeOrId, observation = {}, options = {}) {
+      const episode = typeof episodeOrId === "string"
+        ? (this.autobiographicalMemory || []).find(item => item.episodeId === episodeOrId)
+        : episodeOrId;
+      if (!episode) return { success: false, reason: "episode-not-found" };
+      if (observation?.verified !== true || !observation?.sourceEvidence) return { success: false, reason: "verified-sourced-consequence-required" };
+      const scope = episode.knowledgeScope || observation.knowledgeScope || {};
+      const scopeKey = this.episodicRepresentationScopeKey(scope);
+      if (!scopeKey) return { success: false, reason: "explicit-general-or-organization-private-scope-required" };
+      if (scopeKey.startsWith("organization:") && observation?.knowledgeScope) {
+        const observedScopeKey = this.episodicRepresentationScopeKey(observation.knowledgeScope);
+        if (observedScopeKey !== scopeKey) return { success: false, reason: "cross-scope-representation-learning-denied" };
+      }
+      const target = Number(observation.observedFutureUsefulness ?? observation.targetUsefulness);
+      if (!Number.isFinite(target) || target < 0 || target > 1) return { success: false, reason: "observed-future-usefulness-must-be-bounded-0-to-1" };
+      const dimensions = episode?.salience?.dimensions;
+      if (!dimensions || typeof dimensions !== "object") return { success: false, reason: "episode-salience-dimensions-required" };
+
+      const current = this.getEpisodicRepresentationModel(scope, { create: true });
+      const predicted = this.scoreEpisodicDimensionsWithRepresentation(dimensions, scope).score;
+      const error = target - predicted;
+      const values = Object.keys(current.weights).map(key => Number(dimensions[key] || 0));
+      const mean = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+      const learningRate = Math.max(0.001, Math.min(0.25, Number(options.learningRate ?? this.configuration.representationLearningRate ?? 0.08)));
+      const updatedRaw = {};
+      for (const [key, weight] of Object.entries(current.weights)) {
+        const centeredFeature = Number(dimensions[key] || 0) - mean;
+        updatedRaw[key] = Number(weight || 0) + learningRate * error * centeredFeature;
+      }
+      const updatedWeights = this.normalizeEpisodicRepresentationWeights(updatedRaw);
+      const priorCount = Number(current.verifiedOutcomeCount || 0);
+      const priorMae = Number(current.meanAbsolutePredictionError || 0);
+      const nextCount = priorCount + 1;
+      const nextMae = ((priorMae * priorCount) + Math.abs(error)) / nextCount;
+      const updated = {
+        ...current,
+        revision: Number(current.revision || 0) + 1,
+        updatedAt: new Date().toISOString(),
+        trainingCount: Number(current.trainingCount || 0) + 1,
+        verifiedOutcomeCount: nextCount,
+        meanAbsolutePredictionError: Number(nextMae.toFixed(6)),
+        weights: updatedWeights,
+        lastTraining: {
+          episodeId: episode.episodeId,
+          experienceFingerprint: episode.experienceFingerprint,
+          sourceEvidence: this.clone(observation.sourceEvidence),
+          predictedFutureUsefulness: predicted,
+          observedFutureUsefulness: target,
+          predictionError: Number(error.toFixed(6)),
+          learningRate
+        }
+      };
+      this.episodicRepresentationModels = { ...(this.episodicRepresentationModels || {}), [scopeKey]: updated };
+      this.representationLearningCount = Number(this.representationLearningCount || 0) + 1;
+      const record = {
+        schema: "meos.maddy.representation-learning-event.v1",
+        learningId: this.id("representation-learning"),
+        learningNumber: this.representationLearningCount,
+        learnedAt: updated.updatedAt,
+        scopeKey,
+        episodeId: episode.episodeId,
+        sourceEvidence: this.clone(observation.sourceEvidence),
+        priorModelRevision: current.revision,
+        modelRevision: updated.revision,
+        priorWeights: this.clone(current.weights),
+        updatedWeights: this.clone(updated.weights),
+        predictedFutureUsefulness: predicted,
+        observedFutureUsefulness: target,
+        predictionError: Number(error.toFixed(6)),
+        authority: { actionAuthorized: false, truthAuthorized: false, spendAuthorized: false, crossScopeTransferAuthorized: false }
+      };
+      record.fingerprint = this.fingerprintCognitiveDispatch(record);
+      this.lastRepresentationLearning = record;
+      this.representationLearningHistory.unshift(this.clone(record));
+      this.representationLearningHistory = this.representationLearningHistory.slice(0, this.configuration.maximumRepresentationLearningHistory);
+      if (options.persist === true) this.persist();
+      this.emit("brain:representation-learning", this.clone(record));
+      return { success: true, model: this.clone(updated), learning: this.clone(record) };
+    },
+
+    reprojectEpisodeSalienceWithLearnedRepresentation(episodeId, options = {}) {
+      const episode = (this.autobiographicalMemory || []).find(item => item.episodeId === episodeId);
+      if (!episode) return { success: false, reason: "episode-not-found" };
+      const scopeKey = this.episodicRepresentationScopeKey(episode.knowledgeScope || {});
+      if (!scopeKey) return { success: false, reason: "explicit-episode-scope-required" };
+      const model = this.getEpisodicRepresentationModel(episode.knowledgeScope, { create: false });
+      if (!model) return { success: false, reason: "no-learned-representation-for-scope" };
+      const scored = this.scoreEpisodicDimensionsWithRepresentation(episode.salience?.dimensions || {}, episode.knowledgeScope);
+      episode.salience = {
+        ...(episode.salience || {}),
+        initialScore: Number(episode.salience?.initialScore ?? episode.salience?.score ?? 0),
+        score: scored.score,
+        learnedScore: scored.score,
+        learnedRepresentationApplied: true,
+        representationModelId: scored.representationModelId,
+        representationModelRevision: scored.representationModelRevision,
+        representationScopeKey: scored.representationScopeKey,
+        weightSnapshot: scored.weights
+      };
+      episode.retention = {
+        ...(episode.retention || {}),
+        recommendedResolution: this.episodicRetentionRecommendation(episode.salience),
+        representationModelRevision: scored.representationModelRevision,
+        destructiveCompactionAuthorized: false
+      };
+      if (options.persist === true) this.persist();
+      return { success: true, episode: this.clone(episode), model: this.clone(model) };
+    },
+
+    runExperienceDrivenRepresentationPlasticityAcceptanceTest() {
+      const original = {
+        memory: this.clone(this.autobiographicalMemory || []), count: this.autobiographicalEpisodeCount,
+        models: this.clone(this.episodicRepresentationModels || {}), history: this.clone(this.representationLearningHistory || []),
+        learningCount: this.representationLearningCount, last: this.clone(this.lastRepresentationLearning),
+        self: this.clone(this.selfModel), awareness: this.clone(this.workingAwareness)
+      };
+      const checks=[]; const check=(name,passed)=>checks.push({name,passed:Boolean(passed)});
+      try {
+        this.autobiographicalMemory=[];this.autobiographicalEpisodeCount=0;this.episodicRepresentationModels={};this.representationLearningHistory=[];this.representationLearningCount=0;this.lastRepresentationLearning=null;
+        this.selfModel=this.selfModel||{revision:1,fingerprint:"self-eb1360",identity:{preferredName:"Maddy"},interactionContext:{mode:"professional"}};
+        this.workingAwareness=this.workingAwareness||{revision:1,fingerprint:"awareness-eb1360",primaryFocus:{subject:"representation plasticity"},interactionContext:{mode:"professional"}};
+        const general=this.formAutobiographicalEpisode({eventType:"verified-experience",subject:"Subtle recurring timing cue predicted a later consequence",sourceId:"eb1360-general",knowledgeScope:{knowledgeClass:"general-transferable"},goals:{objective:"predict consequence"},uncertainty:{openQuestions:["does the cue matter?"]},outcome:{verified:true,changed:true,success:true},learning:{causal:true},futureRelevance:{predictedUseful:true}},{persist:false}).episode;
+        const privateEpisode=this.formAutobiographicalEpisode({eventType:"verified-experience",subject:"Private organization pattern",sourceId:"eb1360-private",knowledgeScope:{knowledgeClass:"organization-private",organizationId:"org-a"},goals:{objective:"private work"},outcome:{verified:true,changed:true},learning:{causal:true}},{persist:false}).episode;
+        const defaultWeights=this.defaultEpisodicRepresentationWeights();
+        const denied=this.trainEpisodicRepresentationFromVerifiedConsequence(general.episodeId,{verified:false,sourceEvidence:["acceptance://unverified"],observedFutureUsefulness:.95});
+        const learned=this.trainEpisodicRepresentationFromVerifiedConsequence(general.episodeId,{verified:true,sourceEvidence:["acceptance://verified-consequence"],observedFutureUsefulness:.96,knowledgeScope:{knowledgeClass:"general-transferable"}},{persist:false});
+        const model=learned.model;
+        const changed=Object.keys(defaultWeights).some(key=>Math.abs(Number(model.weights[key])-Number(this.normalizeEpisodicRepresentationWeights(defaultWeights)[key]))>0.000001);
+        const privateLearn=this.trainEpisodicRepresentationFromVerifiedConsequence(privateEpisode.episodeId,{verified:true,sourceEvidence:["acceptance://private"],observedFutureUsefulness:.2,knowledgeScope:{knowledgeClass:"organization-private",organizationId:"org-a"}},{persist:false});
+        const crossDenied=this.trainEpisodicRepresentationFromVerifiedConsequence(privateEpisode.episodeId,{verified:true,sourceEvidence:["acceptance://wrong-scope"],observedFutureUsefulness:.9,knowledgeScope:{knowledgeClass:"organization-private",organizationId:"org-b"}},{persist:false});
+        const reproj=this.reprojectEpisodeSalienceWithLearnedRepresentation(general.episodeId,{persist:false});
+        const future=this.formAutobiographicalEpisode({eventType:"observation",subject:"Another subtle timing cue appears",sourceId:"eb1360-future",knowledgeScope:{knowledgeClass:"general-transferable"},goals:{objective:"predict consequence"},uncertainty:{openQuestions:["same mechanism?"]},outcome:{},learning:{unresolved:true}},{persist:false}).episode;
+        check("Unverified outcome cannot train Maddy's representation model",denied.success===false&&denied.reason==="verified-sourced-consequence-required");
+        check("Verified consequence can update a scoped representation model",learned.success===true&&model.revision===2&&model.trainingCount===1&&model.verifiedOutcomeCount===1);
+        check("Experience changes feature weighting rather than leaving the programmer seed permanently fixed",changed===true);
+        check("Learned weights remain normalized and bounded",Math.abs(Object.values(model.weights).reduce((a,b)=>a+Number(b),0)-1)<0.00001&&Object.values(model.weights).every(v=>v>=this.configuration.representationMinimumWeight/2&&v<=this.configuration.representationMaximumWeight+0.02));
+        check("Organization-private experience learns only inside its organization-scoped model",privateLearn.success===true&&privateLearn.model.scopeKey==="organization:org-a"&&Boolean(this.episodicRepresentationModels["organization:org-a"]));
+        check("Cross-organization representation update is refused",crossDenied.success===false&&crossDenied.reason==="cross-scope-representation-learning-denied");
+        check("Historical episode can be re-scored without erasing its initial salience",reproj.success===true&&Number.isFinite(reproj.episode.salience.initialScore)&&reproj.episode.salience.representationModelRevision===2);
+        check("Later episodes in the same scope automatically use the learned representation",future.salience.learnedRepresentationApplied===true&&future.salience.representationModelRevision===2&&future.salience.representationScopeKey==="general-transferable");
+        check("Representation learning keeps evidence lineage and prediction error",this.lastRepresentationLearning?.sourceEvidence?.length===1&&Number.isFinite(this.lastRepresentationLearning?.predictionError));
+        check("Representation plasticity creates no truth, action, spend, or cross-scope authority",learned.learning.authority.truthAuthorized===false&&learned.learning.authority.actionAuthorized===false&&learned.learning.authority.spendAuthorized===false&&learned.learning.authority.crossScopeTransferAuthorized===false);
+      } finally {this.autobiographicalMemory=original.memory;this.autobiographicalEpisodeCount=original.count;this.episodicRepresentationModels=original.models;this.representationLearningHistory=original.history;this.representationLearningCount=original.learningCount;this.lastRepresentationLearning=original.last;this.selfModel=original.self;this.workingAwareness=original.awareness;}
+      const passed=checks.filter(item=>item.passed).length;console.table(checks);return{success:passed===checks.length,commission:"EB1360",schema:"meos.maddy.experience-driven-representation-plasticity.acceptance.v1",version:this.version,buildId:this.buildId,passed,total:checks.length,checks,limitation:"This proves bounded consequence-driven adaptation of explicit episodic feature weights within exact knowledge scope. It is genuine representation plasticity, but not yet open-ended latent feature discovery, neural weight training, or broad continual learning without forgetting."};
     },
 
     runLivingEpisodicConsolidationAcceptanceTest() {
@@ -27009,6 +27234,13 @@
           rule: "A limitation becomes a development target only through evidence. New organs are proposed only when a persistent fundamental function does not fit an existing organ; candidates must beat incumbents under discriminating tests before governed incorporation."
         },
 
+        representationPlasticity: {
+          models: this.clone(this.episodicRepresentationModels),
+          latestLearning: this.clone(this.lastRepresentationLearning),
+          recentLearning: this.clone(this.representationLearningHistory.slice(0, 12)),
+          rule: "Verified consequences may adapt how scoped experience dimensions are weighted for future attention and memory. Private scope never trains another organization's model, and learned salience is not truth or action authority."
+        },
+
         developmentForge: {
           latestProof: this.clone(this.lastDevelopmentProofPackage),
           recentProofs: this.clone(this.developmentProofPackages.slice(0, 8)),
@@ -28668,6 +28900,10 @@
         developmentProofPackages: this.developmentProofPackages.slice(0, this.configuration.maximumDevelopmentProofPackages),
         developmentProofPackageCount: Number(this.developmentProofPackageCount || 0),
         lastDevelopmentProofPackage: this.lastDevelopmentProofPackage ? this.clone(this.lastDevelopmentProofPackage) : null,
+        episodicRepresentationModels: this.clone(this.episodicRepresentationModels || {}),
+        representationLearningHistory: this.representationLearningHistory.slice(0, this.configuration.maximumRepresentationLearningHistory),
+        representationLearningCount: Number(this.representationLearningCount || 0),
+        lastRepresentationLearning: this.lastRepresentationLearning ? this.clone(this.lastRepresentationLearning) : null,
         anticipatoryInitiatives: this.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit),
         lastAnticipatorySweep: this.lastAnticipatorySweep ? this.clone(this.lastAnticipatorySweep) : null,
         anticipatorySweepCount: Number(this.anticipatorySweepCount || 0),
@@ -28875,6 +29111,10 @@
       this.developmentProofPackages = Array.isArray(saved.developmentProofPackages) ? saved.developmentProofPackages.slice(0, this.configuration.maximumDevelopmentProofPackages) : [];
       this.developmentProofPackageCount = Math.max(Number(saved.developmentProofPackageCount || 0), ...this.developmentProofPackages.map(item => Number(item.proofNumber || 0)), 0);
       this.lastDevelopmentProofPackage = saved.lastDevelopmentProofPackage && typeof saved.lastDevelopmentProofPackage === "object" ? this.clone(saved.lastDevelopmentProofPackage) : (this.developmentProofPackages[0] ? this.clone(this.developmentProofPackages[0]) : null);
+      this.episodicRepresentationModels = saved.episodicRepresentationModels && typeof saved.episodicRepresentationModels === "object" && !Array.isArray(saved.episodicRepresentationModels) ? this.clone(saved.episodicRepresentationModels) : {};
+      this.representationLearningHistory = Array.isArray(saved.representationLearningHistory) ? saved.representationLearningHistory.slice(0, this.configuration.maximumRepresentationLearningHistory) : [];
+      this.representationLearningCount = Math.max(Number(saved.representationLearningCount || 0), ...this.representationLearningHistory.map(item => Number(item.learningNumber || 0)), 0);
+      this.lastRepresentationLearning = saved.lastRepresentationLearning && typeof saved.lastRepresentationLearning === "object" ? this.clone(saved.lastRepresentationLearning) : (this.representationLearningHistory[0] ? this.clone(this.representationLearningHistory[0]) : null);
       this.anticipatoryInitiatives = Array.isArray(saved.anticipatoryInitiatives) ? saved.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit) : [];
       this.lastAnticipatorySweep = saved.lastAnticipatorySweep && typeof saved.lastAnticipatorySweep === "object" ? this.clone(saved.lastAnticipatorySweep) : null;
       this.anticipatorySweepCount = Math.max(Number(saved.anticipatorySweepCount || 0), Number(this.lastAnticipatorySweep?.sweepNumber || 0));
