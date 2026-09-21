@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.13.8
+ * Version: 4.13.9
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.8";
+  const DASHBOARD_VERSION = "4.13.9";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
@@ -30,6 +30,7 @@
   const MADDY_ACTIVITY_SURFACE_BUILD_ID = "OD4135-CONVERSATIONAL-LIVE-MADDY-WORKSTREAM-20260915-A";
   const EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID = "OD4136-EXECUTIVE-DESK-TEXT-COMMAND-CONTINUITY-20260921-A";
   const LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID = "OD4137A-LIVE-MADDY-ACTIVITY-EVIDENCE-ACCEPTANCE-CORRECTION-20260921-A";
+  const LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID = "OD4137B-PANORAMIC-MADDY-ACTIVITY-SURFACE-PLACEMENT-20260921-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -6183,21 +6184,68 @@ document
       .meos-live-workstream-answer{margin-top:9px;padding:9px 10px;border-radius:10px;background:rgba(232,250,255,.055);border:1px solid rgba(105,239,255,.12);font-size:.68rem;line-height:1.5;color:#edfaff;white-space:pre-wrap}
       .meos-live-workstream-sources{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.meos-live-workstream-source{font-size:.56rem;color:#9eeeff;text-decoration:none;border:1px solid rgba(105,239,255,.18);border-radius:999px;padding:4px 6px}.meos-live-workstream-source:hover{text-decoration:underline}
       .meos-live-workstream-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.meos-live-workstream-action{border:1px solid rgba(105,239,255,.2);background:rgba(105,239,255,.07);color:#dffaff;border-radius:8px;padding:6px 8px;font-size:.6rem;cursor:pointer}.meos-live-workstream-action[data-primary="true"]{border-color:rgba(105,239,255,.42);background:rgba(105,239,255,.13)}
-      @media(max-width:600px){.meos-live-activity-main{grid-template-columns:auto 1fr auto}.meos-live-activity-copy span{white-space:normal}}
+      #meosImagePanoramicOffice > .meos-live-activity[data-placement="panoramic-desk"]{position:absolute;z-index:119;left:50%;bottom:calc(5.6% + 84px);width:min(560px,39vw);margin:0;transform:translateX(-50%) perspective(800px) rotateX(1deg);transform-origin:bottom center;backdrop-filter:blur(10px)}
+      @media(max-width:1100px){#meosImagePanoramicOffice > .meos-live-activity[data-placement="panoramic-desk"]{width:43vw}}
+      @media(max-width:900px){#meosImagePanoramicOffice > .meos-live-activity[data-placement="panoramic-desk"]{width:min(620px,72vw)}}
+      @media(max-width:600px){.meos-live-activity-main{grid-template-columns:auto 1fr auto}.meos-live-activity-copy span{white-space:normal}#meosImagePanoramicOffice > .meos-live-activity[data-placement="panoramic-desk"]{width:calc(100vw - 24px);bottom:calc(5.6% + 84px)}}
       @media(prefers-reduced-motion:reduce){.meos-live-activity-orb::after{animation:none!important}}
     `;
     document.head.appendChild(style);
   }
 
+  function resolveMaddyActivitySurfaceMount() {
+    const panoramicScene = document.getElementById("meosImagePanoramicOffice");
+    const panoramicCommand = panoramicScene?.querySelector("#meosDeskMaddyText");
+    if (panoramicScene && panoramicCommand) {
+      return {
+        parent: panoramicScene,
+        before: panoramicCommand,
+        placement: "panoramic-desk"
+      };
+    }
+
+    const legacyDesk = document.querySelector(".meos-maddy-desk");
+    const legacyCommand = legacyDesk?.querySelector(".meos-maddy-desk-command");
+    if (legacyDesk && legacyCommand) {
+      return {
+        parent: legacyDesk,
+        before: legacyCommand,
+        placement: "legacy-desk"
+      };
+    }
+
+    return {
+      parent: document.body,
+      before: null,
+      placement: "body-fallback"
+    };
+  }
+
+  function mountMaddyActivitySurface(panel) {
+    if (!panel) return null;
+    const mount = resolveMaddyActivitySurfaceMount();
+    if (!mount?.parent) return null;
+
+    if (mount.before) {
+      if (panel.parentElement !== mount.parent || panel.nextElementSibling !== mount.before) {
+        mount.parent.insertBefore(panel, mount.before);
+      }
+    } else if (panel.parentElement !== mount.parent) {
+      mount.parent.appendChild(panel);
+    }
+
+    panel.dataset.placement = mount.placement;
+    return mount;
+  }
+
   function ensureMaddyActivitySurface() {
+    injectMaddyActivityStyles();
     let panel = document.getElementById("meosMaddyActivitySurface");
-    const desk = document.querySelector(".meos-maddy-desk");
-    const command = desk?.querySelector(".meos-maddy-desk-command");
     if (panel) {
-      if (desk && command && panel.parentElement !== desk) desk.insertBefore(panel, command);
+      mountMaddyActivitySurface(panel);
       return panel;
     }
-    injectMaddyActivityStyles();
+
     panel = document.createElement("section");
     panel.id = "meosMaddyActivitySurface";
     panel.className = "meos-live-activity";
@@ -6206,7 +6254,7 @@ document
     panel.setAttribute("aria-live", "polite");
     panel.setAttribute("aria-label", "Maddy conversational workstream");
     panel.innerHTML = `<div class="meos-live-activity-main"><div class="meos-live-activity-orb" aria-hidden="true"></div><div class="meos-live-activity-copy"><strong id="meosMaddyActivityLabel">Maddy is ready</strong><span id="meosMaddyActivityDetail">Ask Maddy anything.</span></div><button id="meosMaddyActivityToggle" class="meos-live-activity-toggle" type="button" aria-expanded="false">Details</button></div><div class="meos-live-activity-detail"><div id="meosMaddyActivitySteps" class="meos-live-activity-steps"></div><div id="meosMaddyActivityTruth" class="meos-live-activity-truth"></div><div id="meosMaddyActivityBranches" class="meos-live-activity-branches"></div><div id="meosMaddyWorkstreamEvents" class="meos-live-workstream-events"></div><div id="meosMaddyWorkstreamAnswer"></div><div id="meosMaddyWorkstreamActions" class="meos-live-workstream-actions"></div></div>`;
-    if (desk && command) desk.insertBefore(panel, command); else document.body.appendChild(panel);
+    mountMaddyActivitySurface(panel);
     panel.querySelector("#meosMaddyActivityToggle")?.addEventListener("click", () => {
       state.maddyActivity.expanded = !state.maddyActivity.expanded;
       panel.dataset.expanded = String(state.maddyActivity.expanded);
@@ -6853,6 +6901,43 @@ document
     console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4137A Live Maddy Activity Evidence Acceptance Correction: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
     return result;
   }
+
+  function runPanoramicMaddyActivitySurfacePlacementAcceptanceTest() {
+    const panel = ensureMaddyActivitySurface();
+    const scene = document.getElementById("meosImagePanoramicOffice");
+    const command = scene?.querySelector("#meosDeskMaddyText");
+    const legacyDesk = document.querySelector(".meos-maddy-desk");
+    const styleText = document.getElementById(MADDY_ACTIVITY_STYLE_ID)?.textContent || "";
+    const placementSource = `${resolveMaddyActivitySurfaceMount.toString()} ${mountMaddyActivitySurface.toString()}`;
+    const panels = document.querySelectorAll("#meosMaddyActivitySurface");
+    const checks = [
+      { name: "OD4137B has a dedicated panoramic placement build identity", passed: LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID === "OD4137B-PANORAMIC-MADDY-ACTIVITY-SURFACE-PLACEMENT-20260921-A" },
+      { name: "The visible panoramic Text Maddy form is mounted", passed: Boolean(scene && command && scene.querySelector("#meosDeskMaddyInput")) },
+      { name: "The live Maddy activity surface is mounted in the panoramic office", passed: Boolean(panel && panel.parentElement === scene) },
+      { name: "The activity surface is immediately before the visible Text Maddy form", passed: Boolean(command && command.previousElementSibling === panel) },
+      { name: "The panoramic activity surface declares its placement explicitly", passed: panel?.dataset?.placement === "panoramic-desk" },
+      { name: "The activity surface is not stranded on the hidden legacy Maddy desk", passed: !legacyDesk || panel?.parentElement !== legacyDesk },
+      { name: "Panoramic placement has dedicated above-composer positioning CSS", passed: /data-placement=[\"']panoramic-desk[\"']/.test(styleText) && /bottom:calc\(5\.6% \+ 84px\)/.test(styleText) },
+      { name: "Only one canonical live Maddy activity surface exists", passed: panels.length === 1 },
+      { name: "Placement reuses the existing canonical activity panel instead of creating a second status engine", passed: panel?.id === "meosMaddyActivitySurface" && typeof getMaddyActivityModel === "function" && typeof renderMaddyActivitySurface === "function" },
+      { name: "Placement code creates no work, retry, provider, spend, or external-action authority", passed: !/dispatchMEOS|fetch\(|submitWork|takeIt|provider|spend|externalAction/i.test(placementSource) }
+    ];
+    const passed = checks.filter((check) => check.passed).length;
+    const result = {
+      success: passed === checks.length,
+      commission: "OD4137B",
+      schema: "meos.dashboard.panoramic-maddy-activity-surface-placement.acceptance.v1",
+      version: DASHBOARD_VERSION,
+      buildId: LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4137B Panoramic Maddy Activity Surface Placement: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
 
   function formatHallwayState(value) {
     return String(value || "idle")
@@ -10621,7 +10706,7 @@ document
     window.setInterval(renderLiveHeadquarters, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} online.`
     );
   }
 
@@ -10639,7 +10724,8 @@ document
     renderCommercialCommandSurface,
     runCommercialCommandDashboardAcceptanceTest,
     runMaddyActivitySurfaceAcceptanceTest,
-    runExecutiveDeskTextCommandContinuityAcceptanceTest
+    runExecutiveDeskTextCommandContinuityAcceptanceTest,
+    runPanoramicMaddyActivitySurfacePlacementAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
@@ -10666,6 +10752,7 @@ document
       runImagePanoramicExecutiveOfficeAcceptanceTest,
       runExecutiveDeskTextCommandContinuityAcceptanceTest,
       runLiveMaddyCognitiveWorkActivityAcceptanceTest,
+      runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
       runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
@@ -10677,6 +10764,7 @@ document
       getModel: getMaddyActivityModel,
       getState: () => ({ ...state.maddyActivity, model: getMaddyActivityModel() }),
       runAcceptanceTest: runLiveMaddyCognitiveWorkActivityAcceptanceTest,
+      runPlacementAcceptanceTest: runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
       runFoundationAcceptanceTest: runMaddyActivitySurfaceAcceptanceTest
     }),
     commercial: Object.freeze({
