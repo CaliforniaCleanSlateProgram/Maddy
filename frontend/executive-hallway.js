@@ -23,8 +23,8 @@
   "use strict";
 
   const NAME = "MEOS Executive Hallway";
-  const VERSION = "1.5.7";
-  const BUILD_ID = "EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A";
+  const VERSION = "1.5.8";
+  const BUILD_ID = "EH158-DURABLE-EXECUTION-OWNERSHIP-PERSISTENCE-20260921-A";
   const SCHEMA = "meos.executive-hallway.v1";
 
   const WORK_STATES = Object.freeze([
@@ -1943,6 +1943,102 @@
   const DURABLE_EXECUTION_HANDOFF_SCHEMA =
     "meos.executive-hallway.durable-execution-handoff.v1";
 
+  /*
+   * Commission 006.031T — Durable Execution Ownership Persistence
+   *
+   * A Hallway Mission may exist before the server accepts durable execution.
+   * Therefore an active `hallway-work:*` Mission is evidence of intention only;
+   * it is not evidence that the Durable Execution Spine owns anything.  Persist
+   * the exact server-accepted execution ID into the durable Mission tags after
+   * a successful handoff, and require that evidence (or a one-time verified
+   * legacy status lookup) before browser reload reconstruction.
+   *
+   * This prevents a failed/never-accepted dispatch from becoming a phantom
+   * server-owned execution on reload.  A real HTTP 404 from the same-origin
+   * status endpoint is memoized on legacy Missions so page reloads do not keep
+   * manufacturing the same red status request.  Network errors are never
+   * memoized as absence: flaky Wi-Fi remains "unknown/deferred", not "missing".
+   */
+  const DURABLE_EXECUTION_OWNERSHIP_PERSISTENCE_COMMISSION = "006.031T";
+  const DURABLE_EXECUTION_OWNERSHIP_TAG = "durable-execution-server-owned";
+  const DURABLE_EXECUTION_ID_TAG_PREFIX = "durable-execution-id:";
+  const DURABLE_EXECUTION_NOT_FOUND_TAG_PREFIX = "durable-execution-not-found:";
+
+  function normalizedMissionTags(mission) {
+    return Array.isArray(mission?.tags)
+      ? [...new Set(mission.tags.map(value => String(value || "").trim()).filter(Boolean))]
+      : [];
+  }
+
+  function durableExecutionIdFromMission(mission) {
+    const tag = normalizedMissionTags(mission).find(value =>
+      value.startsWith(DURABLE_EXECUTION_ID_TAG_PREFIX)
+    );
+    return tag ? tag.slice(DURABLE_EXECUTION_ID_TAG_PREFIX.length).trim() : "";
+  }
+
+  function durableExecutionNotFoundIdFromMission(mission) {
+    const tag = normalizedMissionTags(mission).find(value =>
+      value.startsWith(DURABLE_EXECUTION_NOT_FOUND_TAG_PREFIX)
+    );
+    return tag ? tag.slice(DURABLE_EXECUTION_NOT_FOUND_TAG_PREFIX.length).trim() : "";
+  }
+
+  function persistDurableExecutionMissionTag(missionId, executionId, disposition = "owned") {
+    const engine = missionEngine();
+    if (!missionId || !executionId || typeof engine?.updateMission !== "function") return null;
+    const current = engine.getMission?.(missionId) ||
+      missionRecords(engine).find(item => String(item?.id || "") === String(missionId)) || null;
+    if (!current) return null;
+
+    const retained = normalizedMissionTags(current).filter(tag =>
+      tag !== DURABLE_EXECUTION_OWNERSHIP_TAG &&
+      !tag.startsWith(DURABLE_EXECUTION_ID_TAG_PREFIX) &&
+      !tag.startsWith(DURABLE_EXECUTION_NOT_FOUND_TAG_PREFIX)
+    );
+    const tags = disposition === "owned"
+      ? [...retained, DURABLE_EXECUTION_OWNERSHIP_TAG, `${DURABLE_EXECUTION_ID_TAG_PREFIX}${executionId}`]
+      : [...retained, `${DURABLE_EXECUTION_NOT_FOUND_TAG_PREFIX}${executionId}`];
+
+    return engine.updateMission(missionId, {
+      tags,
+      currentActivity: disposition === "owned"
+        ? `Durable execution owned by server: ${executionId}`
+        : `Durable execution status not commissioned: ${executionId}`
+    });
+  }
+
+  function rememberDurableExecutionOwnership(work, record) {
+    const missionId = String(work?.mission?.id || "").trim();
+    const executionId = String(record?.executionId || "").trim();
+    if (!missionId || !executionId) return null;
+    try {
+      const updated = persistDurableExecutionMissionTag(missionId, executionId, "owned");
+      if (updated) {
+        work.evidence.push({
+          type: "durable-execution-ownership-persisted",
+          source: "executive-hallway",
+          commission: DURABLE_EXECUTION_OWNERSHIP_PERSISTENCE_COMMISSION,
+          missionId,
+          executionId,
+          at: now()
+        });
+      }
+      return updated;
+    } catch (error) {
+      work.evidence.push({
+        type: "durable-execution-ownership-persistence-warning",
+        source: "executive-hallway",
+        commission: DURABLE_EXECUTION_OWNERSHIP_PERSISTENCE_COMMISSION,
+        missionId,
+        executionId,
+        message: error?.message || String(error),
+        at: now()
+      });
+      return null;
+    }
+  }
+
   function durablePublicResearchContract(work) {
     const router = executiveRouter();
     if (typeof router?.researchIntentExecutionContract !== "function") {
@@ -2065,6 +2161,7 @@
       message: "The server accepted ownership of this governed research execution under the original Mission/Hallway lineage.",
       at: now()
     });
+    rememberDurableExecutionOwnership(work, record);
     recordActivityDurableHandoff(work);
     emit("work-updated", work);
     return clone(work);
@@ -2116,13 +2213,30 @@
     return payload.record;
   }
 
-  function recoverHallwayProjectionFromMission(mission) {
+  function recoverHallwayProjectionFromMission(mission, options = {}) {
     const sourceReference = String(mission?.sourceReference || "").trim();
     if (!sourceReference.startsWith("hallway-work:")) return null;
     const hallwayWorkId = sourceReference.slice("hallway-work:".length).trim();
     if (!hallwayWorkId) return null;
     const existing = state.work.get(hallwayWorkId);
     if (existing) return existing;
+
+    const executionId = String(
+      options.executionId || durableExecutionIdFromMission(mission) || ""
+    ).trim();
+    if (!executionId) return null;
+
+    const recordValue = options.record || null;
+    if (recordValue) {
+      const lineage = recordValue.lineage || {};
+      if (
+        String(recordValue.executionId || "").trim() !== executionId ||
+        String(lineage.missionId || "").trim() !== String(mission?.id || "").trim() ||
+        String(lineage.hallwayWorkId || "").trim() !== hallwayWorkId
+      ) {
+        return null;
+      }
+    }
 
     const instruction = String(
       mission?.objective || mission?.description || mission?.missionTitle || mission?.title || ""
@@ -2156,19 +2270,25 @@
     work.execution = {
       schema: DURABLE_EXECUTION_HANDOFF_SCHEMA,
       commission: DURABLE_EXECUTION_HANDOFF_COMMISSION,
-      executionId: `execution-${hallwayWorkId}`,
-      state: "unknown",
+      executionId,
+      state: recordValue?.state || "unknown",
       owner: "meos-server-durable-execution-spine",
-      executor: "headless-public-research",
+      executor: recordValue?.executor || "headless-public-research",
+      lineage: clone(recordValue?.lineage || null),
+      checkpoint: clone(recordValue?.checkpoint || null),
       serverOwned: true,
       browserExecutionOwner: false,
       retryCreated: false,
-      recoveredProjection: true
+      recoveredProjection: true,
+      ownershipEvidence: durableExecutionIdFromMission(mission) === executionId
+        ? "persisted-mission-tag"
+        : "verified-server-record"
     };
     record("work.durable-return-projection-recovered", {
       workId: work.id,
       missionId: mission.id,
-      executionId: work.execution.executionId
+      executionId: work.execution.executionId,
+      ownershipEvidence: work.execution.ownershipEvidence
     });
     emit("work-updated", work);
     return work;
@@ -2272,23 +2392,33 @@
       }
     }
 
-    if (!work && executionId.startsWith("execution-")) {
-      const hallwayWorkId = executionId.slice("execution-".length).trim();
-      if (hallwayWorkId) work = state.work.get(hallwayWorkId) || null;
+    let recordValue = options.record || null;
+    if (!work) {
+      if (!recordValue) recordValue = await readDurableExecutionStatus(executionId, options.fetch);
+      if (!recordValue) {
+        const error = new Error("No durable execution record exists for the requested execution ID.");
+        error.code = "DURABLE_RETURN_EXECUTION_NOT_FOUND";
+        throw error;
+      }
 
-      if (!work) {
-        const engine = missionEngine();
-        const active = engine?.getActiveMissions?.();
-        if (Array.isArray(active)) {
-          const sourceReference = `hallway-work:${hallwayWorkId}`;
-          const mission = active.find(item => String(item?.sourceReference || "").trim() === sourceReference);
-          if (mission) work = recoverHallwayProjectionFromMission(mission);
+      const hallwayWorkId = String(recordValue?.lineage?.hallwayWorkId || "").trim();
+      const missionId = String(recordValue?.lineage?.missionId || "").trim();
+      const engine = missionEngine();
+      const active = engine?.getActiveMissions?.();
+      if (hallwayWorkId && missionId && Array.isArray(active)) {
+        const mission = active.find(item =>
+          String(item?.id || "").trim() === missionId &&
+          String(item?.sourceReference || "").trim() === `hallway-work:${hallwayWorkId}`
+        );
+        if (mission) {
+          try { persistDurableExecutionMissionTag(mission.id, executionId, "owned"); } catch (_) {}
+          work = recoverHallwayProjectionFromMission(mission, { executionId, record: recordValue });
         }
       }
     }
 
     if (!work) {
-      const error = new Error("No active Hallway/Mission work matches the requested durable execution ID.");
+      const error = new Error("No active Hallway/Mission work matches the requested durable execution lineage.");
       error.code = "DURABLE_RETURN_WORK_NOT_FOUND";
       throw error;
     }
@@ -2309,14 +2439,14 @@
       commission: DURABLE_RETURN_RECONCILIATION_API_COMMISSION
     });
 
-    return reintegrateDurableExecutionReturn(work, options);
+    return reintegrateDurableExecutionReturn(work, { ...options, record: recordValue || options.record });
   }
 
   async function reconcileDurableExecutionReturns(options = {}) {
     const candidates = new Map();
     for (const work of state.work.values()) {
       if (work?.execution?.serverOwned === true && work?.execution?.executionId) {
-        candidates.set(work.id, work);
+        candidates.set(work.id, { work, record: null });
       }
     }
 
@@ -2324,15 +2454,81 @@
     const active = engine?.getActiveMissions?.();
     if (Array.isArray(active)) {
       for (const mission of active) {
-        const recovered = recoverHallwayProjectionFromMission(mission);
-        if (recovered) candidates.set(recovered.id, recovered);
+        const sourceReference = String(mission?.sourceReference || "").trim();
+        if (!sourceReference.startsWith("hallway-work:")) continue;
+        const hallwayWorkId = sourceReference.slice("hallway-work:".length).trim();
+        if (!hallwayWorkId || candidates.has(hallwayWorkId)) continue;
+
+        const persistedExecutionId = durableExecutionIdFromMission(mission);
+        if (persistedExecutionId) {
+          const recovered = recoverHallwayProjectionFromMission(mission, { executionId: persistedExecutionId });
+          if (recovered) candidates.set(recovered.id, { work: recovered, record: null });
+          continue;
+        }
+
+        // Legacy migration only: older Hallway Missions predate 006.031T and
+        // therefore have no durable-ownership tag. Probe their deterministic
+        // execution ID once. A real 404 means the Mission never earned server
+        // ownership; a network error means "unknown" and is deliberately not
+        // persisted as absence.
+        const legacyExecutionId = `execution-${hallwayWorkId}`;
+        if (durableExecutionNotFoundIdFromMission(mission) === legacyExecutionId) continue;
+
+        try {
+          const recordValue = await readDurableExecutionStatus(legacyExecutionId, options.fetch);
+          if (!recordValue) {
+            try { persistDurableExecutionMissionTag(mission.id, legacyExecutionId, "not-found"); } catch (_) {}
+            record("work.durable-return-legacy-status-absent", {
+              missionId: mission.id,
+              hallwayWorkId,
+              executionId: legacyExecutionId,
+              commission: DURABLE_EXECUTION_OWNERSHIP_PERSISTENCE_COMMISSION
+            });
+            continue;
+          }
+
+          const lineage = recordValue.lineage || {};
+          const lineageMatches =
+            String(recordValue.executionId || "").trim() === legacyExecutionId &&
+            String(lineage.missionId || "").trim() === String(mission.id || "").trim() &&
+            String(lineage.hallwayWorkId || "").trim() === hallwayWorkId;
+          if (!lineageMatches) {
+            record("work.durable-return-legacy-lineage-rejected", {
+              missionId: mission.id,
+              hallwayWorkId,
+              executionId: legacyExecutionId,
+              commission: DURABLE_EXECUTION_OWNERSHIP_PERSISTENCE_COMMISSION
+            });
+            continue;
+          }
+
+          try { persistDurableExecutionMissionTag(mission.id, legacyExecutionId, "owned"); } catch (_) {}
+          const recovered = recoverHallwayProjectionFromMission(mission, {
+            executionId: legacyExecutionId,
+            record: recordValue
+          });
+          if (recovered) candidates.set(recovered.id, { work: recovered, record: recordValue });
+        } catch (error) {
+          record("work.durable-return-reconciliation-deferred", {
+            missionId: mission.id,
+            hallwayWorkId,
+            executionId: legacyExecutionId,
+            reason: "status-unreachable",
+            message: error?.message || String(error),
+            commission: DURABLE_EXECUTION_OWNERSHIP_PERSISTENCE_COMMISSION
+          });
+        }
       }
     }
 
     const results = [];
-    for (const work of candidates.values()) {
+    for (const candidate of candidates.values()) {
+      const work = candidate.work;
       try {
-        results.push(await reintegrateDurableExecutionReturn(work, options));
+        results.push(await reintegrateDurableExecutionReturn(work, {
+          ...options,
+          record: candidate.record || undefined
+        }));
       } catch (error) {
         work.evidence.push({
           type: "durable-return-reintegration-warning",
@@ -4531,9 +4727,15 @@
       };
       global.fetch = async url => {
         statusReads += 1;
-        check("Execution-ID API reads only the exact requested durable status URL",
-          String(url) === `/api/durable-execution/status/${executionId}`, { url });
-        return { ok: true, status: 200, json: async () => ({ record: clone(returnedRecord) }) };
+        const requestedUrl = String(url);
+        if (requestedUrl === `/api/durable-execution/status/${executionId}`) {
+          check("Execution-ID API reads only the exact requested durable status URL", true, { url });
+          return { ok: true, status: 200, json: async () => ({ record: clone(returnedRecord) }) };
+        }
+        if (requestedUrl === "/api/durable-execution/status/execution-hallway-work-not-real") {
+          return { ok: false, status: 404, json: async () => ({ code: "DURABLE_EXECUTION_NOT_FOUND" }) };
+        }
+        return { ok: false, status: 500, json: async () => ({ error: "Unexpected acceptance fixture URL." }) };
       };
 
       const result = await reconcileDurableExecutionReturn(executionId);
@@ -4554,10 +4756,10 @@
       check("Governed informational return still auto-resolves the existing Mission",
         completeCalls === 1 && result?.lifecycle?.disposition === "resolved-informational-return",
         { completeCalls, lifecycle: clone(result?.lifecycle) });
-      check("Unknown execution IDs fail closed instead of creating replacement work",
+      check("Unknown execution IDs fail closed after verified server absence instead of creating replacement work",
         await (async () => {
           try { await reconcileDurableExecutionReturn("execution-hallway-work-not-real"); return false; }
-          catch (error) { return error?.code === "DURABLE_RETURN_WORK_NOT_FOUND"; }
+          catch (error) { return error?.code === "DURABLE_RETURN_EXECUTION_NOT_FOUND"; }
         })());
     } finally {
       state.work.delete(workId);
@@ -4582,6 +4784,235 @@
       checks
     });
     console.log(`[MEOS ${VERSION}] Commission ${DURABLE_RETURN_RECONCILIATION_API_COMMISSION} Durable Return Reconciliation API: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    return result;
+  }
+
+  async function runDurableExecutionOwnershipPersistenceAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed, details = null) => checks.push({ name, passed: Boolean(passed), details });
+    const previousMissionEngine = global.MEOSMissionEngine;
+    const previousRouter = global.ExecutiveRouter;
+    const previousFetch = global.fetch;
+    let active = [];
+    let statusReads = 0;
+
+    const updateMission = (missionId, updates = {}) => {
+      const mission = active.find(item => item.id === missionId);
+      if (!mission) throw new Error(`Unknown fixture Mission ${missionId}`);
+      if (Array.isArray(updates.tags)) mission.tags = clone(updates.tags);
+      if (typeof updates.currentActivity === "string") mission.currentActivity = updates.currentActivity;
+      return clone(mission);
+    };
+
+    const fixtureEngine = {
+      getActiveMissions: () => active.map(clone),
+      getCompletedMissions: () => [],
+      getArchivedMissions: () => [],
+      getMission: missionId => clone(active.find(item => item.id === missionId) || null),
+      updateMission
+    };
+
+    const response = (status, body) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => clone(body)
+    });
+
+    const cleanupIds = new Set();
+    try {
+      global.MEOSMissionEngine = fixtureEngine;
+      global.ExecutiveRouter = { reintegrateDurableResearchResult: async () => { throw new Error("Fixture should not govern queued records."); } };
+
+      // Successful handoff must persist durable ownership into Mission authority
+      // so a later browser instance does not have to infer ownership from intent.
+      const ownedWorkId = "hallway-work-ownership-persistence-fixture";
+      const ownedMissionId = "mission-ownership-persistence-fixture";
+      const ownedExecutionId = `execution-${ownedWorkId}`;
+      cleanupIds.add(ownedWorkId);
+      active = [{
+        id: ownedMissionId,
+        status: "in-progress",
+        sourceReference: `hallway-work:${ownedWorkId}`,
+        objective: "Fixture durable research",
+        tags: ["executive-hallway"]
+      }];
+      const ownedWork = createWork({
+        id: ownedWorkId,
+        instruction: "Fixture durable research",
+        reviewRequired: false,
+        authorized: true
+      });
+      ownedWork.mission = {
+        engine: "mission-engine",
+        id: ownedMissionId,
+        status: "in-progress",
+        sourceReference: `hallway-work:${ownedWorkId}`
+      };
+      markDurableExecutionOwnedByServer(ownedWork, {
+        executionId: ownedExecutionId,
+        state: "queued",
+        executor: "headless-public-research",
+        lineage: {
+          missionId: ownedMissionId,
+          cognitionId: `human-intent-${ownedWorkId}`,
+          hallwayWorkId: ownedWorkId
+        },
+        checkpoint: { stage: "queued" }
+      }, { reason: "fixture" });
+      check("Successful durable handoff persists server ownership into the Mission",
+        active[0].tags.includes(DURABLE_EXECUTION_OWNERSHIP_TAG));
+      check("Mission ownership persistence stores the exact accepted execution ID",
+        active[0].tags.includes(`${DURABLE_EXECUTION_ID_TAG_PREFIX}${ownedExecutionId}`));
+      check("Successful durable ownership clears any prior not-found marker",
+        !active[0].tags.some(tag => tag.startsWith(DURABLE_EXECUTION_NOT_FOUND_TAG_PREFIX)));
+      state.work.delete(ownedWorkId);
+
+      // Legacy Mission with no durable record: one verified 404 is absence, not
+      // server ownership. It must not become a phantom recovered work item.
+      const absentWorkId = "hallway-work-legacy-no-record-fixture";
+      const absentMissionId = "mission-legacy-no-record-fixture";
+      const absentExecutionId = `execution-${absentWorkId}`;
+      cleanupIds.add(absentWorkId);
+      active = [{
+        id: absentMissionId,
+        status: "in-progress",
+        sourceReference: `hallway-work:${absentWorkId}`,
+        objective: "Legacy fixture with failed dispatch",
+        tags: ["executive-hallway"]
+      }];
+      statusReads = 0;
+      const absentFetch = async url => {
+        statusReads += 1;
+        check("Legacy ownership probe uses the deterministic historical status URL",
+          String(url) === `/api/durable-execution/status/${absentExecutionId}`, { url });
+        return response(404, { code: "DURABLE_EXECUTION_NOT_FOUND" });
+      };
+      await reconcileDurableExecutionReturns({ fetch: absentFetch });
+      check("A verified missing durable record does not reconstruct phantom server-owned Hallway work",
+        !state.work.has(absentWorkId));
+      check("Verified legacy 404 is memoized on the Mission rather than repeatedly red-probed",
+        active[0].tags.includes(`${DURABLE_EXECUTION_NOT_FOUND_TAG_PREFIX}${absentExecutionId}`));
+      await reconcileDurableExecutionReturns({ fetch: absentFetch });
+      check("Memoized legacy absence prevents repeated status 404 requests on later reconciliation",
+        statusReads === 1, { statusReads });
+
+      // A network failure is not evidence of absence. This is critical for the
+      // user's intermittently dropping Wi-Fi: defer and preserve recoverability.
+      const offlineWorkId = "hallway-work-offline-fixture";
+      const offlineMissionId = "mission-offline-fixture";
+      const offlineExecutionId = `execution-${offlineWorkId}`;
+      cleanupIds.add(offlineWorkId);
+      active = [{
+        id: offlineMissionId,
+        status: "in-progress",
+        sourceReference: `hallway-work:${offlineWorkId}`,
+        objective: "Offline fixture",
+        tags: ["executive-hallway"]
+      }];
+      await reconcileDurableExecutionReturns({
+        fetch: async () => { throw new TypeError("Failed to fetch"); }
+      });
+      check("Transient network failure is not persisted as durable-execution absence",
+        !active[0].tags.some(tag => tag === `${DURABLE_EXECUTION_NOT_FOUND_TAG_PREFIX}${offlineExecutionId}`));
+      check("Transient network failure does not create phantom recovered work",
+        !state.work.has(offlineWorkId));
+
+      // Legacy positive status is migrated forward: exact server lineage proves
+      // ownership, then the Mission is backfilled for future reloads.
+      const legacyWorkId = "hallway-work-legacy-positive-fixture";
+      const legacyMissionId = "mission-legacy-positive-fixture";
+      const legacyExecutionId = `execution-${legacyWorkId}`;
+      cleanupIds.add(legacyWorkId);
+      active = [{
+        id: legacyMissionId,
+        status: "in-progress",
+        sourceReference: `hallway-work:${legacyWorkId}`,
+        objective: "Legacy accepted durable fixture",
+        tags: ["executive-hallway"]
+      }];
+      const legacyRecord = {
+        executionId: legacyExecutionId,
+        state: "queued",
+        executor: "headless-public-research",
+        lineage: {
+          missionId: legacyMissionId,
+          cognitionId: `human-intent-${legacyWorkId}`,
+          hallwayWorkId: legacyWorkId
+        },
+        checkpoint: { stage: "queued" }
+      };
+      await reconcileDurableExecutionReturns({
+        fetch: async url => response(200, {
+          record: String(url).endsWith(legacyExecutionId) ? legacyRecord : null
+        })
+      });
+      check("Verified legacy durable status reconstructs the original Hallway work",
+        state.work.get(legacyWorkId)?.execution?.executionId === legacyExecutionId);
+      check("Verified legacy ownership is backfilled into Mission persistence",
+        active[0].tags.includes(DURABLE_EXECUTION_OWNERSHIP_TAG) &&
+        active[0].tags.includes(`${DURABLE_EXECUTION_ID_TAG_PREFIX}${legacyExecutionId}`));
+      state.work.delete(legacyWorkId);
+
+      // Once an exact persisted ownership marker exists, reload must use it and
+      // never silently derive a replacement deterministic execution identity.
+      const exactWorkId = "hallway-work-exact-id-fixture";
+      const exactMissionId = "mission-exact-id-fixture";
+      const exactExecutionId = "execution-server-accepted-custom-fixture";
+      cleanupIds.add(exactWorkId);
+      active = [{
+        id: exactMissionId,
+        status: "in-progress",
+        sourceReference: `hallway-work:${exactWorkId}`,
+        objective: "Exact identity fixture",
+        tags: [
+          "executive-hallway",
+          DURABLE_EXECUTION_OWNERSHIP_TAG,
+          `${DURABLE_EXECUTION_ID_TAG_PREFIX}${exactExecutionId}`
+        ]
+      }];
+      let exactUrl = null;
+      await reconcileDurableExecutionReturns({
+        fetch: async url => {
+          exactUrl = String(url);
+          return response(200, {
+            record: {
+              executionId: exactExecutionId,
+              state: "queued",
+              executor: "headless-public-research",
+              lineage: {
+                missionId: exactMissionId,
+                cognitionId: `human-intent-${exactWorkId}`,
+                hallwayWorkId: exactWorkId
+              }
+            }
+          });
+        }
+      });
+      check("Reload status reads the exact persisted server execution ID",
+        exactUrl === `/api/durable-execution/status/${exactExecutionId}`, { exactUrl });
+      check("Reload preserves exact execution identity with no replacement execution or retry",
+        state.work.get(exactWorkId)?.execution?.executionId === exactExecutionId &&
+        state.work.get(exactWorkId)?.execution?.retryCreated === false);
+    } finally {
+      for (const workId of cleanupIds) state.work.delete(workId);
+      global.MEOSMissionEngine = previousMissionEngine;
+      global.ExecutiveRouter = previousRouter;
+      global.fetch = previousFetch;
+    }
+
+    const passed = checks.filter(item => item.passed).length;
+    console.table(checks.map(({ name, passed }) => ({ name, passed })));
+    const result = freeze({
+      success: passed === checks.length,
+      commission: DURABLE_EXECUTION_OWNERSHIP_PERSISTENCE_COMMISSION,
+      schema: `${SCHEMA}.durable-execution-ownership-persistence-acceptance.v1`,
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks
+    });
+    console.log(`[MEOS ${VERSION}] Commission ${DURABLE_EXECUTION_OWNERSHIP_PERSISTENCE_COMMISSION} Durable Execution Ownership Persistence: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
     return result;
   }
 
@@ -4643,6 +5074,7 @@
     runDurableExecutionSpineHandoffAcceptanceTest,
     runDurableReturnReintegrationAcceptanceTest,
     runDurableReturnReconciliationApiAcceptanceTest,
+    runDurableExecutionOwnershipPersistenceAcceptanceTest,
     reintegrateDurableExecutionReturn,
     reconcileDurableExecutionReturn,
     reconcileDurableExecutionReturns,
