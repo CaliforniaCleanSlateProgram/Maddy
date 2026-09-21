@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32477062/MEOS_BUILD_STATE.md)
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
 [Uploading MEOS_BUILD_STATE.md…]()
@@ -11537,3 +11538,207 @@ Do not redesign the entire Executive Hub before this live proof identifies the e
 **Recovery keyword:** `ARC001-VE219-PROVEN-DESK-RETURN-LIVE-PROOF-NEXT-20260921`
 
 **Fast recovery:** `Resume ARC001-VE219-PROVEN-DESK-RETURN-LIVE-PROOF-NEXT-20260921 — production is on Voice v2.0.19 / VE219-DURABLE-RETURN-PRESENTATION-AUTHORITY-20260921-A; VE219 is production-proven 10/10 and VE216 regression is production-proven 9/9; durable completion is now separated from live speech authority, disconnected returns preserve exact answer/provenance for Desk-only presentation and create no automatic TTS handoff, active voice retains one-mouth spoken return, and reconnect does not auto-speak old Desk-only work; next perform one real spoken durable-research request, explicitly disconnect voice while it runs, prove there is no post-disconnect TTS call, prove the returned answer/provenance remains available to Executive Hub/OD4132, inspect the exact missing visible Desk surface, then choose the smallest next commission.`
+
+
+-------------------------------------------------------------------------------
+
+# BUILD STATE RECONCILIATION — VE220 / VE221 LIVE EVIDENCE + VE222 ACOUSTIC REALITY GATE
+
+**Date:** 2026-09-21  
+**Repository basis:** user-supplied live main snapshot from 2026-09-21  
+**Build State status before this reconciliation:** behind current live Voice by two commissions; last recorded Voice checkpoint was VE219  
+**Runtime source target after ordered commits:** `Voice v2.0.22 / VE222-ACOUSTIC-REALITY-GATE-20260921-A`
+
+## Live source/runtime confirmed before VE222
+
+The supplied live main and production console both identify:
+
+- `MEOS Voice v2.0.21`
+- build `VE221-KNOWN-SELF-SPEECH-CORRELATION-20260921-A`
+- Executive Brain `v1.36.0 / EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A`
+- Executive Router `v1.5.4 / ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A`
+- Executive Hallway `v1.5.7 / EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A`
+- Executive Hub `v4.13.5`
+- active CCSP customer context
+- Mission Engine durable authority hydration `READY`
+
+## VE220 and VE221 deployed acceptance evidence
+
+Production console evidence showed:
+
+### VE221 Known Self Speech Correlation
+
+`OpenAIRealtime.runKnownSelfSpeechCorrelationAcceptanceTest()`
+
+**PASS 10/10**
+
+Bounded proven behavior:
+
+- delayed ASR can still be correlated to Maddy's own known playback using candidate capture time;
+- Maddy saying her own wake name cannot acquire wake authority;
+- bounded wording/punctuation differences remain recognizable as known self-speech;
+- matching words outside the causal playback tail are not automatically suppressed;
+- current exact outbound speech is rejected before conversational ownership;
+- foreground-human address remains possible;
+- recent self-speech history remains bounded and ephemeral;
+- no provider/spend/durable-write/research/external-action authority is added.
+
+### VE220 Conversational Acoustic Ownership
+
+`OpenAIRealtime.runConversationalAcousticOwnershipAcceptanceTest()`
+
+**PASS 12/12**
+
+Bounded proven behavior:
+
+- Maddy playback cannot gain wake authority merely by containing her own name;
+- a mismatched room speaker cannot seize an already established foreground floor;
+- transcript continuity cannot itself transfer local speaker ownership;
+- an established foreground speaker can continue and interrupt under the bounded local continuity rules;
+- explicit Talk-to-Maddy can bootstrap local foreground evidence in the synthetic acceptance fixture;
+- no biometric persistence, spend, provider autonomy, durable-write, or external-action authority is added.
+
+## Critical production correction — first quiet-room retry was NOT a clean VE221 pass
+
+The production retry that followed the VE221 deployment must not be recorded as a successful real-world conversational proof.
+
+User-reported environment:
+
+- room was dead quiet;
+- user did **not** say any of the phrases later returned by ASR;
+- Maddy did not answer the intended user attempt;
+- intended wake/request speech did not appear as an accepted foreground turn.
+
+Observed production candidates included near-silence acoustic levels approximately:
+
+- candidate 1: `avgRms ≈ 0.00206`, `peakRms ≈ 0.01837`, `noiseFloorRms ≈ 0.00375`
+- candidate 2: `avgRms ≈ 0.00213`, `peakRms ≈ 0.01825`, `noiseFloorRms ≈ 0.00402`
+- candidate 3: `avgRms ≈ 0.00314`, `peakRms ≈ 0.02841`, `noiseFloorRms ≈ 0.00564`
+
+Despite that near-silence evidence, provider ASR produced fluent text such as:
+
+- `I heard about`
+- `I'm so glad you`
+- `Barnes used to be a little clerical.`
+
+Those phrases are now treated as **phantom ASR / transcription hallucination evidence**, not real background-speaker evidence.
+
+The live VE221/VE220 ownership gate prevented those candidates from becoming accepted user turns, which was protective, but the telemetry label `background-acoustic-mismatch` overstated what was known. No actual background speaker existed in this test.
+
+Correct bounded conclusion:
+
+**VE221 was deployed and acceptance-green, but real quiet-room speech acquisition remained unproven and the production run exposed phantom ASR generated from near-silence plus failure to acquire the intended human turn.**
+
+Do not mark noisy-room or universal microphone reliability proven from this run.
+
+## VE222 — Acoustic Reality Gate
+
+**Voice version:** `2.0.22`  
+**Build:** `VE222-ACOUSTIC-REALITY-GATE-20260921-A`  
+**File:** `frontend/voice/openai-realtime.js`  
+**State:** CODED / LOCAL-PROVEN / PRODUCTION PENDING
+
+VE222 establishes a stronger epistemic rule for voice:
+
+**ASR text is interpretation. It is not proof that a human sound existed.**
+
+### Runtime changes
+
+1. Add a local acoustic-speech reality evaluator using the candidate's actual microphone evidence.
+2. Reject near-silence / acoustically unsupported transcripts before wake-word, continuity, interruption, or user-turn authority can inspect their words.
+3. Use the explicit rejection reason:
+   - `phantom-asr-without-acoustic-speech`
+4. Correct telemetry so phantom ASR is no longer mislabeled as a real background speaker.
+5. Preserve VE221 known-self speech rejection before acoustic-reality ownership decisions.
+6. Preserve established VE220 local speaker ownership and interruption boundaries.
+7. Lower provider server-VAD sensitivity from `0.72` to `0.60` so soft real speech has a better chance to become a candidate.
+8. Keep provider VAD subordinate to MEOS authority: provider VAD may propose a segment but cannot create a user turn.
+9. Add a softer explicit Talk-to-Maddy bootstrap path for acoustically real near-field speech below the historical `0.012` foreground RMS threshold.
+10. Silence still cannot use the softer bootstrap path because it must first pass the acoustic-reality gate.
+11. Preserve historical transcript-continuity behavior where legitimate established conversation evidence already exists; VE222 does not globally reinterpret every weak historical acoustic fixture as silence.
+12. Add no new provider selection, spend, durable-write, research, biometric persistence, deployment, or external-action authority.
+
+### VE222 local acceptance
+
+`OpenAIRealtime.runAcousticRealityGateAcceptanceTest()`
+
+**PASS 8/8**
+
+Proven locally:
+
+1. Near-silence cannot gain wake authority even if ASR invents Maddy's wake name.
+2. A production-shaped quiet-room hallucination is classified as phantom ASR rather than a background speaker.
+3. Explicit Talk-to-Maddy can bootstrap a soft acoustically real near-field utterance below the old foreground RMS threshold.
+4. A soft acoustically real wake utterance can still acquire attention.
+5. Acoustic reality is decided from microphone evidence rather than transcript fluency.
+6. Missing analyser evidence is not falsely labeled as proven silence.
+7. Provider VAD is more sensitive than VE221 while remaining subordinate to local turn authority.
+8. VE222 grants no new consequential authority.
+
+### Full Voice regression after VE222
+
+All exported Voice acceptance suites were executed locally against the VE222 source.
+
+**13 suites — 0 failures**
+
+- VE222 Acoustic Reality Gate — **8/8 PASS**
+- VE221 Known Self Speech Correlation — **10/10 PASS**
+- VE220 Conversational Acoustic Ownership — **12/12 PASS**
+- VE219 Durable Return Presentation Authority — **10/10 PASS**
+- VE218 Local Voice Signature Continuity — **9/9 PASS**
+- VE217 Intentional Awake / Wake-Only Aggregation — **10/10 PASS**
+- VE216 Durable Research Spoken Return — **9/9 PASS**
+- VE215 Canonical Hallway Research Handoff — **7/7 PASS**
+- VE214 Semantic Intended-Speech Reconstruction — **11/11 PASS**
+- VE213 Context-Grounded Transcription Evidence — **12/12 PASS**
+- VE212 Foreground Interruption Authority Gate — **8/8 PASS**
+- VE210 Transcript / Acoustic Evidence Separation — **8/8 PASS**
+- VE211 Interactive Voice Nonblocking Cognition — **13/13 PASS**
+
+JavaScript syntax also passes under Node `--check`.
+
+## Important limitation — cost/privacy seam remains open
+
+VE222 is intentionally a **post-capture / post-transcription authority correction**.
+
+It prevents acoustically unsupported ASR from becoming Maddy's believed user speech, wake authority, interruption authority, or conversational turn authority.
+
+It does **not yet prove** that provider transcription is never invoked on a near-silence VAD segment. Therefore:
+
+- provider-side transcription cost for false VAD segments is not yet proven eliminated;
+- true local pre-cloud speech gating remains a future optimization/privacy seam;
+- production quiet-room and noisy-room testing still gets the vote on microphone calibration and VAD sensitivity.
+
+Do not claim VE222 solves universal room-source separation or universal microphone calibration.
+
+## Separate red console evidence carried forward
+
+The same production console also showed:
+
+`GET /api/durable-execution/status/<execution-id> -> 404`
+
+This is not currently attributed as the cause of the no-answer voice event because Realtime connected and microphone candidates continued afterward. It remains a separate durable-return/status reconciliation issue and should not be silently discarded.
+
+## Ordered commit/test sequence from this checkpoint
+
+1. Commit only `frontend/voice/openai-realtime.js` as VE222.
+2. Allow production deploy to complete.
+3. Commit this `MEOS_BUILD_STATE.md` reconciliation as a separate one-file commit.
+4. In production run:
+   - `OpenAIRealtime.runAcousticRealityGateAcceptanceTest()` -> expect **8/8 PASS**
+   - `OpenAIRealtime.runKnownSelfSpeechCorrelationAcceptanceTest()` -> expect **10/10 PASS**
+   - `OpenAIRealtime.runConversationalAcousticOwnershipAcceptanceTest()` -> expect **12/12 PASS**
+5. Quiet-room real test:
+   - click Talk-to-Maddy;
+   - speak one short near-field request naturally;
+   - confirm the intended transcript appears and becomes one accepted foreground turn;
+   - remain silent afterward for at least 30 seconds;
+   - any fluent transcript generated without a real speaker must log `phantom-asr-without-acoustic-speech` and must create zero user turns / zero model responses / zero TTS requests.
+6. Then rerun a noisy-room ownership test without weakening VE220/VE221 protections.
+7. Production gets the vote before VE222 is marked production-proven.
+
+## Recovery
+
+**Recovery keyword:** `VE222-ACOUSTIC-REALITY-GATE-PRODUCTION-PENDING-20260921`
+
+**Fast recovery:** `Resume VE222-ACOUSTIC-REALITY-GATE-PRODUCTION-PENDING-20260921 — live main before the new commit was Voice v2.0.21 / VE221; production VE221 10/10 and VE220 12/12 acceptance passed, but a dead-quiet real retry hallucinated fluent ASR from near-silence and failed to acquire the intended human turn, so it was not a clean production voice pass; VE222 v2.0.22 is coded in frontend/voice/openai-realtime.js, locally PASS 8/8 with all 13 exported Voice suites PASS / 0 failures, adds acoustic reality before ASR authority, a softer explicit-session near-field bootstrap, and server VAD 0.60 while preserving VE220/VE221 protections; commit runtime first, Build State second, deploy, run VE222/221/220 acceptances, then perform one quiet near-field request plus 30 seconds of silence and require any phantom transcript to die as phantom-asr-without-acoustic-speech before any user turn/response/TTS; provider-side false-VAD transcription cost remains unproven eliminated; durable-execution status 404 remains separate evidence.`
