@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.34.0";
-  const BUILD_ID = "EB1340-FUNDAMENTAL-GAP-CAPABILITY-FOUNDRY-20260920-A";
+  const VERSION = "1.35.0";
+  const BUILD_ID = "EB1350-GOVERNED-DEVELOPMENT-FORGE-20260920-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -290,6 +290,9 @@
       maximumDreamSyntheses: 160,
       maximumCapabilityFoundryHistory: 160,
       maximumOrganogenesisProposals: 96,
+      maximumDevelopmentForgeHistory: 160,
+      maximumDevelopmentProofPackages: 96,
+      maximumDevelopmentForgeRisk: 0.18,
       maximumAutonomousInvestigationSteps: 8,
       investigationResolutionThreshold: 0.78,
       temporalContinuityResumeThresholdMs: 15000,
@@ -434,6 +437,11 @@
     organogenesisProposals: [],
     organogenesisProposalCount: 0,
     lastCapabilityFoundryPlan: null,
+    developmentForgeHistory: [],
+    developmentForgeCount: 0,
+    developmentProofPackages: [],
+    developmentProofPackageCount: 0,
+    lastDevelopmentProofPackage: null,
     anticipatoryInitiatives: [],
     lastAnticipatorySweep: null,
     anticipatorySweepCount: 0,
@@ -20852,6 +20860,291 @@
       const passed=checks.filter(x=>x.passed).length;console.table(checks);return{success:passed===checks.length,commission:"EB1340",schema:"meos.maddy.fundamental-gap-capability-foundry.acceptance.v1",version:this.version,buildId:this.buildId,passed,total:checks.length,checks,limitation:"This proves evidence-grounded gap classification, incumbent-vs-challenger capability design, and governed organogenesis proposals. It does not execute experiments, write source code, or incorporate a candidate into production."};
     },
 
+    createDevelopmentCandidate(input = {}, options = {}) {
+      const targetFile = String(input.targetFile || "").trim();
+      const baseSourceFingerprint = String(input.baseSourceFingerprint || "").trim();
+      const objective = String(input.objective || "").trim();
+      const candidatePatch = String(input.candidatePatch || input.patch || "").trim();
+      const candidateSource = String(input.candidateSource || "").trim();
+      const tests = (Array.isArray(input.tests) ? input.tests : []).map((test, index) => ({
+        testId: String(test?.testId || `test-${index + 1}`),
+        name: String(test?.name || test?.testId || `Test ${index + 1}`),
+        required: test?.required !== false,
+        command: test?.command ? String(test.command) : null,
+        contract: test?.contract ? this.clone(test.contract) : null
+      }));
+      if (!targetFile) return { success: false, reason: "target-file-required" };
+      if (!baseSourceFingerprint) return { success: false, reason: "base-source-fingerprint-required" };
+      if (!objective) return { success: false, reason: "development-objective-required" };
+      if (!candidatePatch && !candidateSource) return { success: false, reason: "candidate-code-or-patch-required" };
+      if (!tests.length) return { success: false, reason: "acceptance-tests-required-before-experiment" };
+
+      this.developmentForgeCount = Number(this.developmentForgeCount || 0) + 1;
+      const candidate = {
+        schema: "meos.maddy.governed-development-candidate.v1",
+        candidateId: this.id("development-candidate"),
+        candidateNumber: this.developmentForgeCount,
+        createdAt: new Date().toISOString(),
+        origin: input.origin || "capability-foundry",
+        gapId: input.gapId || input.capabilityFoundryGapId || null,
+        targetFile,
+        baseSourceFingerprint,
+        objective,
+        rationale: String(input.rationale || ""),
+        candidatePatch: candidatePatch || null,
+        candidateSource: candidateSource || null,
+        candidateFingerprint: this.fingerprintCognitiveDispatch({ targetFile, baseSourceFingerprint, objective, candidatePatch, candidateSource }),
+        tests,
+        baseline: this.clone(input.baseline || {}),
+        challengerPredictions: this.clone(input.challengerPredictions || {}),
+        metrics: this.clone(input.metrics || ["acceptance-pass-rate", "regression-count", "resource-cost", "latency"]),
+        riskScore: Math.max(0, Math.min(1, Number(input.riskScore ?? 0.08))),
+        reversible: input.reversible !== false,
+        rollback: this.clone(input.rollback || { restoreBaseFingerprint: baseSourceFingerprint }),
+        provenance: this.clone(input.provenance || {}),
+        authority: {
+          sandboxExecutionAuthorized: false,
+          productionWriteAuthorized: false,
+          mergeAuthorized: false,
+          deploymentAuthorized: false,
+          selfModificationAuthorized: false,
+          providerCallsAuthorized: false,
+          externalActionAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+      candidate.fingerprint = this.fingerprintCognitiveDispatch(candidate);
+      this.developmentForgeHistory.unshift({
+        kind: "candidate-created",
+        recordedAt: candidate.createdAt,
+        candidateId: candidate.candidateId,
+        fingerprint: candidate.fingerprint,
+        targetFile: candidate.targetFile,
+        objective: candidate.objective,
+        outcome: "unexecuted-candidate"
+      });
+      this.developmentForgeHistory = this.developmentForgeHistory.slice(0, this.configuration.maximumDevelopmentForgeHistory);
+      if (options.persist === true) this.persist();
+      this.emit("brain:development-candidate", this.clone(candidate));
+      return { success: true, candidate: this.clone(candidate) };
+    },
+
+    runDevelopmentCandidateInIsolatedSandbox(candidate = {}, sandbox = {}) {
+      if (candidate?.schema !== "meos.maddy.governed-development-candidate.v1") return { success: false, executed: false, reason: "governed-development-candidate-required" };
+      if (sandbox?.kind !== "meos-isolated-development-sandbox") return { success: false, executed: false, reason: "development-sandbox-contract-required" };
+      if (sandbox?.isolationVerified !== true) return { success: false, executed: false, reason: "development-sandbox-isolation-not-proven" };
+      if (sandbox?.productionStateAccessible === true || sandbox?.durableStateAccessible === true) return { success: false, executed: false, reason: "production-or-durable-state-must-be-inaccessible" };
+      if (sandbox?.networkAccessible === true) return { success: false, executed: false, reason: "development-sandbox-network-must-be-disabled" };
+      if (candidate.reversible !== true) return { success: false, executed: false, reason: "candidate-must-be-reversible" };
+      if (Number(candidate.riskScore || 0) > Number(this.configuration.maximumDevelopmentForgeRisk || 0.18)) return { success: false, executed: false, reason: "candidate-risk-above-development-forge-ceiling" };
+      if (typeof sandbox.execute !== "function") return { success: false, executed: false, reason: "development-sandbox-executor-missing" };
+
+      const raw = sandbox.execute(this.clone({
+        candidateId: candidate.candidateId,
+        targetFile: candidate.targetFile,
+        baseSourceFingerprint: candidate.baseSourceFingerprint,
+        candidatePatch: candidate.candidatePatch,
+        candidateSource: candidate.candidateSource,
+        tests: candidate.tests,
+        baseline: candidate.baseline,
+        metrics: candidate.metrics,
+        challengerPredictions: candidate.challengerPredictions
+      }));
+      if (raw && typeof raw.then === "function") return { success: false, executed: false, reason: "async-development-sandbox-not-supported-by-bounded-sync-commission" };
+      const observation = raw && typeof raw === "object" ? raw : {};
+      const observedBase = String(observation.baseSourceFingerprint || candidate.baseSourceFingerprint || "");
+      if (observedBase && observedBase !== candidate.baseSourceFingerprint) return { success: false, executed: true, isolated: true, reason: "base-source-fingerprint-drift", observation: this.clone(observation) };
+      const evaluation = this.evaluateDevelopmentChallenger(candidate, observation);
+      return {
+        success: evaluation.success === true,
+        executed: true,
+        isolated: true,
+        productionStateAccessible: false,
+        durableStateAccessible: false,
+        networkAccessible: false,
+        observation: this.clone(observation),
+        evaluation,
+        authority: {
+          productionMutationAuthorized: false,
+          durableMutationAuthorized: false,
+          mergeAuthorized: false,
+          deploymentAuthorized: false,
+          providerCallsAuthorized: false,
+          externalActionAuthorized: false,
+          selfModificationAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+    },
+
+    evaluateDevelopmentChallenger(candidate = {}, observation = {}) {
+      const observedTests = Array.isArray(observation.tests) ? observation.tests : [];
+      const byId = new Map(observedTests.map(item => [String(item.testId || item.id || item.name || ""), item]));
+      const required = (Array.isArray(candidate.tests) ? candidate.tests : []).filter(item => item.required !== false);
+      const requiredResults = required.map(test => {
+        const result = byId.get(String(test.testId)) || null;
+        return { testId: test.testId, name: test.name, observed: Boolean(result), passed: result?.passed === true, detail: this.clone(result || null) };
+      });
+      const requiredPass = requiredResults.length > 0 && requiredResults.every(item => item.observed && item.passed);
+      const regressions = Array.isArray(observation.regressions) ? observation.regressions : [];
+      const unresolvedRegressions = regressions.filter(item => item?.passed !== true && item?.resolved !== true);
+      const baselineScore = Number(observation?.baseline?.score ?? candidate?.baseline?.score ?? 0);
+      const challengerScore = Number(observation?.challenger?.score ?? observation?.score ?? 0);
+      const comparable = Number.isFinite(baselineScore) && Number.isFinite(challengerScore);
+      const challengerImproved = comparable ? challengerScore > baselineScore : false;
+      const challengerWins = Boolean(requiredPass && unresolvedRegressions.length === 0 && challengerImproved);
+      const failureCauses = [
+        !requiredPass ? "required-acceptance-not-fully-passed" : null,
+        unresolvedRegressions.length ? "unresolved-regressions" : null,
+        !comparable ? "incumbent-challenger-score-not-comparable" : null,
+        comparable && !challengerImproved ? "challenger-did-not-beat-incumbent" : null
+      ].filter(Boolean);
+      return {
+        success: true,
+        schema: "meos.maddy.development-challenger-evaluation.v1",
+        candidateId: candidate.candidateId || null,
+        evaluatedAt: new Date().toISOString(),
+        requiredResults,
+        regressions: this.clone(regressions),
+        requiredPass,
+        baselineScore: comparable ? baselineScore : null,
+        challengerScore: comparable ? challengerScore : null,
+        challengerImproved,
+        challengerWins,
+        failureCauses,
+        preserveFailureContext: failureCauses.length > 0,
+        revisitTriggers: this.clone(observation.revisitTriggers || []),
+        verdict: challengerWins ? "candidate-earned-governed-promotion-review" : "candidate-not-proven-superior",
+        authority: {
+          promotionAuthorized: false,
+          mergeAuthorized: false,
+          deploymentAuthorized: false,
+          productionMutationAuthorized: false,
+          selfModificationAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+    },
+
+    buildDevelopmentProofPackage(candidate = {}, execution = {}, options = {}) {
+      if (candidate?.schema !== "meos.maddy.governed-development-candidate.v1") return { success: false, reason: "governed-development-candidate-required" };
+      if (execution?.isolated !== true || execution?.executed !== true) return { success: false, reason: "verified-isolated-development-execution-required" };
+      const evaluation = execution.evaluation || this.evaluateDevelopmentChallenger(candidate, execution.observation || {});
+      this.developmentProofPackageCount = Number(this.developmentProofPackageCount || 0) + 1;
+      const proof = {
+        schema: "meos.maddy.development-proof-package.v1",
+        proofId: this.id("development-proof"),
+        proofNumber: this.developmentProofPackageCount,
+        createdAt: new Date().toISOString(),
+        candidateId: candidate.candidateId,
+        candidateFingerprint: candidate.fingerprint,
+        targetFile: candidate.targetFile,
+        baseSourceFingerprint: candidate.baseSourceFingerprint,
+        candidateFingerprint: candidate.candidateFingerprint,
+        objective: candidate.objective,
+        provenance: this.clone(candidate.provenance || {}),
+        sandbox: {
+          isolated: true,
+          productionStateAccessible: false,
+          durableStateAccessible: false,
+          networkAccessible: false
+        },
+        tests: this.clone(evaluation.requiredResults || []),
+        regressions: this.clone(evaluation.regressions || []),
+        comparison: {
+          baselineScore: evaluation.baselineScore,
+          challengerScore: evaluation.challengerScore,
+          challengerImproved: evaluation.challengerImproved,
+          challengerWins: evaluation.challengerWins
+        },
+        failureCauses: this.clone(evaluation.failureCauses || []),
+        revisitTriggers: this.clone(evaluation.revisitTriggers || []),
+        recommendation: evaluation.challengerWins
+          ? "Candidate may enter human/governed promotion review. Sandbox success does not authorize merge or deployment."
+          : "Preserve why the candidate failed and revisit only when evidence or conditions materially change.",
+        authority: {
+          founderOrGovernedReviewRequired: true,
+          productionWriteAuthorized: false,
+          mergeAuthorized: false,
+          deploymentAuthorized: false,
+          selfModificationAuthorized: false,
+          providerCallsAuthorized: false,
+          externalActionAuthorized: false,
+          automaticSpendUsd: 0
+        }
+      };
+      proof.fingerprint = this.fingerprintCognitiveDispatch(proof);
+      this.lastDevelopmentProofPackage = proof;
+      this.developmentProofPackages.unshift(this.clone(proof));
+      this.developmentProofPackages = this.developmentProofPackages.slice(0, this.configuration.maximumDevelopmentProofPackages);
+      this.developmentForgeHistory.unshift({
+        kind: "candidate-evaluated",
+        recordedAt: proof.createdAt,
+        candidateId: candidate.candidateId,
+        proofId: proof.proofId,
+        challengerWins: evaluation.challengerWins,
+        failureCauses: this.clone(evaluation.failureCauses || []),
+        revisitTriggers: this.clone(evaluation.revisitTriggers || []),
+        fingerprint: proof.fingerprint
+      });
+      this.developmentForgeHistory = this.developmentForgeHistory.slice(0, this.configuration.maximumDevelopmentForgeHistory);
+      if (options.persist === true) this.persist();
+      this.emit("brain:development-proof-package", this.clone(proof));
+      return { success: true, proof: this.clone(proof) };
+    },
+
+    runGovernedDevelopmentForgeAcceptanceTest() {
+      const original = {
+        history: this.clone(this.developmentForgeHistory || []),
+        count: this.developmentForgeCount,
+        proofs: this.clone(this.developmentProofPackages || []),
+        proofCount: this.developmentProofPackageCount,
+        last: this.clone(this.lastDevelopmentProofPackage)
+      };
+      const checks = []; const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+      try {
+        this.developmentForgeHistory=[]; this.developmentForgeCount=0; this.developmentProofPackages=[]; this.developmentProofPackageCount=0; this.lastDevelopmentProofPackage=null;
+        const missingBase = this.createDevelopmentCandidate({targetFile:"frontend/example.js",objective:"repair bounded function",candidatePatch:"@@ candidate @@",tests:[{testId:"a",name:"A"}]});
+        const made = this.createDevelopmentCandidate({
+          gapId:"gap-example",
+          targetFile:"frontend/example.js",
+          baseSourceFingerprint:"sha256:base-example",
+          objective:"Make a bounded semantic repair without changing unrelated behavior.",
+          rationale:"Discriminating evidence localized the failure to one semantic boundary.",
+          candidatePatch:"--- a/frontend/example.js\n+++ b/frontend/example.js\n@@ -1 +1 @@\n-old\n+new",
+          tests:[{testId:"new-behavior",name:"New behavior passes"},{testId:"legacy",name:"Legacy behavior remains green"}],
+          baseline:{score:0.62},
+          challengerPredictions:{score:">0.80",regressions:0},
+          riskScore:0.06,
+          provenance:{source:"capability-foundry-plan-example"}
+        });
+        const candidate = made.candidate;
+        const fakeProduction = this.runDevelopmentCandidateInIsolatedSandbox(candidate,{kind:"meos-isolated-development-sandbox",isolationVerified:true,productionStateAccessible:true,durableStateAccessible:false,networkAccessible:false,execute(){return{};}});
+        const unlabeled = this.runDevelopmentCandidateInIsolatedSandbox(candidate,{isolationVerified:true,productionStateAccessible:false,durableStateAccessible:false,networkAccessible:false,execute(){return{};}});
+        let executions=0;
+        const isolated={kind:"meos-isolated-development-sandbox",isolationVerified:true,productionStateAccessible:false,durableStateAccessible:false,networkAccessible:false,execute(payload){executions+=1;return{baseSourceFingerprint:payload.baseSourceFingerprint,tests:[{testId:"new-behavior",passed:true},{testId:"legacy",passed:true}],regressions:[],baseline:{score:.62},challenger:{score:.91},revisitTriggers:["new runtime changes source fingerprint"]};}};
+        const executed=this.runDevelopmentCandidateInIsolatedSandbox(candidate,isolated);
+        const proof=this.buildDevelopmentProofPackage(candidate,executed);
+        const losingExecution=this.runDevelopmentCandidateInIsolatedSandbox(candidate,{kind:"meos-isolated-development-sandbox",isolationVerified:true,productionStateAccessible:false,durableStateAccessible:false,networkAccessible:false,execute(payload){return{baseSourceFingerprint:payload.baseSourceFingerprint,tests:[{testId:"new-behavior",passed:false},{testId:"legacy",passed:true}],regressions:[],baseline:{score:.62},challenger:{score:.61},revisitTriggers:["different mechanism becomes available"]};}});
+        const losingProof=this.buildDevelopmentProofPackage(candidate,losingExecution);
+        check("Candidate creation requires an exact base-source fingerprint",missingBase.success===false&&missingBase.reason==="base-source-fingerprint-required");
+        check("Development candidate carries target, patch, preregistered tests, provenance and rollback",made.success===true&&candidate.targetFile==="frontend/example.js"&&candidate.candidatePatch.includes("+new")&&candidate.tests.length===2&&candidate.provenance.source&&candidate.rollback.restoreBaseFingerprint==="sha256:base-example");
+        check("A sandbox with production-state access is refused",fakeProduction.executed===false&&fakeProduction.reason==="production-or-durable-state-must-be-inaccessible");
+        check("An unlabeled executor is refused even when it claims isolation",unlabeled.executed===false&&unlabeled.reason==="development-sandbox-contract-required");
+        check("Verified isolated sandbox executes exactly one bounded candidate",executed.success===true&&executed.executed===true&&executed.isolated===true&&executions===1);
+        check("Challenger can win only after all required tests pass with no regressions and measurable improvement",executed.evaluation.challengerWins===true&&executed.evaluation.requiredPass===true&&executed.evaluation.challengerScore>executed.evaluation.baselineScore);
+        check("Sandbox success produces a proof package, not merge or deployment authority",proof.success===true&&proof.proof.comparison.challengerWins===true&&proof.proof.authority.mergeAuthorized===false&&proof.proof.authority.deploymentAuthorized===false&&proof.proof.authority.founderOrGovernedReviewRequired===true);
+        check("Failed challenger preserves causal failure context and revisit triggers",losingProof.success===true&&losingProof.proof.comparison.challengerWins===false&&losingProof.proof.failureCauses.length>=1&&losingProof.proof.revisitTriggers.includes("different mechanism becomes available"));
+        check("Development Forge never gains production write, provider, spend, external-action, or self-modification authority",executed.authority.productionMutationAuthorized===false&&executed.authority.providerCallsAuthorized===false&&executed.authority.externalActionAuthorized===false&&executed.authority.selfModificationAuthorized===false&&executed.authority.automaticSpendUsd===0);
+        check("Development evidence is retained as inspectable organism history",this.developmentForgeHistory.length>=3&&this.developmentProofPackages.length===2&&this.lastDevelopmentProofPackage?.proofId===losingProof.proof.proofId);
+      } finally {
+        this.developmentForgeHistory=original.history;this.developmentForgeCount=original.count;this.developmentProofPackages=original.proofs;this.developmentProofPackageCount=original.proofCount;this.lastDevelopmentProofPackage=original.last;
+      }
+      const passed=checks.filter(item=>item.passed).length;
+      console.table(checks);
+      return {success:passed===checks.length,commission:"EB1350",schema:"meos.maddy.governed-development-forge.acceptance.v1",version:this.version,buildId:this.buildId,passed,total:checks.length,checks,limitation:"This proves a governed code-candidate, isolated-sandbox challenger, regression evaluation, failure-memory, and proof-package loop. It does not grant Maddy production source-write, merge, deployment, provider, spend, or autonomous self-modification authority."};
+    },
+
     recordRealExperience(experience = {}, options = {}) {
       if (experience.occurred !== true || !experience.sourceEvidence) {
         return {success:false,reason:"real-experience-requires-occurred-true-and-source-evidence"};
@@ -26716,6 +27009,13 @@
           rule: "A limitation becomes a development target only through evidence. New organs are proposed only when a persistent fundamental function does not fit an existing organ; candidates must beat incumbents under discriminating tests before governed incorporation."
         },
 
+        developmentForge: {
+          latestProof: this.clone(this.lastDevelopmentProofPackage),
+          recentProofs: this.clone(this.developmentProofPackages.slice(0, 8)),
+          recentHistory: this.clone(this.developmentForgeHistory.slice(0, 12)),
+          rule: "Maddy may draft and challenge source-code candidates only against an exact base fingerprint and preregistered tests inside a verified isolated sandbox. A winning challenger earns governed review, never automatic merge or deployment authority."
+        },
+
         imaginationAndDreams: {
           openPredictions: this.clone(this.worldPredictionLedger.filter(item => item.status === "open").slice(0, 12)),
           scoredPredictions: this.clone(this.worldPredictionLedger.filter(item => item.status === "scored").slice(0, 12)),
@@ -28363,6 +28663,11 @@
         organogenesisProposals: this.organogenesisProposals.slice(0, this.configuration.maximumOrganogenesisProposals),
         organogenesisProposalCount: Number(this.organogenesisProposalCount || 0),
         lastCapabilityFoundryPlan: this.lastCapabilityFoundryPlan ? this.clone(this.lastCapabilityFoundryPlan) : null,
+        developmentForgeHistory: this.developmentForgeHistory.slice(0, this.configuration.maximumDevelopmentForgeHistory),
+        developmentForgeCount: Number(this.developmentForgeCount || 0),
+        developmentProofPackages: this.developmentProofPackages.slice(0, this.configuration.maximumDevelopmentProofPackages),
+        developmentProofPackageCount: Number(this.developmentProofPackageCount || 0),
+        lastDevelopmentProofPackage: this.lastDevelopmentProofPackage ? this.clone(this.lastDevelopmentProofPackage) : null,
         anticipatoryInitiatives: this.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit),
         lastAnticipatorySweep: this.lastAnticipatorySweep ? this.clone(this.lastAnticipatorySweep) : null,
         anticipatorySweepCount: Number(this.anticipatorySweepCount || 0),
@@ -28565,6 +28870,11 @@
       this.organogenesisProposals = Array.isArray(saved.organogenesisProposals) ? saved.organogenesisProposals.slice(0, this.configuration.maximumOrganogenesisProposals) : [];
       this.organogenesisProposalCount = Math.max(Number(saved.organogenesisProposalCount || 0), ...this.organogenesisProposals.map(item => Number(item.proposalNumber || 0)), 0);
       this.lastCapabilityFoundryPlan = saved.lastCapabilityFoundryPlan && typeof saved.lastCapabilityFoundryPlan === "object" ? this.clone(saved.lastCapabilityFoundryPlan) : (this.capabilityFoundryHistory[0] ? this.clone(this.capabilityFoundryHistory[0]) : null);
+      this.developmentForgeHistory = Array.isArray(saved.developmentForgeHistory) ? saved.developmentForgeHistory.slice(0, this.configuration.maximumDevelopmentForgeHistory) : [];
+      this.developmentForgeCount = Math.max(Number(saved.developmentForgeCount || 0), ...this.developmentForgeHistory.map(item => Number(item.candidateNumber || 0)), 0);
+      this.developmentProofPackages = Array.isArray(saved.developmentProofPackages) ? saved.developmentProofPackages.slice(0, this.configuration.maximumDevelopmentProofPackages) : [];
+      this.developmentProofPackageCount = Math.max(Number(saved.developmentProofPackageCount || 0), ...this.developmentProofPackages.map(item => Number(item.proofNumber || 0)), 0);
+      this.lastDevelopmentProofPackage = saved.lastDevelopmentProofPackage && typeof saved.lastDevelopmentProofPackage === "object" ? this.clone(saved.lastDevelopmentProofPackage) : (this.developmentProofPackages[0] ? this.clone(this.developmentProofPackages[0]) : null);
       this.anticipatoryInitiatives = Array.isArray(saved.anticipatoryInitiatives) ? saved.anticipatoryInitiatives.slice(0, this.configuration.anticipatoryCandidateLimit) : [];
       this.lastAnticipatorySweep = saved.lastAnticipatorySweep && typeof saved.lastAnticipatorySweep === "object" ? this.clone(saved.lastAnticipatorySweep) : null;
       this.anticipatorySweepCount = Math.max(Number(saved.anticipatorySweepCount || 0), Number(this.lastAnticipatorySweep?.sweepNumber || 0));
