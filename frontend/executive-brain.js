@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Brain
- * Version: 1.31.1
- * Build: EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A
+ * Version: 1.32.0
+ * Build: EB1320-LIVING-EPISODIC-CONSOLIDATION-20260920-A
  *
  * Mission:
  * Coordinate existing MEOS engines into one fast executive context before any
@@ -16,8 +16,8 @@
 (function initializeExecutiveBrain(global) {
   "use strict";
 
-  const VERSION = "1.31.1";
-  const BUILD_ID = "EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A";
+  const VERSION = "1.32.0";
+  const BUILD_ID = "EB1320-LIVING-EPISODIC-CONSOLIDATION-20260920-A";
   const STORAGE_KEY = "meos.executive-brain.v1";
   const INDEXED_DB_NAME = "meos-local-executive-repository";
   const INDEXED_DB_VERSION = 1;
@@ -9048,6 +9048,124 @@
       return Math.max(0, Math.min(100, score));
     },
 
+    episodicTokenSet(value) {
+      return new Set(
+        JSON.stringify(value || {})
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .split(/\s+/)
+          .filter(token => token.length > 2)
+          .slice(0, 120)
+      );
+    },
+
+    episodicSimilarity(a, b) {
+      const left = a instanceof Set ? a : this.episodicTokenSet(a);
+      const right = b instanceof Set ? b : this.episodicTokenSet(b);
+      if (!left.size || !right.size) return 0;
+      let overlap = 0;
+      left.forEach(token => { if (right.has(token)) overlap += 1; });
+      return overlap / Math.max(1, Math.min(left.size, right.size));
+    },
+
+    episodicRelationshipCandidates(semantic = {}, limit = 8) {
+      const basis = this.episodicTokenSet({
+        eventType: semantic.eventType,
+        subject: semantic.subject,
+        goals: semantic.goals,
+        perception: semantic.perception,
+        intention: semantic.intention,
+        outcome: semantic.outcome,
+        learning: semantic.learning
+      });
+      return (this.autobiographicalMemory || [])
+        .map(episode => ({
+          episodeId: episode.episodeId,
+          experienceFingerprint: episode.experienceFingerprint,
+          relationScore: this.episodicSimilarity(basis, this.episodicTokenSet({
+            eventType: episode.eventType,
+            subject: episode.subject,
+            goals: episode.goals,
+            perception: episode.perception,
+            intention: episode.intention,
+            outcome: episode.outcome,
+            learning: episode.learning
+          }))
+        }))
+        .filter(item => item.relationScore >= 0.18)
+        .sort((a, b) => b.relationScore - a.relationScore)
+        .slice(0, Math.max(1, Math.min(20, Number(limit) || 8)));
+    },
+
+    episodicSalienceVector(input = {}, semantic = {}) {
+      const related = this.episodicRelationshipCandidates(semantic, 12);
+      const strongestRelation = Number(related[0]?.relationScore || 0);
+      const unresolved = Boolean(
+        input.learning?.unresolved === true ||
+        (Array.isArray(input.learning?.unresolvedAfter) && input.learning.unresolvedAfter.length) ||
+        (Array.isArray(input.uncertainty?.openQuestions) && input.uncertainty.openQuestions.length) ||
+        (Array.isArray(input.competingExplanations) && input.competingExplanations.length > 1)
+      );
+      const outcomeKeys = Object.keys(input.outcome || {});
+      const consequence = outcomeKeys.length
+        ? Math.min(1, 0.35 + (input.outcome?.verified === true ? 0.25 : 0) + (input.outcome?.changed === true ? 0.2 : 0) + (input.outcome?.success === false ? 0.2 : 0))
+        : 0.15;
+      const recurrence = Math.min(1, related.length / 5);
+      const novelty = Math.max(0.05, 1 - strongestRelation);
+      const causalSignificance = Math.min(1, consequence * 0.7 + (input.learning?.causal === true ? 0.3 : 0));
+      const relationshipSignificance = Math.min(1, (Array.isArray(input.participants) ? input.participants.length : 0) * 0.18 + (input.relationshipSignificant === true ? 0.55 : 0));
+      const activeGoalRelation = Object.keys(input.goals || input.intention || {}).length ? 0.75 : 0.2;
+      const uncertainty = unresolved ? 0.85 : (Object.keys(input.uncertainty || {}).length ? 0.55 : 0.15);
+      const uniqueness = Math.max(0.1, 1 - Math.min(0.9, recurrence * strongestRelation));
+      const futureUsefulnessPrediction = Math.min(1,
+        (unresolved ? 0.35 : 0) +
+        (input.futureRelevance?.predictedUseful === true ? 0.35 : 0) +
+        (activeGoalRelation * 0.2) +
+        (causalSignificance * 0.2)
+      );
+      const currentUsefulness = Math.min(1, activeGoalRelation * 0.55 + consequence * 0.45);
+      const dimensions = {
+        currentUsefulness,
+        predictedFutureUsefulness: futureUsefulnessPrediction,
+        novelty,
+        causalSignificance,
+        recurrence,
+        unresolvedness: unresolved ? 1 : 0,
+        relationshipSignificance,
+        uniqueness,
+        activeGoalRelation,
+        uncertainty
+      };
+      const weights = {
+        currentUsefulness: 0.12,
+        predictedFutureUsefulness: 0.16,
+        novelty: 0.11,
+        causalSignificance: 0.16,
+        recurrence: 0.08,
+        unresolvedness: 0.10,
+        relationshipSignificance: 0.07,
+        uniqueness: 0.06,
+        activeGoalRelation: 0.08,
+        uncertainty: 0.06
+      };
+      const score = Object.entries(weights).reduce((sum, [key, weight]) => sum + Number(dimensions[key] || 0) * weight, 0);
+      return {
+        schema: "meos.maddy.episodic-salience.v1",
+        score: Number(Math.max(0, Math.min(1, score)).toFixed(6)),
+        dimensions,
+        relatedEpisodeCount: related.length,
+        strongestRelation: Number(strongestRelation.toFixed(6)),
+        learnedFromConsequenceTarget: true
+      };
+    },
+
+    episodicRetentionRecommendation(salience = {}) {
+      const score = Number(salience?.score || 0);
+      if (score >= 0.68) return "full";
+      if (score >= 0.38) return "compact";
+      return "lightweight";
+    },
+
     buildAutobiographicalSemanticBasis(input = {}) {
       const awareness = this.getWorkingAwareness({ refresh: false });
       const selfModel = this.getSelfModel({ refresh: false });
@@ -9059,6 +9177,15 @@
         sourceId: input.sourceId || null,
         selfFingerprint: selfModel?.fingerprint || null,
         mode,
+        environment: this.clone(input.environment || input.context?.environment || {}),
+        participants: this.clone(Array.isArray(input.participants) ? input.participants : []),
+        goals: this.clone(input.goals || {}),
+        expectations: this.clone(input.expectations || {}),
+        uncertainty: this.clone(input.uncertainty || {}),
+        competingExplanations: this.clone(Array.isArray(input.competingExplanations) ? input.competingExplanations : []),
+        predictionLineage: this.clone(input.predictionLineage || input.prediction || null),
+        validation: this.clone(input.validation || {}),
+        futureRelevance: this.clone(input.futureRelevance || {}),
         perception: this.clone(input.perception || {}),
         beliefsBefore: this.clone(input.beliefsBefore || {}),
         intention: this.clone(input.intention || {}),
@@ -9074,6 +9201,13 @@
       const existing = (this.autobiographicalMemory || []).find(item => item.experienceFingerprint === experienceFingerprint);
 
       if (existing) {
+        existing.consolidation = existing.consolidation || {};
+        existing.consolidation.recurrenceCount = Number(existing.consolidation.recurrenceCount || 1) + 1;
+        existing.consolidation.lastReexperiencedAt = new Date().toISOString();
+        existing.futureRelevance = {
+          ...(existing.futureRelevance || {}),
+          recurrenceSignal: Math.min(1, Number(existing.consolidation.recurrenceCount || 1) / 5)
+        };
         return {
           success: true,
           created: false,
@@ -9085,11 +9219,13 @@
       const awareness = this.getWorkingAwareness({ refresh: false });
       const selfModel = this.getSelfModel({ refresh: false });
       const priorEpisode = this.autobiographicalMemory?.[0] || null;
+      const related = this.episodicRelationshipCandidates(semantic, 8);
+      const salience = this.episodicSalienceVector(input, semantic);
       this.autobiographicalEpisodeCount = Number(this.autobiographicalEpisodeCount || 0) + 1;
 
       const episode = {
-        schema: "meos.maddy.autobiographical-episode.v1",
-        version: "1.0.0",
+        schema: "meos.maddy.autobiographical-episode.v2",
+        version: "2.0.0",
         episodeId: this.id("autobiographical-episode"),
         revision: this.autobiographicalEpisodeCount,
         experiencedAt: new Date().toISOString(),
@@ -9110,22 +9246,59 @@
             primaryFocus: this.clone(awareness.primaryFocus || null)
           } : null,
           interactionMode: semantic.mode,
-          audience: awareness?.interactionContext?.audience || selfModel?.interactionContext?.audience || null
+          audience: awareness?.interactionContext?.audience || selfModel?.interactionContext?.audience || null,
+          environment: semantic.environment,
+          participants: semantic.participants
         },
+        goals: semantic.goals,
+        expectations: semantic.expectations,
+        uncertainty: semantic.uncertainty,
+        competingExplanations: semantic.competingExplanations,
         perception: semantic.perception,
         beliefsBefore: semantic.beliefsBefore,
         intention: semantic.intention,
         action: semantic.action,
+        predictionLineage: semantic.predictionLineage,
         outcome: semantic.outcome,
+        validation: semantic.validation,
         learning: semantic.learning,
+        links: related.map(item => ({
+          relation: "semantic-experiential",
+          episodeId: item.episodeId,
+          experienceFingerprint: item.experienceFingerprint,
+          strength: item.relationScore
+        })),
+        futureRelevance: {
+          ...semantic.futureRelevance,
+          predictedUsefulness: salience.dimensions.predictedFutureUsefulness,
+          revisitWhenRelatedEvidenceChanges: true
+        },
+        salience,
         significance: {
           score: this.autobiographicalSignificance(input),
           reason: input.significanceReason || "Derived from consequence, unresolved state, action, and continuity evidence."
+        },
+        retention: {
+          currentResolution: "full",
+          recommendedResolution: this.episodicRetentionRecommendation(salience),
+          destructiveCompactionAuthorized: false,
+          reacquirableDetailAllowed: true
+        },
+        consolidation: {
+          recurrenceCount: 1,
+          consolidatedCount: 0,
+          lastConsolidatedAt: null,
+          laterRevaluationAllowed: true
         },
         continuity: {
           belongsToPersistentMaddy: Boolean(selfModel?.fingerprint),
           identityIsNotMode: true,
           evidenceDerived: true
+        },
+        authority: {
+          memoryCreatesActionAuthority: false,
+          memoryCreatesTruthAuthority: false,
+          memoryCreatesSpendAuthority: false
         }
       };
 
@@ -9142,6 +9315,170 @@
         created: true,
         duplicate: false,
         episode: this.clone(episode)
+      };
+    },
+
+    revalueAutobiographicalEpisode(episodeOrId, cue = {}, options = {}) {
+      const episode = typeof episodeOrId === "string"
+        ? (this.autobiographicalMemory || []).find(item => item.episodeId === episodeOrId)
+        : episodeOrId;
+      if (!episode) return { success: false, reason: "episode-not-found" };
+      const cueSimilarity = this.episodicSimilarity(this.episodicTokenSet(cue), this.episodicTokenSet({ subject: episode.subject, goals: episode.goals, learning: episode.learning, outcome: episode.outcome }));
+      const prior = Number(episode.futureRelevance?.revaluationScore || 0);
+      const next = Math.max(prior, cueSimilarity);
+      episode.futureRelevance = {
+        ...(episode.futureRelevance || {}),
+        revaluationScore: Number(next.toFixed(6)),
+        lastRevaluedAt: new Date().toISOString(),
+        revaluationCue: this.clone(cue)
+      };
+      if (next >= 0.35 && episode.retention) {
+        episode.retention.recommendedResolution = episode.retention.recommendedResolution === "lightweight" ? "compact" : episode.retention.recommendedResolution;
+      }
+      if (options.persist === true) this.persist();
+      return { success: true, episode: this.clone(episode), changed: next > prior };
+    },
+
+    consolidateAutobiographicalMemory(options = {}) {
+      const nowIso = new Date().toISOString();
+      const episodes = this.autobiographicalMemory || [];
+      const decisions = [];
+      for (const episode of episodes) {
+        const semantic = {
+          eventType: episode.eventType,
+          subject: episode.subject,
+          goals: episode.goals,
+          perception: episode.perception,
+          intention: episode.intention,
+          outcome: episode.outcome,
+          learning: episode.learning
+        };
+        const related = this.episodicRelationshipCandidates(semantic, 8).filter(item => item.episodeId !== episode.episodeId);
+        const recurrence = Number(episode.consolidation?.recurrenceCount || 1);
+        const inherited = Number(episode.salience?.score || 0);
+        const laterRelevance = Math.max(Number(episode.futureRelevance?.revaluationScore || 0), Number(related[0]?.relationScore || 0));
+        const consolidationScore = Math.max(0, Math.min(1, inherited * 0.60 + Math.min(1, recurrence / 4) * 0.20 + laterRelevance * 0.20));
+        const recommended = consolidationScore >= 0.66 ? "full" : consolidationScore >= 0.34 ? "compact" : "lightweight";
+        episode.links = related.map(item => ({ relation: "semantic-experiential", episodeId: item.episodeId, experienceFingerprint: item.experienceFingerprint, strength: item.relationScore }));
+        episode.retention = {
+          ...(episode.retention || {}),
+          recommendedResolution: recommended,
+          consolidationScore: Number(consolidationScore.toFixed(6)),
+          destructiveCompactionAuthorized: false
+        };
+        episode.consolidation = {
+          ...(episode.consolidation || {}),
+          consolidatedCount: Number(episode.consolidation?.consolidatedCount || 0) + 1,
+          lastConsolidatedAt: nowIso,
+          laterRevaluationAllowed: true
+        };
+        decisions.push({ episodeId: episode.episodeId, recommendedResolution: recommended, score: Number(consolidationScore.toFixed(6)), relatedEpisodeCount: related.length });
+      }
+      if (options.persist === true) this.persist();
+      this.emit("brain:autobiographical-memory-consolidated", { decisions: this.clone(decisions), destructiveCompactionAuthorized: false });
+      return {
+        success: true,
+        schema: "meos.maddy.episodic-consolidation.v1",
+        evaluated: decisions.length,
+        decisions: this.clone(decisions),
+        destructiveCompactionAuthorized: false,
+        preservedEpisodeCount: episodes.length
+      };
+    },
+
+    runLivingEpisodicConsolidationAcceptanceTest() {
+      const originalMemory = this.clone(this.autobiographicalMemory || []);
+      const originalCount = Number(this.autobiographicalEpisodeCount || 0);
+      const originalSelf = this.clone(this.selfModel);
+      const originalAwareness = this.clone(this.workingAwareness);
+      const checks = [];
+      const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+      try {
+        this.autobiographicalMemory = [];
+        this.autobiographicalEpisodeCount = 0;
+        this.selfModel = this.selfModel || { revision: 1, fingerprint: "self-eb1320-fixture", identity: { preferredName: "Maddy" }, interactionContext: { mode: "professional", audience: "founder" } };
+        this.workingAwareness = this.workingAwareness || { revision: 1, fingerprint: "awareness-eb1320-fixture", primaryFocus: { subject: "episodic learning" }, interactionContext: { mode: "professional", audience: "founder" } };
+
+        const quiet = this.formAutobiographicalEpisode({
+          eventType: "observation",
+          subject: "Quiet hallway observation",
+          sourceId: "eb1320-quiet",
+          environment: { noise: "low" },
+          perception: { observed: "ordinary event" },
+          outcome: {},
+          learning: {}
+        }, { persist: false });
+        const important = this.formAutobiographicalEpisode({
+          eventType: "research-consequence",
+          subject: "Funding research changed the growth plan",
+          sourceId: "eb1320-important",
+          environment: { channel: "voice" },
+          participants: [{ role: "founder" }],
+          goals: { objective: "fund capability growth" },
+          expectations: { expected: "find one viable route" },
+          uncertainty: { openQuestions: ["which route has least control cost?"] },
+          competingExplanations: ["customer revenue", "grant funding"],
+          predictionLineage: { predictionId: "prediction-eb1320" },
+          perception: { evidence: "verified opportunity" },
+          intention: { objective: "choose funding path" },
+          action: { type: "compare" },
+          outcome: { success: true, changed: true, verified: true },
+          validation: { status: "verified-consequence" },
+          learning: { causal: true, learned: "resource fit changes route" },
+          futureRelevance: { predictedUseful: true }
+        }, { persist: false });
+        const related = this.formAutobiographicalEpisode({
+          eventType: "research-consequence",
+          subject: "Funding route later constrained compute growth",
+          sourceId: "eb1320-related",
+          goals: { objective: "fund capability growth" },
+          outcome: { success: false, changed: true, verified: true },
+          learning: { causal: true, unresolved: true, learned: "control restrictions matter" }
+        }, { persist: false });
+        const duplicate = this.formAutobiographicalEpisode({
+          eventType: "observation",
+          subject: "Quiet hallway observation",
+          sourceId: "eb1320-quiet",
+          environment: { noise: "low" },
+          perception: { observed: "ordinary event" },
+          outcome: {},
+          learning: {}
+        }, { persist: false });
+        const consolidation = this.consolidateAutobiographicalMemory({ persist: false });
+        const revalued = this.revalueAutobiographicalEpisode(quiet.episode.episodeId, { subject: "hallway observation later became relevant to episodic learning" }, { persist: false });
+        const currentQuiet = this.autobiographicalMemory.find(item => item.episodeId === quiet.episode.episodeId);
+        const currentImportant = this.autobiographicalMemory.find(item => item.episodeId === important.episode.episodeId);
+        const currentRelated = this.autobiographicalMemory.find(item => item.episodeId === related.episode.episodeId);
+
+        check("Episodes advance to the living autobiographical v2 schema", important.episode?.schema === "meos.maddy.autobiographical-episode.v2");
+        check("Experience preserves environment, participants, goals, and expectations", important.episode?.context?.environment?.channel === "voice" && important.episode?.context?.participants?.length === 1 && important.episode?.goals?.objective && important.episode?.expectations?.expected);
+        check("Uncertainty and competing explanations remain part of the episode instead of being flattened into certainty", important.episode?.uncertainty?.openQuestions?.length === 1 && important.episode?.competingExplanations?.length === 2);
+        check("Prediction, consequence, validation, and learning lineage survive together", important.episode?.predictionLineage?.predictionId === "prediction-eb1320" && important.episode?.outcome?.verified === true && important.episode?.validation?.status === "verified-consequence" && important.episode?.learning?.causal === true);
+        check("Salience is multidimensional rather than one static significance tag", important.episode?.salience?.schema === "meos.maddy.episodic-salience.v1" && Number.isFinite(important.episode?.salience?.dimensions?.novelty) && Number.isFinite(important.episode?.salience?.dimensions?.predictedFutureUsefulness));
+        check("Related later experience forms explicit cross-episode links", Array.isArray(currentRelated?.links) && currentRelated.links.some(link => link.episodeId === important.episode.episodeId));
+        check("Repeated experience strengthens recurrence without inventing a duplicate episode", duplicate?.duplicate === true && currentQuiet?.consolidation?.recurrenceCount === 2);
+        check("Consolidation evaluates every episode but authorizes no destructive forgetting", consolidation.success === true && consolidation.evaluated === 3 && consolidation.destructiveCompactionAuthorized === false && consolidation.preservedEpisodeCount === 3);
+        check("Important consequence remains recommended at useful resolution", ["full", "compact"].includes(currentImportant?.retention?.recommendedResolution));
+        check("Apparently low-value experience is retained cheaply and can be revalued later", Boolean(currentQuiet) && revalued.success === true && currentQuiet?.futureRelevance?.revaluationScore >= 0);
+        check("Memory formation and consolidation manufacture no truth, spend, or action authority", important.episode?.authority?.memoryCreatesActionAuthority === false && important.episode?.authority?.memoryCreatesTruthAuthority === false && important.episode?.authority?.memoryCreatesSpendAuthority === false);
+      } finally {
+        this.autobiographicalMemory = originalMemory;
+        this.autobiographicalEpisodeCount = originalCount;
+        this.selfModel = originalSelf;
+        this.workingAwareness = originalAwareness;
+      }
+      const passed = checks.filter(item => item.passed).length;
+      console.table(checks);
+      return {
+        success: passed === checks.length,
+        commission: "EB1320",
+        schema: "meos.maddy.living-episodic-consolidation.acceptance.v1",
+        version: this.version,
+        buildId: this.buildId,
+        passed,
+        total: checks.length,
+        checks,
+        limitation: "This proves structured living episodes, multidimensional salience, relationship linking, non-destructive consolidation recommendations, recurrence, and later revaluation. It does not yet prove learned latent representations or destructive forgetting."
       };
     },
 
