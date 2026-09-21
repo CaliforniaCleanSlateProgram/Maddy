@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.14
+ * File Version: 2.0.15
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -34,9 +34,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.14";
+  const VERSION = "2.0.15";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE214-SEMANTIC-INTENDED-SPEECH-RECONSTRUCTION-20260920-A";
+  const BUILD_ID = "VE215-CANONICAL-HALLWAY-RESEARCH-HANDOFF-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -2312,17 +2312,33 @@
     });
   }
 
+  function resolveExecutiveHallway() {
+    const canonical = global.MEOSExecutiveHallway;
+    if (canonical && typeof canonical.submitWork === "function") {
+      return Object.freeze({ hallway: canonical, source: "MEOSExecutiveHallway" });
+    }
+
+    const legacy = global.ExecutiveHallway;
+    if (legacy && typeof legacy.submitWork === "function") {
+      return Object.freeze({ hallway: legacy, source: "ExecutiveHallway-legacy-alias" });
+    }
+
+    return Object.freeze({ hallway: null, source: "unavailable" });
+  }
+
   function scheduleVoiceResearchHandoff(
     transcript,
     turnId,
     brainResult,
     researchContract
   ) {
-    const hallway = global.ExecutiveHallway;
+    const hallwayResolution = resolveExecutiveHallway();
+    const hallway = hallwayResolution.hallway;
     if (!hallway || typeof hallway.submitWork !== "function") {
       const unavailable = Object.freeze({
         scheduled: false,
         owner: "executive-hallway",
+        hallwaySource: hallwayResolution.source,
         turnId,
         reason: "executive-hallway-unavailable",
         externalActionAuthorityGranted: false,
@@ -2335,6 +2351,7 @@
     const handoff = {
       scheduled: true,
       owner: "executive-hallway",
+      hallwaySource: hallwayResolution.source,
       turnId,
       reason:
         researchContract?.reason ||
@@ -3882,9 +3899,11 @@
         /Do not invent findings/i.test(scheduledInstructions)
     );
 
-    const noHallwaySnapshot = global.ExecutiveHallway;
+    const noCanonicalHallwaySnapshot = global.MEOSExecutiveHallway;
+    const noLegacyHallwaySnapshot = global.ExecutiveHallway;
     const backgroundHandoffSnapshot = state.lastBackgroundWorkHandoff;
     try {
+      global.MEOSExecutiveHallway = null;
       global.ExecutiveHallway = null;
       const unavailable = scheduleVoiceResearchHandoff(
         "Research this.",
@@ -3898,18 +3917,27 @@
           unavailable.reason === "executive-hallway-unavailable"
       );
     } finally {
-      global.ExecutiveHallway = noHallwaySnapshot;
+      global.MEOSExecutiveHallway = noCanonicalHallwaySnapshot;
+      global.ExecutiveHallway = noLegacyHallwaySnapshot;
       state.lastBackgroundWorkHandoff = backgroundHandoffSnapshot;
     }
 
     const originalTimer = global.setTimeout;
-    const originalHallway = global.ExecutiveHallway;
+    const originalCanonicalHallway = global.MEOSExecutiveHallway;
+    const originalLegacyHallway = global.ExecutiveHallway;
     let scheduledCallbacks = 0;
-    let submitCallsBeforeTimer = 0;
+    let canonicalSubmitCallsBeforeTimer = 0;
+    let legacySubmitCallsBeforeTimer = 0;
     try {
+      global.MEOSExecutiveHallway = {
+        submitWork() {
+          canonicalSubmitCallsBeforeTimer += 1;
+          return new Promise(() => {});
+        }
+      };
       global.ExecutiveHallway = {
         submitWork() {
-          submitCallsBeforeTimer += 1;
+          legacySubmitCallsBeforeTimer += 1;
           return new Promise(() => {});
         }
       };
@@ -3924,16 +3952,37 @@
         explicitResearchPlan.researchContract
       );
       check(
-        "Durable research handoff is deferred to a later event-loop turn instead of being awaited in the live response path",
+        "Canonical MEOSExecutiveHallway owns voice research handoff when both canonical and legacy aliases exist",
+        scheduled.hallwaySource === "MEOSExecutiveHallway" &&
+          scheduledCallbacks === 1 &&
+          canonicalSubmitCallsBeforeTimer === 0 &&
+          legacySubmitCallsBeforeTimer === 0
+      );
+      check(
+        "Durable research handoff remains deferred and nonauthorizing instead of blocking the live response path",
         scheduled.scheduled === true &&
           scheduledCallbacks === 1 &&
-          submitCallsBeforeTimer === 0 &&
+          canonicalSubmitCallsBeforeTimer === 0 &&
           scheduled.externalActionAuthorityGranted === false &&
           scheduled.automaticSpendUsd === 0
       );
+
+      global.MEOSExecutiveHallway = null;
+      const legacyScheduled = scheduleVoiceResearchHandoff(
+        "Research this through compatibility fallback.",
+        "voice-background-legacy-fixture",
+        localBrainResult,
+        explicitResearchPlan.researchContract
+      );
+      check(
+        "Legacy ExecutiveHallway remains a bounded compatibility fallback when the canonical export is absent",
+        legacyScheduled.scheduled === true &&
+          legacyScheduled.hallwaySource === "ExecutiveHallway-legacy-alias"
+      );
     } finally {
       global.setTimeout = originalTimer;
-      global.ExecutiveHallway = originalHallway;
+      global.MEOSExecutiveHallway = originalCanonicalHallway;
+      global.ExecutiveHallway = originalLegacyHallway;
       state.lastBackgroundWorkHandoff = backgroundHandoffSnapshot;
     }
 
@@ -4510,6 +4559,61 @@
     return result;
   }
 
+  function runCanonicalHallwayResearchHandoffAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+    const originalTimer = global.setTimeout;
+    const originalCanonical = global.MEOSExecutiveHallway;
+    const originalLegacy = global.ExecutiveHallway;
+    const priorHandoff = state.lastBackgroundWorkHandoff;
+    const researchContract = Object.freeze({ required: true, reason: "explicit-public-research", externalActionAuthorityGranted: false });
+    let canonicalSubmitCalls = 0;
+    let legacySubmitCalls = 0;
+    let timerCallbacks = [];
+    try {
+      global.setTimeout = (fn) => { timerCallbacks.push(fn); return timerCallbacks.length; };
+      global.MEOSExecutiveHallway = { submitWork(){ canonicalSubmitCalls += 1; return Promise.resolve({ id: "canonical-work" }); } };
+      global.ExecutiveHallway = { submitWork(){ legacySubmitCalls += 1; return Promise.resolve({ id: "legacy-work" }); } };
+      const canonical = scheduleVoiceResearchHandoff("Search online for current grants.", "ve215-canonical", {}, researchContract);
+      check("Canonical MEOSExecutiveHallway is selected over the historical alias", canonical.scheduled === true && canonical.hallwaySource === "MEOSExecutiveHallway");
+      check("Research handoff is nonblocking before the deferred callback runs", canonicalSubmitCalls === 0 && legacySubmitCalls === 0 && timerCallbacks.length === 1);
+      check("Research handoff grants no spend or consequential external-action authority", canonical.automaticSpendUsd === 0 && canonical.externalActionAuthorityGranted === false);
+      timerCallbacks.shift()();
+      check("Deferred work reaches the canonical Hallway and not the legacy alias", canonicalSubmitCalls === 1 && legacySubmitCalls === 0);
+
+      global.MEOSExecutiveHallway = null;
+      timerCallbacks = [];
+      const legacy = scheduleVoiceResearchHandoff("Research current funding.", "ve215-legacy", {}, researchContract);
+      check("Legacy alias remains a compatibility fallback only when canonical Hallway is absent", legacy.scheduled === true && legacy.hallwaySource === "ExecutiveHallway-legacy-alias");
+      timerCallbacks.shift()();
+      check("Compatibility fallback can still submit bounded work", legacySubmitCalls === 1);
+
+      global.ExecutiveHallway = null;
+      const missing = scheduleVoiceResearchHandoff("Research current funding.", "ve215-missing", {}, researchContract);
+      check("Missing Hallway fails visible instead of pretending research started", missing.scheduled === false && missing.reason === "executive-hallway-unavailable" && missing.hallwaySource === "unavailable");
+    } finally {
+      global.setTimeout = originalTimer;
+      global.MEOSExecutiveHallway = originalCanonical;
+      global.ExecutiveHallway = originalLegacy;
+      state.lastBackgroundWorkHandoff = priorHandoff;
+    }
+    const passed = checks.filter(item => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE215",
+      schema: "meos.voice.canonical-hallway-research-handoff.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map(item => Object.freeze({ ...item }))),
+      limitation: "This proves local voice-to-Hallway export resolution and nonblocking handoff authority boundaries. It does not prove a live Internet result or durable research return in production."
+    });
+    console.table(checks);
+    log(`Commission VE215 Canonical Hallway Research Handoff: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   function runSemanticIntendedSpeechReconstructionAcceptanceTest() {
     const checks = [];
     const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
@@ -4584,7 +4688,8 @@
     runTranscriptAcousticEvidenceSeparationAcceptanceTest,
     runForegroundInterruptionAuthorityAcceptanceTest,
     runContextGroundedTranscriptionEvidenceAcceptanceTest,
-    runSemanticIntendedSpeechReconstructionAcceptanceTest
+    runSemanticIntendedSpeechReconstructionAcceptanceTest,
+    runCanonicalHallwayResearchHandoffAcceptanceTest
   });
 
   log(`Client online. Build ${BUILD_ID}.`);
