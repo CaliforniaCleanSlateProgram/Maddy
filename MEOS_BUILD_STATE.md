@@ -1,3 +1,4 @@
+[MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md](https://github.com/user-attachments/files/32449290/MEOS_BUILD_STATE_POST_VE216_RECONCILED_20260920.md)
 [MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920 (1).md](https://github.com/user-attachments/files/32448862/MEOS_BUILD_STATE_POST_ER153_DURABILITY_502_RECONCILED_20260920.1.md)
 [MEOS_BUILD_STATE_POST_ER153_RECONCILED (1).md](https://github.com/user-attachments/files/32447847/MEOS_BUILD_STATE_POST_ER153_RECONCILED.1.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32441377/MEOS_BUILD_STATE.md)
@@ -9653,3 +9654,262 @@ Unless fresher evidence exposes an urgent runtime regression:
 **Recovery keyword:** `ARC001-ER153-PROVEN-MIXED-DURABILITY-502-VE214-NEXT-20260920`
 
 **Fast recovery:** `Resume ARC001-ER153-PROVEN-MIXED-DURABILITY-502-VE214-NEXT-20260920 — Main90 inspected; Router 1.5.3 / ER153 remains production-proven 11/11 for natural public-research classification; spoken Internet research remains open because the correctly transcribed grant request still routed local-recall-plus-provider-reasoning; later startup showed Mission Engine durable hydration READY while PUT /api/executive-brain-state and Executive Memory / Knowledge restore GETs returned HTTP 502, so durable state was mixed/degraded rather than globally READY or globally failed; Executive Brain correctly continued with non-authoritative continuity cache and did not promote cache into durable truth; 502 root cause is unproven and no rollback/organ rewrite is authorized from it; standalone "Madison." still became a full conversational turn, preserving wake-only behavior as open evidence; later ARC 001 builds remain local candidates; next staged code build is VE214, one file → one commit → one production test → Build State reconciliation.`
+
+
+-------------------------------------------------------------------------------
+
+# ADDITIVE BUILD STATE CHECKPOINT — VE214 / VE215 / VE216 PRODUCTION RECONCILIATION
+
+**Date:** 2026-09-20  
+**Checkpoint type:** additive production reconciliation; no new runtime authority created by this document  
+**Repository base reconciled:** `Maddy-main (91).zip`  
+**Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation
+
+## Purpose
+
+This checkpoint reconciles the three staged ARC 001 voice builds applied after the Main91 authority checkpoint:
+
+- `VE214` Semantic Intended-Speech Reconstruction
+- `VE215` Canonical Hallway Research Handoff
+- `VE216` Durable Research Spoken Return
+
+All three are now separately committed, deployed, and production-acceptance proven at their bounded contracts.
+
+This checkpoint also updates the durability incident truth: the earlier HTTP 502 degradation remains real historical evidence, but it did not reproduce in the later VE214/VE215/VE216 production startup evidence. That does not prove a permanent root-cause repair.
+
+## Current production runtime identity
+
+Latest production evidence establishes:
+
+- **Executive Router:** `1.5.3`
+- **Router build:** `ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A`
+- **Realtime Voice:** `2.0.16`
+- **Voice build:** `VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A`
+- **Executive Brain:** `1.31.1`
+- **Brain build:** `EB1311-INTERACTIVE-COGNITION-LATENCY-SEPARATION-20260920-A`
+- **Executive Hallway:** `1.5.7`
+- **Hallway build:** `EH157-VERIFICATION-SEMANTICS-RECONCILIATION-20260915-A`
+- **Mission Engine:** `0.2.0`
+- **Mission Engine durable authority hydration:** observed `READY` from `meos-institutional-repository`
+- **Mission Dispatcher:** still not running because `office_dispatch_authority_not_effective`
+
+No newer production evidence in this checkpoint supersedes those identities.
+
+## VE214 — Semantic Intended-Speech Reconstruction — PRODUCTION-PROVEN
+
+**Runtime:** `2.0.14`  
+**Build:** `VE214-SEMANTIC-INTENDED-SPEECH-RECONSTRUCTION-20260920-A`  
+**Production acceptance:** **PASS `11/11`**
+
+Bounded production proof established:
+
+- raw ASR provenance survives contextual interpretation;
+- active-customer phonetics may reconstruct a uniquely supported scoped acronym;
+- the same token is not globally rewritten outside the relevant customer context;
+- distant corruption is clarified rather than forced;
+- coherent high-confidence speech remains unchanged;
+- usable medium-confidence speech is not over-corrected;
+- low-information fragments are challenged before Brain/search authority;
+- explicit human correction becomes scoped session learning evidence;
+- scoped correction vocabulary can guide later transcription;
+- customer speech-learning scope does not leak into another organization;
+- semantic reconstruction itself grants no search, spend, durable-write, deployment, or external-action authority.
+
+### VE214 limitations preserved
+
+VE214 does **not** prove:
+
+- perfect real-microphone understanding;
+- biometric speaker identity;
+- durable cross-session pronunciation learning;
+- correct wake semantics;
+- successful Internet execution.
+
+Production speech remains the authority for those claims.
+
+## VE215 — Canonical Hallway Research Handoff — PRODUCTION-PROVEN
+
+**Runtime:** `2.0.15`  
+**Build:** `VE215-CANONICAL-HALLWAY-RESEARCH-HANDOFF-20260920-A`  
+**Production acceptance:** **PASS `7/7`**
+
+Bounded production proof established:
+
+- canonical `MEOSExecutiveHallway` is selected over the historical alias;
+- the research handoff is nonblocking before deferred execution begins;
+- the handoff grants no spend or consequential external-action authority;
+- deferred work reaches the canonical Hallway rather than the legacy alias;
+- the legacy Hallway alias remains compatibility fallback only when canonical Hallway is unavailable;
+- bounded fallback submission still functions;
+- missing Hallway fails visibly rather than pretending research started.
+
+### VE215 limitations preserved
+
+VE215 proves the **voice-to-Hallway export seam and authority boundaries**.
+
+It does **not** by itself prove:
+
+- a live Internet result;
+- successful durable server research completion;
+- public-source provenance return;
+- final spoken research delivery.
+
+Those are separate channels.
+
+## VE216 — Durable Research Spoken Return — PRODUCTION-PROVEN
+
+**Runtime:** `2.0.16`  
+**Build:** `VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A`  
+**Production acceptance:** **PASS `9/9`**
+
+Bounded production proof established:
+
+1. durable return observation starts only from an exact execution identity;
+2. the observer does not synchronously block live conversation;
+3. running durable work remains pending without fabricating an answer;
+4. exactly one governed durable answer is returned through Maddy's response mouth;
+5. raw server synthesis is never selected directly for speech;
+6. spoken research return preserves evidence URLs;
+7. return publication preserves one-mouth / final-speech governance;
+8. return observation grants no spend or external-action authority;
+9. duplicate publication is blocked by durable execution identity.
+
+### VE216 limitations preserved
+
+VE216 proves the bounded local observer, exact execution lineage, governed-answer extraction, duplicate suppression, and one-mouth return path.
+
+It does **not** by itself prove:
+
+- that a real server-side research execution completed successfully;
+- that an Internet request reached fresh public sources;
+- network reliability;
+- real TTS playback of a returned research answer;
+- a successful end-to-end spoken grant-research mission.
+
+Production gets the vote on those claims.
+
+## Spoken Internet research — improved architecture, end-to-end proof still OPEN
+
+The organism now has production-proven bounded pieces for:
+
+`natural research intent classification`
+→ `semantic intended-speech reconstruction`
+→ `canonical Hallway handoff`
+→ `exact durable execution return observation`
+→ `one governed Maddy spoken-return path`
+
+That is materially different from the earlier failed voice state.
+
+However, the previous real spoken grant request is still the latest end-to-end verbal research attempt preserved in evidence, and that earlier attempt failed by remaining on:
+
+`local-recall-plus-provider-reasoning`
+
+No later production evidence in this checkpoint shows a **fresh real spoken request** completing the entire chain:
+
+`spoken request`
+→ `research route`
+→ `canonical Hallway`
+→ `durable research execution`
+→ `fresh public-source research`
+→ `evidence/provenance`
+→ `durable returned work`
+→ `one governed spoken Maddy answer`
+
+Therefore **end-to-end spoken Internet research remains OPEN until that full production demonstration passes.**
+
+Do not promote the sum of bounded acceptance tests into an end-to-end claim.
+
+## Earlier durability 502 incident — historical truth preserved, latest evidence healthy
+
+The earlier mixed durability incident remains valid historical evidence:
+
+- `PUT /api/executive-brain-state` returned HTTP 502;
+- Executive Memory / Knowledge restore requests returned HTTP 502;
+- Executive Brain correctly fell back to non-authoritative runtime continuity cache.
+
+Later production startup evidence during the VE214 / VE215 / VE216 sequence showed:
+
+- Mission Engine durable authority hydration `READY`;
+- `source=meos-institutional-repository`;
+- organization readiness `ready=true`;
+- `degraded=false`;
+- the earlier 502 pattern did not reproduce in the supplied later console captures.
+
+Correct interpretation:
+
+**The transient/shared durability degradation was not reproduced in the later production evidence.**
+
+Do **not** claim from that alone that:
+
+- the permanent root cause was identified;
+- a specific code repair fixed it;
+- the incident can never recur.
+
+No durability rollback or unrelated organ rewrite is warranted absent fresh reproducing evidence.
+
+## Wake / speaker-ownership status remains OPEN
+
+The earlier noisy-room and wake-only evidence remains unresolved:
+
+- background speech was often rejected correctly;
+- a phrase merely mentioning Maddy falsely acquired attention;
+- deliberate `Madison` wake acquisition succeeded;
+- standalone `Madison.` became a substantive conversational turn instead of attention acquisition only.
+
+VE214–VE216 do not claim to solve those wake semantics.
+
+The later staged `VE217` candidate remains the planned bounded build for intentional-awake / wake-only behavior. It is not commissioned until separately committed, deployed, and production-tested.
+
+## ARC 001 sequence after this checkpoint
+
+Production-proven:
+
+- `ER153` — natural public-research intent — **PASS `11/11`**
+- `VE214` — semantic intended-speech reconstruction — **PASS `11/11`**
+- `VE215` — canonical Hallway research handoff — **PASS `7/7`**
+- `VE216` — durable research spoken return — **PASS `9/9`**
+
+Still local candidates / not production-proven at this checkpoint:
+
+- `DP210` — Maddy World Window observatory
+- `EB1320` — living episodic consolidation
+- `EB1330` — scored imagination and dream synthesis
+- `EB1340` — fundamental-gap Capability Foundry
+- `ERAE320` — growth-capital intelligence
+- `EB1350` — governed Development Forge
+- `EB1360` — experience-driven representation plasticity
+- `VE217` — intentional awake and wake-only behavior
+- `VE218` — local voice-signature continuity evidence
+
+## Exact next move
+
+**Next staged code build: `DP210` — Maddy World Window observatory.**
+
+Before any later stage is commissioned:
+
+1. apply only the staged `DP210` file;
+2. one file → one commit;
+3. deploy;
+4. run its production acceptance test;
+5. reconcile production truth before advancing to `EB1320`.
+
+A fresh real spoken Internet-research demonstration is still required as an end-to-end ARC 001 proof. The bounded VE214–VE216 acceptance proofs do not waive that requirement.
+
+## Anti-drift rules added by this checkpoint
+
+1. Component acceptance and end-to-end proof are separate.
+2. Three green seams do not automatically prove the full corridor carried real work.
+3. Raw server synthesis is not automatically Maddy's spoken truth.
+4. Returned work must stay bound to exact durable execution identity.
+5. Duplicate durable returns must not create duplicate Maddy speech.
+6. Public research must return evidence/provenance before it is represented as actual research.
+7. A transient 502 disappearing is not proof its root cause was permanently fixed.
+8. Wake acquisition, speaker ownership, semantic interpretation, research classification, execution, durable return, and speech are independently testable.
+9. Later ARC 001 candidates remain candidates until production accepts them.
+10. Production gets the vote.
+11. The North Star / Spooky bar remain unchanged.
+
+**Recovery keyword:** `ARC001-VE216-PROVEN-DP210-NEXT-20260920`
+
+**Fast recovery:** `Resume ARC001-VE216-PROVEN-DP210-NEXT-20260920 — Main91 Build State is the reconciliation base; ER153 is production-proven 11/11, VE214 production-proven 11/11, VE215 production-proven 7/7, and VE216 production-proven 9/9; current voice runtime is 2.0.16 / VE216-DURABLE-RESEARCH-SPOKEN-RETURN-20260920-A; bounded semantic speech, canonical Hallway handoff, exact durable research-return observation, evidence-URL preservation, duplicate suppression, and one-mouth governed spoken return are now production-proven at their exact scopes; a fresh real spoken Internet-research mission has not yet proven the complete chain to fresh public evidence and spoken return, so end-to-end research remains open; the earlier mixed 502 durability incident remains historical truth but did not reproduce in later production evidence, with Mission Engine durable hydration READY and degraded=false; wake-only and noisy-room speaker ownership remain open for later VE217; all remaining ARC 001 builds remain local candidates; next staged build is DP210, one file → one commit → one production test → Build State reconciliation.`
+
