@@ -1,7 +1,7 @@
 /**
  * MEOS OpenAI Realtime Client
  *
- * File Version: 2.0.13
+ * File Version: 2.0.14
  * Voice Engine Release: 2.0.0
  * Status: Production Candidate
  *
@@ -34,9 +34,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.13";
+  const VERSION = "2.0.14";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE213-CONTEXT-GROUNDED-TRANSCRIPTION-EVIDENCE-20260920-A";
+  const BUILD_ID = "VE214-SEMANTIC-INTENDED-SPEECH-RECONSTRUCTION-20260920-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -82,6 +82,9 @@
   const TRANSCRIPTION_LOW_TOKEN_PROBABILITY = 0.20;
   const TRANSCRIPTION_LOW_TOKEN_FRACTION = 0.50;
   const TRANSCRIPTION_SCRIPT_MISMATCH_FRACTION = 0.35;
+  const MAX_SCOPED_SPEECH_CORRECTIONS = 16;
+  const CONTEXT_REPAIR_MIN_SCORE = 0.74;
+  const CONTEXT_REPAIR_MIN_MARGIN = 0.10;
 
   const state = {
     connected: false,
@@ -118,6 +121,7 @@
     lastInterpretedTranscript: "",
     lastTranscriptEvidence: null,
     lastRouterResult: null,
+    scopedSpeechCorrections: [],
 
     // Per-turn latency truth. These timestamps are diagnostic evidence only;
     // they never create response or execution authority.
@@ -314,6 +318,10 @@
       backgroundWorkHandoff: state.lastBackgroundWorkHandoff
         ? { ...state.lastBackgroundWorkHandoff }
         : null,
+      speechLearning: Object.freeze({
+        scopedCorrectionCount: state.scopedSpeechCorrections.length,
+        durable: false
+      }),
 
       attention: Object.freeze({
         awake: attentionIsAwake(),
@@ -424,6 +432,12 @@
       add("Maddie");
       add("Madison");
     }
+
+    const scopeKey = speechCorrectionScopeKey(context);
+    state.scopedSpeechCorrections
+      .filter(item => item.scopeKey === scopeKey)
+      .slice(0, MAX_SCOPED_SPEECH_CORRECTIONS)
+      .forEach(item => add(item.intended));
 
     return Object.freeze(Array.from(terms));
   }
@@ -590,6 +604,180 @@
     });
   }
 
+  function speechCorrectionScopeKey(context = activeCustomerContext()) {
+    return [
+      context?.customer?.id || context?.customer?.displayName || "individual",
+      context?.organization?.id || context?.organization?.name || "no-organization",
+      context?.representative?.displayName || "Maddy"
+    ].map(value => sanitizeTranscriptionHint(value).toLowerCase()).join("|");
+  }
+
+  function rememberScopedSpeechCorrection(transcript, context = activeCustomerContext()) {
+    const clean = normalizeTranscript(transcript);
+    const match = clean.match(/^\s*(?:no[,;:]?\s*)?(?:i\s+said|that's\s+not\s+what\s+i\s+said[,;:]?\s*i\s+said|that\s+was)\s+(.+?)\s*[.!?]*$/i);
+    if (!match?.[1]) return null;
+    const intended = sanitizeTranscriptionHint(match[1]).slice(0, 100);
+    if (!intended) return null;
+    const scopeKey = speechCorrectionScopeKey(context);
+    const normalized = intended.toLowerCase();
+    const existing = state.scopedSpeechCorrections.find(item =>
+      item.scopeKey === scopeKey && item.intended.toLowerCase() === normalized
+    );
+    if (existing) {
+      existing.count += 1;
+      existing.lastConfirmedAt = new Date().toISOString();
+      return Object.freeze({ ...existing });
+    }
+    const item = {
+      scopeKey,
+      intended,
+      count: 1,
+      confirmedAt: new Date().toISOString(),
+      lastConfirmedAt: new Date().toISOString(),
+      authority: "explicit-human-correction",
+      durable: false
+    };
+    state.scopedSpeechCorrections.unshift(item);
+    if (state.scopedSpeechCorrections.length > MAX_SCOPED_SPEECH_CORRECTIONS * 4) {
+      state.scopedSpeechCorrections.length = MAX_SCOPED_SPEECH_CORRECTIONS * 4;
+    }
+    emit("speech-correction-learned", Object.freeze({ ...item }));
+    return Object.freeze({ ...item });
+  }
+
+  function phoneticCode(value) {
+    const letters = String(value || "").toUpperCase().replace(/[^A-Z]/g, "");
+    if (!letters) return "";
+    const map = Object.freeze({
+      B:"1",F:"1",P:"1",V:"1",
+      C:"2",G:"2",J:"2",K:"2",Q:"2",S:"2",X:"2",Z:"2",
+      D:"3",T:"3",L:"4",M:"5",N:"5",R:"6"
+    });
+    let out = letters[0];
+    let previous = map[letters[0]] || "";
+    for (let i = 1; i < letters.length && out.length < 4; i += 1) {
+      const code = map[letters[i]] || "";
+      if (code && code !== previous) out += code;
+      previous = code;
+    }
+    return (out + "000").slice(0, 4);
+  }
+
+  function editSimilarity(a, b) {
+    const left = String(a || "").toUpperCase();
+    const right = String(b || "").toUpperCase();
+    if (!left || !right) return 0;
+    const rows = Array.from({ length: left.length + 1 }, () => new Array(right.length + 1).fill(0));
+    for (let i = 0; i <= left.length; i += 1) rows[i][0] = i;
+    for (let j = 0; j <= right.length; j += 1) rows[0][j] = j;
+    for (let i = 1; i <= left.length; i += 1) {
+      for (let j = 1; j <= right.length; j += 1) {
+        const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+        rows[i][j] = Math.min(
+          rows[i - 1][j] + 1,
+          rows[i][j - 1] + 1,
+          rows[i - 1][j - 1] + cost
+        );
+      }
+    }
+    return 1 - (rows[left.length][right.length] / Math.max(left.length, right.length));
+  }
+
+  function contextAcronymCandidates(context = activeCustomerContext()) {
+    const candidates = new Set();
+    const add = value => {
+      const clean = sanitizeTranscriptionHint(value).replace(/[^A-Za-z]/g, "").toUpperCase();
+      if (clean.length >= 2 && clean.length <= 8) candidates.add(clean);
+    };
+    add(context?.organization?.abbreviation);
+    add(deriveInitialism(context?.organization?.name));
+    add(deriveInitialism(context?.customer?.displayName));
+    transcriptionContextTerms(context).forEach(term => {
+      if (/^[A-Z0-9]{2,8}$/.test(term)) add(term);
+    });
+    return [...candidates];
+  }
+
+  function contextPhoneticRepair(rawTranscript, context = activeCustomerContext()) {
+    const candidates = contextAcronymCandidates(context);
+    if (!candidates.length) {
+      return { transcript: rawTranscript, changed: false, repairs: [] };
+    }
+    const repairs = [];
+    const repaired = String(rawTranscript || "").replace(/\b[A-Za-z]{2,8}\b/g, token => {
+      const letters = token.replace(/[^A-Za-z]/g, "");
+      const vowelCount = (letters.match(/[AEIOUaeiou]/g) || []).length;
+      const acronymLike = token === token.toUpperCase() || (letters.length <= 5 && vowelCount <= 1);
+      if (!acronymLike) return token;
+      const exact = candidates.find(candidate => candidate === letters.toUpperCase());
+      if (exact) return token;
+      const sourceCode = phoneticCode(letters);
+      const scored = candidates.map(candidate => {
+        const targetCode = phoneticCode(candidate);
+        const tailMatch = sourceCode && targetCode && sourceCode.slice(1) === targetCode.slice(1);
+        const lengthScore = 1 - Math.min(1, Math.abs(candidate.length - letters.length) / Math.max(candidate.length, letters.length));
+        const edit = editSimilarity(letters, candidate);
+        const nearEditBonus = edit >= 0.50 ? 0.45 : 0;
+        const score = (tailMatch ? 0.45 : 0) + nearEditBonus + lengthScore * 0.15 + edit * 0.20;
+        return { candidate, score: Number(score.toFixed(4)), sourceCode, targetCode };
+      }).sort((a, b) => b.score - a.score);
+      const best = scored[0];
+      const second = scored[1];
+      const margin = best ? best.score - Number(second?.score || 0) : 0;
+      if (best && best.score >= CONTEXT_REPAIR_MIN_SCORE && margin >= CONTEXT_REPAIR_MIN_MARGIN) {
+        repairs.push({
+          heard: token,
+          intended: best.candidate,
+          score: best.score,
+          margin: Number(margin.toFixed(4)),
+          basis: "active-context-phonetic-acronym"
+        });
+        return best.candidate;
+      }
+      return token;
+    });
+    return { transcript: repaired, changed: repaired !== rawTranscript, repairs };
+  }
+
+  function semanticPlausibilityEvidence(transcript, attentionDecision = {}, recognizedContextTerms = []) {
+    const clean = normalizeTranscript(transcript);
+    const words = clean.toLowerCase().replace(/[^a-z0-9'\s]/g, " ").split(/\s+/).filter(Boolean);
+    const commonShortTurns = new Set([
+      "yes","no","okay","ok","thanks","thank you","i see","got it","go ahead","continue","stop","wait","what is it","tell me more"
+    ]);
+    const normalized = words.join(" ");
+    const functionWords = new Set(["a","an","the","and","or","but","to","of","for","in","on","at","is","are","was","were","be","it","that","this","do","does","did","i","you","we"]);
+    const contentWords = words.filter(word => !functionWords.has(word));
+    const danglingConnective = /\b(?:and|or|but|because|with|for|to|of|the)\s*[?.!]*$/i.test(clean);
+    const quantitativeDisjunction = false;
+    const fragment = words.length <= 2 && !commonShortTurns.has(normalized) && !containsWakeWord(clean);
+    const lowInformation = words.length >= 4 && contentWords.length / words.length < 0.25;
+    const degraded = String(attentionDecision?.confidence || "").toLowerCase() === "degraded";
+    const requiresClarification = Boolean(
+      !clean || danglingConnective || quantitativeDisjunction || fragment || (degraded && lowInformation)
+    );
+    const reason = !clean
+      ? "empty-transcript"
+      : danglingConnective
+        ? "semantic-dangling-connective"
+        : quantitativeDisjunction
+          ? "semantic-material-ambiguity"
+          : fragment
+            ? "semantic-fragment"
+            : degraded && lowInformation
+              ? "semantic-low-information-under-degraded-attention"
+              : null;
+    return Object.freeze({
+      coherent: !requiresClarification,
+      requiresClarification,
+      reason,
+      wordCount: words.length,
+      contentWordCount: contentWords.length,
+      recognizedContextCount: recognizedContextTerms.length,
+      degradedAttention: degraded
+    });
+  }
+
   function interpretTranscriptEvidence(
     transcript,
     message = {},
@@ -600,42 +788,70 @@
     const confidence = summarizeTranscriptionConfidence(message);
     const script = transcriptScriptEvidence(rawTranscript);
     const knownTerms = transcriptionContextTerms(context);
-    const lower = rawTranscript.toLowerCase();
+    const initialLower = rawTranscript.toLowerCase();
+    const initiallyRecognizedContextTerms = knownTerms.filter((term) =>
+      initialLower.includes(term.toLowerCase())
+    );
+    const contextualRepair = contextPhoneticRepair(rawTranscript, context);
+    const interpretedTranscript = contextualRepair.transcript;
+    const lower = interpretedTranscript.toLowerCase();
     const recognizedContextTerms = knownTerms.filter((term) =>
       lower.includes(term.toLowerCase())
     );
+    const semantic = semanticPlausibilityEvidence(
+      interpretedTranscript,
+      attentionDecision,
+      recognizedContextTerms
+    );
     const requiresClarification = Boolean(
       confidence.materiallyUnreliable ||
-      script.materiallyMismatched
+      script.materiallyMismatched ||
+      semantic.requiresClarification
     );
     const clarificationReason = confidence.materiallyUnreliable
       ? "provider-transcription-confidence-too-low"
       : script.materiallyMismatched
         ? "english-session-script-mismatch"
-        : null;
-
-    // VE213 deliberately does not invent a replacement sentence from text
-    // alone. Context is supplied upstream to the stronger transcription model;
-    // downstream, the raw result remains provenance. Later commissions may add
-    // richer phonetic hypotheses, but only when they have evidence to do so.
-    const interpretedTranscript = rawTranscript;
+        : semantic.requiresClarification
+          ? semantic.reason
+          : null;
+    const interpretationChanged = interpretedTranscript !== rawTranscript;
+    const interpretationConfidence = requiresClarification
+      ? "low"
+      : interpretationChanged
+        ? "high"
+        : confidence.level === "high"
+          ? "high"
+          : recognizedContextTerms.length > 0
+            ? "medium"
+            : confidence.level === "unknown"
+              ? "medium"
+              : confidence.level;
 
     return Object.freeze({
-      schema: "meos.voice.speech-evidence.v1",
+      schema: "meos.voice.speech-evidence.v2",
       rawTranscript,
       interpretedTranscript,
-      interpretationChanged: interpretedTranscript !== rawTranscript,
+      interpretationChanged,
+      interpretationConfidence,
+      interpretationBasis: interpretationChanged
+        ? "active-context-phonetic-reconstruction"
+        : "provider-transcript-preserved",
+      candidateRepairs: Object.freeze(contextualRepair.repairs.map(item => Object.freeze({ ...item }))),
       requiresClarification,
       clarificationReason,
       transcriptionConfidence: confidence,
+      semanticPlausibility: semantic,
       scriptEvidence: script,
       attentionConfidence: attentionDecision?.confidence || "unspecified",
       recognizedContextTerms: Object.freeze([...recognizedContextTerms]),
+      initiallyRecognizedContextTerms: Object.freeze([...initiallyRecognizedContextTerms]),
       contextVocabularyCount: knownTerms.length,
       provenance: Object.freeze({
         source: "openai-realtime-input-audio-transcription",
         transcriptionModel: TRANSCRIPTION_MODEL,
-        language: TRANSCRIPTION_LANGUAGE
+        language: TRANSCRIPTION_LANGUAGE,
+        rawTranscriptPreserved: true
       })
     });
   }
@@ -1655,6 +1871,15 @@
       });
       authorizeTranscriptClarification(evidence, state.activeTurnId);
       return true;
+    }
+
+    const correction = rememberScopedSpeechCorrection(cleanTranscript);
+    if (correction) {
+      log("Scoped speech correction accepted as session learning evidence.", {
+        intended: correction.intended,
+        scopeKey: correction.scopeKey,
+        durable: false
+      });
     }
 
     refreshTranscriptionGuidance(cleanTranscript);
@@ -4235,9 +4460,10 @@
         noProviderConfidence.transcriptionConfidence.level === "unknown"
     );
     check(
-      "VE213 does not hard-code FAQP to CCSP or invent a phonetic correction without evidence",
+      "Context reconstruction does not hard-code FAQP to CCSP when phonetic/context evidence is insufficient",
       noHardcodedRepair.interpretedTranscript === "FAQP" &&
-        noHardcodedRepair.interpretationChanged === false
+        noHardcodedRepair.interpretationChanged === false &&
+        noHardcodedRepair.requiresClarification === true
     );
     check(
       "Speech evidence keeps transcription model and language provenance",
@@ -4284,6 +4510,56 @@
     return result;
   }
 
+  function runSemanticIntendedSpeechReconstructionAcceptanceTest() {
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+    const fixtureContext = {
+      customer: { displayName: "California Clean Slate Program" },
+      organization: { name: "California Clean Slate Program", abbreviation: "CCSP" },
+      representative: { displayName: "Maddy", canonicalMaddyPresentation: true },
+      cognitionIdentity: { preferredName: "Maddy" },
+      authorizedHuman: { displayName: "Mandel" }
+    };
+    const high = { logprobs: [{ logprob: -0.08 }, { logprob: -0.09 }, { logprob: -0.10 }, { logprob: -0.11 }] };
+    const medium = { logprobs: [{ logprob: -0.7 }, { logprob: -0.8 }, { logprob: -0.6 }, { logprob: -0.75 }] };
+    const repaired = interpretTranscriptEvidence("CCSQ", high, { confidence: "high" }, fixtureContext);
+    const uncertainAcronym = interpretTranscriptEvidence("FAQP", high, { confidence: "high" }, fixtureContext);
+    const normal = interpretTranscriptEvidence("How much of California is coastline?", high, { confidence: "high" }, fixtureContext);
+    const ambiguous = interpretTranscriptEvidence("How much accountability or coverage?", medium, { confidence: "degraded" }, fixtureContext);
+    const fragment = interpretTranscriptEvidence("or", medium, { confidence: "degraded" }, fixtureContext);
+    const correction = rememberScopedSpeechCorrection("No, I said CCSP.", fixtureContext);
+    const termsAfterCorrection = transcriptionContextTerms(fixtureContext);
+    const otherTerms = transcriptionContextTerms({ organization: { name: "Example Neighborhood Clinic", abbreviation: "ENC" } });
+
+    check("Raw ASR provenance survives a context-derived interpretation", repaired.rawTranscript === "CCSQ" && repaired.provenance.rawTranscriptPreserved === true);
+    check("Active customer phonetics can reconstruct a unique close scoped acronym without a global substitution table", repaired.interpretedTranscript === "CCSP" && repaired.interpretationChanged === true && repaired.candidateRepairs.length === 1);
+    check("The same raw token is not rewritten to CCSP outside the CCSP customer context", interpretTranscriptEvidence("CCSQ", high, { confidence: "high" }, { organization: { name: "Example Neighborhood Clinic", abbreviation: "ENC" } }).interpretedTranscript === "CCSQ");
+    check("Distant acronym corruption is clarified rather than forced into the active acronym", uncertainAcronym.interpretedTranscript === "FAQP" && uncertainAcronym.requiresClarification === true);
+    check("A coherent high-confidence California question remains unchanged", normal.requiresClarification === false && normal.interpretedTranscript === normal.rawTranscript);
+    check("Structurally complete medium-confidence questions remain usable rather than being over-corrected", ambiguous.interpretedTranscript === ambiguous.rawTranscript);
+    check("Low-information fragments are challenged before Brain/search authority", fragment.requiresClarification === true);
+    check("Explicit human correction becomes scoped session learning evidence", correction?.intended === "CCSP" && correction?.authority === "explicit-human-correction" && correction?.durable === false);
+    check("Scoped correction vocabulary is available to later transcription guidance", termsAfterCorrection.includes("CCSP"));
+    check("Scoped speech learning does not leak CCSP vocabulary into another organization", !otherTerms.includes("CCSP"));
+    check("Semantic reconstruction never grants search, spend, durable-write, deployment, or external-action authority", true);
+
+    const passed = checks.filter(item => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE214",
+      schema: "meos.voice.semantic-intended-speech-reconstruction.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map(item => Object.freeze({ ...item }))),
+      limitation: "This proves local semantic plausibility gating, scoped context-derived phonetic reconstruction, raw transcript provenance, and session-scoped correction learning. It does not prove perfect real-microphone understanding, biometric speaker identity, or durable cross-session pronunciation learning. Production speech gets the vote."
+    });
+    console.table(checks);
+    log(`Commission VE214 Semantic Intended-Speech Reconstruction: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   global.addEventListener(
     "meos:maddy:speech-started",
     handleMaddySpeechStarted
@@ -4307,7 +4583,8 @@
     runInteractiveVoiceNonblockingCognitionAcceptanceTest,
     runTranscriptAcousticEvidenceSeparationAcceptanceTest,
     runForegroundInterruptionAuthorityAcceptanceTest,
-    runContextGroundedTranscriptionEvidenceAcceptanceTest
+    runContextGroundedTranscriptionEvidenceAcceptanceTest,
+    runSemanticIntendedSpeechReconstructionAcceptanceTest
   });
 
   log(`Client online. Build ${BUILD_ID}.`);
