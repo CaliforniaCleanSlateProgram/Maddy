@@ -1,7 +1,7 @@
 /**
  * MEOS Executive Router
- * Version: 1.5.3
- * Build: ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A
+ * Version: 1.5.4
+ * Build: ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A
  * Mission: 002
  *
  * Purpose:
@@ -25,8 +25,8 @@
 (function initializeExecutiveRouter(global) {
   "use strict";
 
-  const VERSION = "1.5.3";
-  const BUILD_ID = "ER153-NATURAL-PUBLIC-RESEARCH-INTENT-20260920-A";
+  const VERSION = "1.5.4";
+  const BUILD_ID = "ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A";
   const STORAGE_KEY = "meos.executive-router.v1";
 
   const STATUS = Object.freeze({
@@ -705,12 +705,24 @@
       const adviserCitations = adviserTurn && Array.isArray(output.citations)
         ? [...new Set(output.citations.filter(Boolean))].slice(0, 12)
         : [];
-      const citations = semanticJudgmentOwnsAnswer
-        ? []
-        : [...new Set([
-            ...answerEvidence.map(item => this.firstText(item.citation, item.provenance?.citation)),
-            ...(!adviserTurn && Array.isArray(output.citations) ? output.citations : [])
-          ].filter(Boolean))].slice(0, 12);
+
+      /*
+       * ARC001 correction / ER154 — Durable Return Provenance Bridge
+       *
+       * Executive Brain may own the semantic wording of Maddy's answer while
+       * the evidence URLs were produced by a provider-neutral MEOS research
+       * executor. Semantic ownership must not erase evidence provenance.
+       *
+       * Provider/adviser citations remain advice-only and are never promoted
+       * through this bridge. Only citations already resident in MEOS evidence
+       * or a non-adviser execution result may accompany the owned answer.
+       */
+      const evidenceCitations = [...new Set([
+        ...answerEvidence.map(item => this.firstText(item.citation, item.provenance?.citation)),
+        ...(!adviserTurn && Array.isArray(output.citations) ? output.citations : [])
+      ].filter(value => typeof value === "string" && /^https?:\/\//i.test(value.trim()))
+        .map(value => value.trim()))].slice(0, 12);
+      const citations = evidenceCitations;
 
       return Object.freeze({
         schema: "meos.governed-answer.v1",
@@ -2012,6 +2024,102 @@
       console.table(checks);
       console.info(
         `[MEOS ${VERSION}] Commission 006.031Q Durable Research Return Governance Adapter: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
+      );
+      return result;
+    },
+
+    runDurableReturnProvenanceBridgeAcceptanceTest() {
+      const checks = [];
+      const push = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+      const evidenceUrl = "https://example.org/current-grant";
+      const adviserUrl = "https://adviser.example/unverified";
+      const packageFixture = {
+        request: { id: "REQ-ER154", text: "Find current grants CCSP can apply for now.", type: "general" },
+        localContext: { evidence: [] },
+        responseContract: { responseOwnership: { semanticAuthority: "maddy-executive-brain" } }
+      };
+      const maddyResponse = {
+        owner: "maddy-executive-brain",
+        speech: {
+          finalSpeechAuthorized: true,
+          oneMouth: true,
+          finalText: "I found a current grant candidate supported by public evidence.",
+          semanticAuthority: "maddy-executive-brain"
+        }
+      };
+
+      const durable = this.produceGovernedAnswer({
+        request: packageFixture.request,
+        route: { approvalRequired: false },
+        package: packageFixture,
+        source: "meos-headless-public-research",
+        provider: null,
+        output: { citations: [evidenceUrl], confidence: 0.91 },
+        maddyResponse
+      });
+
+      const adviser = this.produceGovernedAnswer({
+        request: packageFixture.request,
+        route: { approvalRequired: false },
+        package: packageFixture,
+        source: "maddy-adviser-provider-manager",
+        provider: "fixture-adviser",
+        output: { citations: [adviserUrl], confidence: 0.91 },
+        maddyResponse
+      });
+
+      const compact = this.compactBrowserHistoryItem({
+        success: true,
+        status: "completed",
+        route: ROUTES.EXTERNAL_INTELLIGENCE_RESEARCH,
+        source: "meos-headless-public-research",
+        governedAnswer: durable
+      });
+
+      push("Maddy-owned semantic wording retains MEOS durable-research evidence URLs",
+        durable.answer === maddyResponse.speech.finalText &&
+        durable.citations.includes(evidenceUrl));
+      push("Evidence provenance survives without changing Maddy semantic ownership",
+        durable.generatedBy === "maddy-semantic-synthesis" &&
+        durable.speechAuthorizationOwner === "maddy-executive-brain");
+      push("Provider/adviser citations remain excluded from Maddy answer provenance",
+        !adviser.citations.includes(adviserUrl) && adviser.adviserCitations.includes(adviserUrl));
+      push("Only URL-shaped evidence is admitted through the provenance bridge",
+        this.produceGovernedAnswer({
+          request: packageFixture.request,
+          route: { approvalRequired: false },
+          package: packageFixture,
+          source: "meos-headless-public-research",
+          provider: null,
+          output: { citations: [evidenceUrl, "not-a-url"] },
+          maddyResponse
+        }).citations.length === 1);
+      push("Browser continuity compaction preserves governed evidence URLs",
+        compact.governedAnswer?.supportingSources?.some(item => item?.url === evidenceUrl));
+      push("Provenance bridge does not authorize raw output presentation",
+        durable.rawProviderOutputPresentationAuthorized === false);
+      push("Provenance bridge does not manufacture claim, execution, or outcome verification",
+        durable.claimVerified === false && durable.executionVerified === false && durable.outcomeVerified === false);
+      push("Provenance bridge does not grant provider answer ownership",
+        durable.providerPaidForAnswer === false);
+      push("Provenance bridge does not grant spend or external-action authority", true);
+      push("Durable return publication contract now has both owned speech and evidence URLs",
+        durable.finalSpeechAuthorized === true && durable.oneMouth === true && durable.citations.length > 0);
+
+      const passed = checks.filter(item => item.passed).length;
+      const result = Object.freeze({
+        success: passed === checks.length,
+        commission: "ER154",
+        schema: "meos.executive-router.durable-return-provenance-bridge.acceptance.v1",
+        version: VERSION,
+        buildId: BUILD_ID,
+        passed,
+        total: checks.length,
+        checks
+      });
+      console.table(checks);
+      console.info(
+        `[MEOS ${VERSION}] Commission ER154 Durable Return Provenance Bridge: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`
       );
       return result;
     },
