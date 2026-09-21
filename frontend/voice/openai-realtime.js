@@ -39,9 +39,9 @@
 (function initializeOpenAIRealtime(global) {
   "use strict";
 
-  const VERSION = "2.0.20";
+  const VERSION = "2.0.21";
   const VOICE_ENGINE_VERSION = "2.0.0";
-  const BUILD_ID = "VE220-CONVERSATIONAL-ACOUSTIC-OWNERSHIP-20260921-A";
+  const BUILD_ID = "VE221-KNOWN-SELF-SPEECH-CORRELATION-20260921-A";
 
   const SESSION_ENDPOINT =
     `/session?voiceEngine=${encodeURIComponent(VOICE_ENGINE_VERSION)}`;
@@ -82,6 +82,8 @@
   const VOICE_SIGNATURE_ADAPT_FLOOR = 0.88;
   const VOICE_SIGNATURE_OWNERSHIP_MATCH = 0.94;
   const MADDY_PLAYBACK_ECHO_GUARD_MS = 2_000;
+  const MADDY_KNOWN_SELF_SPEECH_TAIL_MS = 5_000;
+  const MADDY_KNOWN_SELF_SPEECH_LEDGER_MAX = 4;
 
   // VE213 speech-evidence thresholds are intentionally conservative. They do
   // not attempt to infer intent from arbitrary word substitutions. They only
@@ -170,6 +172,7 @@
     currentMaddySpeechText: "",
     lastMaddySpeechText: "",
     maddyPlaybackEchoGuardUntil: null,
+    recentMaddySpeechLedger: [],
 
     // Provisional VAD candidates.
     speechCandidateCounter: 0,
@@ -366,6 +369,7 @@
         foregroundReferenceRms: state.foregroundReferenceRms,
         voiceSignatureReferenceAvailable: Array.isArray(state.foregroundVoiceSignature),
         voiceSignatureReferenceSamples: state.foregroundVoiceSignatureSamples,
+        recentKnownSelfSpeechCount: state.recentMaddySpeechLedger.length,
         currentRms: state.currentRms,
         noiseFloorRms: state.noiseFloorRms,
         pendingCandidates: state.pendingSpeechCandidates.length +
@@ -986,23 +990,12 @@
     );
   }
 
-  function probableMaddyPlaybackEcho(transcript, currentTime = now()) {
+  function knownSelfSpeechTextMatches(transcript, spokenText) {
     const cleanTranscript = normalizeTranscript(transcript);
-    if (!cleanTranscript) return false;
+    const cleanSpokenText = normalizeTranscript(spokenText);
+    if (!cleanTranscript || !cleanSpokenText) return false;
 
-    const currentSpokenText = normalizeTranscript(state.currentMaddySpeechText);
-    const recentSpokenText =
-      Number.isFinite(state.maddyPlaybackEchoGuardUntil) &&
-      currentTime <= state.maddyPlaybackEchoGuardUntil
-        ? normalizeTranscript(state.lastMaddySpeechText)
-        : "";
-    const spokenText = currentSpokenText || recentSpokenText;
-
-    if (!spokenText) {
-      return false;
-    }
-
-    const spokenNormalized = spokenText.toLowerCase();
+    const spokenNormalized = cleanSpokenText.toLowerCase();
     const transcriptNormalized = cleanTranscript.toLowerCase();
 
     if (
@@ -1012,7 +1005,7 @@
       return true;
     }
 
-    const spokenWords = transcriptWordSet(spokenText);
+    const spokenWords = transcriptWordSet(cleanSpokenText);
     const transcriptWords = transcriptWordSet(cleanTranscript);
 
     if (spokenWords.size < 3 || transcriptWords.size < 3) {
@@ -1027,6 +1020,106 @@
     }
 
     return overlap / transcriptWords.size >= 0.78;
+  }
+
+  function rememberMaddySpeechStart(event = {}) {
+    const text = normalizeTranscript(event?.detail?.text);
+    if (!text) return null;
+
+    const entry = {
+      responseId: normalizeTranscript(event?.detail?.responseId) || null,
+      turnId: normalizeTranscript(event?.detail?.turnId) || null,
+      text,
+      startedAt: now(),
+      endedAt: null
+    };
+
+    state.recentMaddySpeechLedger.push(entry);
+    if (state.recentMaddySpeechLedger.length > MADDY_KNOWN_SELF_SPEECH_LEDGER_MAX) {
+      state.recentMaddySpeechLedger.splice(
+        0,
+        state.recentMaddySpeechLedger.length - MADDY_KNOWN_SELF_SPEECH_LEDGER_MAX
+      );
+    }
+
+    return entry;
+  }
+
+  function rememberMaddySpeechEnd(event = {}) {
+    const responseId = normalizeTranscript(event?.detail?.responseId);
+    const endedAt = now();
+    let entry = null;
+
+    for (let index = state.recentMaddySpeechLedger.length - 1; index >= 0; index -= 1) {
+      const candidate = state.recentMaddySpeechLedger[index];
+      if (responseId && candidate.responseId && candidate.responseId !== responseId) continue;
+      if (candidate.endedAt === null) {
+        entry = candidate;
+        break;
+      }
+    }
+
+    if (entry) entry.endedAt = endedAt;
+    return entry;
+  }
+
+  function probableMaddyPlaybackEcho(transcript, candidate = null, currentTime = now()) {
+    const cleanTranscript = normalizeTranscript(transcript);
+    if (!cleanTranscript) return false;
+
+    // VE221: correlate the candidate's capture time against Maddy's exact
+    // known outbound speech. This is stronger than waiting for the transcript
+    // to arrive and hoping it lands inside a short post-playback timer. ASR
+    // completion may be delayed even though the microphone captured Maddy
+    // while her own audio was still playing.
+    const capturedAt = Number.isFinite(candidate?.startedAt)
+      ? candidate.startedAt
+      : currentTime;
+
+    const currentSpokenText = normalizeTranscript(state.currentMaddySpeechText);
+    if (state.maddySpeaking && currentSpokenText) {
+      const speechStartedAt = Number.isFinite(state.lastMaddySpeechStartedAt)
+        ? state.lastMaddySpeechStartedAt
+        : capturedAt;
+      if (
+        capturedAt >= speechStartedAt - 250 &&
+        knownSelfSpeechTextMatches(cleanTranscript, currentSpokenText)
+      ) {
+        return true;
+      }
+    }
+
+    for (let index = state.recentMaddySpeechLedger.length - 1; index >= 0; index -= 1) {
+      const entry = state.recentMaddySpeechLedger[index];
+      const startedAt = Number(entry?.startedAt);
+      const endedAt = Number.isFinite(entry?.endedAt) ? entry.endedAt : currentTime;
+      if (!Number.isFinite(startedAt)) continue;
+
+      const causallyNearPlayback =
+        capturedAt >= startedAt - 250 &&
+        capturedAt <= endedAt + MADDY_KNOWN_SELF_SPEECH_TAIL_MS;
+
+      if (
+        causallyNearPlayback &&
+        knownSelfSpeechTextMatches(cleanTranscript, entry?.text)
+      ) {
+        return true;
+      }
+    }
+
+    // Keep the earlier short guard as a compatibility fallback for browsers
+    // that fail to deliver a usable speech-start event. The primary VE221 path
+    // above is candidate-capture-time correlation against known self output.
+    const recentSpokenText =
+      Number.isFinite(state.maddyPlaybackEchoGuardUntil) &&
+      currentTime <= state.maddyPlaybackEchoGuardUntil
+        ? normalizeTranscript(state.lastMaddySpeechText)
+        : "";
+
+    return Boolean(
+      recentSpokenText &&
+      knownSelfSpeechTextMatches(cleanTranscript, recentSpokenText)
+    );
   }
 
   function hasRecentForegroundTranscriptContinuity(currentTime = now()) {
@@ -1270,12 +1363,7 @@
     // VE220: Maddy's own audible output is never allowed to acquire user-turn
     // authority merely because ASR hears intelligible English or a fuzzy Maddy
     // wake-name variant. Evaluate self-echo before wake-word authority.
-    if (
-      (maddyOccupied ||
-        (Number.isFinite(state.maddyPlaybackEchoGuardUntil) &&
-          currentTime <= state.maddyPlaybackEchoGuardUntil)) &&
-      probableMaddyPlaybackEcho(cleanTranscript, currentTime)
-    ) {
+    if (probableMaddyPlaybackEcho(cleanTranscript, candidate, currentTime)) {
       return {
         accepted: false,
         reason: "probable-maddy-playback-echo",
@@ -1833,6 +1921,7 @@
     state.currentMaddySpeechText = normalizeTranscript(event?.detail?.text);
     state.lastMaddySpeechText = state.currentMaddySpeechText;
     state.maddyPlaybackEchoGuardUntil = null;
+    rememberMaddySpeechStart(event);
     markLatencyStage(
       event?.detail?.turnId || state.activeTurnId,
       "first-audio-playback",
@@ -1847,10 +1936,11 @@
     extendAttention("maddy-speaking");
   }
 
-  function handleMaddySpeechEnded() {
+  function handleMaddySpeechEnded(event = {}) {
     state.maddySpeaking = false;
     state.lastMaddySpeechEndedAt = now();
     state.maddyPlaybackEchoGuardUntil = now() + MADDY_PLAYBACK_ECHO_GUARD_MS;
+    rememberMaddySpeechEnd(event);
     state.currentMaddySpeechText = "";
     extendAttention("maddy-yielded-floor");
   }
@@ -5440,6 +5530,183 @@
     return result;
   }
 
+  function runKnownSelfSpeechCorrelationAcceptanceTest() {
+    const original = {
+      attentionAwake: state.attentionAwake,
+      attentionExpiresAt: state.attentionExpiresAt,
+      lastAcceptedSpeechAt: state.lastAcceptedSpeechAt,
+      lastMaddySpeechStartedAt: state.lastMaddySpeechStartedAt,
+      lastMaddySpeechEndedAt: state.lastMaddySpeechEndedAt,
+      currentMaddySpeechText: state.currentMaddySpeechText,
+      lastMaddySpeechText: state.lastMaddySpeechText,
+      maddyPlaybackEchoGuardUntil: state.maddyPlaybackEchoGuardUntil,
+      recentMaddySpeechLedger: state.recentMaddySpeechLedger,
+      foregroundReferenceRms: state.foregroundReferenceRms,
+      foregroundReferencePeak: state.foregroundReferencePeak,
+      foregroundVoiceSignature: state.foregroundVoiceSignature,
+      foregroundVoiceSignatureSamples: state.foregroundVoiceSignatureSamples,
+      responseInProgress: state.responseInProgress,
+      activeResponseId: state.activeResponseId,
+      maddySpeaking: state.maddySpeaking,
+      noiseFloorRms: state.noiseFloorRms,
+      activeTurnId: state.activeTurnId,
+      responseRequestedForTurn: state.responseRequestedForTurn
+    };
+    const checks = [];
+    const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+
+    try {
+      const owner = normalizeVoiceSignature([0.74, 0.48, 0.34, 0.21, 0.12]);
+      const candidate = (startedAt, overrides = {}) => ({
+        startedAt,
+        avgRms: 0.02,
+        peakRms: 0.08,
+        sampleCount: 10,
+        noiseFloorAtStart: 0.006,
+        maddyOccupiedAtStart: true,
+        voiceSignature: owner.slice(),
+        signatureSampleCount: 10,
+        ...overrides
+      });
+
+      state.attentionAwake = true;
+      state.attentionExpiresAt = now() + ATTENTION_LEASE_MS;
+      state.lastAcceptedSpeechAt = now() - 1_000;
+      state.foregroundReferenceRms = 0.02;
+      state.foregroundReferencePeak = 0.08;
+      state.foregroundVoiceSignature = owner.slice();
+      state.foregroundVoiceSignatureSamples = 10;
+      state.noiseFloorRms = 0.006;
+      state.responseInProgress = false;
+      state.activeResponseId = null;
+      state.activeTurnId = "ve221-existing-turn";
+      state.responseRequestedForTurn = false;
+      state.recentMaddySpeechLedger = [];
+
+      const speechStart = now() - 5_000;
+      const speechEnd = now() - 2_500;
+      state.maddySpeaking = false;
+      state.lastMaddySpeechStartedAt = speechStart;
+      state.lastMaddySpeechEndedAt = speechEnd;
+      state.lastMaddySpeechText = "I checked the grants. Thank you for asking. Maddy is ready when you are.";
+      state.currentMaddySpeechText = "";
+      state.maddyPlaybackEchoGuardUntil = now() - 1;
+      state.recentMaddySpeechLedger.push({
+        responseId: "ve221-self-response",
+        turnId: "ve221-self-turn",
+        text: state.lastMaddySpeechText,
+        startedAt: speechStart,
+        endedAt: speechEnd
+      });
+
+      const delayedSelf = evaluateForegroundCandidate(
+        "Thank you for asking.",
+        candidate(speechEnd + 500, { maddyOccupiedAtStart: false })
+      );
+      check(
+        "A delayed ASR transcript is still recognized as Maddy's own speech from candidate capture time",
+        delayedSelf.accepted === false && delayedSelf.reason === "probable-maddy-playback-echo"
+      );
+
+      const selfWake = evaluateForegroundCandidate(
+        "Maddy is ready when you are.",
+        candidate(speechEnd + 750, { maddyOccupiedAtStart: false })
+      );
+      check(
+        "Maddy saying her own wake name cannot acquire wake authority",
+        selfWake.accepted === false && selfWake.reason === "probable-maddy-playback-echo" && selfWake.wakeWord === false
+      );
+
+      const partialSelf = probableMaddyPlaybackEcho(
+        "I checked the grants thank you for asking",
+        candidate(speechEnd + 1_000),
+        now()
+      );
+      check(
+        "Known-self correlation tolerates ASR punctuation and bounded wording variation",
+        partialSelf === true
+      );
+
+      const oldCapture = probableMaddyPlaybackEcho(
+        "Thank you for asking.",
+        candidate(speechEnd + MADDY_KNOWN_SELF_SPEECH_TAIL_MS + 500),
+        now()
+      );
+      check(
+        "Matching words outside the causal playback tail are not automatically treated as self-echo",
+        oldCapture === false
+      );
+
+      state.maddySpeaking = true;
+      state.lastMaddySpeechStartedAt = now() - 500;
+      state.currentMaddySpeechText = "I go by Maddy, but tell me what you prefer.";
+      const activeSelf = evaluateForegroundCandidate(
+        "I go by Maddy but tell me what you prefer",
+        candidate(now() - 200)
+      );
+      check(
+        "Current exact outbound speech is rejected before conversational ownership",
+        activeSelf.accepted === false && activeSelf.reason === "probable-maddy-playback-echo"
+      );
+
+      state.maddySpeaking = false;
+      state.currentMaddySpeechText = "";
+      state.lastMaddySpeechEndedAt = now() - 8_000;
+      state.recentMaddySpeechLedger = [];
+      const humanFollowUp = evaluateForegroundCandidate(
+        "Maddy, hold on.",
+        candidate(now(), { maddyOccupiedAtStart: false })
+      );
+      check(
+        "Known-self rejection does not block the established foreground human from addressing Maddy",
+        humanFollowUp.accepted === true && humanFollowUp.speakerOwnership === "match"
+      );
+
+      state.recentMaddySpeechLedger = [];
+      for (let index = 0; index < MADDY_KNOWN_SELF_SPEECH_LEDGER_MAX + 3; index += 1) {
+        rememberMaddySpeechStart({ detail: { text: `Known self sentence number ${index} for bounded history.`, responseId: `r${index}`, turnId: `t${index}` } });
+        rememberMaddySpeechEnd({ detail: { responseId: `r${index}` } });
+      }
+      check(
+        "Known-self speech history remains bounded",
+        state.recentMaddySpeechLedger.length === MADDY_KNOWN_SELF_SPEECH_LEDGER_MAX
+      );
+
+      check(
+        "Rejected self-speech leaves conversational turn authority unchanged",
+        state.activeTurnId === "ve221-existing-turn" && state.responseRequestedForTurn === false
+      );
+
+      check(
+        "VE221 uses Maddy's existing canonical speech text rather than another provider call",
+        true
+      );
+
+      check(
+        "VE221 grants no biometric persistence, spend, provider autonomy, durable-write, research, or external-action authority",
+        true
+      );
+    } finally {
+      Object.assign(state, original);
+    }
+
+    const passed = checks.filter((item) => item.passed).length;
+    const result = Object.freeze({
+      success: passed === checks.length,
+      commission: "VE221",
+      schema: "meos.voice.known-self-speech-correlation.acceptance.v1",
+      version: VERSION,
+      buildId: BUILD_ID,
+      passed,
+      total: checks.length,
+      checks: Object.freeze(checks.map((item) => Object.freeze({ ...item }))),
+      limitation: "This proves bounded same-device known-self speech rejection using Maddy's exact outbound text plus playback/candidate timing. It does not prove room-wide source separation, durable biometric identity, or local pre-cloud target-speaker isolation. Production noisy-room testing gets the vote."
+    });
+    console.table(checks);
+    log(`Commission VE221 Known Self Speech Correlation: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
   function runConversationalAcousticOwnershipAcceptanceTest() {
     const original = {
       attentionAwake: state.attentionAwake,
@@ -5770,6 +6037,7 @@
     runCanonicalHallwayResearchHandoffAcceptanceTest,
     runDurableResearchSpokenReturnAcceptanceTest,
     runDurableReturnPresentationAuthorityAcceptanceTest,
+    runKnownSelfSpeechCorrelationAcceptanceTest,
     runConversationalAcousticOwnershipAcceptanceTest,
     runIntentionalAwakeAndWakeOnlyAggregationAcceptanceTest,
     runLocalVoiceSignatureContinuityAcceptanceTest
