@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.13.7
+ * Version: 4.13.8
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.7";
+  const DASHBOARD_VERSION = "4.13.8";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
@@ -29,7 +29,7 @@
   const COMMERCIAL_COMMAND_BUILD_ID = "OD4133-COMMERCIAL-COMMAND-DASHBOARD-20260914-A";
   const MADDY_ACTIVITY_SURFACE_BUILD_ID = "OD4135-CONVERSATIONAL-LIVE-MADDY-WORKSTREAM-20260915-A";
   const EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID = "OD4136-EXECUTIVE-DESK-TEXT-COMMAND-CONTINUITY-20260921-A";
-  const LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID = "OD4137-LIVE-MADDY-COGNITIVE-WORK-ACTIVITY-SURFACE-20260921-A";
+  const LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID = "OD4137A-LIVE-MADDY-ACTIVITY-EVIDENCE-ACCEPTANCE-CORRECTION-20260921-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -6776,6 +6776,14 @@ document
       }
     }) });
     const genericWork = getMaddyActivityModel({ hallway: fixture("executing") });
+    const unownedResearch = getMaddyActivityModel({ hallway: fixture("executing", {
+      execution: {
+        executionId: "execution-od4137-unowned-research",
+        executor: "headless-public-research",
+        state: "running",
+        serverOwned: false
+      }
+    }) });
     const reviewing = getMaddyActivityModel({ hallway: fixture("verifying", {
       execution: {
         executionId: "execution-od4137-review",
@@ -6792,7 +6800,6 @@ document
     const offline = buildMaddyActivityTransient("connection-lost", { executionId: "execution-od4137-research" });
     const online = buildMaddyActivityTransient("reconnected", { executionId: "execution-od4137-research" });
     const listenerSource = String(bindLiveMaddyCognitiveActivityEvents);
-    const modelSource = String(getMaddyActivityModel);
     const panel = ensureMaddyActivitySurface();
 
     const checks = [
@@ -6824,7 +6831,7 @@ document
       ].every((name) => listenerSource.includes(name))],
       ["Live status surface stays above the Maddy input", panel.parentElement?.classList?.contains("meos-maddy-desk") === true && panel.nextElementSibling?.classList?.contains("meos-maddy-desk-command") === true],
       ["Activity status never creates work, retries, provider calls, or spend", !/submitWork|takeIt|fetch\(|response\.create|automaticSpendUsd\s*:\s*[1-9]/.test(listenerSource)],
-      ["Specific research wording requires recorded durable executor evidence", /headless-public-research/.test(modelSource) && /durableExecutionPresentation/.test(modelSource)],
+      ["Specific research wording requires recorded durable executor evidence", unownedResearch.label === "Working…" && !/search|website|source/i.test(unownedResearch.label)],
       ["Activity rendering grants no external action authority", thinking.externalActionAuthorityGranted === false && thinking.automaticSpendUsd === 0 && thinking.paidDisplayRequests === 0 && thinking.providerDisplayRequests === 0]
     ].map(([name, passed]) => ({ name, passed: Boolean(passed) }));
 
@@ -6834,7 +6841,7 @@ document
 
     const result = {
       success: checks.every((check) => check.passed),
-      commission: "OD4137",
+      commission: "OD4137A",
       schema: "meos.dashboard.live-maddy-cognitive-work-activity.acceptance.v1",
       version: DASHBOARD_VERSION,
       buildId: LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID,
@@ -6843,7 +6850,7 @@ document
       checks
     };
     console.table(checks);
-    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4137 Live Maddy Cognitive & Work Activity Surface: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4137A Live Maddy Activity Evidence Acceptance Correction: ${result.success ? "PASS" : "FAIL"} (${result.passed}/${result.total}).`);
     return result;
   }
 
