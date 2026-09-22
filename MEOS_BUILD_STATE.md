@@ -1,9 +1,9 @@
-[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32498040/MEOS_BUILD_STATE.md)
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32499164/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32497643/MEOS_BUILD_STATE.md)
 # MEOS BUILD STATE — CURRENT CANONICAL CHECKPOINT
 
 **Checkpoint date:** 2026-09-21  
-**Checkpoint identity:** `MADDY-OD4138B-LIVE-IRA113-LIVE-CONSOLE-VERIFY-NEXT-20260921`  
+**Checkpoint identity:** `MADDY-OD4139-LIVE-DISPATCHER-BROWSER-PERSISTENCE-NEXT-20260921`  
 **Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation  
 **Runtime doctrine:** production evidence is authoritative. Source presence or local acceptance alone is not production proof.
 
@@ -14,24 +14,28 @@ This checkpoint supersedes the earlier `MADDY-UI-RESET-OD4138-NEXT-20260921` rec
 ## 1. CURRENT PRODUCTION LEAF STATE
 
 ### Customer-facing shell
-- Executive Hub: `v4.14.2`
-- Current UI build: `OD4138B-VERTICAL-CANONICAL-MADDY-PRESENCE-STAGE-20260921-A`
+- Executive Hub: `v4.15.0`
+- Current UI build: `OD4139-LAYERED-MADDY-CONTROL-CENTER-FOUNDATION-20260921-A`
 - Status: **LIVE-PROVEN**
-- Production acceptance: **15/15 PASS**
-- Human visual acceptance: **accepted for now**
+- Production acceptance: **18/18 PASS**
+- Product direction: **Maddy-first / conversation-first / controls layered underneath**
 
-The current primary UI is no longer the panoramic office. Desktop uses:
+OD4139 preserves the accepted OD4138B presence proportions and adds a deeper control layer without returning to a dashboard-first interface.
+
+Desktop now uses:
 - conversation/work area on the left;
 - large Canonical Maddy presence stage on the right;
-- `Conversation` and `Now` navigation at the top;
+- compact top navigation with `Conversation`, `Updates`, and `Controls`;
+- current customer mode visible without exposing founder-only controls;
 - composer aligned to the conversation area;
-- contextual `Now` surface for findings and approvals.
+- contextual `Updates` surface for real Hallway-backed findings and approvals;
+- contextual `Controls` drawer for governed options and autonomy.
 
 The current Canonical Maddy visual anchor remains:
 
 `frontend/maddy-canonical-v2.png`
 
-The present proportions are intentionally frozen for now so development can move forward instead of repeatedly rearranging the shell.
+The present Maddy/conversation proportions remain frozen for now. Future product work should deepen capabilities beneath this shell rather than repeatedly consuming the primary screen.
 
 ### Foreground activity truth
 - Executive Hub truth correction: `v4.14.1`
@@ -49,6 +53,33 @@ Historical/recovered work may remain available in continuity/history, but it can
 - Build: `OD4138-MADDY-CONVERSATIONAL-SHELL-FOUNDATION-20260921-A`
 - Production acceptance: **18/18 PASS**
 - Product status: retained as foundation beneath OD4138A/B.
+
+### Layered Maddy Control Center
+- Executive Hub: `v4.15.0`
+- Build: `OD4139-LAYERED-MADDY-CONTROL-CENTER-FOUNDATION-20260921-A`
+- Status: **LIVE-PROVEN**
+- Production acceptance: **18/18 PASS**
+
+OD4139 establishes the customer control-plane pattern:
+- Maddy and the conversation remain the primary visible experience;
+- `Controls` opens only when requested;
+- `Updates` replaces the ambiguous visible `Now` label while retaining the same real findings/approval purpose;
+- Professional and Personal remain customer-facing modes;
+- Founder/Gangsta controls are explicitly separated into a deeper private layer;
+- customer-facing controls map to existing server-authoritative MEOS authority instead of creating browser authority;
+- external actions and automatic spending remain separately governed;
+- timeout handling re-reads authority and does not blindly retry an uncertain write.
+
+The initial customer-facing work/initiative controls expose existing governed seams for:
+- Approved Work;
+- Office Dispatch;
+- Learning;
+- Monitoring & Follow-up;
+- Time & Deadlines;
+- Document Intake;
+- Continuous Cognition.
+
+This is a control-surface foundation, not a new authority system.
 
 ### Hallway / conversation boundary
 - Executive Hallway: `v1.5.9`
@@ -92,7 +123,8 @@ Current accepted desktop layout:
 - large Maddy presence area on the right;
 - conversation/work on the left;
 - top navigation rather than a permanent widget/sidebar wall;
-- `Now` exposes what Maddy found and what requires approval.
+- `Updates` exposes what Maddy found and what requires approval;
+- `Controls` opens governance only when the user asks for it.
 
 ### Mobile / Maddy Go compatibility
 Maddy Go does **not** need to be built first.
@@ -117,6 +149,18 @@ Prefer:
 - lightweight overlays;
 - top navigation;
 - temporary approval surfaces.
+
+### Control-plane simplicity
+The user should experience simple choices and clear outcomes while exact authority remains deeper in MEOS.
+
+Preserve this hierarchy:
+1. **Customer-simple layer** — Active/Pause, Professional/Personal, ordinary work/initiative controls, plain-English boundaries.
+2. **Advanced customer/admin layer** — privacy, memory, providers/connections, resources, notifications, approvals, audit, voice/vision/presence, system health when needed.
+3. **Founder/Gangsta layer** — private engineering controls, experimental capabilities, raw runtime truth, acceptance tests, provider internals and developer diagnostics.
+
+Do not expose Founder/Gangsta merely as another customer tab.
+
+Initiative and authority remain separate concepts: future controls may tune how proactive Maddy is, but initiative must never create spending, legal, privacy, submission, signature, publishing, or other consequential authority.
 
 ---
 
@@ -175,11 +219,12 @@ Warmer and more relational:
 Initially a relaxed state inside Personal rather than another cluttering top-level product shell.
 
 ### Founder Gangsta
-Private/founder-only:
+Private/founder-only and not exposed as a normal customer mode:
 - deeper engineering/system truth;
 - experimental controls;
 - broader personality range;
-- raw development detail where useful.
+- raw development detail where useful;
+- private control-plane access separated from Professional/Personal.
 
 ---
 
@@ -200,10 +245,10 @@ Canonical document-intake seam:
 The composer should remain the ordinary upload entry point.
 
 ### Findings
-`Now` must expose real Hallway-backed deliverables/findings.
+`Updates` must expose real Hallway-backed deliverables/findings.
 
 ### Approvals
-`Now` must expose real pending-approval truth.
+`Updates` must expose real pending-approval truth.
 
 Approval action must continue to reuse the existing governed Hallway/`Take It` authority rather than inventing UI authority.
 
@@ -275,10 +320,33 @@ IRA113:
 
 The integrity-quarantine path remains locally acceptance-proven; the production console proof did not directly inspect the quarantine record itself, so this checkpoint does not overclaim that individual production artifact.
 
-### Remaining console verification
-The same browser console still contains earlier `500/502/503` entries from startup/deploy transition windows, including Executive Learning and Executive Memory. Those entries predate the final healthy IRA113/Brain result and are **not automatically classified as current persistent defects**.
+### Clean-console verification after IRA113
+A later clean refresh remained free of the prior Executive Brain / Executive Memory / Executive Learning `500/502/503` storm.
 
-Next step is a clean-console / fresh-load verification after the service is stable. Only errors that recur after that clean boundary qualify for the next console-cleanup commission.
+Production then showed:
+- Mission durable authority hydration: `READY`;
+- organization readiness: `ready-durable-continuity`;
+- `ready: true`;
+- `degraded: false`;
+- Mission Dispatcher: `running: true`;
+- a later dispatcher start attempt returned `already_running`, which is expected because the dispatcher had already started.
+
+The prior fingerprint/degraded-continuity console defect remains closed.
+
+### Remaining console cleanup target
+The current live console exposes one separate warning:
+
+`MEOS Mission Dispatcher browser persistence suspended after storage quota exhaustion. Runtime dispatch continues; repeated writes are suppressed until persistence is explicitly retried.`
+
+Interpretation:
+- server/durable mission authority remains healthy;
+- Mission Dispatcher continues running;
+- this is **not** a current durable-authority failure;
+- the quota exhaustion belongs to the old browser-side dispatcher persistence/fallback path.
+
+This warning is the next narrow cleanup candidate. The preferred architectural direction is to keep the browser as bounded continuity/cache only and avoid dependence on quota-prone browser persistence now that server-owned durable authority is established.
+
+Do not suppress the warning without removing or bounding the underlying browser-persistence dependency.
 
 ---
 
@@ -306,20 +374,20 @@ Preserve:
 
 **Current recovery keyword:**
 
-`MADDY-OD4138B-LIVE-IRA113-LIVE-CONSOLE-VERIFY-NEXT-20260921`
+`MADDY-OD4139-LIVE-DISPATCHER-BROWSER-PERSISTENCE-NEXT-20260921`
 
 **Fast recovery:**
 
-`Resume MADDY-OD4138B-LIVE-IRA113-LIVE-CONSOLE-VERIFY-NEXT-20260921 — Executive Hub v4.14.2 / OD4138B is live-proven 15/15 and visually accepted; OD4138A foreground activity truth is live-proven 12/12 and fresh load correctly shows Ready; customer shell remains conversation-left / large Canonical Maddy-right with Conversation + Now top navigation, mobile-compatible rather than Maddy-Go-first, findings and approvals remain available through Now, widget-heavy/panoramic UI remains retired, present proportions are frozen for now, future digital-human Maddy may become a live webcam-like working presence and later expand fullscreen; IRA113 Institutional Repository Authority v1.1.3 is now production-confirmed, Executive Brain durable state returns HTTP 200 FOUND through google-workspace durable institutional authority, and the legacy payload fingerprint defect is closed; local IRA113 acceptance remains 20/20; remaining historical 500/502/503 console entries must be re-tested from a clean fresh-load boundary before selecting another console-cleanup commission; durable public-research disconnect/reconnect proof remains open.`
+`Resume MADDY-OD4139-LIVE-DISPATCHER-BROWSER-PERSISTENCE-NEXT-20260921 — Executive Hub v4.15.0 / OD4139 Layered Maddy Control Center is live-proven 18/18; customer experience remains conversation-left / large Canonical Maddy-right, with Updates and Controls as temporary deeper layers instead of dashboard clutter; Professional and Personal remain customer-facing while Founder/Gangsta is separated into a private deeper control plane; OD4138A foreground truth remains live-proven 12/12 and OD4138B presence stage remains live-proven 15/15; IRA113 Institutional Repository Authority v1.1.3 is production-confirmed and the durable Executive Brain fingerprint defect is closed; clean refresh shows Mission durable authority READY, organization ready-durable-continuity with degraded=false, and Mission Dispatcher running=true; the only demonstrated remaining console cleanup target is Mission Dispatcher browser persistence suspended after storage quota exhaustion while runtime dispatch continues; next brick should remove/bound the quota-prone browser dispatcher persistence dependency without weakening server durable authority; durable public-research disconnect/reconnect proof remains open; future digital-human Maddy may later expand fullscreen for immersive conversation/presentation.`
 
 ---
 
 ## 10. IMMEDIATE NEXT STEPS
 
-1. Commit this Build State reconciliation as its own one-file commit.
-2. Open a clean browser console and hard-refresh once after Render is stable.
-3. Verify IRA113 still reports `v1.1.3` and Executive Brain durable state remains HTTP `200`.
-4. Ignore old pre-refresh deploy-transition entries; capture only errors that recur after the clean boundary.
-5. Group any recurring errors by subsystem before changing code; do not suppress legitimate failures merely to make DevTools look quiet.
-6. Commission exactly one root-cause fix for the first demonstrated persistent subsystem fault.
+1. Commit this OD4139 production Build State reconciliation as its own one-file commit.
+2. Do not change the accepted Maddy/conversation/control proportions merely to chase UI novelty.
+3. Treat OD4139 as the current customer-facing control-surface foundation.
+4. Next engineering brick: isolate Mission Dispatcher browser persistence after storage quota exhaustion.
+5. Preserve server/durable Mission authority and running dispatch while removing or bounding obsolete quota-prone browser persistence.
+6. Keep customer-simple controls separate from advanced/admin controls and Founder/Gangsta controls.
 7. Keep the real bounded durable public-research disconnect/reconnect proof open for later completion.
