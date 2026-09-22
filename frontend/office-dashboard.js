@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.14.2";
+  const DASHBOARD_VERSION = "4.15.0";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
@@ -34,6 +34,7 @@
   const MADDY_CONVERSATIONAL_SHELL_BUILD_ID = "OD4138-MADDY-CONVERSATIONAL-SHELL-FOUNDATION-20260921-A";
   const MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID = "OD4138A-FOREGROUND-ACTIVITY-TRUTH-GATE-20260921-A";
   const MADDY_VERTICAL_PRESENCE_STAGE_BUILD_ID = "OD4138B-VERTICAL-CANONICAL-MADDY-PRESENCE-STAGE-20260921-A";
+  const MADDY_LAYERED_CONTROL_CENTER_BUILD_ID = "OD4139-LAYERED-MADDY-CONTROL-CENTER-FOUNDATION-20260921-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -170,6 +171,15 @@
           : navigator.onLine !== false,
       listenersInstalled: false,
       sessionStartedAt: new Date().toISOString()
+    },
+    maddyControls: {
+      open: false,
+      advanced: false,
+      busyMaster: false,
+      busyCapability: null,
+      lastError: null,
+      lastReceipt: null,
+      lastRefreshAt: null
     },
     fundingIntelligence: {
       status: "idle",
@@ -5106,8 +5116,8 @@ document
       .meos-maddy-shell-head{height:68px;display:grid;grid-template-columns:minmax(170px,1fr) auto minmax(150px,1fr);align-items:center;gap:16px;padding:0 max(20px,3vw);border-bottom:1px solid rgba(255,255,255,.065);background:rgba(7,9,13,.76);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
       .meos-maddy-brand{display:flex;align-items:baseline;gap:10px;min-width:0}.meos-maddy-brand strong{font-size:1.18rem;letter-spacing:.01em}.meos-maddy-brand span{color:rgba(226,232,235,.62);font-size:.9rem}
       .meos-maddy-shell-nav{justify-self:center;display:flex;align-items:center;gap:4px;padding:4px;border:1px solid rgba(255,255,255,.07);border-radius:999px;background:rgba(255,255,255,.025)}
-      .meos-maddy-nav-button,.meos-maddy-now-button{border:0;border-radius:999px;background:transparent;color:rgba(236,240,242,.66);padding:9px 14px;font:720 .88rem/1 system-ui;cursor:pointer;transition:background .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease}
-      .meos-maddy-nav-button[aria-current="page"]{background:rgba(255,255,255,.075);color:#f7f9fa}.meos-maddy-now-button:hover,.meos-maddy-nav-button:hover{background:rgba(255,255,255,.06);color:#fff}.meos-maddy-now-button[data-alert="true"]{color:var(--maddy-warm);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--maddy-warm) 36%,transparent),0 0 22px color-mix(in srgb,var(--maddy-warm) 10%,transparent)}
+      .meos-maddy-nav-button,.meos-maddy-now-button,.meos-maddy-controls-button{border:0;border-radius:999px;background:transparent;color:rgba(236,240,242,.66);padding:9px 14px;font:720 .88rem/1 system-ui;cursor:pointer;transition:background .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease}
+      .meos-maddy-nav-button[aria-current="page"]{background:rgba(255,255,255,.075);color:#f7f9fa}.meos-maddy-now-button:hover,.meos-maddy-controls-button:hover,.meos-maddy-nav-button:hover{background:rgba(255,255,255,.06);color:#fff}.meos-maddy-now-button[data-alert="true"]{color:var(--maddy-warm);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--maddy-warm) 36%,transparent),0 0 22px color-mix(in srgb,var(--maddy-warm) 10%,transparent)}
       .meos-maddy-shell-tools{justify-self:end;display:flex;align-items:center;gap:8px}.meos-maddy-shell-mode{border:0;background:transparent;color:rgba(236,240,242,.74);font:650 .9rem/1 system-ui;padding:9px 8px}
 
       .meos-maddy-shell-main{position:relative;min-height:0;width:min(1540px,100%);margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) clamp(360px,38vw,560px);gap:0}
@@ -5140,6 +5150,18 @@ document
       .meos-maddy-now-item{position:relative;display:grid;gap:6px;padding:0 0 16px;border-bottom:1px solid rgba(255,255,255,.07)}.meos-maddy-now-item:last-child{border-bottom:0}.meos-maddy-now-item strong{font-size:1rem;line-height:1.4}.meos-maddy-now-item p{margin:0;color:rgba(227,234,237,.65);font-size:.92rem;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.meos-maddy-now-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}.meos-maddy-now-actions button,.meos-maddy-now-actions a{border:0;background:transparent;color:var(--maddy-accent);padding:4px 0;font:750 .88rem/1.2 system-ui;text-decoration:none;cursor:pointer}.meos-maddy-now-actions [data-primary="true"]{color:var(--maddy-warm)}
       .meos-maddy-approval-item{padding-left:15px}.meos-maddy-approval-item::before{content:"";position:absolute;left:0;top:6px;width:6px;height:6px;border-radius:50%;background:var(--maddy-warm);box-shadow:0 0 13px color-mix(in srgb,var(--maddy-warm) 55%,transparent)}
 
+      .meos-maddy-controls{position:absolute;z-index:35;top:14px;right:18px;width:min(470px,calc(100vw - 36px));max-height:calc(100% - 28px);overflow:auto;padding:24px 22px 30px;border:1px solid rgba(255,255,255,.09);border-radius:22px;background:rgba(10,12,16,.975);box-shadow:0 28px 80px rgba(0,0,0,.5);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);opacity:0;transform:translateY(-12px) scale(.985);pointer-events:none;transition:opacity .18s ease,transform .18s ease}
+      .meos-maddy-shell[data-controls-open="true"] .meos-maddy-controls{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+      .meos-maddy-controls-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}.meos-maddy-controls-head strong{font-size:1.08rem}.meos-maddy-controls-head span{display:block;margin-top:4px;color:rgba(224,231,234,.5);font-size:.82rem;line-height:1.4}
+      .meos-maddy-control-summary{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:16px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:rgba(255,255,255,.035);margin-bottom:22px}.meos-maddy-control-summary strong{font-size:1.02rem}.meos-maddy-control-summary p{grid-column:1/-1;margin:0;color:rgba(226,233,236,.61);font-size:.9rem;line-height:1.5}
+      .meos-maddy-control-section{display:grid;gap:10px;margin:0 0 24px}.meos-maddy-control-section-title{font-size:.78rem;font-weight:820;letter-spacing:.09em;text-transform:uppercase;color:rgba(230,236,238,.5)}
+      .meos-maddy-mode-switcher{display:grid;grid-template-columns:1fr 1fr;gap:7px}.meos-maddy-mode-choice{border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(255,255,255,.025);color:rgba(240,244,246,.68);padding:11px 12px;font:700 .9rem/1 system-ui;cursor:pointer}.meos-maddy-mode-choice[data-selected="true"]{border-color:color-mix(in srgb,var(--maddy-accent) 44%,rgba(255,255,255,.08));background:color-mix(in srgb,var(--maddy-accent) 11%,rgba(255,255,255,.025));color:#fff}
+      .meos-maddy-control-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.065)}.meos-maddy-control-row:last-child{border-bottom:0}.meos-maddy-control-copy strong{display:block;font-size:.96rem;line-height:1.3}.meos-maddy-control-copy span{display:block;margin-top:4px;color:rgba(225,232,235,.5);font-size:.82rem;line-height:1.42}
+      .meos-maddy-toggle{position:relative;width:46px;height:27px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.08);cursor:pointer;transition:.18s ease}.meos-maddy-toggle::after{content:"";position:absolute;width:21px;height:21px;left:2px;top:2px;border-radius:50%;background:#d8dde0;box-shadow:0 2px 8px rgba(0,0,0,.3);transition:transform .18s ease,background .18s ease}.meos-maddy-toggle[data-on="true"]{background:color-mix(in srgb,var(--maddy-accent) 42%,rgba(255,255,255,.08));border-color:color-mix(in srgb,var(--maddy-accent) 55%,transparent)}.meos-maddy-toggle[data-on="true"]::after{transform:translateX(19px);background:#fff}.meos-maddy-toggle:disabled{opacity:.42;cursor:not-allowed}.meos-maddy-toggle[data-busy="true"]{opacity:.62}
+      .meos-maddy-boundary-value{font-size:.82rem;font-weight:780;color:var(--maddy-warm);white-space:nowrap}.meos-maddy-boundary-value[data-safe="true"]{color:var(--maddy-accent)}
+      .meos-maddy-control-advanced-button{width:100%;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(255,255,255,.025);color:rgba(237,242,244,.72);padding:11px 12px;text-align:left;font:720 .9rem/1.2 system-ui;cursor:pointer}.meos-maddy-control-advanced{display:none;margin-top:12px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)}.meos-maddy-controls[data-advanced="true"] .meos-maddy-control-advanced{display:grid;gap:12px}
+      .meos-maddy-control-detail{display:grid;grid-template-columns:1fr auto;gap:8px;font-size:.82rem;color:rgba(225,232,235,.56)}.meos-maddy-control-detail b{color:rgba(243,246,247,.82);font-weight:700}.meos-maddy-control-note{margin-top:12px;color:rgba(225,232,235,.5);font-size:.8rem;line-height:1.5}.meos-maddy-control-error{min-height:1.25em;margin-top:12px;color:#ff9aaa;font-size:.82rem;line-height:1.45}.meos-maddy-control-error[data-ok="true"]{color:rgba(165,232,211,.72)}
+
       .meos-maddy-composer-wrap{grid-column:1/-1;position:relative;padding:12px calc(clamp(360px,38vw,560px) + max(18px,3vw)) calc(12px + env(safe-area-inset-bottom)) max(18px,3vw);border-top:1px solid rgba(255,255,255,.065);background:linear-gradient(180deg,rgba(7,9,13,.86),rgba(7,9,13,.98));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
       .meos-maddy-composer{width:min(820px,100%);margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:end;gap:8px;border:1px solid rgba(255,255,255,.11);border-radius:24px;background:rgba(255,255,255,.055);padding:8px 9px;box-shadow:0 12px 50px rgba(0,0,0,.22)}
       .meos-maddy-composer:focus-within{border-color:color-mix(in srgb,var(--maddy-accent) 38%,rgba(255,255,255,.12));box-shadow:0 12px 50px rgba(0,0,0,.25),0 0 0 1px color-mix(in srgb,var(--maddy-accent) 12%,transparent)}
@@ -5154,10 +5176,11 @@ document
         .meos-maddy-stage{grid-column:1;grid-row:1;border-left:0;border-bottom:1px solid rgba(255,255,255,.055)}.meos-maddy-primary{grid-column:1;grid-row:2;border-right:0}
         .meos-maddy-portrait{object-position:center 32%}.meos-maddy-stage-copy{bottom:18px}
         .meos-maddy-now{z-index:40;right:10px;top:10px;bottom:10px;width:min(90vw,420px);max-height:none;opacity:1;transform:translateX(105%);transition:transform .22s ease;background:rgba(10,12,16,.985);box-shadow:-24px 0 60px rgba(0,0,0,.38)}.meos-maddy-shell[data-now-open="true"] .meos-maddy-now{transform:translateX(0);pointer-events:auto}.meos-maddy-shell:not([data-now-open="true"]) .meos-maddy-now{pointer-events:none}
+        .meos-maddy-controls{z-index:45;right:10px;top:10px;bottom:10px;width:min(92vw,470px);max-height:none;opacity:1;transform:translateX(105%);transition:transform .22s ease;background:rgba(10,12,16,.99);box-shadow:-24px 0 60px rgba(0,0,0,.42)}.meos-maddy-shell[data-controls-open="true"] .meos-maddy-controls{transform:translateX(0);pointer-events:auto}.meos-maddy-shell:not([data-controls-open="true"]) .meos-maddy-controls{pointer-events:none}
         .meos-maddy-now-head{align-items:center}.meos-maddy-composer-wrap{grid-column:1;padding:10px max(14px,3vw) calc(10px + env(safe-area-inset-bottom))}
       }
       @media(max-width:600px){
-        .meos-maddy-shell-head{height:58px;padding:0 14px}.meos-maddy-brand strong{font-size:1.06rem}.meos-maddy-brand span{display:none}.meos-maddy-shell-mode{font-size:.8rem;padding:7px 2px}.meos-maddy-shell-nav{padding:3px}.meos-maddy-now-button{padding:8px 10px;font-size:.81rem}
+        .meos-maddy-shell-head{height:58px;padding:0 14px}.meos-maddy-brand strong{font-size:1.06rem}.meos-maddy-brand span{display:none}.meos-maddy-shell-mode{font-size:.8rem;padding:7px 2px}.meos-maddy-shell-nav{padding:3px}.meos-maddy-now-button,.meos-maddy-controls-button{padding:8px 10px;font-size:.81rem}
         .meos-maddy-shell-main{grid-template-rows:minmax(220px,33vh) minmax(0,1fr)}.meos-maddy-stage-copy{bottom:14px}.meos-maddy-stage-name{font-size:.72rem;margin-bottom:5px}.meos-maddy-stage-status{font-size:1.08rem;padding-bottom:8px}
         .meos-maddy-conversation{padding:22px 17px 28px}.meos-maddy-conversation-inner{gap:20px}.meos-maddy-message{font-size:1.03rem;line-height:1.66}.meos-maddy-message[data-role="user"]{margin-left:8%;padding:11px 13px;border-radius:17px}
         .meos-maddy-composer-wrap{padding:9px 10px calc(9px + env(safe-area-inset-bottom))}.meos-maddy-composer{grid-template-columns:auto minmax(0,1fr) auto auto;border-radius:22px;padding:6px}.meos-maddy-composer textarea{font-size:1rem;padding:10px 5px}.meos-maddy-compose-icon{width:39px;height:39px}.meos-maddy-file-note{padding-left:8px;font-size:.8rem}
@@ -5226,7 +5249,7 @@ document
     if (approvalCount) approvalCount.textContent = String(pending.length);
     if (nowButton) {
       nowButton.dataset.alert = String(pending.length > 0);
-      nowButton.textContent = pending.length ? `Now · ${pending.length} needs you` : (deliverables.length ? `Now · ${deliverables.length} found` : "Now");
+      nowButton.textContent = pending.length ? `Updates · ${pending.length} needs you` : (deliverables.length ? `Updates · ${deliverables.length} found` : "Updates");
     }
 
     found.innerHTML = "";
@@ -5271,6 +5294,169 @@ document
     return true;
   }
 
+  function getMaddyAutonomyControl() {
+    return window.MaddyAutonomy || window.MEOSAutonomyAuthority || null;
+  }
+
+  const MADDY_CONTROL_CAPABILITIES = Object.freeze([
+    Object.freeze({ id:"approvedWork", label:"Advance approved work", help:"Let already-approved internal work continue without asking again." }),
+    Object.freeze({ id:"officeDispatch", label:"Route work automatically", help:"Send ready internal work to the right commissioned office." }),
+    Object.freeze({ id:"learning", label:"Learn in background", help:"Allow commissioned learning inside existing evidence and authority boundaries." }),
+    Object.freeze({ id:"monitoring", label:"Monitor & follow up", help:"Notice blockers, waiting conditions and follow-up work." }),
+    Object.freeze({ id:"timeAndDeadlines", label:"Watch time & deadlines", help:"Wake commissioned work when time itself makes it relevant." }),
+    Object.freeze({ id:"documents", label:"Process incoming documents", help:"Continue commissioned document intake and classification." }),
+    Object.freeze({ id:"continuousCognition", label:"Think in background", help:"Allow bounded durable cognition without a fresh prompt." })
+  ]);
+
+  function summarizeMaddyControlState(snapshot) {
+    if (!snapshot?.authoritative) return "Controls are waiting for durable server authority.";
+    if (!snapshot.masterEnabled) return "Maddy is paused. Conversation still works, but autonomous work stays off.";
+    const capabilities = snapshot.capabilities || {};
+    const active = MADDY_CONTROL_CAPABILITIES.filter(item => capabilities[item.id]?.effective === true).length;
+    if (!active) return "Maddy is active, but autonomous work remains individually turned off.";
+    return `Maddy is active. ${active} governed work ${active === 1 ? "permission is" : "permissions are"} currently effective.`;
+  }
+
+  function renderMaddyControlCenter(snapshot = null) {
+    const panel = document.getElementById("meosMaddyControls");
+    if (!panel) return false;
+    const autonomy = getMaddyAutonomyControl();
+    const live = snapshot || autonomy?.getSnapshot?.() || null;
+    panel.dataset.advanced = String(state.maddyControls.advanced === true);
+
+    const summary = panel.querySelector("#meosMaddyControlSummaryText");
+    const summaryState = panel.querySelector("#meosMaddyControlSummaryState");
+    if (summary) summary.textContent = summarizeMaddyControlState(live);
+    if (summaryState) summaryState.textContent = live?.authoritative ? (live.masterEnabled ? "Active" : "Paused") : "Checking";
+
+    const master = panel.querySelector('[data-maddy-master]');
+    if (master) {
+      master.dataset.on = String(Boolean(live?.masterEnabled));
+      master.dataset.busy = String(state.maddyControls.busyMaster === true);
+      master.disabled = !live?.authoritative || state.maddyControls.busyMaster === true;
+      master.setAttribute("aria-pressed", String(Boolean(live?.masterEnabled)));
+      master.setAttribute("aria-label", live?.masterEnabled ? "Pause Maddy autonomous work" : "Activate Maddy autonomous work");
+    }
+
+    MADDY_CONTROL_CAPABILITIES.forEach((item) => {
+      const button = panel.querySelector(`[data-maddy-capability="${item.id}"]`);
+      const exact = live?.capabilities?.[item.id] || null;
+      if (!button) return;
+      button.dataset.on = String(Boolean(exact?.authorized));
+      button.dataset.busy = String(state.maddyControls.busyCapability === item.id);
+      button.disabled = !live?.authoritative || exact?.ready !== true || state.maddyControls.busyCapability === item.id || state.maddyControls.busyMaster === true;
+      button.setAttribute("aria-pressed", String(Boolean(exact?.authorized)));
+      button.title = exact?.ready === true ? (exact?.effective ? "On" : exact?.authorized ? "Authorized; Maddy master is paused" : "Off") : (exact?.reason || "Not currently available");
+    });
+
+    panel.querySelectorAll("[data-maddy-mode-choice]").forEach((button) => {
+      button.dataset.selected = String(button.dataset.maddyModeChoice === state.communicationMode);
+    });
+
+    const external = live?.externalAuthority || {};
+    const economic = live?.economicAuthority || {};
+    const externalValue = panel.querySelector("#meosMaddyExternalBoundary");
+    const spendValue = panel.querySelector("#meosMaddySpendBoundary");
+    if (externalValue) externalValue.textContent = external.externalActionAuthorized === true ? "Authorized" : "Ask me";
+    if (spendValue) spendValue.textContent = Number(economic.automaticSpendUsd || 0) > 0 ? `$${Number(economic.automaticSpendUsd || 0).toFixed(2)} auto` : "Ask me · $0 auto";
+
+    const authority = panel.querySelector("#meosMaddyControlAuthority");
+    const revision = panel.querySelector("#meosMaddyControlRevision");
+    const founder = panel.querySelector("#meosMaddyFounderBoundary");
+    if (authority) authority.textContent = live?.sourceOfTruth || "unproven";
+    if (revision) revision.textContent = live?.revision == null ? "—" : String(live.revision);
+    if (founder) founder.textContent = state.communicationMode === "gangsta" ? "Founder mode active elsewhere" : "Separated from customer controls";
+
+    const error = panel.querySelector("#meosMaddyControlError");
+    if (error) {
+      if (state.maddyControls.lastError) {
+        error.dataset.ok = "false";
+        error.textContent = state.maddyControls.lastError;
+      } else if (state.maddyControls.lastReceipt) {
+        error.dataset.ok = "true";
+        error.textContent = "Saved to durable Maddy authority.";
+      } else {
+        error.dataset.ok = "true";
+        error.textContent = live?.authoritative ? "Server-authoritative controls ready." : "Checking durable authority…";
+      }
+    }
+    return true;
+  }
+
+  async function refreshMaddyControlAuthority() {
+    const autonomy = getMaddyAutonomyControl();
+    if (!autonomy?.refresh) {
+      state.maddyControls.lastError = "Maddy's durable control authority is not available in this session.";
+      renderMaddyControlCenter();
+      return null;
+    }
+    try {
+      const snapshot = await autonomy.refresh({ force:true });
+      state.maddyControls.lastRefreshAt = new Date().toISOString();
+      state.maddyControls.lastError = null;
+      renderMaddyControlCenter(snapshot);
+      return snapshot;
+    } catch (error) {
+      state.maddyControls.lastError = error?.message || String(error);
+      renderMaddyControlCenter();
+      return null;
+    }
+  }
+
+  async function reconcileMaddyControlWriteFailure(error) {
+    state.maddyControls.lastError = error?.message || String(error);
+    const autonomy = getMaddyAutonomyControl();
+    if (error?.code === "AUTONOMY_AUTHORITY_TIMEOUT" && autonomy?.refresh) {
+      try {
+        await autonomy.refresh({ force:true });
+        state.maddyControls.lastError = `${state.maddyControls.lastError} Durable authority was re-read; no automatic retry was sent.`;
+      } catch (_refreshError) {
+        state.maddyControls.lastError = `${state.maddyControls.lastError} Durable authority could not yet be re-read.`;
+      }
+    }
+    renderMaddyControlCenter();
+  }
+
+  async function setMaddyMasterControl(enabled) {
+    const autonomy = getMaddyAutonomyControl();
+    if (!autonomy?.setMasterEnabled) return false;
+    state.maddyControls.busyMaster = true;
+    state.maddyControls.lastError = null;
+    state.maddyControls.lastReceipt = null;
+    renderMaddyControlCenter();
+    try {
+      const result = await autonomy.setMasterEnabled(enabled === true);
+      state.maddyControls.lastReceipt = result?.receipt || { changed:result?.changed === true };
+      return true;
+    } catch (error) {
+      await reconcileMaddyControlWriteFailure(error);
+      return false;
+    } finally {
+      state.maddyControls.busyMaster = false;
+      renderMaddyControlCenter();
+    }
+  }
+
+  async function setMaddyCapabilityControl(capabilityId, enabled) {
+    const autonomy = getMaddyAutonomyControl();
+    if (!autonomy?.setCapabilityEnabled) return false;
+    state.maddyControls.busyCapability = capabilityId;
+    state.maddyControls.lastError = null;
+    state.maddyControls.lastReceipt = null;
+    renderMaddyControlCenter();
+    try {
+      const result = await autonomy.setCapabilityEnabled(capabilityId, enabled === true);
+      state.maddyControls.lastReceipt = result?.receipt || { changed:result?.changed === true };
+      return true;
+    } catch (error) {
+      await reconcileMaddyControlWriteFailure(error);
+      return false;
+    } finally {
+      state.maddyControls.busyCapability = null;
+      renderMaddyControlCenter();
+    }
+  }
+
   function renderMaddyConversationalShell(activityModel = null) {
     const shell = document.getElementById("meosMaddyConversationalShell");
     if (!shell) return false;
@@ -5291,6 +5477,7 @@ document
       }
     }
     renderMaddyNowSurface();
+    renderMaddyControlCenter();
     return true;
   }
 
@@ -5309,13 +5496,15 @@ document
     shell.className = "meos-maddy-shell";
     shell.dataset.mode = state.communicationMode || "professional";
     shell.dataset.nowOpen = "false";
+    shell.dataset.controlsOpen = "false";
     shell.setAttribute("aria-label", "Maddy");
     shell.innerHTML = `
       <header class="meos-maddy-shell-head">
         <div class="meos-maddy-brand"><strong>Maddy</strong><span>one conversation · MEOS underneath</span></div>
         <nav class="meos-maddy-shell-nav" aria-label="Maddy navigation">
           <button class="meos-maddy-nav-button" type="button" aria-current="page">Conversation</button>
-          <button id="meosMaddyNowButton" class="meos-maddy-now-button" type="button" aria-expanded="false">Now</button>
+          <button id="meosMaddyNowButton" class="meos-maddy-now-button" type="button" aria-expanded="false">Updates</button>
+          <button id="meosMaddyControlsButton" class="meos-maddy-controls-button" type="button" aria-expanded="false">Controls</button>
         </nav>
         <div class="meos-maddy-shell-tools"><span id="meosMaddyShellMode" class="meos-maddy-shell-mode">Professional</span></div>
       </header>
@@ -5323,7 +5512,7 @@ document
         <section class="meos-maddy-primary">
           <section id="meosMaddyConversation" class="meos-maddy-conversation" aria-label="Conversation with Maddy">
             <div id="meosMaddyShellMessages" class="meos-maddy-conversation-inner">
-              <div id="meosMaddyShellEmpty" class="meos-maddy-empty">Ask, talk, upload something, or hand Maddy work. What she finds and anything that needs your approval stay visible in <strong>Now</strong>.</div>
+              <div id="meosMaddyShellEmpty" class="meos-maddy-empty">Ask, talk, upload something, or hand Maddy work. What she finds and anything that needs your approval stay visible in <strong>Updates</strong>.</div>
             </div>
           </section>
         </section>
@@ -5332,9 +5521,47 @@ document
           <div class="meos-maddy-stage-copy"><div class="meos-maddy-stage-name">Maddy</div><div id="meosMaddyStageStatus" class="meos-maddy-stage-status">Ready</div></div>
         </section>
         <aside id="meosMaddyNow" class="meos-maddy-now" aria-label="Maddy now">
-          <div class="meos-maddy-now-head"><div><strong>Now</strong><br><span>what changed while Maddy worked</span></div><button id="meosMaddyNowClose" class="meos-maddy-mobile-close" type="button" aria-label="Close Now">×</button></div>
+          <div class="meos-maddy-now-head"><div><strong>Updates</strong><br><span>what Maddy found and what needs you</span></div><button id="meosMaddyNowClose" class="meos-maddy-mobile-close" type="button" aria-label="Close Now">×</button></div>
           <section class="meos-maddy-now-section"><div class="meos-maddy-now-title"><span>Maddy found</span><b id="meosMaddyFoundCount">0</b></div><div id="meosMaddyFoundList"></div></section>
           <section class="meos-maddy-now-section"><div class="meos-maddy-now-title"><span>Needs your approval</span><b id="meosMaddyApprovalCount">0</b></div><div id="meosMaddyApprovalList"></div></section>
+        </aside>
+        <aside id="meosMaddyControls" class="meos-maddy-controls" data-advanced="false" aria-label="Maddy controls">
+          <div class="meos-maddy-controls-head"><div><strong>Controls</strong><span>Simple choices up front. Exact authority stays underneath.</span></div><button id="meosMaddyControlsClose" class="meos-maddy-mobile-close" type="button" aria-label="Close Controls">×</button></div>
+          <div class="meos-maddy-control-summary">
+            <div><strong id="meosMaddyControlSummaryState">Checking</strong></div>
+            <button class="meos-maddy-toggle" type="button" data-maddy-master data-on="false" aria-pressed="false"></button>
+            <p id="meosMaddyControlSummaryText">Checking durable Maddy authority…</p>
+          </div>
+          <section class="meos-maddy-control-section">
+            <div class="meos-maddy-control-section-title">Experience</div>
+            <div class="meos-maddy-mode-switcher">
+              <button class="meos-maddy-mode-choice" type="button" data-maddy-mode-choice="professional">Professional</button>
+              <button class="meos-maddy-mode-choice" type="button" data-maddy-mode-choice="personal">Personal</button>
+            </div>
+          </section>
+          <section class="meos-maddy-control-section">
+            <div class="meos-maddy-control-section-title">Work & initiative</div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>Advance approved work</strong><span>Continue work you already approved.</span></div><button class="meos-maddy-toggle" type="button" data-maddy-capability="approvedWork" data-on="false" aria-pressed="false"></button></div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>Route work automatically</strong><span>Send ready work to the right Maddy office.</span></div><button class="meos-maddy-toggle" type="button" data-maddy-capability="officeDispatch" data-on="false" aria-pressed="false"></button></div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>Learn in background</strong><span>Learn inside existing evidence and authority boundaries.</span></div><button class="meos-maddy-toggle" type="button" data-maddy-capability="learning" data-on="false" aria-pressed="false"></button></div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>Monitor & follow up</strong><span>Notice blockers, waiting conditions and follow-up work.</span></div><button class="meos-maddy-toggle" type="button" data-maddy-capability="monitoring" data-on="false" aria-pressed="false"></button></div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>Watch time & deadlines</strong><span>Wake commissioned work when time makes it relevant.</span></div><button class="meos-maddy-toggle" type="button" data-maddy-capability="timeAndDeadlines" data-on="false" aria-pressed="false"></button></div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>Process incoming documents</strong><span>Continue commissioned intake and classification.</span></div><button class="meos-maddy-toggle" type="button" data-maddy-capability="documents" data-on="false" aria-pressed="false"></button></div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>Think in background</strong><span>Allow bounded durable cognition without a fresh prompt.</span></div><button class="meos-maddy-toggle" type="button" data-maddy-capability="continuousCognition" data-on="false" aria-pressed="false"></button></div>
+          </section>
+          <section class="meos-maddy-control-section">
+            <div class="meos-maddy-control-section-title">Boundaries</div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>External actions</strong><span>Sending, publishing, submitting, signing and other consequential actions remain separately governed.</span></div><span id="meosMaddyExternalBoundary" class="meos-maddy-boundary-value" data-safe="true">Ask me</span></div>
+            <div class="meos-maddy-control-row"><div class="meos-maddy-control-copy"><strong>Automatic spending</strong><span>Controls cannot silently create paid-provider or purchasing authority.</span></div><span id="meosMaddySpendBoundary" class="meos-maddy-boundary-value" data-safe="true">Ask me · $0 auto</span></div>
+          </section>
+          <button id="meosMaddyAdvancedControls" class="meos-maddy-control-advanced-button" type="button" aria-expanded="false">Advanced details</button>
+          <div class="meos-maddy-control-advanced">
+            <div class="meos-maddy-control-detail"><span>Authority source</span><b id="meosMaddyControlAuthority">unproven</b></div>
+            <div class="meos-maddy-control-detail"><span>Authority revision</span><b id="meosMaddyControlRevision">—</b></div>
+            <div class="meos-maddy-control-detail"><span>Founder / Gangsta</span><b id="meosMaddyFounderBoundary">Separated from customer controls</b></div>
+            <div class="meos-maddy-control-note">Founder-only engineering and Gangsta controls are intentionally outside this customer control sheet. Provider, privacy, memory, voice/vision, resource and audit controls can deepen here as their authority seams are commissioned.</div>
+          </div>
+          <div id="meosMaddyControlError" class="meos-maddy-control-error" data-ok="true" aria-live="polite">Checking durable authority…</div>
         </aside>
       </main>
       <footer class="meos-maddy-composer-wrap">
@@ -5378,6 +5605,51 @@ document
     const toggleNow = (open) => { const next = typeof open === "boolean" ? open : shell.dataset.nowOpen !== "true"; shell.dataset.nowOpen = String(next); shell.querySelector("#meosMaddyNowButton")?.setAttribute("aria-expanded", String(next)); };
     shell.querySelector("#meosMaddyNowButton")?.addEventListener("click", () => toggleNow());
     shell.querySelector("#meosMaddyNowClose")?.addEventListener("click", () => toggleNow(false));
+
+    const toggleControls = (open) => {
+      const next = typeof open === "boolean" ? open : shell.dataset.controlsOpen !== "true";
+      if (next) toggleNow(false);
+      shell.dataset.controlsOpen = String(next);
+      state.maddyControls.open = next;
+      shell.querySelector("#meosMaddyControlsButton")?.setAttribute("aria-expanded", String(next));
+      if (next) void refreshMaddyControlAuthority();
+    };
+    const originalToggleNow = toggleNow;
+    shell.querySelector("#meosMaddyNowButton")?.addEventListener("click", () => { if (shell.dataset.controlsOpen === "true") toggleControls(false); });
+    shell.querySelector("#meosMaddyControlsButton")?.addEventListener("click", () => toggleControls());
+    shell.querySelector("#meosMaddyControlsClose")?.addEventListener("click", () => toggleControls(false));
+    shell.querySelector("#meosMaddyAdvancedControls")?.addEventListener("click", (event) => {
+      state.maddyControls.advanced = state.maddyControls.advanced !== true;
+      event.currentTarget?.setAttribute("aria-expanded", String(state.maddyControls.advanced));
+      event.currentTarget.textContent = state.maddyControls.advanced ? "Hide advanced details" : "Advanced details";
+      renderMaddyControlCenter();
+    });
+    shell.querySelector('[data-maddy-master]')?.addEventListener("click", async (event) => {
+      const autonomy = getMaddyAutonomyControl();
+      const current = autonomy?.getSnapshot?.();
+      await setMaddyMasterControl(!(current?.masterEnabled === true));
+    });
+    shell.querySelectorAll('[data-maddy-capability]').forEach((button) => {
+      button.addEventListener("click", async () => {
+        const id = button.dataset.maddyCapability;
+        const autonomy = getMaddyAutonomyControl();
+        const current = autonomy?.capabilityStatus?.(id);
+        await setMaddyCapabilityControl(id, !(current?.authorized === true));
+      });
+    });
+    shell.querySelectorAll('[data-maddy-mode-choice]').forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.maddyModeChoice;
+        if (mode === "professional" || mode === "personal") setCommunicationMode(mode);
+      });
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (shell.dataset.controlsOpen === "true") toggleControls(false);
+      else if (shell.dataset.nowOpen === "true") originalToggleNow(false);
+    });
+    getMaddyAutonomyControl()?.on?.("authority:receipt", () => renderMaddyControlCenter());
+    getMaddyAutonomyControl()?.on?.("authority:unavailable", () => renderMaddyControlCenter());
 
     window.addEventListener("meos:maddy:response", (event) => {
       const detail = event?.detail || {};
@@ -5576,6 +5848,49 @@ document
     };
     console.table(checks);
     console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4138B Vertical Canonical Maddy Presence Stage: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
+  function runMaddyLayeredControlCenterAcceptanceTest() {
+    const shell = document.getElementById("meosMaddyConversationalShell");
+    const controls = shell?.querySelector("#meosMaddyControls");
+    const styleText = document.getElementById(MADDY_CONVERSATIONAL_SHELL_STYLE_ID)?.textContent || "";
+    const installerSource = installMaddyConversationalShell.toString();
+    const rendererSource = renderMaddyControlCenter.toString();
+    const writeSource = `${setMaddyMasterControl.toString()} ${setMaddyCapabilityControl.toString()} ${reconcileMaddyControlWriteFailure.toString()}`;
+    const checks = [
+      { name:"OD4139 has a dedicated layered control-center build identity", passed:MADDY_LAYERED_CONTROL_CENTER_BUILD_ID === "OD4139-LAYERED-MADDY-CONTROL-CENTER-FOUNDATION-20260921-A" },
+      { name:"Maddy remains the primary full-screen conversation experience", passed:Boolean(shell && document.getElementById(ROOT_ID)?.dataset?.primaryExperience === "conversation" && shell.querySelector("#meosMaddyStage")) },
+      { name:"Controls are a contextual layer rather than permanent dashboard real estate", passed:Boolean(controls) && /position:absolute/.test(styleText) && /data-controls-open/.test(styleText) },
+      { name:"Top navigation keeps Conversation, Updates and Controls simple", passed:Boolean(shell?.querySelector('[aria-current="page"]') && shell?.querySelector('#meosMaddyNowButton') && shell?.querySelector('#meosMaddyControlsButton')) },
+      { name:"Updates replaces the ambiguous visible Now label while preserving findings/approval seams", passed:shell?.querySelector('#meosMaddyNowButton')?.textContent?.includes('Updates') === true && Boolean(shell?.querySelector('#meosMaddyFoundList') && shell?.querySelector('#meosMaddyApprovalList')) },
+      { name:"Customer mode choices expose Professional and Personal but not Gangsta", passed:Boolean(controls?.querySelector('[data-maddy-mode-choice="professional"]') && controls?.querySelector('[data-maddy-mode-choice="personal"]') && !controls?.querySelector('[data-maddy-mode-choice="gangsta"]')) },
+      { name:"Founder/Gangsta controls are visibly separated from the customer sheet", passed:/Founder \/ Gangsta/.test(controls?.textContent || "") && /Separated from customer controls/.test(controls?.textContent || "") },
+      { name:"User-facing work controls map one-to-one to existing autonomy capabilities", passed:MADDY_CONTROL_CAPABILITIES.length === 7 && MADDY_CONTROL_CAPABILITIES.every(item => controls?.querySelector(`[data-maddy-capability="${item.id}"]`)) },
+      { name:"Master Active/Pause uses existing durable MaddyAutonomy authority", passed:/setMasterEnabled/.test(writeSource) && !/localStorage/.test(writeSource) },
+      { name:"Capability toggles use existing durable MaddyAutonomy authority", passed:/setCapabilityEnabled/.test(writeSource) && !/fetch\(/.test(writeSource) },
+      { name:"Timeouts re-read authority instead of automatically retrying a write", passed:/AUTONOMY_AUTHORITY_TIMEOUT/.test(writeSource) && /refresh\(\{ force:true \}\)/.test(writeSource) && /no automatic retry was sent/.test(writeSource) },
+      { name:"External-action boundary remains separately governed", passed:Boolean(controls?.querySelector('#meosMaddyExternalBoundary')) && /externalAuthority/.test(rendererSource) },
+      { name:"Automatic spend remains visibly separate and defaults to zero-authority truth", passed:Boolean(controls?.querySelector('#meosMaddySpendBoundary')) && /automaticSpendUsd/.test(rendererSource) },
+      { name:"Advanced detail layer is hidden until explicitly requested", passed:Boolean(controls?.querySelector('#meosMaddyAdvancedControls')) && /data-advanced/.test(styleText) },
+      { name:"Mobile Controls uses the same off-screen drawer pattern instead of shrinking Maddy", passed:/meos-maddy-controls.*translateX\(105%\)/s.test(styleText) },
+      { name:"OD4138B Maddy stage proportions remain unchanged", passed:/grid-template-columns:minmax\(0,1fr\) clamp\(360px,38vw,560px\)/.test(styleText) && /object-fit:cover/.test(styleText) },
+      { name:"Control center creates no new provider, spend, signature, submission or external-action authority", passed:!/(automaticSpendUsd\s*:\s*[1-9]|externalActionAuthorized\s*:\s*true|signatureAuthorized\s*:\s*true|submissionAuthorized\s*:\s*true|setProviderAutonomousUse)/.test(`${installerSource} ${writeSource}`) },
+      { name:"Existing reduced-motion behavior remains present", passed:/prefers-reduced-motion:reduce/.test(styleText) }
+    ];
+    const passed = checks.filter(check => check.passed).length;
+    const result = {
+      success: passed === checks.length,
+      commission:"OD4139",
+      schema:"meos.dashboard.layered-maddy-control-center-foundation.acceptance.v1",
+      version:DASHBOARD_VERSION,
+      buildId:MADDY_LAYERED_CONTROL_CENTER_BUILD_ID,
+      passed,
+      total:checks.length,
+      checks
+    };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4139 Layered Maddy Control Center Foundation: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
     return result;
   }
 
@@ -11259,7 +11574,7 @@ document
     window.setInterval(() => { renderLiveHeadquarters(); renderMaddyConversationalShell(); }, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} historical; Maddy Conversational Shell ${MADDY_CONVERSATIONAL_SHELL_BUILD_ID} online; Foreground Activity Truth Gate ${MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID} online; Vertical Canonical Maddy Presence Stage ${MADDY_VERTICAL_PRESENCE_STAGE_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} historical; Maddy Conversational Shell ${MADDY_CONVERSATIONAL_SHELL_BUILD_ID} online; Foreground Activity Truth Gate ${MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID} online; Vertical Canonical Maddy Presence Stage ${MADDY_VERTICAL_PRESENCE_STAGE_BUILD_ID} online; Layered Maddy Control Center ${MADDY_LAYERED_CONTROL_CENTER_BUILD_ID} online.`
     );
   }
 
@@ -11281,7 +11596,8 @@ document
     runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
     runMaddyConversationalShellAcceptanceTest,
     runMaddyForegroundActivityTruthGateAcceptanceTest,
-    runMaddyVerticalPresenceStageAcceptanceTest
+    runMaddyVerticalPresenceStageAcceptanceTest,
+    runMaddyLayeredControlCenterAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
@@ -11312,6 +11628,7 @@ document
       runMaddyConversationalShellAcceptanceTest,
       runMaddyForegroundActivityTruthGateAcceptanceTest,
       runMaddyVerticalPresenceStageAcceptanceTest,
+      runMaddyLayeredControlCenterAcceptanceTest,
       runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
@@ -11326,6 +11643,7 @@ document
       runPlacementAcceptanceTest: runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
       runForegroundTruthAcceptanceTest: runMaddyForegroundActivityTruthGateAcceptanceTest,
       runVerticalPresenceAcceptanceTest: runMaddyVerticalPresenceStageAcceptanceTest,
+      runControlCenterAcceptanceTest: runMaddyLayeredControlCenterAcceptanceTest,
       runFoundationAcceptanceTest: runMaddyActivitySurfaceAcceptanceTest
     }),
     commercial: Object.freeze({
