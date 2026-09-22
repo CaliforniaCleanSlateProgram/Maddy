@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.13.9
+ * Version: 4.14.0
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.13.9";
+  const DASHBOARD_VERSION = "4.14.0";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
@@ -31,6 +31,7 @@
   const EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID = "OD4136-EXECUTIVE-DESK-TEXT-COMMAND-CONTINUITY-20260921-A";
   const LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID = "OD4137A-LIVE-MADDY-ACTIVITY-EVIDENCE-ACCEPTANCE-CORRECTION-20260921-A";
   const LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID = "OD4137B-PANORAMIC-MADDY-ACTIVITY-SURFACE-PLACEMENT-20260921-A";
+  const MADDY_CONVERSATIONAL_SHELL_BUILD_ID = "OD4138-MADDY-CONVERSATIONAL-SHELL-FOUNDATION-20260921-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5067,9 +5068,351 @@ document
     updateClockAndGreeting();
     renderBuildProgress();
     createOfficeDashboard();
-    installImagePanoramicExecutiveOffice(root);
+    installMaddyConversationalShell(root);
 
     return root;
+  }
+
+
+  /* Commission OD4138 — Maddy Conversational Shell Foundation
+   *
+   * Product direction: conversation first; Canonical Maddy is the presence,
+   * MEOS remains the machinery underneath. The panoramic office and permanent
+   * widget wall are retired from the primary customer surface. This commission
+   * changes presentation only: it reuses canonical request, document intake,
+   * Hallway, deliverable, evidence, voice and OD4137A activity truth seams.
+   */
+  const MADDY_CONVERSATIONAL_SHELL_STYLE_ID = "meosMaddyConversationalShellStyles";
+
+  function injectMaddyConversationalShellStyles() {
+    if (document.getElementById(MADDY_CONVERSATIONAL_SHELL_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = MADDY_CONVERSATIONAL_SHELL_STYLE_ID;
+    style.textContent = `
+      body.meos-conversation-shell-active{margin:0!important;overflow:hidden!important;background:#07090d!important;color:#f5f6f7!important}
+      body.meos-conversation-shell-active [data-meos-navigation]{display:none!important}
+      body.meos-conversation-shell-active #meosExecutiveOfficeControl{position:absolute!important;left:-100000px!important;top:-100000px!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
+      #${ROOT_ID}{position:fixed!important;inset:0!important;z-index:9000!important;width:100vw!important;height:100dvh!important;min-height:100vh!important;overflow:hidden!important;background:#07090d!important}
+      #${ROOT_ID} .meos-dashboard-shell{position:absolute!important;left:-100000px!important;top:-100000px!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
+
+      .meos-maddy-shell{--maddy-accent:#7bdff0;--maddy-warm:#d6ad73;position:absolute;inset:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:radial-gradient(circle at 50% -12%,rgba(54,91,114,.24),transparent 38%),linear-gradient(180deg,#0a0d12 0%,#07090d 52%,#080a0e 100%);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f4f7f8;isolation:isolate}
+      .meos-maddy-shell[data-mode="personal"]{--maddy-accent:#a7e4df;--maddy-warm:#e2b78b;background:radial-gradient(circle at 50% -10%,rgba(97,76,107,.28),transparent 40%),linear-gradient(180deg,#100e14 0%,#090a0e 55%,#08090c 100%)}
+      .meos-maddy-shell[data-mode="gangsta"]{--maddy-accent:#e8bf78;--maddy-warm:#e8bf78;background:radial-gradient(circle at 50% -8%,rgba(125,83,35,.28),transparent 40%),linear-gradient(180deg,#100e0b 0%,#090a0d 55%,#07080a 100%)}
+      .meos-maddy-shell::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,.015),transparent);opacity:.75}
+
+      .meos-maddy-shell-head{height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 max(20px,3vw);border-bottom:1px solid rgba(255,255,255,.065);background:rgba(7,9,13,.72);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+      .meos-maddy-brand{display:flex;align-items:baseline;gap:10px;min-width:0}.meos-maddy-brand strong{font-size:1.18rem;letter-spacing:.01em}.meos-maddy-brand span{color:rgba(226,232,235,.62);font-size:.9rem}
+      .meos-maddy-shell-tools{display:flex;align-items:center;gap:8px}.meos-maddy-shell-mode{border:0;background:transparent;color:rgba(236,240,242,.74);font:650 .9rem/1 system-ui;padding:9px 8px}.meos-maddy-now-button{border:1px solid rgba(255,255,255,.10);border-radius:999px;background:rgba(255,255,255,.045);color:#edf3f5;padding:9px 13px;font:700 .88rem/1 system-ui;cursor:pointer}.meos-maddy-now-button[data-alert="true"]{border-color:color-mix(in srgb,var(--maddy-warm) 55%,transparent);box-shadow:0 0 22px color-mix(in srgb,var(--maddy-warm) 15%,transparent)}
+
+      .meos-maddy-shell-main{min-height:0;width:min(1440px,100%);margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(270px,320px);gap:0}
+      .meos-maddy-primary{min-width:0;min-height:0;display:grid;grid-template-rows:minmax(190px,32vh) minmax(0,1fr);border-right:1px solid rgba(255,255,255,.055)}
+      .meos-maddy-stage{position:relative;overflow:hidden;display:grid;place-items:center;border-bottom:1px solid rgba(255,255,255,.055);background:radial-gradient(ellipse at 50% 102%,rgba(80,178,193,.10),transparent 55%)}
+      .meos-maddy-stage::after{content:"";position:absolute;left:50%;bottom:-14%;width:min(600px,70vw);height:42%;transform:translateX(-50%);background:radial-gradient(ellipse,rgba(93,207,222,.11),transparent 65%);filter:blur(12px);pointer-events:none}
+      .meos-maddy-portrait-wrap{position:absolute;inset:0;display:grid;place-items:end center;pointer-events:none}
+      .meos-maddy-portrait{height:min(31vh,300px);max-width:72%;object-fit:contain;object-position:center bottom;opacity:.82;filter:saturate(.88) contrast(1.03) drop-shadow(0 22px 34px rgba(0,0,0,.36));mask-image:linear-gradient(to bottom,#000 0%,#000 77%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 77%,transparent 100%)}
+      .meos-maddy-stage-copy{position:absolute;left:50%;bottom:20px;z-index:3;transform:translateX(-50%);width:min(620px,90%);text-align:center;pointer-events:none}
+      .meos-maddy-stage-name{font-size:.82rem;font-weight:750;letter-spacing:.13em;text-transform:uppercase;color:rgba(232,238,240,.64);margin-bottom:8px}
+      .meos-maddy-stage-status{display:inline-block;position:relative;max-width:100%;font-size:clamp(1.12rem,2.1vw,1.42rem);font-weight:650;line-height:1.35;letter-spacing:-.012em;color:#f5f8f9;text-shadow:0 2px 18px rgba(0,0,0,.68);padding:4px 12px 10px}
+      .meos-maddy-stage-status::after{content:"";position:absolute;left:10%;right:10%;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,var(--maddy-accent),transparent);opacity:.3}
+      .meos-maddy-stage[data-active="true"] .meos-maddy-stage-status::before{content:"";position:absolute;left:-20%;bottom:0;width:28%;height:2px;border-radius:999px;background:linear-gradient(90deg,transparent,#fff,var(--maddy-accent),transparent);box-shadow:0 0 12px var(--maddy-accent);animation:meosMaddySweep 1.5s ease-in-out infinite}
+      @keyframes meosMaddySweep{0%{transform:translateX(0);opacity:0}18%{opacity:.9}82%{opacity:.9}100%{transform:translateX(430%);opacity:0}}
+
+      .meos-maddy-conversation{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.14) transparent;padding:28px max(22px,5vw) 34px;overscroll-behavior:contain}
+      .meos-maddy-conversation-inner{width:min(780px,100%);margin:0 auto;display:grid;gap:24px}
+      .meos-maddy-empty{color:rgba(228,234,237,.62);font-size:1.05rem;line-height:1.65;padding:8px 0 18px}
+      .meos-maddy-message{display:grid;gap:7px;font-size:1.08rem;line-height:1.7;letter-spacing:-.006em}.meos-maddy-message-role{font-size:.8rem;line-height:1;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:rgba(220,228,232,.48)}
+      .meos-maddy-message[data-role="user"]{margin-left:min(18%,120px);padding:13px 16px;border-radius:20px;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.065)}
+      .meos-maddy-message[data-role="maddy"]{margin-right:min(8%,60px)}
+      .meos-maddy-message-body{white-space:pre-wrap;overflow-wrap:anywhere}.meos-maddy-message-sources{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}.meos-maddy-message-sources a{color:var(--maddy-accent);font-size:.9rem;text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--maddy-accent) 38%,transparent)}
+
+      .meos-maddy-now{min-height:0;overflow:auto;padding:28px 24px 110px;background:rgba(10,12,16,.48)}
+      .meos-maddy-now-head{display:flex;align-items:end;justify-content:space-between;margin-bottom:26px}.meos-maddy-now-head strong{font-size:1.05rem}.meos-maddy-now-head span{font-size:.82rem;color:rgba(224,231,234,.48)}
+      .meos-maddy-now-section{display:grid;gap:12px;margin-bottom:30px}.meos-maddy-now-title{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:.82rem;font-weight:820;letter-spacing:.09em;text-transform:uppercase;color:rgba(230,236,238,.52)}.meos-maddy-now-title b{font-size:.78rem;color:var(--maddy-accent)}
+      .meos-maddy-now-empty{font-size:.96rem;line-height:1.55;color:rgba(223,231,234,.53);padding:2px 0 12px}
+      .meos-maddy-now-item{position:relative;display:grid;gap:6px;padding:0 0 16px;border-bottom:1px solid rgba(255,255,255,.07)}.meos-maddy-now-item:last-child{border-bottom:0}.meos-maddy-now-item strong{font-size:1rem;line-height:1.4}.meos-maddy-now-item p{margin:0;color:rgba(227,234,237,.65);font-size:.92rem;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.meos-maddy-now-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}.meos-maddy-now-actions button,.meos-maddy-now-actions a{border:0;background:transparent;color:var(--maddy-accent);padding:4px 0;font:750 .88rem/1.2 system-ui;text-decoration:none;cursor:pointer}.meos-maddy-now-actions [data-primary="true"]{color:var(--maddy-warm)}
+      .meos-maddy-approval-item{padding-left:15px}.meos-maddy-approval-item::before{content:"";position:absolute;left:0;top:6px;width:6px;height:6px;border-radius:50%;background:var(--maddy-warm);box-shadow:0 0 13px color-mix(in srgb,var(--maddy-warm) 55%,transparent)}
+
+      .meos-maddy-composer-wrap{grid-column:1/-1;position:relative;padding:12px max(18px,3vw) calc(12px + env(safe-area-inset-bottom));border-top:1px solid rgba(255,255,255,.065);background:linear-gradient(180deg,rgba(7,9,13,.86),rgba(7,9,13,.98));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+      .meos-maddy-composer{width:min(820px,100%);margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:end;gap:8px;border:1px solid rgba(255,255,255,.11);border-radius:24px;background:rgba(255,255,255,.055);padding:8px 9px;box-shadow:0 12px 50px rgba(0,0,0,.22)}
+      .meos-maddy-composer:focus-within{border-color:color-mix(in srgb,var(--maddy-accent) 38%,rgba(255,255,255,.12));box-shadow:0 12px 50px rgba(0,0,0,.25),0 0 0 1px color-mix(in srgb,var(--maddy-accent) 12%,transparent)}
+      .meos-maddy-composer textarea{resize:none;min-height:42px;max-height:150px;border:0;outline:0;background:transparent;color:#f6f8f9;padding:10px 7px;font:500 1.05rem/1.45 system-ui;overflow:auto}.meos-maddy-composer textarea::placeholder{color:rgba(224,231,234,.45)}
+      .meos-maddy-compose-icon{width:42px;height:42px;border:0;border-radius:50%;display:grid;place-items:center;background:transparent;color:rgba(235,241,243,.76);font:800 1.12rem/1 system-ui;cursor:pointer}.meos-maddy-compose-icon:hover{background:rgba(255,255,255,.07);color:#fff}.meos-maddy-compose-send{background:#f1f4f5;color:#0a0c0f}.meos-maddy-compose-send:hover{background:#fff;color:#050608}
+      .meos-maddy-file-note{width:min(820px,100%);margin:7px auto 0;color:rgba(221,229,232,.56);font-size:.84rem;min-height:1.2em;padding-left:12px}
+
+      .meos-maddy-mobile-close{display:none}
+      @media(max-width:900px){
+        .meos-maddy-shell-main{grid-template-columns:1fr}.meos-maddy-primary{border-right:0;grid-template-rows:minmax(175px,28vh) minmax(0,1fr)}
+        .meos-maddy-now{position:absolute;z-index:20;right:0;top:64px;bottom:0;width:min(88vw,380px);transform:translateX(105%);transition:transform .24s ease;background:rgba(10,12,16,.985);box-shadow:-24px 0 60px rgba(0,0,0,.38);padding-top:22px}.meos-maddy-shell[data-now-open="true"] .meos-maddy-now{transform:translateX(0)}
+        .meos-maddy-mobile-close{display:block;border:0;background:transparent;color:#e8edef;font-size:1.35rem;cursor:pointer}
+        .meos-maddy-now-head{align-items:center}.meos-maddy-composer-wrap{grid-column:1}.meos-maddy-portrait{height:min(27vh,235px);max-width:88%}
+      }
+      @media(max-width:600px){
+        .meos-maddy-shell-head{height:56px;padding:0 15px}.meos-maddy-brand strong{font-size:1.06rem}.meos-maddy-brand span{display:none}.meos-maddy-shell-mode{font-size:.82rem;padding:8px 4px}.meos-maddy-now-button{padding:8px 10px;font-size:.82rem}
+        .meos-maddy-primary{grid-template-rows:minmax(155px,26vh) minmax(0,1fr)}.meos-maddy-stage-copy{bottom:14px}.meos-maddy-stage-name{font-size:.72rem;margin-bottom:5px}.meos-maddy-stage-status{font-size:1.08rem;padding-bottom:8px}
+        .meos-maddy-conversation{padding:22px 17px 28px}.meos-maddy-conversation-inner{gap:20px}.meos-maddy-message{font-size:1.03rem;line-height:1.66}.meos-maddy-message[data-role="user"]{margin-left:8%;padding:11px 13px;border-radius:17px}
+        .meos-maddy-composer-wrap{padding:9px 10px calc(9px + env(safe-area-inset-bottom))}.meos-maddy-composer{grid-template-columns:auto minmax(0,1fr) auto auto;border-radius:22px;padding:6px}.meos-maddy-composer textarea{font-size:1rem;padding:10px 5px}.meos-maddy-compose-icon{width:39px;height:39px}.meos-maddy-file-note{padding-left:8px;font-size:.8rem}
+      }
+      @media(prefers-reduced-motion:reduce){.meos-maddy-stage[data-active="true"] .meos-maddy-stage-status::before{animation:none;left:22%;width:56%;opacity:.6}.meos-maddy-now{transition:none}}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function appendMaddyShellMessage(role, text, options = {}) {
+    const stream = document.getElementById("meosMaddyShellMessages");
+    if (!stream) return null;
+    const value = String(text || "").trim();
+    if (!value) return null;
+    document.getElementById("meosMaddyShellEmpty")?.remove();
+    const article = document.createElement("article");
+    article.className = "meos-maddy-message";
+    article.dataset.role = role === "user" ? "user" : "maddy";
+    if (options.messageId) article.dataset.messageId = String(options.messageId);
+    const label = document.createElement("div");
+    label.className = "meos-maddy-message-role";
+    label.textContent = role === "user" ? "You" : "Maddy";
+    const body = document.createElement("div");
+    body.className = "meos-maddy-message-body";
+    body.textContent = value;
+    article.append(label, body);
+    const urls = Array.isArray(options.sources) ? options.sources.filter(Boolean).slice(0,8) : [];
+    if (urls.length) {
+      const sources = document.createElement("div");
+      sources.className = "meos-maddy-message-sources";
+      urls.forEach((url, index) => {
+        const link = document.createElement("a");
+        link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer";
+        link.textContent = sourceLabelFromUrl(url) || `Source ${index + 1}`;
+        sources.appendChild(link);
+      });
+      article.appendChild(sources);
+    }
+    stream.appendChild(article);
+    const conversation = document.getElementById("meosMaddyConversation");
+    if (conversation) conversation.scrollTop = conversation.scrollHeight;
+    return article;
+  }
+
+  function handConversationalShellFilesToMaddy(files) {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return false;
+    const note = document.getElementById("meosMaddyShellFileNote");
+    if (note) note.textContent = list.length === 1 ? `Attached ${list[0].name}` : `Attached ${list.length} files`;
+    dispatchMEOS("meos:document-intake-requested", { files:list, source:"maddy-conversational-shell", intent:"hand-to-maddy" });
+    dispatchMEOS("meos:maddy-files-received", { count:list.length, names:list.map(file => file.name), source:"maddy-conversational-shell" });
+    return true;
+  }
+
+  function renderMaddyNowSurface(snapshot = null) {
+    const found = document.getElementById("meosMaddyFoundList");
+    const approvals = document.getElementById("meosMaddyApprovalList");
+    if (!found || !approvals) return false;
+    const live = snapshot || collectHeadquartersSnapshot();
+    const deliverables = Array.isArray(live.hallwayDeliverables) ? live.hallwayDeliverables.slice(0,6) : [];
+    const pending = Array.isArray(live.pendingApprovals) ? live.pendingApprovals.slice(0,8) : [];
+    const foundCount = document.getElementById("meosMaddyFoundCount");
+    const approvalCount = document.getElementById("meosMaddyApprovalCount");
+    const nowButton = document.getElementById("meosMaddyNowButton");
+    if (foundCount) foundCount.textContent = String(deliverables.length);
+    if (approvalCount) approvalCount.textContent = String(pending.length);
+    if (nowButton) {
+      nowButton.dataset.alert = String(pending.length > 0);
+      nowButton.textContent = pending.length ? `Now · ${pending.length} needs you` : (deliverables.length ? `Now · ${deliverables.length} found` : "Now");
+    }
+
+    found.innerHTML = "";
+    if (!deliverables.length) {
+      const empty = document.createElement("div"); empty.className = "meos-maddy-now-empty"; empty.textContent = "Nothing new returned yet."; found.appendChild(empty);
+    } else {
+      deliverables.forEach((deliverable) => {
+        const view = getMaddyDeliverablePresentation(deliverable, 0, 1);
+        const item = document.createElement("article"); item.className = "meos-maddy-now-item";
+        const title = document.createElement("strong"); title.textContent = decodeMaddyText(view.title || deliverable.title || "Maddy found something"); item.appendChild(title);
+        const summary = document.createElement("p"); summary.textContent = decodeMaddyText(view.summary || "Returned work is ready to inspect."); item.appendChild(summary);
+        const actions = document.createElement("div"); actions.className = "meos-maddy-now-actions";
+        const details = document.createElement("button"); details.type = "button"; details.textContent = "See what Maddy found"; details.addEventListener("click", () => openReturnedWorkPackage(deliverable)); actions.appendChild(details);
+        if (view.sourceUrl) { const source=document.createElement("a"); source.href=view.sourceUrl; source.target="_blank"; source.rel="noopener noreferrer"; source.textContent="Source ↗"; actions.appendChild(source); }
+        item.appendChild(actions); found.appendChild(item);
+      });
+    }
+
+    approvals.innerHTML = "";
+    if (!pending.length) {
+      const empty = document.createElement("div"); empty.className = "meos-maddy-now-empty"; empty.textContent = "No approval is waiting on you."; approvals.appendChild(empty);
+    } else {
+      pending.forEach((approval) => {
+        const item = document.createElement("article"); item.className = "meos-maddy-now-item meos-maddy-approval-item";
+        const title = document.createElement("strong"); title.textContent = approval.title || "Maddy needs your approval"; item.appendChild(title);
+        const summary = document.createElement("p"); summary.textContent = `${approval.officeName || "Maddy"} reached an authority boundary and is waiting for you.`; item.appendChild(summary);
+        const actions = document.createElement("div"); actions.className = "meos-maddy-now-actions";
+        if (approval.source === "executive-hallway" && Array.isArray(approval.options) && approval.options.includes("take-it")) {
+          const take = document.createElement("button"); take.type = "button"; take.dataset.primary = "true"; take.textContent = "Take It — Approve";
+          take.addEventListener("click", async () => {
+            const hallway = getExecutiveHallway(); if (!hallway?.takeIt || !approval.id) return;
+            take.disabled = true; take.textContent = "Approved · Maddy working…";
+            try { await hallway.takeIt(approval.id, { signal:"Take It!", source:"maddy-conversational-shell" }); }
+            catch (error) { take.disabled = false; take.textContent = "Take It — Approve"; state.hallway.lastError = error?.message || String(error); renderMaddyConversationalShell(); }
+          });
+          actions.appendChild(take);
+        }
+        const evidence = document.createElement("button"); evidence.type = "button"; evidence.textContent = "Why approval?"; evidence.addEventListener("click", () => openRealtimeEvidence("approvals")); actions.appendChild(evidence);
+        item.appendChild(actions); approvals.appendChild(item);
+      });
+    }
+    return true;
+  }
+
+  function renderMaddyConversationalShell(activityModel = null) {
+    const shell = document.getElementById("meosMaddyConversationalShell");
+    if (!shell) return false;
+    const model = activityModel || getMaddyActivityModel();
+    shell.dataset.mode = state.communicationMode || "professional";
+    const mode = document.getElementById("meosMaddyShellMode");
+    if (mode) mode.textContent = state.communicationMode === "gangsta" ? "Founder · Gangsta" : state.communicationMode === "personal" ? "Personal" : "Professional";
+    const stage = document.getElementById("meosMaddyStage");
+    const status = document.getElementById("meosMaddyStageStatus");
+    if (stage) stage.dataset.active = String(Boolean(model.visible && model.active));
+    if (status) status.textContent = model.visible ? model.label : "Ready";
+
+    if (model.answer && model.answerDeliverable) {
+      const deliverableId = String(model.answerDeliverable.id || model.answerDeliverable.workId || "");
+      if (deliverableId && shell.dataset.lastAnswerDeliverable !== deliverableId) {
+        appendMaddyShellMessage("maddy", model.answer, { messageId:`deliverable:${deliverableId}`, sources:model.sources });
+        shell.dataset.lastAnswerDeliverable = deliverableId;
+      }
+    }
+    renderMaddyNowSurface();
+    return true;
+  }
+
+  function installMaddyConversationalShell(root) {
+    if (!root || root.dataset.maddyConversationalShell === "true") return root;
+    const legacyShell = root.querySelector(".meos-dashboard-shell");
+    if (!legacyShell) return root;
+    root.dataset.maddyConversationalShell = "true";
+    root.dataset.primaryExperience = "conversation";
+    document.body.classList.remove("meos-image-pano-active");
+    document.body.classList.add("meos-conversation-shell-active");
+    injectMaddyConversationalShellStyles();
+
+    const shell = document.createElement("section");
+    shell.id = "meosMaddyConversationalShell";
+    shell.className = "meos-maddy-shell";
+    shell.dataset.mode = state.communicationMode || "professional";
+    shell.dataset.nowOpen = "false";
+    shell.setAttribute("aria-label", "Maddy");
+    shell.innerHTML = `
+      <header class="meos-maddy-shell-head">
+        <div class="meos-maddy-brand"><strong>Maddy</strong><span>one conversation · MEOS underneath</span></div>
+        <div class="meos-maddy-shell-tools">
+          <span id="meosMaddyShellMode" class="meos-maddy-shell-mode">Professional</span>
+          <button id="meosMaddyNowButton" class="meos-maddy-now-button" type="button" aria-expanded="false">Now</button>
+        </div>
+      </header>
+      <main class="meos-maddy-shell-main">
+        <section class="meos-maddy-primary">
+          <section id="meosMaddyStage" class="meos-maddy-stage" data-active="false" aria-live="polite">
+            <div class="meos-maddy-portrait-wrap"><img class="meos-maddy-portrait" src="maddy-canonical-v2.png" alt="Maddy" /></div>
+            <div class="meos-maddy-stage-copy"><div class="meos-maddy-stage-name">Maddy</div><div id="meosMaddyStageStatus" class="meos-maddy-stage-status">Ready</div></div>
+          </section>
+          <section id="meosMaddyConversation" class="meos-maddy-conversation" aria-label="Conversation with Maddy">
+            <div id="meosMaddyShellMessages" class="meos-maddy-conversation-inner">
+              <div id="meosMaddyShellEmpty" class="meos-maddy-empty">Ask, talk, upload something, or hand Maddy work. What she finds and anything that needs your approval stay visible in <strong>Now</strong>.</div>
+            </div>
+          </section>
+        </section>
+        <aside id="meosMaddyNow" class="meos-maddy-now" aria-label="Maddy now">
+          <div class="meos-maddy-now-head"><div><strong>Now</strong><br><span>what changed while Maddy worked</span></div><button id="meosMaddyNowClose" class="meos-maddy-mobile-close" type="button" aria-label="Close Now">×</button></div>
+          <section class="meos-maddy-now-section"><div class="meos-maddy-now-title"><span>Maddy found</span><b id="meosMaddyFoundCount">0</b></div><div id="meosMaddyFoundList"></div></section>
+          <section class="meos-maddy-now-section"><div class="meos-maddy-now-title"><span>Needs your approval</span><b id="meosMaddyApprovalCount">0</b></div><div id="meosMaddyApprovalList"></div></section>
+        </aside>
+      </main>
+      <footer class="meos-maddy-composer-wrap">
+        <form id="meosMaddyShellComposer" class="meos-maddy-composer">
+          <button id="meosMaddyShellAttach" class="meos-maddy-compose-icon" type="button" aria-label="Attach files" title="Attach files">+</button>
+          <textarea id="meosMaddyShellInput" rows="1" autocomplete="off" placeholder="Message Maddy…" aria-label="Message Maddy"></textarea>
+          <button id="meosMaddyShellVoice" class="meos-maddy-compose-icon" type="button" aria-label="Talk to Maddy" title="Talk to Maddy">◉</button>
+          <button class="meos-maddy-compose-icon meos-maddy-compose-send" type="submit" aria-label="Send to Maddy" title="Send">↑</button>
+          <input id="meosMaddyShellFiles" type="file" multiple hidden />
+        </form>
+        <div id="meosMaddyShellFileNote" class="meos-maddy-file-note" aria-live="polite"></div>
+      </footer>`;
+    root.appendChild(shell);
+
+    const form = shell.querySelector("#meosMaddyShellComposer");
+    const input = shell.querySelector("#meosMaddyShellInput");
+    form?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const message = String(input?.value || "").trim();
+      if (!message) { input?.focus(); return; }
+      appendMaddyShellMessage("user", message);
+      dispatchExecutiveDeskTextCommand(message);
+      input.value = "";
+      input.style.height = "auto";
+    });
+    input?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); form?.requestSubmit(); }
+    });
+    input?.addEventListener("input", () => {
+      input.style.height = "auto";
+      input.style.height = `${Math.min(150, Math.max(42, input.scrollHeight))}px`;
+    });
+
+    const fileInput = shell.querySelector("#meosMaddyShellFiles");
+    shell.querySelector("#meosMaddyShellAttach")?.addEventListener("click", () => fileInput?.click());
+    fileInput?.addEventListener("change", (event) => { handConversationalShellFilesToMaddy(event.target.files); event.target.value = ""; });
+    shell.addEventListener("dragover", (event) => { if (event.dataTransfer?.types?.includes("Files")) event.preventDefault(); });
+    shell.addEventListener("drop", (event) => { if (!event.dataTransfer?.files?.length) return; event.preventDefault(); handConversationalShellFilesToMaddy(event.dataTransfer.files); });
+
+    shell.querySelector("#meosMaddyShellVoice")?.addEventListener("click", toggleVoiceConnection);
+    const toggleNow = (open) => { const next = typeof open === "boolean" ? open : shell.dataset.nowOpen !== "true"; shell.dataset.nowOpen = String(next); shell.querySelector("#meosMaddyNowButton")?.setAttribute("aria-expanded", String(next)); };
+    shell.querySelector("#meosMaddyNowButton")?.addEventListener("click", () => toggleNow());
+    shell.querySelector("#meosMaddyNowClose")?.addEventListener("click", () => toggleNow(false));
+
+    window.addEventListener("meos:maddy:response", (event) => {
+      const detail = event?.detail || {};
+      const text = String(detail.text || detail.answer || detail.message || detail.response || "").trim();
+      if (!text) return;
+      const responseId = String(detail.turnId || detail.id || `${Date.now()}`);
+      if (shell.querySelector(`[data-message-id="response:${CSS.escape(responseId)}"]`)) return;
+      appendMaddyShellMessage("maddy", text, { messageId:`response:${responseId}` });
+    });
+    window.addEventListener("meos:maddy-mode-changed", () => renderMaddyConversationalShell());
+
+    renderMaddyConversationalShell();
+    return root;
+  }
+
+  function runMaddyConversationalShellAcceptanceTest() {
+    const shell = document.getElementById("meosMaddyConversationalShell");
+    const styleText = document.getElementById(MADDY_CONVERSATIONAL_SHELL_STYLE_ID)?.textContent || "";
+    const installerSource = installMaddyConversationalShell.toString();
+    const fileSource = handConversationalShellFilesToMaddy.toString();
+    const nowSource = renderMaddyNowSurface.toString();
+    const checks = [
+      { name:"OD4138 has a dedicated build identity", passed:MADDY_CONVERSATIONAL_SHELL_BUILD_ID === "OD4138-MADDY-CONVERSATIONAL-SHELL-FOUNDATION-20260921-A" },
+      { name:"Conversation shell is the primary experience", passed:Boolean(shell && document.getElementById(ROOT_ID)?.dataset?.primaryExperience === "conversation") },
+      { name:"Primary UI no longer depends on panoramic office", passed:Boolean(shell) && !document.body.classList.contains("meos-image-pano-active") && !document.getElementById("meosImagePanoramicOffice") },
+      { name:"Canonical Maddy v2 has a dedicated presence area", passed:shell?.querySelector('.meos-maddy-portrait')?.getAttribute('src') === 'maddy-canonical-v2.png' && Boolean(shell?.querySelector('#meosMaddyStage')) },
+      { name:"Readable conversation typography is at least roughly 17px desktop", passed:/font-size:1\.08rem/.test(styleText) && /line-height:1\.7/.test(styleText) },
+      { name:"Mobile shell is explicit and removes the permanent right rail", passed:/@media\(max-width:900px\)/.test(styleText) && /translateX\(105%\)/.test(styleText) },
+      { name:"Composer dispatches through canonical Maddy request seam", passed:/dispatchExecutiveDeskTextCommand\(message\)/.test(installerSource) },
+      { name:"Composer-integrated files reuse canonical document intake authority", passed:/meos:document-intake-requested/.test(fileSource) && !/fetch\(/.test(fileSource) },
+      { name:"Truthful OD4137A activity model drives stage status", passed:/getMaddyActivityModel/.test(renderMaddyConversationalShell.toString()) && /model\.label/.test(renderMaddyConversationalShell.toString()) },
+      { name:"Activity is subtitle-like rather than the old boxed work panel", passed:Boolean(shell?.querySelector('#meosMaddyStageStatus')) && !shell?.querySelector('.meos-live-activity') },
+      { name:"Subtle left-to-right activity sweep is present", passed:/@keyframes meosMaddySweep/.test(styleText) && /translateX\(430%\)/.test(styleText) },
+      { name:"Reduced-motion behavior is explicit", passed:/prefers-reduced-motion:reduce/.test(styleText) },
+      { name:"Maddy Found is backed by Hallway deliverables", passed:/hallwayDeliverables/.test(nowSource) && /getMaddyDeliverablePresentation/.test(nowSource) },
+      { name:"Needs your approval is backed by pending approval truth", passed:/pendingApprovals/.test(nowSource) && /await/.test(nowSource) },
+      { name:"Approval action reuses existing Hallway Take It authority", passed:/hallway\.takeIt/.test(nowSource) && !/submitWork/.test(nowSource) },
+      { name:"Shell adds no provider, spend, retry, or external-action authority", passed:!/(automaticSpend|providerDisplay|response\.create|submitWork|fetch\()/i.test(`${installerSource} ${fileSource}`) },
+      { name:"No permanent widget grid is part of the primary shell", passed:Boolean(shell) && !shell.querySelector('.meos-widget') && !shell.querySelector('#meosWidgetGrid') },
+      { name:"Desktop retains visible Findings and Approval context without modal hunting", passed:Boolean(shell?.querySelector('#meosMaddyFoundList') && shell?.querySelector('#meosMaddyApprovalList')) }
+    ];
+    const passed = checks.filter((check) => check.passed).length;
+    const result = { success:passed === checks.length, commission:"OD4138", schema:"meos.dashboard.maddy-conversational-shell-foundation.acceptance.v1", version:DASHBOARD_VERSION, buildId:MADDY_CONVERSATIONAL_SHELL_BUILD_ID, passed, total:checks.length, checks };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4138 Maddy Conversational Shell Foundation: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
   }
 
   function createOfficeDashboard() {
@@ -6748,6 +7091,7 @@ document
     const actions=panel.querySelector("#meosMaddyWorkstreamActions"); actions.innerHTML="";
     if(model.needsApproval && model.options.includes("take-it")){ const take=document.createElement("button");take.type="button";take.className="meos-live-workstream-action";take.dataset.primary="true";take.textContent="Take It — Authorize";take.addEventListener("click",async()=>{const hallway=getExecutiveHallway();if(!hallway?.takeIt||!model.workId)return;take.disabled=true;take.textContent="Authorized · Maddy working…";try{await hallway.takeIt(model.workId,{signal:"Take It!",source:"maddy-conversational-workstream"})}catch(error){state.hallway.lastError=error?.message||String(error);renderMaddyActivitySurface()}});actions.appendChild(take); }
     if(model.answerDeliverable){ const evidence=document.createElement("button");evidence.type="button";evidence.className="meos-live-workstream-action";evidence.textContent="Evidence & Details";evidence.addEventListener("click",()=>openReturnedWorkPackage(model.answerDeliverable));actions.appendChild(evidence); }
+    renderMaddyConversationalShell(model);
     return model;
   }
 
@@ -10703,10 +11047,10 @@ document
     renderLiveHeadquarters();
     renderMaddyActivitySurface();
     refreshCognitionRuntime().catch(() => null);
-    window.setInterval(renderLiveHeadquarters, 15000);
+    window.setInterval(() => { renderLiveHeadquarters(); renderMaddyConversationalShell(); }, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} historical; Maddy Conversational Shell ${MADDY_CONVERSATIONAL_SHELL_BUILD_ID} online.`
     );
   }
 
@@ -10725,7 +11069,8 @@ document
     runCommercialCommandDashboardAcceptanceTest,
     runMaddyActivitySurfaceAcceptanceTest,
     runExecutiveDeskTextCommandContinuityAcceptanceTest,
-    runPanoramicMaddyActivitySurfacePlacementAcceptanceTest
+    runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
+    runMaddyConversationalShellAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
@@ -10753,6 +11098,7 @@ document
       runExecutiveDeskTextCommandContinuityAcceptanceTest,
       runLiveMaddyCognitiveWorkActivityAcceptanceTest,
       runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
+      runMaddyConversationalShellAcceptanceTest,
       runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
