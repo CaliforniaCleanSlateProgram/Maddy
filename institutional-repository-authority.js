@@ -1,9 +1,9 @@
 /**
  * MEOS Institutional Repository Authority
  *
- * Version: 1.1.2
+ * Version: 1.1.3
  * Commission: 006.033M
- * Build: IRA112-DURABLE-PROVIDER-PRESSURE-CIRCUIT-BREAKER-20260916-A
+ * Build: IRA113-CANONICAL-PAYLOAD-FINGERPRINT-SELF-HEAL-20260921-A
  *
  * Purpose:
  * - Give MEOS one provider-neutral authority for durable organizational state.
@@ -21,10 +21,10 @@
 
 import crypto from "crypto";
 
-const VERSION = "1.1.2";
+const VERSION = "1.1.3";
 const COMMISSION = "006.033M";
 const BUILD_ID =
-  "IRA112-DURABLE-PROVIDER-PRESSURE-CIRCUIT-BREAKER-20260916-A";
+  "IRA113-CANONICAL-PAYLOAD-FINGERPRINT-SELF-HEAL-20260921-A";
 const PROVIDER_PRESSURE_COOLDOWN_MS = 60_000;
 
 const SCHEMA = Object.freeze({
@@ -304,6 +304,16 @@ class InstitutionalRepositoryAuthority {
     const status = Number(error?.status || error?.statusCode || 0);
     const code = String(error?.code || "").toUpperCase();
     const message = String(error?.message || "").toLowerCase();
+    const integrityFailureCodes = new Set([
+      "MEOS_REPOSITORY_FINGERPRINT_MISMATCH",
+      "MEOS_REPOSITORY_EXISTING_FINGERPRINT_MISMATCH",
+      "MEOS_REPOSITORY_ENVELOPE_INVALID",
+      "MEOS_REPOSITORY_EXISTING_ENVELOPE_INVALID",
+      "MEOS_REPOSITORY_CLASSIFICATION_MISMATCH",
+      "MEOS_REPOSITORY_CONCURRENCY_CONFLICT",
+      "MEOS_REPOSITORY_DURABLE_VERIFICATION_FAILED"
+    ]);
+    if (integrityFailureCodes.has(code)) return false;
     return status === 429 || status >= 500 ||
       ["ECONNRESET","ECONNREFUSED","ETIMEDOUT","ENETUNREACH","EHOSTUNREACH","UND_ERR_CONNECT_TIMEOUT","UND_ERR_SOCKET"].includes(code) ||
       message.includes("too many requests") || message.includes("rate limit") ||
@@ -548,8 +558,17 @@ class InstitutionalRepositoryAuthority {
     const policy =
       MEMORY_CLASS_POLICY[normalizedClass];
 
+    /*
+     * Fingerprint the exact JSON-safe value that will be persisted.
+     * Earlier builds fingerprinted the pre-clone runtime value and then
+     * persisted clone(value). Objects containing undefined fields, Dates,
+     * or other JSON-normalized values could therefore produce a durable
+     * envelope whose stored bytes were semantically valid but whose recorded
+     * fingerprint could never verify after reload.
+     */
+    const persistedValue = clone(value);
     const payloadFingerprint =
-      fingerprint(value);
+      fingerprint(persistedValue);
 
     return {
       schema: SCHEMA.record,
@@ -576,7 +595,7 @@ class InstitutionalRepositoryAuthority {
         typeof metadata === "object"
           ? clone(metadata)
           : {},
-      value: clone(value)
+      value: persistedValue
     };
   }
 
@@ -588,6 +607,188 @@ class InstitutionalRepositoryAuthority {
       key,
       "Repository key"
     )}`;
+  }
+
+  async repairMutableFingerprintMismatch({
+    provider,
+    providerKey,
+    record,
+    classification,
+    actualFingerprint
+  } = {}) {
+    const policy =
+      MEMORY_CLASS_POLICY[classification];
+
+    if (
+      !provider ||
+      !record ||
+      !policy ||
+      policy.immutableEvidence ||
+      !hasCapabilities(provider, [
+        CAPABILITY.DURABLE_READ,
+        CAPABILITY.DURABLE_WRITE,
+        CAPABILITY.READ_AFTER_WRITE
+      ])
+    ) {
+      return null;
+    }
+
+    const originalFingerprint =
+      record.payloadFingerprint || null;
+    const quarantineId = crypto
+      .createHash("sha256")
+      .update(
+        `${providerKey}:${originalFingerprint || "none"}:${record.recordedAt || "unknown"}`
+      )
+      .digest("hex")
+      .slice(0, 32);
+    const quarantineProviderKey =
+      `integrity-quarantine:${quarantineId}`;
+
+    /*
+     * Preserve the entire pre-repair authority envelope before touching the
+     * canonical key. This makes the repair reversible/auditable and prevents
+     * a fingerprint metadata defect from becoming silent data loss.
+     */
+    const quarantineRecord =
+      this.buildRecord({
+        namespace: "integrity-quarantine",
+        key: quarantineId,
+        classification,
+        value: record,
+        metadata: {
+          reason:
+            "legacy-persisted-value-fingerprint-mismatch",
+          sourceNamespace: record.namespace || null,
+          sourceKey: record.key || null,
+          sourceProviderKey: providerKey,
+          originalFingerprint,
+          actualStoredFingerprint:
+            actualFingerprint || null,
+          repairedByBuildId: BUILD_ID
+        },
+        revision: 1,
+        previousFingerprint: null
+      });
+
+    const quarantineWrite =
+      await provider.write(
+        quarantineProviderKey,
+        clone(quarantineRecord),
+        {
+          classification,
+          verificationRequired: true,
+          immutableEvidence: false,
+          previousFingerprint: null,
+          integrityQuarantine: true
+        }
+      );
+
+    if (quarantineWrite?.success === false) {
+      return null;
+    }
+
+    const quarantineRead =
+      await provider.read(quarantineProviderKey);
+    const storedQuarantine =
+      quarantineRead?.found
+        ? quarantineRead.value
+        : null;
+    const quarantineVerified =
+      Boolean(storedQuarantine) &&
+      storedQuarantine.schema === SCHEMA.record &&
+      storedQuarantine.payloadFingerprint ===
+        quarantineRecord.payloadFingerprint &&
+      fingerprint(storedQuarantine.value) ===
+        quarantineRecord.payloadFingerprint;
+
+    if (!quarantineVerified) {
+      return null;
+    }
+
+    const repairedRecord =
+      this.buildRecord({
+        namespace: record.namespace,
+        key: record.key,
+        classification,
+        value: record.value,
+        metadata: {
+          ...(record.metadata &&
+          typeof record.metadata === "object"
+            ? clone(record.metadata)
+            : {}),
+          integrityRepair: {
+            schema:
+              "meos.institutional-repository-integrity-repair.v1",
+            reason:
+              "legacy-persisted-value-fingerprint-mismatch",
+            repairedAt: nowIso(),
+            repairedByBuildId: BUILD_ID,
+            originalFingerprint,
+            actualStoredFingerprint:
+              actualFingerprint || null,
+            quarantineProviderKey
+          }
+        },
+        revision:
+          Math.max(1, Number(record.revision) || 1) + 1,
+        previousFingerprint:
+          originalFingerprint
+      });
+
+    const repairWrite =
+      await provider.write(
+        providerKey,
+        clone(repairedRecord),
+        {
+          classification,
+          verificationRequired: true,
+          immutableEvidence: false,
+          previousFingerprint:
+            originalFingerprint,
+          integrityRepair: true
+        }
+      );
+
+    if (repairWrite?.success === false) {
+      return null;
+    }
+
+    const repairedRead =
+      await provider.read(providerKey);
+    const storedRepaired =
+      repairedRead?.found
+        ? repairedRead.value
+        : null;
+    const repairVerified =
+      Boolean(storedRepaired) &&
+      storedRepaired.schema === SCHEMA.record &&
+      storedRepaired.payloadFingerprint ===
+        repairedRecord.payloadFingerprint &&
+      fingerprint(storedRepaired.value) ===
+        repairedRecord.payloadFingerprint &&
+      stableStringify(storedRepaired.value) ===
+        stableStringify(repairedRecord.value);
+
+    if (!repairVerified) {
+      return null;
+    }
+
+    this.recordEvent(
+      "record-fingerprint-self-healed",
+      {
+        namespace: repairedRecord.namespace,
+        key: repairedRecord.key,
+        classification,
+        providerId: provider.id,
+        originalFingerprint,
+        repairedFingerprint:
+          repairedRecord.payloadFingerprint,
+        quarantineProviderKey
+      }
+    );
+
+    return repairedRecord;
   }
 
   async read({
@@ -637,7 +838,7 @@ class InstitutionalRepositoryAuthority {
         };
       }
 
-      const record = result.value;
+      let record = result.value;
 
       if (
         !record ||
@@ -652,26 +853,44 @@ class InstitutionalRepositoryAuthority {
         throw error;
       }
 
-      const actualFingerprint =
+      let actualFingerprint =
         fingerprint(record.value);
 
       if (
         actualFingerprint !==
         record.payloadFingerprint
       ) {
-        const error = new Error(
-          "Repository payload fingerprint verification failed."
-        );
-        error.code =
-          "MEOS_REPOSITORY_FINGERPRINT_MISMATCH";
-        error.status = 500;
-        error.details = {
-          expected:
-            record.payloadFingerprint,
-          actual:
+        const repairedRecord =
+          await this.repairMutableFingerprintMismatch({
+            provider,
+            providerKey,
+            record,
+            classification: normalizedClass,
             actualFingerprint
-        };
-        throw error;
+          });
+
+        if (repairedRecord) {
+          record = repairedRecord;
+          actualFingerprint =
+            fingerprint(record.value);
+        } else {
+          const error = new Error(
+            "Repository payload fingerprint verification failed."
+          );
+          error.code =
+            "MEOS_REPOSITORY_FINGERPRINT_MISMATCH";
+          error.status = 500;
+          error.details = {
+            expected:
+              record.payloadFingerprint,
+            actual:
+              actualFingerprint,
+            immutableEvidence:
+              MEMORY_CLASS_POLICY[normalizedClass]
+                .immutableEvidence === true
+          };
+          throw error;
+        }
       }
 
       if (
@@ -1546,6 +1765,160 @@ class InstitutionalRepositoryAuthority {
       passed:
         evidenceWrite.success === true &&
         evidenceProtected
+    });
+
+    const canonicalizationFixture = {
+      keep: "yes",
+      droppedAtJsonBoundary: undefined,
+      nested: {
+        when: new Date("2026-09-21T00:00:00.000Z"),
+        omit: undefined
+      },
+      array: [1, undefined, 3]
+    };
+
+    const canonicalizationWrite =
+      await testAuthority.write({
+        namespace: "acceptance",
+        key: "json-canonical-fingerprint",
+        classification:
+          MEMORY_CLASSES.INSTITUTIONAL,
+        value: canonicalizationFixture
+      });
+
+    checks.push({
+      name:
+        "Payload fingerprint is computed from the exact JSON-safe value that is persisted",
+      passed:
+        canonicalizationWrite?.success === true &&
+        fingerprint(
+          canonicalizationWrite.record.value
+        ) ===
+          canonicalizationWrite.record
+            .payloadFingerprint &&
+        canonicalizationWrite.record.value
+          ?.droppedAtJsonBoundary === undefined &&
+        canonicalizationWrite.record.value
+          ?.nested?.when ===
+          "2026-09-21T00:00:00.000Z"
+    });
+
+    const legacyProviderKey =
+      testAuthority.providerKey(
+        "acceptance",
+        "legacy-fingerprint"
+      );
+    const legacyStoredValue = {
+      schema: "fixture.legacy-state.v1",
+      stable: true,
+      nested: { value: 7 }
+    };
+    const legacyBrokenRecord = {
+      schema: SCHEMA.record,
+      namespace: "acceptance",
+      key: "legacy-fingerprint",
+      classification:
+        MEMORY_CLASSES.INSTITUTIONAL,
+      policy: {
+        durableRequired: true,
+        verificationRequired: true,
+        immutableEvidence: false,
+        defaultRetention: "institutional"
+      },
+      revision: 4,
+      previousFingerprint: null,
+      payloadFingerprint:
+        "legacy-noncanonical-fingerprint",
+      recordedAt:
+        "2026-09-20T00:00:00.000Z",
+      metadata: {
+        fixture: true
+      },
+      value: clone(legacyStoredValue)
+    };
+    memory.set(
+      legacyProviderKey,
+      clone(legacyBrokenRecord)
+    );
+
+    const healedRead =
+      await testAuthority.read({
+        namespace: "acceptance",
+        key: "legacy-fingerprint",
+        classification:
+          MEMORY_CLASSES.INSTITUTIONAL
+      });
+    const quarantineEntry =
+      [...memory.entries()].find(
+        ([key]) =>
+          key.startsWith(
+            "integrity-quarantine:"
+          )
+      );
+
+    checks.push({
+      name:
+        "Mutable institutional state self-heals a legacy fingerprint mismatch only after preserving the original envelope",
+      passed:
+        healedRead?.found === true &&
+        healedRead?.verified === true &&
+        healedRead.record.revision === 5 &&
+        healedRead.record.payloadFingerprint ===
+          fingerprint(healedRead.value) &&
+        Boolean(
+          healedRead.record.metadata
+            ?.integrityRepair
+            ?.quarantineProviderKey
+        ) &&
+        Boolean(quarantineEntry)
+    });
+
+    checks.push({
+      name:
+        "Fingerprint self-heal preserves the stored semantic value rather than inventing replacement cognition",
+      passed:
+        stableStringify(healedRead.value) ===
+          stableStringify(legacyStoredValue)
+    });
+
+    const immutableProviderKey =
+      testAuthority.providerKey(
+        "acceptance",
+        "immutable-corruption"
+      );
+    memory.set(
+      immutableProviderKey,
+      {
+        ...clone(legacyBrokenRecord),
+        key: "immutable-corruption",
+        classification:
+          MEMORY_CLASSES.EVIDENTIARY,
+        policy: {
+          durableRequired: true,
+          verificationRequired: true,
+          immutableEvidence: true,
+          defaultRetention: "evidentiary"
+        }
+      }
+    );
+    let immutableMismatchRefused = false;
+    try {
+      await testAuthority.read({
+        namespace: "acceptance",
+        key: "immutable-corruption",
+        classification:
+          MEMORY_CLASSES.EVIDENTIARY
+      });
+    } catch (error) {
+      immutableMismatchRefused =
+        error?.code ===
+          "MEOS_REPOSITORY_FINGERPRINT_MISMATCH";
+    }
+
+    checks.push({
+      name:
+        "Evidentiary fingerprint mismatches are never auto-repaired",
+      passed: immutableMismatchRefused
     });
 
     const noProviderAuthority =
