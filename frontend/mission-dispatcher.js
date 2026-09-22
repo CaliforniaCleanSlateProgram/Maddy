@@ -1,8 +1,8 @@
 /**
  * MEOS Mission Dispatcher
  * Commission Candidate: 006.031E — Governed Office Dispatch Autonomy
- * Version: 0.2.0
- * Build: MD020-GOVERNED-OFFICE-DISPATCH-AUTONOMY-20260817-A
+ * Version: 0.2.1
+ * Build: MD021-BOUNDED-BROWSER-PERSISTENCE-20260922-A
  *
  * Purpose:
  * The Mission Dispatcher routes organizational missions to the appropriate
@@ -33,8 +33,8 @@
 (function initializeMissionDispatcher(global) {
     "use strict";
 
-    const VERSION = "0.2.0";
-    const BUILD_ID = "MD020-GOVERNED-OFFICE-DISPATCH-AUTONOMY-20260817-A";
+    const VERSION = "0.2.1";
+    const BUILD_ID = "MD021-BOUNDED-BROWSER-PERSISTENCE-20260922-A";
     const COMMISSION = "006.031E";
     const STATE_SCHEMA = "meos.mission-dispatcher.persistence-snapshot.v1";
     const AUTONOMY_CAPABILITIES = Object.freeze({
@@ -43,6 +43,7 @@
     });
     const STORAGE_KEY = "meos_mission_dispatcher_v0_1_0";
     const DEFAULT_SCAN_INTERVAL = 5000;
+    const MAX_PERSISTED_DISPATCHED_MISSION_IDS = 100;
     const MAX_PERSISTED_DISPATCH_RECORDS = 100;
     const MAX_PERSISTED_ACTIVITY = 100;
 
@@ -569,6 +570,8 @@
         return clone({
             ...state.persistence,
             storageKey: STORAGE_KEY,
+            persistedDispatchedMissionIdLimit:
+                MAX_PERSISTED_DISPATCHED_MISSION_IDS,
             persistedDispatchRecordLimit:
                 MAX_PERSISTED_DISPATCH_RECORDS,
             persistedActivityLimit:
@@ -604,7 +607,9 @@
             version: state.version,
             running: state.running,
             scanInterval: state.scanInterval,
-            dispatchedMissionIds: state.dispatchedMissionIds,
+            dispatchedMissionIds: state.dispatchedMissionIds.slice(
+                -MAX_PERSISTED_DISPATCHED_MISSION_IDS
+            ),
             dispatchRecords: state.dispatchRecords.slice(
                 0,
                 MAX_PERSISTED_DISPATCH_RECORDS
@@ -633,6 +638,8 @@
                 success: true,
                 persisted: true,
                 compact: true,
+                dispatchedMissionIdCount:
+                    saveableState.dispatchedMissionIds.length,
                 dispatchRecordCount:
                     saveableState.dispatchRecords.length,
                 activityCount: saveableState.activity.length
@@ -701,15 +708,23 @@
             state.dispatchedMissionIds = Array.isArray(
                 parsed.dispatchedMissionIds
             )
-                ? parsed.dispatchedMissionIds
+                ? parsed.dispatchedMissionIds.slice(
+                    -MAX_PERSISTED_DISPATCHED_MISSION_IDS
+                )
                 : [];
 
             state.dispatchRecords = Array.isArray(parsed.dispatchRecords)
-                ? parsed.dispatchRecords
+                ? parsed.dispatchRecords.slice(
+                    0,
+                    MAX_PERSISTED_DISPATCH_RECORDS
+                )
                 : [];
 
             state.activity = Array.isArray(parsed.activity)
-                ? parsed.activity
+                ? parsed.activity.slice(
+                    0,
+                    MAX_PERSISTED_ACTIVITY
+                )
                 : [];
 
             state.initializedAt = parsed.initializedAt || now();
@@ -973,6 +988,28 @@
         );
     }
 
+    function isDispatcherTask(task) {
+        if (!task || typeof task !== "object") {
+            return false;
+        }
+
+        const notes = normalizeText(task.notes);
+
+        return (
+            task.dispatcherGenerated === true ||
+            notes === "Lead-office assignment created by the Mission Dispatcher." ||
+            notes === "Supporting-office assignment created by the Mission Dispatcher."
+        );
+    }
+
+    function missionHasDurableDispatchEvidence(mission) {
+        return Boolean(
+            mission &&
+            Array.isArray(mission.tasks) &&
+            mission.tasks.some(isDispatcherTask)
+        );
+    }
+
     function taskAlreadyExists(mission, officeId) {
         if (!Array.isArray(mission.tasks)) {
             return false;
@@ -980,8 +1017,7 @@
 
         return mission.tasks.some((task) => {
             return (
-                task &&
-                task.dispatcherGenerated === true &&
+                isDispatcherTask(task) &&
                 task.assignedOffice === officeId
             );
         });
@@ -1150,7 +1186,33 @@
     }
 
     function missionHasBeenDispatched(missionId) {
-        return state.dispatchedMissionIds.includes(missionId);
+        if (state.dispatchedMissionIds.includes(missionId)) {
+            return true;
+        }
+
+        const engine = getMissionEngine();
+
+        if (!engine || typeof engine.getMission !== "function") {
+            return false;
+        }
+
+        try {
+            const mission = engine.getMission(missionId);
+
+            if (!missionHasDurableDispatchEvidence(mission)) {
+                return false;
+            }
+
+            state.dispatchedMissionIds.push(missionId);
+            state.dispatchedMissionIds =
+                state.dispatchedMissionIds.slice(
+                    -MAX_PERSISTED_DISPATCHED_MISSION_IDS
+                );
+
+            return true;
+        } catch (_error) {
+            return false;
+        }
     }
 
     function markMissionDispatched(missionId) {
@@ -1158,6 +1220,10 @@
             state.dispatchedMissionIds.push(missionId);
         }
 
+        state.dispatchedMissionIds =
+            state.dispatchedMissionIds.slice(
+                -MAX_PERSISTED_DISPATCHED_MISSION_IDS
+            );
         state.updatedAt = now();
         persist();
     }
@@ -2060,7 +2126,9 @@
             operational: {
                 scanInterval: state.scanInterval,
                 dispatchedMissionIds: clone(
-                    state.dispatchedMissionIds
+                    state.dispatchedMissionIds.slice(
+                        -MAX_PERSISTED_DISPATCHED_MISSION_IDS
+                    )
                 ),
                 dispatchRecords: clone(
                     state.dispatchRecords.slice(
@@ -2108,15 +2176,29 @@
         state.dispatchedMissionIds = Array.isArray(
             operational.dispatchedMissionIds
         )
-            ? clone(operational.dispatchedMissionIds)
+            ? clone(
+                operational.dispatchedMissionIds.slice(
+                    -MAX_PERSISTED_DISPATCHED_MISSION_IDS
+                )
+            )
             : [];
         state.dispatchRecords = Array.isArray(
             operational.dispatchRecords
         )
-            ? clone(operational.dispatchRecords)
+            ? clone(
+                operational.dispatchRecords.slice(
+                    0,
+                    MAX_PERSISTED_DISPATCH_RECORDS
+                )
+            )
             : [];
         state.activity = Array.isArray(operational.activity)
-            ? clone(operational.activity)
+            ? clone(
+                operational.activity.slice(
+                    0,
+                    MAX_PERSISTED_ACTIVITY
+                )
+            )
             : [];
         state.initializedAt =
             operational.initializedAt || now();
@@ -2252,6 +2334,25 @@
                     typeof retryPersistence === "function"
             },
             {
+                name: "Persisted dispatched mission IDs are bounded",
+                passed:
+                    MAX_PERSISTED_DISPATCHED_MISSION_IDS === 100 &&
+                    /MAX_PERSISTED_DISPATCHED_MISSION_IDS/.test(
+                        persist.toString()
+                    )
+            },
+            {
+                name: "Durable Mission Engine evidence backstops pruned browser history",
+                passed:
+                    typeof missionHasDurableDispatchEvidence === "function" &&
+                    /getMission/.test(
+                        missionHasBeenDispatched.toString()
+                    ) &&
+                    isDispatcherTask({
+                        notes: "Lead-office assignment created by the Mission Dispatcher."
+                    })
+            },
+            {
                 name: "Persisted dispatch history is bounded",
                 passed: MAX_PERSISTED_DISPATCH_RECORDS === 100
             },
@@ -2280,11 +2381,11 @@
         const passed = checks.every(item => item.passed);
         console.table(checks);
         console.info(
-            `[MEOS ${VERSION}] Commission 006.016B1 persistence acceptance: ${passed ? "PASS" : "FAIL"}.`
+            `[MEOS ${VERSION}] Commission ${COMMISSION} persistence acceptance: ${passed ? "PASS" : "FAIL"}.`
         );
 
         return {
-            commission: "006.016B1",
+            commission: COMMISSION,
             version: VERSION,
             buildId: BUILD_ID,
             passed,
@@ -2299,6 +2400,9 @@
         state.initializedAt = now();
         state.updatedAt = state.initializedAt;
         persist();
+    } else {
+        // Rewrite legacy browser state immediately in bounded form.
+        persist({ force: true });
     }
 
     const MissionDispatcher = Object.freeze({
