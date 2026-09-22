@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.14.0
+ * Version: 4.14.1
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.14.0";
+  const DASHBOARD_VERSION = "4.14.1";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
@@ -32,6 +32,7 @@
   const LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID = "OD4137A-LIVE-MADDY-ACTIVITY-EVIDENCE-ACCEPTANCE-CORRECTION-20260921-A";
   const LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID = "OD4137B-PANORAMIC-MADDY-ACTIVITY-SURFACE-PLACEMENT-20260921-A";
   const MADDY_CONVERSATIONAL_SHELL_BUILD_ID = "OD4138-MADDY-CONVERSATIONAL-SHELL-FOUNDATION-20260921-A";
+  const MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID = "OD4138A-FOREGROUND-ACTIVITY-TRUTH-GATE-20260921-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -166,7 +167,8 @@
         typeof navigator === "undefined"
           ? true
           : navigator.onLine !== false,
-      listenersInstalled: false
+      listenersInstalled: false,
+      sessionStartedAt: new Date().toISOString()
     },
     fundingIntelligence: {
       status: "idle",
@@ -5270,8 +5272,8 @@ document
     if (mode) mode.textContent = state.communicationMode === "gangsta" ? "Founder · Gangsta" : state.communicationMode === "personal" ? "Personal" : "Professional";
     const stage = document.getElementById("meosMaddyStage");
     const status = document.getElementById("meosMaddyStageStatus");
-    if (stage) stage.dataset.active = String(Boolean(model.visible && model.active));
-    if (status) status.textContent = model.visible ? model.label : "Ready";
+    if (stage) stage.dataset.active = String(Boolean(model.foregroundVisible && model.foregroundActive));
+    if (status) status.textContent = model.foregroundVisible ? model.label : "Ready";
 
     if (model.answer && model.answerDeliverable) {
       const deliverableId = String(model.answerDeliverable.id || model.answerDeliverable.workId || "");
@@ -5412,6 +5414,115 @@ document
     const result = { success:passed === checks.length, commission:"OD4138", schema:"meos.dashboard.maddy-conversational-shell-foundation.acceptance.v1", version:DASHBOARD_VERSION, buildId:MADDY_CONVERSATIONAL_SHELL_BUILD_ID, passed, total:checks.length, checks };
     console.table(checks);
     console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4138 Maddy Conversational Shell Foundation: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
+  function runMaddyForegroundActivityTruthGateAcceptanceTest() {
+    const priorTransient = state.maddyActivity.transient;
+    const priorLastRequest = state.maddyActivity.lastRequest;
+    const priorSessionStartedAt = state.maddyActivity.sessionStartedAt;
+    state.maddyActivity.transient = null;
+    state.maddyActivity.lastRequest = null;
+    state.maddyActivity.sessionStartedAt = new Date().toISOString();
+
+    const oldAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const nowAt = new Date(Date.now() + 50).toISOString();
+    const hallway = (work = []) => ({ hallway: { work, deliverables: [], history: [] } });
+    const staleRecovered = getMaddyActivityModel(hallway([{
+      id:"old-recovered-research",
+      instruction:"Old research",
+      state:"executing",
+      source:"maddy-durable-mission-recovery",
+      createdAt:oldAt,
+      updatedAt:oldAt,
+      execution:{
+        serverOwned:true,
+        executionId:"execution-old-recovered-research",
+        executor:"headless-public-research",
+        state:"unknown",
+        recoveredProjection:true,
+        ownershipEvidence:"persisted-mission-tag"
+      }
+    }]));
+    const staleGeneric = getMaddyActivityModel(hallway([{
+      id:"old-generic-work",
+      instruction:"Old work",
+      state:"executing",
+      source:"maddy-executive-desk",
+      createdAt:oldAt,
+      updatedAt:oldAt
+    }]));
+
+    state.maddyActivity.lastRequest = {
+      message:"Current request",
+      source:"maddy-executive-desk",
+      at:new Date(Date.now() - 100).toISOString()
+    };
+    const currentRequest = getMaddyActivityModel(hallway([{
+      id:"current-request-work",
+      instruction:"Current request",
+      state:"executing",
+      source:"maddy-executive-desk",
+      createdAt:nowAt,
+      updatedAt:nowAt
+    }]));
+
+    state.maddyActivity.lastRequest = null;
+    const verifiedRecovered = getMaddyActivityModel(hallway([{
+      id:"verified-recovered-research",
+      instruction:"Verified durable research",
+      state:"executing",
+      source:"maddy-durable-mission-recovery",
+      createdAt:oldAt,
+      updatedAt:oldAt,
+      execution:{
+        serverOwned:true,
+        executionId:"execution-verified-recovered-research",
+        executor:"headless-public-research",
+        state:"running",
+        recoveredProjection:true,
+        ownershipEvidence:"persisted-mission-tag"
+      }
+    }]));
+
+    state.maddyActivity.transient = buildMaddyActivityTransient("thinking", { source:"voice" });
+    const transientOnly = getMaddyActivityModel(hallway([]));
+    state.maddyActivity.transient = null;
+
+    const shellSource = renderMaddyConversationalShell.toString();
+    const gateSource = getMaddyForegroundWorkEvidence.toString();
+    const checks = [
+      { name:"OD4138A has a dedicated foreground-activity truth build identity", passed:MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID === "OD4138A-FOREGROUND-ACTIVITY-TRUTH-GATE-20260921-A" },
+      { name:"Historical recovered durable work cannot light the live Maddy stage without current server status", passed:staleRecovered.foregroundVisible === false && staleRecovered.foregroundEvidence?.reason === "historical-or-unverified-work" },
+      { name:"Historical generic Hallway work cannot light the live Maddy stage", passed:staleGeneric.foregroundVisible === false },
+      { name:"A current user request can drive live foreground work", passed:currentRequest.foregroundVisible === true && currentRequest.foregroundActive === true && currentRequest.foregroundEvidence?.requestMatched === true },
+      { name:"Verified running durable execution can reappear after reload", passed:verifiedRecovered.foregroundVisible === true && verifiedRecovered.foregroundActive === true && verifiedRecovered.foregroundEvidence?.verifiedDurableStatus === true },
+      { name:"Verified durable public research may truthfully say Searching public sources", passed:verifiedRecovered.label === "Searching public sources…" },
+      { name:"A real transient voice/cognition event can drive foreground presence without Hallway work", passed:transientOnly.foregroundVisible === true && transientOnly.label === "Thinking…" },
+      { name:"The conversational stage uses foreground truth rather than raw Hallway visibility", passed:/model\.foregroundVisible/.test(shellSource) && /model\.foregroundActive/.test(shellSource) },
+      { name:"Foreground request matching requires current request time plus source or exact instruction correlation", passed:/requestAtMs/.test(gateSource) && /workAtMs/.test(gateSource) && /sourceMatches \|\| instructionMatches/.test(gateSource) },
+      { name:"Recovered durable execution requires a live queued/running/waiting server state before it can look active", passed:/queued/.test(gateSource) && /running/.test(gateSource) && /waiting/.test(gateSource) },
+      { name:"The gate creates no work, retry, provider, spend, TTS, or external-action authority", passed:!/(fetch\(|submitWork|takeIt|response\.create|automaticSpendUsd\s*:\s*[1-9]|externalActionAuthorized\s*:\s*true)/.test(gateSource) },
+      { name:"No-current-work stage settles to Ready instead of fabricating activity", passed:/model\.foregroundVisible \? model\.label : "Ready"/.test(shellSource) }
+    ];
+
+    state.maddyActivity.transient = priorTransient;
+    state.maddyActivity.lastRequest = priorLastRequest;
+    state.maddyActivity.sessionStartedAt = priorSessionStartedAt;
+
+    const passed = checks.filter((check) => check.passed).length;
+    const result = {
+      success: passed === checks.length,
+      commission:"OD4138A",
+      schema:"meos.dashboard.maddy-foreground-activity-truth-gate.acceptance.v1",
+      version:DASHBOARD_VERSION,
+      buildId:MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID,
+      passed,
+      total:checks.length,
+      checks
+    };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4138A Foreground Activity Truth Gate: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
     return result;
   }
 
@@ -6982,6 +7093,44 @@ document
     return true;
   }
 
+  function getMaddyForegroundWorkEvidence(primary, durable) {
+    if (!primary) {
+      return Object.freeze({ current: false, reason: "no-work", verifiedDurableStatus: false, requestMatched: false });
+    }
+
+    const source = String(primary?.source || primary?.context?.source || primary?.context?.originatedFrom || "").trim().toLowerCase();
+    const executionState = String(durable?.state || "").trim().toLowerCase();
+    const verifiedDurableStatus = Boolean(
+      durable?.serverOwned === true &&
+      durable?.executionId &&
+      ["queued", "running", "waiting"].includes(executionState)
+    );
+
+    const request = state.maddyActivity.lastRequest;
+    const requestAtMs = Date.parse(request?.at || "");
+    const workAtMs = Date.parse(primary?.updatedAt || primary?.createdAt || "");
+    const requestSource = String(request?.source || "").trim().toLowerCase();
+    const instruction = String(primary?.instruction || primary?.title || "").trim().toLowerCase();
+    const requestedMessage = String(request?.message || "").trim().toLowerCase();
+    const sourceMatches = Boolean(requestSource) && source === requestSource;
+    const instructionMatches = Boolean(requestedMessage) && instruction === requestedMessage;
+    const requestMatched = Boolean(
+      request &&
+      Number.isFinite(requestAtMs) &&
+      Number.isFinite(workAtMs) &&
+      workAtMs >= requestAtMs - 1500 &&
+      (sourceMatches || instructionMatches)
+    );
+
+    if (requestMatched) {
+      return Object.freeze({ current: true, reason: "current-foreground-request", verifiedDurableStatus, requestMatched: true });
+    }
+    if (verifiedDurableStatus) {
+      return Object.freeze({ current: true, reason: "verified-current-durable-status", verifiedDurableStatus: true, requestMatched: false });
+    }
+    return Object.freeze({ current: false, reason: "historical-or-unverified-work", verifiedDurableStatus: false, requestMatched: false });
+  }
+
   function getMaddyActivityModel(snapshot = null) {
     const hallway = snapshot?.hallway || getHallwaySnapshot();
     const work = Array.isArray(hallway?.work) ? hallway.work : [];
@@ -7016,6 +7165,10 @@ document
     const ageMs = updatedAt ? Math.max(0, Date.now()-new Date(updatedAt).getTime()) : null;
     const stale = isActive && Number.isFinite(ageMs) && ageMs > 30000;
     const durable = durableExecutionPresentation(primary);
+    const foregroundEvidence = getMaddyForegroundWorkEvidence(primary, durable);
+    const foregroundTerminalAttention = ["blocked", "failed"].includes(rawState);
+    const foregroundVisible = Boolean(transient) || Boolean(foregroundEvidence.current && (isActive || needsApproval || foregroundTerminalAttention));
+    const foregroundActive = Boolean(transient) || Boolean(foregroundEvidence.current && isActive);
     const displayLabel = transient?.label || live.label;
     const displayDetail = transient?.detail || detail;
     const displayState = transient?.state || rawState;
@@ -7026,6 +7179,9 @@ document
       foundationBuildId:MADDY_ACTIVITY_SURFACE_BUILD_ID,
       visible,
       active:displayActive,
+      foregroundVisible,
+      foregroundActive,
+      foregroundEvidence,
       state:displayState,
       canonicalWorkState:rawState,
       label:displayLabel,
@@ -11050,7 +11206,7 @@ document
     window.setInterval(() => { renderLiveHeadquarters(); renderMaddyConversationalShell(); }, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} historical; Maddy Conversational Shell ${MADDY_CONVERSATIONAL_SHELL_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} historical; Maddy Conversational Shell ${MADDY_CONVERSATIONAL_SHELL_BUILD_ID} online; Foreground Activity Truth Gate ${MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID} online.`
     );
   }
 
@@ -11070,7 +11226,8 @@ document
     runMaddyActivitySurfaceAcceptanceTest,
     runExecutiveDeskTextCommandContinuityAcceptanceTest,
     runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
-    runMaddyConversationalShellAcceptanceTest
+    runMaddyConversationalShellAcceptanceTest,
+    runMaddyForegroundActivityTruthGateAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
@@ -11099,6 +11256,7 @@ document
       runLiveMaddyCognitiveWorkActivityAcceptanceTest,
       runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
       runMaddyConversationalShellAcceptanceTest,
+      runMaddyForegroundActivityTruthGateAcceptanceTest,
       runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
@@ -11111,6 +11269,7 @@ document
       getState: () => ({ ...state.maddyActivity, model: getMaddyActivityModel() }),
       runAcceptanceTest: runLiveMaddyCognitiveWorkActivityAcceptanceTest,
       runPlacementAcceptanceTest: runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
+      runForegroundTruthAcceptanceTest: runMaddyForegroundActivityTruthGateAcceptanceTest,
       runFoundationAcceptanceTest: runMaddyActivitySurfaceAcceptanceTest
     }),
     commercial: Object.freeze({
