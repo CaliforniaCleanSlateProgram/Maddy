@@ -1,8 +1,9 @@
+[MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32498040/MEOS_BUILD_STATE.md)
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32497643/MEOS_BUILD_STATE.md)
 # MEOS BUILD STATE — CURRENT CANONICAL CHECKPOINT
 
 **Checkpoint date:** 2026-09-21  
-**Checkpoint identity:** `MADDY-CONVERSATIONAL-UI-OD4138B-LIVE-IRA113-NEXT-20260921`  
+**Checkpoint identity:** `MADDY-OD4138B-LIVE-IRA113-LIVE-CONSOLE-VERIFY-NEXT-20260921`  
 **Governing workflow:** one fix → one file → one commit → one production test → Build State reconciliation  
 **Runtime doctrine:** production evidence is authoritative. Source presence or local acceptance alone is not production proof.
 
@@ -233,48 +234,51 @@ Still open:
 
 ---
 
-## 7. CURRENT CONSOLE / DURABLE COGNITION DEFECT
+## 7. CONSOLE / DURABLE COGNITION — IRA113 CLOSED
 
-The UI arc is production-green, but current production logs expose a separate durable Executive Brain repository integrity defect.
+The Executive Brain durable repository fingerprint defect is now **production-closed**.
 
-Observed:
-- `/api/executive-brain-state` returns repeated `500`, later `502`;
-- Executive Brain reports:
-  `Repository payload fingerprint verification failed`;
-- runtime cognition correctly continues from a non-authoritative continuity cache instead of falsely claiming durable cognition authority.
+### Production proof
+The running institutional authority reports:
+- version: `1.1.3`;
+- build: `IRA113-CANONICAL-PAYLOAD-FINGERPRINT-SELF-HEAL-20260921-A`;
+- provider: `google-workspace`;
+- durable authority: `meos-institutional-repository`;
+- provider-pressure circuits: none open.
 
-The institutional repository itself is otherwise reachable in the latest runtime, so this is no longer being treated as generic UI noise.
+A direct production read of `/api/executive-brain-state` returned:
+- HTTP `200`;
+- `found: true`;
+- authority: `durable-institutional-repository`;
+- provider: `google-workspace`;
+- canonical institutional record `executive-brain / bounded-cognition-state`.
 
-### Root cause found in source
-Institutional Repository Authority `v1.1.2` computes `payloadFingerprint` from the pre-persistence runtime value and then stores `clone(value)`.
+The returned repaired record includes a new `payloadFingerprint` and a preserved `previousFingerprint`, providing live evidence that the legacy fingerprint lineage was retained while the canonical record became readable again. The stored cognition payload remained present; no replacement cognition was fabricated.
 
-JSON cloning can normalize the value:
-- object properties containing `undefined` disappear;
-- `Date` values become strings;
-- other JSON-boundary normalization can occur.
-
-Therefore the stored semantic value can be valid while its recorded fingerprint was calculated from a different pre-serialization representation.
-
-### Next production-pending commission
+### IRA113 implementation status
 `IRA113-CANONICAL-PAYLOAD-FINGERPRINT-SELF-HEAL-20260921-A`
 
-Local status:
+Status:
 - JavaScript syntax: PASS
-- Institutional Repository Authority acceptance: **20/20 PASS**
+- local Institutional Repository Authority acceptance: **20/20 PASS**
+- production runtime identity: **CONFIRMED**
+- production Executive Brain durable read: **HTTP 200 / FOUND**
+- fingerprint mismatch storm: **CLOSED**
 
-Planned behavior:
-- fingerprint the exact JSON-safe value that is persisted;
-- mutable operational/institutional records with this legacy mismatch may self-heal;
-- preserve the entire original authority envelope in an integrity-quarantine record before repairing the canonical fingerprint;
-- verify the quarantine copy before canonical repair;
-- verify the repaired record after write;
-- preserve the stored semantic value rather than inventing replacement cognition;
-- never auto-repair evidentiary or constitutional fingerprint mismatches;
-- integrity defects do not incorrectly open the provider-pressure circuit.
+IRA113:
+- fingerprints the exact JSON-safe value that is persisted;
+- allows bounded self-heal only for mutable operational/institutional legacy mismatches;
+- preserves prior fingerprint lineage;
+- preserves the stored semantic payload instead of inventing replacement state;
+- never auto-repairs evidentiary or constitutional fingerprint mismatches;
+- keeps repository integrity faults separate from provider-pressure failure accounting.
 
-This commission changes durable integrity handling, not cognition content, customer authority, provider choice, spend authority, or external-action authority.
+The integrity-quarantine path remains locally acceptance-proven; the production console proof did not directly inspect the quarantine record itself, so this checkpoint does not overclaim that individual production artifact.
 
-**Production gets the vote before IRA113 is promoted.**
+### Remaining console verification
+The same browser console still contains earlier `500/502/503` entries from startup/deploy transition windows, including Executive Learning and Executive Memory. Those entries predate the final healthy IRA113/Brain result and are **not automatically classified as current persistent defects**.
+
+Next step is a clean-console / fresh-load verification after the service is stable. Only errors that recur after that clean boundary qualify for the next console-cleanup commission.
 
 ---
 
@@ -302,20 +306,20 @@ Preserve:
 
 **Current recovery keyword:**
 
-`MADDY-OD4138B-LIVE-IRA113-CONSOLE-CLEANUP-NEXT-20260921`
+`MADDY-OD4138B-LIVE-IRA113-LIVE-CONSOLE-VERIFY-NEXT-20260921`
 
 **Fast recovery:**
 
-`Resume MADDY-OD4138B-LIVE-IRA113-CONSOLE-CLEANUP-NEXT-20260921 — Executive Hub v4.14.2 / OD4138B is live-proven 15/15 and visually accepted; OD4138A foreground activity truth is live-proven 12/12 and fresh load correctly shows Ready; current customer shell is conversation-left / large Canonical Maddy-right with Conversation + Now top navigation, responsive/mobile-compatible rather than Maddy-Go-first, findings and approvals remain available through Now, widget-heavy/panoramic UI is retired, current proportions are frozen for now, future digital-human Maddy may become a live webcam-like working presence and later expand fullscreen; current open engineering defect is repeated Executive Brain durable-state fingerprint failure; source diagnosis found Institutional Repository Authority v1.1.2 fingerprints the pre-JSON value but persists clone(value); IRA113 canonical payload fingerprint + quarantine self-heal is locally green 20/20 and is the next production-pending one-file commission.`
+`Resume MADDY-OD4138B-LIVE-IRA113-LIVE-CONSOLE-VERIFY-NEXT-20260921 — Executive Hub v4.14.2 / OD4138B is live-proven 15/15 and visually accepted; OD4138A foreground activity truth is live-proven 12/12 and fresh load correctly shows Ready; customer shell remains conversation-left / large Canonical Maddy-right with Conversation + Now top navigation, mobile-compatible rather than Maddy-Go-first, findings and approvals remain available through Now, widget-heavy/panoramic UI remains retired, present proportions are frozen for now, future digital-human Maddy may become a live webcam-like working presence and later expand fullscreen; IRA113 Institutional Repository Authority v1.1.3 is now production-confirmed, Executive Brain durable state returns HTTP 200 FOUND through google-workspace durable institutional authority, and the legacy payload fingerprint defect is closed; local IRA113 acceptance remains 20/20; remaining historical 500/502/503 console entries must be re-tested from a clean fresh-load boundary before selecting another console-cleanup commission; durable public-research disconnect/reconnect proof remains open.`
 
 ---
 
 ## 10. IMMEDIATE NEXT STEPS
 
-1. Commit this Build State checkpoint.
-2. Commit/deploy IRA113 as its own one-file commission.
-3. On restart, verify the legacy Executive Brain durable record is quarantined/repaired and that the repeated `/api/executive-brain-state` console errors stop.
-4. Run Institutional Repository Authority acceptance in production.
-5. Confirm Executive Brain returns to durable authority without inventing or replacing cognition.
-6. Reconcile Build State only after production proof.
-7. Return to product capability work after the console/durable integrity defect is closed.
+1. Commit this Build State reconciliation as its own one-file commit.
+2. Open a clean browser console and hard-refresh once after Render is stable.
+3. Verify IRA113 still reports `v1.1.3` and Executive Brain durable state remains HTTP `200`.
+4. Ignore old pre-refresh deploy-transition entries; capture only errors that recur after the clean boundary.
+5. Group any recurring errors by subsystem before changing code; do not suppress legitimate failures merely to make DevTools look quiet.
+6. Commission exactly one root-cause fix for the first demonstrated persistent subsystem fault.
+7. Keep the real bounded durable public-research disconnect/reconnect proof open for later completion.
