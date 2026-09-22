@@ -2,7 +2,7 @@
  * Maddy Executive Operations System (MEOS)
  * Executive Headquarters Intelligence Operations Interface
  *
- * Version: 4.14.1
+ * Version: 4.14.2
  *
  * Purpose:
  * - Replaces the temporary Executive Office dashboard file without requiring
@@ -20,7 +20,7 @@
 (() => {
   "use strict";
 
-  const DASHBOARD_VERSION = "4.14.1";
+  const DASHBOARD_VERSION = "4.14.2";
   const CABINET_RECONCILIATION_BUILD_ID = "EO4120-AUTONOMY-CONTROL-RECONCILIATION-20260817-A";
   const MADDY_RESPONSE_SURFACE_BUILD_ID = "OD4121-MADDY-RESPONSE-SURFACE-20260913-A";
   const SHOP_TRUTH_SURFACE_BUILD_ID = "OD4130-THE-SHOP-TRUTH-SURFACE-20260913-A";
@@ -33,6 +33,7 @@
   const LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID = "OD4137B-PANORAMIC-MADDY-ACTIVITY-SURFACE-PLACEMENT-20260921-A";
   const MADDY_CONVERSATIONAL_SHELL_BUILD_ID = "OD4138-MADDY-CONVERSATIONAL-SHELL-FOUNDATION-20260921-A";
   const MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID = "OD4138A-FOREGROUND-ACTIVITY-TRUTH-GATE-20260921-A";
+  const MADDY_VERTICAL_PRESENCE_STAGE_BUILD_ID = "OD4138B-VERTICAL-CANONICAL-MADDY-PRESENCE-STAGE-20260921-A";
   const FUNDING_API_URL = "/api/resource-development/desk?limit=100";
   const OFFICE_ACTIVITY_API_URL = "/api/resource-development/desk?includeAll=true&limit=500";
   const COGNITION_RUNTIME_API_URL = "/api/continuous-cognition-runtime";
@@ -5102,19 +5103,23 @@ document
       .meos-maddy-shell[data-mode="gangsta"]{--maddy-accent:#e8bf78;--maddy-warm:#e8bf78;background:radial-gradient(circle at 50% -8%,rgba(125,83,35,.28),transparent 40%),linear-gradient(180deg,#100e0b 0%,#090a0d 55%,#07080a 100%)}
       .meos-maddy-shell::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,.015),transparent);opacity:.75}
 
-      .meos-maddy-shell-head{height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 max(20px,3vw);border-bottom:1px solid rgba(255,255,255,.065);background:rgba(7,9,13,.72);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+      .meos-maddy-shell-head{height:68px;display:grid;grid-template-columns:minmax(170px,1fr) auto minmax(150px,1fr);align-items:center;gap:16px;padding:0 max(20px,3vw);border-bottom:1px solid rgba(255,255,255,.065);background:rgba(7,9,13,.76);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
       .meos-maddy-brand{display:flex;align-items:baseline;gap:10px;min-width:0}.meos-maddy-brand strong{font-size:1.18rem;letter-spacing:.01em}.meos-maddy-brand span{color:rgba(226,232,235,.62);font-size:.9rem}
-      .meos-maddy-shell-tools{display:flex;align-items:center;gap:8px}.meos-maddy-shell-mode{border:0;background:transparent;color:rgba(236,240,242,.74);font:650 .9rem/1 system-ui;padding:9px 8px}.meos-maddy-now-button{border:1px solid rgba(255,255,255,.10);border-radius:999px;background:rgba(255,255,255,.045);color:#edf3f5;padding:9px 13px;font:700 .88rem/1 system-ui;cursor:pointer}.meos-maddy-now-button[data-alert="true"]{border-color:color-mix(in srgb,var(--maddy-warm) 55%,transparent);box-shadow:0 0 22px color-mix(in srgb,var(--maddy-warm) 15%,transparent)}
+      .meos-maddy-shell-nav{justify-self:center;display:flex;align-items:center;gap:4px;padding:4px;border:1px solid rgba(255,255,255,.07);border-radius:999px;background:rgba(255,255,255,.025)}
+      .meos-maddy-nav-button,.meos-maddy-now-button{border:0;border-radius:999px;background:transparent;color:rgba(236,240,242,.66);padding:9px 14px;font:720 .88rem/1 system-ui;cursor:pointer;transition:background .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease}
+      .meos-maddy-nav-button[aria-current="page"]{background:rgba(255,255,255,.075);color:#f7f9fa}.meos-maddy-now-button:hover,.meos-maddy-nav-button:hover{background:rgba(255,255,255,.06);color:#fff}.meos-maddy-now-button[data-alert="true"]{color:var(--maddy-warm);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--maddy-warm) 36%,transparent),0 0 22px color-mix(in srgb,var(--maddy-warm) 10%,transparent)}
+      .meos-maddy-shell-tools{justify-self:end;display:flex;align-items:center;gap:8px}.meos-maddy-shell-mode{border:0;background:transparent;color:rgba(236,240,242,.74);font:650 .9rem/1 system-ui;padding:9px 8px}
 
-      .meos-maddy-shell-main{min-height:0;width:min(1440px,100%);margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(270px,320px);gap:0}
-      .meos-maddy-primary{min-width:0;min-height:0;display:grid;grid-template-rows:minmax(190px,32vh) minmax(0,1fr);border-right:1px solid rgba(255,255,255,.055)}
-      .meos-maddy-stage{position:relative;overflow:hidden;display:grid;place-items:center;border-bottom:1px solid rgba(255,255,255,.055);background:radial-gradient(ellipse at 50% 102%,rgba(80,178,193,.10),transparent 55%)}
-      .meos-maddy-stage::after{content:"";position:absolute;left:50%;bottom:-14%;width:min(600px,70vw);height:42%;transform:translateX(-50%);background:radial-gradient(ellipse,rgba(93,207,222,.11),transparent 65%);filter:blur(12px);pointer-events:none}
-      .meos-maddy-portrait-wrap{position:absolute;inset:0;display:grid;place-items:end center;pointer-events:none}
-      .meos-maddy-portrait{height:min(31vh,300px);max-width:72%;object-fit:contain;object-position:center bottom;opacity:.82;filter:saturate(.88) contrast(1.03) drop-shadow(0 22px 34px rgba(0,0,0,.36));mask-image:linear-gradient(to bottom,#000 0%,#000 77%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 77%,transparent 100%)}
-      .meos-maddy-stage-copy{position:absolute;left:50%;bottom:20px;z-index:3;transform:translateX(-50%);width:min(620px,90%);text-align:center;pointer-events:none}
-      .meos-maddy-stage-name{font-size:.82rem;font-weight:750;letter-spacing:.13em;text-transform:uppercase;color:rgba(232,238,240,.64);margin-bottom:8px}
-      .meos-maddy-stage-status{display:inline-block;position:relative;max-width:100%;font-size:clamp(1.12rem,2.1vw,1.42rem);font-weight:650;line-height:1.35;letter-spacing:-.012em;color:#f5f8f9;text-shadow:0 2px 18px rgba(0,0,0,.68);padding:4px 12px 10px}
+      .meos-maddy-shell-main{position:relative;min-height:0;width:min(1540px,100%);margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) clamp(360px,38vw,560px);gap:0}
+      .meos-maddy-primary{min-width:0;min-height:0;display:grid;grid-template-rows:minmax(0,1fr);border-right:1px solid rgba(255,255,255,.055)}
+      .meos-maddy-stage{position:relative;min-width:0;min-height:0;overflow:hidden;display:grid;place-items:center;border-left:1px solid rgba(255,255,255,.035);background:radial-gradient(ellipse at 50% 96%,rgba(80,178,193,.13),transparent 56%),linear-gradient(180deg,rgba(15,20,26,.30),rgba(5,7,10,.70))}
+      .meos-maddy-stage::before{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,transparent 44%,rgba(4,7,10,.12) 62%,rgba(4,7,10,.72) 100%);pointer-events:none}
+      .meos-maddy-stage::after{content:"";position:absolute;left:50%;bottom:-8%;z-index:1;width:110%;height:36%;transform:translateX(-50%);background:radial-gradient(ellipse,rgba(93,207,222,.14),transparent 66%);filter:blur(18px);pointer-events:none}
+      .meos-maddy-portrait-wrap{position:absolute;inset:0;display:grid;place-items:stretch;pointer-events:none}
+      .meos-maddy-portrait{width:100%;height:100%;max-width:none;object-fit:cover;object-position:center 34%;opacity:.96;filter:saturate(.92) contrast(1.04) drop-shadow(0 28px 46px rgba(0,0,0,.34));mask-image:linear-gradient(to bottom,#000 0%,#000 86%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 86%,transparent 100%)}
+      .meos-maddy-stage-copy{position:absolute;left:50%;bottom:38px;z-index:3;transform:translateX(-50%);width:min(470px,88%);text-align:center;pointer-events:none}
+      .meos-maddy-stage-name{font-size:.8rem;font-weight:780;letter-spacing:.15em;text-transform:uppercase;color:rgba(238,243,245,.68);margin-bottom:8px}
+      .meos-maddy-stage-status{display:inline-block;position:relative;max-width:100%;font-size:clamp(1.12rem,1.7vw,1.42rem);font-weight:650;line-height:1.35;letter-spacing:-.012em;color:#f6f9fa;text-shadow:0 2px 20px rgba(0,0,0,.78);padding:4px 12px 10px}
       .meos-maddy-stage-status::after{content:"";position:absolute;left:10%;right:10%;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,var(--maddy-accent),transparent);opacity:.3}
       .meos-maddy-stage[data-active="true"] .meos-maddy-stage-status::before{content:"";position:absolute;left:-20%;bottom:0;width:28%;height:2px;border-radius:999px;background:linear-gradient(90deg,transparent,#fff,var(--maddy-accent),transparent);box-shadow:0 0 12px var(--maddy-accent);animation:meosMaddySweep 1.5s ease-in-out infinite}
       @keyframes meosMaddySweep{0%{transform:translateX(0);opacity:0}18%{opacity:.9}82%{opacity:.9}100%{transform:translateX(430%);opacity:0}}
@@ -5127,34 +5132,37 @@ document
       .meos-maddy-message[data-role="maddy"]{margin-right:min(8%,60px)}
       .meos-maddy-message-body{white-space:pre-wrap;overflow-wrap:anywhere}.meos-maddy-message-sources{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}.meos-maddy-message-sources a{color:var(--maddy-accent);font-size:.9rem;text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--maddy-accent) 38%,transparent)}
 
-      .meos-maddy-now{min-height:0;overflow:auto;padding:28px 24px 110px;background:rgba(10,12,16,.48)}
+      .meos-maddy-now{position:absolute;z-index:30;top:14px;right:18px;width:min(430px,calc(100vw - 36px));max-height:calc(100% - 28px);overflow:auto;padding:24px 22px 28px;border:1px solid rgba(255,255,255,.09);border-radius:22px;background:rgba(10,12,16,.965);box-shadow:0 28px 80px rgba(0,0,0,.46);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);opacity:0;transform:translateY(-12px) scale(.985);pointer-events:none;transition:opacity .18s ease,transform .18s ease}
+      .meos-maddy-shell[data-now-open="true"] .meos-maddy-now{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
       .meos-maddy-now-head{display:flex;align-items:end;justify-content:space-between;margin-bottom:26px}.meos-maddy-now-head strong{font-size:1.05rem}.meos-maddy-now-head span{font-size:.82rem;color:rgba(224,231,234,.48)}
       .meos-maddy-now-section{display:grid;gap:12px;margin-bottom:30px}.meos-maddy-now-title{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:.82rem;font-weight:820;letter-spacing:.09em;text-transform:uppercase;color:rgba(230,236,238,.52)}.meos-maddy-now-title b{font-size:.78rem;color:var(--maddy-accent)}
       .meos-maddy-now-empty{font-size:.96rem;line-height:1.55;color:rgba(223,231,234,.53);padding:2px 0 12px}
       .meos-maddy-now-item{position:relative;display:grid;gap:6px;padding:0 0 16px;border-bottom:1px solid rgba(255,255,255,.07)}.meos-maddy-now-item:last-child{border-bottom:0}.meos-maddy-now-item strong{font-size:1rem;line-height:1.4}.meos-maddy-now-item p{margin:0;color:rgba(227,234,237,.65);font-size:.92rem;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.meos-maddy-now-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}.meos-maddy-now-actions button,.meos-maddy-now-actions a{border:0;background:transparent;color:var(--maddy-accent);padding:4px 0;font:750 .88rem/1.2 system-ui;text-decoration:none;cursor:pointer}.meos-maddy-now-actions [data-primary="true"]{color:var(--maddy-warm)}
       .meos-maddy-approval-item{padding-left:15px}.meos-maddy-approval-item::before{content:"";position:absolute;left:0;top:6px;width:6px;height:6px;border-radius:50%;background:var(--maddy-warm);box-shadow:0 0 13px color-mix(in srgb,var(--maddy-warm) 55%,transparent)}
 
-      .meos-maddy-composer-wrap{grid-column:1/-1;position:relative;padding:12px max(18px,3vw) calc(12px + env(safe-area-inset-bottom));border-top:1px solid rgba(255,255,255,.065);background:linear-gradient(180deg,rgba(7,9,13,.86),rgba(7,9,13,.98));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+      .meos-maddy-composer-wrap{grid-column:1/-1;position:relative;padding:12px calc(clamp(360px,38vw,560px) + max(18px,3vw)) calc(12px + env(safe-area-inset-bottom)) max(18px,3vw);border-top:1px solid rgba(255,255,255,.065);background:linear-gradient(180deg,rgba(7,9,13,.86),rgba(7,9,13,.98));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
       .meos-maddy-composer{width:min(820px,100%);margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:end;gap:8px;border:1px solid rgba(255,255,255,.11);border-radius:24px;background:rgba(255,255,255,.055);padding:8px 9px;box-shadow:0 12px 50px rgba(0,0,0,.22)}
       .meos-maddy-composer:focus-within{border-color:color-mix(in srgb,var(--maddy-accent) 38%,rgba(255,255,255,.12));box-shadow:0 12px 50px rgba(0,0,0,.25),0 0 0 1px color-mix(in srgb,var(--maddy-accent) 12%,transparent)}
       .meos-maddy-composer textarea{resize:none;min-height:42px;max-height:150px;border:0;outline:0;background:transparent;color:#f6f8f9;padding:10px 7px;font:500 1.05rem/1.45 system-ui;overflow:auto}.meos-maddy-composer textarea::placeholder{color:rgba(224,231,234,.45)}
       .meos-maddy-compose-icon{width:42px;height:42px;border:0;border-radius:50%;display:grid;place-items:center;background:transparent;color:rgba(235,241,243,.76);font:800 1.12rem/1 system-ui;cursor:pointer}.meos-maddy-compose-icon:hover{background:rgba(255,255,255,.07);color:#fff}.meos-maddy-compose-send{background:#f1f4f5;color:#0a0c0f}.meos-maddy-compose-send:hover{background:#fff;color:#050608}
       .meos-maddy-file-note{width:min(820px,100%);margin:7px auto 0;color:rgba(221,229,232,.56);font-size:.84rem;min-height:1.2em;padding-left:12px}
 
-      .meos-maddy-mobile-close{display:none}
+      .meos-maddy-mobile-close{display:block;border:0;background:transparent;color:#e8edef;font-size:1.35rem;cursor:pointer}
       @media(max-width:900px){
-        .meos-maddy-shell-main{grid-template-columns:1fr}.meos-maddy-primary{border-right:0;grid-template-rows:minmax(175px,28vh) minmax(0,1fr)}
-        .meos-maddy-now{position:absolute;z-index:20;right:0;top:64px;bottom:0;width:min(88vw,380px);transform:translateX(105%);transition:transform .24s ease;background:rgba(10,12,16,.985);box-shadow:-24px 0 60px rgba(0,0,0,.38);padding-top:22px}.meos-maddy-shell[data-now-open="true"] .meos-maddy-now{transform:translateX(0)}
-        .meos-maddy-mobile-close{display:block;border:0;background:transparent;color:#e8edef;font-size:1.35rem;cursor:pointer}
-        .meos-maddy-now-head{align-items:center}.meos-maddy-composer-wrap{grid-column:1}.meos-maddy-portrait{height:min(27vh,235px);max-width:88%}
+        .meos-maddy-shell-head{grid-template-columns:minmax(120px,1fr) auto auto;gap:8px}.meos-maddy-shell-nav{justify-self:end}.meos-maddy-shell-nav .meos-maddy-nav-button:first-child{display:none}
+        .meos-maddy-shell-main{grid-template-columns:1fr;grid-template-rows:minmax(250px,36vh) minmax(0,1fr)}
+        .meos-maddy-stage{grid-column:1;grid-row:1;border-left:0;border-bottom:1px solid rgba(255,255,255,.055)}.meos-maddy-primary{grid-column:1;grid-row:2;border-right:0}
+        .meos-maddy-portrait{object-position:center 32%}.meos-maddy-stage-copy{bottom:18px}
+        .meos-maddy-now{z-index:40;right:10px;top:10px;bottom:10px;width:min(90vw,420px);max-height:none;opacity:1;transform:translateX(105%);transition:transform .22s ease;background:rgba(10,12,16,.985);box-shadow:-24px 0 60px rgba(0,0,0,.38)}.meos-maddy-shell[data-now-open="true"] .meos-maddy-now{transform:translateX(0);pointer-events:auto}.meos-maddy-shell:not([data-now-open="true"]) .meos-maddy-now{pointer-events:none}
+        .meos-maddy-now-head{align-items:center}.meos-maddy-composer-wrap{grid-column:1;padding:10px max(14px,3vw) calc(10px + env(safe-area-inset-bottom))}
       }
       @media(max-width:600px){
-        .meos-maddy-shell-head{height:56px;padding:0 15px}.meos-maddy-brand strong{font-size:1.06rem}.meos-maddy-brand span{display:none}.meos-maddy-shell-mode{font-size:.82rem;padding:8px 4px}.meos-maddy-now-button{padding:8px 10px;font-size:.82rem}
-        .meos-maddy-primary{grid-template-rows:minmax(155px,26vh) minmax(0,1fr)}.meos-maddy-stage-copy{bottom:14px}.meos-maddy-stage-name{font-size:.72rem;margin-bottom:5px}.meos-maddy-stage-status{font-size:1.08rem;padding-bottom:8px}
+        .meos-maddy-shell-head{height:58px;padding:0 14px}.meos-maddy-brand strong{font-size:1.06rem}.meos-maddy-brand span{display:none}.meos-maddy-shell-mode{font-size:.8rem;padding:7px 2px}.meos-maddy-shell-nav{padding:3px}.meos-maddy-now-button{padding:8px 10px;font-size:.81rem}
+        .meos-maddy-shell-main{grid-template-rows:minmax(220px,33vh) minmax(0,1fr)}.meos-maddy-stage-copy{bottom:14px}.meos-maddy-stage-name{font-size:.72rem;margin-bottom:5px}.meos-maddy-stage-status{font-size:1.08rem;padding-bottom:8px}
         .meos-maddy-conversation{padding:22px 17px 28px}.meos-maddy-conversation-inner{gap:20px}.meos-maddy-message{font-size:1.03rem;line-height:1.66}.meos-maddy-message[data-role="user"]{margin-left:8%;padding:11px 13px;border-radius:17px}
         .meos-maddy-composer-wrap{padding:9px 10px calc(9px + env(safe-area-inset-bottom))}.meos-maddy-composer{grid-template-columns:auto minmax(0,1fr) auto auto;border-radius:22px;padding:6px}.meos-maddy-composer textarea{font-size:1rem;padding:10px 5px}.meos-maddy-compose-icon{width:39px;height:39px}.meos-maddy-file-note{padding-left:8px;font-size:.8rem}
       }
-      @media(prefers-reduced-motion:reduce){.meos-maddy-stage[data-active="true"] .meos-maddy-stage-status::before{animation:none;left:22%;width:56%;opacity:.6}.meos-maddy-now{transition:none}}
+      @media(prefers-reduced-motion:reduce){.meos-maddy-stage[data-active="true"] .meos-maddy-stage-status::before{animation:none;left:22%;width:56%;opacity:.6}.meos-maddy-now{transition:none}.meos-maddy-nav-button,.meos-maddy-now-button{transition:none}}
     `;
     document.head.appendChild(style);
   }
@@ -5305,22 +5313,23 @@ document
     shell.innerHTML = `
       <header class="meos-maddy-shell-head">
         <div class="meos-maddy-brand"><strong>Maddy</strong><span>one conversation · MEOS underneath</span></div>
-        <div class="meos-maddy-shell-tools">
-          <span id="meosMaddyShellMode" class="meos-maddy-shell-mode">Professional</span>
+        <nav class="meos-maddy-shell-nav" aria-label="Maddy navigation">
+          <button class="meos-maddy-nav-button" type="button" aria-current="page">Conversation</button>
           <button id="meosMaddyNowButton" class="meos-maddy-now-button" type="button" aria-expanded="false">Now</button>
-        </div>
+        </nav>
+        <div class="meos-maddy-shell-tools"><span id="meosMaddyShellMode" class="meos-maddy-shell-mode">Professional</span></div>
       </header>
       <main class="meos-maddy-shell-main">
         <section class="meos-maddy-primary">
-          <section id="meosMaddyStage" class="meos-maddy-stage" data-active="false" aria-live="polite">
-            <div class="meos-maddy-portrait-wrap"><img class="meos-maddy-portrait" src="maddy-canonical-v2.png" alt="Maddy" /></div>
-            <div class="meos-maddy-stage-copy"><div class="meos-maddy-stage-name">Maddy</div><div id="meosMaddyStageStatus" class="meos-maddy-stage-status">Ready</div></div>
-          </section>
           <section id="meosMaddyConversation" class="meos-maddy-conversation" aria-label="Conversation with Maddy">
             <div id="meosMaddyShellMessages" class="meos-maddy-conversation-inner">
               <div id="meosMaddyShellEmpty" class="meos-maddy-empty">Ask, talk, upload something, or hand Maddy work. What she finds and anything that needs your approval stay visible in <strong>Now</strong>.</div>
             </div>
           </section>
+        </section>
+        <section id="meosMaddyStage" class="meos-maddy-stage" data-active="false" aria-live="polite" aria-label="Maddy presence">
+          <div class="meos-maddy-portrait-wrap"><img class="meos-maddy-portrait" src="maddy-canonical-v2.png" alt="Maddy" /></div>
+          <div class="meos-maddy-stage-copy"><div class="meos-maddy-stage-name">Maddy</div><div id="meosMaddyStageStatus" class="meos-maddy-stage-status">Ready</div></div>
         </section>
         <aside id="meosMaddyNow" class="meos-maddy-now" aria-label="Maddy now">
           <div class="meos-maddy-now-head"><div><strong>Now</strong><br><span>what changed while Maddy worked</span></div><button id="meosMaddyNowClose" class="meos-maddy-mobile-close" type="button" aria-label="Close Now">×</button></div>
@@ -5523,6 +5532,50 @@ document
     };
     console.table(checks);
     console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4138A Foreground Activity Truth Gate: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
+    return result;
+  }
+
+
+  function runMaddyVerticalPresenceStageAcceptanceTest() {
+    const shell = document.getElementById("meosMaddyConversationalShell");
+    const main = shell?.querySelector(".meos-maddy-shell-main");
+    const primary = shell?.querySelector(".meos-maddy-primary");
+    const stage = shell?.querySelector("#meosMaddyStage");
+    const now = shell?.querySelector("#meosMaddyNow");
+    const nav = shell?.querySelector(".meos-maddy-shell-nav");
+    const styleText = document.getElementById(MADDY_CONVERSATIONAL_SHELL_STYLE_ID)?.textContent || "";
+    const renderSource = renderMaddyConversationalShell.toString();
+    const nowSource = renderMaddyNowSurface.toString();
+    const checks = [
+      { name:"OD4138B has a dedicated vertical Canonical Maddy presence build identity", passed:MADDY_VERTICAL_PRESENCE_STAGE_BUILD_ID === "OD4138B-VERTICAL-CANONICAL-MADDY-PRESENCE-STAGE-20260921-A" },
+      { name:"Desktop dedicates a large right-side presence column to Maddy", passed:/grid-template-columns:minmax\(0,1fr\) clamp\(360px,38vw,560px\)/.test(styleText) && Boolean(stage) },
+      { name:"Canonical Maddy v2 fills the presence stage instead of a tiny portrait box", passed:shell?.querySelector('.meos-maddy-portrait')?.getAttribute('src') === 'maddy-canonical-v2.png' && /width:100%;height:100%;max-width:none;object-fit:cover/.test(styleText) },
+      { name:"Conversation and Maddy presence are peer desktop columns", passed:Boolean(main && primary && stage && primary.parentElement === main && stage.parentElement === main) },
+      { name:"Top navigation owns Conversation and Now access", passed:Boolean(nav?.querySelector('[aria-current="page"]') && nav?.querySelector('#meosMaddyNowButton')) },
+      { name:"Now is contextual overlay rather than permanent sidebar real estate", passed:Boolean(now) && /position:absolute/.test(styleText) && /pointer-events:none/.test(styleText) && /data-now-open/.test(styleText) },
+      { name:"Findings remain backed by real Hallway deliverables", passed:/hallwayDeliverables/.test(nowSource) && /getMaddyDeliverablePresentation/.test(nowSource) },
+      { name:"Approvals remain backed by pending approval truth and existing Take It authority", passed:/pendingApprovals/.test(nowSource) && /hallway\.takeIt/.test(nowSource) },
+      { name:"Composer reserves desktop real estate for Maddy's right-side presence", passed:/padding:12px calc\(clamp\(360px,38vw,560px\)/.test(styleText) },
+      { name:"Mobile collapses Maddy above conversation instead of requiring a desktop sidebar", passed:/grid-template-rows:minmax\(250px,36vh\) minmax\(0,1fr\)/.test(styleText) && /\.meos-maddy-stage\{grid-column:1;grid-row:1/.test(styleText) },
+      { name:"Mobile Now remains reachable from top navigation without permanent rail", passed:/translateX\(105%\)/.test(styleText) && /data-now-open="true"/.test(styleText) },
+      { name:"Truthful foreground status remains over Maddy rather than becoming a widget", passed:Boolean(shell?.querySelector('#meosMaddyStageStatus')) && /model\.foregroundVisible/.test(renderSource) && !shell?.querySelector('.meos-live-activity') },
+      { name:"OD4138A Ready fallback remains preserved", passed:/model\.foregroundVisible \? model\.label : "Ready"/.test(renderSource) },
+      { name:"Reduced-motion behavior remains explicit", passed:/prefers-reduced-motion:reduce/.test(styleText) },
+      { name:"Vertical stage adds no provider, spend, retry, TTS, or external-action authority", passed:!/(fetch\(|submitWork|response\.create|automaticSpendUsd\s*:\s*[1-9]|externalActionAuthorized\s*:\s*true)/.test(`${installMaddyConversationalShell.toString()} ${renderSource}`) }
+    ];
+    const passed = checks.filter((check) => check.passed).length;
+    const result = {
+      success: passed === checks.length,
+      commission:"OD4138B",
+      schema:"meos.dashboard.maddy-vertical-canonical-presence-stage.acceptance.v1",
+      version:DASHBOARD_VERSION,
+      buildId:MADDY_VERTICAL_PRESENCE_STAGE_BUILD_ID,
+      passed,
+      total:checks.length,
+      checks
+    };
+    console.table(checks);
+    console.info(`[MEOS ${DASHBOARD_VERSION}] Commission OD4138B Vertical Canonical Maddy Presence Stage: ${result.success ? "PASS" : "FAIL"} (${passed}/${checks.length}).`);
     return result;
   }
 
@@ -11206,7 +11259,7 @@ document
     window.setInterval(() => { renderLiveHeadquarters(); renderMaddyConversationalShell(); }, 15000);
 
     console.info(
-      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} historical; Maddy Conversational Shell ${MADDY_CONVERSATIONAL_SHELL_BUILD_ID} online; Foreground Activity Truth Gate ${MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID} online.`
+      `[MEOS ${DASHBOARD_VERSION}] Executive Hub initialized; Maddy Response Surface ${MADDY_RESPONSE_SURFACE_BUILD_ID} online; The Shop Truth Surface ${SHOP_TRUTH_SURFACE_BUILD_ID} online; Consequence Recognition Gate ${CONSEQUENCE_RECOGNITION_BUILD_ID} online; Returned Work Disposition Surface ${RETURNED_WORK_DISPOSITION_BUILD_ID} online; Commercial Command Dashboard ${COMMERCIAL_COMMAND_BUILD_ID} online; Conversational Live Maddy Workstream ${MADDY_ACTIVITY_SURFACE_BUILD_ID} online; Executive Desk Text Command Continuity ${EXECUTIVE_DESK_TEXT_COMMAND_BUILD_ID} online; Live Maddy Cognitive & Work Activity ${LIVE_MADDY_COGNITIVE_ACTIVITY_BUILD_ID} online; Panoramic Maddy Activity Placement ${LIVE_MADDY_ACTIVITY_PLACEMENT_BUILD_ID} historical; Maddy Conversational Shell ${MADDY_CONVERSATIONAL_SHELL_BUILD_ID} online; Foreground Activity Truth Gate ${MADDY_FOREGROUND_ACTIVITY_TRUTH_BUILD_ID} online; Vertical Canonical Maddy Presence Stage ${MADDY_VERTICAL_PRESENCE_STAGE_BUILD_ID} online.`
     );
   }
 
@@ -11227,7 +11280,8 @@ document
     runExecutiveDeskTextCommandContinuityAcceptanceTest,
     runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
     runMaddyConversationalShellAcceptanceTest,
-    runMaddyForegroundActivityTruthGateAcceptanceTest
+    runMaddyForegroundActivityTruthGateAcceptanceTest,
+    runMaddyVerticalPresenceStageAcceptanceTest
   });
 
   window.MEOSDashboard = Object.freeze({
@@ -11257,6 +11311,7 @@ document
       runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
       runMaddyConversationalShellAcceptanceTest,
       runMaddyForegroundActivityTruthGateAcceptanceTest,
+      runMaddyVerticalPresenceStageAcceptanceTest,
       runCabinetNavigationReconciliationAcceptanceTest,
       runDirectAnswerReturnAcceptanceTest: runOneQuestionOneAnswerAcceptanceTest,
       getOfficePortfolio: () => state.headquarters.officePortfolio.map((office) => ({ ...office }))
@@ -11270,6 +11325,7 @@ document
       runAcceptanceTest: runLiveMaddyCognitiveWorkActivityAcceptanceTest,
       runPlacementAcceptanceTest: runPanoramicMaddyActivitySurfacePlacementAcceptanceTest,
       runForegroundTruthAcceptanceTest: runMaddyForegroundActivityTruthGateAcceptanceTest,
+      runVerticalPresenceAcceptanceTest: runMaddyVerticalPresenceStageAcceptanceTest,
       runFoundationAcceptanceTest: runMaddyActivitySurfaceAcceptanceTest
     }),
     commercial: Object.freeze({
