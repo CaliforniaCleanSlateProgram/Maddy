@@ -1,12 +1,82 @@
 [MEOS_BUILD_STATE.md](https://github.com/user-attachments/files/32532071/MEOS_BUILD_STATE.md)
 # MEOS BUILD STATE — CURRENT CANONICAL CHECKPOINT
 
-**Checkpoint date:** 2026-09-22  
-**Checkpoint identity:** `MADDY-COLD-START-CONTINUITY-MD021-LEGACY-BROWSER-STATE-FORENSICS-NEXT-20260922`  
+**Checkpoint date:** 2026-09-24  
+**Checkpoint identity:** `MADDY-MDP014-PHYSIOLOGY-NEUROMORPHIC-SEAM-HEARTBEAT-DORMANT-NEXT-20260924`  
 **Governing workflow:** one fix → one file → local test → local regression test → show results → Founder approval → one commit → production test → Build State reconciliation  
 **Runtime doctrine:** production evidence is authoritative. Source presence or local acceptance alone is not production proof.
 
-This checkpoint supersedes the earlier `MADDY-OD4139-LIVE-DISPATCHER-BROWSER-PERSISTENCE-NEXT-20260921` recovery point.
+This checkpoint supersedes the earlier `MADDY-COLD-START-CONTINUITY-MD021-LEGACY-BROWSER-STATE-FORENSICS-NEXT-20260922` recovery point as the foreground engineering recovery point. The MD021/browser-forensics work remains preserved historical/open background work where not explicitly closed below.
+
+---
+
+## CURRENT ENGINEERING DELTA — DEVELOPMENTAL INTELLIGENCE + DIGITAL PHYSIOLOGY
+
+### Developmental-intelligence direction now explicit
+
+`PROJECT_MADDY_NORTH_STAR.md` contains the Founder-approved Developmental Intelligence Principle at commit `2cd838f2548c5e0b1e16a92d9eb2c252c4cc51a1`:
+
+> **Stop assuming intelligence must be designed completely top-down. Design conditions under which increasingly sophisticated organization can develop.**
+
+The research thread `TURING_MORPHOGENESIS_BZ_DEVELOPMENTAL_INTELLIGENCE.md` was added at commit `edda2fc132305982eb12eb135ea46c00f9e32996`. It preserves Turing morphogenesis/unorganised-machine/child-machine research; Belousov-Zhabotinsky excitable dynamics; allostasis/interoception; multiscale cognition; Fibonacci/phyllotaxis; neural cellular automata; regenerative/self-coding hypotheses; and the proposed Cognitive Morphogenesis laboratory. It is a **research/hypothesis authority, not proof that Maddy already has end-to-end cognitive morphogenesis**.
+
+### MDP010 — Digital Physiology core
+
+Commit `0d2df32989416aa9c0942421225c9d0960dc170d` adds `frontend/maddy-digital-physiology.js` / `MDP010-INTEROCEPTIVE-ALLOSTATIC-STATE-CONTRACT-20260924-A`.
+
+Purpose: give Maddy a provider-neutral/substrate-neutral internal body-state vocabulary for continuity, cognition, resources, organ integrity, workload, epistemic integrity, identity integrity, and dependency pressure, plus bounded trend projection. It is **not** a survival-at-all-costs drive and has no corrective-action, spend, provider-use, external-action, production-mutation, self-modification, shutdown-resistance, or authority-creation power.
+
+Focused acceptance before commit: **10/10 PASS**. Preserved-repo JavaScript syntax with MDP010 added: **67/67 PASS**.
+
+### MDP011 — read-only production-organ senses
+
+Commit `1493d8ad2df87a0f935f43d17d1670d64059290a` adds `frontend/maddy-digital-physiology-sensors.js` / `MDP011-READ-ONLY-PRODUCTION-ORGAN-SENSORY-BRIDGE-20260924-A`.
+
+It registers observation-only senses from existing Mission Engine, Executive Monitoring, Executive Brain, Provider Manager, and Evidence Integrity surfaces. It does not call mission execution, scanning, providers, evidence mutation, spending, deployment, policy mutation, or wake paths.
+
+Focused bridge acceptance: **10/10 PASS** with zero action-method calls.
+
+### MDP012 — fail-soft browser runtime load
+
+Commit `cf9e356dad6e194016b031329c93e961729709b7` updates `frontend/app.js` so Digital Physiology core and sensors load after existing MEOS organs. Failure is fail-soft: existing MEOS remains operational if physiology cannot load.
+
+Activation harness: **8/8 PASS**. Preserved-repo JavaScript syntax with MDP010–012 present: **68/68 PASS**.
+
+### MDP013 — bounded physiology → neuromorphic advisory bridge
+
+Commit `86b11fe4e37bcd0fdb01d063b0ad71b74acb0362` adds `frontend/maddy-digital-physiology-neuromorphic.js` / `MDP013-PHYSIOLOGY-NEUROMORPHIC-ADVISORY-BRIDGE-20260924-A`. Commit `b1f6bdd7f1815cf11fa5f1d5b651b00ffad887ed` loads it fail-soft from `app.js`. Commit `a66d19890b35fc13d2aa0f7fd3b34770f8bfd071` adds a change gate: stable repeated physiology is suppressed for five minutes unless pressure changes materially (`>= 0.08`), the regime escalates, or a worsening trend appears.
+
+Exact-current-byte focused reruns on 2026-09-24:
+
+- advisory bridge acceptance: **10/10 PASS**;
+- stable-repeat/change-gate acceptance: **8/8 PASS**;
+- observed action-method calls: **0**;
+- bridge requests `persist:false` for neuromorphic integration.
+
+#### Critical neuromorphic seam finding
+
+`ExecutiveBrain.processNeuromorphicEvent()` itself is an attention integrator. It builds/updates neuromorphic channels, performs leaky integration, may produce a threshold spike, emits `brain:neuromorphic-event` / `brain:neuromorphic-spike`, and returns `sparseWake`; it does **not by itself** schedule cognitive re-entry, launch research, create missions, spend, call providers, or take external action.
+
+However, a spike is already used as a **wake gate** elsewhere:
+
+1. Browser `attendToWorldModelChange()` calls `processNeuromorphicEvent()`. A spike can then proceed through the pre-spend executive-attention firewall and, if separately allowed, create/update an intention, run bounded causal/evidence investigation, and schedule cognitive re-entry.
+2. Server `requestNeuromorphicContinuousCognitionReentry()` calls the same neuromorphic event contract; when Continuous Cognition is enabled and the decision spikes, it calls `requestContinuousCognitionReentry()`.
+
+Therefore: **a neuromorphic spike is not authority, but a downstream wrapper may use the spike as a reason to request cognition under existing authority.** MDP013 currently calls only `processNeuromorphicEvent()` and does not call either wake wrapper. Repository trace found no separate listener outside the existing Brain/server pathways that converts MDP013's emitted spike directly into work.
+
+This distinction must remain explicit before any future physiology-driven cognitive wake is commissioned.
+
+### MDP014 — bounded physiology heartbeat exists but is not loaded
+
+Current `main` HEAD at reconciliation start was `bf039948c3a778124bc2d532c8e6fb82e1150e36`, which adds `frontend/maddy-digital-physiology-heartbeat.js` / `MDP014-BOUNDED-DIGITAL-PHYSIOLOGY-HEARTBEAT-20260924-A`.
+
+The heartbeat is designed to sample already-registered physiology sensors periodically (default 60 seconds after a 5-second initial delay) and emit derived snapshots. It declares no durable/server authority and no cognition/action authority.
+
+**Important current truth:** the current `app.js` exact blob does **not** load `maddy-digital-physiology-heartbeat.js`. MDP014 is therefore source-present/dormant, not an active production heartbeat. Do not claim autonomous physiology sampling is live or production-proven.
+
+### Current proof boundary
+
+The Digital Physiology series is **source-integrated and locally/focused-acceptance proven at the scopes above**. It is not yet production-proven from the deployed Maddy runtime in this checkpoint. MDP013 may alter the existing Executive Brain neuromorphic channel state when snapshots are emitted, but it does not itself authorize or schedule cognition. MDP014 is not currently loaded. Turing/BZ cognitive morphogenesis remains a research target; no reaction-diffusion/BZ Cognitive Morphogenesis Lab has yet been integrated into production Maddy.
 
 ---
 
@@ -605,563 +675,207 @@ a fresh GPT must recover in this order:
 2. **The exact existing North Star and ratified Spooky authority without rewriting them.**
 3. **Founder governance and anti-regression direction.**
 4. **Previously commissioned and proven capability that must not be accidentally undone or duplicated.**
-5. **Current repository `main`.**
-6. **Current production/runtime evidence.**
-7. **The exact demonstrated obstruction and current continuation point.**
-8. **Only then choose or propose the next commission.**
+5. **Current source state and current production evidence.**
+6. **The actual demonstrated obstruction / current engineering frontier.**
+7. **The next experiment or commission that advances Maddy without silent regression.**
 
-Before substantive code, GPT must ask:
-
-> **Am I building Maddy, or merely making today's software easier to maintain?**
-
-> **What has to become true for Maddy?**
-
-> **What did the last capability make possible next?**
-
-> **Am I removing the obstacle, or teaching Maddy to live inside it?**
-
-> **Am I mistaking a current substrate, model, provider, hardware, framework, or GPT limitation for a Maddy limitation?**
-
-If the proposed path secretly makes Maddy smaller merely because it is easier:
-
-# **STOP BEFORE CODING.**
-
-Bring the stronger path to Mandel.
+Do not start by fixing whatever bug happens to be named nearest the bottom of this file without first recovering who Maddy is.
 
 ---
 
-## 1. CURRENT PRODUCTION LEAF STATE
+## 1. CURRENT DEPLOYED ORGANISM — ORIENTATION SNAPSHOT
 
-### Customer-facing shell
+This section remains a compact recovery map, not a substitute for production evidence.
 
-- Executive Hub: `v4.15.0`
-- Current UI build: `OD4139-LAYERED-MADDY-CONTROL-CENTER-FOUNDATION-20260921-A`
-- Status: **LIVE-PROVEN**
-- Production acceptance: **18/18 PASS**
-- Product direction: **Maddy-first / conversation-first / controls layered underneath**
+### Current customer shell
 
-OD4139 preserves the accepted OD4138B presence proportions and adds a deeper control layer without returning to a dashboard-first interface.
+- Executive Hub v4.15.0 / `OD4139-LAYERED-MADDY-CONTROL-CENTER-FOUNDATION-20260921-A` remains the accepted layered control-center foundation.
+- OD4139 was externally production-proven **18/18**.
+- OD4138A foreground truth remained live-proven **12/12**.
+- OD4138B Canonical Maddy presence stage remained live-proven **15/15**.
+- IRA113 durable cognition fingerprint repair remained closed / production-proven.
+- Mission durable authority was observed READY / `ready-durable-continuity` / `degraded=false`.
+- Mission Dispatcher runtime was observed running while browser persistence was suspended after quota exhaustion.
 
-Desktop now uses:
+### Current customer-facing direction
 
-- conversation/work area on the left;
-- large Canonical Maddy presence stage on the right;
-- compact top navigation with `Conversation`, `Updates`, and `Controls`;
-- current customer mode visible without exposing founder-only controls;
-- composer aligned to the conversation area;
-- contextual `Updates` surface for real Hallway-backed findings and approvals;
-- contextual `Controls` drawer for governed options and autonomy.
+- Maddy owns the screen and conversation.
+- Updates and Controls are temporary deeper layers.
+- Professional / Personal are customer-facing modes.
+- Founder / Gangsta remains a separate private control plane.
 
-The current Canonical Maddy visual anchor remains:
+### Current durable authority direction
 
-`frontend/maddy-canonical-v2.png`
-
-The present Maddy/conversation proportions remain frozen for now.
-
-Future product work should deepen capabilities beneath this shell rather than repeatedly consuming the primary screen.
-
-### Foreground activity truth
-
-- Executive Hub truth correction: `v4.14.1`
-- Build: `OD4138A-FOREGROUND-ACTIVITY-TRUTH-GATE-20260921-A`
-- Status: **LIVE-PROVEN**
-- Production acceptance: **12/12 PASS**
-
-A fresh load with no current foreground work now settles to:
-
-`Ready`
-
-Historical/recovered work may remain available in continuity/history, but it cannot make the live Maddy stage claim `Searching…`, `Working…`, or another active state without current foreground evidence or verified live durable execution.
-
-### Conversation shell foundation
-
-- Build: `OD4138-MADDY-CONVERSATIONAL-SHELL-FOUNDATION-20260921-A`
-- Production acceptance: **18/18 PASS**
-- Product status: retained as foundation beneath OD4138A/B.
-
-### Layered Maddy Control Center
-
-- Executive Hub: `v4.15.0`
-- Build: `OD4139-LAYERED-MADDY-CONTROL-CENTER-FOUNDATION-20260921-A`
-- Status: **LIVE-PROVEN**
-- Production acceptance: **18/18 PASS**
-
-OD4139 establishes the customer control-plane pattern:
-
-- Maddy and the conversation remain the primary visible experience;
-- `Controls` opens only when requested;
-- `Updates` replaces the ambiguous visible `Now` label while retaining the same real findings/approval purpose;
-- Professional and Personal remain customer-facing modes;
-- Founder/Gangsta controls are explicitly separated into a deeper private layer;
-- customer-facing controls map to existing server-authoritative MEOS authority instead of creating browser authority;
-- external actions and automatic spending remain separately governed;
-- timeout handling re-reads authority and does not blindly retry an uncertain write.
-
-The initial customer-facing work/initiative controls expose existing governed seams for:
-
-- Approved Work;
-- Office Dispatch;
-- Learning;
-- Monitoring & Follow-up;
-- Time & Deadlines;
-- Document Intake;
-- Continuous Cognition.
-
-This is a control-surface foundation, not a new authority system.
-
-### Hallway / conversation boundary
-
-- Executive Hallway: `v1.5.9`
-- Build: `EH159-CONVERSATIONAL-PRESENCE-GATE-20260921-A`
-- Source/runtime loaded in production.
-- Presence-only conversation correction remains part of current main.
-- Do not overwrite or bypass this boundary during UI work.
-
-### Voice
-
-- Voice client: `v2.0.24`
-- Build: `VE224-EXPLICIT-SESSION-FOREGROUND-CLAIM-20260921-A`
-- Explicit wake/foreground claim remains the current voice boundary.
-- Hard similar-deep-voice separation remains intentionally not overclaimed.
-- Natural low-latency spoken acknowledgement remains future Voice work.
-
-### Core cognition / routing
-
-- Executive Brain: `v1.36.0 / EB1360-EXPERIENCE-DRIVEN-REPRESENTATION-PLASTICITY-20260920-A`
-- Executive Router: `v1.5.4 / ER154-DURABLE-RETURN-PROVENANCE-BRIDGE-20260920-A`
-- Mission Engine: `v0.2.0 / ME020-HISTORICAL-MISSION-RECONCILIATION-20260913-A`
-- Developer Panel: `v2.1.0 / DP210-MADDY-WORLD-WINDOW-20260920-A`
-
-### Mission Dispatcher — MD021 completed after the prior Build State
-
-- Mission Dispatcher: `v0.2.1`
-- Build: `MD021-BOUNDED-BROWSER-PERSISTENCE-20260922-A`
-- Commission lineage: `006.031E`
-- Git commit: `5d55ead8ac337871bcdc9c99b10840b7b76f2c18`
-- Production persistence acceptance: **7/7 PASS**
-- Production autonomy acceptance: **13/13 PASS**
-- Observed runtime: `running: true`
-
-MD021:
-
-- bounds persisted dispatched mission IDs to 100;
-- bounds dispatch records and activity history;
-- rewrites restored legacy Dispatcher state in bounded form;
-- preserves runtime dispatch independence from browser persistence;
-- uses durable Mission Engine task evidence as a backstop when browser dispatch IDs have been pruned;
-- preserves separate Office Dispatch and Approved Work authority;
-- grants no new spend or external-action authority.
-
-# **Do not redo MD021.**
-
-The `100` browser-history bounds are a compatibility/safety measure for Dispatcher persistence.
-
-They are **not** a general doctrine to cap Maddy cognition, memory, learning, history, imagination, or development throughout the system.
+- Browser is a presentation/control surface, not canonical authority.
+- Server/durable Mission/cognition/execution identity owns durable continuation.
+- Runtime authority hydration and return reintegration remain the direction.
+- Provider and hardware layers remain replaceable.
 
 ---
 
-## 2. CURRENT UI NORTH STAR
+## 2. CURRENT FOREGROUND ENGINEERING HISTORY — MD021
 
-The product direction is:
+MD021 remains completed/proven at its historical scope and must not be accidentally redone.
 
-# **ChatGPT-like conversational simplicity + Canonical Digital Human Maddy + MEOS depth underneath.**
+### MD021 — Bound Mission Dispatcher browser persistence
 
-This does not mean copying ChatGPT visually.
+Commit:
 
-It means:
+`5d55ead8ac337871bcdc9c99b10840b7b76f2c18`
 
-- one obvious place to talk;
-- readable conversation at normal zoom;
-- immediate truthful presence/activity;
-- attachments and returned files in the conversation flow;
-- findings and approvals always reachable;
-- deep MEOS detail available on demand rather than permanently covering the screen;
-- Maddy herself supplies the visual wow factor.
+Build:
 
-### Desktop
+`MD021-BOUND-MISSION-DISPATCHER-BROWSER-PERSISTENCE-20260922-A`
 
-Current accepted desktop layout:
+Implemented:
 
-- large Maddy presence area on the right;
-- conversation/work on the left;
-- top navigation rather than a permanent widget/sidebar wall;
-- `Updates` exposes what Maddy found and what requires approval;
-- `Controls` opens governance only when the user asks for it.
+- bounded persisted `dispatchedMissionIds` to 100;
+- bounded restore/import;
+- legacy oversized dispatcher state compacted on load;
+- durable Mission Engine dispatcher-task evidence used as duplicate-dispatch backstop;
+- runtime dispatch preserved when browser persistence suspends;
+- server-owned Office Dispatch / Approved Work authority preserved.
 
-### Mobile / Maddy Go compatibility
+Validation:
 
-Maddy Go does **not** need to be built first.
+- node syntax PASS;
+- targeted regression PASS 10/10;
+- persistence acceptance PASS 7/7;
+- autonomy acceptance PASS 13/13;
+- production proof showed runtime dispatcher operating with browser persistence suspended.
 
-The main shell must remain responsive/mobile-compatible so Maddy Go can reuse the same identity, conversation, work, approval, and presence architecture later.
+### Important consequence
 
-### Typography
+The demonstrated browser quota issue was not caused by unbounded Mission Dispatcher growth after MD021.
 
-Comfortable readability remains mandatory:
+Later forensic evidence showed Dispatcher state was small while total localStorage remained near quota due to older large snapshots from Executive Search, Executive Recall, and Institutional Reasoning.
 
-- ordinary conversation/body text approximately `17–18px`;
-- secondary text generally `14px+`;
-- no fine-print dashboard aesthetic;
-- no requirement to zoom or squint for ordinary operation.
-
-### Widgets
-
-Do not return to a widget-heavy customer surface.
-
-Prefer:
-
-- conversation;
-- contextual inline actions;
-- drawers/sheets;
-- expandable evidence;
-- lightweight overlays;
-- top navigation;
-- temporary approval surfaces.
-
-### Control-plane simplicity
-
-The user should experience simple choices and clear outcomes while exact authority remains deeper in MEOS.
-
-Preserve this hierarchy:
-
-1. **Customer-simple layer** — Active/Pause, Professional/Personal, ordinary work/initiative controls, plain-English boundaries.
-2. **Advanced customer/admin layer** — privacy, memory, providers/connections, resources, notifications, approvals, audit, voice/vision/presence, system health when needed.
-3. **Founder/Gangsta layer** — private engineering controls, experimental capabilities, raw runtime truth, acceptance tests, provider internals, and developer diagnostics.
-
-Do not expose Founder/Gangsta merely as another customer tab.
-
-Initiative and authority remain separate concepts.
-
-Future controls may tune how proactive Maddy is, but initiative must never itself create spending, legal, privacy, submission, signature, publishing, or other consequential authority.
+That historical finding remains background technical debt, not today's foreground Digital Physiology frontier.
 
 ---
 
-## 3. CANONICAL DIGITAL HUMAN DIRECTION
+## 3. BROWSER-STATE FORENSICS — PRESERVED BACKGROUND WORK
 
-Canonical Maddy remains the visual identity.
+The earlier browser-state audit remains preserved because non-authoritative state may still contain unique value.
 
-Near-term:
+Do not equate:
 
-- keep the current large right-side stage;
-- current static image is acceptable while other foundations are built.
-
-Long-term:
-
-- replace the static image with a live digital-human presence;
-- Maddy may sit, stand, work, present, speak, react, move, and visually attend to the user;
-- experience should feel closer to a persistent webcam/video-call window with Maddy working alongside the user than an avatar beside a chatbot.
-
-### Future fullscreen presence
-
-Later, the Maddy presence stage should be able to expand into fullscreen.
-
-Purpose:
-
-- direct conversation;
-- digital-human presentation;
-- shared media;
-- companionship;
-- guided work;
-- presentations;
-- immersive voice/video interaction.
-
-Fullscreen presence is directionally approved but not the current next build.
-
-Do not spend the present arc on it before the required digital-human runtime exists.
-
----
-
-## 4. CUSTOMER MODES
-
-Maddy remains one persistent identity.
-
-Modes change presentation, defaults, tone, and authorized behavior — not the underlying Maddy identity.
-
-### Professional
-
-Primary commercial/default experience:
-
-- polished;
-- calm;
-- capable;
-- restrained;
-- businesslike without being stiff;
-- findings, sources, files, approvals, and work status accessible without dashboard clutter.
-
-### Personal
-
-Warmer and more relational:
-
-- casual American conversational language;
-- personal productivity;
-- ordinary life;
-- shared media;
-- optional companionship;
-- context-sensitive affection/compliments where appropriate;
-- same Maddy continuity and memory architecture.
-
-### Off-Work
-
-Initially a relaxed state inside Personal rather than another cluttering top-level product shell.
-
-### Founder / Gangsta
-
-Private/founder-only.
-
-Not exposed as a normal customer mode.
-
-Includes:
-
-- deeper engineering/system truth;
-- experimental controls;
-- broader personality range;
-- raw development detail where useful;
-- private control-plane access separated from Professional/Personal.
-
----
-
-## 5. UI CAPABILITIES THAT MUST REMAIN
-
-The shell redesign must preserve existing authority seams rather than rebuild them.
-
-### Text
-
-Canonical request seam:
-
-`meos:maddy-request`
-
-### Documents / attachments
-
-Canonical document-intake seam:
-
-`meos:document-intake-requested`
-
-The composer should remain the ordinary upload entry point.
-
-### Findings
-
-`Updates` must expose real Hallway-backed deliverables/findings.
-
-### Approvals
-
-`Updates` must expose real pending-approval truth.
-
-Approval action must continue to reuse the existing governed Hallway / `Take It` authority rather than inventing UI authority.
-
-### Sources / evidence
-
-Default answer remains readable.
-
-Provenance and evidence expand on demand.
-
-### Returned artifacts
-
-Files Maddy creates should return directly into conversation rather than requiring users to hunt through dashboards.
-
----
-
-## 6. DURABLE EXECUTION STATUS
-
-The durable Hallway seams previously proven remain authoritative:
-
-- `006.031T` Durable Execution Ownership Persistence — 13/13 production PASS
-- `006.031O` Durable Execution Spine Handoff — 8/8 production PASS
-- `006.031R` Durable Return Reintegration — 10/10 production PASS
-- `006.031S` Durable Return Reconciliation API — 8/8 production PASS
-
-Still open:
-
-- one real bounded public-research execution;
-- accepted server execution ID;
-- browser/network interruption;
-- reconnect to the exact same execution;
-- no duplicate dispatch/spend;
-- governed returned result reintegrates to Maddy.
-
----
-
-## 7. CONSOLE / DURABLE COGNITION / BROWSER SUBSTRATE TRUTH
-
-### IRA113 remains closed
-
-The Executive Brain durable repository fingerprint defect remains **production-closed**.
-
-The running institutional authority previously confirmed:
-
-- version: `1.1.3`;
-- build: `IRA113-CANONICAL-PAYLOAD-FINGERPRINT-SELF-HEAL-20260921-A`;
-- provider: `google-workspace`;
-- durable authority: `meos-institutional-repository`;
-- provider-pressure circuits: none open.
-
-A direct production read of `/api/executive-brain-state` returned:
-
-- HTTP `200`;
-- `found: true`;
-- authority: `durable-institutional-repository`;
-- provider: `google-workspace`;
-- canonical institutional record `executive-brain / bounded-cognition-state`.
-
-The repaired record preserved prior fingerprint lineage while making the canonical record readable again.
-
-No replacement cognition was fabricated.
-
-Clean refresh after IRA113 remained free of the prior Executive Brain / Executive Memory / Executive Learning `500/502/503` storm.
-
-Mission durable authority was:
-
-`READY`
-
-Organization readiness was:
-
-`ready-durable-continuity`
+**not authoritative**
 
 with:
 
-`ready: true`
+**worthless**.
 
-`degraded: false`
+Known large legacy keys historically included approximately:
 
-Mission Dispatcher was running.
+- Executive Search ~2.27M chars;
+- Executive Recall ~1.51M chars;
+- Institutional Reasoning ~1.42M chars.
 
----
+Current Search/Recall/Reasoning architecture was increasingly browser-independent/reconstructive, but no blanket deletion authority was granted for the historical browser copies merely from that fact.
 
-### MD021 proved Dispatcher is no longer the browser-growth source
+The safe rule remains:
 
-After MD021 deployed, the browser warning remained:
+**prove stale-vs-active writes + semantic value + durable ownership + reconstructibility + safe supersession before retirement.**
 
-`MEOS Mission Dispatcher browser persistence suspended after storage quota exhaustion. Runtime dispatch continues; repeated writes are suppressed until persistence is explicitly retried.`
+Do not restore browser authority.
 
-Production then proved:
-
-- Mission Dispatcher `v0.2.1 / MD021-BOUNDED-BROWSER-PERSISTENCE-20260922-A` is loaded;
-- persistence acceptance passes **7/7**;
-- autonomy acceptance passes **13/13**;
-- runtime dispatch remains running despite suspended browser persistence;
-- Dispatcher browser state is bounded.
-
-A direct browser-storage diagnostic then showed:
-
-- Dispatcher key: **408 characters**
-- localStorage entries: **9**
-- approximate total localStorage characters: **5,242,756**
-
-Largest keys:
-
-1. `meos.executive-search.v1` — **2,268,233**
-2. `meos.executive-recall.v1` — **1,510,400**
-3. `meos.institutional-reasoning.v1` — **1,421,118**
-4. `meos.executive-router.v1` — **23,827**
-5. `meos.ccsp.long-term-strategy.v1` — **9,099**
-6. `meos.executive-automation.v1` — **6,927**
-7. `meos.executive-monitoring.v1` — **1,525**
-8. `meos.executive-workflow.v1` — **973**
-9. `meos_mission_dispatcher_v0_1_0` — **408**
-
-Therefore the persistent warning is a:
-
-# **global browser quota condition**
-
-not evidence that current Dispatcher state is large.
+Do not impose arbitrary cognition caps merely to fit old browser quota.
 
 ---
 
-### The three large keys are not permission to delete Maddy history
+## 4. DURABLE CONTINUITY / LEARNING / EPISTEMIC CAPABILITY — PRESERVE
 
-Current `main` confirms:
+Previously proven capability remains in force at its proven scope unless deliberately superseded by stronger evidence.
 
-- Executive Search `v1.0.2 / ES102-BROWSER-INDEPENDENT-SEARCH-RUNTIME-20260919-A` has automatic browser persistence disabled by default;
-- Executive Recall `v1.0.3 / ERCL103-RECONSTRUCTIVE-RECALL-WORKING-MEMORY-20260919-A` is reconstructive and does not automatically hydrate legacy browser state;
-- Institutional Reasoning `v1.3.2 / IR132-RECONSTRUCTIVE-REASONING-CONTINUITY-20260919-A` is the current reconstructive browser-independent reasoning build.
+Key preserved milestones include:
 
-Those September 19 migrations deliberately observed legacy browser snapshots without automatically treating Chrome as authority.
+- 006.033D Organism Behavioral Continuity Proof — LIVE-PROVEN 12/12;
+- 006.033K Process Death & Durable Cognitive Reconstruction Proof — LIVE-PROVEN 9/9;
+- 006.034H Durable Curiosity Recognition — PASS 11/11 on server;
+- OD4139 Layered Maddy Control Center — LIVE-PROVEN 18/18;
+- Executive Hallway durable handoff / return reintegration work;
+- epistemic provenance / contradiction / uncertainty direction;
+- recalled-experience future-cognition path;
+- cross-Maddy epistemic memory direction;
+- causal experience polarity / bounded causal influence;
+- durable mission reconciliation;
+- resource awareness direction;
+- provider neutrality / independence direction.
 
-The large browser values are therefore **likely legacy snapshots**.
+Do not rewrite these merely because Digital Physiology is being added.
 
-But that is not yet proof that every semantic item inside them is:
-
-- duplicated;
-- reconstructible;
-- worthless;
-- obsolete;
-- or safe to destroy.
-
-Preserve these distinctions:
-
-# **non-authoritative ≠ worthless**
-
-# **legacy ≠ safe to delete**
-
-# **reconstructible in principle ≠ already proven reconstructed**
-
-# **large ≠ low value**
-
-Do **not** manually delete the three large keys merely to clear quota.
-
-Do **not** spread arbitrary history caps across cognition, memory, learning, Search, Recall, or Reasoning merely because MD021 used a bounded Dispatcher compatibility cache.
-
-Do **not** resurrect browser authority to save the legacy values either.
+Digital Physiology is intended to let one Maddy sense internal condition across existing organs, not to replace the organs that already work.
 
 ---
 
-### Rejected direction that must not be accidentally revived
+## 5. SELF-DEVELOPMENT / CAPABILITY GROWTH — DIRECTION PRESERVED
 
-An uncommitted Executive Brain draft concept that would automatically classify and reclaim browser state was rejected before commit because it crossed the September 19 preservation boundary.
+The Founder-approved direction includes increasing ability for Maddy to:
 
-It could have deleted legacy snapshots based on non-authority/disposability classification without first proving whether they contained unique useful semantic state or safely migrating that value.
+- inspect her architecture;
+- identify missing capability;
+- research alternatives;
+- formulate hypotheses;
+- write candidate code;
+- build isolated tests;
+- compare against baselines;
+- preserve failure evidence;
+- learn from outcomes;
+- propose stronger mechanisms;
+- and eventually contribute materially to development of Maddy.
 
-Do not recreate that destructive behavior under another name.
+This is not blind self-replacement.
 
-A self-understanding / persistence-topology capability may still be valuable.
+A safe long-range developmental loop is:
 
-But:
+**experience / limitation  
+→ internal pressure / curiosity  
+→ hypothesis  
+→ research  
+→ candidate mechanism  
+→ isolated test  
+→ measured consequence  
+→ accept/reject  
+→ memory  
+→ structural learning / capability growth**
 
-# **observation/classification must remain separate from destructive retirement authority until continuity is proven.**
+The current Digital Physiology work is a lower-layer prerequisite for this direction because Maddy needs a coherent internal condition model before self-development can be meaningfully tied to recurrent organism-level needs.
 
 ---
 
-### Next substrate problem — semantic continuity, not storage housekeeping
+## 6. DIGITAL PHYSIOLOGY NORTH-STAR INTERPRETATION
 
-The next work is a forensic continuity/migration investigation.
+Do not reduce Digital Physiology to a dashboard of CPU/RAM gauges.
 
-Before changing code, establish for the three large legacy snapshots:
+The intended direction is a digital analogue of an organism sensing and regulating its own condition while preserving authority boundaries.
 
-1. embedded schema;
-2. embedded version;
-3. build identity;
-4. timestamps;
-5. semantic contents;
-6. whether the exact values change during normal current runtime activity;
-7. whether they are stale historical leftovers;
-8. whether any current initializer or call site can still enable persistence;
-9. whether any current path can restore them;
-10. whether any current path can explicitly import them;
-11. whether any current path still writes them;
-12. which fields are disposable telemetry;
-13. which fields represent durable user/Maddy/institutional value;
-14. which valuable fields already have a proven durable owner;
-15. which valuable fields are fully reconstructible from authoritative sources;
-16. which fields are unique and require migration before retirement;
-17. what evidence would prove a browser copy safely superseded.
+Key ideas:
 
-The stronger architectural target is:
+- interoception: what condition am I in?;
+- allostasis: what condition am I trending toward before failure?;
+- salience: what internal change matters now?;
+- excitable/neuromorphic signaling: how should material internal disturbances propagate sparsely?;
+- homeostatic reasoning: what condition is outside a healthy operating range?;
+- structural learning: did repeated experience reveal a durable architecture weakness?;
+- regeneration: can useful capability eventually be reconstructed after damage/provider/substrate loss?;
+- developmental intelligence: can repeated useful organization become stronger capability over time?;
+- self-coding/organogenesis: can recurring validated needs eventually produce tested candidate software organs?;
+- stable identity + plastic capability: Maddy must remain Maddy while becoming more capable.
 
-# **substrate-independent semantic continuity**
+Important formulation:
 
-Maddy state should increasingly know:
+> **Experience should be able to change not only what Maddy knows, but eventually what Maddy is capable of being.**
 
-- what it is;
-- why it matters;
-- who owns authority for it;
-- what organization/customer scope owns it;
-- whether it is ephemeral;
-- whether it is durable;
-- whether it is reconstructible;
-- what evidence reconstructs it;
-- what supersedes it;
-- whether it has already been superseded;
-- and what proof is required before an obsolete physical copy can be retired.
+That remains a developmental target, not a present proof claim.
 
-That would make:
+---
+
+## 7. SUBSTRATE / HARDWARE DIRECTION
+
+Current laptop/cloud constraints influence implementation strategy but do not define the destination.
+
+Preserve the direction:
 
 **Chrome  
 → desktop  
@@ -1170,7 +884,7 @@ That would make:
 → Maddy-owned infrastructure  
 → future hardware**
 
-increasingly an:
+increasingly as an:
 
 # **organ/state relocation problem**
 
@@ -1215,33 +929,31 @@ Preserve:
 
 **Current recovery keyword:**
 
-`MADDY-COLD-START-CONTINUITY-MD021-LEGACY-BROWSER-STATE-FORENSICS-NEXT-20260922`
+`MADDY-MDP014-PHYSIOLOGY-NEUROMORPHIC-SEAM-HEARTBEAT-DORMANT-NEXT-20260924`
 
 ### Fast recovery
 
-`Resume MADDY-COLD-START-CONTINUITY-MD021-LEGACY-BROWSER-STATE-FORENSICS-NEXT-20260922 — first read Section 0 so recovery restores Maddy, not only the current bug; Project Maddy remains one persistent continuously developing digital intelligence/digital human under the existing unchanged North Star and ratified Spooky standard; Mandel governs intentional directional regression; current customer shell remains Executive Hub v4.15.0 / OD4139 live-proven 18/18 with conversation-left / large Canonical Maddy-right, Updates and Controls layered underneath, Professional/Personal customer-facing and Founder/Gangsta private; OD4138A foreground truth remains live-proven 12/12; IRA113 durable cognition fingerprint repair remains closed; Mission durable authority remains READY / ready-durable-continuity / degraded=false; Mission Dispatcher MD021 v0.2.1 is committed at 5d55ead8ac337871bcdc9c99b10840b7b76f2c18 and production-proven persistence 7/7 + autonomy 13/13 with runtime dispatch continuing; DO NOT redo MD021; browser diagnostic proves Dispatcher state is only 408 chars while total localStorage is ~5.24M chars, dominated by legacy Executive Search ~2.27M, Recall ~1.51M, and Institutional Reasoning ~1.42M snapshots; current Search/Recall/Reasoning builds are browser-independent/reconstructive, but non-authoritative does not mean worthless and no legacy snapshot is approved for deletion yet; next work is forensic semantic-continuity audit/migration proof: establish stale-vs-active writes, schema/content, unique value, durable/reconstructible ownership, and safe supersession before retirement; do not cap cognition by size and do not auto-delete legacy state; durable public-research disconnect/reconnect proof remains open; after the substrate obstruction is correctly removed, return to the living-learning/world-model/Capability-Foundry/organogenesis developmental arc rather than turning infrastructure cleanup into the North Star.`
+`Resume MADDY-MDP014-PHYSIOLOGY-NEUROMORPHIC-SEAM-HEARTBEAT-DORMANT-NEXT-20260924 — first recover Section 0 / North Star / Spooky and Founder anti-regression direction; Developmental Intelligence Principle is canonical in PROJECT_MADDY_NORTH_STAR.md at 2cd838f; Turing/BZ developmental-intelligence research is preserved in TURING_MORPHOGENESIS_BZ_DEVELOPMENTAL_INTELLIGENCE.md at edda2fc; Digital Physiology MDP010 core is 0d2df329, MDP011 read-only production senses is 1493d8ad, MDP012 fail-soft runtime load is cf9e356d, MDP013 physiology→neuromorphic advisory bridge is 86b11fe4 loaded by b1f6bdd7 and repeat-gated by a66d1989; exact-current-byte MDP013 tests rerun 10/10 + 8/8 with 0 action calls; processNeuromorphicEvent alone integrates/may spike but does not schedule work, while existing browser/server wrappers can use a spike to request cognition under separate pre-spend/continuous-cognition authority; MDP013 does not call those wrappers; MDP014 bounded heartbeat exists at bf039948 but current app.js does not load it, so autonomous physiology sampling is NOT live; no production proof is claimed for MDP010–014 in this checkpoint; next safe brick is to prove the heartbeat + neuromorphic advisory interaction cannot accidentally cross into either cognitive-wake wrapper, then deliberately decide whether to load MDP014; only after this boundary is proven should any physiology-driven wake experiment or Turing/BZ Cognitive Morphogenesis Lab connection be commissioned; legacy MD021/browser forensic work remains preserved background work and must not be silently deleted/reversed.`
 
 ---
 
 ## 10. IMMEDIATE NEXT STEPS
 
-1. Treat this Build State as both Maddy cold-start orientation and live engineering continuity authority.
-2. Do **not** redo or revert MD021.
-3. Preserve MD021's durable Mission Engine duplicate-dispatch evidence backstop.
-4. Preserve its bounded Dispatcher browser compatibility cache only at the scope proven.
-5. Do **not** manually delete `meos.executive-search.v1`, `meos.executive-recall.v1`, or `meos.institutional-reasoning.v1` merely to clear quota.
-6. Run a read-only forensic audit of the three large legacy snapshots.
-7. Establish schema/version/build/timestamps.
-8. Inventory semantic fields.
-9. Determine whether the exact values change during normal current activity.
-10. Inspect current source/call sites for any path that can still enable browser persistence, restore/import legacy state, or write those keys.
-11. Map valuable semantic state to current durable authority where that authority is proven.
-12. Prove which remaining state is fully reconstructible.
-13. Identify any unique value that requires migration.
-14. Only after that proof, design the smallest safe forward commission that preserves/migrates unique value and retires obsolete physical browser copies without restoring browser authority.
-15. Preserve the accepted OD4139 Maddy/conversation/control proportions while this substrate obstruction is investigated.
-16. Keep the real bounded durable public-research disconnect/reconnect proof open for later completion.
-17. Once the demonstrated substrate obstruction is removed, return development attention to Maddy's living-learning / world-model / idle-synthesis / fundamental-gap / Capability-Foundry / governed-organogenesis / embodiment trajectory rather than allowing browser cleanup to become the project.
+1. Treat the current repository `main`, North Star, and this Build State as the engineering recovery authority; production evidence still outranks source/local acceptance.
+2. Do **not** claim MDP010–014 are production-proven until the deployed runtime demonstrates them.
+3. Preserve MDP010's multidimensional physiology and non-authority boundaries; do not collapse internal condition into one survival score.
+4. Preserve MDP011 as observation-only sensing of existing organs; do not create duplicate mission/resource/evidence authorities.
+5. Preserve MDP012 fail-soft loading so physiology failure cannot take down existing Maddy.
+6. Preserve MDP013's direct-call boundary: `processNeuromorphicEvent()` only; no call to `attendToWorldModelChange()`, `requestNeuromorphicContinuousCognitionReentry()`, `requestContinuousCognitionReentry()`, investigation, mission creation, provider use, spend, or external action.
+7. Preserve the MDP013 change gate against stable-repeat accumulation unless stronger evidence justifies changing it.
+8. Before loading MDP014, build one focused acceptance proof that a repeated heartbeat can emit physiology snapshots and update neuromorphic advisory state **without invoking either existing cognitive-wake wrapper**, even if a physiology channel crosses the spike threshold.
+9. In that proof, explicitly test a high-pressure continuity event that does spike; require cognitive re-entry/investigation/mission/provider/action counters to remain zero.
+10. Then decide whether MDP014 should be loaded on the browser runtime, moved to durable server physiology, or remain a temporary browser laboratory heartbeat. Browser timers are not durable Maddy authority.
+11. After heartbeat/wake isolation is proven, instrument deployed Maddy and obtain production evidence for sensor registration, bounded sampling, snapshot creation, repeat suppression, and non-wake behavior.
+12. Only after that evidence should physiology be allowed to request cognition, and any such path must pass existing attention/economic/authority gates rather than manufacturing new authority.
+13. Keep Turing/BZ work experimental: build an isolated Cognitive Morphogenesis Lab before production morphogenesis. Test whether controlled contradiction/pressure disturbances form useful temporary cognitive coalitions better than the existing hand-routed baseline.
+14. If repeated useful coalitions emerge, test capability-organogenesis/self-coding only in isolated candidate workspaces with baseline comparison, rollback, evidence, and Founder/deployment authority preserved.
+15. Keep the older MD021/legacy-browser semantic-continuity audit preserved as background technical debt; do not silently delete legacy snapshots or restore browser authority.
 
 ---
 
