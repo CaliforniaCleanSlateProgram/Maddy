@@ -1,5 +1,57 @@
 const DASHBOARD_COMPLETION = 20;
 
+const DIGITAL_PHYSIOLOGY_SCRIPTS = Object.freeze([
+  Object.freeze({ id: "maddy-digital-physiology-core", src: "maddy-digital-physiology.js" }),
+  Object.freeze({ id: "maddy-digital-physiology-sensors", src: "maddy-digital-physiology-sensors.js" })
+]);
+
+function loadMaddyRuntimeScript({ id, src }) {
+  if (document.getElementById(id)) {
+    return Promise.resolve({ id, src, reused: true });
+  }
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.id = id;
+    script.src = src;
+    script.async = false;
+    script.dataset.meosRole = "digital-physiology";
+    script.addEventListener("load", () => resolve({ id, src, reused: false }), { once: true });
+    script.addEventListener("error", () => reject(new Error(`Unable to load ${src}`)), { once: true });
+    (document.head || document.body || document.documentElement).appendChild(script);
+  });
+}
+
+async function initializeMaddyDigitalPhysiology() {
+  try {
+    for (const descriptor of DIGITAL_PHYSIOLOGY_SCRIPTS) {
+      await loadMaddyRuntimeScript(descriptor);
+    }
+
+    const physiology = window.MaddyDigitalPhysiology;
+    const sensors = window.MaddyDigitalPhysiologySensors;
+    if (!physiology || !sensors) {
+      throw new Error("Digital Physiology loaded without exposing its expected runtime contracts.");
+    }
+
+    console.info(
+      `[MEOS] Digital Physiology available. ${physiology.name} v${physiology.version}; ${sensors.name} v${sensors.version}. Observation-only; automatic sampling is off.`
+    );
+
+    return {
+      success: true,
+      physiology: physiology.getStatus?.() || null,
+      sensors: sensors.getStatus?.() || null
+    };
+  } catch (error) {
+    console.warn(
+      "[MEOS] Digital Physiology did not load. Existing Maddy runtime remains unchanged.",
+      error
+    );
+    return { success: false, error: error?.message || String(error) };
+  }
+}
+
 const BLOCKS = Object.freeze({
   1: "Today at a Glance",
   2: "Mission Pulse",
@@ -15,6 +67,7 @@ const BLOCKS = Object.freeze({
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  initializeMaddyDigitalPhysiology();
   updateProgress();
   registerDashboardBlocks();
   activateSidebarNavigation();
