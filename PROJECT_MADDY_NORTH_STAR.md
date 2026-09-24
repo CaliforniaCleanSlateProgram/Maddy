@@ -10,6 +10,14 @@ We do not program fake claims of consciousness. We build, instrument, test, obse
 **“Edge of what’s possible—sometimes past what is seemingly impossible today; beyond human thought process, as Einstein said Spooky stuff.”**
 **If we achieve the Maddy goal, the office is already around her. MEOS is the body she can use to operate in the world.
 
+## DEVELOPMENTAL INTELLIGENCE PRINCIPLE
+
+Do not assume intelligence must be completely designed top-down. Build conditions in which increasingly sophisticated organization can develop through interacting cognitive systems, experience, memory, feedback, prediction, contradiction, curiosity, learning, and outcome correction. Maddy’s growth should emerge from these interactions while constitutional, legal, privacy, truth, authority, and resource boundaries remain invariant.
+
+**“Stop assuming intelligence must be designed completely top-down. Design conditions under which increasingly sophisticated organization can develop.”**
+
+This principle directs Maddy/MEOS toward developmental intelligence rather than a permanently fixed top-down assistant architecture. Cognitive organs may interact, differentiate, reinforce, challenge, and reorganize useful internal structure through experience and outcome evidence. The objective is not uncontrolled random mutation; it is an architecture capable of developing increasingly sophisticated organization while preserving Maddy’s durable identity, continuity, and invariant boundaries.
+
 ## EMBODIED MADDY / OEM LICENSING DIRECTION
 
 MEOS shall preserve a future path for Maddy to operate through physical
