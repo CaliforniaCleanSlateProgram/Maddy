@@ -2,7 +2,8 @@ const DASHBOARD_COMPLETION = 20;
 
 const DIGITAL_PHYSIOLOGY_SCRIPTS = Object.freeze([
   Object.freeze({ id: "maddy-digital-physiology-core", src: "maddy-digital-physiology.js" }),
-  Object.freeze({ id: "maddy-digital-physiology-sensors", src: "maddy-digital-physiology-sensors.js" })
+  Object.freeze({ id: "maddy-digital-physiology-sensors", src: "maddy-digital-physiology-sensors.js" }),
+  Object.freeze({ id: "maddy-digital-physiology-neuromorphic", src: "maddy-digital-physiology-neuromorphic.js" })
 ]);
 
 function loadMaddyRuntimeScript({ id, src }) {
@@ -30,18 +31,20 @@ async function initializeMaddyDigitalPhysiology() {
 
     const physiology = window.MaddyDigitalPhysiology;
     const sensors = window.MaddyDigitalPhysiologySensors;
-    if (!physiology || !sensors) {
+    const neuromorphic = window.MaddyDigitalPhysiologyNeuromorphicBridge;
+    if (!physiology || !sensors || !neuromorphic) {
       throw new Error("Digital Physiology loaded without exposing its expected runtime contracts.");
     }
 
     console.info(
-      `[MEOS] Digital Physiology available. ${physiology.name} v${physiology.version}; ${sensors.name} v${sensors.version}. Observation-only; automatic sampling is off.`
+      `[MEOS] Digital Physiology available. ${physiology.name} v${physiology.version}; ${sensors.name} v${sensors.version}; ${neuromorphic.name} v${neuromorphic.version}. Observation-only sensing; automatic sampling is off; physiology cannot authorize cognition or action.`
     );
 
     return {
       success: true,
       physiology: physiology.getStatus?.() || null,
-      sensors: sensors.getStatus?.() || null
+      sensors: sensors.getStatus?.() || null,
+      neuromorphic: neuromorphic.getStatus?.() || null
     };
   } catch (error) {
     console.warn(
