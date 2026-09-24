@@ -317,7 +317,7 @@ function runAcceptance() {
     ['Localized dynamics beat naive flood precision', normal.metrics.precision > flood.precision],
     ['Localized dynamics beat deterministic random F1 at the same selection size', normal.metrics.f1 > random.f1],
     ['Laboratory carries no cognition/action/deployment authority', Object.values(normal.authority).every(value => value === false)],
-    ['Laboratory does not import production Maddy runtime modules', !/^\s*import\s+.*['\"]\.\.\/frontend\//m.test(fs.readFileSync(new URL(import.meta.url), 'utf8'))]
+    ['Laboratory does not import production Maddy runtime modules', !/^\s*import\s+.*['\"]\.\.\/frontend\//m.test(fs.readFileSync(new URL(import.meta.url), 'utf8'))],
   ];
 
   const passed = checks.filter(([, ok]) => ok).length;
