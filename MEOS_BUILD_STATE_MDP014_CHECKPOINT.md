@@ -1,134 +1,91 @@
-# MEOS BUILD STATE — MDP015 DIGITAL PHYSIOLOGY CHECKPOINT
+# MEOS BUILD STATE — MDP016 DIGITAL PHYSIOLOGY + MORPHOGENESIS CHECKPOINT
 
 **Date:** 2026-09-24  
-**Recovery keyword:** `MADDY-DIGITAL-PHYSIOLOGY-MDP015-CONTROLLED-SPIKE-TURING-LAB-NEXT-20260924`
+**Recovery keyword:** `MADDY-DIGITAL-PHYSIOLOGY-MDP016-MORPHOGENESIS-PLASTICITY-NEXT-20260924`
 
-This additive checkpoint preserves the 2026-09-24 Digital Physiology work without rewriting the large canonical `MEOS_BUILD_STATE.md`. The canonical Build State, North Star, Spooky standard, prior continuity proofs, MD021 browser-continuity work, authority/privacy invariants, and previously proven capability remain in force at their proven scope.
+This foreground checkpoint preserves the current Digital Physiology / developmental-intelligence branch. The canonical `MEOS_BUILD_STATE.md`, `PROJECT_MADDY_NORTH_STAR.md`, the ratified Spooky standard, prior continuity proofs, authority/privacy invariants, and all previously proven capability remain in force at their proven scope.
 
 ## Developmental intelligence direction
 
-`PROJECT_MADDY_NORTH_STAR.md` now contains the Developmental Intelligence Principle:
+The North Star contains the Founder-approved Developmental Intelligence Principle:
 
 > **Stop assuming intelligence must be designed completely top-down. Design conditions under which increasingly sophisticated organization can develop.**
 
-Research is preserved in `TURING_MORPHOGENESIS_BZ_DEVELOPMENTAL_INTELLIGENCE.md` and remains **research hypothesis, not a claim of implemented end-to-end developmental intelligence**.
+`TURING_MORPHOGENESIS_BZ_DEVELOPMENTAL_INTELLIGENCE.md` preserves the Turing / Belousov-Zhabotinsky / allostasis / multiscale-cognition / Fibonacci-phyllotaxis / neural-cellular-automata research thread. It is research/hypothesis authority, not proof that production Maddy already has end-to-end cognitive morphogenesis.
 
-Long-range target: recurring experience/capability pressure may eventually help Maddy discover, propose, test, and retain better computational structure. Self-coding means candidate capability development with evidence and rollback, not blind self-replacement.
+## Digital Physiology chain — current source truth
 
-## MDP010 — Interoceptive + Allostatic State Contract
+### MDP010 — Interoceptive + Allostatic State Contract
 
-Commit: `0d2df32989416aa9c0942421225c9d0960dc170d`  
-File: `frontend/maddy-digital-physiology.js`  
-Build: `MDP010-INTEROCEPTIVE-ALLOSTATIC-STATE-CONTRACT-20260924-A`
+Commit `0d2df32989416aa9c0942421225c9d0960dc170d`  
+File `frontend/maddy-digital-physiology.js`  
+Build `MDP010-INTEROCEPTIVE-ALLOSTATIC-STATE-CONTRACT-20260924-A`
 
-Adds multidimensional internal-state representation for continuity, cognition, resources, organ integrity, workload, epistemic integrity, identity integrity, and dependency pressure. It distinguishes present condition from bounded trend projection and deliberately avoids a single scalar survival score.
-
-Authority remains observational/modeling only. No spend, provider use, production mutation, shutdown resistance, external action, corrective action, or authority creation.
+Multidimensional internal condition for continuity, cognition, resources, organ integrity, workload, epistemic integrity, identity integrity, and dependency pressure. Present condition is distinct from bounded trend projection. No single survival score and no independent corrective/spend/provider/external/self-modification/shutdown-resistance authority.
 
 Focused acceptance: **10/10 PASS**.
 
-## MDP011 — Read-only Production Organ Sensory Bridge
+### MDP011 — Read-only Production Organ Sensory Bridge
 
-Commit: `1493d8ad2df87a0f935f43d17d1670d64059290a`  
-File: `frontend/maddy-digital-physiology-sensors.js`  
-Build: `MDP011-READ-ONLY-PRODUCTION-ORGAN-SENSORY-BRIDGE-20260924-A`
+Commit `1493d8ad2df87a0f935f43d17d1670d64059290a`  
+File `frontend/maddy-digital-physiology-sensors.js`
 
-Registers read-only senses against existing organs rather than duplicating their state:
-
-- Mission Engine
-- Executive Monitoring
-- Executive Brain
-- Provider Manager
-- Executive Evidence Integrity
-
-The bridge reads status/summary surfaces only. Historical cumulative evidence-conflict counters are deliberately not treated as current epistemic pressure.
+Observation-only sensing from Mission Engine, Executive Monitoring, Executive Brain, Provider Manager, and Executive Evidence Integrity. Historical cumulative evidence-conflict counters are not misrepresented as current epistemic pressure.
 
 Focused acceptance: **10/10 PASS**, **0 action calls**.
 
-## Runtime fail-soft activation
+### MDP012 — Fail-soft runtime load
 
-Commit: `cf9e356dad6e194016b031329c93e961729709b7`  
-File: `frontend/app.js`
+Commit `cf9e356dad6e194016b031329c93e961729709b7`  
+File `frontend/app.js`
 
-Loads Digital Physiology after existing Maddy organs. Physiology load failure leaves the pre-existing Maddy runtime running rather than blocking startup.
+Physiology loads fail-soft after existing MEOS organs; physiology failure does not block the prior Maddy runtime.
 
-## MDP013 — Neuromorphic Advisory Bridge
+Activation acceptance: **8/8 PASS**.
 
-Commit: `86b11fe4e37bcd0fdb01d063b0ad71b74acb0362`  
-File: `frontend/maddy-digital-physiology-neuromorphic.js`  
-Build: `MDP013-PHYSIOLOGY-NEUROMORPHIC-ADVISORY-BRIDGE-20260924-A`
+### MDP013 — Neuromorphic Advisory Bridge
 
-Significant physiology candidates may enter the existing Executive Brain neuromorphic peripheral/channel integrator via `processNeuromorphicEvent()`.
+Commit `86b11fe4e37bcd0fdb01d063b0ad71b74acb0362`  
+Runtime load commit `b1f6bdd7f1815cf11fa5f1d5b651b00ffad887ed`  
+Change-gate commit `a66d19890b35fc13d2aa0f7fd3b34770f8bfd071`  
+File `frontend/maddy-digital-physiology-neuromorphic.js`
 
-This does **not** call world-model attention, cognitive re-entry, research/investigation, mission creation, provider execution, spend, or corrective action.
+Significant physiology candidates may enter the existing Executive Brain peripheral neuromorphic integrator through `processNeuromorphicEvent(..., {persist:false})`.
 
-Initial focused acceptance: **10/10 PASS**, one peripheral event, zero action calls, no cognition/research wake.
+Stable repeats are suppressed for five minutes unless pressure changes materially (`>= 0.08`), regime escalates, or a worsening trend newly appears.
 
-## MDP013 refractory/change gate
+`processNeuromorphicEvent()` itself is an attention integrator. It may produce a spike but does not itself launch research, create missions, call providers, spend, take external action, or schedule cognitive re-entry. Separate existing wrappers can use a spike as a wake gate under separate authority; MDP013 does not call those wrappers.
 
-Commit: `a66d19890b35fc13d2aa0f7fd3b34770f8bfd071`
+Focused acceptance: **10/10 PASS**; change-gate acceptance: **8/8 PASS**; observed action calls: **0**.
 
-Before periodic sensing can repeatedly feed a channel, stable repeats are suppressed. Delivery may occur when pressure changes materially, regime escalates, trend newly worsens, or the bounded repeat window expires.
+### MDP014 — Bounded Digital Physiology Heartbeat
 
-Current defaults:
+Source commit `bf039948c3a778124bc2d532c8e6fb82e1150e36`  
+Runtime activation commit `cb2dbcccc0161cbf2805cc001ed9cac17e1c3906`  
+File `frontend/maddy-digital-physiology-heartbeat.js`
 
-- material pressure delta: `0.08`
-- stable-repeat refractory window: `5 minutes`
+Current `frontend/app.js` source loads:
 
-Focused acceptance: **8/8 PASS**. Stable immediate repeat suppressed; worsening condition delivered without waiting; stable condition eligible again after refractory interval; **0 cognitive/action calls**.
+`Digital Physiology core → read-only senses → neuromorphic advisory bridge → bounded heartbeat`
 
-## MDP014 — Bounded Digital Physiology Heartbeat
+Heartbeat defaults: first sample after 5 seconds, then every 60 seconds; no overlapping samples; fail-soft; no durable/server authority; no cognition/action authority.
 
-Commit: `bf039948c3a778124bc2d532c8e6fb82e1150e36`  
-File: `frontend/maddy-digital-physiology-heartbeat.js`  
-Build: `MDP014-BOUNDED-DIGITAL-PHYSIOLOGY-HEARTBEAT-20260924-A`
+Focused heartbeat acceptance: **8/8 PASS**. Combined startup/fail-soft acceptance: **12/12 PASS**. Preserved-repo JavaScript syntax at that checkpoint: **70/70 PASS**.
 
-Adds a browser-runtime physiology heartbeat:
+**Production boundary:** current source/bootstrap is connected, but deployed Render runtime is not claimed production-proven until directly observed.
 
-- first sample after `5 seconds`
-- recurring sample every `60 seconds`
-- no overlapping samples
-- fail-soft errors
-- no durable persistence authority
-- no cognitive/action authority
+## MDP015 — Controlled real physiology spike proof
 
-Focused acceptance: **8/8 PASS**.
+Commit `e34efc0e82c44cead502556211e6dd9a90dd0568`  
+File `tests/mdp015-controlled-physiology-spike-acceptance.mjs`
 
-## Runtime heartbeat activation
-
-Commit: `cb2dbcccc0161cbf2805cc001ed9cac17e1c3906`  
-File: `frontend/app.js`
-
-Current runtime chain:
-
-`Digital Physiology core → read-only organ senses → neuromorphic advisory bridge → refractory/change gate → bounded heartbeat`
-
-Combined startup/fail-soft acceptance: **12/12 PASS**.
-
-Combined local regression against the preserved 2026-09-24 Maddy snapshot:
-
-- **70/70 JavaScript files syntax PASS**
-- MDP011 **10/10 PASS**
-- MDP013 refractory/change gate **8/8 PASS**
-- MDP014 heartbeat **8/8 PASS**
-- combined runtime bootstrap **12/12 PASS**
-
-The local sandbox could not perform a real `server.js` startup because dependencies such as `express` are not installed in that environment. This is an environment limitation, not production proof. **Do not claim production deployment proven until the current Render/runtime is directly observed after deployment.**
-
-## MDP015 — Controlled Physiology Spike Acceptance
-
-Commit: `e34efc0e82c44cead502556211e6dd9a90dd0568`  
-File: `tests/mdp015-controlled-physiology-spike-acceptance.mjs`
-
-This proof loads the actual current `ExecutiveBrain.processNeuromorphicEvent()` with the current MDP010/011/013/014 chain, injects a severe synthetic continuity disturbance through read-only fixtures, and instruments every known browser cognition/action wake path.
-
-Focused acceptance: **12/12 PASS**.
-
-Observed chain:
+Loads the actual current Executive Brain neuromorphic integrator plus MDP010/011/013/014. A severe synthetic continuity disturbance produced:
 
 `heartbeat sample → physiology snapshot → continuity pressure 0.9917 / critical-condition → MDP013 candidate → actual Executive Brain neuromorphic integrator → real spike`
 
-Observed during the same test:
+Focused acceptance: **12/12 PASS**.
+
+During the same proof:
 
 - `attendToWorldModelChange`: **0**
 - `scheduleCognitiveReentry`: **0**
@@ -139,46 +96,94 @@ Observed during the same test:
 - spend: **0**
 - external action: **0**
 
-The spike retained `cognitiveWakeAuthorized:false`. Digital Physiology retained `correctiveActionAuthorized:false`. At controlled local acceptance scope, Maddy can therefore register an internal disturbance strongly enough to cross the real neuromorphic threshold without that spike automatically becoming permission to think or act.
+The spike retained `cognitiveWakeAuthorized:false`; Digital Physiology retained `correctiveActionAuthorized:false`.
 
-This is not deployed-production proof.
+Meaning at controlled local scope: **Maddy can register an internal disturbance strongly enough to cross her real neuromorphic threshold without that sensation automatically becoming authority to think or act.**
 
-## What Maddy has now
+## MDP016 — Isolated Turing/BZ Cognitive Morphogenesis Laboratory
 
-Implemented chain:
+Initial add commit `34f8a8fcc6e3b99b8bba9dae1426315c609172ec`  
+Exact-tested-byte corrective commit `0fcfac622126beb627b1427ccb45dbd2bf84e402`  
+File `experiments/turing-bz-cognitive-morphogenesis-lab.mjs`  
+Build `MDP016-TURING-BZ-COGNITIVE-MORPHOGENESIS-LAB-20260924-A`  
+Final Git blob `23190a8e3c0a61e336dbbac0a0aa36a68c608fd4`
 
-`existing organ state → read-only physiology senses → multidimensional internal condition → bounded allostatic projection → significant condition candidate → refractory/change gate → existing neuromorphic peripheral state`
+MDP016 is deliberately **isolated from production Maddy**. It imports no production frontend runtime modules and carries zero cognition/action/provider/spend/deployment authority.
 
-This is intentionally **not**:
+The synthetic field combines:
 
-`condition → autonomous action`
+- Turing-inspired local activator/inhibitor graph dynamics;
+- faster inhibitor diffusion than activator diffusion;
+- BZ/excitable-media-style thresholds;
+- spike reset;
+- bounded refractory intervals;
+- semantic graph coupling;
+- controlled lesions;
+- explicit simple baselines.
 
-Digital Physiology describes and communicates internal condition. Existing authority architecture remains authoritative for consequential behavior.
+A small contradiction disturbance produced this deterministic temporary coalition:
 
-Current sensors still do not truthfully observe every defined dimension. Cognition, resources, epistemic integrity, and identity integrity may remain `unknown` until appropriate current-state sources are identified and proven. **Unknown must not be silently converted to healthy.**
+`contradiction t0 → epistemic-conflict / related-memory / curiosity t1 → research t2 → competing hypotheses t3 → experiment t4 → outcome t5 → learning t6`
 
-The current heartbeat is browser-runtime observation, not durable organism physiology. Long-range physiology should move toward a durable/server substrate consistent with Maddy's durable-execution doctrine.
+Final exact-byte acceptance: **14/14 PASS**.
 
-## NEXT — isolated Turing/BZ Cognitive Morphogenesis Laboratory
+Observed intact-lab metrics:
 
-Do **not** rewrite production cognition into reaction-diffusion code.
+- relevant nodes recruited: **10/10**
+- unrelated nodes spiked: **0**
+- precision: **1.0**
+- recall: **1.0**
+- F1: **1.0**
+- repeated initial disturbance suppressed by refractory behavior
 
-Next experiment: build an isolated synthetic laboratory and test whether interacting local cognitive signals can produce useful temporary organization:
+Damage/lesion test:
 
-`contradiction / prediction error → local activation → related-memory recruitment → competing hypotheses → selective inhibition → research/experiment candidate → outcome → changed later state`
+- `hypothesis-a` removed;
+- experiment still formed;
+- learning still formed;
+- remaining relevant-node precision/recall/F1 remained **1.0** in this fixture.
 
-Initial questions:
+Baselines:
 
-1. Can Turing-like differential propagation create localized specialization instead of global activation or immediate decay?
-2. Can BZ/excitable-media thresholds and refractory behavior propagate important activity without duplicate thrashing?
-3. Can short-range activation plus longer-range inhibition make curiosity selective?
-4. Can recurring successful temporary coalitions become candidates for later capability organogenesis?
-5. Can failures remain evidence and alter subsequent dynamics?
-6. Can useful structure regenerate after synthetic node loss?
-7. Does any advantage survive comparison with simpler queues, heuristics, random search, and information-gain baselines?
+- naive flood precision **0.7143**, recall **1.0**, F1 **0.8333**;
+- deterministic random same-selection-size precision/recall/F1 **0.7**;
+- MDP016 deterministic fixture precision/recall/F1 **1.0**.
 
-Keep mechanisms only if they produce measurable computational advantage.
+This is **evidence that the mechanism is worth further experimentation**, not evidence of consciousness, biological equivalence, or production-ready developmental cognition.
+
+## Current architectural meaning
+
+The implemented/proven-at-local-scope stack is now conceptually:
+
+`existing Maddy organs → Digital Physiology senses → internal condition / allostatic trend → bounded neuromorphic peripheral spike`
+
+and separately in an isolated laboratory:
+
+`contradiction disturbance → local activator/inhibitor dynamics → selective temporary coalition → research → hypotheses → experiment → outcome → learning`
+
+MDP016 has **not** been connected to production cognition. Keep that separation until stronger experiments justify a bridge.
+
+## NEXT — MDP017 outcome-conditioned structural plasticity
+
+The next experiment should ask whether experience can change the synthetic field itself rather than merely moving activity through a fixed graph.
+
+Target experiment:
+
+1. Run a first contradiction through the fixed MDP016 field.
+2. Attach a synthetic outcome to the coalition that solved it.
+3. Allow only bounded edge/threshold adaptation based on outcome evidence.
+4. Present a related second contradiction.
+5. Measure whether the adapted field reaches a correct localized research/experiment coalition faster, cheaper, or more selectively than the original fixed field.
+6. Present a misleading/failed outcome and verify that harmful adaptation is weakened or reversed rather than blindly reinforced.
+7. Compare against fixed-graph, naive-flood, deterministic-random, and simple heuristic baselines.
+8. Preserve lesion tests and zero production authority.
+
+This is the first serious test of the idea:
+
+> **experience should be able to change not only what Maddy knows, but eventually the structure through which Maddy becomes capable.**
+
+Do not connect structural plasticity to production Maddy until the laboratory shows repeatable measurable advantage and rollback behavior.
 
 ## Fast recovery
 
-`Resume MADDY-DIGITAL-PHYSIOLOGY-MDP015-CONTROLLED-SPIKE-TURING-LAB-NEXT-20260924 — read PROJECT_MADDY_NORTH_STAR.md, TURING_MORPHOGENESIS_BZ_DEVELOPMENTAL_INTELLIGENCE.md, MEOS_BUILD_STATE.md, and MEOS_BUILD_STATE_MDP014_CHECKPOINT.md; Digital Physiology MDP010/011/013/014 is source-connected in current main; MDP015 at e34efc0e82c44cead502556211e6dd9a90dd0568 is a 12/12 controlled acceptance using the actual current Executive Brain neuromorphic integrator; a synthetic continuity pressure of 0.9917 produced a real neuromorphic spike while browser cognitive re-entry, investigation, mission creation, provider calls, spend, and external action all remained 0; physiology reads five existing organs, keeps multidimensional internal condition, projects bounded trends, sends significant condition candidates through a refractory gate into the existing neuromorphic peripheral fabric, and runs a bounded 60-second browser heartbeat; physiology still has no independent authority to wake cognition or act; production deployment is NOT yet claimed proven; next build is the isolated Turing/BZ Cognitive Morphogenesis Laboratory unless deployed-runtime observation reveals a blocker.`
+`Resume MADDY-DIGITAL-PHYSIOLOGY-MDP016-MORPHOGENESIS-PLASTICITY-NEXT-20260924 — read PROJECT_MADDY_NORTH_STAR.md, TURING_MORPHOGENESIS_BZ_DEVELOPMENTAL_INTELLIGENCE.md, MEOS_BUILD_STATE.md, and this foreground checkpoint; Digital Physiology MDP010/011/013/014 is source-connected in current app.js; MDP015 proves 12/12 that a critical synthetic physiology disturbance can produce a real Executive Brain neuromorphic spike with zero cognitive re-entry/investigation/mission/provider/spend/external-action calls; MDP016 final exact-tested bytes are at commit 0fcfac622126beb627b1427ccb45dbd2bf84e402 / blob 23190a8e3c0a61e336dbbac0a0aa36a68c608fd4 and pass 14/14 in an isolated Turing/BZ-style lab, recruiting a contradiction→research→hypothesis→experiment→outcome→learning coalition with 0 unrelated spikes, surviving one-hypothesis lesion, and beating naive-flood/random baselines in the deterministic fixture; MDP016 is not connected to production cognition; production deployment is not yet claimed proven; next experiment is MDP017 bounded outcome-conditioned structural plasticity with success, failure, rollback, lesion, and baseline comparison.`
