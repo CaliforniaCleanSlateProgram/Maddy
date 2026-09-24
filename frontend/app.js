@@ -3,7 +3,8 @@ const DASHBOARD_COMPLETION = 20;
 const DIGITAL_PHYSIOLOGY_SCRIPTS = Object.freeze([
   Object.freeze({ id: "maddy-digital-physiology-core", src: "maddy-digital-physiology.js" }),
   Object.freeze({ id: "maddy-digital-physiology-sensors", src: "maddy-digital-physiology-sensors.js" }),
-  Object.freeze({ id: "maddy-digital-physiology-neuromorphic", src: "maddy-digital-physiology-neuromorphic.js" })
+  Object.freeze({ id: "maddy-digital-physiology-neuromorphic", src: "maddy-digital-physiology-neuromorphic.js" }),
+  Object.freeze({ id: "maddy-digital-physiology-heartbeat", src: "maddy-digital-physiology-heartbeat.js" })
 ]);
 
 function loadMaddyRuntimeScript({ id, src }) {
@@ -32,19 +33,21 @@ async function initializeMaddyDigitalPhysiology() {
     const physiology = window.MaddyDigitalPhysiology;
     const sensors = window.MaddyDigitalPhysiologySensors;
     const neuromorphic = window.MaddyDigitalPhysiologyNeuromorphicBridge;
-    if (!physiology || !sensors || !neuromorphic) {
+    const heartbeat = window.MaddyDigitalPhysiologyHeartbeat;
+    if (!physiology || !sensors || !neuromorphic || !heartbeat) {
       throw new Error("Digital Physiology loaded without exposing its expected runtime contracts.");
     }
 
     console.info(
-      `[MEOS] Digital Physiology available. ${physiology.name} v${physiology.version}; ${sensors.name} v${sensors.version}; ${neuromorphic.name} v${neuromorphic.version}. Observation-only sensing; automatic sampling is off; physiology cannot authorize cognition or action.`
+      `[MEOS] Digital Physiology available. ${physiology.name} v${physiology.version}; ${sensors.name} v${sensors.version}; ${neuromorphic.name} v${neuromorphic.version}; ${heartbeat.name} v${heartbeat.version}. Bounded sensing heartbeat is on; physiology cannot authorize cognition or action.`
     );
 
     return {
       success: true,
       physiology: physiology.getStatus?.() || null,
       sensors: sensors.getStatus?.() || null,
-      neuromorphic: neuromorphic.getStatus?.() || null
+      neuromorphic: neuromorphic.getStatus?.() || null,
+      heartbeat: heartbeat.getStatus?.() || null
     };
   } catch (error) {
     console.warn(
