@@ -1,7 +1,7 @@
-# MEOS BUILD STATE — MDP014 DIGITAL PHYSIOLOGY CHECKPOINT
+# MEOS BUILD STATE — MDP015 DIGITAL PHYSIOLOGY CHECKPOINT
 
 **Date:** 2026-09-24  
-**Recovery keyword:** `MADDY-DIGITAL-PHYSIOLOGY-MDP014-HEARTBEAT-TURING-LAB-NEXT-20260924`
+**Recovery keyword:** `MADDY-DIGITAL-PHYSIOLOGY-MDP015-CONTROLLED-SPIKE-TURING-LAB-NEXT-20260924`
 
 This additive checkpoint preserves the 2026-09-24 Digital Physiology work without rewriting the large canonical `MEOS_BUILD_STATE.md`. The canonical Build State, North Star, Spooky standard, prior continuity proofs, MD021 browser-continuity work, authority/privacy invariants, and previously proven capability remain in force at their proven scope.
 
@@ -115,6 +115,34 @@ Combined local regression against the preserved 2026-09-24 Maddy snapshot:
 
 The local sandbox could not perform a real `server.js` startup because dependencies such as `express` are not installed in that environment. This is an environment limitation, not production proof. **Do not claim production deployment proven until the current Render/runtime is directly observed after deployment.**
 
+## MDP015 — Controlled Physiology Spike Acceptance
+
+Commit: `e34efc0e82c44cead502556211e6dd9a90dd0568`  
+File: `tests/mdp015-controlled-physiology-spike-acceptance.mjs`
+
+This proof loads the actual current `ExecutiveBrain.processNeuromorphicEvent()` with the current MDP010/011/013/014 chain, injects a severe synthetic continuity disturbance through read-only fixtures, and instruments every known browser cognition/action wake path.
+
+Focused acceptance: **12/12 PASS**.
+
+Observed chain:
+
+`heartbeat sample → physiology snapshot → continuity pressure 0.9917 / critical-condition → MDP013 candidate → actual Executive Brain neuromorphic integrator → real spike`
+
+Observed during the same test:
+
+- `attendToWorldModelChange`: **0**
+- `scheduleCognitiveReentry`: **0**
+- `runContinuousCognitionCycle`: **0**
+- investigation: **0**
+- mission creation: **0**
+- provider call: **0**
+- spend: **0**
+- external action: **0**
+
+The spike retained `cognitiveWakeAuthorized:false`. Digital Physiology retained `correctiveActionAuthorized:false`. At controlled local acceptance scope, Maddy can therefore register an internal disturbance strongly enough to cross the real neuromorphic threshold without that spike automatically becoming permission to think or act.
+
+This is not deployed-production proof.
+
 ## What Maddy has now
 
 Implemented chain:
@@ -153,4 +181,4 @@ Keep mechanisms only if they produce measurable computational advantage.
 
 ## Fast recovery
 
-`Resume MADDY-DIGITAL-PHYSIOLOGY-MDP014-HEARTBEAT-TURING-LAB-NEXT-20260924 — read PROJECT_MADDY_NORTH_STAR.md, TURING_MORPHOGENESIS_BZ_DEVELOPMENTAL_INTELLIGENCE.md, MEOS_BUILD_STATE.md, and MEOS_BUILD_STATE_MDP014_CHECKPOINT.md; Digital Physiology MDP010/011/013/014 is on main through cb2dbcccc0161cbf2805cc001ed9cac17e1c3906 with 70/70 JS syntax and focused 10/10 + 8/8 + 8/8 + combined 12/12 local acceptance; physiology reads five existing organs, keeps multidimensional internal condition, projects bounded trends, sends significant condition candidates through a refractory gate into the existing neuromorphic peripheral fabric, and runs a bounded 60-second browser heartbeat; physiology still has no authority to wake cognition, investigate, create missions, call providers, spend, take external/corrective action, mutate production, or resist shutdown; production deployment is NOT yet claimed proven; next build is the isolated Turing/BZ Cognitive Morphogenesis Laboratory.`
+`Resume MADDY-DIGITAL-PHYSIOLOGY-MDP015-CONTROLLED-SPIKE-TURING-LAB-NEXT-20260924 — read PROJECT_MADDY_NORTH_STAR.md, TURING_MORPHOGENESIS_BZ_DEVELOPMENTAL_INTELLIGENCE.md, MEOS_BUILD_STATE.md, and MEOS_BUILD_STATE_MDP014_CHECKPOINT.md; Digital Physiology MDP010/011/013/014 is source-connected in current main; MDP015 at e34efc0e82c44cead502556211e6dd9a90dd0568 is a 12/12 controlled acceptance using the actual current Executive Brain neuromorphic integrator; a synthetic continuity pressure of 0.9917 produced a real neuromorphic spike while browser cognitive re-entry, investigation, mission creation, provider calls, spend, and external action all remained 0; physiology reads five existing organs, keeps multidimensional internal condition, projects bounded trends, sends significant condition candidates through a refractory gate into the existing neuromorphic peripheral fabric, and runs a bounded 60-second browser heartbeat; physiology still has no independent authority to wake cognition or act; production deployment is NOT yet claimed proven; next build is the isolated Turing/BZ Cognitive Morphogenesis Laboratory unless deployed-runtime observation reveals a blocker.`
