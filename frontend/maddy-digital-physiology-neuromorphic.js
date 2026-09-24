@@ -38,6 +38,9 @@
     unsubscribe: null,
     integrationCount: 0,
     lastIntegration: null,
+    minimumRepeatIntervalMs: 5 * 60 * 1000,
+    minimumPressureDelta: 0.08,
+    lastDeliveryByChannel: new Map(),
 
     getPhysiology() {
       return global.MaddyDigitalPhysiology || null;
@@ -61,9 +64,37 @@
       const candidates = physiology.deriveNeuromorphicEventCandidates(snapshot || physiology.lastSnapshot);
       const results = [];
 
+      const integrationNowMs = Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : Date.now();
+      const regimeRank = { nominal: 0, watch: 1, strained: 2, "critical-condition": 3 };
+
       for (const candidate of candidates) {
         if (candidate?.authority?.wakeAuthorized !== false || candidate?.authority?.correctiveActionAuthorized !== false) {
           results.push({ success: false, skipped: true, reason: "candidate-authority-contract-invalid", candidate: clone(candidate) });
+          continue;
+        }
+
+        const prior = this.lastDeliveryByChannel.get(candidate.channelKey) || null;
+        const currentPressure = Number(candidate.importance || 0);
+        const currentRegime = snapshot?.dimensions?.[String(candidate.channelKey || "").replace(/^physiology:/, "")]?.regime || null;
+        const currentTrend = snapshot?.dimensions?.[String(candidate.channelKey || "").replace(/^physiology:/, "")]?.trend || null;
+        const pressureDelta = prior ? Math.abs(currentPressure - Number(prior.pressure || 0)) : Infinity;
+        const regimeEscalated = prior && (regimeRank[currentRegime] ?? 0) > (regimeRank[prior.regime] ?? 0);
+        const trendEscalated = prior && currentTrend === "worsening" && prior.trend !== "worsening";
+        const repeatWindowExpired = !prior || integrationNowMs - Number(prior.deliveredAtMs || 0) >= Number(this.minimumRepeatIntervalMs || 0);
+        const materiallyChanged = !prior || pressureDelta >= Number(this.minimumPressureDelta || 0) || regimeEscalated || trendEscalated;
+
+        if (!materiallyChanged && !repeatWindowExpired) {
+          results.push({
+            success: true,
+            skipped: true,
+            reason: "stable-repeat-suppressed",
+            channelKey: candidate.channelKey,
+            pressure: currentPressure,
+            priorPressure: prior?.pressure ?? null,
+            regime: currentRegime,
+            trend: currentTrend,
+            nextRepeatEligibleAtMs: Number(prior?.deliveredAtMs || 0) + Number(this.minimumRepeatIntervalMs || 0)
+          });
           continue;
         }
 
@@ -97,6 +128,13 @@
         const result = brain.processNeuromorphicEvent(event, {
           persist: false,
           nowMs: options.nowMs
+        });
+
+        this.lastDeliveryByChannel.set(candidate.channelKey, {
+          pressure: currentPressure,
+          regime: currentRegime,
+          trend: currentTrend,
+          deliveredAtMs: integrationNowMs
         });
 
         results.push({
@@ -179,6 +217,11 @@
         connectedAt: this.connectedAt,
         integrationCount: this.integrationCount,
         lastIntegration: clone(this.lastIntegration),
+        changeGate: {
+          minimumRepeatIntervalMs: this.minimumRepeatIntervalMs,
+          minimumPressureDelta: this.minimumPressureDelta,
+          trackedChannels: this.lastDeliveryByChannel.size
+        },
         authority: {
           neuromorphicPeripheralIntegrationAuthorized: true,
           cognitiveWakeAuthorized: false,
